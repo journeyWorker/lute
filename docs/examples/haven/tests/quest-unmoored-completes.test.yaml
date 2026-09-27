@@ -16,7 +16,7 @@ facts:
   - "knows(vesna, manifest)"
 occasions: [runEnd]
 expect:
-  exit: complete
+  end: complete
   quests:
     unmoored: complete
   transcriptContains:

@@ -200,6 +200,7 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
         occasions: Vec::new(),
         lints: Vec::new(),
         cast: Vec::new(),
+        sites: Default::default(),
     };
     let installed = InstalledPlugins {
         by_id: BTreeMap::from([("third.party".to_string(), InstalledPlugin { loaded: pkg })]),

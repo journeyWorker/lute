@@ -95,6 +95,7 @@ use project::{compile_play_project, compile_project};
 use provenance::fact_origins;
 use run::execute;
 use script::{parse_script, parse_script_with, PlayScript, ScriptStep};
+pub(crate) use script::{SCRIPT_KEYS, STEP_KEYS};
 
 // ===========================================================================
 // CLI entry point.
@@ -114,7 +115,7 @@ struct Loaded {
 /// empty).
 fn load(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Loaded, (ExitCode, String)> {
     let script = load_script(script_path)?;
-    let project = compile_play_project(dir)?;
+    let project = compile_play_project(dir, project::PLAY)?;
     let (plan, world) = plan_script(&project, &script, script_path, no_derive)?;
     Ok(Loaded {
         script,
@@ -154,8 +155,9 @@ pub fn run_play(
     } = match load(dir, script_path, no_derive) {
         Ok(l) => l,
         Err((code, msg)) => {
-            if !msg.is_empty() {
-                eprintln!("lute play: {msg}");
+            // Every usage error of the script, one per line.
+            for line in msg.lines() {
+                eprintln!("lute play: {}", lute_core_span::plain_message(line));
             }
             return code;
         }
@@ -185,7 +187,10 @@ pub fn run_play(
         ) {
             Ok(e) => Some(e),
             Err(e) => {
-                eprintln!("lute play: --explain: {e}");
+                eprintln!(
+                    "lute play: --explain: {}",
+                    lute_core_span::plain_message(&e)
+                );
                 return ExitCode::from(2);
             }
         }
@@ -244,6 +249,8 @@ pub(crate) struct PlayTestRun {
     pub misses: Vec<ExpectMiss>,
     /// `complete | incomplete | error`.
     pub exit: &'static str,
+    /// How the play ended: `complete | terminal | incomplete | error`.
+    pub end: &'static str,
     /// Project-relative (forward-slash) source paths of every document a
     /// presentation came from — `--coverage`'s numerator.
     pub presented_docs: BTreeSet<String>,
@@ -266,13 +273,15 @@ pub(crate) struct PlayProject(Result<ExecProject, String>);
 impl PlayProject {
     /// Compile the project at `dir` for play ([`compile_project`]).
     pub(crate) fn compile(dir: &Path) -> Self {
-        PlayProject(compile_play_project(dir).map_err(|(_, msg)| {
-            if msg.is_empty() {
-                "the project does not compile (diagnostics above)".to_string()
-            } else {
-                msg
-            }
-        }))
+        PlayProject(
+            compile_play_project(dir, project::TEST).map_err(|(_, msg)| {
+                if msg.is_empty() {
+                    "the project does not compile (diagnostics above)".to_string()
+                } else {
+                    msg
+                }
+            }),
+        )
     }
 }
 
@@ -348,7 +357,12 @@ pub(crate) fn run_play_for_test(
     }
     Ok(PlayTestRun {
         misses,
-        exit: outcome.exit,
+        // The exit class of how the play ended: a terminal ending completed.
+        exit: match outcome.ended {
+            "terminal" => "complete",
+            ended => ended,
+        },
+        end: outcome.ended,
         presented_docs,
         presented,
         choices,

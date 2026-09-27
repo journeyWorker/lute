@@ -290,6 +290,24 @@ fn ordinal_codes(text: &str) -> Vec<String> {
     ))
 }
 
+fn ordinal_diags(text: &str) -> Vec<lute_core_span::Diagnostic> {
+    let input = CheckInput {
+        text: format!("{HDR}{ORDINAL_STATE}---\n## Shot 1.\n@marina: {text}\n"),
+        uri: "interp".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+        defaults: Default::default(),
+    };
+    check(&input).diagnostics
+}
+
+fn codes_of(ds: &[lute_core_span::Diagnostic]) -> Vec<&str> {
+    ds.iter().map(|d| d.code.as_str()).collect()
+}
+
 /// A number path and a number def take the hint cleanly, in a line and in a
 /// choice label.
 #[test]
@@ -304,11 +322,80 @@ fn ordinal_on_a_number_is_clean() {
     assert!(c.is_empty(), "got {c:?}");
 }
 
-/// A hint other than `ordinal` / `ordinalWord` is the interpolation-grammar code.
+/// A hint that is not one of the language's is the interpolation-grammar
+/// code, naming the hints and the nearest one.
 #[test]
 fn an_unknown_hint_is_rejected() {
-    let c = ordinal_codes("{{user.deaths:plural}}");
-    assert_eq!(c, ["E-CEL-PROFILE"], "got {c:?}");
+    let ds = ordinal_diags("{{user.deaths:cardinalword}}");
+    assert_eq!(codes_of(&ds), ["E-CEL-PROFILE"], "{ds:?}");
+    let m = &ds[0].message;
+    assert!(m.contains("did you mean `cardinalWord`?"), "{m}");
+    assert!(
+        m.contains("`:capitalize`, `:start` and `:indefinite` format text"),
+        "{m}"
+    );
+    assert!(!m.contains("dsl "), "{m}");
+}
+
+/// `plural` forms are bare text split on `|`: quoted forms (the quotes would
+/// print) and a `,` separator each get `E-PLURAL-FORM` naming the rewrite; a
+/// missing form too.
+#[test]
+fn plural_forms_are_bare_and_pipe_separated() {
+    let ds =
+        ordinal_diags("{{user.deaths:plural(\"One careful morning\"|\"# careful mornings\")}}");
+    assert_eq!(codes_of(&ds), ["E-PLURAL-FORM"], "{ds:?}");
+    assert!(
+        ds[0].message.contains("bare text")
+            && ds[0]
+                .message
+                .contains("`{{user.deaths:plural(One careful morning|# careful mornings)}}`"),
+        "{}",
+        ds[0].message
+    );
+    let ds = ordinal_diags("{{user.deaths:plural(coin,coins)}}");
+    assert_eq!(codes_of(&ds), ["E-PLURAL-FORM"], "{ds:?}");
+    assert!(
+        ds[0].message.contains("with `|`, not `,`")
+            && ds[0]
+                .message
+                .contains("`{{user.deaths:plural(coin|coins)}}`"),
+        "{}",
+        ds[0].message
+    );
+    assert_eq!(ordinal_codes("{{user.deaths:plural}}"), ["E-PLURAL-FORM"]);
+    assert_eq!(
+        ordinal_codes("{{user.deaths:plural(coin|)}}"),
+        ["E-PLURAL-FORM"]
+    );
+    let c = ordinal_codes(
+        "{{user.deaths:plural(One wagon|#Word wagons)}}, {{user.deaths:plural(a, b|c)}}",
+    );
+    assert!(c.is_empty(), "got {c:?}");
+}
+
+/// `cardinalWord` is a number hint like `ordinalWord`; `capitalize`,
+/// `start` and `indefinite` format text — a string or enum path, a def of
+/// an enum, `userName` — and are refused on a number or a bool.
+#[test]
+fn cardinal_word_and_text_hints() {
+    let c = ordinal_codes(
+        "{{user.deaths:cardinalWord}} {{@next:cardinalWord}} {{run.name:capitalize}} \
+         {{run.mood:start}} {{run.name:indefinite}} {{userName:capitalize}}",
+    );
+    assert!(c.is_empty(), "got {c:?}");
+    assert_eq!(ordinal_codes("{{run.name:cardinalWord}}"), ["E-REF-TYPE"]);
+    for text in [
+        "{{user.deaths:capitalize}}",
+        "{{@alive:start}}",
+        "{{@next:indefinite}}",
+    ] {
+        assert_eq!(ordinal_codes(text), ["E-REF-TYPE"], "{text}");
+    }
+    assert_eq!(
+        ordinal_codes("{{run.name:capitalize(x)}}"),
+        ["E-CEL-PROFILE"]
+    );
 }
 
 /// `ordinal` formats a number: a string / enum path, a bool def and the

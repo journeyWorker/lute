@@ -55,7 +55,7 @@ pub struct MockSet {
     /// is [`E_TRACE_EVENT`] (dsl 0.4.0 §4.3/§4.4): those are engine-derived
     /// transitions, never user-fired via `--event`.
     pub events: Vec<String>,
-    /// `--accept`/`accept:`/`accepts:` quest ids, in the order supplied —
+    /// `--accept`/`accepts:` quest ids, in the order supplied —
     /// simulates the player/engine accepting a `start`-less (accept-driven)
     /// quest (§4.4). An id absent from the document, or naming a quest that
     /// carries a `start` predicate (declarative — needs no accept), is
@@ -385,7 +385,7 @@ pub fn bridge_answer_shape<'t>(
 /// is the reason, unprefixed.
 pub fn parse_bridges(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<BridgeAnswer>>, String> {
     let shape = "`bridges:` must be a mapping of plugin directive tag -> a list of answers, \
-                 each a mapping of bridge result field -> literal (dsl 0.24.0 §5)";
+                 each a mapping of bridge result field -> literal";
     let serde_yaml::Value::Mapping(m) = v else {
         return Err(shape.to_string());
     };
@@ -399,7 +399,7 @@ pub fn parse_bridges(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<Bridg
             let serde_yaml::Value::Mapping(fields) = answer else {
                 return Err(format!(
                     "`bridges.{tag}` answer {} must be a mapping of bridge result field -> \
-                     literal, e.g. `{{ passed: true }}` (dsl 0.24.0 §5)",
+                     literal, e.g. `{{ passed: true }}`",
                     i + 1
                 ));
             };
@@ -408,7 +408,7 @@ pub fn parse_bridges(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<Bridg
                 let (Some(field), Some(lit)) = (field.as_str(), scalar_to_text(value)) else {
                     return Err(format!(
                         "`bridges.{tag}` answer {} must map field names to scalar literals \
-                         (bool/number/string, dsl 0.24.0 §5)",
+                         (bool/number/string)",
                         i + 1
                     ));
                 };
@@ -483,7 +483,7 @@ pub const E_TRACE_CHOICE: &str = "E-TRACE-CHOICE";
 /// `start`-having quest activates declaratively, a `start`-less one via
 /// `--accept`.
 pub const E_TRACE_EVENT: &str = "E-TRACE-EVENT";
-/// A `--accept`/`accept:`/`accepts:` entry naming an unknown quest id, or a
+/// A `--accept`/`accepts:` entry naming an unknown quest id, or a
 /// quest that carries a `start` predicate — it activates declaratively and
 /// needs no accept (§4.3/§4.4).
 pub const E_TRACE_ACCEPT: &str = "E-TRACE-ACCEPT";
@@ -596,7 +596,6 @@ fn scalar_to_text(v: &serde_yaml::Value) -> Option<String> {
 /// unknown keys here. That difference is asserted by `testcmd.rs`'s
 /// `the_test_key_set_is_the_mock_key_set_plus_the_harness_keys`.
 pub const MOCK_TOP_KEYS: &[&str] = &[
-    "accept",
     "accepts",
     "bridges",
     "choose",
@@ -615,7 +614,7 @@ pub const MOCK_TOP_KEYS: &[&str] = &[
 /// `state:` (a map of path -> literal), `facts:` (a list of quoted
 /// ground-fact-pattern strings, the `0.3 §4` `facts:` shape), `choose:` (a map
 /// of branch/hub id -> one choice id or a list of them), `events:` (a list of
-/// event names), `accept(s):` (quest ids), `visited:` (scene ids) and
+/// event names), `accepts:` (quest ids), `visited:` (scene ids) and
 /// `occasions:` (occasion names, dsl 0.21.0 §7a) — every key optional; an
 /// absent/empty/`null` document yields
 /// an empty [`MockSet`]. Every literal/pattern/id is carried as raw TEXT,
@@ -671,7 +670,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         return Err(diag(
             E_TRACE_MOCK_PARSE,
             "a `--mock` file must be a YAML mapping with `state:`/`facts:`/`choose:`/`events:` \
-             keys (dsl 0.4.0 §4.3)"
+             keys"
                 .to_string(),
             span,
         ));
@@ -686,7 +685,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             let Some(key) = k.as_str() else {
                 return Err(diag(
                     E_TRACE_MOCK_PARSE,
-                    "a mock's top-level keys must be strings (dsl 0.4.0 §4.3)".to_string(),
+                    "a mock's top-level keys must be strings".to_string(),
                     span,
                 ));
             };
@@ -699,7 +698,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
                 format!(
-                    "unknown top-level key `{key}` in a mock{sugg} (legal: {}) (0.10.0 §8)",
+                    "unknown top-level key `{key}` in a mock{sugg} (legal: {})",
                     legal.join(", ")
                 ),
                 span,
@@ -713,7 +712,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         let serde_yaml::Value::Mapping(m) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
-                "`state:` must be a mapping of path -> literal (dsl 0.4.0 §4.3)".to_string(),
+                "`state:` must be a mapping of path -> literal".to_string(),
                 span,
             ));
         };
@@ -721,14 +720,14 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             let Some(path) = k.as_str() else {
                 return Err(diag(
                     E_TRACE_MOCK_PARSE,
-                    "`state:` keys must be strings (dsl 0.4.0 §4.3)".to_string(),
+                    "`state:` keys must be strings".to_string(),
                     span,
                 ));
             };
             let Some(literal) = scalar_to_text(v) else {
                 return Err(diag(
                     E_TRACE_MOCK_PARSE,
-                    format!("`state.{path}` must be a scalar literal (bool/number/string, dsl 0.4.0 §4.3)"),
+                    format!("`state.{path}` must be a scalar literal (bool/number/string)"),
                     span,
                 ));
             };
@@ -741,7 +740,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         let serde_yaml::Value::Sequence(items) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
-                "`facts:` must be a list of quoted fact patterns (dsl 0.4.0 §4.3)".to_string(),
+                "`facts:` must be a list of quoted fact patterns".to_string(),
                 span,
             ));
         };
@@ -749,7 +748,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             let Some(s) = item.as_str() else {
                 return Err(diag(
                     E_TRACE_MOCK_PARSE,
-                    "every `facts:` entry must be a string (dsl 0.4.0 §4.3)".to_string(),
+                    "every `facts:` entry must be a string".to_string(),
                     span,
                 ));
             };
@@ -761,8 +760,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         let serde_yaml::Value::Mapping(m) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
-                "`choose:` must be a mapping of branch/hub id -> choice id(s) (dsl 0.4.0 §4.3)"
-                    .to_string(),
+                "`choose:` must be a mapping of branch/hub id -> choice id(s)".to_string(),
                 span,
             ));
         };
@@ -770,7 +768,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             let Some(id) = k.as_str() else {
                 return Err(diag(
                     E_TRACE_MOCK_PARSE,
-                    "`choose:` keys must be strings (dsl 0.4.0 §4.3)".to_string(),
+                    "`choose:` keys must be strings".to_string(),
                     span,
                 ));
             };
@@ -782,7 +780,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                         let Some(s) = item.as_str() else {
                             return Err(diag(
                                 E_TRACE_MOCK_PARSE,
-                                format!("`choose.{id}` list entries must be strings (dsl 0.4.0 §4.3)"),
+                                format!("`choose.{id}` list entries must be strings"),
                                 span,
                             ));
                         };
@@ -793,7 +791,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                 _ => {
                     return Err(diag(
                         E_TRACE_MOCK_PARSE,
-                        format!("`choose.{id}` must be a choice id or a list of choice ids (dsl 0.4.0 §4.3)"),
+                        format!("`choose.{id}` must be a choice id or a list of choice ids"),
                         span,
                     ))
                 }
@@ -807,7 +805,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         let serde_yaml::Value::Sequence(items) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
-                "`events:` must be a list of event names (dsl 0.4.0 §4.3)".to_string(),
+                "`events:` must be a list of event names".to_string(),
                 span,
             ));
         };
@@ -815,7 +813,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             let Some(s) = item.as_str() else {
                 return Err(diag(
                     E_TRACE_MOCK_PARSE,
-                    "every `events:` entry must be a string (dsl 0.4.0 §4.3)".to_string(),
+                    "every `events:` entry must be a string".to_string(),
                     span,
                 ));
             };
@@ -823,13 +821,12 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         }
     }
 
-    // `accept:`/`accepts:` — either spelling, a list of quest ids (§4.4).
-    for key in ["accept", "accepts"] {
-        let Some(v) = top.get(key) else { continue };
+    // `accepts:` — a list of quest ids (§4.4).
+    if let Some(v) = top.get("accepts") {
         let serde_yaml::Value::Sequence(items) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
-                format!("`{key}:` must be a list of quest ids (dsl 0.4.0 §4.3/§4.4)"),
+                "`accepts:` must be a list of quest ids".to_string(),
                 span,
             ));
         };
@@ -837,7 +834,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             let Some(s) = item.as_str() else {
                 return Err(diag(
                     E_TRACE_MOCK_PARSE,
-                    format!("every `{key}:` entry must be a string (dsl 0.4.0 §4.3/§4.4)"),
+                    "every `accepts:` entry must be a string".to_string(),
                     span,
                 ));
             };
@@ -852,7 +849,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         let serde_yaml::Value::Sequence(items) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
-                format!("`{key}:` must be a list of {what} (dsl 0.21.0 §7a)"),
+                format!("`{key}:` must be a list of {what}"),
                 span,
             ));
         };
@@ -863,11 +860,26 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         };
         for item in items {
             let Some(s) = item.as_str() else {
-                return Err(diag(
-                    E_TRACE_MOCK_PARSE,
-                    format!("every `{key}:` entry must be a string (dsl 0.21.0 §7a)"),
-                    span,
-                ));
+                // T3-42: `{ occasion: talk, target: npc.mira }` (or
+                // `{ talk: npc.mira }`) — the raise is one string here.
+                let joined = item.as_mapping().and_then(|m| {
+                    let text = |k: &str| m.get(k).and_then(serde_yaml::Value::as_str);
+                    match (text("occasion"), text("target"), m.iter().next()) {
+                        (Some(o), Some(t), _) => Some(format!("{o}@{t}")),
+                        (None, None, Some((o, t))) if m.len() == 1 => {
+                            Some(format!("{}@{}", o.as_str()?, t.as_str()?))
+                        }
+                        _ => None,
+                    }
+                });
+                let message = match joined {
+                    Some(joined) if key == "occasions" => format!(
+                        "every `occasions:` entry is a string — a raise for a target is written \
+                         `<occasion>@<target>`: `{joined}`"
+                    ),
+                    _ => format!("every `{key}:` entry must be a string"),
+                };
+                return Err(diag(E_TRACE_MOCK_PARSE, message, span));
             };
             if key == "occasions" {
                 let (name, target) = split_occasion(s);
@@ -876,7 +888,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                         E_TRACE_MOCK_PARSE,
                         format!(
                             "`occasions:` entry `{s}` must be an occasion name, or \
-                             `<occasion>@<target>` for a raise for a target (dsl 0.23.0 §2)"
+                             `<occasion>@<target>` for a raise for a target"
                         ),
                         span,
                     ));
@@ -897,8 +909,8 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
                 "`quests:` must be a map of quest id -> unset | active | complete | failed \
-                 (dsl 0.22.0 §3)"
-                    .to_string(),
+                "
+                .to_string(),
                 span,
             ));
         };
@@ -906,8 +918,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
             let (Some(id), Some(status)) = (k.as_str(), status.as_str()) else {
                 return Err(diag(
                     E_TRACE_MOCK_PARSE,
-                    "every `quests:` entry must be `<quest id>: <status>` (dsl 0.22.0 §3)"
-                        .to_string(),
+                    "every `quests:` entry must be `<quest id>: <status>`".to_string(),
                     span,
                 ));
             };
@@ -916,7 +927,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                     E_TRACE_MOCK_PARSE,
                     format!(
                         "`quests: {{ {id}: {status} }}` — a quest status is one of unset, \
-                         active, complete, failed (dsl 0.22.0 §3)"
+                         active, complete, failed"
                     ),
                     span,
                 ));
@@ -929,7 +940,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
     }
     if let Some(v) = top.get("entriesRead") {
         let shape = "`entriesRead:` must be a map `{ run: [entry ids], user: [entry ids] }` \
-                     (dsl 0.22.0 §3)";
+                    ";
         let serde_yaml::Value::Mapping(m) = v else {
             return Err(diag(E_TRACE_MOCK_PARSE, shape.to_string(), span));
         };
@@ -977,7 +988,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         let Some(b) = v.as_bool() else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
-                "`derive:` must be `true` or `false` (dsl 0.22.0 §6)".to_string(),
+                "`derive:` must be `true` or `false`".to_string(),
                 span,
             ));
         };
@@ -1016,8 +1027,8 @@ pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
         Some(_) => Err(diag(
             E_TRACE_MOCK_PARSE,
             "`file:` must be a path to the document this mock previews, relative to this file \
-             (0.10.0 §8)"
-                .to_string(),
+            "
+            .to_string(),
             span,
         )),
     }
@@ -1182,7 +1193,7 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                 E_TRACE_MOCK_UNDECLARED,
                 format!(
                     "`--state {path}=…` seeds a path the clock derives from its day and slot, \
-                     which no mock may set — seed {seedable} instead (dsl 0.24.0 §1)"
+                     which no mock may set — seed {seedable} instead"
                 ),
                 *at,
             ));
@@ -1232,7 +1243,7 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                         E_TRACE_MOCK_TYPE,
                         format!(
                             "`--state {path}={literal}` is not compatible with `{path}`'s reserved \
-                             domain ({}) (dsl 0.5.1 §1.1)",
+                             domain ({})",
                             reserved_quest_domain_text(path)
                         ),
                         *at,
@@ -1267,7 +1278,7 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                     E_TRACE_MOCK_TYPE,
                     format!(
                         "`--state {path}={literal}` is not compatible with `{path}`'s reserved \
-                         domain (true, false) (dsl 0.19.0 §5)"
+                         domain (true, false)"
                     ),
                     *at,
                 ));
@@ -1285,8 +1296,8 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                 out.push(mock_diag(
                     E_TRACE_MOCK_TYPE,
                     format!(
-                        "`--state {path}={literal}` is not compatible with `{path}`'s declared type \
-                         (dsl 0.4.0 §4.3){}",
+                        "`--state {path}={literal}` is not compatible with `{path}`'s declared \
+                         type{}",
                         not_member.map(|why| format!(": {why}")).unwrap_or_default()
                     ),
                     *at,
@@ -1325,8 +1336,7 @@ fn undeclared_diag(path: &str, at: Option<Span>) -> Diagnostic {
         E_TRACE_MOCK_UNDECLARED,
         format!(
             "`--state {path}=…` names a state path not declared in the resolved schema \
-             (state-by-typo MUST fail in mocks exactly as in documents, dsl 0.4.0 §4.3, \
-             0.1 §11.1.1)"
+             (a typo in a mock fails exactly as it does in a document)"
         ),
         at,
     )
@@ -1340,7 +1350,7 @@ fn reserved_quest_unreferenced_diag(path: &str, at: Option<Span>) -> Diagnostic 
         format!(
             "the seed of `{path}` (a `quests:` entry or `state:`/`--state` seed) is refused: \
              no condition in this document — body slot, beat `when:` or `after:` — reads it, so the \
-             seed could not change the walk (dsl 0.5.1 §1.1, 0.22.0 §3)"
+             seed could not change the walk"
         ),
         at,
     )
@@ -1356,7 +1366,7 @@ fn reserved_quest_literal_valid(path: &str, literal: &str) -> bool {
     } else if crate::eval::is_reserved_quest_failed_by_path(path) {
         matches!(
             literal,
-            "unset" | "fail" | "by" | "until" | "cascade" | "superseded"
+            "unset" | "fail" | "by" | "until" | "subquest" | "cascade" | "superseded"
         )
     } else {
         matches!(literal, "active" | "complete" | "failed" | "unset")
@@ -1367,7 +1377,7 @@ fn reserved_quest_domain_text(path: &str) -> &'static str {
     if crate::eval::is_reserved_quest_objective_done_path(path) {
         "true, false"
     } else if crate::eval::is_reserved_quest_failed_by_path(path) {
-        "unset, fail, by, until, cascade, superseded"
+        "unset, fail, by, until, subquest, cascade, superseded"
     } else {
         "active, complete, failed, unset"
     }
@@ -1396,7 +1406,7 @@ fn validate_facts(mocks: &MockSet, folded: &FoldedEnv) -> Vec<Diagnostic> {
             Err(e) => out.push(diag(
                 E_TRACE_MOCK_FACT,
                 format!(
-                    "`--fact \"{raw}\"` does not parse as a ground fact pattern: {} (dsl 0.4.0 §4.3)",
+                    "`--fact \"{raw}\"` does not parse as a ground fact pattern: {}",
                     describe_datalog_error(&e)
                 ),
                 span,
@@ -1413,7 +1423,7 @@ fn validate_facts(mocks: &MockSet, folded: &FoldedEnv) -> Vec<Diagnostic> {
                 for h in hits {
                     out.push(diag(
                         E_TRACE_MOCK_FACT,
-                        format!("`--fact \"{raw}\"`: {} (dsl 0.4.0 §4.3)", h.message),
+                        format!("`--fact \"{raw}\"`: {}", h.message),
                         span,
                     ));
                 }
@@ -1470,8 +1480,8 @@ fn collect_choice_ids_nodes(nodes: &[Node], out: &mut BTreeMap<String, Vec<Strin
                 if let Some(id) = hub_id(h) {
                     out.insert(id, h.choices.iter().map(|c| c.id.clone()).collect());
                 }
-                for choice in &h.choices {
-                    collect_choice_ids_nodes(&choice.body, out);
+                for b in h.bodies() {
+                    collect_choice_ids_nodes(b, out);
                 }
             }
             Node::Match(m) => {
@@ -1520,7 +1530,7 @@ fn validate_choose(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
             out.push(mock_diag(
                 E_TRACE_CHOICE,
                 format!(
-                    "`--choose {id}=…` names an unknown branch/hub id `{id}`{} (dsl 0.4.0 §4.3)",
+                    "`--choose {id}=…` names an unknown branch/hub id `{id}`{}",
                     hint(id, &ids, "branch/hub ids")
                 ),
                 mocks.choose_spans.key(id),
@@ -1534,7 +1544,7 @@ fn validate_choose(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
                     E_TRACE_CHOICE,
                     format!(
                         "`--choose {id}={cid}` names an unknown choice id `{cid}` for \
-                         `<branch/hub id=\"{id}\">`{} (dsl 0.4.0 §4.3)",
+                         `<branch/hub id=\"{id}\">`{}",
                         hint(cid, &choices, "its choices")
                     ),
                     mocks.choose_spans.choice(id, i),
@@ -1561,7 +1571,7 @@ fn validate_events(mocks: &MockSet) -> Vec<Diagnostic> {
                     "`--event {name}` names a built-in lifecycle event — `{name}` is \
                      engine-derived (a `start`-having quest activates declaratively, a \
                      `start`-less one via `--accept`), never user-fired via `--event` \
-                     (dsl 0.4.0 §4.3/§4.4)"
+                    "
                 ),
                 span,
             ));
@@ -1570,7 +1580,7 @@ fn validate_events(mocks: &MockSet) -> Vec<Diagnostic> {
     out
 }
 
-/// `--accept`/`accept:`/`accepts:` validation (§4.3/§4.4, extended by the
+/// `--accept`/`accepts:` validation (§4.3/§4.4, extended by the
 /// subquest design 2026-08-31 §2.4): an id absent from `doc.quests`,
 /// naming a quest that carries a `start` predicate (declarative — it
 /// activates on its own and needs no accept), or naming a REFERENCED
@@ -1604,7 +1614,7 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
                 E_TRACE_ACCEPT,
                 format!(
                     "`--accept {id}` names an unknown quest id `{id}` — no quest of {scope} \
-                     declares it (dsl 0.4.0 §4.3/§4.4)"
+                     declares it"
                 ),
                 span,
             ));
@@ -1615,7 +1625,7 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
                 E_TRACE_ACCEPT,
                 format!(
                     "`--accept {id}` names quest `{id}`, which carries a `start` predicate — \
-                     it activates declaratively and needs no accept (dsl 0.4.0 §4.3/§4.4)"
+                     it activates declaratively and needs no accept"
                 ),
                 span,
             ));
@@ -1628,7 +1638,7 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
                 format!(
                     "`--accept {id}` names quest `{id}`, which is referenced by a parent \
                      quest's `<objective quest=\"{id}\"/>` — a referenced no-start child \
-                     activates when its parent activates and does not accept (subquest design 2026-08-31 §2.4)"
+                     activates when its parent activates and does not accept"
                 ),
                 span,
             ));
@@ -1679,7 +1689,7 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
             E_TRACE_ENTRY,
             format!(
                 "`--entry {id}` needs a `kind: lore` document; this one declares no entries \
-                 (dsl 0.19.0 §8)"
+                "
             ),
             span,
         )];
@@ -1708,7 +1718,7 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
         E_TRACE_ENTRY,
         format!(
             "`--entry {id}` names an unknown entry id `{id}`; this document declares entries: \
-             {}{beat_hint} (dsl 0.19.0 §8)",
+             {}{beat_hint}",
             if declared.is_empty() {
                 "none".to_string()
             } else {
@@ -1735,7 +1745,7 @@ pub(crate) fn resolve_beat(
             E_TRACE_BEAT,
             format!(
                 "`--beat {id}` needs a `kind: lore` document; this one declares no `<beat>` \
-                 (dsl 0.23.0 §4)"
+                "
             ),
             span,
         ));
@@ -1761,8 +1771,7 @@ pub(crate) fn resolve_beat(
     Err(diag(
         E_TRACE_BEAT,
         format!(
-            "`--beat {id}` names an unknown beat id `{id}`; this document declares: {declared} \
-             (dsl 0.23.0 §4)"
+            "`--beat {id}` names an unknown beat id `{id}`; this document declares: {declared}"
         ),
         span,
     ))
@@ -1917,7 +1926,7 @@ pub fn validate_bridges(
                 E_TRACE_MOCK_UNDECLARED,
                 format!(
                     "`bridges.{tag}` answers no plugin call: no resolved directive `::{tag}` \
-                     reads a bridge result{sugg} (dsl 0.24.0 §5)"
+                     reads a bridge result{sugg}"
                 ),
                 at.tag(tag),
             ));
@@ -1946,7 +1955,7 @@ pub fn validate_bridges(
                         E_TRACE_MOCK_UNDECLARED,
                         format!(
                             "`bridges.{tag}` answer {n} gives `{field}`, which no effect of \
-                             `::{tag}` reads (it reads: {}) (dsl 0.24.0 §5)",
+                             `::{tag}` reads (it reads: {})",
                             fields.join(", ")
                         ),
                         at.field(tag, i, field),
@@ -1962,7 +1971,7 @@ pub fn validate_bridges(
                             format!(
                                 "`bridges.{tag}` answer {n} lacks `{field}`, which content reads \
                                  — an answer gives every bridge result `::{tag}` content reads: \
-                                 `{shape}` (dsl 0.25.0 §7)"
+                                 `{shape}`"
                             ),
                             at.answer(tag, i),
                         ));
@@ -1982,7 +1991,7 @@ pub fn validate_bridges(
                         format!(
                             "`bridges.{tag}` answers `{field}`, but no `::{tag}` call of this \
                              document writes it to a declared state slot — nothing reads the \
-                             answer (dsl 0.24.0 §5)"
+                             answer"
                         ),
                         at.field(tag, i, field),
                     ));
@@ -1996,7 +2005,7 @@ pub fn validate_bridges(
                             E_TRACE_MOCK_TYPE,
                             format!(
                                 "`bridges.{tag}` answer {n}: `{field}: {lit}` is not compatible \
-                                 with `{path}`'s declared type (dsl 0.24.0 §5)"
+                                 with `{path}`'s declared type"
                             ),
                             at.field(tag, i, field),
                         ));

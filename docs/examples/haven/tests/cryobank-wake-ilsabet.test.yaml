@@ -6,7 +6,7 @@ file: ../scenes/cryobank.lute
 choose:
   whoWakes: wakeIlsabet
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "We're not going where you think we are."
   state:

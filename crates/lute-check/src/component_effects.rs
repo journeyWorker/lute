@@ -100,9 +100,9 @@ pub fn use_args_for(d: &Directive, def: &ComponentDef) -> BTreeMap<String, AttrV
 
 /// For text interpolation only: each param bound to a literal id, mapped to
 /// its display text — a `speaker` param to its cast member's `name` (the id
-/// when there is none); dsl 0.27.0 §7: a param typed `{ entity: K }` /
-/// `{ domain: K }` to `K`'s `labels:` entry (a cast `name:` wins for a cast
-/// id), absent without one, so its literal argument renders verbatim.
+/// when there is none); a param typed `{ entity: K }` / `{ domain: K }` to
+/// `K`'s `labels:` entry, else the cast `name:` of a cast id, absent without
+/// either, so its literal argument renders verbatim.
 /// Attribute positions keep the id; this map is only ever handed to the
 /// line-text binder.
 pub fn display_args(
@@ -124,7 +124,10 @@ pub fn display_args(
                 let (Type::Entity(kind) | Type::Domain(kind)) = ty else {
                     return None;
                 };
-                cast_name(id).or_else(|| domains.get(kind)?.labels.get(id).cloned())?
+                domains
+                    .get(kind)
+                    .and_then(|d| d.labels.get(id).cloned())
+                    .or_else(|| cast_name(id))?
             };
             Some((p.clone(), AttrValue::Str(shown)))
         })
@@ -189,6 +192,9 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
     match arg {
         AttrValue::BoolTrue => "true".to_string(),
         AttrValue::Ref(slot) => slot.raw.clone(),
+        // dsl 0.28.0 §3: the member the enclosing kind or `for=` beat runs
+        // for, read where the body reads the param.
+        AttrValue::Str(s) if s == crate::beats::OCCASION_TARGET => s.clone(),
         AttrValue::Str(s) => match ty {
             Some(Type::Number) | Some(Type::Bool) => s.clone(),
             _ => cel_string_literal(s),
@@ -206,6 +212,9 @@ pub fn fact_arg_constant(arg: &AttrValue) -> Result<FactTerm, String> {
         AttrValue::Str(s) => match s.as_str() {
             "true" => Ok(FactTerm::Bool(true)),
             "false" => Ok(FactTerm::Bool(false)),
+            // dsl 0.28.0 §3: the member the enclosing kind or `for=` beat
+            // runs for, bound when the write executes.
+            crate::beats::OCCASION_TARGET => Ok(FactTerm::Target),
             _ if s.starts_with(|c: char| c.is_ascii_alphabetic())
                 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
             {
@@ -429,9 +438,8 @@ fn splice_nodes(nodes: &mut Vec<Node>, components: &ComponentSet, snapshot: &Cap
                 Vec::new()
             }
             Node::Hub(h) => {
-                h.choices
-                    .iter_mut()
-                    .for_each(|c| splice_nodes(&mut c.body, components, snapshot));
+                h.bodies_mut()
+                    .for_each(|b| splice_nodes(b, components, snapshot));
                 Vec::new()
             }
             Node::Match(m) => {
@@ -800,6 +808,11 @@ pub fn bind_set_path(path: &mut String, args: &BTreeMap<String, AttrValue>) -> b
     match args.get(param).map(fact_arg_constant) {
         Some(Ok(FactTerm::Ident(member))) => {
             *path = format!("{family}.{member}");
+            true
+        }
+        // dsl 0.28.0 §3: the member the enclosing kind or `for=` beat runs for.
+        Some(Ok(FactTerm::Target)) => {
+            *path = format!("{family}{}", crate::target_writes::TARGET_INDEX);
             true
         }
         _ => false,

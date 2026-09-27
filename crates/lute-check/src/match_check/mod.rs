@@ -112,7 +112,8 @@ pub use exhaustive::{
     check_match, is_exhaustive, E_WHEN_LITERAL_DOMAIN, E_WHEN_PATTERN, E_WHEN_RANGE,
 };
 pub(crate) use exhaustive::{
-    check_match_with_domain, check_param_match, is_exhaustive_resolved, CoverItem,
+    check_match_with_domain, check_param_match, handles_unset_resolved, is_exhaustive_resolved,
+    CoverItem,
 };
 pub(crate) use interval::{Interval, NumCoverage};
 pub use line_codes::check_line_codes;

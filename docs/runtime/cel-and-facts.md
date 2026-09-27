@@ -72,7 +72,7 @@ among the facts matching the pattern with that position read as `_`:
 `count(sawAt(_, _, _, _))` counts tuples. `<Var>` names exactly one position;
 every other position is ground or `_`, as in `count`. A relation cannot be
 named after a CEL call, macro or keyword (`has`, `holds`, `count`, …) —
-`E-RELATION-RESERVED-NAME` — since a query over it could not be written.
+`E-RESERVED-NAME` — since a query over it could not be written.
 
 ### `visited()` in a guard
 

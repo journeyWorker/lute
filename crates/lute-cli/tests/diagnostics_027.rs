@@ -60,7 +60,7 @@ fn a_refused_test_trace_keeps_each_diagnostics_severity() {
     write(
         &dir,
         "tests/sub/a.test.yaml",
-        "file: ../../lore/a.lute\nentry: e\nexpect:\n  exit: complete\n",
+        "file: ../../lore/a.lute\nentry: e\nexpect:\n  end: complete\n",
     );
     let out = run(&dir, &["test", "tests/sub/a.test.yaml", "--project", "."]);
     let t = text(&out);
@@ -89,7 +89,7 @@ fn a_fact_query_match_subject_shows_the_subjectless_form() {
     write(
         &dir,
         "world.schema.yaml",
-        "entities:\n  badge: { members: [stone, tide] }\nrelations:\n  hasBadge: { args: [badge] }\n\
+        "entities:\n  badge: { members: [stone, tide] }\nrelations:\n  hasBadge: { args: [badge], tier: run }\n\
          defs:\n  badgeCount: \"count(hasBadge(_))\"\n",
     );
     write(
@@ -270,5 +270,72 @@ fn a_quest_reading_nothing_does_not_hide_its_run_looking_tree() {
             .iter()
             .any(|l| l.contains("quest `seeds`") && l.contains("it reads no state itself")),
         "{t}"
+    );
+}
+
+/// A diagnostic's column counts characters, not UTF-8 bytes: the `—` in the
+/// beat's title is one column, so the quoted literal `'rne'` sits at 7:99
+/// (bytes would say 7:101) — in `check`, in `check --json` and in the
+/// `reach --endings` row the literal makes never hold.
+#[test]
+fn columns_count_characters_after_multibyte_text() {
+    let dir = temp_dir("char-columns");
+    write(&dir, "lute.project.yaml", MANIFEST);
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.route: { type: { domain: route }, default: none }\n  \
+         run.aff: { type: number, default: 0 }\nenums:\n  route: [none, ren, mika]\n",
+    );
+    write(
+        &dir,
+        "lore/end.lute",
+        "---\nkind: lore\nid: end.ren\ntitle: Ren's endings\n---\n\n\
+         <beat id=\"lantern\" on=\"termEnd\" title=\"Ren — the lantern ending\" priority=\"10\" \
+         when=\"run.route == 'rne' && run.aff >= 7\">\n  @narrator: The closing ceremony.\n</beat>\n",
+    );
+    let t = text(&run(&dir, &["check", "lore/end.lute"]));
+    assert!(
+        t.contains("lore/end.lute:7:99: error [E-WHEN-LITERAL-DOMAIN]"),
+        "{t}"
+    );
+
+    let out = run(&dir, &["check", "lore/end.lute", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let span = &v["diagnostics"][0]["span"];
+    assert_eq!(
+        (span["line"].as_u64(), span["column"].as_u64()),
+        (Some(7), Some(99)),
+        "{v}"
+    );
+
+    let out = run(&dir, &["scenario", ".", "reach", "--endings=termEnd"]);
+    let t = text(&out);
+    assert!(
+        t.contains("never holds — caused by E-WHEN-LITERAL-DOMAIN at 7:99: `'rne'`"),
+        "{t}"
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a refuted ending fails the command: {t}"
+    );
+    let out = run(
+        &dir,
+        &[
+            "scenario",
+            ".",
+            "reach",
+            "--endings=termEnd",
+            "--format",
+            "json",
+        ],
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let cause = &v["roots"][0]["endings"][0]["causes"][0];
+    assert_eq!(cause["column"], 99, "{v}");
+    assert_eq!(
+        v["roots"][0]["endings"][0]["when"]["verdict"], "never-holds",
+        "{v}"
     );
 }

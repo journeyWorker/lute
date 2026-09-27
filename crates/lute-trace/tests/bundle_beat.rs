@@ -108,6 +108,7 @@ fn bundle_beat_walks_the_chosen_arm_and_applies_its_effects() {
             path: "run.porterTrust".into(),
             value: "1".into(),
             sugar: false,
+            effect_of: None,
         }),
         "{:?}",
         report.steps

@@ -49,7 +49,7 @@ a-story/
 
 `lute.project.yaml`은 폴더를 프로젝트로 표시합니다. `defaults:` 블록은 모든 문서에 같은 `uses:`
 줄을 주므로 어느 장면도 그 줄을 반복할 필요가 없습니다([Project defaults](/language/imports/#project-defaults)).
-`sequence:` 블록은 장들을 순서대로 잇습니다:
+`chapters:` 블록은 장들을 순서대로 잇습니다:
 
 ```yaml
 defaultProfile: core
@@ -58,9 +58,9 @@ profiles:
     plugins: {}
 defaults:
   uses: [world.schema.yaml]
-sequence:
-  occasion: chapter
-  scenes: [prologue, counter, accusation]
+chapters:
+  - on: chapter
+    scenes: [prologue, counter, accusation]
 ```
 
 `world.schema.yaml`은 이야기가 기억하는 상태 하나를 선언합니다: 플레이어가 누구를 지목했는지.
@@ -70,9 +70,10 @@ state:
   run.accused: { type: { enum: [nobody, ruben, tilly] }, default: nobody }
 ```
 
-## 장(chapter)들: `sequence:`
+## 장(chapter)들: `chapters:`
 
-`sequence:`는 장면을 `id:`로 재생 순서대로 적고, 그 장면들이 응답할 계기를 이름 붙입니다. 장면
+`chapters:`는 계기마다 하나씩 있는 사슬(chain)의 목록이므로, 한 프로젝트가 여러 계기를 이을 수 있습니다.
+사슬은 장면들이 응답할 계기를 `on:`으로 이름 붙이고, 장면을 `id:`로 재생 순서대로 적습니다. 장면
 자신은 자기가 누구인지만 말합니다:
 
 ```lute check="docs/examples/connect-scenes/scenes/prologue.lute"
@@ -101,7 +102,7 @@ title: The Counter
 @wren: Somebody here knows what happened.
 ```
 
-목록에 오른 장면마다 sequence가 직접 쓸 프런트매터 키 세 개를 대신 써 줍니다. `counter`는
+목록에 오른 장면마다 사슬이 직접 쓸 프런트매터 키 세 개를 대신 써 줍니다. `counter`는
 프런트매터에 다음이 적힌 것과 똑같이 동작합니다:
 
 ```yaml
@@ -113,24 +114,31 @@ priority: 20
 - `on: chapter`는 `chapter`가 발생할 때마다 이 장면을 후보로 만듭니다.
 - `after: 'visited("prologue")'`는 목록에서 바로 앞 장면이 재생될 때까지 이 장면을 기다리게 합니다.
   `visited("…")`는 장면을 `id:`로 가리킵니다. 첫 장면에는 `after:`가 없으므로 처음부터 자격이 있습니다.
-- 장면은 런마다 최대 한 번 재생되므로, 프롤로그가 재생된 뒤에는 빠지고 카운터가 남습니다.
-- `priority:`는 진행 순서를 대놓고 적습니다: 높은 쪽이 먼저 재생됩니다. sequence는 첫 장면부터 10씩
+  `visited()`는 런마다가 아니라 세이브 전체에 걸칩니다: 새 런이 시작되어도 장면은 방문한 채로 남으므로,
+  두 번째 런부터는 사슬의 모든 `after:`가 이미 성립하고 `priority:`만이 장의 순서를 지킵니다.
+- 장면은 런마다 최대 한 번 재생되므로, 프롤로그가 재생된 뒤에는 빠지고 카운터가 남습니다. 사슬은
+  `once:`를 쓰지 않습니다. 런마다 한 장씩, 여러 런에 걸쳐 이어지는 이야기라면 목록의 장면마다
+  `once: user`를 주어, 앞선 런에서 재생된 장이 계속 소진된 채로 남게 하세요.
+- `priority:`는 진행 순서를 대놓고 적습니다: 높은 쪽이 먼저 재생됩니다. 사슬은 첫 장면부터 10씩
   내려가므로(장면 셋이면 30, 20, 10) 모든 장이 사슬 뒤에 오는 장면들보다 앞섭니다.
 
-장면이 직접 쓴 키는 sequence보다 우선합니다: 한 장면에 자기 `priority:`나 다른 `after:`를 주면 그
+장면이 직접 쓴 키는 사슬보다 우선합니다: 한 장면에 자기 `priority:`나 다른 `after:`를 주면 그
 키만 바뀝니다. 어느 장면도 선언하지 않은 id를 목록에 적거나, 목록의 장면이 자기 `on:`으로 다른 계기에
-응답하거나, 어떤 플러그인도 선언하지 않은 `occasion:`을 적으면 `lute check-project`가 `E-SEQUENCE`를
-보고합니다(비슷한 이름 제안 포함). 아래 엔딩처럼 목록에 없는 장면은 여전히 키를 직접 씁니다.
+응답하거나, 한 장면을 두 번 적거나, 한 계기에 사슬을 둘 두거나, 어떤 플러그인도 선언하지 않은 `on:`을
+적으면 `lute check-project`가 `E-CHAPTERS`를 보고합니다(비슷한 이름 제안 포함). 아래 엔딩처럼 목록에
+없는 장면은 여전히 키를 직접 씁니다.
 
-자기 `when:`이 있어 재생되지 않을 수도 있는 장은 사슬을 멈춥니다: 목록의 다음 장면이 sequence가 쓴
-`after:`로 그 장을 기다리기 때문이며, `lute check-project`가 경고합니다(`W-SEQUENCE-STALL`). 선택적인
-장은 `scenes:`에서 빼고 자기 `on:`·`after:`·`priority:`를 직접 쓰거나, 그 뒤 장면에 선택적인 장 앞의
-장을 가리키는 자기 `after:`를 주세요. `lute play`는 파생된 `after:`를 이유에 밝힙니다: `after:
-visited("pryceWakes") is not satisfied (written by `sequence:` in lute.project.yaml)`.
+자기 `when:`이 이야기가 끝내 설정하지 않을 수도 있는 상태를 읽어 재생되지 않을 수도 있는 장은 사슬을
+멈춥니다: 목록의 다음 장면이 `after:`로 그 장을 기다리기 때문이며, `lute check-project`가
+경고합니다(`W-CHAPTER-STALL`). 시계만 읽는 `when:`은 사슬을 늦출 뿐이므로 경고하지 않습니다. 선택적인
+장 뒤의 장면에 그 앞 장을 가리키는 자기 `after:`를 주거나, 첫 장이라면 사슬에서 빼고 자기 `on:`을
+직접 쓰세요. `lute play`는 파생된 `after:`를 이유에 밝힙니다: `after: visited("pryceWakes") is not
+satisfied (written by `chapters:` in lute.project.yaml)`.
 
-한 번의 발생에서 자격 있는 비트를 모두 보여 주는 `select: sequence` 계기에서는 sequence가 `on:`과
+한 번의 발생에서 자격 있는 비트를 모두 보여 주는 `select: sequence` 계기에서는 사슬이 `on:`과
 `priority:`만 씁니다: 목록의 장면들이 그 한 번의 발생 안에서 목록 순서대로 이어서 재생됩니다. 그 밖의
-계기에서는 발생 한 번에 목록의 장면 하나가 재생됩니다.
+계기에서는 발생 한 번에 목록의 장면 하나가 재생됩니다. 대상*에게* 발생하는 계기라면 목록의 모든 장면이
+자기 `target:`을 선언해야 합니다. 선언하지 않은 장면은 모든 대상에게 재생되므로 `E-CHAPTERS`입니다.
 
 세 번째 장면은 플레이어에게 선택을 주고 그것을 기억합니다:
 
@@ -253,19 +261,19 @@ expect:
 $ lute play . --script plays/caught.play.yaml
 ── step 1 · chapter ──────────────
   ✓ prologue [scene, priority 30]
-  ✗ counter [scene, priority 20] — after: prerequisite not satisfied
-  ✗ accusation [scene, priority 10] — after: prerequisite not satisfied
-  ✗ ending.caught [scene, priority 0] — after: prerequisite not satisfied
-  ✗ ending.wrong [scene, priority 0] — after: prerequisite not satisfied
+  ✗ counter [scene, priority 20] — after: visited("prologue") is not satisfied (written by `chapters:` in lute.project.yaml)
+  ✗ accusation [scene, priority 10] — after: visited("counter") is not satisfied (written by `chapters:` in lute.project.yaml)
+  ✗ ending.caught [scene, priority 0] — after: visited("accusation") is not satisfied
+  ✗ ending.wrong [scene, priority 0] — after: visited("accusation") is not satisfied
   → prologue
 @narrator: Five minutes to close, and the bakery smells of burnt sugar.
 @wren: Mr. Pryce? We're closing.
 ── step 2 · chapter ──────────────
   ✓ counter [scene, priority 20]
   ✗ prologue [scene, priority 30] — once: run — already presented this run
-  ✗ accusation [scene, priority 10] — after: prerequisite not satisfied
-  ✗ ending.caught [scene, priority 0] — after: prerequisite not satisfied
-  ✗ ending.wrong [scene, priority 0] — after: prerequisite not satisfied
+  ✗ accusation [scene, priority 10] — after: visited("counter") is not satisfied (written by `chapters:` in lute.project.yaml)
+  ✗ ending.caught [scene, priority 0] — after: visited("accusation") is not satisfied
+  ✗ ending.wrong [scene, priority 0] — after: visited("accusation") is not satisfied
   → counter
 @narrator: Mr. Pryce is face down on the counter. The till is open.
 @wren: Somebody here knows what happened.
@@ -273,8 +281,8 @@ $ lute play . --script plays/caught.play.yaml
   ✓ accusation [scene, priority 10]
   ✗ prologue [scene, priority 30] — once: run — already presented this run
   ✗ counter [scene, priority 20] — once: run — already presented this run
-  ✗ ending.caught [scene, priority 0] — after: prerequisite not satisfied
-  ✗ ending.wrong [scene, priority 0] — after: prerequisite not satisfied
+  ✗ ending.caught [scene, priority 0] — after: visited("accusation") is not satisfied
+  ✗ ending.wrong [scene, priority 0] — after: visited("accusation") is not satisfied
   → accusation
 @wren: One of you did this.
 ▷ choice accuse: [ruben] tilly        ← chosen: ruben
@@ -315,8 +323,8 @@ expect:
 
 ```
 $ lute test . --project .
-FAIL  ./tests/accusation.test.yaml  (./tests/../scenes/accusation.lute)
-      eligible accusation: not eligible under these mocks (its `after: visited("counter")` is false — mock `visited: [counter]`) — the engine would never present it, so the walk proves nothing about play; fix the mocks, or assert `expect: { eligible: { accusation: false } }` (the body is then not walked)
+FAIL  ./tests/accusation.test.yaml  (./scenes/accusation.lute)
+      eligible accusation: not eligible under these mocks (its `after: visited("counter")` (written by `chapters:` in lute.project.yaml) is false — add `visited: [counter]` to the mocks) — the engine would never present it, so the walk proves nothing about play; fix the mocks, or assert `expect: { eligible: { accusation: false } }` (the body is then not walked)
 PASS  ./plays/caught.play.yaml  (play of .)
 
 1 passed, 1 failed
@@ -326,7 +334,7 @@ PASS  ./plays/caught.play.yaml  (play of .)
 
 ```
 $ lute test . --project .
-PASS  ./tests/accusation.test.yaml  (./tests/../scenes/accusation.lute)
+PASS  ./tests/accusation.test.yaml  (./scenes/accusation.lute)
 PASS  ./plays/caught.play.yaml  (play of .)
 
 2 passed, 0 failed
@@ -337,11 +345,12 @@ PASS  ./plays/caught.play.yaml  (play of .)
 
 ## 장면 추가하기
 
-`lute new scene <name> --on chapter`는 이름에서 `id:`를 가져온 새 장면을 씁니다. `chapter`가
-`sequence:`의 계기이므로 `on:`·`after:`·`priority:`는 쓰지 않고, id를 `sequence.scenes`에 더하라고
-알려 줍니다: 목록의 알맞은 자리에 넣으면 sequence가 세 키를 모두 줍니다. 그다음 플레이 스크립트에
-스텝을 하나 더하세요. (어떤 sequence도 응답하지 않는 계기라면 `on:`과, 이미 그 계기에 있는 모든
-비트보다 낮은 `priority:`를 씁니다.)
+`lute new scene <name> --occasion chapter`는 이름을 입력한 그대로 `id:`로 삼고, 파일도 그 id를 따라
+이름 붙인 새 장면을 씁니다(`lute new scene pryceWakes --occasion chapter`는 `id: pryceWakes`인
+`scenes/pryceWakes.lute`를 씁니다). `chapter`가 `chapters:`에 있는 사슬의 계기이므로
+`on:`·`after:`·`priority:`는 쓰지 않고, id를 그 사슬에 더하라고 알려 줍니다: 목록의 알맞은 자리에
+넣으면 사슬이 세 키를 모두 줍니다. 그다음 플레이 스크립트에 스텝을 하나 더하세요. (어떤 사슬도
+응답하지 않는 계기라면 `on:`과, 이미 그 계기에 있는 모든 비트보다 낮은 `priority:`를 씁니다.)
 
 다음 장이 아니라 플레이어가 고르는 대화는 누군가를 *대상으로* 발생하는 두 번째 계기입니다. 장면은
 `target:`으로 그 사람을 가리킵니다:

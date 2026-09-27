@@ -146,10 +146,11 @@ fn choice_matches_spec_worked_example() {
 }
 
 /// dsl 0.23.0 §4: an authored `<hub prompt>` serializes as `"prompt"` after
-/// `converge`; an unprompted hub record carries no `prompt` key at all.
+/// `converge`; an unprompted hub record carries no `prompt` key at all, and
+/// a hub without a `<return>` block no `return` key (dsl 0.28.0 §5).
 #[test]
 fn hub_prompt_serializes_only_when_authored() {
-    let hub = |prompt: Option<&str>| {
+    let hub = |prompt: Option<&str>, back: Option<&str>| {
         Command::Hub(HubCmd {
             addr: "003-0200".into(),
             id: "look".into(),
@@ -168,14 +169,18 @@ fn hub_prompt_serializes_only_when_authored() {
             }],
             converge: "003-0400".into(),
             prompt: prompt.map(str::to_string),
+            on_return: back.map(str::to_string),
             stamp: Stamp::default(),
         })
     };
     assert_eq!(
-        j(&hub(Some("Where do you look?"))),
+        j(&hub(Some("Where do you look?"), None)),
         r#"{"kind":"hub","addr":"003-0200","id":"look","recordKey":"scene.choices.look","options":[{"id":"leave","label":"Leave","lineId":"s.look.leave","once":false,"exit":true,"target":"003-0300"}],"converge":"003-0400","prompt":"Where do you look?"}"#
     );
-    assert!(!j(&hub(None)).contains("prompt"));
+    assert!(!j(&hub(None, None)).contains("prompt"));
+    assert!(
+        j(&hub(None, Some("003-0350"))).ends_with(r#""converge":"003-0400","return":"003-0350"}"#)
+    );
 }
 
 #[test]
@@ -448,6 +453,7 @@ fn envelope_serializes_with_state_entries() {
             default: None,
             provenance: Some("branch:number".into()),
             labels: BTreeMap::new(),
+            label_forms: BTreeMap::new(),
             member_domain: None,
         }],
         entities: Vec::new(),
@@ -462,6 +468,7 @@ fn envelope_serializes_with_state_entries() {
         gates: Vec::new(),
         terminal: None,
         seasons: Vec::new(),
+        outside_run: Vec::new(),
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
@@ -479,6 +486,7 @@ fn quest_record_serializes_per_spec() {
         start: Some(CelPair {
             raw: "run.act == 1".into(),
             expr: None,
+            authored: None,
         }),
         fail: None,
         objectives: vec![ObjectiveEntry {
@@ -488,8 +496,9 @@ fn quest_record_serializes_per_spec() {
             done: CelPair {
                 raw: "run.region == 'grove'".into(),
                 expr: None,
+                authored: None,
             },
-            when: None,
+            visible_when: None,
             optional: false,
             body: None,
             quest: None,
@@ -528,7 +537,7 @@ fn reward_entry_scalar_serializes_per_spec() {
         amount_min: None,
         amount_max: None,
         when: None,
-        on: None,
+        outcome: None,
         credits: None,
     };
     assert_eq!(
@@ -548,8 +557,9 @@ fn reward_entry_range_serializes_amount_min_and_max() {
         when: Some(CelPair {
             raw: "run.freed".into(),
             expr: None,
+            authored: None,
         }),
-        on: None,
+        outcome: None,
         credits: None,
     };
     assert_eq!(
@@ -560,7 +570,7 @@ fn reward_entry_range_serializes_amount_min_and_max() {
 
 #[test]
 fn reward_entry_on_failed_serializes_only_when_quest_level() {
-    // `on="failed"` reaches the wire only on a quest-level entry (dsl
+    // `outcome="failed"` reaches the wire only on a quest-level entry (dsl
     // 0.16.0 §2). This golden pins the exact key + position — appearing
     // last, as the field declaration order dictates.
     let r = RewardEntry {
@@ -570,12 +580,12 @@ fn reward_entry_on_failed_serializes_only_when_quest_level() {
         amount_min: None,
         amount_max: None,
         when: None,
-        on: Some("failed".into()),
+        outcome: Some("failed".into()),
         credits: None,
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
-        r#"{"kind":"TROPHY","target":"halsin","amount":1,"on":"failed"}"#
+        r#"{"kind":"TROPHY","target":"halsin","amount":1,"outcome":"failed"}"#
     );
 }
 
@@ -602,8 +612,8 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
         amount: None,
         amount_span: None,
         when: None,
-        on: None,
-        on_span: None,
+        outcome: None,
+        outcome_span: None,
         attrs: Vec::new(),
         span: ZERO,
         self_closing: true,
@@ -623,27 +633,29 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
     assert_eq!(e.amount_min, Some(-3));
     assert_eq!(e.amount_max, Some(5));
 
-    // `on="failed"` on a quest-level entry survives; anything else is dropped.
+    // `outcome="failed"` on a quest-level entry survives; anything else is dropped.
     let quest_failed = Reward {
-        on: Some("failed".into()),
+        outcome: Some("failed".into()),
         ..base.clone()
     };
     assert_eq!(
-        RewardEntry::from_ast(&quest_failed, true).on.as_deref(),
+        RewardEntry::from_ast(&quest_failed, true)
+            .outcome
+            .as_deref(),
         Some("failed")
     );
     let quest_stray = Reward {
-        on: Some("banana".into()),
+        outcome: Some("banana".into()),
         ..base.clone()
     };
-    assert!(RewardEntry::from_ast(&quest_stray, true).on.is_none());
+    assert!(RewardEntry::from_ast(&quest_stray, true).outcome.is_none());
 
     // Objective-level entries never carry `on`, whatever the AST holds.
     let obj_failed = Reward {
-        on: Some("failed".into()),
+        outcome: Some("failed".into()),
         ..base.clone()
     };
-    assert!(RewardEntry::from_ast(&obj_failed, false).on.is_none());
+    assert!(RewardEntry::from_ast(&obj_failed, false).outcome.is_none());
 }
 
 #[test]

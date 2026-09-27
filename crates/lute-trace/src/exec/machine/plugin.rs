@@ -137,6 +137,21 @@ impl<D: Driver> Machine<D> {
     /// <tag>`. `false` = the walk stops here (that halt, an answer that does
     /// not fit the call, or a write the exclusivity check refused).
     pub(super) fn exec_plugin(&mut self, cmd: &Json) -> bool {
+        // dsl 0.28.0 §3: a call passing `occasion.target` writes the member
+        // the beat runs for — its effect paths, fact arguments and fields
+        // name that member.
+        let bound;
+        let cmd = if mentions_target(cmd) {
+            let tag = cmd.get("tag").and_then(Json::as_str).unwrap_or("");
+            let site = Site::new(SiteKind::OccasionTarget, tag, addr(cmd));
+            let Some(member) = self.bound_target(site, TARGET) else {
+                return !self.stopped();
+            };
+            bound = bind_target(cmd, &member);
+            &bound
+        } else {
+            cmd
+        };
         let tag = cmd
             .get("tag")
             .and_then(Json::as_str)
@@ -482,4 +497,73 @@ fn fact_record(f: &Json) -> (String, Vec<String>) {
         .map(|a| a.iter().map(json_arg_to_string).collect())
         .unwrap_or_default();
     (rel, args)
+}
+
+const TARGET: &str = lute_check::beats::OCCASION_TARGET;
+
+/// Whether a plugin record writes through `occasion.target`: an effect path
+/// `F[occasion.target]`, a fact argument or a field given it.
+fn mentions_target(cmd: &Json) -> bool {
+    let paths = cmd
+        .get("effects")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten();
+    let facts = ["asserts", "retracts"]
+        .into_iter()
+        .filter_map(|k| cmd.get(k).and_then(Json::as_array))
+        .flatten();
+    paths
+        .filter_map(|e| e.get("path").and_then(Json::as_str))
+        .any(|p| lute_check::target_writes::indexed_family(p).is_some())
+        || facts
+            .filter_map(|f| f.get("args").and_then(Json::as_array))
+            .flatten()
+            .any(|a| a.as_str() == Some(TARGET))
+        || cmd
+            .get("fields")
+            .and_then(Json::as_object)
+            .is_some_and(|f| f.values().any(|v| v.as_str() == Some(TARGET)))
+}
+
+/// The record with every write through `occasion.target` naming `member`.
+fn bind_target(cmd: &Json, member: &str) -> Json {
+    let mut cmd = cmd.clone();
+    for e in cmd
+        .get_mut("effects")
+        .and_then(Json::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(Json::String(p)) = e.get_mut("path") {
+            *p = lute_check::target_writes::member_path(p, member);
+        }
+    }
+    for key in ["asserts", "retracts"] {
+        for f in cmd
+            .get_mut(key)
+            .and_then(Json::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            for a in f
+                .get_mut("args")
+                .and_then(Json::as_array_mut)
+                .into_iter()
+                .flatten()
+            {
+                if a.as_str() == Some(TARGET) {
+                    *a = Json::String(member.to_string());
+                }
+            }
+        }
+    }
+    if let Some(fields) = cmd.get_mut("fields").and_then(Json::as_object_mut) {
+        for v in fields.values_mut() {
+            if v.as_str() == Some(TARGET) {
+                *v = Json::String(member.to_string());
+            }
+        }
+    }
+    cmd
 }

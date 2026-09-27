@@ -8,23 +8,25 @@
 //! that parses is reported whatever its diagnostics; one whose parse fails
 //! (any `Error`-severity parse diagnostic, `lute loc`'s own guard) is named on
 //! stderr and skipped. Each entry and beat row carries its `when` as
-//! authored. Sections:
+//! authored, and its `for` when it is presented once per member. Sections:
 //!
-//! 1. **Entries by target** — every lore `<entry>` and every beat (a lore
-//!    `<beat>` bundle under its canonical `<document id>.<beat id>`, dsl
-//!    0.23.0 §4, and a scene beat under its scene key, dsl 0.21.0 §4 —
-//!    labelled `beat`), grouped by its `target` (targets byte-sorted, rows
-//!    without one last under `(no target)`); within a group, project order
-//!    (file order, then declaration order — the `ProjectIndex.entries`
-//!    tiebreak, spec §6).
+//! 1. **Entries and beats by target** — every lore `<entry>` and every beat
+//!    (a lore `<beat>` bundle under its canonical `<document id>.<beat id>`,
+//!    labelled `beat`, dsl 0.23.0 §4, and a scene beat under its scene key,
+//!    labelled `scene`, dsl 0.21.0 §4), grouped by its `target` (targets
+//!    byte-sorted, rows without one last under `(no target)`); within a
+//!    group, project order (file order, then declaration order — the
+//!    `ProjectIndex.entries` tiebreak, spec §6).
 //! 2. **Series** — every `series`, byte-sorted, its entries by `order`
 //!    (entries whose `order` is absent or not a non-negative integer follow,
 //!    in project order).
 //! 3. **Facts** — for every relation with at least one `::assert` anywhere,
 //!    each ground fact asserted, and who reveals it: lore entries (their
 //!    ids), lore `<beat>` bundles (their canonical ids, listed as `beats`),
-//!    scenes/quests (their documents), or more than one of those (`both`).
-//!    Relations and facts are byte-sorted; ids and documents too.
+//!    scenes/quests (their documents), components (each `::use` of one, its
+//!    params bound by the call: ``keepsake (via scene `k`)``), or more than
+//!    one of those (`both`). Relations and facts are byte-sorted; ids and
+//!    documents too. A component document reveals nothing on its own.
 //! 4. **Derived** (dsl 0.24.0 T3-2, only when a relation is `derive`d) —
 //!    every derived atom the may set holds (the conclusions the rules can
 //!    reach from what the project asserts), each with the rule instances
@@ -48,7 +50,8 @@ use serde::Serialize;
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EntryRow {
-    /// `Some("beat")` for a bundle beat or a scene beat; absent for an entry.
+    /// `Some("beat")` for a bundle beat, `Some("scene")` for a scene beat;
+    /// absent for an entry.
     #[serde(skip_serializing_if = "Option::is_none")]
     kind: Option<&'static str>,
     id: String,
@@ -76,6 +79,9 @@ struct EntryRow {
     /// The eligibility guard as authored (entry `when=`, beat `when`).
     #[serde(skip_serializing_if = "Option::is_none")]
     when: Option<String>,
+    /// A `for="kind:<kind>"` beat's `for`: presented once per member.
+    #[serde(rename = "for", skip_serializing_if = "Option::is_none")]
+    for_kind: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -96,11 +102,21 @@ struct SeriesGroup {
 struct FactRow {
     fact: String,
     /// `"entries"` (lore entries), `"beats"` (bundle beats), `"scenes"`
-    /// (scenes and quests), or `"both"` (more than one of those).
+    /// (scenes and quests), `"components"` (a component at a `::use`), or
+    /// `"both"` (more than one of those).
     revealed_by: &'static str,
     entries: Vec<String>,
     beats: Vec<String>,
     documents: Vec<String>,
+    components: Vec<ComponentSite>,
+}
+
+/// A component asserting a fact where it is used.
+#[derive(Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct ComponentSite {
+    component: String,
+    /// The use: ``scene `k` ``, ``quest `q` ``, ``entry `e` ``, ``beat `d.b` ``.
+    via: String,
 }
 
 #[derive(Serialize)]
@@ -126,20 +142,24 @@ struct Report {
     derived: Vec<DerivedGroup>,
 }
 
-/// Who asserts one ground fact: entry ids, bundle beat ids and scene/quest
-/// documents.
+/// Who asserts one ground fact: entry ids, bundle beat ids, scene/quest
+/// documents and components at their uses.
 #[derive(Default)]
 struct Sources {
     entries: BTreeSet<String>,
     beats: BTreeSet<String>,
     documents: BTreeSet<String>,
+    components: BTreeSet<ComponentSite>,
 }
 
 /// Which kind of source revealed a fact.
+#[derive(Clone)]
 enum Source<'a> {
     Entry(&'a str),
     Beat(&'a str),
     Document,
+    /// A component, at a use labelled `via`.
+    Component(String, &'a str),
 }
 
 /// Every well-formed ground `::assert` pattern in `nodes` — and (dsl 0.27.0
@@ -174,8 +194,8 @@ fn collect_asserts(
                 }
             }
             Node::Hub(h) => {
-                for c in &h.choices {
-                    collect_asserts(&c.body, effects, out);
+                for b in h.bodies() {
+                    collect_asserts(b, effects, out);
                 }
             }
             Node::Match(m) => {
@@ -204,20 +224,33 @@ fn ground_fact(p: &FactPattern) -> Option<String> {
         match &arg.term {
             FactTerm::Ident(s) => args.push(s.clone()),
             FactTerm::Bool(b) => args.push(b.to_string()),
-            FactTerm::Wildcard | FactTerm::Param(_) => return None,
+            FactTerm::Wildcard | FactTerm::Param(_) | FactTerm::Target => return None,
         }
     }
     Some(format!("{}({})", p.relation, args.join(", ")))
 }
 
-/// Fold one parsed document into the running entry list and fact table.
+/// Fold one parsed document into the running entry list and fact table;
+/// `components` are the project's component documents, by name.
 fn fold_document(
     document: &str,
     doc: &Document,
     effects: &lute_check::directive_facts::EffectDirectives,
+    components: &BTreeMap<&str, &Document>,
     entries: &mut Vec<EntryRow>,
     facts: &mut BTreeMap<String, BTreeMap<String, Sources>>,
 ) {
+    let meta = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
+    let field = |k: &str| {
+        meta.as_ref()?
+            .get(serde_yaml::Value::String(k.to_string()))?
+            .as_str()
+            .map(str::to_string)
+    };
+    // A component asserts where it is used, with the call's arguments.
+    if field("component").is_some() {
+        return;
+    }
     let mut record = |fact: String, source: Source<'_>| {
         let relation = fact[..fact.find('(').unwrap_or(fact.len())].to_string();
         let sources = facts.entry(relation).or_default().entry(fact).or_default();
@@ -225,33 +258,54 @@ fn fold_document(
             Source::Entry(id) => sources.entries.insert(id.to_string()),
             Source::Beat(id) => sources.beats.insert(id.to_string()),
             Source::Document => sources.documents.insert(document.to_string()),
+            Source::Component(component, via) => sources.components.insert(ComponentSite {
+                component,
+                via: via.to_string(),
+            }),
         };
     };
-    let mut scene_facts = Vec::new();
+    // Every fact `nodes` asserts, and the components it uses assert there.
+    let mut reveal = |nodes: &[Node], source: Source<'_>, via: &str| {
+        let mut own = Vec::new();
+        collect_asserts(nodes, effects, &mut own);
+        let used = crate::knowledge::component_asserts(nodes, components, effects);
+        for fact in own {
+            record(fact, source.clone());
+        }
+        for (component, p) in used {
+            if let Some(fact) = ground_fact(&p) {
+                record(fact, Source::Component(component, via));
+            }
+        }
+    };
+    let scene = lute_check::connectivity::scene_key(doc);
+    let via = scene
+        .as_ref()
+        .map_or_else(|| document.to_string(), |k| format!("scene `{k}`"));
     for shot in &doc.shots {
-        collect_asserts(&shot.body, effects, &mut scene_facts);
+        reveal(&shot.body, Source::Document, &via);
     }
     for quest in &doc.quests {
-        collect_asserts(&quest.body, effects, &mut scene_facts);
-    }
-    for fact in scene_facts {
-        record(fact, Source::Document);
+        reveal(
+            &quest.body,
+            Source::Document,
+            &format!("quest `{}`", quest.id),
+        );
     }
     // dsl 0.21.0 §4: a scene beat (frontmatter `on:`) is listed under its
-    // target like a bundle beat; its asserts stay the scene's.
-    if let Some(key) = lute_check::connectivity::scene_key(doc) {
-        let meta = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
-        let field = |k: &str| {
-            meta.as_ref()?
-                .get(serde_yaml::Value::String(k.to_string()))?
-                .as_str()
-                .map(str::to_string)
-        };
-        if let Some(on) = field("on") {
-            let mut row = beat_row(key, document, Some(on), field("target"), field("title"));
-            row.when = field("when").map(|w| w.trim().to_string());
-            entries.push(row);
-        }
+    // target beside the bundle beats; its asserts stay the scene's.
+    if let (Some(key), Some(on)) = (scene, field("on")) {
+        let mut row = beat_row(
+            "scene",
+            key,
+            document,
+            Some(on),
+            field("target"),
+            field("title"),
+        );
+        row.when = field("when").map(|w| w.trim().to_string());
+        row.for_kind = field("for");
+        entries.push(row);
     }
     // Entries and bundle beats in declaration order (the rows interleave by
     // source position, as their compiled records do).
@@ -259,11 +313,11 @@ fn fold_document(
     let doc_series = lute_check::document_series(&doc.meta);
     let resolved = lute_check::resolve_entry_series(doc_series.as_deref(), &doc.entries);
     for (entry, position) in doc.entries.iter().zip(resolved) {
-        let mut entry_facts = Vec::new();
-        collect_asserts(&entry.body, effects, &mut entry_facts);
-        for fact in entry_facts {
-            record(fact, Source::Entry(&entry.id));
-        }
+        reveal(
+            &entry.body,
+            Source::Entry(&entry.id),
+            &format!("entry `{}`", entry.id),
+        );
         rows.push((
             entry.span.byte_start,
             EntryRow {
@@ -277,6 +331,7 @@ fn fold_document(
                 series: position.series.map(str::to_string),
                 order: position.order,
                 when: authored(&entry.when),
+                for_kind: entry.for_kind.as_ref().map(|(v, _)| v.clone()),
             },
         ));
     }
@@ -291,13 +346,10 @@ fn fold_document(
             Some(doc_id) => lute_check::bundle_beat_key(doc_id, &beat.id),
             None => beat.id.clone(),
         };
-        let mut beat_facts = Vec::new();
-        collect_asserts(&beat.body, effects, &mut beat_facts);
-        for fact in beat_facts {
-            record(fact, Source::Beat(&id));
-        }
+        reveal(&beat.body, Source::Beat(&id), &format!("beat `{id}`"));
         let value = |v: &Option<(String, lute_core_span::Span)>| v.as_ref().map(|(s, _)| s.clone());
         let mut row = beat_row(
+            "beat",
             id,
             document,
             value(&beat.on),
@@ -305,14 +357,17 @@ fn fold_document(
             value(&beat.title),
         );
         row.when = authored(&beat.when);
+        row.for_kind = value(&beat.for_kind);
         rows.push((beat.span.byte_start, row));
     }
     rows.sort_by_key(|(at, _)| *at);
     entries.extend(rows.into_iter().map(|(_, row)| row));
 }
 
-/// A beat's row: labelled `beat`, never in a series.
+/// A beat's row — a bundle beat's (`beat`) or a scene beat's (`scene`) —
+/// never in a series.
 fn beat_row(
+    kind: &'static str,
     id: String,
     document: &str,
     on: Option<String>,
@@ -320,7 +375,7 @@ fn beat_row(
     title: Option<String>,
 ) -> EntryRow {
     EntryRow {
-        kind: Some("beat"),
+        kind: Some(kind),
         id,
         document: document.to_string(),
         on,
@@ -330,6 +385,7 @@ fn beat_row(
         series: None,
         order: None,
         when: None,
+        for_kind: None,
     }
 }
 
@@ -397,15 +453,18 @@ fn build_report(
                         s.entries.is_empty(),
                         s.beats.is_empty(),
                         s.documents.is_empty(),
+                        s.components.is_empty(),
                     ) {
-                        (false, true, true) => "entries",
-                        (true, false, true) => "beats",
-                        (true, true, false) => "scenes",
+                        (false, true, true, true) => "entries",
+                        (true, false, true, true) => "beats",
+                        (true, true, false, true) => "scenes",
+                        (true, true, true, false) => "components",
                         _ => "both",
                     },
                     entries: s.entries.into_iter().collect(),
                     beats: s.beats.into_iter().collect(),
                     documents: s.documents.into_iter().collect(),
+                    components: s.components.into_iter().collect(),
                 })
                 .collect(),
         })
@@ -427,7 +486,8 @@ fn entry_label(e: &EntryRow) -> &str {
 }
 
 /// One entry line: `id  [category]  "title"  document`; a beat's reads
-/// `beat  id  "title"  document  (on occasion)`.
+/// `beat  id  "title"  document  (on occasion)` (`scene` for a scene beat),
+/// and a `for` beat's id says whom it is for: `id (for kind:bonded)`.
 fn entry_line(e: &EntryRow, lead: Option<String>) -> String {
     let lead_width = lead.as_ref().map_or(0, |l| l.chars().count() + 2);
     let mut s = String::from("    ");
@@ -436,6 +496,9 @@ fn entry_line(e: &EntryRow, lead: Option<String>) -> String {
         s.push_str("  ");
     }
     s.push_str(entry_label(e));
+    if let Some(f) = &e.for_kind {
+        s.push_str(&format!(" (for {f})"));
+    }
     if let Some(c) = &e.category {
         s.push_str(&format!("  [{c}]"));
     }
@@ -453,7 +516,7 @@ fn entry_line(e: &EntryRow, lead: Option<String>) -> String {
 }
 
 fn render_text(r: &Report) -> String {
-    let mut out = String::from("Entries by target\n");
+    let mut out = String::from("Entries and beats by target\n");
     if r.targets.is_empty() {
         out.push_str("  (none)\n");
     }
@@ -498,6 +561,14 @@ fn render_text(r: &Report) -> String {
                     "      scenes/quests: {}\n",
                     f.documents.join(", ")
                 ));
+            }
+            if !f.components.is_empty() {
+                let each: Vec<String> = f
+                    .components
+                    .iter()
+                    .map(|c| format!("{} (via {})", c.component, c.via))
+                    .collect();
+                out.push_str(&format!("      components: {}\n", each.join(", ")));
             }
         }
     }
@@ -562,6 +633,13 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
     };
     let effects =
         lute_check::directive_facts::root_table(by_root.values().flatten().map(|(_, _, f)| f));
+    // The project's components, which assert where they are used.
+    let mut components: BTreeMap<&str, &Document> = BTreeMap::new();
+    for group in by_root.values() {
+        for (name, doc) in crate::knowledge::components(group) {
+            components.entry(name).or_insert(doc);
+        }
+    }
     let mut entries = Vec::new();
     let mut facts = BTreeMap::new();
     for (path, parsed) in files.iter().zip(parsed) {
@@ -580,7 +658,14 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
             continue;
         }
         let document = path.strip_prefix(dir).unwrap_or(path).display().to_string();
-        fold_document(&document, &doc, &effects, &mut entries, &mut facts);
+        fold_document(
+            &document,
+            &doc,
+            &effects,
+            &components,
+            &mut entries,
+            &mut facts,
+        );
     }
     let mut report = build_report(entries, facts);
     for k in crate::knowledge::collect(&by_root) {

@@ -298,6 +298,128 @@ fn a_deadline_past_the_last_position_never_fails() {
     assert!(!t.contains("W-DEADLINE-NEVER"), "{t}");
 }
 
+/// A scene on `hourStrikes` behind `when`, at its own priority (so it never
+/// ties `ward.strike` or another).
+fn hour_scene(id: &str, when: &str) -> String {
+    let priority = 1 + id.bytes().map(u32::from).sum::<u32>() % 97;
+    format!(
+        "---\nkind: scene\nid: {id}\nuses: ../world.schema.yaml\non: hourStrikes\n\
+         priority: {priority}\nwhen: \"{when}\"\n---\n\n## S\n\n@narrator: {id}.\n"
+    )
+}
+
+/// On a clock of several nights, the last night only reaches the last slot:
+/// a slot after it on that night is unreachable, naming what the slot
+/// holds there. The same slot on an earlier night, or an earlier slot on
+/// the last night, stays clean.
+#[test]
+fn a_slot_past_the_last_slot_on_the_last_day_is_unreachable() {
+    let docs = [
+        (
+            "scenes/late.lute",
+            hour_scene("ward.late", "run.night == 2 && run.hour == 'h04'"),
+        ),
+        (
+            "scenes/first.lute",
+            hour_scene("ward.first", "run.night == 1 && run.hour == 'h04'"),
+        ),
+        (
+            "scenes/early.lute",
+            hour_scene("ward.early", "run.night == 2 && run.hour == 'h01'"),
+        ),
+    ];
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(p, s)| (*p, s.as_str())).collect();
+    let t = text(&check_project(&ward(
+        "last-day",
+        "  last: { day: 2, slot: h02 }\n",
+        &docs,
+    )));
+    assert!(
+        t.contains(
+            "[E-BEAT-UNREACHABLE] beat `ward.late` is never eligible: its `when` \
+             `run.night == 2 && run.hour == 'h04'` is provably false — the clock ends at its last \
+             position, so on day 2 `run.hour` only holds h23, h00, h01, h02"
+        ),
+        "{t}"
+    );
+    assert_eq!(t.matches("[E-BEAT-UNREACHABLE]").count(), 1, "{t}");
+}
+
+/// A conjunction of clock reads no position satisfies is provably false —
+/// on a clock that never ends too. One a position satisfies stays clean.
+#[test]
+fn clock_reads_no_position_satisfies_are_false() {
+    let docs = [
+        (
+            "scenes/over.lute",
+            hour_scene(
+                "ward.over",
+                "run.night == 1 && run.hour == 'h01' && clock.index > 2",
+            ),
+        ),
+        (
+            "scenes/later.lute",
+            hour_scene(
+                "ward.later",
+                "run.night == 2 && run.hour == 'h01' && clock.index > 2",
+            ),
+        ),
+    ];
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(p, s)| (*p, s.as_str())).collect();
+    let t = text(&check_project(&ward("positions", "", &docs)));
+    assert!(
+        t.contains(
+            "[E-BEAT-UNREACHABLE] beat `ward.over` is never eligible: its `when` \
+             `run.night == 1 && run.hour == 'h01' && clock.index > 2` is provably false — no clock \
+             position has `run.night == 1`, `run.hour == 'h01'` and `clock.index > 2`"
+        ),
+        "{t}"
+    );
+    assert!(
+        !t.contains("later.lute:"),
+        "a satisfiable conjunction stays clean: {t}"
+    );
+}
+
+/// An objective whose `done` can only hold once its deadline already does
+/// fails before it can be done: `W-DEADLINE-BEFORE-WINDOW` at the `by`. A
+/// `visited` beat whose `when` is a derived schedule opens the window when
+/// its rule's guard holds; the deadline is judged on arrival, before the
+/// beat is presented. A deadline after the window, and a `done` over the
+/// clock that comes true with the deadline (`done` wins the tie), are clean.
+#[test]
+fn a_deadline_before_the_only_window_fails_the_objective() {
+    let bound = "  last: { day: 2, slot: h05 }\nentities:\n  room: { members: [hall, cell] }\n\
+                 relations:\n  lit: { args: [room], derive: true }\n\
+                 rules:\n  - \"lit(hall) :- cel(\\\"run.night == 2 && run.hour == 'h03'\\\")\"\n";
+    let lamp = hour_scene("ward.lamp", "holds(lit(hall))");
+    let quest = "---\nkind: quest\nid: q\nuses: ../world.schema.yaml\n---\n\n\
+                 <quest id=\"night\" title=\"Night\" start=\"true\">\n  \
+                 <objective id=\"lamp\" title=\"Lamp\" done=\"visited('ward.lamp')\" by=\"clock.index > 8\"/>\n  \
+                 <objective id=\"late\" title=\"Late\" done=\"visited('ward.lamp')\" by=\"clock.index > 11\"/>\n  \
+                 <objective id=\"hour\" title=\"Hour\" done=\"clock.index >= 11\" by=\"clock.index > 9\"/>\n  \
+                 <objective id=\"tie\" title=\"Tie\" done=\"clock.index >= 11\" by=\"clock.index > 10\"/>\n\
+                 </quest>\n";
+    let docs = [
+        ("scenes/lamp.lute", lamp.as_str()),
+        ("quests/q.lute", quest),
+    ];
+    let t = text(&check_project(&ward("window", bound, &docs)));
+    assert!(
+        t.contains(
+            "[W-DEADLINE-BEFORE-WINDOW] objective `lamp` fails before it can be done: its `done` \
+             `visited('ward.lamp')` can first hold at day 2 h03, but its deadline \
+             `by: clock.index > 8` already holds at day 2 h01 — move the deadline after that window"
+        ),
+        "{t}"
+    );
+    assert!(
+        t.contains("objective `hour` fails before it can be done"),
+        "{t}"
+    );
+    assert_eq!(t.matches("[W-DEADLINE-BEFORE-WINDOW]").count(), 2, "{t}");
+}
+
 #[test]
 fn a_last_position_the_clock_does_not_have_is_a_clock_decl_error() {
     for (bound, needle) in [

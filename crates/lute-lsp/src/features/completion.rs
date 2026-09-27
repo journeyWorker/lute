@@ -144,7 +144,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("title", "string"),
             ("start", "cel<bool>"),
             ("fail", "cel<bool>"),
-            ("after", "prereq"),
+            ("follows", "prereq (graph metadata)"),
             ("tier", "\"user\" | \"run\" | \"season:<name>\""),
             ("activate", "\"accept\""),
             ("complete", "\"all\" | \"any\""),
@@ -160,7 +160,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("id", "string"),
             ("done", "cel<bool>"),
             ("quest", "string"),
-            ("when", "cel<bool>"),
+            ("visibleWhen", "cel<bool> (visibility only)"),
             ("title", "string"),
             ("optional", "bool"),
             ("on", "string"),
@@ -641,8 +641,8 @@ fn collect_branch_ids(nodes: &[Node], out: &mut Vec<String>) {
                         out.push(id.to_string());
                     }
                 }
-                for c in &h.choices {
-                    collect_branch_ids(&c.body, out);
+                for b in h.bodies() {
+                    collect_branch_ids(b, out);
                 }
             }
             Node::Match(m) => {
@@ -678,8 +678,8 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
                     }
                 }
                 Node::Hub(h) if super::span_contains(h.span, off) => {
-                    for c in &h.choices {
-                        scan(&c.body, off, out);
+                    for b in h.bodies() {
+                        scan(b, off, out);
                     }
                 }
                 Node::Match(m) if super::span_contains(m.span, off) => {
@@ -1457,12 +1457,12 @@ mod tests {
     }
 
     #[test]
-    fn objective_attr_area_completion_lists_done_when_optional() {
+    fn objective_attr_area_completion_lists_done_visible_when_optional() {
         let text = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\">\n</objective>\n</quest>\n";
         let off = text.find("<objective ").unwrap() + "<objective ".len();
         let items = complete(text, off);
         let ls = labels(&items);
-        for k in ["id", "done", "when", "title", "optional"] {
+        for k in ["id", "done", "visibleWhen", "title", "optional"] {
             assert!(ls.contains(&k), "missing {k}: {ls:?}");
         }
     }

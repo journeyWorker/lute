@@ -67,7 +67,7 @@ pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
 /// `amount=` survives here as a residual so [`check_reward_attrs`] can
 /// anchor `E-REWARD-ATTR` at the value span. `id=` is deliberately absent
 /// — a reward is a leaf, not an addressable construct.
-pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "on"];
+pub const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "outcome"];
 /// dsl 0.19.0 §3: `<entry>` closes over its declared keys — the seven 0.19.0
 /// keys plus the dsl 0.21.0 §3.2 beat keys `on` and `priority` and the dsl
 /// 0.22.0 §7 beat key `once` (and dsl 0.25.0 §2's `share`). The parser extracts each into a typed field,
@@ -80,22 +80,141 @@ pub const ENTRY_ATTRS: &[&str] = &[
     "id", "target", "category", "title", "series", "order", "when", "on", "priority", "once",
     "share", "spentBy", "for",
 ];
-/// dsl 0.2.0 §6.3 (+ `after`, connectivity T2; `tier`, dsl 0.22.0 §7;
+/// dsl 0.2.0 §6.3 (+ `follows`, connectivity T2; `tier`, dsl 0.22.0 §7;
 /// `activate` / `complete`, dsl 0.24.0 §2; `accept`, dsl 0.25.0 §5):
 /// `<quest>`'s keys. The parser extracts each into a typed field, so one
 /// reaches the residual list only with a non-string value; every OTHER key —
 /// a `fial=` typo — used to be accepted and dropped from the IR without a
 /// word (0.21.1 T1-7).
 pub const QUEST_ATTRS: &[&str] = &[
-    "id", "title", "start", "fail", "after", "tier", "activate", "complete", "accept", "rearm",
+    "id", "title", "start", "fail", "follows", "tier", "activate", "complete", "accept", "rearm",
 ];
 /// dsl 0.2.0 §6.4 (+ subquest `quest`, dsl 0.21.0 §7a.2 `on`, dsl 0.23.0 §2
 /// `by` / `target`, dsl 0.24.0 §2.1 `until`): `<objective>`'s keys. A
 /// non-string `on=` / `target=` stays residual for `crate::beats` to report
 /// (`E-BEAT-ATTR`), so it is permitted here rather than double-reported.
 pub const OBJECTIVE_ATTRS: &[&str] = &[
-    "id", "done", "quest", "when", "title", "optional", "on", "by", "target", "until",
+    "id",
+    "done",
+    "quest",
+    "visibleWhen",
+    "title",
+    "optional",
+    "on",
+    "by",
+    "target",
+    "until",
 ];
+/// Attributes that were renamed: the old spelling on that element is an
+/// `E-UNKNOWN-ATTR` whose message names the new one (clean cutover — the
+/// old key is never read). `(tag, old key, message)`.
+const RENAMED_ATTRS: &[(&str, &str, &str)] = &[
+    (
+        "quest",
+        "after",
+        "`<quest after=>` is now `follows=` — it records the quest graph and does not gate the \
+         quest; to wait, write `start=\"visited('<scene id>')\"`",
+    ),
+    (
+        "reward",
+        "on",
+        "`on=` on a `<reward>` is now `outcome=` (`outcome=\"failed\"` grants when the quest \
+         fails; without it the reward grants on `complete`)",
+    ),
+    (
+        "objective",
+        "when",
+        "`when=` on an `<objective>` is now `visibleWhen=` — it only hides the objective; to \
+         gate `done`, put the condition in `done=`",
+    ),
+];
+/// Keys an author reaches for that the construct spells another way, or that
+/// belong to another construct or layer: `(tag, keys, remedy)` — the
+/// `E-UNKNOWN-ATTR` names the remedy instead of a spelling neighbour. The
+/// frontmatter counterpart is `crate::meta`'s `owning_layer`.
+const MEANT_ATTRS: &[(&str, &[&str], &str)] = &[
+    (
+        "quest",
+        &[
+            "repeatable",
+            "repeat",
+            "repeats",
+            "recurring",
+            "reset",
+            "once",
+        ],
+        "a quest repeats with `rearm=\"<condition>\"`: each time the condition turns from false \
+         to true, the quest returns to `unset` and can start again",
+    ),
+    (
+        "quest",
+        &["spentBy"],
+        "`spentBy=` is a beat attribute (`<beat spentBy=…>`, `<entry spentBy=…>`, a scene's \
+         `spentBy:`); a quest repeats with `rearm=\"<condition>\"`",
+    ),
+    (
+        "quest",
+        &["on", "occasion", "event"],
+        "a quest answers no occasion itself: an objective does, `<objective on=\"<occasion>\">` \
+         (judged when that occasion is raised), and a handler runs on an event, \
+         `<on event=\"<name>\">`; the quest activates with `start=`",
+    ),
+    (
+        "objective",
+        &["occasion", "event"],
+        "an objective names the occasion that judges it with `on=`, e.g. \
+         `<objective on=\"<occasion>\">` (`occasion:` is a play step's key)",
+    ),
+    (
+        "on",
+        &["on", "occasion"],
+        "a quest handler names what it answers with `event=`, e.g. `<on event=\"<name>\">` (it \
+         also runs when an occasion of the same name is raised)",
+    ),
+    (
+        "entry",
+        &["occasion", "event"],
+        "an entry names the occasion it answers with `on=`, e.g. `<entry on=\"<occasion>\">` \
+         (`occasion:` is a play step's key)",
+    ),
+    (
+        "beat",
+        &["occasion", "event"],
+        "a beat names the occasion it answers with `on=`, e.g. `<beat on=\"<occasion>\">` \
+         (`occasion:` is a play step's key)",
+    ),
+    (
+        "beat",
+        &["rearm"],
+        "`rearm=` is an attribute of a `<quest>`; a beat comes back with `once=` (how long it \
+         stays spent) or `spentBy=`",
+    ),
+    (
+        "entry",
+        &["rearm"],
+        "`rearm=` is an attribute of a `<quest>`; an entry comes back with `once=` (how long it \
+         stays spent) or `spentBy=`",
+    ),
+    (
+        "beat",
+        &["tier"],
+        "`tier=` is an attribute of a `<quest>`; a beat's repetition is its `once=` period",
+    ),
+    (
+        "entry",
+        &["tier"],
+        "`tier=` is an attribute of a `<quest>`; an entry's repetition is its `once=` period",
+    ),
+];
+/// `true` when `attrs` names the occasion (or event) a beat or a handler
+/// answers in another construct's spelling — [`MEANT_ATTRS`] reports it, so
+/// the construct's own "names no occasion/event" error would only repeat it.
+/// `own` is the construct's key (`on` for a beat, `event` for `<on>`).
+pub(crate) fn names_occasion_misspelt(attrs: &[Attr], own: &str) -> bool {
+    attrs
+        .iter()
+        .any(|a| a.key != own && ["on", "occasion", "event"].contains(&a.key.as_str()))
+}
 /// dsl 0.2.0 §4.1 (+ `target`, dsl 0.24.0 §2): `<on>`'s keys. A non-string
 /// `target=` stays residual for [`crate::on::check_on_target`] to report
 /// (`E-BEAT-ATTR`), so it is permitted here rather than double-reported.
@@ -204,6 +323,15 @@ pub(crate) fn check_hub_attrs(h: &Hub, diags: &mut Vec<Diagnostic>) {
             push_logic_error(diags, code, message, attr);
         }
     }
+    // dsl 0.28.0 §5: `<return>` takes no attributes.
+    if let Some(r) = &h.on_return {
+        let hint: (&[&str], &str) = (
+            &["when"],
+            "`<return>` runs every time an option hands control back; guard its lines \
+             instead (`@narrator{when=\"…\"}: …`) or wrap them in a `<match>`",
+        );
+        close(&r.attrs, "return", &[], &[], Some(hint), diags);
+    }
 }
 
 pub(crate) fn check_match_attrs(m: &Match, diags: &mut Vec<Diagnostic>) {
@@ -215,6 +343,31 @@ pub(crate) fn check_reward_attrs(r: &Reward, diags: &mut Vec<Diagnostic>) {
 }
 
 pub(crate) fn check_entry_attrs(e: &Entry, diags: &mut Vec<Diagnostic>) {
+    // dsl 0.27.0 §6: `use=` applies a beat template, which only a `<beat>`
+    // takes; its other attributes are that template's arguments, so the one
+    // report stands for all of them.
+    if let Some(u) = e.attrs.iter().find(|a| a.key == "use") {
+        let name = match &u.value {
+            AttrValue::Str(s) => s.as_str(),
+            _ => "…",
+        };
+        diags.push(Diagnostic {
+            code: crate::templates::E_TEMPLATE.to_string(),
+            severity: Severity::Error,
+            message: format!(
+                "beat templates apply to `<beat>` only — write `<beat use=\"{name}\" id=\"{}\" …>`; \
+                 an `<entry>` takes no template",
+                e.id
+            ),
+            span: u.span,
+            layer: Layer::Logic,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        });
+        return;
+    }
     // dsl 0.23.0 §3: `also` on an entry is `crate::beats`' `E-BEAT-ATTR`.
     close(&e.attrs, "entry", ENTRY_ATTRS, &["also"], None, diags);
 }
@@ -277,12 +430,20 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
                         && lute_manifest::season::season_ref(v)
                             .is_some_and(lute_manifest::season::is_season_name))
             })
-            .map(|(_, span)| *span)
+            .map(|(v, span)| {
+                let hint = lute_manifest::suggest::did_you_mean(v, legal.iter().copied());
+                (hint, *span)
+            })
             .into_iter()
-            .chain(q.attrs.iter().filter(|a| a.key == key).map(|a| a.span));
-        for span in bad {
+            .chain(
+                q.attrs
+                    .iter()
+                    .filter(|a| a.key == key)
+                    .map(|a| (String::new(), a.span)),
+            );
+        for (hint, span) in bad {
             diags.push(attr_type(
-                format!("attribute `{key}` of `<quest>` expects {expects}"),
+                format!("attribute `{key}` of `<quest>` expects {expects}{hint}"),
                 span,
             ));
         }
@@ -331,6 +492,8 @@ fn attr_type(message: String, span: Span) -> Diagnostic {
 
 pub(crate) fn check_objective_attrs(o: &Objective, diags: &mut Vec<Diagnostic>) {
     close(&o.attrs, "objective", OBJECTIVE_ATTRS, &[], None, diags);
+    // A flag value the parser could not read stays residual.
+    check_flags(&o.attrs, "objective", &["optional"], diags);
 }
 
 pub(crate) fn check_on_attrs(o: &On, diags: &mut Vec<Diagnostic>) {
@@ -360,6 +523,49 @@ pub(crate) fn check_choice_attrs(c: &Choice, pos: ChoicePos, diags: &mut Vec<Dia
         hint,
         diags,
     );
+    if pos == ChoicePos::Hub {
+        check_flags(&c.attrs, "choice", &["once", "exit"], diags);
+    }
+}
+
+/// dsl 0.28.0 §1: a flag attribute takes no value — bare, `="true"` or
+/// `="false"` ([`AttrValue::flag`], the reader the parser, the compiler and
+/// the hub-exit rule share). Any other value used to read as `false`
+/// without a word (`optional="yes"` made the objective required).
+pub const E_FLAG_VALUE: &str = "E-FLAG-VALUE";
+
+/// [`E_FLAG_VALUE`] at every attr among `flags` whose value is not a flag
+/// value. Shared by `<objective optional>`, `<choice once/exit>` and
+/// `<beat also>` (`crate::bundles`) so one rule has one message.
+pub(crate) fn check_flags(attrs: &[Attr], tag: &str, flags: &[&str], diags: &mut Vec<Diagnostic>) {
+    for attr in attrs {
+        let key = attr.key.as_str();
+        if !flags.contains(&key) || attr.value.flag().is_some() {
+            continue;
+        }
+        let written = match &attr.value {
+            AttrValue::Str(s) => format!("{key}=\"{s}\""),
+            AttrValue::Ref(slot) => format!("{key}={}", slot.raw),
+            AttrValue::BoolTrue => unreachable!("a bare flag reads as true"),
+        };
+        // A beat/entry repetition period on a choice (R-6): a choice's `once`
+        // has one meaning, so the period is refused, not silently `false`.
+        let period = matches!(&attr.value, AttrValue::Str(s)
+            if s.starts_with("season:") || crate::beats::BeatOnce::parse(s).is_some());
+        let message = if tag == "choice" && key == "once" && period {
+            format!(
+                "`<choice {written}>`: a period (`run`, `user`, `day`, `week`, `slot`, \
+                 `season:<name>`) is a beat/entry `once` key; a `<choice>`'s `once` means once \
+                 per hub visit — write it bare (`<choice … once>`) (dsl 0.28.0 §1)"
+            )
+        } else {
+            format!(
+                "`{key}` is a flag: write it bare (`<{tag} … {key}>`), or `{key}=\"false\"` to \
+                 turn it off — `{written}` is not a flag value (dsl 0.28.0 §1)"
+            )
+        };
+        push_logic_error(diags, E_FLAG_VALUE, message, attr);
+    }
 }
 
 /// One construct's closure: every attr whose key is outside `permitted` and not
@@ -377,17 +583,30 @@ fn close(
         if permitted.contains(&key) || told_elsewhere.contains(&key) {
             continue;
         }
-        let message = match hint {
-            Some((keys, remedy)) if keys.contains(&key) => {
+        let renamed = RENAMED_ATTRS
+            .iter()
+            .find(|(t, old, _)| *t == tag && *old == key);
+        let meant = MEANT_ATTRS
+            .iter()
+            .find(|(t, keys, _)| *t == tag && keys.contains(&key));
+        let message = match (renamed, meant, hint) {
+            (Some((_, _, message)), _, _) => (*message).to_string(),
+            (None, Some((_, _, remedy)), _) => {
+                format!("`<{tag}>` has no attribute `{key}` — {remedy}")
+            }
+            (None, None, Some((keys, remedy))) if keys.contains(&key) => {
                 format!("`<{tag}>` has no attribute `{key}` here: {remedy} (dsl 0.10.0 §4)")
             }
             // dsl 0.5.0 §2.2 "did you mean", over the construct's own table:
             // a misspelt key (`fial`, `optinal`) is the common case, and
             // naming the intended key makes the error a one-keystroke fix.
             _ => {
-                let near = lute_manifest::suggest::nearest(key, permitted.iter().copied(), 2)
-                    .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
-                format!("`<{tag}>` has no attribute `{key}`{near} (dsl 0.10.0 §4)")
+                let near = lute_manifest::suggest::did_you_mean(key, permitted.iter().copied());
+                let listed: Vec<String> = permitted.iter().map(|k| format!("`{k}`")).collect();
+                format!(
+                    "`<{tag}>` has no attribute `{key}`{near}; its attributes are {}",
+                    listed.join(", ")
+                )
             }
         };
         diags.push(Diagnostic {

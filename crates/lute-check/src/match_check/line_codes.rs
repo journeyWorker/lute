@@ -115,8 +115,8 @@ pub(crate) fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
                 }
             }
             Node::Hub(h) => {
-                for choice in &h.choices {
-                    collect_lines(&choice.body, out);
+                for b in h.bodies() {
+                    collect_lines(b, out);
                 }
             }
             Node::Objective(o) => collect_lines(&o.body, out),

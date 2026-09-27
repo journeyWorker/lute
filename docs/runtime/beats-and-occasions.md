@@ -19,7 +19,7 @@ manifest MAY declare them:
 
 ```yaml
 occasions:
-  hubVisit:   { select: first }
+  townVisit:  { select: first }
   talk:       { select: first, target: { prefix: npc, entity: person } }
   examine:    { select: first, target: true }
   inbox:      { select: all }

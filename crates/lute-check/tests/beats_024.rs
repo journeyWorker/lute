@@ -95,6 +95,7 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
         &refs,
         &lute_check::cast::fact_producers(&docs, &Default::default()),
         None,
+        &Default::default(),
     )
 }
 
@@ -299,7 +300,7 @@ fn frontmatter_when_quest_and_entry_typos_are_reported_at_the_id() {
         "on: talk\ntarget: npc.maud\nwhen: \"entry.tomasOyl.everRead && quest.lampOot.state == 'active'\"\n",
     );
     let (docs, _) = parse_all(&[&quests, &barks, &typo]);
-    let q = check_project_quest_refs(&docs);
+    let q = check_project_quest_refs(&docs, false);
     assert_eq!(q.len(), 1, "{q:?}");
     let (path, d) = &q[0];
     assert_eq!(path, &PathBuf::from("2.lute"));

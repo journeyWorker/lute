@@ -226,9 +226,19 @@ fn relative_display(file: &Path, root: &Path) -> PathBuf {
     }
 }
 
-/// Parse `file`'s text into a [`LintDocInput`] with its `path` set to the
+/// Read `file` into a [`LintDocInput`] with its `path` set to the
 /// root-relative display form. Returns `Err(exit 2)` on an unreadable file.
-fn build_lint_input(file: &Path, root: &Path) -> Result<LintDocInput, ExitCode> {
+///
+/// Under a manifest (`cache` given) the document is the one
+/// [`crate::assemble_input`] parses and desugars for `check-project` — a
+/// scene a `chapters:` chain lists carries the `on:` the chain derives, so
+/// lint classifies it as the beat every other surface reads — returned with
+/// the [`crate::input::BuiltInput`] for the root's project passes.
+fn build_lint_input(
+    file: &Path,
+    root: &Path,
+    cache: Option<&crate::input_cache::InputCache>,
+) -> Result<(LintDocInput, Option<crate::input::BuiltInput>), ExitCode> {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) => {
@@ -236,12 +246,22 @@ fn build_lint_input(file: &Path, root: &Path) -> Result<LintDocInput, ExitCode> 
             return Err(ExitCode::from(2));
         }
     };
-    let (doc, _diags) = lute_syntax::parse(&text);
-    Ok(LintDocInput {
-        path: relative_display(file, root),
-        doc,
-        text,
-    })
+    let (doc, built) = match cache {
+        Some(cache) => {
+            let (built, (doc, _)) =
+                crate::assemble_input(cache, file, text.clone(), None, Some(root), None);
+            (doc, Some(built))
+        }
+        None => (lute_syntax::parse(&text).0, None),
+    };
+    Ok((
+        LintDocInput {
+            path: relative_display(file, root),
+            doc,
+            text,
+        },
+        built,
+    ))
 }
 
 /// Group the discovered files by resolved project root and run the engine
@@ -316,11 +336,20 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
         let providers = project_providers(project.as_ref());
         let plugin_rules = plugin_rules_for_root(project.as_ref());
 
-        // Build parsed inputs.
-        let mut inputs: Vec<LintDocInput> = Vec::with_capacity(files.len());
-        for f in &files {
-            inputs.push(build_lint_input(f, &root)?);
-        }
+        // Build parsed inputs — under a manifest, desugared as `check-project`
+        // reads them ([`build_lint_input`]).
+        let (inputs, builts): (Vec<LintDocInput>, Vec<_>) = {
+            use rayon::prelude::*;
+            let cache = project
+                .as_ref()
+                .map(|_| crate::input_cache::InputCache::default());
+            files
+                .par_iter()
+                .map(|f| build_lint_input(f, &root, cache.as_ref()))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .unzip()
+        };
 
         let mut outcome = lint(
             &inputs,
@@ -345,10 +374,11 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
         // dsl 0.26.0 §2.8: `W-DISPLAY-NAME-DUP` over the root's documents,
         // each against the cast its own profile and imports declare.
         if let Some(project) = &project {
+            let builts: Vec<_> = builts.iter().flatten().collect();
             outcome.diagnostics.extend(display_name_dups(
                 &root,
                 &project.plugins_dir,
-                &files,
+                &builts,
                 &inputs,
             ));
         }
@@ -375,22 +405,18 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
 
 /// `W-DISPLAY-NAME-DUP` (dsl 0.26.0 §2.8) for one project root — the same
 /// pass `check-project` runs, each document's cast resolved the way `check`
-/// resolves it. `inputs` is index-aligned with `files`; paths are the
+/// resolves it. `builts` is index-aligned with `inputs`; paths are the
 /// root-relative display paths the other lint diagnostics carry.
 fn display_name_dups(
     root: &Path,
     plugins_dir: &Path,
-    files: &[PathBuf],
+    builts: &[&crate::input::BuiltInput],
     inputs: &[LintDocInput],
 ) -> Vec<(PathBuf, Diagnostic)> {
-    use rayon::prelude::*;
-    let cache = crate::input_cache::InputCache::default();
-    let per_doc: Vec<_> = files
-        .par_iter()
+    let per_doc: Vec<_> = builts
+        .iter()
         .zip(inputs)
-        .map(|(file, input)| {
-            let (built, _) =
-                crate::assemble_input(&cache, file, input.text.clone(), None, Some(root), None);
+        .map(|(built, input)| {
             (
                 lute_check::declared_cast(&built.input.snapshot, &built.input.imports, &[]),
                 lute_check::check::use_speaker_lines(&input.doc, &built.input.components),

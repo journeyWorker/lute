@@ -6,7 +6,7 @@ file: ../scenes/machine-deck.lute
 facts:
   - "awake(toma)"
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Don't put a hand on that ring. It'll take the arm and thank you for it."
     - "Quarter turn. Stop when it stops arguing with you."

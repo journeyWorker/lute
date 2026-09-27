@@ -95,10 +95,15 @@ pub struct DeclOrigins {
     /// dsl 0.26.0 §2.8: each `cast:` entry, at its id key — where an
     /// advisory about a cast entry nobody speaks as is anchored.
     pub cast: BTreeMap<String, DeclOrigin>,
-    /// dsl 0.27.0 §7: each `labels:` entry of an entity kind (beside
-    /// `members:` or `add:`), keyed [`member_origin_key`], at its member key
-    /// — where `W-LABEL-CAST-SHADOWED` is anchored.
-    pub labels: BTreeMap<String, DeclOrigin>,
+    /// Keys inside an entity kind — its `labels:`, each label key, and each
+    /// key the kind does not take — keyed [`kind_key_origin`], so a problem
+    /// with one key is reported at that key.
+    pub kind_keys: BTreeMap<String, DeclOrigin>,
+    /// Each `labels:` key of an `enums:` domain, keyed [`member_origin_key`].
+    pub enum_labels: BTreeMap<String, DeclOrigin>,
+    /// Each member an imported `add:` brings, keyed [`member_origin_key`],
+    /// at its own line in that `add:` — where a clash it causes is reported.
+    pub added: BTreeMap<String, DeclOrigin>,
 }
 
 /// dsl 0.27.0 §4: plugin declarations a document's check judges, at their
@@ -192,6 +197,25 @@ pub fn member_origin_key(kind: &str, member: &str) -> String {
     format!("{kind}\u{1f}{member}")
 }
 
+/// The [`DeclOrigins::kind_keys`] key of the key at `path` inside entity
+/// kind `kind` (`["labels"]`, `["labels", member]`, `["lables"]`).
+pub fn kind_key_origin(kind: &str, path: &[&str]) -> String {
+    let mut key = kind.to_string();
+    for seg in path {
+        key.push('\u{1f}');
+        key.push_str(seg);
+    }
+    key
+}
+
+/// The key at `path` inside entity kind `kind` in `meta`'s frontmatter
+/// ([`crate::meta::meta_path_span`]: the deepest key of the path written).
+pub(crate) fn kind_key_span(meta: &Meta, kind: &str, path: &[&str]) -> Option<Span> {
+    let mut full = vec!["entities", kind];
+    full.extend_from_slice(path);
+    Some(crate::meta::meta_path_span(meta, &full))
+}
+
 /// dsl 0.24 T3-6: re-home a diagnostic about an IMPORTED declaration. The
 /// importer carries it at its frontmatter start (byte 0, like
 /// `E-USES-PARSE`) with the schema file named, and the original — at the
@@ -277,10 +301,6 @@ pub const E_RELATION_RESERVED_WRITE: &str = "E-RELATION-RESERVED-WRITE"; // §4/
 pub const E_RETRACT_WILDCARD_ASSERT: &str = "E-RETRACT-WILDCARD-ASSERT"; // §5
 pub const E_EXTENDS_RELATION_SIG: &str = "E-EXTENDS-RELATION-SIG"; // §4.1
 
-/// dsl 0.24 T3-8: a relation named like a CEL call/macro/keyword can never be
-/// queried — `holds(has(lamp))` does not even parse.
-pub const E_RELATION_RESERVED_NAME: &str = "E-RELATION-RESERVED-NAME";
-
 /// dsl 0.25.0 §1/§6: a relation declaration whose `excludes` names a
 /// relation of other argument kinds, or whose `changedOn` sits on a relation
 /// that is not engine-`reserved` or names an undeclared occasion.
@@ -291,47 +311,33 @@ pub const E_RELATION_DECL: &str = "E-RELATION-DECL";
 /// hold.
 pub const E_RULE_EXCLUSIVE: &str = "E-RULE-EXCLUSIVE";
 
-/// Names a relation may not take (dsl 0.24 T3-8): the Lute-CEL profile's
-/// calls (`isSet`, `holds`, `count`, `countDistinct`, `validAt`, `now`,
-/// `visited`), CEL's macros (`has`, `all`, `exists`, `exists_one`, `map`,
-/// `filter`) and CEL's reserved words — each either parses as something
-/// else inside a fact query or is not an identifier at all.
-pub const RESERVED_RELATION_NAMES: &[&str] = &[
-    "all",
-    "as",
-    "break",
-    "const",
-    "continue",
-    "count",
-    "countDistinct",
-    "else",
-    "exists",
-    "exists_one",
-    "false",
-    "filter",
-    "for",
-    "function",
-    "has",
-    "holds",
-    "if",
-    "import",
-    "in",
-    "isSet",
-    "let",
-    "loop",
-    "map",
-    "namespace",
-    "now",
-    "null",
-    "package",
-    "return",
-    "true",
-    "validAt",
-    "var",
-    "visited",
-    "void",
-    "while",
-];
+/// dsl 0.28.0 §5: a stored (non-`derive`) relation declared without
+/// `tier:` — it is run-tier by default, so its facts are cleared at every new
+/// run, which an engine-owned (`reserved`) relation in particular rarely means.
+pub const W_RELATION_TIER_IMPLICIT: &str = "W-RELATION-TIER-IMPLICIT";
+
+/// dsl 0.28.0 (T3-45): one name declared both as an `enums:` domain and an
+/// entity kind (in one document or across the schemas it merges).
+pub const E_DOMAIN_NAME_CLASH: &str = "E-DOMAIN-NAME-CLASH";
+
+/// [`E_DOMAIN_NAME_CLASH`]'s message: both member lists, and what the clash
+/// does.
+pub(crate) fn domain_clash_message(
+    name: &str,
+    enum_members: &[String],
+    kind: &KindShape,
+) -> String {
+    let kind_members = match kind {
+        KindShape::Members(ms) => format!(" [{}]", ms.join(", ")),
+        _ => String::new(),
+    };
+    format!(
+        "`{name}` is declared as both an enum [{}] and an entity kind{kind_members} — enums and \
+         entity kinds share one domain namespace, so the kind's members would replace the enum's \
+         wherever `{name}` types a value; rename one of them",
+        enum_members.join(", ")
+    )
+}
 
 /// Build a `Layer::Logic` error diagnostic — rel_schema.rs's checks are
 /// schema/graph-level (Global Constraints' layer table).
@@ -353,11 +359,15 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 /// INLINE decls in [`build_rel_vocab`] and, per imported file, from
 /// `schema_import::resolve_imports` — so a malformed decl is diagnosed
 /// wherever it is declared, not only when that file happens to be checked
-/// directly.
+/// directly. `span_of` locates a declared name; `key_at(kind, path)` the key
+/// at `path` inside entity kind `kind` (`["labels", member]`, or a key of the
+/// kind itself), when it can be found — a problem with one key is reported
+/// there, not at the kind.
 pub fn validate_rel_decls(
     kinds: &ParsedKinds,
     rels: &ParsedRelations,
     span_of: &dyn Fn(&str) -> Span,
+    key_at: &dyn Fn(&str, &[&str]) -> Option<Span>,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for (name, decl) in &kinds.kinds {
@@ -365,30 +375,30 @@ pub fn validate_rel_decls(
             out.push(diag(
                 E_ENTITY_KIND_SHAPE,
                 format!(
-                    "entity kind `{name}` must declare exactly one of `members:`/`open:`, or an `add:` list alone to extend a kind another schema declares (dsl 0.3.0 §3.1, 0.26.0 §2.3)"
+                    "entity kind `{name}` must declare exactly one of `members:` or `open:` \
+                     (`subsetOf:` and `labels:` may sit beside it), or be an `add:` list that \
+                     extends a kind another schema declares, with at most `labels:` beside the \
+                     `add:` (dsl 0.3.0 §3.1, 0.26.0 §2.3, 0.27.0 §7)"
                 ),
                 span_of(name),
             ));
         }
     }
     for (name, key) in &kinds.unknown_keys {
-        let hint = lute_manifest::suggest::nearest(
+        let hint = lute_manifest::suggest::did_you_mean(
             key,
             lute_manifest::relations::ENTITY_KIND_KEYS.iter().copied(),
-            2,
-        )
-        .map(|s| format!(" — did you mean `{s}`?"))
-        .unwrap_or_default();
+        );
         out.push(diag(
             E_ENTITY_KIND_SHAPE,
             format!(
                 "entity kind `{name}` has an unknown key `{key}:` (an entity kind takes \
                  `members:`, `open:`, `add:`, `subsetOf:` and `labels:`){hint} (dsl 0.27.0 §2)"
             ),
-            span_of(name),
+            key_at(name, &[key]).unwrap_or_else(|| span_of(name)),
         ));
     }
-    out.extend(check_kind_labels(kinds, span_of));
+    out.extend(check_kind_labels(kinds, span_of, key_at));
     for name in &kinds.dups {
         out.push(diag(
             E_KIND_NAME_CLASH,
@@ -408,13 +418,13 @@ pub fn validate_rel_decls(
         ));
     }
     for (name, decl) in &rels.relations {
-        if RESERVED_RELATION_NAMES.contains(&name.as_str()) {
+        // dsl 0.28.0 §1: the one reserved-names table.
+        if let Some(r) =
+            lute_manifest::reserved::refusal(lute_manifest::reserved::Slot::Relation, name)
+        {
             out.push(diag(
-                E_RELATION_RESERVED_NAME,
-                format!(
-                    "relation `{name}` uses a reserved CEL name; `holds({name}(…))` cannot be \
-                     written — rename the relation (dsl 0.24 T3-8)"
-                ),
+                crate::reserved_names::E_RESERVED_NAME,
+                r.message("a relation"),
                 span_of(name),
             ));
         }
@@ -426,20 +436,35 @@ pub fn validate_rel_decls(
             ));
         }
         for field in &decl.malformed_fields {
-            out.push(diag(
-                E_RELATION_DOMAIN,
+            let keys = lute_manifest::relations::RELATION_KEYS;
+            let message = if keys.contains(&field.as_str()) {
+                format!("relation `{name}` field `{field}` has a value of the wrong shape")
+            } else {
+                let listed: Vec<String> = keys.iter().map(|k| format!("`{k}`")).collect();
                 format!(
-                    "relation `{name}` field `{field}` is malformed or unknown (dsl 0.3.0 §4, D4)"
-                ),
-                span_of(name),
-            ));
+                    "relation `{name}` has no key `{field}`{}; a relation takes {}",
+                    lute_manifest::suggest::did_you_mean(field, keys.iter().copied()),
+                    listed.join(", ")
+                )
+            };
+            out.push(diag(E_RELATION_DOMAIN, message, span_of(name)));
         }
         if let Some(tier) = &decl.tier {
-            if namespace_of(tier).is_none() {
+            // dsl 0.28.0 §5 (T2-7): `season:<name>` too, as a quest's `tier=`
+            // and a beat's `once:` spell it; the season's existence is
+            // checked with the seasons (`crate::season::check_relation_tiers`).
+            let season = lute_manifest::season::season_ref(tier)
+                .is_some_and(lute_manifest::season::is_season_name);
+            if namespace_of(tier).is_none() && !season {
                 out.push(diag(
                     E_RELATION_DOMAIN,
                     format!(
-                        "relation `{name}` has unknown `tier: {tier}` (expected one of scene/run/user/app/quest, dsl 0.3.0 §4)"
+                        "relation `{name}` has unknown `tier: {tier}`{} (expected one of scene, \
+                         run, user, app, quest, or season:<name>)",
+                        lute_manifest::suggest::did_you_mean(
+                            tier,
+                            ["scene", "run", "user", "app", "quest"]
+                        )
                     ),
                     span_of(name),
                 ));
@@ -453,6 +478,25 @@ pub fn validate_rel_decls(
                     span_of(name),
                 ));
             }
+        }
+        if decl.tier.is_none() && !decl.derive {
+            let owner = if decl.reserved {
+                "the engine's facts in it are forgotten"
+            } else {
+                "its facts are cleared"
+            };
+            out.push(Diagnostic {
+                severity: Severity::Warning,
+                ..diag(
+                    W_RELATION_TIER_IMPLICIT,
+                    format!(
+                        "relation `{name}` has no `tier:`, so it is run-tier: {owner} at every new \
+                         run; write `tier: run` to keep that, or `tier: user` (or \
+                         `season:<name>`) for facts that outlive the run"
+                    ),
+                    span_of(name),
+                )
+            });
         }
         if decl.derive && decl.reserved {
             out.push(diag(
@@ -506,49 +550,73 @@ pub fn validate_rel_decls(
 /// for an id the kind does not have (its own members and those of its
 /// sub-kinds in the same block; beside `add:`, the members that list adds) —
 /// each `E-ENTITY-KIND-SHAPE`, the last with a did-you-mean.
-fn check_kind_labels(kinds: &ParsedKinds, span_of: &dyn Fn(&str) -> Span) -> Vec<Diagnostic> {
+fn check_kind_labels(
+    kinds: &ParsedKinds,
+    span_of: &dyn Fn(&str) -> Span,
+    key_at: &dyn Fn(&str, &[&str]) -> Option<Span>,
+) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for (name, problem) in &kinds.label_problems {
         out.push(diag(
             E_ENTITY_KIND_SHAPE,
             format!("entity kind `{name}`: {problem}"),
-            span_of(name),
+            key_at(name, &["labels"]).unwrap_or_else(|| span_of(name)),
         ));
     }
     let mut closed = kinds.kinds.clone();
     lute_manifest::relations::imply_sub_kind_members(&mut closed, &kinds.order);
-    let not_members = |name: &str, labels: &BTreeMap<String, String>, members: &[String]| {
+    // Each label key that is not a member, at the key itself. Beside an
+    // `add:` the members are only those that `add:` brings: the kind's own
+    // members are labelled where the kind is declared.
+    let not_members = |name: &str, labels: Vec<&String>, members: &[String], beside_add: bool| {
         labels
-            .keys()
+            .into_iter()
             .filter(|member| !members.contains(member))
             .map(|member| {
-                let hint =
-                    lute_manifest::suggest::nearest(member, members.iter().map(String::as_str), 2)
-                        .map(|s| format!(" — did you mean `{s}`?"))
-                        .unwrap_or_default();
-                diag(
-                    E_ENTITY_KIND_SHAPE,
+                let hint = lute_manifest::suggest::did_you_mean(
+                    member,
+                    members.iter().map(String::as_str),
+                );
+                let message = if beside_add {
+                    let added = members
+                        .iter()
+                        .map(|m| format!("`{m}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!(
+                        "entity kind `{name}` labels `{member}` beside its `add:`, but labels \
+                         there cover only the members that `add:` brings ({added}){hint}; \
+                         label any other `{name}` member in the schema that declares `{name}`"
+                    )
+                } else {
                     format!(
                         "entity kind `{name}` labels `{member}`, which is not one of its \
                          members{hint}"
-                    ),
-                    span_of(name),
+                    )
+                };
+                diag(
+                    E_ENTITY_KIND_SHAPE,
+                    message,
+                    key_at(name, &["labels", member]).unwrap_or_else(|| span_of(name)),
                 )
             })
             .collect::<Vec<_>>()
     };
     for (name, decl) in &kinds.kinds {
         match closed.get(name).map(|d| &d.shape) {
-            Some(KindShape::Members(members)) => {
-                out.extend(not_members(name, &decl.labels, members))
-            }
+            Some(KindShape::Members(members)) => out.extend(not_members(
+                name,
+                decl.labels.keys().collect(),
+                members,
+                false,
+            )),
             Some(KindShape::Open) if !decl.labels.is_empty() => out.push(diag(
                 E_ENTITY_KIND_SHAPE,
                 format!(
                     "entity kind `{name}` is `open:` — the engine registers its members, so \
                      `labels:` cannot name them; label a kind that lists its `members:`"
                 ),
-                span_of(name),
+                key_at(name, &["labels"]).unwrap_or_else(|| span_of(name)),
             )),
             _ => {}
         }
@@ -556,8 +624,9 @@ fn check_kind_labels(kinds: &ParsedKinds, span_of: &dyn Fn(&str) -> Span) -> Vec
     for (name, labels) in &kinds.add_labels {
         out.extend(not_members(
             name,
-            labels,
+            labels.keys().collect(),
             kinds.adds.get(name).map_or(&[], Vec::as_slice),
+            true,
         ));
     }
     out
@@ -718,6 +787,7 @@ pub fn build_rel_vocab(
         &typed.rel_kinds,
         &typed.rel_relations,
         &span_of,
+        &|kind, path| kind_key_span(meta, kind, path),
     ));
     diags.extend(check_member_dups(
         meta,
@@ -833,6 +903,23 @@ pub fn build_rel_vocab(
         }
     }
 
+    // dsl 0.28.0 (T3-45): an enum and an entity kind share one domain
+    // namespace — the kind's members would silently replace the enum's
+    // wherever the name types a value.
+    for (name, members) in &enums {
+        let Some(kind) = kinds.get(name) else {
+            continue;
+        };
+        diags.push(at_origin(
+            diag(
+                E_DOMAIN_NAME_CLASH,
+                domain_clash_message(name, members, &kind.shape),
+                span_of(name),
+            ),
+            origins.kinds.get(name),
+        ));
+    }
+
     // Merged check (c): one-id-one-kind (§3.1) — an id in TWO closed kinds'
     // `members:` is E-ENTITY-KIND-CLASH, unless the two kinds share a root:
     // a dsl 0.24.0 §3 sub-kind (`subsetOf:`) re-lists members of its parent,
@@ -844,6 +931,40 @@ pub fn build_rel_vocab(
             _ => None,
         })
         .collect();
+    // Where `kind` gets member `id`: the file writing it (`None`: this
+    // document), the span there, and whether an `add:` brought it.
+    let listing = |kind: &str, id: &str| -> (Option<DeclOrigin>, Span, bool) {
+        let key = member_origin_key(kind, id);
+        if typed.rel_kinds.kinds.contains_key(kind) {
+            let span = kind_list_spans(meta, kind, "members:")
+                .into_iter()
+                .find(|(m, _)| m == id)
+                .map_or_else(|| span_of(kind), |(_, s)| s);
+            return (None, meta_position(meta, span), false);
+        }
+        if let Some(add) = inline_adds.iter().find(|a| a.kind == kind) {
+            if let Some(i) = add.members.iter().position(|m| m == id) {
+                let span = add.member_spans.get(i).copied().flatten();
+                return (None, span.unwrap_or(add.span), true);
+            }
+        }
+        if let Some(o) = origins.added.get(&key) {
+            return (Some(o.clone()), o.span, true);
+        }
+        match origins
+            .members
+            .get(&key)
+            .or_else(|| origins.kinds.get(kind))
+        {
+            Some(o) => (Some(o.clone()), o.span, false),
+            None => (None, span_of(id), false),
+        }
+    };
+    let place = |(origin, span, _): &(Option<DeclOrigin>, Span, bool)| match origin {
+        Some(o) => format!("`{}:{}`", origin_display(&o.file), o.span.line),
+        None if span.line > 0 => format!("this document, line {}", span.line),
+        None => "this document".to_string(),
+    };
     for i in 0..closed.len() {
         for j in (i + 1)..closed.len() {
             let (name_a, members_a) = closed[i];
@@ -852,18 +973,41 @@ pub fn build_rel_vocab(
                 continue;
             }
             for id in members_a {
-                if members_b.contains(id) {
-                    diags.push(at_origin(
-                        diag(
-                            E_ENTITY_KIND_CLASH,
-                            format!(
-                                "id `{id}` is a member of both entity kinds `{name_a}` and `{name_b}`; an id belongs to exactly one kind (dsl 0.3.0 §3.1) — if every `{name_a}` is also a `{name_b}` (or the other way round), declare one a sub-kind of the other with `subsetOf:` (dsl 0.24.0 §3); if the `{name_a}` and the `{name_b}` called `{id}` are two different things, rename one of them"
-                            ),
-                            span_of(id),
-                        ),
-                        origins.kinds.get(name_b).filter(|_| origins.kinds.contains_key(name_a)),
-                    ));
+                if !members_b.contains(id) {
+                    continue;
                 }
+                // Reported where the clash was made: an `add:` over a
+                // declaration, this document over an import, else the later
+                // file and line.
+                let (a, b) = (listing(name_a, id), listing(name_b, id));
+                let rank = |l: &(Option<DeclOrigin>, Span, bool)| {
+                    (
+                        l.2,
+                        l.0.is_none(),
+                        l.0.as_ref().map(|o| origin_display(&o.file)),
+                        l.1.line,
+                    )
+                };
+                let ((first_kind, first), (second_kind, second)) = if rank(&a) > rank(&b) {
+                    ((name_b, b), (name_a, a))
+                } else {
+                    ((name_a, a), (name_b, b))
+                };
+                let message = format!(
+                    "id `{id}` is a member of both entity kinds `{first_kind}` ({}) and \
+                     `{second_kind}` ({}); an id belongs to exactly one kind (dsl 0.3.0 §3.1) — \
+                     if every `{first_kind}` is also a `{second_kind}` (or the other way round), \
+                     declare one a sub-kind of the other with `subsetOf:` (dsl 0.24.0 §3); if \
+                     the `{first_kind}` and the `{second_kind}` called `{id}` are two different \
+                     things, rename one of them",
+                    place(&first),
+                    place(&second),
+                );
+                let (origin, span, _) = second;
+                diags.push(match origin {
+                    Some(o) => at_origin(diag(E_ENTITY_KIND_CLASH, message, span_of(id)), Some(&o)),
+                    None => diag(E_ENTITY_KIND_CLASH, message, span),
+                });
             }
         }
     }
@@ -1008,7 +1152,7 @@ pub struct KindAdd {
     pub span: Span,
     /// dsl 0.27.0 §7: the `labels:` beside the `add:` — display text for the
     /// members it adds, merged into the kind's labels with them.
-    pub labels: BTreeMap<String, String>,
+    pub labels: BTreeMap<String, lute_manifest::relations::KindLabel>,
 }
 
 /// Where the one declaration of a kind lives (prerelease N4): its schema as
@@ -1259,18 +1403,21 @@ pub fn state_key_span(meta: &Meta, path: &str) -> Span {
 }
 
 /// `span` (a [`meta_key_span`]-style, line-less document offset inside
-/// `meta`'s frontmatter) with its 1-based line and byte column filled in.
+/// `meta`'s frontmatter) with its 1-based line and character column filled in.
 pub(crate) fn meta_position(meta: &Meta, span: Span) -> Span {
     let (base, first_line) = frontmatter_base(meta);
-    let off = span
+    let mut off = span
         .byte_start
         .saturating_sub(base)
         .min(meta.raw_yaml.len());
+    while !meta.raw_yaml.is_char_boundary(off) {
+        off -= 1;
+    }
     let before = &meta.raw_yaml[..off];
     let line_start = before.rfind('\n').map_or(0, |i| i + 1);
     Span {
         line: (first_line + before.matches('\n').count()) as u32,
-        column: (off - line_start + 1) as u32,
+        column: before[line_start..].chars().count() as u32 + 1,
         ..span
     }
 }
@@ -1332,108 +1479,6 @@ fn value_region(raw: &str, key_off: usize) -> Option<(usize, usize)> {
         end = line_end;
     }
     Some((colon, end))
-}
-
-/// dsl 0.27.0 §7: each key of entity kind `kind`'s `labels:` map in `meta`
-/// (a flow `{ a: …, b: … }` or a block mapping), as written, with its span —
-/// `meta`-document offsets, line-less, like [`kind_list_spans`]'. Empty for
-/// a shape the line scan does not recognize.
-pub fn kind_label_spans(meta: &Meta, kind: &str) -> Vec<(String, Span)> {
-    let key = meta_key_span(meta, kind);
-    let (base, _) = frontmatter_base(meta);
-    let raw = meta.raw_yaml.as_str();
-    let Some((colon, end)) = value_region(raw, key.byte_start.saturating_sub(base)) else {
-        return Vec::new();
-    };
-    let Some(start) = find_sub_key(&raw[colon..end], "labels:").map(|m| colon + m) else {
-        return Vec::new();
-    };
-    map_keys(raw, start, end)
-        .into_iter()
-        .map(|(o, k)| {
-            let span = Span {
-                byte_start: base + o,
-                byte_end: base + o + k.len(),
-                line: 0,
-                column: 0,
-                utf16_range: (0, 0),
-            };
-            (k, span)
-        })
-        .collect()
-}
-
-/// The keys of the flow or block mapping starting at `start` (just past its
-/// key's `:`), bounded by `end`, as `(offset, key)` in written order.
-fn map_keys(raw: &str, start: usize, end: usize) -> Vec<(usize, String)> {
-    let mut out = Vec::new();
-    let push = |out: &mut Vec<(usize, String)>, at: usize, entry: &str| {
-        let Some(colon) = entry.find(':') else { return };
-        let tok = &entry[..colon];
-        let lead = tok.len() - tok.trim_start().len();
-        let t = tok.trim();
-        let q = t.starts_with(['"', '\'']) as usize;
-        let bare = t.trim_matches(['"', '\'']);
-        if !bare.is_empty() {
-            out.push((at + lead + q, bare.to_string()));
-        }
-    };
-    let text = &raw[start..end];
-    let body = text.trim_start();
-    if body.starts_with('{') {
-        let bytes = raw.as_bytes();
-        let open = start + (text.len() - body.len()) + 1;
-        // `quote`: inside a quoted scalar; `lead`: the last byte outside one
-        // that is not a space — a quote opens a scalar only right after
-        // `{`, `,` or `:` (an apostrophe inside plain text does not).
-        let (mut i, mut tok_start, mut quote, mut lead) = (open, open, None, b'{');
-        while i < end {
-            let c = bytes[i];
-            match quote {
-                Some(q) if c == q => quote = None,
-                Some(_) => {}
-                None if matches!(c, b'"' | b'\'') && matches!(lead, b'{' | b',' | b':') => {
-                    quote = Some(c)
-                }
-                None if matches!(c, b',' | b'}') => {
-                    push(&mut out, tok_start, &raw[tok_start..i]);
-                    if c == b'}' {
-                        break;
-                    }
-                    tok_start = i + 1;
-                }
-                None => {}
-            }
-            if quote.is_none() && !c.is_ascii_whitespace() {
-                lead = c;
-            }
-            i += 1;
-        }
-        return out;
-    }
-    // Block mapping: the lines under the key at the first entry's indent.
-    let mut indent = None;
-    let mut off = start;
-    for line in text.split_inclusive('\n') {
-        let at = off;
-        off += line.len();
-        if at == start {
-            continue;
-        }
-        let trimmed = line.trim_start();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let this = line.len() - trimmed.len();
-        match indent {
-            None => indent = Some(this),
-            Some(i) if this < i => break,
-            Some(i) if this > i => continue,
-            Some(_) => {}
-        }
-        push(&mut out, at + this, trimmed);
-    }
-    out
 }
 
 /// Offset (in `region`) just past a `sub` key (`members:`), outside comments.
@@ -1596,7 +1641,7 @@ pub fn check_atom(
     }
     let Some(decl) = vocab.relations.get(relation) else {
         let hint = if vocab.kinds.contains_key(relation) {
-            " (an entity kind is a rule-body predicate, not an assertable fact — dsl 0.3.0 §3.1)"
+            " (an entity kind is a rule-body predicate, not an assertable fact, dsl 0.3.0 §3.1)"
                 .to_string()
         } else {
             // dsl 0.5.0 §2.2 "did you mean": `relations:` is a CLOSED declared

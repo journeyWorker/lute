@@ -123,7 +123,7 @@ fn a_relation_named_like_a_cel_macro_is_reserved_name() {
         "holds(has(lamp))",
     );
     let ds = diags(&text);
-    assert!(codes(&ds).contains(&"E-RELATION-RESERVED-NAME"), "{ds:#?}");
+    assert!(codes(&ds).contains(&"E-RESERVED-NAME"), "{ds:#?}");
     let parse = ds
         .iter()
         .find(|d| d.code == "E-CEL-PARSE")

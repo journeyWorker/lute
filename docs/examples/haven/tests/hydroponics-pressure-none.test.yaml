@@ -10,7 +10,7 @@ file: ../scenes/hydroponics.lute
 choose:
   thePlainAnswer: ownIt
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "It hasn't moved since the bank. That's the first good news today."
     - "Nothing. A room full of sleeping people and you picked nothing."

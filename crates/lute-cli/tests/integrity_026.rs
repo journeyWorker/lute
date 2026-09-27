@@ -257,6 +257,81 @@ fn schema_errors_are_reported_once_at_the_schema_line() {
     }
 }
 
+/// A state path two imports declare is reported at the LATER import in
+/// `uses:` order (not byte order), naming the earlier by its relative path
+/// and line; the disagreeing type does not drag in errors that follow from
+/// it (a `<match>` complete for the first declaration).
+#[test]
+fn a_state_path_two_imports_declare_is_reported_at_the_later_import() {
+    let dir = project("dupstate", &[], "  uses: [z.schema.yaml, a.schema.yaml]\n");
+    write(
+        &dir,
+        "z.schema.yaml",
+        "state:\n  run.fossil: { type: { enum: [none, dome] }, default: none }\n",
+    );
+    write(
+        &dir,
+        "a.schema.yaml",
+        "state:\n  run.fossil: { type: { enum: [none, dome, helix] }, default: none }\n",
+    );
+    let body =
+        "<match on=\"run.fossil\">\n  <when is=\"none\">\n    @narrator: none.\n  </when>\n  \
+                <when is=\"dome\">\n    @narrator: dome.\n  </when>\n</match>\n";
+    write(&dir, "scenes/a.lute", &scene("a", "", body));
+    let out = run(&dir, &["check-project", "."]);
+    let s = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{s}");
+    let lines = top_lines(&s, "E-USES-DUP-STATE");
+    assert_eq!(lines.len(), 1, "{s}");
+    assert!(
+        lines[0].starts_with("./a.schema.yaml:2:3:")
+            && lines[0].contains("(`z.schema.yaml:2` and `a.schema.yaml`)"),
+        "{s}"
+    );
+    assert!(top_lines(&s, "E-NONEXHAUSTIVE").is_empty(), "{s}");
+}
+
+/// A cast id two files of one plugin declare is located at the later file
+/// and line, naming the earlier; the plugin still loads, so every document
+/// is still checked and reports its own errors.
+#[test]
+fn a_duplicate_plugin_id_is_located_and_the_project_is_still_checked() {
+    let dir = project(
+        "dupcast",
+        &[("cast", "a.yaml", "cast:\n  orla: { name: Orla }\n")],
+        "",
+    );
+    write(
+        &dir,
+        "plugins/p/cast/b.yaml",
+        "cast:\n  wren: { name: Wren }\n  orla: { name: Orla Again }\n",
+    );
+    write(
+        &dir,
+        "scenes/a.lute",
+        &scene("a", "", "@wren: hi.\n@orla: hi.\n"),
+    );
+    write(
+        &dir,
+        "scenes/b.lute",
+        &scene("b", "", "<match on=\"run.nope\">\n</match>\n"),
+    );
+    let out = run(&dir, &["check-project", "."]);
+    let s = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{s}");
+    assert!(
+        s.contains(
+            "lute: E-PLUGIN-DUP-ID: ./plugins/p/cast/b.yaml:3:3: cast `orla` is already \
+             declared at cast/a.yaml:2;"
+        ),
+        "{s}"
+    );
+    assert!(!s.contains("E-PLUGIN-MISSING-ACTIVE"), "{s}");
+    assert!(s.contains("ok: ./scenes/a.lute"), "{s}");
+    assert!(s.contains("failed: ./scenes/b.lute"), "{s}");
+    assert!(s.contains("1 project-wide error(s)"), "{s}");
+}
+
 // ── §8 (T3-7, T3-8): member did-you-mean and the clash hint ─────────────────
 
 #[test]
@@ -443,7 +518,7 @@ fn content_project(tag: &str) -> PathBuf {
                 "directives:\n  - name: give\n    attrs:\n      - { name: item, required: true, type: { entity: bagItem } }\n      - { name: tm, type: { entity: tmm } }\n",
             ),
             (
-                "rewardkinds",
+                "rewardKinds",
                 "r.yaml",
                 "rewardKinds:\n  ITEM: { target: { entity: bagItem, required: true } }\n",
             ),
@@ -772,25 +847,26 @@ fn wip_reads_a_component_only_producer_as_not_written_yet() {
     let wip = run(&dir, &["check-project", "--wip", "."]);
     let s = text(&wip);
     assert_eq!(wip.status.code(), Some(0), "{s}");
-    let unsat = top_lines(&s, "E-OBJECTIVE-UNSATISFIABLE");
+    assert!(!s.contains("warning [E-"), "{s}");
+    let spared = top_lines(&s, "W-WIP");
+    let unsat: Vec<&str> = spared
+        .iter()
+        .copied()
+        .filter(|l| l.contains("`E-OBJECTIVE-UNSATISFIABLE` without `--wip`"))
+        .collect();
     // The dead `done` and the parent's `quest="badgeRoad"` objective.
     assert_eq!(unsat.len(), 2, "{s}");
-    assert!(
-        unsat
-            .iter()
-            .all(|l| l.contains("warning [") && l.contains("`--wip`")),
-        "{s}"
-    );
+    assert!(unsat.iter().all(|l| l.contains("warning [")), "{s}");
     assert!(
         unsat.iter().any(|l| l.contains("quest=\"badgeRoad\"")),
         "{s}"
     );
-    let beat = top_lines(&s, "E-BEAT-UNREACHABLE");
+    let beat: Vec<&str> = spared
+        .iter()
+        .copied()
+        .filter(|l| l.contains("`E-BEAT-UNREACHABLE` without `--wip`"))
+        .collect();
     assert_eq!(beat.len(), 1, "{s}");
-    assert!(
-        beat[0].contains("warning [") && beat[0].contains("`--wip`"),
-        "{s}"
-    );
 }
 
 #[test]
@@ -816,9 +892,10 @@ fn wip_keeps_a_ground_producer_that_never_matches_an_error() {
         "{s}"
     );
     assert!(
-        unsat
+        top_lines(&s, "W-WIP")
             .iter()
-            .any(|l| l.contains("warning [") && l.contains("`hasBadge(stone)`")),
+            .any(|l| l.contains("`hasBadge(stone)`")
+                && l.contains("`E-OBJECTIVE-UNSATISFIABLE` without `--wip`")),
         "{s}"
     );
 }
@@ -953,14 +1030,14 @@ fn ineligible_scene_failure_names_the_false_premise() {
                 "c.lute",
                 "---\nkind: scene\nid: c\non: talk\nwhen: \"run.fish == 1\"\n---\n## C\n\n@narrator: C.\n",
             ),
-            ("tests/b.test.yaml", "file: ../b.lute\nexpect:\n  exit: complete\n"),
-            ("tests/c.test.yaml", "file: ../c.lute\nexpect:\n  exit: complete\n"),
+            ("tests/b.test.yaml", "file: ../b.lute\nexpect:\n  end: complete\n"),
+            ("tests/c.test.yaml", "file: ../c.lute\nexpect:\n  end: complete\n"),
         ],
         "world.schema.yaml",
     );
     let s = text(&run(&dir, &["test", ".", "--project", "."]));
     assert!(
-        s.contains("eligible b: not eligible under these mocks (its `after: visited(\"a\")` is false — mock `visited: [a]`)"),
+        s.contains("eligible b: not eligible under these mocks (its `after: visited(\"a\")` is false — add `visited: [a]` to the mocks)"),
         "{s}"
     );
     assert!(
@@ -1005,7 +1082,7 @@ fn eligible_true_miss_names_the_false_premise() {
     assert!(
         s.contains(
             "eligible porter: expected true, got false — its `after=\"visited('a')\"` is false \
-             — mock `visited: [a]`"
+             — add `visited: [a]` to the mocks"
         ),
         "{s}"
     );
@@ -1032,7 +1109,7 @@ fn eligible_true_miss_names_the_false_conjunct_first() {
                 "state:\n  run.fish: { type: number, default: 0 }\n  \
                  run.day: { type: number, default: 1 }\n\
                  entities:\n  person: { members: [ada, bo] }\n\
-                 relations:\n  locked: { args: [person] }\n",
+                 relations:\n  locked: { args: [person], tier: run }\n",
             ),
             (
                 "talk.lute",

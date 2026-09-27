@@ -168,8 +168,8 @@ fn collect_children(nodes: &[Node], idx: &TextIndex, out: &mut Vec<DocumentSymbo
             }
             Node::Hub(h) => {
                 let mut kids = Vec::new();
-                for c in &h.choices {
-                    collect_children(&c.body, idx, &mut kids);
+                for b in h.bodies() {
+                    collect_children(b, idx, &mut kids);
                 }
                 let sel = keyword_range(h.span.byte_start, "<hub", idx);
                 out.push(symbol(

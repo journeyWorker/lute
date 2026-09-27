@@ -111,25 +111,6 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
                 choice.span,
             ));
         }
-        // E-CHOICE-ID-RESERVED (dsl §11.1): `unset` is the implicit choice-slot
-        // DEFAULT SENTINEL — the `scene.choices.<id>` domain is the choice ids
-        // ∪ `unset`, and the runtime seeds the slot `default: "unset"` before
-        // any choice is taken. A `<choice id="unset">` collides with that
-        // sentinel (an ambiguous selected value + a duplicate domain member), so
-        // reject it here, at the offending choice's span.
-        if choice.id == "unset" {
-            diags.push(diag(
-                "E-CHOICE-ID-RESERVED",
-                Severity::Error,
-                format!(
-                    "`<choice id=\"unset\">` within `<branch id=\"{}\">`; `unset` is reserved as \
-                     the implicit choice-slot default sentinel and may not be a choice id \
-                     (dsl §11.1)",
-                    branch.id
-                ),
-                choice.span,
-            ));
-        }
     }
     // E-BRANCH-ALL-GUARDED (dsl §11.1, S5): a non-empty branch whose EVERY
     // `<choice>` carries a `when` guard could have every guard false at a
@@ -164,12 +145,12 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
 /// Record a `<hub>` (dsl §7.3.2, §11.1.3), mirroring [`check_branch`]. Emits:
 /// `E-DUP-BRANCH` if the hub id collides in the shared per-episode `seen` set
 /// (hub and branch ids record under one `scene.choices.*` domain); `E-CHOICE-DUP`
-/// on a repeated choice id (and `E-CHOICE-ID-RESERVED` on `id="unset"`, the
-/// implicit slot sentinel); `E-HUB-NO-EXIT` unless the hub has an UNGUARDED
+/// on a repeated choice id (a reserved choice id is `E-RESERVED-NAME`,
+/// `crate::reserved_names`); `E-HUB-NO-EXIT` unless the hub has an UNGUARDED
 /// `exit` choice OR every choice is `once`. Returns the implicit recording decls:
 /// `scene.choices.<hubId>` (enum of choice ids ∪ `unset`, like a branch) plus a
 /// per-choice `scene.visited.<hubId>.<choiceId>: bool` (default `false`, §9.6).
-/// The `once`/`exit` flags arrive as bare (`BoolTrue`) attrs on each choice.
+/// The `once`/`exit` flags stay as attrs on each choice ([`has_bool_attr`]).
 pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
     let id = attr_str(&hub.attrs, "id").unwrap_or("");
     let mut diags = Vec::new();
@@ -189,10 +170,9 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
         ));
     }
 
-    // E-CHOICE-DUP / E-CHOICE-ID-RESERVED (§11.1.3, reusing §11.1): each choice id
-    // MUST be unique WITHIN the hub (it keys the recorded value + the option-label
-    // lineId, §12), and `unset` is reserved as the `scene.choices.<hubId>` default
-    // sentinel. One diagnostic per offending choice, at its span.
+    // E-CHOICE-DUP (§11.1.3, reusing §11.1): each choice id MUST be unique
+    // WITHIN the hub (it keys the recorded value + the option-label lineId,
+    // §12). One diagnostic per repeated choice, at its span.
     let mut choice_ids: BTreeSet<&str> = BTreeSet::new();
     for choice in &hub.choices {
         if !choice_ids.insert(choice.id.as_str()) {
@@ -203,18 +183,6 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
                     "duplicate `<choice id=\"{}\">` within `<hub id=\"{id}\">`; choice ids must \
                      be unique within a hub (dsl §11.1.3)",
                     choice.id
-                ),
-                choice.span,
-            ));
-        }
-        if choice.id == "unset" {
-            diags.push(diag(
-                "E-CHOICE-ID-RESERVED",
-                Severity::Error,
-                format!(
-                    "`<choice id=\"unset\">` within `<hub id=\"{id}\">`; `unset` is reserved as \
-                     the implicit choice-slot default sentinel and may not be a choice id \
-                     (dsl §11.1.3)"
                 ),
                 choice.span,
             ));
@@ -231,16 +199,43 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
     let all_once =
         !hub.choices.is_empty() && hub.choices.iter().all(|c| has_bool_attr(&c.attrs, "once"));
     if !has_unguarded_exit && !all_once {
-        diags.push(diag(
-            E_HUB_NO_EXIT,
-            Severity::Error,
-            format!(
-                "`<hub id=\"{id}\">` can never exit; it needs at least one unguarded \
-                 (`when`-less) `exit` choice, or every choice must be `once` so the eligible \
-                 set provably empties (dsl §7.3.2, §11.1.3)"
+        // A choice named like the exit, missing only the flag: point at it.
+        // One with an `exit=` value that is no flag has its own E-FLAG-VALUE.
+        let named_exit = hub.choices.iter().find(|c| {
+            c.when.is_none()
+                && !c.attrs.iter().any(|a| a.key == "exit")
+                && (c.id == "exit" || lute_manifest::suggest::nearest(&c.id, ["exit"], 1).is_some())
+        });
+        let d = match named_exit {
+            Some(c) => {
+                let label = if c.label.is_empty() {
+                    String::new()
+                } else {
+                    format!(" label=\"{}\"", c.label)
+                };
+                diag(
+                    E_HUB_NO_EXIT,
+                    Severity::Error,
+                    format!(
+                        "`<hub id=\"{id}\">` can never exit: choice `{cid}` is not an exit — \
+                         add the `exit` flag: `<choice id=\"{cid}\"{label} exit>`",
+                        cid = c.id
+                    ),
+                    c.span,
+                )
+            }
+            None => diag(
+                E_HUB_NO_EXIT,
+                Severity::Error,
+                format!(
+                    "`<hub id=\"{id}\">` can never exit; it needs at least one unguarded \
+                     (`when`-less) `exit` choice, or every choice must be `once` so the eligible \
+                     set provably empties (dsl §7.3.2, §11.1.3)"
+                ),
+                hub.span,
             ),
-            hub.span,
-        ));
+        };
+        diags.push(d);
     }
 
     // Implicit recording decls (§9.6, §11.1.3):
@@ -349,18 +344,14 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
             ));
         }
 
-        // §8.4 CelIdent alignment: the quest id is a CEL-facing segment of the
-        // reserved `quest.<id>.state`/`quest.<id>.objectives.*` paths — a `-`
-        // there is illegal (CEL parses it as subtraction). Still fold the decl
-        // below so downstream reads don't cascade to E-UNDECLARED (mirrors how
-        // meta.rs treats a hyphenated inline `state:` path).
-        if id.contains('-') {
-            diags.push(diag(
-                E_PATH_IDENT,
-                Severity::Error,
-                format!("quest id `{id}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"),
-                quest.id_span,
-            ));
+        // §8.4 CelIdent alignment: the quest id is ONE CEL-facing segment of
+        // the reserved `quest.<id>.state`/`quest.<id>.objectives.*` paths — a
+        // `-` (CEL subtraction) or a `.` (a second segment) there is illegal.
+        // Still fold the decl below so downstream reads don't cascade to
+        // E-UNDECLARED (mirrors how meta.rs treats a hyphenated inline
+        // `state:` path).
+        if let Some(message) = crate::cel_paths::quest_id_fault("quest", id) {
+            diags.push(diag(E_PATH_IDENT, Severity::Error, message, quest.id_span));
         }
     }
 
@@ -430,18 +421,9 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
                 ));
             }
             // §8.4 CelIdent alignment: the objective id is a CEL-facing segment
-            // of `quest.<id>.objectives.<oid>.done` — same treatment as the
-            // quest id above.
-            if o.id.contains('-') {
-                diags.push(diag(
-                    E_PATH_IDENT,
-                    Severity::Error,
-                    format!(
-                        "objective id `{}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)",
-                        o.id
-                    ),
-                    o.id_span,
-                ));
+            // of `quest.<id>.objectives.<oid>.done` — the quest id's rule.
+            if let Some(message) = crate::cel_paths::quest_id_fault("objective", &o.id) {
+                diags.push(diag(E_PATH_IDENT, Severity::Error, message, o.id_span));
             }
         }
         // Subquest triage (subquest design 2026-08-31 §1): `quest=` and a
@@ -536,10 +518,14 @@ fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
         })
 }
 
-/// True when a bare boolean flag attr (`key`, e.g. `once`/`exit`) is present —
-/// parsed as [`AttrValue::BoolTrue`] (dsl §7.3.2 hub-choice flags).
+/// True when hub-choice flag `key` (`once`/`exit`, dsl §7.3.2) is on, read
+/// through the one flag reader [`AttrValue::flag`] (dsl 0.28.0 §1) the
+/// compiler's `attr_bool` also uses: `exit="true"` IS an exit, `once="false"`
+/// is not `once`. A non-flag value is off here and `E-FLAG-VALUE` elsewhere.
 fn has_bool_attr(attrs: &[Attr], key: &str) -> bool {
     attrs
         .iter()
-        .any(|a| a.key == key && matches!(a.value, AttrValue::BoolTrue))
+        .find(|a| a.key == key)
+        .and_then(|a| a.value.flag())
+        .unwrap_or(false)
 }

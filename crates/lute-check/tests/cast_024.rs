@@ -164,6 +164,59 @@ fn a_scene_beat_when_conjunction_implies_presence() {
     );
 }
 
+/// A beat answering an occasion is presented only while the engine raises
+/// it: its `raisedWhen` gate and `!terminal` are assumptions like its `when`.
+#[test]
+fn an_occasion_gate_and_not_terminal_imply_presence() {
+    let mut snap = snapshot();
+    snap.occasions.insert(
+        "roofNight".into(),
+        OccasionDecl {
+            name: "roofNight".into(),
+            select: OccasionSelect::First,
+            raised_when: Some("run.x >= 1 && holds(inParty(isolde))".into()),
+            ..Default::default()
+        },
+    );
+    let src = format!(
+        "---\nkind: lore\nid: roof\ntitle: Roof\n{VOCAB}---\n\
+         <beat id=\"stars\" on=\"roofNight\" once=\"false\">\n  @isolde: Stars.\n  @corvin: Cold.\n</beat>\n\
+         <beat id=\"hall\" on=\"hubVisit\" once=\"false\">\n  @isolde: Hall.\n</beat>\n"
+    );
+    let absent = |terminal: Option<&str>| {
+        let mut inp = input(&src, snap.clone());
+        if let Some(t) = terminal {
+            inp.imports.terminal.push((
+                PathBuf::from("/p/world.schema.yaml"),
+                t.to_string(),
+                Span {
+                    byte_start: 0,
+                    byte_end: 0,
+                    line: 1,
+                    column: 1,
+                    utf16_range: (0, 0),
+                },
+            ));
+        }
+        let ds = check(&inp).diagnostics;
+        assert_clean_vocab(&ds);
+        with_code(&ds, ABSENT)
+            .iter()
+            .map(|d| {
+                src[d.span.byte_start..]
+                    .split(':')
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+    };
+    // The gate implies `isolde`; the ungated `hubVisit` beat still warns.
+    assert_eq!(absent(None), ["corvin", "isolde"]);
+    // Once the game is over nothing is raised: `!terminal` implies `corvin`.
+    assert_eq!(absent(Some("run.withUs == false")), ["isolde"]);
+}
+
 #[test]
 fn a_def_guard_expanding_to_presence_implies_it() {
     let src = scene(

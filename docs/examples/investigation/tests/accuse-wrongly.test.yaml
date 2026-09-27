@@ -5,7 +5,7 @@ state:
 choose:
   accuse: accuseCass
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "The wrong suspect walks free. Somewhere, the real one exhales."
     - "I got it wrong. The file stays open."

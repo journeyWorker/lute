@@ -21,8 +21,8 @@ use crate::lore::{is_beat_target, is_entry_ident};
 
 /// `<beat>`'s permitted attribute keys (dsl 0.23.0 §4). The parser extracts
 /// each into a typed field, so a permitted key reaches the residual list only
-/// with a value of the wrong shape (a bare `on`, `also="maybe"`) — that is
-/// [`E_BEAT_ATTR`]; every OTHER key is `E-UNKNOWN-ATTR`.
+/// with a value of the wrong shape (a bare `on`) — that is [`E_BEAT_ATTR`],
+/// or `E-FLAG-VALUE` for `also="maybe"`; every OTHER key is `E-UNKNOWN-ATTR`.
 pub const BUNDLE_BEAT_ATTRS: &[&str] = &[
     "id", "on", "target", "title", "when", "priority", "once", "also", "share", "after", "spentBy",
     "use", "for",
@@ -36,13 +36,11 @@ pub fn bundle_beat_key(doc_id: &str, beat_id: &str) -> String {
 
 /// A bundle beat's repetition policy, as a scene beat's (dsl 0.21.0 §3.1,
 /// 0.24.0 §1, 0.27.0 §5): `once="user"` / `"false"` / `"day"` / `"slot"` /
-/// `"week"` / `"season:<name>"`; `spentBy=` makes it repeatable (`false`);
-/// anything else — absent, `run`, or a malformed value `E-BEAT-ATTR`
-/// already reports — is the default `run`.
+/// `"week"` / `"season:<name>"`; anything else — absent, `run`, or a
+/// malformed value `E-BEAT-ATTR` already reports — is the default `run`.
+/// On a `spentBy=` beat it is how long the beat stays spent once the
+/// condition has held.
 pub fn bundle_beat_once(beat: &BundleBeat) -> BeatOnce {
-    if beat.spent_by.is_some() {
-        return BeatOnce::None;
-    }
     match beat.once.as_ref().map(|(o, _)| o.as_str()) {
         Some("false") => BeatOnce::None,
         Some(raw) => BeatOnce::parse(raw).unwrap_or(BeatOnce::Run),
@@ -65,10 +63,10 @@ pub fn bundle_beat_also(beat: &BundleBeat) -> bool {
 }
 
 /// Every `<beat>` of one lore document (dsl 0.23.0 §4): attribute shape and
-/// closure, per-document id uniqueness, the document `id:` the canonical ids
-/// hang off, and each beat's occasion against the resolved vocabulary
-/// (`E-OCCASION-UNKNOWN`, the untargeted-occasion `target` rule) exactly as a
-/// scene beat's. `doc_id` is the document's authored `id:`.
+/// closure, the document `id:` the canonical ids hang off, and each beat's
+/// occasion against the resolved vocabulary (`E-OCCASION-UNKNOWN`, the
+/// untargeted-occasion `target` rule) exactly as a scene beat's. `doc_id` is
+/// the document's authored `id:`. Id uniqueness is [`check_beat_ids`]'.
 pub fn check_bundle_beats(
     doc_id: Option<&str>,
     beats: &[BundleBeat],
@@ -84,37 +82,101 @@ pub fn check_bundle_beats(
             first.id_span,
         ));
     }
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
     for beat in beats {
         check_shape(beat, &mut diags);
-        if is_entry_ident(&beat.id) && !seen.insert(beat.id.as_str()) {
-            diags.push(beat_attr(
-                format!(
-                    "duplicate `<beat id=\"{}\">` in this document; a bundle beat's id names \
-                     one beat (dsl 0.23.0 §4)",
-                    beat.id
-                ),
-                beat.id_span,
-            ));
-        }
         let Some((on, on_span)) = beat.on.as_ref().filter(|(on, _)| is_entry_ident(on)) else {
             continue;
         };
-        let target_span = beat
+        let target = beat
             .target
             .as_ref()
             .filter(|(t, _)| is_beat_target(t))
-            .map(|(_, span)| *span);
+            .map(|(t, span)| (t.as_str(), *span));
         crate::beats::check_occasion(
             on,
             *on_span,
-            target_span,
+            target,
+            true,
             occasions,
             Layer::Logic,
             &mut diags,
         );
     }
     diags
+}
+
+/// Two declarations of one lore document share an id: a
+/// bundle `<beat>` id repeated, or an `<entry>` whose id is a `<beat>`'s —
+/// the beat's canonical id `<document id>.<id>` is then also the entry's
+/// alias, so one name (`visited()`, a play's `expect.winner`) means two
+/// beats.
+pub const E_BEAT_ID_DUP: &str = "E-BEAT-ID-DUP";
+
+/// [`E_BEAT_ID_DUP`] for one document, at every declaration past the first
+/// of an id its `<beat>`s and `<entry>`s share, in document order. `doc_id`
+/// is the document's authored `id:` (without one no canonical id exists and
+/// only a repeated beat id is reported).
+pub fn check_beat_ids(
+    doc_id: Option<&str>,
+    entries: &[lute_syntax::ast::Entry],
+    beats: &[BundleBeat],
+) -> Vec<Diagnostic> {
+    let mut decls: Vec<(bool, &str, Span)> = beats
+        .iter()
+        .map(|b| (true, b.id.as_str(), b.id_span))
+        .chain(
+            entries
+                .iter()
+                .filter(|_| doc_id.is_some() && !beats.is_empty())
+                .map(|e| (false, e.id.as_str(), e.id_span)),
+        )
+        .filter(|(_, id, _)| is_entry_ident(id))
+        .collect();
+    decls.sort_by_key(|(_, _, span)| span.byte_start);
+    let mut first: BTreeMap<&str, (bool, Span)> = BTreeMap::new();
+    let mut out = Vec::new();
+    for (is_beat, id, span) in decls {
+        let Some(&(first_beat, first_span)) = first.get(id) else {
+            first.insert(id, (is_beat, span));
+            continue;
+        };
+        // Two entries sharing an id are `E-ENTRY-ID-DUP`'s.
+        if !is_beat && !first_beat {
+            continue;
+        }
+        let tag = |beat: bool| if beat { "beat" } else { "entry" };
+        let at = if first_span.line > 0 {
+            format!(" (line {})", first_span.line)
+        } else {
+            String::new()
+        };
+        let message = match doc_id {
+            Some(doc) if is_beat != first_beat => format!(
+                "`<{}>` id `{id}` is already declared by `<{} id=\"{id}\">`{at}: the beat's \
+                 canonical id `{doc}.{id}` is also the entry's alias, so `{doc}.{id}` (in \
+                 `visited()` or a play's `expect: {{ winner: {doc}.{id} }}`) would name both — \
+                 rename one",
+                tag(is_beat),
+                tag(first_beat),
+            ),
+            _ => format!(
+                "`<beat id=\"{id}\">` is already declared in this document{at}; a bundle \
+                 beat's id names one beat — rename one"
+            ),
+        };
+        out.push(Diagnostic {
+            code: E_BEAT_ID_DUP.to_string(),
+            severity: Severity::Error,
+            message,
+            span,
+            layer: Layer::Logic,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        });
+    }
+    out
 }
 
 /// One beat's attribute shape ([`E_BEAT_ATTR`]) and closure (`E-UNKNOWN-ATTR`).
@@ -126,18 +188,22 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
             continue;
         }
         residual.insert(key);
-        let message = if key == "also" {
-            "`<beat>` `also` is a flag: write it bare (`<beat … also>`) or as `also=\"true\"` / \
-             `also=\"false\"` (dsl 0.23.0 §3)"
-                .to_string()
-        } else if matches!(attr.value, AttrValue::Str(_)) {
-            // A repeated key: the parser took the first occurrence.
+        if key == "also" || matches!(attr.value, AttrValue::Str(_)) {
+            // `also`: `check_flags` below; a repeated string key: the parser
+            // took the first occurrence.
             continue;
+        }
+        let values = if key == "once" {
+            format!(": `once=\"…\"` takes {}", crate::beats::ONCE_VALUES)
         } else {
-            format!("`<beat>` attribute `{key}` must be a quoted string (dsl 0.23.0 §4)")
+            String::new()
         };
-        diags.push(beat_attr(message, attr.span));
+        diags.push(beat_attr(
+            format!("`<beat>` attribute `{key}` must be a quoted string{values}"),
+            attr.span,
+        ));
     }
+    crate::logic_attrs::check_flags(&beat.attrs, "beat", &["also"], diags);
     crate::logic_attrs::check_bundle_beat_attrs(beat, diags);
 
     let id = beat.id.as_str();
@@ -163,6 +229,7 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
     if beat.on.is_none()
         && !residual.contains("on")
         && !beat.template.as_ref().is_some_and(|t| t.failed)
+        && !crate::logic_attrs::names_occasion_misspelt(&beat.attrs, "on")
     {
         diags.push(beat_attr(
             format!(
@@ -182,16 +249,15 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
             diags.extend(value_faults(key, raw, *span));
         }
     }
-    // dsl 0.27.0 §5: `spentBy` replaces `once`.
-    if let (Some(spent_by), true) = (
+    // A `spentBy` beat stays spent for its `once` period once the condition
+    // has held; `once="false"` is no period.
+    if let (Some(spent_by), Some((_, span))) = (
         &beat.spent_by,
-        beat.once.is_some() || residual.contains("once"),
+        beat.once.as_ref().filter(|(o, _)| o == "false"),
     ) {
         diags.push(beat_attr(
-            "`<beat>` `spentBy` replaces `once` — the beat stays eligible until its condition \
-             holds; remove `once` (dsl 0.27.0 §5)"
-                .to_string(),
-            spent_by.span,
+            crate::beats::spent_by_once_false(spent_by.raw.trim()),
+            *span,
         ));
     }
     // dsl 0.25.0 §2: a shared spend needs a spend to share.
@@ -199,6 +265,8 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
         let once = beat.once.as_ref().map(|(o, _)| o.as_str());
         if !is_entry_ident(key) {
             diags.extend(value_faults("share", key, *span));
+        } else if beat.spent_by.is_some() {
+            diags.push(beat_attr(crate::beats::share_with_spent_by(key), *span));
         } else if once == Some("false") || (once.is_none() && !residual.contains("once")) {
             diags.push(beat_attr(crate::beats::share_without_once(key), *span));
         }
@@ -218,11 +286,7 @@ pub(crate) fn value_faults(key: &str, raw: &str, span: Span) -> Vec<Diagnostic> 
             "`<beat>` `on=\"{raw}\"` must name an occasion — an identifier \
              (`[A-Za-z][A-Za-z0-9_-]*`) (dsl 0.23.0 §4)"
         ),
-        "target" if !is_beat_target(raw) => format!(
-            "`<beat>` `target=\"{raw}\"` is malformed; a target is a dotted id \
-             `Ident (\".\" Segment)*` with `Segment ::= [A-Za-z0-9_-]+`, e.g. \
-             `npc.porter`, or `kind:<entity kind>` (dsl 0.23.0 §4, 0.26.0 §5)"
-        ),
+        "target" if !is_beat_target(raw) => crate::beats::malformed_target("`<beat>`", raw, true),
         "priority" if parse_beat_priority(raw).is_none() => {
             format!("`<beat>` `priority=\"{raw}\"` must be an integer (dsl 0.23.0 §4)")
         }

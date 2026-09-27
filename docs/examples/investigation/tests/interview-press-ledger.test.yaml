@@ -3,7 +3,7 @@ file: ../scenes/interview.lute
 choose:
   interrogate: [pressLedger, leave]
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "These numbers were bled dry. Explain them."
     - "Blake keeps surfacing. A thread worth pulling."

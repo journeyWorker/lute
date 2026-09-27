@@ -75,7 +75,8 @@ fn anchor_codes(cond: &str) -> Vec<String> {
         .collect()
 }
 
-const VOCAB: &str = "entities:\n  c: { members: [ana] }\nrelations:\n  inParty: { args: [c] }\n";
+const VOCAB: &str =
+    "entities:\n  c: { members: [ana] }\nrelations:\n  inParty: { args: [c], tier: run }\n";
 
 fn validat_scene(t_arg: &str) -> String {
     format!(
@@ -196,7 +197,7 @@ fn undeclared_anchor_path_stays_e_undeclared() {
 /// relation is `E-OBJECTIVE-UNSATISFIABLE`, a §4.2 reachability verdict
 /// orthogonal to narrative-time typing.
 const QUEST_VOCAB: &str = "entities:\n  loc: { members: [map] }\nrelations:\n  \
-                           sawClue: { args: [loc] }\nfacts:\n  - \"sawClue(map)\"\n";
+                           sawClue: { args: [loc], tier: run }\nfacts:\n  - \"sawClue(map)\"\n";
 
 /// A `kind: quest` document whose single `<objective done>` slot carries
 /// `cond` — the spec's own §5 example shape.

@@ -181,7 +181,7 @@ pub fn run_artifact(
     let mut m = run_machine(&art, &mock_set, entry, beat);
     match m.run() {
         Err(msg) => {
-            eprintln!("lute run: {msg}");
+            eprintln!("lute run: {}", lute_core_span::plain_message(&msg));
             ExitCode::from(2)
         }
         Ok(()) => {

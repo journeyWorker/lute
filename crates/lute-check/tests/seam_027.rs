@@ -64,7 +64,7 @@ fn errors(input: &CheckInput) -> Vec<(String, String)> {
 }
 
 const VOCAB: &str = "entities:\n  room: { members: [hall, office] }\n\
-                     relations:\n  canEnter: { args: [room] }\n\
+                     relations:\n  canEnter: { args: [room], tier: run }\n\
                      enums:\n  fate: { members: [alive, taken] }\n\
                      state:\n  run.fate: { type: { domain: fate }, default: alive }\n  \
                      run.hp: { type: number, default: 3 }\n";
@@ -322,13 +322,50 @@ fn a_spent_by_that_holds_from_the_start_is_reported() {
     );
 }
 
+/// T3-14 (S27-9): the start of play is every state path at its declared
+/// default — `spentBy: "!run.balloonUp"` over a `false` default, read as
+/// "repeat while", spends the beat before it can play. A condition the
+/// defaults leave false is quiet.
+#[test]
+fn a_spent_by_holding_at_the_declared_defaults_is_reported() {
+    let found = |spent: &str| -> Vec<(String, String)> {
+        let text = lore(&format!(
+            "<beat id=\"bell\" on=\"chime\" spentBy=\"{spent}\">\n  @narrator: x\n</beat>\n"
+        ));
+        check(&input(&text, &[("chime", false, "")], None))
+            .diagnostics
+            .into_iter()
+            .map(|d| (d.code, d.message))
+            .collect()
+    };
+    for held in [
+        "run.fate != 'taken'",
+        "run.hp >= 3",
+        "!(run.fate == 'taken')",
+    ] {
+        let d = found(held);
+        assert!(
+            d.iter().any(|(c, m)| c == "W-BEAT-SPENT-AT-START"
+                && m.contains("stays spent once its condition has held")),
+            "{held}: {d:?}"
+        );
+    }
+    for quiet in ["run.hp > 3", "run.fate == 'taken'"] {
+        let d = found(quiet);
+        assert!(
+            !d.iter().any(|(c, _)| c == "W-BEAT-SPENT-AT-START"),
+            "{quiet}: {d:?}"
+        );
+    }
+}
+
 /// The `W-BEAT-PRIORITY-TIE` messages of `input`'s one document.
 fn ties(input: &CheckInput) -> Vec<String> {
     let (doc, _) = lute_syntax::parse(&input.text);
     let folded = lute_check::fold_env(&doc, input).0;
     let docs = vec![(std::path::PathBuf::from("ward.lute"), doc)];
     let producers = lute_check::cast::fact_producers(&docs, &Default::default());
-    lute_check::check_project_beats(&docs, &[&folded], &producers, None)
+    lute_check::check_project_beats(&docs, &[&folded], &producers, None, &Default::default())
         .into_iter()
         .filter(|(_, d)| d.code == "W-BEAT-PRIORITY-TIE")
         .map(|(_, d)| d.message)

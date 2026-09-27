@@ -852,7 +852,7 @@ fn defaults_uses_glob_under_a_missing_directory_matches_nothing() {
 }
 
 #[test]
-fn defaults_quest_tier_takes_run_or_user() {
+fn defaults_quest_tier_takes_any_quest_tier() {
     let ok = write_manifest("qt", "defaultProfile: core\ndefaults:\n  questTier: run\n");
     let proj = lute_manifest::project::load_project(&ok).unwrap().unwrap();
     assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
@@ -860,11 +860,139 @@ fn defaults_quest_tier_takes_run_or_user() {
         proj.defaults.get("questTier").and_then(|v| v.as_str()),
         Some("run")
     );
+    // dsl 0.28.0 §5 (T2-7): a season tier, as a quest's `tier=` takes.
+    let season = write_manifest(
+        "qt-season",
+        "defaultProfile: core\ndefaults:\n  questTier: season:lanterns\n",
+    );
+    let proj = lute_manifest::project::load_project(&season)
+        .unwrap()
+        .unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
     let bad = write_manifest(
         "qt-bad",
         "defaultProfile: core\ndefaults:\n  questTier: app\n",
     );
     let proj = lute_manifest::project::load_project(&bad).unwrap().unwrap();
     assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
-    assert!(proj.defaults_diags[0].message.contains("`run` or `user`"));
+    assert!(proj.defaults_diags[0]
+        .message
+        .contains("`run`, `user` or `season:<name>`"));
+}
+
+/// A refused `defaults:` value says what it most likely meant: a quest
+/// tier's legal spelling, a bare season name as `season:<name>`, and a
+/// season name in the legacy `season:` (the episode number) how a scene is
+/// tied to a season instead.
+#[test]
+fn defaults_value_errors_name_the_meant_spelling() {
+    let message = |name: &str, body: &str| {
+        let dir = write_manifest(
+            name,
+            &format!("defaultProfile: core\ndefaults:\n  {body}\n"),
+        );
+        let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+        assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
+        proj.defaults_diags[0].message.clone()
+    };
+    let m = message("qt-case", "questTier: Run");
+    assert!(m.ends_with("did you mean `run`?"), "{m}");
+    let m = message("qt-bare-season", "questTier: storm");
+    assert!(m.contains("write `season:storm`"), "{m}");
+    let m = message("legacy-season", "season: lanterns");
+    assert!(
+        m.contains("legacy episode number") && m.contains("`once: season:lanterns`"),
+        "{m}"
+    );
+}
+
+/// Every key `lute.project.yaml` does not define — at the top level, in a
+/// profile, in `identity:` — is `E-MANIFEST-KEY` at the key itself, names
+/// the layer that owns it or the key most likely meant, and is dropped so
+/// the rest of the manifest still loads.
+#[test]
+fn manifest_unknown_keys_are_located_and_name_what_was_meant() {
+    let body = "defaultProfile: core\nterminal: \"user.done\"\nprofiels: {}\nsequnce: []\n\
+                profiles:\n  core:\n    plugins: {}\n    plugin: {}\nidentity:\n  lineID: x\n";
+    let dir = write_manifest("manifest-keys", body);
+    let proj = load_project(&dir).unwrap().unwrap();
+    let got: Vec<(&str, (usize, usize), &str)> = proj
+        .key_diags
+        .iter()
+        .map(|d| {
+            assert_eq!(d.code, "E-MANIFEST-KEY", "{d:?}");
+            let at = d.span.clone().expect("an unknown manifest key is located");
+            (
+                &body[at.clone()],
+                lute_manifest::yaml_text::line_col(body, at.start),
+                d.message.as_str(),
+            )
+        })
+        .collect();
+    let find = |key: &str| {
+        got.iter()
+            .find(|(k, ..)| *k == key)
+            .unwrap_or_else(|| panic!("no E-MANIFEST-KEY for `{key}`: {got:?}"))
+    };
+    assert_eq!(got.len(), 5, "{got:?}");
+    let (_, at, m) = find("terminal");
+    assert_eq!(*at, (2, 1));
+    assert!(m.contains("belongs in a schema"), "{m}");
+    let (_, at, m) = find("profiels");
+    assert_eq!(*at, (3, 1));
+    assert!(m.contains("did you mean `profiles`?"), "{m}");
+    // The retired `sequence:` is never suggested: its typo names `chapters:`.
+    let (_, _, m) = find("sequnce");
+    assert!(
+        m.contains("`chapters:`") && !m.contains("`sequence`"),
+        "{m}"
+    );
+    let (_, at, m) = find("plugin");
+    assert_eq!(*at, (8, 5));
+    assert!(m.contains("did you mean `plugins`?"), "{m}");
+    let (_, at, m) = find("lineID");
+    assert_eq!(*at, (10, 3));
+    assert!(m.contains("did you mean `lineId`?"), "{m}");
+    // The rest still loaded.
+    assert_eq!(proj.graph.default_profile, "core");
+    fs::remove_dir_all(&dir).ok();
+}
+
+/// A manifest that cannot be read as one fails the load with a single
+/// `E-MANIFEST` at `path:line:col`, in plain words — never the YAML or
+/// serde library's sentence or a Rust type name.
+#[test]
+fn unreadable_manifest_is_one_located_e_manifest_in_plain_words() {
+    let refusal = |tag: &str, body: &str| {
+        let dir = write_manifest(tag, body);
+        let e = load_project(&dir).expect_err("the manifest must not load");
+        fs::remove_dir_all(&dir).ok();
+        let tail = e
+            .split_once("lute.project.yaml:")
+            .unwrap_or_else(|| panic!("names the file: {e}"))
+            .1
+            .to_string();
+        assert_eq!(tail.matches("[E-MANIFEST]").count(), 1, "{e}");
+        for leak in [
+            "invalid type",
+            "struct ",
+            "Raw",
+            "mapping values are not allowed",
+        ] {
+            assert!(!tail.contains(leak), "library text leaked: {e}");
+        }
+        tail
+    };
+    let e = refusal(
+        "colon-value",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ncatalogDir: data: x\n",
+    );
+    assert!(e.starts_with("5:13: error [E-MANIFEST]"), "{e}");
+    assert!(e.contains("`catalogDir: \"data: x\"`"), "{e}");
+    let e = refusal("no-default", "profiles:\n  core:\n    plugins: {}\n");
+    assert!(e.contains("needs `defaultProfile:`"), "{e}");
+    let e = refusal("not-mapping", "- core\n- other\n");
+    assert!(e.contains("must be a mapping"), "{e}");
+    let e = refusal("wrong-shape", "defaultProfile: core\nprofiles: [core]\n");
+    assert!(e.contains("wrong shape"), "{e}");
 }

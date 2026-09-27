@@ -32,6 +32,89 @@ pub struct DayRaise {
     pub quests: Vec<QuestAdvance>,
 }
 
+/// The positions an `advance:` stood at on its way, strictly between where
+/// it started and where it stopped, at which the clock's `raise.slot`
+/// occasion was not raised — it is raised once, where the clock stops.
+/// `beats`: how many beats answer that occasion.
+pub struct PassedRaise {
+    pub occasion: String,
+    pub at: Vec<PassedAt>,
+    pub beats: usize,
+}
+
+/// One position a [`PassedRaise`] names: its day and slot (`None` on a
+/// clock without slots).
+pub struct PassedAt {
+    pub day: i64,
+    pub slot: Option<String>,
+}
+
+/// The positions strictly between `from` and `to` the clock stood at: every
+/// slot on the way, except that an `advance: day` sleeps through the rest
+/// of its day and stands only at the next day's first slot.
+fn passed_positions(
+    clock: &lute_manifest::clock::ClockDecl,
+    by: lute_manifest::clock::Advance,
+    from: lute_manifest::clock::ClockAt,
+    to: lute_manifest::clock::ClockAt,
+) -> Vec<lute_manifest::clock::ClockAt> {
+    use lute_manifest::clock::{Advance, ClockAt};
+    let mut out = Vec::new();
+    let mut at = from;
+    while at < to {
+        at = if by == Advance::Day && at.day == from.day {
+            ClockAt {
+                day: at.day + 1,
+                slot: 0,
+            }
+        } else {
+            clock.advance(at, Advance::Slots(1))
+        };
+        if at < to {
+            out.push(at);
+        }
+    }
+    out
+}
+
+/// The [`PassedRaise`] of an advance from `from` to `to`, when the clock
+/// declares a `raise.slot` occasion and the advance passed a position.
+fn passed_raise(
+    p: &ExecProject,
+    clock: &lute_manifest::clock::ClockDecl,
+    by: lute_manifest::clock::Advance,
+    raise: &lute_manifest::clock::RaiseMoments,
+    from: lute_manifest::clock::ClockAt,
+    to: lute_manifest::clock::ClockAt,
+) -> Option<PassedRaise> {
+    let occasion = raise.slot.as_ref()?;
+    let at: Vec<PassedAt> = passed_positions(clock, by, from, to)
+        .into_iter()
+        .map(|at| PassedAt {
+            day: at.day,
+            slot: clock
+                .slot
+                .as_ref()
+                .and(clock.slot_name(at.slot))
+                .map(str::to_string),
+        })
+        .collect();
+    if at.is_empty() {
+        return None;
+    }
+    let beats = p
+        .index
+        .beats
+        .iter()
+        .filter(|b| b.answers(occasion, None).is_some())
+        .count();
+    Some(PassedRaise {
+        occasion: occasion.clone(),
+        at,
+        beats,
+    })
+}
+
 /// dsl 0.24.0 §1: move the clock to `to`, writing its day (and slot) paths
 /// where they change; the `set` records.
 pub fn move_clock(
@@ -187,6 +270,7 @@ pub fn run_advance(
             raised,
             ended,
             closed,
+            passed: None,
         }
     };
     let Some(from) = clock_at(p, w) else {
@@ -240,8 +324,9 @@ pub fn run_advance(
     // advance once it ended — or from past it (an `engine:` write moved the
     // day on) — is a usage error.
     let last = clock.last_at();
-    if let Some(end) = last.filter(|end| w.clock_ended || from > *end) {
-        let why = if w.clock_ended {
+    let ended = crate::clock::ended(&w.state);
+    if let Some(end) = last.filter(|end| ended || from > *end) {
+        let why = if ended {
             "the clock ended".to_string()
         } else {
             format!("the clock stands at {}", clock.describe(from))
@@ -380,7 +465,7 @@ pub fn run_advance(
     // (never its `raise.slot`) and stops; the step's `engine:` writes land
     // after it, where the clock stays.
     if ends && stop.is_none() {
-        w.clock_ended = true;
+        crate::clock::set_ended(clock, &mut w.state, true);
         if let Some(end) = &raise.day_end {
             let (s, halt) = settle_before(p, w, Some(end));
             settled.extend(s);
@@ -433,18 +518,18 @@ pub fn run_advance(
             stop = halt;
         }
     }
-    (
-        body(
-            clock.describe(from),
-            clock.describe(at),
-            writes,
-            settled,
-            days,
-            raised,
-            ends,
-            closed,
-        ),
-        quests,
-        stop,
-    )
+    let mut out = body(
+        clock.describe(from),
+        clock.describe(at),
+        writes,
+        settled,
+        days,
+        raised,
+        ends,
+        closed,
+    );
+    if let StepBody::Advance { passed, .. } = &mut out {
+        *passed = passed_raise(p, clock, by, raise, from, at);
+    }
+    (out, quests, stop)
 }

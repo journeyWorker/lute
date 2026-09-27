@@ -170,6 +170,11 @@ impl Edge {
 /// during traversal).
 struct ParsedDoc {
     state: BTreeMap<String, StateDecl>,
+    /// dsl 0.28.0 (T3-1): the state paths whose own row this doc reported
+    /// ([`StateSchema::faulty`]).
+    faulty: BTreeSet<String>,
+    /// T3-1: this doc wrote a `clock:` that was rejected.
+    clock_rejected: bool,
     defs: BTreeMap<String, serde_yaml::Value>,
     /// Project `enums:`/`entities:` domains, ALREADY fused the same way
     /// `TypedMeta::domains` fuses them (entities win a same-doc name
@@ -195,6 +200,10 @@ struct ParsedDoc {
     rules: Vec<RuleDecl>,
     /// dsl 0.24.0 §3: this doc's `per:` state families.
     state_index: BTreeMap<String, String>,
+    /// dsl 0.28.0: this doc's `per:` families over a kind it does not
+    /// declare, each with its key's place in this file — expanded once every
+    /// reachable schema's kinds are merged.
+    per_pending: Vec<(crate::meta::PendingPer, crate::rel_schema::DeclOrigin)>,
     /// dsl 0.23.0 §7: this schema's `cast:` members.
     cast: Vec<lute_manifest::schema::CastMember>,
     /// dsl 0.24.0 §1: this schema's `clock:`.
@@ -334,8 +343,9 @@ fn anchor_at(diags: &mut [Diagnostic], at: Span) {
 /// `base_dir` is the importing document's directory; each `uses`/`extends` entry
 /// is a relative path. `at` is the importing document's frontmatter span, used
 /// for every diagnostic. TOTAL: any I/O/parse/cycle/dup failure yields a
-/// diagnostic, never a panic; the result is INDEPENDENT of the order of the
-/// `uses`/`extends` entries.
+/// diagnostic, never a panic; the merged schema is INDEPENDENT of the order
+/// of the `uses`/`extends` entries (a same-level duplicate is reported at the
+/// later import in that order).
 pub fn resolve_imports(
     base_dir: &Path,
     uses: &[String],
@@ -356,11 +366,14 @@ pub fn resolve_imports(
     let mut dq: VecDeque<(usize, PathBuf)> = VecDeque::new();
 
     // Seed from the root's own edges (the root is virtual, at depth 0).
+    let mut roots = Vec::new();
     for canon in resolve_edges(base_dir, uses, Edge::Uses, &mut diags, at) {
-        relax(canon, 0, true, &mut dist, &mut dq);
+        relax(canon.clone(), 0, true, &mut dist, &mut dq);
+        roots.push(canon);
     }
     for canon in resolve_edges(base_dir, extends, Edge::Extends, &mut diags, at) {
-        relax(canon, 1, false, &mut dist, &mut dq);
+        relax(canon.clone(), 1, false, &mut dist, &mut dq);
+        roots.push(canon);
     }
 
     while let Some((d, canon)) = dq.pop_front() {
@@ -394,25 +407,42 @@ pub fn resolve_imports(
 
     // Directed-cycle detection over the reachable subgraph (DFS 3-coloring).
     detect_cycles(&adj, &mut diags, at);
+    let order = import_order(&roots, &adj);
 
     // 0.3.0 T7: structural relation-decl validation (`E-ENTITY-KIND-SHAPE`,
     // `E-KIND-NAME-CLASH`/`E-RELATION-DUP` same-block dups,
     // `E-RELATION-EMPTY`/`-DOMAIN`, `E-DERIVE-TIER`,
-    // `E-RELATION-RESERVED-WRITE`, `E-RELATION-RESERVED-NAME`) runs per
+    // `E-RELATION-RESERVED-WRITE`, `E-RESERVED-NAME`) runs per
     // IMPORTED file too — so a malformed decl surfaces at every document that
     // imports it, not only when that file is checked directly — reported at
     // the declaration's own line in that file (dsl 0.24 T3-6); the project
     // roll-up folds the importers' identical copies into one.
     for (canon, doc) in &parsed {
+        // A name only an `add:` writes has no `kinds` origin; the `add:`
+        // kind's own key is its home.
         let span_of = |name: &str| {
             doc.origins
                 .relations
                 .get(name)
                 .or_else(|| doc.origins.kinds.get(name))
+                .or_else(|| {
+                    doc.kind_adds
+                        .iter()
+                        .find(|a| a.kind == name)
+                        .and_then(|a| a.origin.as_ref())
+                })
                 .map_or(at, |o| o.span)
         };
-        for d in crate::rel_schema::validate_rel_decls(&doc.rel_kinds, &doc.rel_relations, &span_of)
-        {
+        let key_at = |kind: &str, path: &[&str]| {
+            let key = crate::rel_schema::kind_key_origin(kind, path);
+            doc.origins.kind_keys.get(&key).map(|o| o.span)
+        };
+        for d in crate::rel_schema::validate_rel_decls(
+            &doc.rel_kinds,
+            &doc.rel_relations,
+            &span_of,
+            &key_at,
+        ) {
             let origin = crate::rel_schema::DeclOrigin {
                 file: canon.clone(),
                 span: d.span,
@@ -483,11 +513,15 @@ pub fn resolve_imports(
 
     let mut state = StateSchema::default();
     let mut state_overridable = BTreeSet::new();
+    // State paths two same-level imports declare differently: which type
+    // the documents meant is unknown, so what follows from it is not
+    // reported beside the duplicate.
+    let mut clashing = BTreeSet::new();
     for (path, entries) in state_by_name {
         // A depth level with >= 2 distinct files is a same-level collision — a
         // `uses` peer dup or a base-base dup, ALWAYS reported (never masked by a
         // closer override, which lives at a different depth).
-        emit_level_dups(
+        let levels = emit_level_dups(
             "E-USES-DUP-STATE",
             "state path",
             &path,
@@ -498,9 +532,17 @@ pub fn resolve_imports(
                     .and_then(|d| d.origins.state.get(&path))
                     .cloned()
             },
+            &order,
             &mut diags,
             at,
         );
+        if levels.iter().any(|level| {
+            let mut decls = entries.iter().filter(|(_, d, _)| d == level);
+            let first = decls.next().map(|(_, _, s)| s);
+            decls.any(|(_, _, s)| Some(s) != first)
+        }) {
+            clashing.insert(path.clone());
+        }
         let Some((winner, winner_depth)) = pick_winner(&entries) else {
             continue;
         };
@@ -523,6 +565,12 @@ pub fn resolve_imports(
         }
         state.decls.insert(path, winner);
     }
+    state.faulty = parsed
+        .values()
+        .flat_map(|d| d.faulty.iter().cloned())
+        .collect();
+    state.faulty.extend(clashing);
+    state.clock_rejected = parsed.values().any(|d| d.clock_rejected);
 
     let mut defs = BTreeMap::new();
     let mut def_origins = BTreeMap::new();
@@ -538,6 +586,7 @@ pub fn resolve_imports(
                     .and_then(|d| d.origins.defs.get(&name))
                     .cloned()
             },
+            &order,
             &mut diags,
             at,
         );
@@ -571,6 +620,7 @@ pub fn resolve_imports(
                     .and_then(|d| d.origins.kinds.get(&name))
                     .cloned()
             },
+            &order,
             &mut diags,
             at,
         );
@@ -627,6 +677,7 @@ pub fn resolve_imports(
                     .and_then(|d| d.origins.relations.get(&name))
                     .cloned()
             },
+            &order,
             &mut diags,
             at,
         );
@@ -667,6 +718,7 @@ pub fn resolve_imports(
                     .and_then(|d| d.origins.domains.get(&name))
                     .cloned()
             },
+            &order,
             &mut diags,
             at,
         );
@@ -718,10 +770,24 @@ pub fn resolve_imports(
     rule_entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
     let facts: Vec<FactDecl> = fact_entries.into_iter().map(|(_, _, _, f)| f).collect();
     let rules: Vec<RuleDecl> = rule_entries.into_iter().map(|(_, _, _, r)| r).collect();
-    let indexed_state: BTreeMap<String, String> = parsed
+    let mut indexed_state: BTreeMap<String, String> = parsed
         .values()
         .flat_map(|doc| doc.state_index.iter().map(|(p, k)| (p.clone(), k.clone())))
         .collect();
+    // dsl 0.28.0: a `per:` over a kind another reachable schema declares.
+    for doc in parsed.values() {
+        for (pending, origin) in &doc.per_pending {
+            let (decls, index, faults) =
+                crate::meta::expand_per_pending(std::slice::from_ref(pending), &implied_kinds);
+            for (path, decl) in decls {
+                state.decls.entry(path).or_insert(decl);
+            }
+            indexed_state.extend(index);
+            for d in faults {
+                diags.push(crate::rel_schema::at_origin(d, Some(origin)));
+            }
+        }
+    }
 
     // Every `<quest id>` reachable via the import graph (dsl 0.2.0 §6.3): unlike
     // `state`/`defs` above, quest-id uniqueness is NOT depth-scoped (no
@@ -832,13 +898,29 @@ pub fn resolve_imports(
             (&mut origins.state, &doc.origins.state),
             (&mut origins.members, &doc.origins.members),
             (&mut origins.cast, &doc.origins.cast),
-            (&mut origins.labels, &doc.origins.labels),
+            (&mut origins.kind_keys, &doc.origins.kind_keys),
+            (&mut origins.enum_labels, &doc.origins.enum_labels),
         ] {
             for (k, v) in src {
                 dst.entry(k.clone()).or_insert_with(|| v.clone());
             }
         }
         unparsed_heads.extend(doc.failed_heads.iter().cloned());
+    }
+    // Where each imported `add:` member is written — the first `add:` of it
+    // in file order, like `apply_kind_adds` keeps.
+    for add in &kind_adds {
+        let Some(origin) = &add.origin else { continue };
+        for (m, span) in add.members.iter().zip(&add.member_spans) {
+            let Some(span) = span else { continue };
+            origins
+                .added
+                .entry(crate::rel_schema::member_origin_key(&add.kind, m))
+                .or_insert_with(|| crate::rel_schema::DeclOrigin {
+                    file: origin.file.clone(),
+                    span: *span,
+                });
+        }
     }
 
     SchemaImports {
@@ -984,7 +1066,19 @@ pub fn merge_domains(
         if !kind_derived {
             for issue in lute_manifest::validate::validate_domain(name, dom) {
                 let d = uses_diag(issue.code(), issue.message(), at);
-                diags.push(crate::rel_schema::at_origin(d, origin));
+                // A label for a non-member is the label key's problem.
+                let label = match (&issue, origin) {
+                    (
+                        lute_manifest::validate::DomainIssue::LabelNotMember { value, .. },
+                        Some(_),
+                    ) => imports
+                        .rel
+                        .origins
+                        .enum_labels
+                        .get(&crate::rel_schema::member_origin_key(name, value)),
+                    _ => None,
+                };
+                diags.push(crate::rel_schema::at_origin(d, label.or(origin)));
             }
         } else if let Some(key) = missing_slot_semantics_key(name) {
             diags.push(uses_diag(
@@ -1115,6 +1209,8 @@ fn read_and_parse(
 ) -> (ParsedDoc, Vec<String>, Vec<String>) {
     let empty = ParsedDoc {
         state: BTreeMap::new(),
+        faulty: BTreeSet::new(),
+        clock_rejected: false,
         defs: BTreeMap::new(),
         domains: BTreeMap::new(),
         quest_ids: BTreeSet::new(),
@@ -1128,6 +1224,7 @@ fn read_and_parse(
         facts: Vec::new(),
         rules: Vec::new(),
         state_index: BTreeMap::new(),
+        per_pending: Vec::new(),
         origins: Default::default(),
         failed_heads: BTreeSet::new(),
         kind_adds: Vec::new(),
@@ -1280,17 +1377,53 @@ fn read_and_parse(
                 Some((c.id.clone(), here(span)))
             })
             .collect(),
-        labels: tm
-            .rel_kinds
-            .kinds
-            .keys()
-            .chain(tm.rel_kinds.add_labels.keys())
-            .flat_map(|k| {
-                crate::rel_schema::kind_label_spans(&meta, k)
-                    .into_iter()
-                    .map(|(m, span)| (crate::rel_schema::member_origin_key(k, &m), here(span)))
+        kind_keys: {
+            let mut paths: Vec<(&str, Vec<&str>)> = Vec::new();
+            for (kind, labels) in tm
+                .rel_kinds
+                .kinds
+                .iter()
+                .map(|(k, d)| (k, d.labels.keys().collect::<Vec<_>>()))
+                .chain(
+                    tm.rel_kinds
+                        .add_labels
+                        .iter()
+                        .map(|(k, l)| (k, l.keys().collect::<Vec<_>>())),
+                )
+            {
+                paths.push((kind.as_str(), vec!["labels"]));
+                paths.extend(
+                    labels
+                        .into_iter()
+                        .map(|m| (kind.as_str(), vec!["labels", m.as_str()])),
+                );
+            }
+            for (kind, key) in &tm.rel_kinds.unknown_keys {
+                paths.push((kind.as_str(), vec![key.as_str()]));
+            }
+            paths
+                .into_iter()
+                .filter_map(|(kind, path)| {
+                    let span = crate::rel_schema::kind_key_span(&meta, kind, &path)?;
+                    Some((crate::rel_schema::kind_key_origin(kind, &path), here(span)))
+                })
+                .collect()
+        },
+        enum_labels: tm
+            .domains
+            .iter()
+            .filter(|(n, _)| !tm.rel_kinds.kinds.contains_key(*n))
+            .flat_map(|(n, d)| d.labels.keys().map(move |m| (n, m)))
+            .map(|(n, m)| {
+                let span = crate::meta::meta_path_span(
+                    &meta,
+                    &["enums", n.as_str(), "labels", m.as_str()],
+                );
+                (crate::rel_schema::member_origin_key(n, m), here(span))
             })
             .collect(),
+        // Filled once every file's `add:`s are known (`resolve_imports`).
+        added: BTreeMap::new(),
     };
     // dsl 0.26.0 §2.2: a member listed twice in one of this file's kinds or
     // enums, reported at its own line (the importers' copies fold).
@@ -1326,6 +1459,8 @@ fn read_and_parse(
                 .unwrap_or_default(),
         })
         .collect();
+    let faulty = tm.state.faulty;
+    let clock_rejected = tm.state.clock_rejected;
     let state = tm.state.decls;
     let defs = tm.defs;
     let domains = tm.domains;
@@ -1334,6 +1469,14 @@ fn read_and_parse(
     let facts = tm.rel_facts;
     let rules = tm.rel_rules;
     let state_index = tm.state_index;
+    let per_pending = tm
+        .per_pending
+        .into_iter()
+        .map(|p| {
+            let origin = here(p.span);
+            (p, origin)
+        })
+        .collect();
     let cast = tm.cast;
     let clock = tm.clock.map(|c| (c, key("clock").span));
     let terminal = tm.terminal.map(|t| (t.raw, here(t.span).span));
@@ -1343,6 +1486,8 @@ fn read_and_parse(
     (
         ParsedDoc {
             state,
+            faulty,
+            clock_rejected,
             defs,
             domains,
             quest_ids,
@@ -1352,6 +1497,7 @@ fn read_and_parse(
             facts,
             rules,
             state_index,
+            per_pending,
             cast,
             clock,
             terminal,
@@ -1366,34 +1512,44 @@ fn read_and_parse(
 }
 
 /// Report `E-USES-DUP-*`/`E-KIND-NAME-CLASH` for every depth level at which
-/// >= 2 DISTINCT files declare `name`. Deterministic: levels ascend, and the
-/// > two named files are the byte-sorted-first pair. dsl 0.26 §2.7: reported
-/// at the second file's declaration line ([`crate::rel_schema::at_origin`]),
+/// >= 2 DISTINCT files declare `name`, and return those levels. The two named
+/// files are the first pair in import `order` ([`import_order`]); dsl 0.26
+/// §2.7: reported at the later one's declaration line
+/// ([`crate::rel_schema::at_origin`]), naming the earlier by its
+/// project-relative path and line ([`crate::rel_schema::origin_display`]),
 /// so the project roll-up folds every importer's copy into one report;
 /// `origin_of` locates `name` in a file (`None` keeps the importer anchor).
+#[allow(clippy::too_many_arguments)]
 fn emit_level_dups<T>(
     code: &str,
     noun: &str,
     name: &str,
     entries: &[(PathBuf, usize, T)],
     origin_of: &dyn Fn(&Path) -> Option<crate::rel_schema::DeclOrigin>,
+    order: &BTreeMap<PathBuf, usize>,
     diags: &mut Vec<Diagnostic>,
     at: Span,
-) {
+) -> Vec<usize> {
     let mut by_depth: BTreeMap<usize, Vec<&PathBuf>> = BTreeMap::new();
     for (file, depth, _) in entries {
         by_depth.entry(*depth).or_default().push(file);
     }
-    for (_depth, mut files) in by_depth {
-        files.sort();
+    let mut levels = Vec::new();
+    for (depth, mut files) in by_depth {
+        files.sort_by_key(|f| (order.get(*f).copied().unwrap_or(usize::MAX), *f));
         files.dedup();
         if files.len() >= 2 {
+            let first = origin_of(files[0]);
+            let line = first
+                .as_ref()
+                .filter(|o| o.span.line > 0)
+                .map_or(String::new(), |o| format!(":{}", o.span.line));
             let d = uses_diag(
                 code,
                 format!(
-                    "{noun} `{name}` is declared by two imports (`{}` and `{}`)",
-                    files[0].display(),
-                    files[1].display()
+                    "{noun} `{name}` is declared by two imports (`{}{line}` and `{}`); keep one",
+                    crate::rel_schema::origin_display(files[0]),
+                    crate::rel_schema::origin_display(files[1]),
                 ),
                 at,
             );
@@ -1401,8 +1557,31 @@ fn emit_level_dups<T>(
                 d,
                 origin_of(files[1]).as_ref(),
             ));
+            levels.push(depth);
         }
     }
+    levels
+}
+
+/// Each imported file's place in import order: a preorder walk of the
+/// `uses:`/`extends:` lists as written, from the importing document's own
+/// (`roots`), each file at its first appearance.
+fn import_order(
+    roots: &[PathBuf],
+    adj: &BTreeMap<PathBuf, Vec<(PathBuf, Edge)>>,
+) -> BTreeMap<PathBuf, usize> {
+    let mut order = BTreeMap::new();
+    let mut stack: Vec<&PathBuf> = roots.iter().rev().collect();
+    while let Some(file) = stack.pop() {
+        if order.contains_key(file) {
+            continue;
+        }
+        order.insert(file.clone(), order.len());
+        if let Some(out) = adj.get(file) {
+            stack.extend(out.iter().rev().map(|(f, _)| f));
+        }
+    }
+    order
 }
 
 /// D5's `extends`-growth check for an entity kind or `enums:` re-declaration:

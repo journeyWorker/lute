@@ -288,45 +288,82 @@ fn a_plural_hint_needs_two_forms() {
     );
     let t = check_codes(&dir);
     assert!(
-        t.contains("[E-CEL-PROFILE]") && t.contains("needs a singular and a plural form"),
+        t.contains("[E-PLURAL-FORM]") && t.contains("needs a singular and a plural form"),
         "{t}"
     );
     assert!(t.contains("[E-REF-TYPE]"), "a plural of a non-number: {t}");
 }
 
-/// G-16: a label for a cast member with a `name:` is never shown — text
-/// renders the cast name — so `check-project` warns once, at the label, however
-/// many documents import the schema. A label equal to the cast name, and a
-/// label for a member outside the cast, are fine.
+/// A kind member that is also a cast id renders the kind's label in text —
+/// `{{occasion.target}}` in play and trace alike — not the cast `name:`
+/// (the speaker head of a line is where the cast name belongs), and
+/// `check-project` has nothing to warn about.
 #[test]
-fn a_label_a_cast_name_hides_is_warned_once_at_the_label() {
+fn a_kind_label_wins_over_a_cast_name_in_text() {
     let dir = project(
-        "castshadow",
-        "  room:\n    members: [chapel, crypt]\n    labels: { chapel: the chapel, crypt: Crypt, \
-         childrensWard: \"the children's ward\" }\n  \
-         ward:\n    subsetOf: room\n    members: [childrensWard]\n\
-         cast:\n  chapel: { name: Old Chapel }\n  crypt: { name: Crypt }\n",
-    );
-    write(
-        &dir,
-        "lore/more.lute",
-        "---\nkind: lore\nid: more\nuses: ../world.schema.yaml\n---\n\n\
-         <entry id=\"note\">\n@narrator: {{run.last}}.\n</entry>\n",
+        "castlabel",
+        &format!(
+            "{ROOMS}cast:\n  childrensWard: {{ name: Ward }}\n  chapel: {{ name: Old Chapel }}\n"
+        ),
     );
     let out = run(&["check-project", dir.to_str().unwrap()]);
     let t = text(&out);
-    assert_eq!(out.status.code(), Some(0), "a warning: {t}");
-    let warned: Vec<&str> = t
-        .lines()
-        .filter(|l| l.contains("[W-LABEL-CAST-SHADOWED]"))
-        .collect();
-    assert_eq!(warned.len(), 1, "{t}");
-    assert!(warned[0].contains("world.schema.yaml:8:15:"), "{t}");
+    assert_eq!(out.status.code(), Some(0), "{t}");
+    assert!(!t.contains("warning ["), "{t}");
+    let script = write(
+        &dir,
+        "s.play.yaml",
+        "steps:\n  - occasion: visit\n    target: place.childrensWard\n",
+    );
+    let out = run(&[
+        "play",
+        dir.to_str().unwrap(),
+        "--script",
+        script.to_str().unwrap(),
+        "--json",
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        lines(&v["steps"][0])[0],
+        "You step into the children's ward, past the chapel and the chapel.",
+        "{v}"
+    );
+    let out = run(&[
+        "trace",
+        dir.join("lore/rooms.lute").to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+        "--beat",
+        "enter",
+        "--state",
+        "occasion.target=childrensWard",
+    ]);
+    let t = text(&out);
+    assert!(t.contains("You step into the children's ward,"), "{t}");
+    // A kind-typed component argument renders the label too.
+    write(
+        &dir,
+        "components/tour.component.lute",
+        "---\ncomponent: tour\nparams:\n  place: { entity: ward }\n  hall: { domain: room }\n\
+         uses: ../world.schema.yaml\n---\n\n## Tour\n\n@narrator: From {{@hall}} into {{@place}}.\n",
+    );
+    write(
+        &dir,
+        "scenes/tour.lute",
+        "---\nkind: scene\nid: tour\nuses: ../world.schema.yaml\n\
+         components: [../components/tour.component.lute]\n---\n\n## S\n\n\
+         ::use{component=\"tour\" place=\"childrensWard\" hall=\"chapel\"}\n",
+    );
+    let out = run(&[
+        "trace",
+        dir.join("scenes/tour.lute").to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
+    let t = text(&out);
     assert!(
-        warned[0].contains(
-            "label `the chapel` for `chapel` is never shown: `chapel` is a cast member, whose \
-             `name:` (`Old Chapel`) is what text renders"
-        ),
+        t.contains("From the chapel into the children's ward."),
         "{t}"
     );
 }

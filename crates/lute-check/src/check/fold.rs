@@ -133,8 +133,13 @@ pub fn fold_env(
                 if d.members.len() != ms.len() {
                     d.members = ms.clone();
                 }
-                if d.labels != decl.labels {
-                    d.labels = decl.labels.clone();
+                let labels: std::collections::BTreeMap<String, String> = decl
+                    .labels
+                    .iter()
+                    .map(|(m, l)| (m.clone(), l.text.clone()))
+                    .collect();
+                if d.labels != labels {
+                    d.labels = labels;
                 }
             }
         }
@@ -210,6 +215,16 @@ pub fn fold_env(
             }
         }
     }
+    schema.faulty.extend(typed.state.faulty.iter().cloned());
+    schema.clock_rejected |= typed.state.clock_rejected;
+    // dsl 0.28.0: an inline `per:` over a kind an imported schema declares.
+    let (per_decls, per_index, per_faults) =
+        crate::meta::expand_per_pending(&typed.per_pending, &vocab.kinds);
+    for (path, decl) in per_decls {
+        schema.decls.entry(path).or_insert(decl);
+    }
+    vocab.indexed_state.extend(per_index);
+    fold_diags.extend(per_faults);
     let mut seen_branches = std::collections::BTreeSet::new();
     fold_branches(doc, &mut schema, &mut seen_branches, &mut fold_diags);
 
@@ -370,12 +385,29 @@ pub fn fold_env(
         // `clock.index` and day path, range over known whole numbers.
         let ranges = crate::clock::int_ranges(clock, &schema);
         schema.int_ranges.extend(ranges);
+        // dsl 0.28.0 (T3-40): a clock that ends on its first day narrows
+        // its slot path to the slots it reaches.
+        let members = crate::clock::slot_members(clock, &schema);
+        schema.clock_members.extend(members);
+        // `{ domain: clock.slot }` / `{ domain: clock.weekdayLabel }` name
+        // the clock's own enums.
+        for (name, domain) in crate::clock::clock_domains(clock) {
+            domains.entry(name).or_insert(domain);
+        }
+        schema.clock = Some(clock.clone());
     }
-    fold_diags.extend(crate::clock::check_once_needs_clock(
-        doc,
-        typed.beat.as_ref(),
-        clock.as_ref(),
-    ));
+    // T3-1: a written `clock:` that was rejected is the cause; what needs a
+    // clock is not judged against its absence.
+    if clock.is_some() {
+        schema.clock_rejected = false;
+    }
+    if !schema.clock_rejected {
+        fold_diags.extend(crate::clock::check_once_needs_clock(
+            doc,
+            typed.beat.as_ref(),
+            clock.as_ref(),
+        ));
+    }
     // dsl 0.27.0 §5: the project's seasons — its imports' and, for a schema
     // document, its own — and every use of one.
     let season_span = if typed.seasons.is_empty() {
@@ -424,6 +456,11 @@ pub fn fold_env(
         typed.beat.as_ref(),
         &seasons,
     ));
+    fold_diags.extend(crate::season::check_relation_tiers(
+        &vocab,
+        &seasons,
+        crate::meta::meta_key_span(&doc.meta, "relations"),
+    ));
     // dsl 0.21.0 §2: every entry beat's occasion against the vocabulary.
     fold_diags.extend(crate::beats::check_entry_occasions(
         &doc.entries,
@@ -434,6 +471,12 @@ pub fn fold_env(
         typed.id.as_deref(),
         &doc.beats,
         &input.snapshot.occasions,
+    ));
+    // A bundle beat id repeated, or shared with an entry of the document.
+    fold_diags.extend(crate::bundles::check_beat_ids(
+        typed.id.as_deref(),
+        &doc.entries,
+        &doc.beats,
     ));
     // dsl 0.27.0 §6: a template component's header values every use derives
     // unchanged, judged once here at the header key.
@@ -481,8 +524,10 @@ pub fn fold_env(
     }
     fold_diags.extend(payload_diags);
     // dsl 0.26.0 §5: a kind beat reads the member it was raised for as
-    // `occasion.target`, typed by the kinds the document's kind beats answer
-    // (engine-owned, always assigned while such a beat runs).
+    // `occasion.target` (engine-owned, always assigned while such a beat
+    // runs). The document's decl is typed by every kind its kind beats
+    // answer; each beat's own slots are checked with its own kind's members
+    // (`FoldedEnv::env_at`, built below).
     // dsl 0.27.0 §3: and each kind beat's own members, the scope a slot
     // binding `occasion.target` as a fact argument / family index is judged
     // over, once per member.
@@ -742,6 +787,30 @@ pub fn fold_env(
             .map(|(_, raw, _)| raw.as_str())
             .chain(typed.terminal.as_ref().map(|t| t.raw.as_str())),
     );
+    // dsl 0.28.0 (T3-45): a declared path that is also another's prefix — at
+    // this document's own `state:` key, else at the schema that declares it.
+    fold_diags.extend(crate::state_decls::check_value_prefix(
+        &schema,
+        &|path, message| {
+            let d = |span| Diagnostic {
+                code: "E-STATE-DECL".to_string(),
+                severity: Severity::Error,
+                message: message.to_string(),
+                span,
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            };
+            if typed.state.decls.contains_key(path) {
+                Some(d(crate::meta::meta_path_span(&doc.meta, &["state", path])))
+            } else {
+                let origin = input.imports.rel.origins.state.get(path)?;
+                Some(crate::rel_schema::at_origin(d(doc.meta.span), Some(origin)))
+            }
+        },
+    ));
     let env = Env {
         mode: input.mode,
         state: schema,
@@ -760,14 +829,8 @@ pub fn fold_env(
         seasons,
         occasion_scopes,
     };
+    let member_envs = member_envs(&env);
     let declared_cast = crate::cast::declared_cast(&input.snapshot, &input.imports, &typed.cast);
-    // dsl 0.27.0 §7 (G-16): a kind label a cast `name:` hides.
-    fold_diags.extend(crate::cast::check_label_shadows(
-        &input.imports.rel,
-        &typed.rel_kinds,
-        &doc.meta,
-        &declared_cast,
-    ));
     let use_lines = use_speaker_lines(doc, &input.components);
     (
         FoldedEnv {
@@ -779,10 +842,40 @@ pub fn fold_env(
             occasions: input.snapshot.occasions.clone(),
             cast: declared_cast,
             use_lines,
+            member_envs,
         },
         fold_diags,
         state_merge_diags,
     )
+}
+
+/// One environment per distinct member list the document's kind and `for=`
+/// beats answer, each with `occasion.target` typed by that list alone —
+/// empty when they all answer the same members, whose type the document's
+/// own decl already is.
+fn member_envs(env: &Env) -> Vec<(Vec<String>, Env)> {
+    let mut lists: Vec<&Vec<String>> = Vec::new();
+    for (_, _, ms) in &env.occasion_scopes.scopes {
+        if !lists.contains(&ms) {
+            lists.push(ms);
+        }
+    }
+    if lists.len() < 2 {
+        return Vec::new();
+    }
+    lists
+        .into_iter()
+        .map(|ms| {
+            let mut scoped = env.clone();
+            let mut sorted = ms.clone();
+            sorted.sort();
+            sorted.dedup();
+            if let Some(decl) = scoped.state.decls.get_mut(crate::beats::OCCASION_TARGET) {
+                decl.ty = lute_manifest::types::Type::Enum(sorted);
+            }
+            (ms.clone(), scoped)
+        })
+        .collect()
 }
 
 /// Pre-pass: fold every `<branch>`'s and `<hub>`'s implicit recording decls
@@ -847,8 +940,8 @@ fn fold_branches_nodes(
                     schema.decls.insert(path, decl);
                 }
                 diags.extend(rec.diags);
-                for choice in &h.choices {
-                    fold_branches_nodes(&choice.body, schema, seen, diags);
+                for b in h.bodies() {
+                    fold_branches_nodes(b, schema, seen, diags);
                 }
             }
             Node::Match(m) => {
@@ -956,8 +1049,8 @@ impl SlotFold<'_> {
                     }
                 }
                 Node::Hub(h) => {
-                    for c in &h.choices {
-                        self.nodes(&c.body, bind);
+                    for b in h.bodies() {
+                        self.nodes(b, bind);
                     }
                 }
                 // Quest-only arms (dsl 0.2.0 §4, §6.4): a directive-opening slot

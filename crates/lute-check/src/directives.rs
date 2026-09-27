@@ -59,6 +59,25 @@ pub fn at_context(dir: &Directive) -> Option<Diagnostic> {
     })
 }
 
+/// `E-UNKNOWN-DIRECTIVE` for `::greet{…}` where `greet` is an imported
+/// component (round-6 T3-7): a component is played with `::use`, never
+/// called by its own name, so the message names that form. The caller
+/// recognizes the case (a tag no snapshot declares that the `components:`
+/// table holds) before the ordinary unknown-directive check.
+pub fn component_as_directive(dir: &Directive) -> Diagnostic {
+    let args = if dir.attrs.is_empty() { "" } else { " …" };
+    diag(
+        "E-UNKNOWN-DIRECTIVE",
+        Severity::Error,
+        format!(
+            "unknown directive `::{tag}` — `{tag}` is a component: play it with \
+             `::use{{component=\"{tag}\"{args}}}`, passing its params as the other attributes",
+            tag = dir.tag
+        ),
+        dir.span,
+    )
+}
+
 /// Validate a single directive against the resolved capability snapshot
 /// (dsl §7.2, plugin §8). Returns every diagnostic the directive produces; an
 /// empty vec means the directive and all its attributes are well-formed.
@@ -97,10 +116,30 @@ pub fn check_directive(
                 confidence: 50,
             });
         }
+        // Round-6 T3-60: a misspelled or foreign directive (`::goto`/`::jump`/
+        // `::divert`, a sibling of `::next`) names the directive it stands
+        // for. An inactive plugin tag is named by its fix-it instead.
+        let hint = if fixits.is_empty() {
+            let known = snapshot
+                .directives
+                .keys()
+                .map(String::as_str)
+                .chain(["use", "accept", "set", "assert", "retract"]);
+            match lute_manifest::suggest::nearest(&dir.tag, known, 2) {
+                Some(lute_manifest::core::NEXT_DIRECTIVE) => {
+                    " — did you mean `::next{to=\"…\"}`? It jumps forward to a `::mark{id=\"…\"}`"
+                        .to_string()
+                }
+                Some(near) => format!(" — did you mean `::{near}`?"),
+                None => String::new(),
+            }
+        } else {
+            String::new()
+        };
         diags.push(Diagnostic {
             code: "E-UNKNOWN-DIRECTIVE".to_string(),
             severity: Severity::Error,
-            message: format!("unknown directive `::{}`", dir.tag),
+            message: format!("unknown directive `::{}`{hint}", dir.tag),
             span: dir.span,
             layer: Layer::Staging,
             fixits,
@@ -198,12 +237,46 @@ pub fn check_directive(
                         attr.key
                     )
                 } else {
-                    format!("`::{}` has no attribute `{}`", dir.tag, attr.key)
+                    format!(
+                        "`::{}` has no attribute `{}`{}",
+                        dir.tag,
+                        attr.key,
+                        lute_manifest::suggest::did_you_mean(
+                            &attr.key,
+                            decl.attrs.iter().map(|a| a.name.as_str())
+                        )
+                    )
                 },
                 attr.span,
             ));
             continue;
         };
+        // dsl 0.28.0 §3: `attr=occasion.target` on a member-typed attribute
+        // passes the member the enclosing kind or `for=` beat runs for —
+        // judged as that literal for each member.
+        if crate::target_writes::is_target_value(&attr.value)
+            && matches!(
+                adecl.ty,
+                Type::Entity(_) | Type::Domain(_) | Type::Enum(_) | Type::EnumFromOption(_)
+            )
+        {
+            diags.extend(crate::target_writes::per_member(
+                ctx,
+                attr.value_span,
+                |m| {
+                    let mut ds = Vec::new();
+                    let member = Attr {
+                        value: AttrValue::Str(m.to_string()),
+                        ..attr.clone()
+                    };
+                    check_attr_value(
+                        &owner, adecl, &member, snapshot, providers, domains, &mut ds,
+                    );
+                    ds
+                },
+            ));
+            continue;
+        }
         check_attr_value(
             &owner, adecl, attr, snapshot, providers, domains, &mut diags,
         );
@@ -225,31 +298,112 @@ pub fn check_directive(
     if decl.effects.as_ref().is_some_and(|e| e.has_facts()) {
         diags.extend(crate::directive_facts::check_call(dir, decl, domains, ctx));
     }
+    // dsl 0.28.0 (T1-18): the state its declared `effects.writes` write,
+    // judged like a `::set` target.
+    diags.extend(crate::directive_facts::check_call_writes(dir, decl, ctx));
 
     diags
 }
 
-/// Synthetic [`AttrDecl`] for an undeclared reserved timing key, so
-/// [`check_attr_value`] type-checks an undeclared `duration`/`delay`/`wait`
-/// exactly like a directive that DID declare it would (dsl §7.5, §11.3):
-/// `duration`/`delay` are `number`, `wait` is `bool`. Returns `None` for any
-/// other key -- callers fall through to `E-UNKNOWN-ATTR` in that case. Never
-/// `required` (a directive that omits it simply gets no timing behavior; the
-/// compiler already treats an absent `wait` as non-blocking and an absent
-/// `duration`/`delay` as zero -- dsl §11.3, §11.4).
+/// dsl §7.5: the cross-cutting timing keys every directive but `::clear`
+/// takes without declaring them — `duration`/`delay` are `number`, `wait`
+/// is `bool` (dsl §11.3). Plugins may not declare them.
+pub const UNIVERSAL_TIMING_ATTRS: &[(&str, Type)] = &[
+    ("duration", Type::Number),
+    ("delay", Type::Number),
+    ("wait", Type::Bool),
+];
+
+/// Synthetic [`AttrDecl`] for an undeclared reserved timing key
+/// ([`UNIVERSAL_TIMING_ATTRS`]), so [`check_attr_value`] type-checks an
+/// undeclared `duration`/`delay`/`wait` exactly like a directive that DID
+/// declare it would. Returns `None` for any other key -- callers fall
+/// through to `E-UNKNOWN-ATTR` in that case. Never `required` (a directive
+/// that omits it simply gets no timing behavior; the compiler already treats
+/// an absent `wait` as non-blocking and an absent `duration`/`delay` as zero
+/// -- dsl §11.3, §11.4).
 fn universal_timing_decl(key: &str) -> Option<AttrDecl> {
-    let ty = match key {
-        "duration" | "delay" => Type::Number,
-        "wait" => Type::Bool,
-        _ => return None,
-    };
+    let (name, ty) = UNIVERSAL_TIMING_ATTRS.iter().find(|(k, _)| *k == key)?;
     Some(AttrDecl {
-        name: key.to_string(),
+        name: (*name).to_string(),
         required: false,
-        ty,
+        ty: ty.clone(),
         default: None,
     })
 }
+
+/// One directive of the language itself (see [`LANGUAGE_DIRECTIVES`]).
+/// `syntax` is `None` for a `lute.core` directive: its attributes come from
+/// its declaration in the capability snapshot.
+#[derive(Clone, Copy, Debug)]
+pub struct LanguageDirective {
+    pub name: &'static str,
+    pub syntax: Option<&'static str>,
+    pub meaning: &'static str,
+}
+
+/// The built-in directives: the ones the walker recognizes by tag before any
+/// capability lookup (`::set`/`::assert`/`::retract` parse to their own
+/// nodes; `::use`, `::accept`, `::body` are dispatched in the walker), and
+/// the `lute.core` control-flow directives every project has (`::next`,
+/// `::mark`, `::end`, `::clear`, checked against their core declarations).
+/// `lute context` lists exactly these.
+pub const LANGUAGE_DIRECTIVES: &[LanguageDirective] = &[
+    LanguageDirective {
+        name: "set",
+        syntax: Some("::set{ <path> = <expr> [when=\"<condition>\"] }  (also += / -=)"),
+        meaning: "write a declared state path; engine-owned paths are the engine's \
+                  (E-ENGINE-OWNED-WRITE)",
+    },
+    LanguageDirective {
+        name: "assert",
+        syntax: Some("::assert{ <relation>(<arg>, …) [when=\"<condition>\"] }"),
+        meaning: "assert a ground fact of a declared, non-derived, non-reserved relation",
+    },
+    LanguageDirective {
+        name: "retract",
+        syntax: Some("::retract{ <relation>(<arg | _>, …) [when=\"<condition>\"] }"),
+        meaning: "retract the matching facts of a declared, non-derived, non-reserved relation",
+    },
+    LanguageDirective {
+        name: lute_syntax::ast::ACCEPT_DIRECTIVE,
+        syntax: Some("::accept{quest=\"<questId>\" [at=\"nextRun\"] [when=\"<condition>\"]}"),
+        meaning: "accept a quest that has no `start` condition; `at=\"nextRun\"` queues it until \
+                  after the next new run",
+    },
+    LanguageDirective {
+        name: "use",
+        syntax: Some("::use{component=\"<name>\" <param>=<value> … [when=\"<condition>\"]}"),
+        meaning: "expand an imported component with named arguments; a param with a default \
+                  may be omitted",
+    },
+    LanguageDirective {
+        name: crate::templates::BODY_DIRECTIVE,
+        syntax: Some("::body"),
+        meaning: "in a component with a `beat:` header, at the top level of its body: where a \
+                  `<beat use=…>`'s own body goes",
+    },
+    LanguageDirective {
+        name: lute_manifest::core::NEXT_DIRECTIVE,
+        syntax: None,
+        meaning: "jump forward to the `::mark` named by `to` (only while `when` holds)",
+    },
+    LanguageDirective {
+        name: lute_manifest::core::MARK_DIRECTIVE,
+        syntax: None,
+        meaning: "name the position a `::next{to=…}` jumps to",
+    },
+    LanguageDirective {
+        name: lute_manifest::core::END_DIRECTIVE,
+        syntax: None,
+        meaning: "end this presentation here",
+    },
+    LanguageDirective {
+        name: lute_manifest::core::CLEAR_DIRECTIVE,
+        syntax: None,
+        meaning: "take every character on stage off it; takes no attributes",
+    },
+];
 
 /// Validate one supplied attribute's value against its declared type.
 ///
@@ -342,11 +496,12 @@ fn check_enum_member(
             AttrValue::BoolTrue => "true".to_string(),
             AttrValue::Ref(_) => unreachable!(),
         };
+        let hint = lute_manifest::suggest::did_you_mean(&got, members.iter().map(String::as_str));
         diags.push(diag(
             "E-BAD-ENUM",
             Severity::Error,
             format!(
-                "`{got}` is not a valid value for `{key}` of `{owner}` (expected one of: {})",
+                "`{got}` is not a valid value for `{key}` of `{owner}` (expected one of: {}){hint}",
                 members.join(", ")
             ),
             attr.value_span,
@@ -944,13 +1099,13 @@ mod tests {
 
     #[test]
     fn camera_numeric_attrs_pass() {
-        // Valid numeric literals for zoom/move-x/move-y/shake still validate.
+        // Valid numeric literals for zoom/moveX/moveY/shake still validate.
         let d = directive(
             "camera",
             &[
                 ("zoom", "1.1"),
-                ("move-x", "0.2"),
-                ("move-y", "0.3"),
+                ("moveX", "0.2"),
+                ("moveY", "0.3"),
                 ("shake", "0.4"),
             ],
         );
@@ -962,6 +1117,33 @@ mod tests {
             &ctx(),
         );
         assert!(errs.is_empty(), "{errs:?}");
+    }
+
+    /// The kebab `move-x` / `move-y` spellings are gone: each is
+    /// `E-UNKNOWN-ATTR` at the attribute, naming the camelCase attribute.
+    #[test]
+    fn camera_kebab_move_attrs_name_the_camel_case_spelling() {
+        let d = directive("camera", &[("move-x", "0.2"), ("move-y", "0.3")]);
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
+        let msgs: Vec<&str> = errs
+            .iter()
+            .filter(|e| e.code == "E-UNKNOWN-ATTR")
+            .map(|e| e.message.as_str())
+            .collect();
+        assert_eq!(
+            msgs,
+            [
+                "`::camera` has no attribute `move-x` — did you mean `moveX`?",
+                "`::camera` has no attribute `move-y` — did you mean `moveY`?",
+            ],
+            "{errs:?}"
+        );
     }
 
     // -- 0.2.1 §7.5: undeclared duration/delay/wait as universal timing attrs --

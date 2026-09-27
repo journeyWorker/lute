@@ -11,7 +11,7 @@ use lute_trace::exec::session::{Pick, SaveSeed, QUEST_STATES};
 use lute_trace::MockSet;
 
 /// The complete legal top-level key set of a play script.
-const SCRIPT_KEYS: &[&str] = &[
+pub(crate) const SCRIPT_KEYS: &[&str] = &[
     "bridges",
     "choose",
     "derive",
@@ -29,13 +29,44 @@ const SCRIPT_KEYS: &[&str] = &[
 const MOCK_SURFACES: &[&str] = &["bridges", "choose", "facts", "state"];
 
 /// The complete legal key set of one `steps:` entry.
-const STEP_KEYS: &[&str] = &[
+pub(crate) const STEP_KEYS: &[&str] = &[
     "advance", "bridges", "choose", "end", "engine", "event", "expect", "label", "newRun",
     "occasion", "payload", "pick", "repeat", "target",
 ];
 
-/// The keys of a step that DO something — exactly one per step.
-const STEP_ACTIONS: &[&str] = &["occasion", "newRun", "engine", "event", "advance", "end"];
+/// A play key a `*.test.yaml` reads, named as the test's — so a test key
+/// written in a play says which file it belongs to (the reverse of
+/// `lute test`'s own hint for a play key).
+fn test_key_hint(key: &str) -> String {
+    if crate::testcmd::TEST_TOP_KEYS.contains(&key) {
+        format!(" (`{key}:` is a `*.test.yaml` key, not a play's)")
+    } else {
+        String::new()
+    }
+}
+
+/// A document's spelling of a step key, named as the step's: a document
+/// answers an occasion with `on` and binds a kind beat's members with `for`,
+/// a step raises it with `occasion:` for a `target:`. `None` for any other
+/// key (the did-you-mean then runs).
+fn document_key_hint(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "on" => {
+            " — the step key is `occasion:` (`on` is a document's spelling: a scene's `on:`, \
+             `<beat on=…>`, `<entry on=…>`)"
+        }
+        "for" => {
+            " — the step key is `target:` (`for` is a document's spelling: a beat's `for=` \
+             binds the members of a kind)"
+        }
+        _ => return None,
+    })
+}
+
+/// The keys of a step that DO something — exactly one per step. The one
+/// list the reserved-names table refuses as occasion names (an occasion
+/// `newRun` would never be raised by `- newRun: true`).
+const STEP_ACTIONS: &[&str] = lute_manifest::reserved::PLAY_STEP_ACTIONS;
 
 /// One `state:` write of an `engine:` step / `newRun:` seed, as written.
 pub(super) enum RawWrite {
@@ -294,6 +325,18 @@ impl ScriptSource {
             None => self.at(keys),
         }
     }
+
+    /// `msg` about a top-level key located at it: the node its first
+    /// backticked name spells (`` `state.run.route` `` is `state:` ›
+    /// `run.route`, `` `facts:` `` is `facts:`), else the script.
+    pub(super) fn locate(&self, msg: &str) -> String {
+        let name = msg.split('`').nth(1).unwrap_or("").trim_end_matches(':');
+        let keys: Vec<&str> = match name.split_once('.') {
+            Some((head, rest)) => vec![head, rest],
+            None => vec![name],
+        };
+        format!("{}: {msg}", self.at(&keys))
+    }
 }
 
 /// A parsed play script.
@@ -370,9 +413,10 @@ fn tiered_lists(v: &serde_yaml::Value, key: &str) -> Result<(Vec<String>, Vec<St
 }
 
 /// Parse the play script at `path` (its text already read). Total: never
-/// panics; `Err` is the whole usage message: `invalid play script <path>:
-/// …`, or — for a step, or an `include:` — located at its file line
-/// (round-5 T3-13).
+/// panics; `Err` is every usage error of the script, one per line in the
+/// order they were written ([`in_file_order`]) — each located at its file
+/// line (a step's in the play or the steps file an `include:` spliced it
+/// from), else `invalid play script <path>: …`.
 pub(super) fn parse_script(text: &str, path: &Path) -> Result<PlayScript, String> {
     parse_script_with(text, path, true)
 }
@@ -388,39 +432,55 @@ struct ScriptTop<'v> {
 
 /// [`parse_script`]; `steps_required: false` also admits a script that is
 /// only a save (seeds and no `steps:`) — what `lute calendar --script`
-/// starts every cell from (dsl 0.23.0 §1).
+/// starts every cell from.
 pub(super) fn parse_script_with(
     text: &str,
     path: &Path,
     steps_required: bool,
 ) -> Result<PlayScript, String> {
-    let plain = |e: String| format!("invalid play script {}: {e}", path.display());
+    let plain = |e: &str| format!("invalid play script {}: {e}", path.display());
     let value: serde_yaml::Value =
-        serde_yaml::from_str(text).map_err(|e| plain(format!("malformed YAML: {e}")))?;
+        serde_yaml::from_str(text).map_err(|e| plain(&format!("malformed YAML: {e}")))?;
+    let source = ScriptSource {
+        file: path.to_path_buf(),
+        text: Arc::from(text),
+    };
+    let (top, mut errs) = parse_top(&value, &source).map_err(|e| plain(&e))?;
     let ScriptTop {
         surfaces,
         save,
         expect,
         derive,
         steps,
-    } = parse_top(&value).map_err(plain)?;
+    } = top;
     let items = match steps {
-        Some(serde_yaml::Value::Sequence(items)) => items.as_slice(),
-        Some(_) => return Err(plain("`steps:` must be a list".to_string())),
+        Some(serde_yaml::Value::Sequence(items)) => {
+            if items.is_empty() && steps_required {
+                errs.push(format!(
+                    "{}: `steps:` is empty — there is nothing to play",
+                    source.at(&["steps"])
+                ));
+            }
+            items.as_slice()
+        }
+        Some(_) => {
+            errs.push(format!(
+                "{}: `steps:` must be a list",
+                source.at(&["steps"])
+            ));
+            &[]
+        }
         None if steps_required => {
-            return Err(plain(
-                "`steps:` is required — the occasions to raise, in order".to_string(),
-            ))
+            errs.push(plain(
+                "`steps:` is required — the occasions to raise, in order",
+            ));
+            &[]
         }
         None => &[],
     };
-    if items.is_empty() && steps_required {
-        return Err(plain(
-            "`steps:` is empty — there is nothing to play".to_string(),
-        ));
-    }
-    // dsl 0.24.0 §1: `- include: <file>` splices that file's steps in its
-    // place; steps are numbered after the splice.
+    // `- include: <file>` splices that file's steps in its place; steps are
+    // numbered after the splice. A broken `include:` stops the splice there:
+    // the steps before it keep their numbers and are checked too.
     let mut stack = vec![path.canonicalize().unwrap_or_else(|_| path.to_path_buf())];
     let from = Included {
         file: path.to_path_buf(),
@@ -428,37 +488,54 @@ pub(super) fn parse_script_with(
         under_steps: true,
         via: Vec::new(),
         segments: Vec::new(),
+        label: None,
     };
     let mut spliced = Vec::with_capacity(items.len());
-    expand_includes(items, &from, &mut stack, &mut spliced)?;
+    if let Err(e) = expand_includes(items, &from, &mut stack, &mut spliced) {
+        errs.push(e);
+    }
     let mut parsed = Vec::with_capacity(spliced.len());
     let mut step_expects = Vec::new();
     for (i, (item, at, segments)) in spliced.into_iter().enumerate() {
-        let (mut step, expect) = parse_step(i + 1, &item, at.clone()).map_err(|e| at.locate(&e))?;
-        step.segments = segments;
-        if let Some(e) = expect {
-            step_expects.push((step.n, step.label.clone(), e));
+        match parse_step(i + 1, &item, at) {
+            Ok((mut step, expect)) => {
+                step.segments = segments;
+                if let Some(e) = expect {
+                    step_expects.push((step.n, step.label.clone(), e));
+                }
+                parsed.push(step);
+            }
+            Err(es) => errs.extend(es),
         }
-        parsed.push(step);
+    }
+    if !errs.is_empty() {
+        return Err(in_file_order(errs));
     }
     Ok(PlayScript {
         surfaces,
         save,
         steps: parsed,
-        source: ScriptSource {
-            file: path.to_path_buf(),
-            text: Arc::from(text),
-        },
+        source,
         step_expects,
         expect,
         derive,
     })
 }
 
-/// A play script's top level, `steps:` left as written.
-fn parse_top(value: &serde_yaml::Value) -> Result<ScriptTop<'_>, String> {
+/// A play script's top level, `steps:` left as written, and every usage
+/// error of its other keys, located. `Err` when it is no mapping at all.
+fn parse_top<'v>(
+    value: &'v serde_yaml::Value,
+    source: &ScriptSource,
+) -> Result<(ScriptTop<'v>, Vec<String>), String> {
     let serde_yaml::Value::Mapping(top) = value else {
         return Err("a play script must be a YAML mapping with a `steps:` list".to_string());
+    };
+    let mut errs = Vec::new();
+    // `expect:` errors are located at their own node (a list item too).
+    let mut expect_errs = Vec::new();
+    let mut refuse = |keys: &[&str], msg: String| {
+        errs.push(format!("{}: {msg}", source.at(keys)));
     };
     let mut surfaces = serde_yaml::Mapping::new();
     let mut steps = None;
@@ -466,65 +543,146 @@ fn parse_top(value: &serde_yaml::Value) -> Result<ScriptTop<'_>, String> {
     let (mut expect, mut derive) = (None, None);
     for (k, v) in top {
         let Some(key) = k.as_str() else {
-            return Err("a play script's top-level keys must be strings".to_string());
+            refuse(
+                &[],
+                "a play script's top-level keys must be strings".to_string(),
+            );
+            continue;
         };
         match key {
             "steps" => steps = Some(v),
             _ if MOCK_SURFACES.contains(&key) => {
                 surfaces.insert(k.clone(), v.clone());
             }
-            "visited" => save.visited = string_list(v, "`visited:`")?,
-            "presented" => (save.presented_run, save.presented_user) = tiered_lists(v, key)?,
-            "entriesRead" => (save.entries_run, save.entries_user) = tiered_lists(v, key)?,
+            "visited" => match string_list(v, "`visited:`") {
+                Ok(ids) => save.visited = ids,
+                Err(e) => refuse(&[key], e),
+            },
+            "presented" => match tiered_lists(v, key) {
+                Ok(tiers) => (save.presented_run, save.presented_user) = tiers,
+                Err(e) => refuse(&[key], e),
+            },
+            "entriesRead" => match tiered_lists(v, key) {
+                Ok(tiers) => (save.entries_run, save.entries_user) = tiers,
+                Err(e) => refuse(&[key], e),
+            },
             "quests" => {
                 let serde_yaml::Value::Mapping(m) = v else {
-                    return Err("`quests:` must be a mapping of quest id -> status".to_string());
+                    refuse(
+                        &[key],
+                        "`quests:` must be a mapping of quest id -> status".to_string(),
+                    );
+                    continue;
                 };
                 for (id, status) in m {
                     let (Some(id), Some(status)) = (id.as_str(), status.as_str()) else {
-                        return Err(format!(
-                            "`quests:` maps a quest id to one of {}",
-                            QUEST_STATES.join(", ")
-                        ));
+                        refuse(
+                            &[key, id.as_str().unwrap_or_default()],
+                            format!(
+                                "`quests:` maps a quest id to one of {}",
+                                QUEST_STATES.join(", ")
+                            ),
+                        );
+                        continue;
                     };
                     save.quests.push((id.to_string(), status.to_string()));
                 }
             }
             "expect" => {
-                crate::play_expect::validate(v, true)?;
-                expect = Some(v.clone());
+                let bad = crate::play_expect::validate(v, true);
+                if bad.is_empty() {
+                    expect = Some(v.clone());
+                }
+                for e in bad {
+                    let keys: Vec<&str> = std::iter::once("expect")
+                        .chain(e.keys.iter().map(String::as_str))
+                        .collect();
+                    let at = match e.item {
+                        Some(i) => source.at_item(&keys, i),
+                        None => source.at(&keys),
+                    };
+                    expect_errs.push(format!("{at}: {}", e.msg));
+                }
             }
-            "derive" => {
-                let Some(b) = v.as_bool() else {
-                    return Err("`derive:` must be `true` or `false`".to_string());
-                };
-                derive = Some(b);
-            }
-            _ => {
-                let sugg = lute_manifest::suggest::nearest(key, SCRIPT_KEYS.iter().copied(), 2)
-                    .map(|k| format!(" — did you mean `{k}`?"))
-                    .unwrap_or_default();
-                return Err(format!(
-                    "unknown top-level key `{key}`{sugg} (legal: {})",
+            "derive" => match v.as_bool() {
+                Some(b) => derive = Some(b),
+                None => refuse(&[key], "`derive:` must be `true` or `false`".to_string()),
+            },
+            _ => refuse(
+                &[key],
+                format!(
+                    "unknown top-level key `{key}`{}{} (legal: {})",
+                    lute_manifest::suggest::did_you_mean(key, SCRIPT_KEYS.iter().copied()),
+                    test_key_hint(key),
                     SCRIPT_KEYS.join(", ")
-                ));
-            }
+                ),
+            ),
         }
     }
+    errs.extend(expect_errs);
     let surfaces = if surfaces.is_empty() {
         MockSet::default()
     } else {
-        let text = serde_yaml::to_string(&serde_yaml::Value::Mapping(surfaces))
-            .map_err(|e| format!("cannot re-read `state:`/`facts:`/`choose:`: {e}"))?;
-        lute_trace::parse_mock_yaml(&text).map_err(|d| d.text().into_owned())?
+        let parsed = serde_yaml::to_string(&serde_yaml::Value::Mapping(surfaces))
+            .map_err(|e| format!("cannot re-read `state:`/`facts:`/`choose:`: {e}"))
+            .and_then(|text| lute_trace::parse_mock_yaml(&text).map_err(|d| d.text().into_owned()));
+        match parsed {
+            Ok(mocks) => mocks,
+            Err(e) => {
+                errs.push(source.locate(&e));
+                MockSet::default()
+            }
+        }
     };
-    Ok(ScriptTop {
-        surfaces,
-        save,
-        expect,
-        derive,
-        steps,
-    })
+    Ok((
+        ScriptTop {
+            surfaces,
+            save,
+            expect,
+            derive,
+            steps,
+        },
+        errs,
+    ))
+}
+
+/// Where a located usage error was written — `(file, line, column)` from a
+/// `<file>:<line>:<col>` prefix — else `None`.
+fn position(located: &str) -> Option<(&str, usize, usize)> {
+    let digits = |s: &str| s.bytes().take_while(u8::is_ascii_digit).count();
+    let mut from = 0;
+    while let Some(off) = located[from..].find(':') {
+        let colon = from + off;
+        let rest = &located[colon + 1..];
+        let l = digits(rest);
+        if l > 0 && rest[l..].starts_with(':') {
+            let c = digits(&rest[l + 1..]);
+            if c > 0 {
+                let line = rest[..l].parse().ok()?;
+                let col = rest[l + 1..l + 1 + c].parse().ok()?;
+                return Some((&located[..colon], line, col));
+            }
+        }
+        from = colon + 1;
+    }
+    None
+}
+
+/// Every usage error of a script, one per line, in the order they were
+/// written: by where each is located — a step an `include:` spliced in at
+/// the play's `include:` line (its last `(included from …)`), then at its
+/// own line; an error located at no line first. Stable.
+pub(super) fn in_file_order(mut errs: Vec<String>) -> String {
+    errs.sort_by_cached_key(|e| {
+        let own = position(e).map(|(f, l, c)| (f.to_string(), l, c));
+        let outer = e
+            .rsplit_once(" (included from ")
+            .and_then(|(_, via)| position(via))
+            .map(|(f, l, c)| (f.to_string(), l, c));
+        (outer.or_else(|| own.clone()), own)
+    });
+    errs.dedup();
+    errs.join("\n")
 }
 
 /// The file a list of steps is being spliced from: its text, whether the
@@ -536,6 +694,9 @@ struct Included {
     under_steps: bool,
     via: Vec<String>,
     segments: Vec<Arc<Segment>>,
+    /// The nearest enclosing `include:`'s `label:` — the label of every
+    /// step it splices in that names none of its own.
+    label: Option<String>,
 }
 
 impl Included {
@@ -552,7 +713,7 @@ impl Included {
 }
 
 /// The keys an `include:` step may carry (dsl 0.24.0 §1, 0.27.0 T3-22).
-const INCLUDE_KEYS: &[&str] = &["bridges", "choose", "include", "repeat"];
+const INCLUDE_KEYS: &[&str] = &["bridges", "choose", "include", "label", "repeat"];
 
 /// dsl 0.24.0 §1: `steps` with every `- include: <file>` entry replaced by
 /// that file's steps, recursively, each pushed onto `out` with where it was
@@ -572,7 +733,13 @@ fn expand_includes(
 ) -> Result<(), String> {
     for (index, item) in steps.iter().enumerate() {
         let Some(target) = item.get("include") else {
-            out.push((item.clone(), from.source(index), from.segments.clone()));
+            let mut item = item.clone();
+            if let (Some(label), serde_yaml::Value::Mapping(m)) = (&from.label, &mut item) {
+                if !m.contains_key("label") {
+                    m.insert("label".into(), label.as_str().into());
+                }
+            }
+            out.push((item, from.source(index), from.segments.clone()));
             continue;
         };
         let here = from.source(index);
@@ -581,6 +748,7 @@ fn expand_includes(
             unreachable!("`get` found a key")
         };
         let (mut repeat, mut choose, mut bridges) = (1usize, BTreeMap::new(), BTreeMap::new());
+        let mut label = from.label.clone();
         for (k, v) in m {
             let key = k.as_str().unwrap_or("?");
             match key {
@@ -600,6 +768,11 @@ fn expand_includes(
                 "bridges" => {
                     bridges = lute_trace::parse_bridges(v).map_err(|e| err(key, e))?;
                 }
+                // A section marker: it labels the steps it splices in.
+                "label" => {
+                    let text = v.as_str().map(str::to_string);
+                    label = Some(text.ok_or_else(|| err(key, "`label` must be a string".into()))?);
+                }
                 _ => {
                     let sugg =
                         lute_manifest::suggest::nearest(key, INCLUDE_KEYS.iter().copied(), 2)
@@ -610,7 +783,7 @@ fn expand_includes(
                         format!(
                             "`{key}` does not apply to an `include:` step{sugg} — it names the \
                              file whose steps it splices in and MAY carry `repeat`, `choose`, \
-                             `bridges`; every other key belongs on the included steps"
+                             `bridges`, `label`; every other key belongs on the included steps"
                         ),
                     ));
                 }
@@ -678,6 +851,7 @@ fn expand_includes(
                 under_steps,
                 via: via.clone(),
                 segments,
+                label: label.clone(),
             };
             expand_includes(included, &inner, stack, out)?;
         }
@@ -769,14 +943,37 @@ fn parse_writes(
     Ok(w)
 }
 
-/// One `steps:` entry and its `expect:` (validated). Exactly one action key
-/// ([`STEP_ACTIONS`]); `target`/`pick`/`choose` only beside `occasion`;
-/// `label`/`repeat`/`expect` beside any (`repeat`/`expect` not beside `end`).
+/// One `steps:` entry and its `expect:` (validated), or every usage error
+/// of it, each located (an unknown key and every malformed `expect:` entry
+/// are all reported; otherwise the step's first error).
 fn parse_step(
     n: usize,
     item: &serde_yaml::Value,
     at: StepSource,
-) -> Result<(ScriptStep, Option<serde_yaml::Value>), String> {
+) -> Result<(ScriptStep, Option<serde_yaml::Value>), Vec<String>> {
+    let mut errs = Vec::new();
+    match parse_step_keys(n, item, at.clone(), &mut errs) {
+        Ok(Some(step)) if errs.is_empty() => Ok(step),
+        Ok(_) => Err(errs),
+        Err(e) => {
+            errs.push(at.locate(&e));
+            Err(errs)
+        }
+    }
+}
+
+/// [`parse_step`]'s parse: exactly one action key ([`STEP_ACTIONS`]);
+/// `target`/`pick`/`choose` only beside `occasion`; `label`/`repeat`/
+/// `expect` beside any (`repeat`/`expect` not beside `end`). An unknown key
+/// or a malformed `expect:` entry lands in `errs`, located, and the step's
+/// keys are still read (`Ok(None)`: nothing more is judged); `Err` is the
+/// step's first other error, unlocated.
+fn parse_step_keys(
+    n: usize,
+    item: &serde_yaml::Value,
+    at: StepSource,
+    errs: &mut Vec<String>,
+) -> Result<Option<(ScriptStep, Option<serde_yaml::Value>)>, String> {
     let shape =
         "one of `occasion` (with `target`, `payload`, `pick`, `choose`), `newRun`, `engine`, \
                  `event`, `advance` (with `pick`, `choose`, `engine`), `end` — plus \
@@ -808,13 +1005,16 @@ fn parse_step(
             return Err(format!("step {n}: keys must be strings"));
         };
         let Some(&key) = STEP_KEYS.iter().find(|&&s| s == key) else {
-            let sugg = lute_manifest::suggest::nearest(key, STEP_KEYS.iter().copied(), 2)
-                .map(|k| format!(" — did you mean `{k}`?"))
-                .unwrap_or_default();
-            return Err(format!(
-                "step {n}: unknown key `{key}`{sugg} (legal: {})",
+            errs.push(at.locate(&format!(
+                "step {n}: unknown key `{key}`{}{} (legal: {})",
+                document_key_hint(key).map_or_else(
+                    || lute_manifest::suggest::did_you_mean(key, STEP_KEYS.iter().copied()),
+                    str::to_string
+                ),
+                test_key_hint(key),
                 STEP_KEYS.join(", ")
-            ));
+            )));
+            continue;
         };
         if STEP_ACTIONS.contains(&key) {
             actions.push(key);
@@ -861,7 +1061,16 @@ fn parse_step(
                 bridges = lute_trace::parse_bridges(v).map_err(|e| format!("step {n}: {e}"))?
             }
             "expect" => {
-                crate::play_expect::validate(v, false).map_err(|e| format!("step {n}: {e}"))?;
+                for e in crate::play_expect::validate(v, false) {
+                    let keys: Vec<&str> = std::iter::once("expect")
+                        .chain(e.keys.iter().map(String::as_str))
+                        .collect();
+                    let msg = format!("step {n}: {}", e.msg);
+                    errs.push(match e.item {
+                        Some(i) => at.locate_item(&keys, i, &msg),
+                        None => at.locate_keys(&keys, &msg),
+                    });
+                }
                 expect = Some(v.clone());
             }
             "repeat" => {
@@ -945,6 +1154,11 @@ fn parse_step(
             _ => unreachable!("every STEP_KEYS key is matched"),
         }
     }
+    // An unknown key may be the misspelt action; a malformed `expect:` says
+    // nothing about the step's shape — neither is judged further.
+    if !errs.is_empty() {
+        return Ok(None);
+    }
     // dsl 0.24.0 §1: an `advance:` may carry the `engine:` writes of the same
     // moment (applied before the clock moves, one settle for both).
     if actions.contains(&"advance") && actions.contains(&"engine") {
@@ -992,6 +1206,20 @@ fn parse_step(
             ));
         }
     }
+    // `presented` keyed by occasion names the raises of an `advance:`; an
+    // `occasion` step raises one occasion.
+    if action == "occasion"
+        && expect
+            .as_ref()
+            .and_then(|e| e.get("presented"))
+            .is_some_and(serde_yaml::Value::is_mapping)
+    {
+        return Err(format!(
+            "step {n}: `expect.presented` keyed by occasion applies to an `advance:` step, which \
+             can raise several — an `occasion` step raises one, so list its beats: \
+             `presented: [<beat id>, …]`"
+        ));
+    }
     if action == "end" && (repeat != 1 || expect.is_some() || !bridges.is_empty()) {
         let key = if repeat != 1 {
             "repeat"
@@ -1026,7 +1254,7 @@ fn parse_step(
         "end" => StepAction::End,
         _ => StepAction::Engine(writes.unwrap_or_default()),
     };
-    Ok((
+    Ok(Some((
         ScriptStep {
             n,
             label,
@@ -1037,5 +1265,5 @@ fn parse_step(
             segments: Vec::new(),
         },
         expect,
-    ))
+    )))
 }

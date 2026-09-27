@@ -27,7 +27,7 @@ accepts.
 | `::sfx` | `sound` (description), `assetId`, `name` |
 | `::auto` | `character`, `anchor` (`left`\|`center`\|`right`), `action` (a named action id such as `fade-in-up` / `pose-*`) — character entrance/exit/pose |
 | `::clear` | none — every character on stage exits; background and music stay (below) |
-| `::camera` | `focus`, `zoom`, `move-x`, `move-y`, `shake`, `reset`, `duration`, `easing`, `delay`, `wait` |
+| `::camera` | `focus`, `zoom`, `moveX`, `moveY`, `shake`, `reset`, `duration`, `easing`, `delay`, `wait` |
 | `::cut` | `assetId` (`CUT.*`), `action` (`show`\|`hide`), `full` |
 | `::vfx` | `type` (e.g. `whiteOut`, `petals`), `label`, `transition` |
 | `::video` | `assetId` (`VID.*`), `action` (`show`\|`hide`), `wait` |
@@ -253,7 +253,10 @@ staging leaves and `::set` only.
 
 In [`lute play`](/tooling/play/), an `::end` ends only the presentation (or quest handler) it runs
 in; the step still settles and the playthrough goes on with the next step. A play script stops
-early with a step `end: true`.
+early with a step `end: true`. `::end` never ends the game: a game that can be over says so with a
+schema's [`terminal:`](/state/schemas/#the-end-of-the-game-terminal), after which the engine raises
+no occasion. [The game is over](/tooling/play/#the-game-is-over) sets the five meanings of "end"
+side by side.
 
 Anything after an `::end` **in the same straight-line body** can never run, and the checker says so
 once per body, anchored at the first dead node: `W-CODE-AFTER-END` — *unreachable content after

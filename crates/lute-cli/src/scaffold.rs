@@ -152,7 +152,7 @@ file: ../scenes/opening.lute
 expect:
   transcriptContains: [\"@narrator: Welcome to your new Lute project.\"]
   state: { run.greeted: true }
-  exit: complete
+  end: complete
 "
             .to_string(),
         },
@@ -387,7 +387,7 @@ once: run
             content: "\
 ---
 kind: quest
-id: quest.case
+id: case.quests   # this document's id; the quest below is `solveCase`
 title: Who killed Lord Ashby?
 ---
 
@@ -464,7 +464,7 @@ steps:
   - occasion: accuse
     expect: { winner: case.accusation }
 expect:
-  exit: complete
+  end: complete
   quests: { solveCase: complete }
   state: { run.accused: blake }
   facts: [\"culprit(blake)\", \"cleared(cass)\"]
@@ -488,7 +488,7 @@ facts:
   - \"contradicts(ledger, blake)\"
 choose: { accusation: blake }
 expect:
-  offered: { accusation: [blake, wait] }
+  options: { accusation: [blake, wait] }
   facts: [\"culprit(blake)\", \"cleared(cass)\"]
   state: { run.accused: blake }
 "
@@ -555,9 +555,9 @@ exports:
 # occasion is raised FOR something: `talk`'s targets are `npc.<member>` for a
 # member of the `npc` entity kind (world.schema.yaml).
 occasions:
-  hubVisit: { select: first, description: The player arrives at the hub }
-  talk:     { select: first, target: { prefix: npc, entity: npc }, description: The player talks to someone (npc.<name>) }
-  dayEnd:   { select: first, description: \"The engine closed the day; run.day is already advanced\" }
+  townVisit: { select: first, description: The player arrives in town }
+  talk:      { select: first, target: { prefix: npc, entity: npc }, description: The player talks to someone (npc.<name>) }
+  dayEnd:    { select: first, description: \"The engine closed the day; run.day is already advanced\" }
 "
             .to_string(),
         },
@@ -594,34 +594,34 @@ defs:
             content: vocabulary_schema(),
         },
         File {
-            rel: "scenes/hub/welcome.lute",
+            rel: "scenes/town/welcome.lute",
             content: "\
 ---
 kind: scene
-id: hub.welcome
+id: town.welcome
 title: First arrival
-# A beat: answers `hubVisit`, once per save (`once: user`).
-on: hubVisit
+# A beat: answers `townVisit`, once per save (`once: user`).
+on: townVisit
 once: user
 priority: 10
 ---
 
-## The hub
+## The town
 
-::bg{location=\"hub\" time=\"day\"}
+::bg{location=\"town\" time=\"day\"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 "
             .to_string(),
         },
         File {
-            rel: "scenes/hub/morning.lute",
+            rel: "scenes/town/morning.lute",
             content: "\
 ---
 kind: scene
-id: hub.morning
+id: town.morning
 title: Another morning
 # Repeatable (`once: false`) and only after the first day.
-on: hubVisit
+on: townVisit
 once: false
 when: '!@firstDay'
 ---
@@ -633,11 +633,11 @@ when: '!@firstDay'
             .to_string(),
         },
         File {
-            rel: "scenes/hub/day-end.lute",
+            rel: "scenes/town/day-end.lute",
             content: "\
 ---
 kind: scene
-id: hub.dayEnd
+id: town.dayEnd
 title: Lamps out
 on: dayEnd
 once: false
@@ -704,7 +704,7 @@ once: false
             content: "\
 ---
 kind: quest
-id: quest.lamp
+id: lamp.quests   # this document's id; the quest below is `lampOut`
 title: The lamp by the door
 ---
 
@@ -754,8 +754,8 @@ title: Tomas
 choose:
   maraAsk: lamp
 steps:
-  - occasion: hubVisit
-    expect: { winner: hub.welcome }
+  - occasion: townVisit
+    expect: { winner: town.welcome }
   - occasion: talk
     target: npc.mara
     expect: { winner: mara.first }
@@ -766,10 +766,10 @@ steps:
     engine:
       state: { run.day: { add: 1 } }
   - occasion: dayEnd
-  - occasion: hubVisit
-    expect: { winner: hub.morning, notOffered: [hub.welcome] }
+  - occasion: townVisit
+    expect: { winner: town.morning, notOffered: [town.welcome] }
 expect:
-  exit: complete
+  end: complete
   quests: { lampOut: complete }
   state: { run.day: 2, user.bond.mara: 1 }
   facts: [knows(lamp)]
@@ -840,10 +840,11 @@ lute context scenes/<your-scene>.lute --project .
 # Check the toolchain and the project setup:
 lute doctor .
 
-# Add more documents (a beat answers an occasion; a targeted one takes
-# `--target <prefix>.<member>`). `/` in a name nests it (`talk/<name>` lands
-# in scenes/talk/); `--dir` names the PROJECT, never a subfolder:
-lute new scene <name> --on <occasion> --target <target>
+# Add more documents (a beat answers an occasion; a targeted one needs
+# `--target <prefix>.<member>`). The file is named after the id; `/` in a
+# name nests it (`talk/<name>` lands in scenes/talk/); `--dir` names the
+# PROJECT, never a subfolder:
+lute new scene <name> --occasion <occasion> --target <target>
 lute new scene <name>
 lute new quest <name>
 lute new lore <name>
@@ -959,7 +960,7 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
     let play = files.iter().find(|f| f.rel.starts_with("plays/"));
     if let Some(play) = play {
         println!("  lute play {d} --script {}", dir.join(play.rel).display());
-        println!("  lute new scene <name> --on <occasion> --dir {d}");
+        println!("  lute new scene <name> --occasion <occasion> --dir {d}");
     } else {
         println!("  lute scenario {d}");
         println!("  lute new scene <name> --dir {d}");
@@ -967,21 +968,25 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Turn an arbitrary document name into a valid lower-camel identifier for an
-/// id / state path segment (dsl §9.4 forbids `-` in a path segment): the name
-/// is split on every non-alphanumeric run, the first word lower-cased and each
-/// subsequent word capitalized, then a leading digit is prefixed with `q`.
-/// Empty input degrades to `fallback`. Documented so `lute new`'s naming rule
-/// is discoverable.
+/// Turn a document name into a valid identifier for an id / state path
+/// segment (dsl §9.4 forbids `-` in a path segment): the name is split on
+/// every run of characters that cannot sit in one, every letter keeps the
+/// case it was typed in except that each word after the first starts
+/// upper-case and the identifier starts lower-case (`harborNight` stays
+/// `harborNight`, `The Epilogue` becomes `theEpilogue`), then a leading
+/// digit is prefixed with `q`. Empty input degrades to `fallback`.
+/// Documented so `lute new`'s naming rule is discoverable.
 fn to_ident(name: &str, fallback: &str) -> String {
     let mut out = String::new();
     let mut new_word = false;
     for ch in name.chars() {
         if ch.is_ascii_alphanumeric() {
-            if out.is_empty() || !new_word {
+            if out.is_empty() {
                 out.push(ch.to_ascii_lowercase());
+            } else if new_word {
+                out.push(ch.to_ascii_uppercase());
             } else {
-                out.extend(ch.to_uppercase());
+                out.push(ch);
             }
             new_word = false;
         } else {
@@ -1008,6 +1013,22 @@ fn to_id(name: &str, fallback: &str) -> String {
         .map(|seg| to_ident(seg, fallback))
         .collect();
     segs.join(".")
+}
+
+/// Where a `lute new` document named `name` lands under `folder`: named
+/// after its id — each `/` of the name a subfolder (its own id segment),
+/// the last part's id the file stem (`talk/mara-first` →
+/// `talk/maraFirst.lute`, `The Epilogue` → `theEpilogue.lute`,
+/// `isolde.night` → `isolde.night.lute`).
+fn id_path(folder: &Path, name: &str, fallback: &str) -> PathBuf {
+    let mut parts: Vec<&str> = name.split('/').collect();
+    let last = parts.pop().unwrap_or(name);
+    let mut path = folder.to_path_buf();
+    for dir in parts {
+        path.push(to_ident(dir, fallback));
+    }
+    path.push(format!("{}.lute", to_id(last, fallback)));
+    path
 }
 
 /// A `lute new` document's `title:` from its name: the last `/` segment,
@@ -1183,26 +1204,43 @@ fn created(path: &Path, hint: &str) -> ExitCode {
 /// and entity vocabulary `lute check` resolves for it (`crate::build_input`,
 /// `fold_env`), so the scaffold cannot disagree with the checker. With no
 /// declared occasion vocabulary (shape-only, dsl 0.21.0 §2) any occasion is
-/// accepted. A targeted occasion may be answered without a target (the beat
-/// then answers every target).
-fn validate_beat(path: &Path, root: &Path, on: &str, target: Option<&str>) -> Result<(), String> {
+/// accepted. A targeted occasion needs `--target`: a scene without one
+/// answers every target, which a new scene almost never means (T3-27).
+/// `Ok` carries the occasion's `select:` (`None` with no declared vocabulary).
+fn validate_beat(
+    path: &Path,
+    root: &Path,
+    on: &str,
+    target: Option<&str>,
+) -> Result<Option<lute_manifest::schema::OccasionSelect>, String> {
     let built = crate::build_input(path, None, Some(root), None)
         .ok_or_else(|| format!("cannot read back `{}`", path.display()))?;
     let occasions = &built.input.snapshot.occasions;
     if occasions.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
     let Some(decl) = occasions.get(on) else {
         let declared: Vec<&str> = occasions.keys().map(String::as_str).collect();
-        let hint = lute_manifest::suggest::nearest(on, declared.iter().copied(), 2)
-            .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+        let hint = lute_manifest::suggest::did_you_mean(on, declared.iter().copied());
         return Err(format!(
             "occasion `{on}` is not declared by the project's plugins{hint} (declared: {})",
             declared.join(", ")
         ));
     };
     match target {
-        None => Ok(()),
+        None if decl.target.takes_target() => {
+            let example = match &decl.target {
+                lute_manifest::schema::OccasionTarget::Domain { prefix, .. } => {
+                    format!("{prefix}.<member>")
+                }
+                _ => "<target>".to_string(),
+            };
+            Err(format!(
+                "occasion `{on}` is raised for a target, and a scene without `target:` would \
+                 play for every one — pass `--target {example}`, the target this scene answers"
+            ))
+        }
+        None => Ok(Some(decl.select)),
         Some(t) if !decl.target.takes_target() => Err(format!(
             "occasion `{on}` is not raised for a target — drop `--target {t}`"
         )),
@@ -1210,6 +1248,7 @@ fn validate_beat(path: &Path, root: &Path, on: &str, target: Option<&str>) -> Re
             let (doc, _) = lute_syntax::parse(&built.input.text);
             let (folded, _, _) = lute_check::fold_env(&doc, &built.input);
             lute_check::occasion_target_ok(decl, t, &folded.env.rel_vocab.kinds)
+                .map(|()| Some(decl.select))
         }
     }
 }
@@ -1251,91 +1290,115 @@ fn lowest_beat_priority(root: &Path, on: &str) -> Option<i64> {
     lowest
 }
 
-/// `lute new scene <name> [--on <occasion> [--target <target>]]`.
+/// `lute new scene <name> [--occasion <occasion> [--target <target>]]`.
 ///
-/// The scene lands at `<root>/scenes/<name>.lute` (`/` in the name nests it)
-/// with `id:` = [`to_id`] of the name (`talk/mara-first` → `talk.maraFirst`,
-/// `isolde.night` → `isolde.night`). With `--on` it is a beat
-/// answering that occasion (dsl 0.21.0 §3); the occasion and target are
-/// validated against the project, and the file is removed again when they
-/// do not resolve (exit `2`). Without `--on` it is a linear scene opening on
-/// a `::bg`. dsl 0.27.0 §8: `--on` the occasion of the project's
-/// `sequence:` (untargeted) writes no `on:`/`priority:` — the chain derives
-/// them once the id is listed — and says to list it.
+/// The scene lands at `<root>/scenes/` named after its id ([`id_path`];
+/// `/` in the name nests it) with `id:` = [`to_id`] of the name
+/// (`talk/mara-first` → `talk.maraFirst`, `isolde.night` → `isolde.night`).
+/// With `--occasion` it is a beat answering that occasion (dsl 0.21.0 §3);
+/// the occasion and target are validated against the project — a targeted
+/// occasion needs `--target` — and the file is removed again when they do
+/// not resolve (exit `2`). Without `--occasion` it is a linear scene opening
+/// on a `::bg`. dsl 0.28.0 §4: `--occasion` the occasion of a chain of the
+/// project's `chapters:` writes no `on:`/`priority:` — the chain derives
+/// them once the id is listed — and says to list it, in the words of that
+/// occasion's `select:` (a `select: sequence` chain derives no `after:`).
 fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&str>) -> ExitCode {
-    let path = dest.root.join("scenes").join(format!("{name}.lute"));
+    let path = id_path(&dest.root.join("scenes"), name, "scene");
     let id = to_id(name, "scene");
     let title = title_case(name);
-    let mut content = dest.head("scene", &id, &title);
-    let sequenced = on.filter(|on| {
-        target.is_none()
-            && lute_manifest::project::load_project(&dest.root)
-                .ok()
-                .flatten()
-                .is_some_and(|p| p.defaults.sequence().is_some_and(|s| s.occasion == *on))
+    if !path.exists() {
+        if let Err(code) = refuse_taken_id(dest, &id) {
+            return code;
+        }
+    }
+    let head = dest.head("scene", &id, &title);
+    let chapter = on.filter(|on| {
+        dest.defaults
+            .chapters()
+            .iter()
+            .any(|c| !c.retired && c.on == *on)
     });
-    let body = match on {
-        Some(on) if sequenced.is_some() => {
-            content.push_str(&format!(
-                "# A chapter: add `{id}` to `sequence.scenes` in lute.project.yaml, where\n\
-                 # it goes in the chain; the sequence then gives it `on: {on}`, its\n\
-                 # `after:` and its `priority:`.\n"
-            ));
+    let target_line = target.map_or_else(String::new, |t| format!("target: {t}\n"));
+    let raised_for = target.map_or_else(String::new, |t| format!(" for `{t}`"));
+    let (front, body) = match on {
+        Some(_) if chapter.is_some() => (
+            target_line.clone(),
             format!(
                 "## {title}\n\n@narrator: What happens in this chapter. Replace this with your own lines.\n"
-            )
-        }
+            ),
+        ),
         Some(on) => {
-            content.push_str(&format!(
+            let mut front = format!(
                 "# A beat: presented when the engine raises `{on}`. Add\n\
                  # `priority:`, `once:` (run | user | false) and `when:` as needed.\n\
-                 on: {on}\n"
-            ));
-            let raised_for = match target {
-                Some(t) => {
-                    content.push_str(&format!("target: {t}\n"));
-                    format!(" for `{t}`")
-                }
-                None => String::new(),
-            };
+                 on: {on}\n{target_line}"
+            );
             // dsl 0.27.0 (T3-11): below every beat already on `on`, so a
             // fresh stub never ties one.
             if let Some(lowest) = lowest_beat_priority(&dest.root, on) {
-                content.push_str(&format!(
+                front.push_str(&format!(
                     "priority: {}   # below every other `{on}` beat\n",
                     lowest.saturating_sub(10)
                 ));
             }
-            format!(
-                "## {title}\n\n@narrator: What happens when `{on}` is raised{raised_for}. Replace this with your own lines.\n"
+            (
+                front,
+                format!(
+                    "## {title}\n\n@narrator: What happens when `{on}` is raised{raised_for}. Replace this with your own lines.\n"
+                ),
             )
         }
-        None => format!(
-            "## {title}\n\n::bg{{location=\"{id}\"}}\n@narrator: Replace this with your own lines.\n"
+        None => (
+            String::new(),
+            format!(
+                "## {title}\n\n::bg{{location=\"{id}\"}}\n@narrator: Replace this with your own lines.\n"
+            ),
         ),
     };
-    content.push_str(&dest.uses(1 + name.matches('/').count()));
-    content.push_str("---\n\n");
-    content.push_str(&body);
-    if let Err(code) = create(&path, &content) {
+    let depth = 1 + name.matches('/').count();
+    let render = |comment: &str| format!("{head}{comment}{front}{}---\n\n{body}", dest.uses(depth));
+    if let Err(code) = create(&path, &render("")) {
         return code;
     }
-    if let Some(on) = sequenced {
+    let select = match on.map(|on| validate_beat(&path, &dest.root, on, target)) {
+        Some(Err(reason)) => {
+            let _ = fs::remove_file(&path);
+            eprintln!(
+                "lute new: {}; nothing was written",
+                lute_core_span::plain_message(&reason)
+            );
+            return ExitCode::from(2);
+        }
+        Some(Ok(select)) => select,
+        None => None,
+    };
+    if let Some(on) = chapter {
+        let derives = if select == Some(lute_manifest::schema::OccasionSelect::Sequence) {
+            format!(
+                "`on: {on}` and a `priority:` that places it within the one raise\n\
+                 # that plays the whole chain (a `select: sequence` chain derives no `after:`)"
+            )
+        } else {
+            format!("`on: {on}`, its `after:` and its `priority:`")
+        };
+        let comment = format!(
+            "# A chapter: add `{id}` to the `scenes:` of the chain on `{on}` in\n\
+             # lute.project.yaml's `chapters:`, where it goes in the story; the chain\n\
+             # then gives it {derives}.\n"
+        );
+        if let Err(e) = fs::write(&path, render(&comment)) {
+            eprintln!("lute new: cannot write `{}`: {e}", path.display());
+            return ExitCode::from(2);
+        }
         return created(
             &path,
             &format!(
-                "add `{id}` to `sequence.scenes` in lute.project.yaml (the `{on}` chain), \
-                 then check it with: lute check-project {}",
+                "add `{id}` to the chain on `{on}` (`chapters:` in lute.project.yaml), then check \
+                 it with: lute check-project {}",
                 dest.root.display()
             ),
         );
-    }
-    if let Some(on) = on {
-        if let Err(reason) = validate_beat(&path, &dest.root, on, target) {
-            let _ = fs::remove_file(&path);
-            eprintln!("lute new: {reason}; nothing was written");
-            return ExitCode::from(2);
-        }
     }
     created(
         &path,
@@ -1354,13 +1417,12 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
 /// no `start`, so the quest stays inactive until content runs
 /// `::accept{quest="<ident>"}`, the shape quest-heavy games start from;
 /// `--start` scaffolds the auto-starting `start="true"` form instead. The
-/// quest id is [`to_ident`] of the name (a single lower-camel identifier,
-/// as `quest.<id>.state` needs), while the file stem keeps the raw name. The
-/// document id (dsl 0.19.0 §2.1) is `quest.` + [`to_id`] of the name —
-/// namespaced so it cannot collide with a scene id or a same-named `lute new
-/// lore` bundle.
+/// quest id is [`to_ident`] of the name (a single identifier, as
+/// `quest.<id>.state` needs); the document id (dsl 0.19.0 §2.1) is
+/// [`to_id`] of the name, as typed — no prefix — and the file is named
+/// after it ([`id_path`]).
 fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
-    let path = dest.root.join("quests").join(format!("{name}.lute"));
+    let path = id_path(&dest.root.join("quests"), name, "quest");
     let ident = to_ident(name, "quest");
     let title = title_case(name);
     let (lifecycle, start_attr) = if start {
@@ -1376,7 +1438,13 @@ fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
         )
     };
     let lifecycle = lifecycle.replace("IDENT", &ident);
-    let mut content = dest.head("quest", &format!("quest.{}", to_id(name, "quest")), &title);
+    let doc_id = to_id(name, "quest");
+    if !path.exists() {
+        if let Err(code) = refuse_taken_id(dest, &doc_id) {
+            return code;
+        }
+    }
+    let mut content = dest.head("quest", &doc_id, &title);
     content.push_str(&dest.uses(1 + name.matches('/').count()));
     // The counter fallback reads only run state, so the quest says it is
     // run-tier (`W-QUEST-TIER-IMPLICIT`); a `visited(…)` objective is no
@@ -1413,24 +1481,53 @@ fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
     )
 }
 
-/// The alphabetically first scene id in the project `dest` (a parse-only
-/// walk, like `lute context`'s ids), `None` outside a project or before
-/// its first scene.
-fn first_scene_id(dest: &Destination) -> Option<String> {
+/// Every `.lute` document of the project `dest`, parsed only (like `lute
+/// context`'s ids); empty outside a project.
+fn project_docs(dest: &Destination) -> Vec<(PathBuf, lute_syntax::ast::Document)> {
     if !dest.in_project {
-        return None;
+        return Vec::new();
     }
-    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = crate::find_lute_files(&dest.root)
+    crate::find_lute_files(&dest.root)
         .unwrap_or_default()
         .into_iter()
         .filter_map(|path| {
             let text = fs::read_to_string(&path).ok()?;
             Some((path, lute_syntax::parse(&text).0))
         })
-        .collect();
-    lute_check::connectivity::scene_key_set(&docs)
+        .collect()
+}
+
+/// The alphabetically first scene id in the project `dest`, `None` outside
+/// a project or before its first scene.
+fn first_scene_id(dest: &Destination) -> Option<String> {
+    lute_check::connectivity::scene_key_set(&project_docs(dest))
         .into_keys()
         .next()
+}
+
+/// Refuse (exit `2`, nothing written) a new document whose `id` a scene,
+/// quest or lore document of the project already declares: document ids are
+/// one namespace, so the new file would fail `check-project` at once.
+fn refuse_taken_id(dest: &Destination, id: &str) -> Result<(), ExitCode> {
+    let docs = project_docs(dest);
+    let taken = lute_check::connectivity::scene_key_set(&docs)
+        .remove(id)
+        .and_then(|sites| sites.into_iter().next().map(|(path, _)| path))
+        .or_else(|| {
+            docs.iter()
+                .find(|(_, d)| lute_check::connectivity::bundle_id(d).as_deref() == Some(id))
+                .map(|(path, _)| path.clone())
+        });
+    let Some(path) = taken else {
+        return Ok(());
+    };
+    let shown = path.strip_prefix(&dest.root).unwrap_or(&path);
+    eprintln!(
+        "lute new: `{}` already declares `id: {id}` — scenes, quests and lore share one set of \
+         document ids; pick another name; nothing was written",
+        shown.display()
+    );
+    Err(ExitCode::from(2))
 }
 
 /// `lute new lore <name>` (dsl 0.19.0 §2).
@@ -1438,14 +1535,19 @@ fn first_scene_id(dest: &Destination) -> Option<String> {
 /// One `<entry>` whose id is [`to_ident`] of the name, attached to
 /// `item.<ident>` as a `note`, with one content line; headed like `lute new
 /// scene` (the same `uses:`, round-5 FS-F11). Entries live under `lore/`,
-/// mirroring `quests/`; the file stem keeps the raw name. The document id
-/// (§2.1) is `lore.` + [`to_id`] of the name, namespaced like `lute new
-/// quest`'s.
+/// mirroring `quests/`, in a file named after the document id — [`to_id`]
+/// of the name as typed, no prefix, like `lute new quest`'s.
 fn new_lore(name: &str, dest: &Destination) -> ExitCode {
-    let path = dest.root.join("lore").join(format!("{name}.lute"));
+    let path = id_path(&dest.root.join("lore"), name, "entry");
     let ident = to_ident(name, "entry");
     let title = title_case(name);
-    let mut content = dest.head("lore", &format!("lore.{}", to_id(name, "entry")), &title);
+    let doc_id = to_id(name, "entry");
+    if !path.exists() {
+        if let Err(code) = refuse_taken_id(dest, &doc_id) {
+            return code;
+        }
+    }
+    let mut content = dest.head("lore", &doc_id, &title);
     content.push_str(&format!(
         "\
 # Each <entry> is text the engine looks up (an item description, a found
@@ -1569,16 +1671,16 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> 
 
 /// Scaffold one new document into a project. See [`crate::Command::New`].
 ///
-/// Kinds `scene`/`quest`/`lore`/`schema`; an unknown kind, `--on` on a
-/// non-scene, or `--start` on a non-quest is a usage error (exit `2`).
-/// Refuses to overwrite an existing target (exit `2`). A `dir` inside a
-/// project but not its root is refused (exit `2`, nothing written) with the
-/// `<sub>/<name>` spelling to use: `--dir` names the project, and writing to
-/// `<root>/scenes/<name>` when the author pointed at `scenes/talk/` would
-/// land the document somewhere they did not ask for. Outside a project (no
-/// `lute.project.yaml` at or above `dir`) it says so — and refuses `--on`,
-/// since no occasion is declared there for the beat to answer (dsl 0.22.0
-/// §13).
+/// Kinds `scene`/`quest`/`lore`/`schema`; an unknown kind, `--occasion` on
+/// a non-scene, `--target` without `--occasion`, or `--start` on a
+/// non-quest is a usage error (exit `2`). Refuses to overwrite an existing
+/// target (exit `2`). A `dir` inside a project but not its root is refused
+/// (exit `2`, nothing written) with the `<sub>/<name>` spelling to use:
+/// `--dir` names the project, and writing to `<root>/scenes/<name>` when
+/// the author pointed at `scenes/talk/` would land the document somewhere
+/// they did not ask for. Outside a project (no `lute.project.yaml` at or
+/// above `dir`) it says so — and refuses `--occasion`, since no occasion is
+/// declared there for the beat to answer.
 pub fn run_new(
     kind: &str,
     name: &str,
@@ -1591,11 +1693,18 @@ pub fn run_new(
         eprintln!(
             "lute new: unknown kind `{kind}` (expected `scene`, `quest`, `lore`, or `schema`)"
         );
-        eprintln!("usage: lute new <scene|quest|lore|schema> <name> [--dir <PROJECT>] [--on <OCCASION> [--target <TARGET>]] [--start]");
+        eprintln!("usage: lute new <scene|quest|lore|schema> <name> [--dir <PROJECT>] [--occasion <OCCASION> [--target <TARGET>]] [--start]");
         return ExitCode::from(2);
     }
     if let (Some(_), false) = (on, kind == "scene") {
-        eprintln!("lute new: `--on` makes a scene a beat; a {kind} takes no `--on`");
+        eprintln!("lute new: `--occasion` makes a scene a beat; a {kind} takes no `--occasion`");
+        return ExitCode::from(2);
+    }
+    if let (Some(t), None) = (target, on) {
+        eprintln!(
+            "lute new: `--target {t}` names the target a beat answers for; pass the occasion \
+             too, `--occasion <OCCASION> --target {t}`"
+        );
         return ExitCode::from(2);
     }
     if start && kind != "quest" {

@@ -72,8 +72,8 @@ fn inquiry(tag: &str) -> PathBuf {
         "world.schema.yaml",
         "state:\n  run.day: { type: number, default: 1 }\n\
          entities:\n  person: { members: [hollis, maren, tobias, ada] }\n\
-         relations:\n  saw: { args: [person, person] }\n  lied: { args: [person] }\n\
-         \x20 departed: { args: [person] }\n  present: { args: [person], reserved: true }\n\
+         relations:\n  saw: { args: [person, person], tier: run }\n  lied: { args: [person], tier: run }\n\
+         \x20 departed: { args: [person], tier: run }\n  present: { args: [person], tier: run, reserved: true }\n\
          \x20 liar: { args: [person], derive: true }\n  alibied: { args: [person], derive: true }\n\
          facts:\n  - \"present(hollis)\"\n\
          rules:\n  - \"alibied(S) :- saw(W, S), not liar(W)\"\n  - \"liar(W) :- lied(W)\"\n",
@@ -228,8 +228,8 @@ fn a_defeater_lists_every_derivation_route() {
     assert!(
         s.contains(
             "defeated when liar(maren) is derived ⇐ lied(maren) [entry `marenSaw` \
-             (lore/evidence.lute)] / ⇐ saw(maren, ada) [entry `marenSaw` (lore/evidence.lute)]"
-        ),
+             (lore/evidence.lute)]"
+        ) && s.contains(" / ⇐ saw(maren, ada) [entry `marenSaw` (lore/evidence.lute)]"),
         "{s}"
     );
 }
@@ -320,7 +320,7 @@ fn lore_shows_entry_when_and_the_derived_conclusions() {
         .unwrap_or_else(|| panic!("{s}"));
     assert!(
         derived.contains(
-            "    alibied(tobias)\n      ⇐ saw(hollis, tobias) [entry `hollisSaw` (lore/evidence.lute)], not liar(hollis)\n"
+            "    alibied(tobias)\n      ⇐ saw(hollis, tobias) [entry `hollisSaw` (lore/evidence.lute)], not liar(hollis)  (rule at world.schema.yaml:"
         ),
         "{derived}"
     );
@@ -335,7 +335,7 @@ fn lore_shows_entry_when_and_the_derived_conclusions() {
     );
     assert!(
         derived.contains(
-            "    liar(maren)\n      ⇐ lied(maren) [entry `marenSaw` (lore/evidence.lute)]\n"
+            "    liar(maren)\n      ⇐ lied(maren) [entry `marenSaw` (lore/evidence.lute)]  (rule at world.schema.yaml:"
         ),
         "{derived}"
     );
@@ -507,7 +507,9 @@ fn a_kind_bound_negated_premise_names_its_defeater() {
     );
     let lore = ok(&["lore", dir]);
     assert!(
-        lore.contains("routeOpen(ren)\n      ⇐ suitor(ren), not locked(ren)\n"),
+        lore.contains(
+            "routeOpen(ren)\n      ⇐ suitor(ren), not locked(ren)  (rule at world.schema.yaml:"
+        ),
         "{lore}"
     );
 }

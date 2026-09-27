@@ -45,7 +45,7 @@ fn anchored<'s>(src: &'s str, d: &Diagnostic) -> &'s str {
 
 const LORE_HDR: &str = "---\nkind: lore\ntitle: Ship's records\nentities:\n  \
     person: { members: [vesna] }\n  project: { members: [project_lumen] }\nrelations:\n  \
-    knows: { args: [person, project] }\nstate:\n  \
+    knows: { args: [person, project], tier: run }\nstate:\n  \
     run.labBurned: { type: bool, default: false }\n---\n";
 
 fn lore(body: &str) -> String {
@@ -72,7 +72,7 @@ fn valid_lore_document_checks_clean() {
          <entry id=\"scientistLog2\" series=\"scientistLog\" order=\"2\" \
          when=\"entry.scientistLog1.read\">\n\
          @scientist: Day four.\n\
-         ::set{run.labBurned = true}\n\
+         ::set{run.labBurned = true when=\"!entry.scientistLog2.read\"}\n\
          </entry>\n\n\
          <entry id=\"rustyKey\" target=\"item.rusty_key\" category=\"item\">\n\
          <match on=\"run.labBurned\">\n\
@@ -203,10 +203,12 @@ fn unknown_entry_attr_is_unknown_attr() {
     let ds = diags(&src);
     let u = with_code(&ds, "E-UNKNOWN-ATTR");
     assert_eq!(u.len(), 1, "{ds:?}");
-    assert_eq!(
-        u[0].message,
-        "`<entry>` has no attribute `anchor` (dsl 0.10.0 §4)"
+    let m = &u[0].message;
+    assert!(
+        m.starts_with("`<entry>` has no attribute `anchor`; its attributes are "),
+        "{m}"
     );
+    assert!(m.contains("`id`") && m.contains("`when`"), "{m}");
     assert!(with_code(&ds, "E-ENTRY-ATTR").is_empty(), "{ds:?}");
 }
 
@@ -756,10 +758,60 @@ fn a_repeatable_entry_beat_that_writes_warns_at_its_first_write() {
 
     for clean in [
         "<entry id=\"pay\" on=\"visit\" once=\"run\">\n::set{run.labBurned = true}\n</entry>\n",
-        "<entry id=\"note\">\n::set{run.labBurned = true}\n::assert{knows(vesna, project_lumen)}\n</entry>\n",
         "<entry id=\"bark\" on=\"visit\">\n@n: Hello again.\n</entry>\n",
         // An assert records a fact that holds for the rest of the run anyway.
         "<entry id=\"clue\" on=\"visit\">\n@n: A clue.\n::assert{knows(vesna, project_lumen)}\n</entry>\n",
+    ] {
+        let ds = diags(&lore(clean));
+        assert!(with_code(&ds, "W-ENTRY-WRITE-REREAD").is_empty(), "{clean}\n{ds:#?}");
+    }
+}
+
+/// dsl 0.28.0 (T1-6): every entry that can be read again in a run warns
+/// when it writes — a lookup entry, a `once` shorter than the run, a
+/// `spentBy` entry — each with remedies that work for its shape; a write
+/// guarded by `!entry.<id>.read` is first-read-only on purpose.
+#[test]
+fn every_rereadable_entry_that_writes_warns_with_a_working_remedy() {
+    let warn = |body: &str| -> String {
+        let ds = diags(&lore(body));
+        let w = with_code(&ds, "W-ENTRY-WRITE-REREAD");
+        assert_eq!(w.len(), 1, "{body}\n{ds:#?}");
+        w[0].message.clone()
+    };
+    let lookup = warn("<entry id=\"note\">\n::set{run.labBurned = true}\n</entry>\n");
+    assert!(
+        lookup.contains("answers no occasion") && lookup.contains("!entry.note.read"),
+        "{lookup}"
+    );
+    let day = warn(
+        "<entry id=\"stamp\" on=\"visit\" once=\"day\">\n::set{run.labBurned = true}\n</entry>\n",
+    );
+    assert!(
+        day.contains("applies on the first day only")
+            && day.contains("`<beat on=\"visit\" once=\"day\">`")
+            && day.contains("`once=\"run\"`"),
+        "{day}"
+    );
+    let spent = warn(
+        "<entry id=\"dial\" on=\"visit\" spentBy=\"run.labBurned\">\n::set{run.labBurned = true}\n</entry>\n",
+    );
+    assert!(
+        spent.contains("`<beat on=\"visit\" spentBy=\"run.labBurned\">`")
+            && !spent.contains("write `once=\"run\"`"),
+        "{spent}"
+    );
+    // A `<beat>` without `once` is spent for the run, so the beat that
+    // repeats a repeatable entry says `once="false"`.
+    let repeat = warn("<entry id=\"tape\" on=\"visit\">\n::set{run.labBurned = true}\n</entry>\n");
+    assert!(
+        repeat.contains("`<beat on=\"visit\" once=\"false\">`"),
+        "{repeat}"
+    );
+    for clean in [
+        "<entry id=\"tape\" on=\"visit\">\n::set{run.labBurned = true when=\"!entry.tape.read\"}\n</entry>\n",
+        "<entry id=\"tape\" on=\"visit\">\n<match on=\"entry.tape.read\">\n<when is=\"false\">\n\
+         ::set{run.labBurned = true}\n</when>\n<otherwise>\n@n: again\n</otherwise>\n</match>\n</entry>\n",
     ] {
         let ds = diags(&lore(clean));
         assert!(with_code(&ds, "W-ENTRY-WRITE-REREAD").is_empty(), "{clean}\n{ds:#?}");

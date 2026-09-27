@@ -63,6 +63,23 @@ pub struct SourceInfo {
     /// `::use` that lowers to no record of its own) walked right before
     /// this record.
     pub before: Vec<SourceMarker>,
+    /// A `match` record desugared from a `when=` guard (a guarded line,
+    /// `::set`, directive, `::next` or `::use`), not an authored `<match>`.
+    pub guard: bool,
+    /// A `match` record expanded from a component `::use`: its `span` is in
+    /// that component's file, not the host's.
+    pub component: Option<ComponentUse>,
+}
+
+/// The component `::use` a construct was expanded from.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ComponentUse {
+    /// The innermost component's name (whose file the span is in).
+    pub name: String,
+    /// Which use: every enclosing expansion's `{component}#{n}` segment,
+    /// outermost first, `.`-joined (`outer#2.inner#1`), as the record's
+    /// identity scope.
+    pub scope: String,
 }
 
 impl SourceInfo {
@@ -78,6 +95,8 @@ impl SourceInfo {
             injected: false,
             authored_jump: false,
             before: Vec::new(),
+            guard: false,
+            component: None,
         }
     }
 }
@@ -135,13 +154,20 @@ pub struct SourceMarker {
     pub span: Span,
     /// Set on the component expansion sentinels.
     pub component: Option<ComponentBoundary>,
+    /// The component a boundary step opens, closes or pauses for its
+    /// `::body`.
+    pub name: Option<String>,
 }
 
-/// Which end of a component expansion a sentinel marks.
+/// Which point of a component expansion a sentinel marks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComponentBoundary {
     Begin,
     End,
+    /// A template's `::body`: the `<beat use>`'s own body starts here.
+    Body,
+    /// The `<beat use>`'s own body ended; the template resumes.
+    BodyEnd,
 }
 
 /// One `<quest>`: its span and the guard texts trace reports for it.

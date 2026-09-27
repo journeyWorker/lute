@@ -163,6 +163,7 @@ pub fn pattern_text(p: &FactPattern) -> String {
             FactTerm::Bool(b) => b.to_string(),
             FactTerm::Wildcard => "_".to_string(),
             FactTerm::Param(n) => format!("@{n}"),
+            FactTerm::Target => crate::beats::OCCASION_TARGET.to_string(),
         })
         .collect();
     format!("{}({})", p.relation, args.join(", "))
@@ -226,6 +227,43 @@ pub fn check_call(
         }
     }
     out
+}
+
+/// dsl 0.28.0 (T1-18): each state write the call `dir`'s directive declares
+/// (`effects.writes`), its path resolved with the call's attrs, judged like
+/// a `::set` target ([`crate::set_op::write_fault`]): a path no declaration
+/// covers (with a did-you-mean, and the season a `season.<path>` left out)
+/// or a read-only engine path (`prev.*`, `clock.*`, a quest's, an entry's,
+/// a record's, `occasion.*`) is an error at the call — the engine would
+/// drop the first and overwrite a derived value with the second. A path
+/// declared `owner: engine` and `app.*` are the engine's own to write, as a
+/// directive's effect is. A write whose path takes an attr the call leaves
+/// out is not judged.
+pub fn check_call_writes(dir: &Directive, decl: &DirectiveDecl, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
+    let Some(effects) = &decl.effects else {
+        return Vec::new();
+    };
+    let writer = format!("`::{}` (its declared `effects.writes`)", dir.tag);
+    effects
+        .writes
+        .iter()
+        .filter_map(|w| crate::permissions::resolve_path(&w.scope, &w.path, &dir.attrs))
+        .filter_map(|path| crate::set_op::write_fault(&path, &ctx.env.state, &writer))
+        .filter(|(code, _)| {
+            *code != crate::set_op::E_ENGINE_OWNED_WRITE && *code != "E-APP-READONLY"
+        })
+        .map(|(code, message)| Diagnostic {
+            code: code.to_string(),
+            severity: lute_core_span::Severity::Error,
+            message,
+            span: dir.span,
+            layer: lute_core_span::Layer::Staging,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        })
+        .collect()
 }
 
 /// dsl 0.27.0 §4: a directive a lore `<entry>` body admits — a plugin
@@ -303,7 +341,7 @@ pub fn for_each_call<'d>(nodes: &'d [Node], f: &mut impl FnMut(&'d Directive)) {
                 }
             }
             Node::Branch(b) => b.choices.iter().for_each(|c| for_each_call(&c.body, f)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| for_each_call(&c.body, f)),
+            Node::Hub(h) => h.bodies().for_each(|b| for_each_call(b, f)),
             Node::On(o) => for_each_call(&o.body, f),
             Node::Objective(o) => for_each_call(&o.body, f),
             Node::Timeline(t) => {

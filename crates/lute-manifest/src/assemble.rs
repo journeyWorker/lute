@@ -13,15 +13,25 @@ use crate::types::Type;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AssembleError {
+    /// Two active plugins declare one name; the first plugin's declaration
+    /// is kept. `site` is the later declaration's `path:line:column`,
+    /// `first_site` the earlier one's `path:line`, when known.
     DuplicateAcrossPlugins {
         kind: String,
         id: String,
         first: String,
         second: String,
+        site: Option<String>,
+        first_site: Option<String>,
     },
+    /// A plugin declares a name the core language owns (a core statement,
+    /// block tag or `lute.core` directive; a lifecycle event; …). `why` is
+    /// the whole sentence; `site` is the declaration's `path:line:column`.
     ReservedName {
         id: String,
         plugin: String,
+        why: String,
+        site: Option<String>,
     },
     /// An active plugin absent from the installed set. `failed_with` is
     /// empty when no package declares the id, else the codes of the load
@@ -121,16 +131,30 @@ impl std::fmt::Display for AssembleError {
                 id,
                 first,
                 second,
-            } => write!(
-                f,
-                "{kind} `{id}` is declared by both `{first}` and `{second}`; \
-                 two active plugins cannot own the same name"
-            ),
-            AssembleError::ReservedName { id, plugin } => write!(
-                f,
-                "plugin `{plugin}` declares `{id}`, a name the core vocabulary \
-                 reserves (dsl §10)"
-            ),
+                site,
+                first_site,
+            } => {
+                if let Some(site) = site {
+                    write!(f, "{site}: ")?;
+                }
+                write!(f, "{kind} `{id}` is declared by both `{first}`")?;
+                if let Some(at) = first_site {
+                    write!(f, " (at {at})")?;
+                }
+                write!(
+                    f,
+                    " and `{second}`; two active plugins cannot own the same name — \
+                     `{first}`'s is used"
+                )
+            }
+            AssembleError::ReservedName {
+                plugin, why, site, ..
+            } => {
+                if let Some(site) = site {
+                    write!(f, "{site}: ")?;
+                }
+                write!(f, "plugin `{plugin}`: {why}")
+            }
             AssembleError::MissingActivePlugin { id, failed_with } if failed_with.is_empty() => {
                 write!(
                     f,
@@ -175,13 +199,26 @@ impl std::fmt::Display for AssembleError {
     }
 }
 
-/// dsl §10 reserved terms a non-core plugin MUST NOT (re)define as a directive.
-/// `cut` is core-owned, so it is only reserved against NON-core plugins. Also
-/// reserves the 0.2.0 quest surface tags `on`/`quest`/`objective` (dsl Appendix C:
-/// "the tags `on`, `quest`, `objective` become reserved ... surfaced at assembly
-/// time"); none of the three are core-owned, so they are reserved against every
-/// (non-core) plugin, same as `scene`.
-const RESERVED_DIRECTIVE_NAMES: &[&str] = &["scene", "cut", "on", "quest", "objective"];
+/// The sentence refusing a plugin declaration `name` that the core owns, for
+/// the reserved-names table's `slot` (core statements, block tags,
+/// lifecycle events, …) and — for a directive — every `lute.core`
+/// directive (`end`, `mark`, `bg`, …), which content always reads as core's.
+fn reserved_why(
+    slot: crate::reserved::Slot,
+    what: &str,
+    name: &str,
+    core_owned: bool,
+) -> Option<String> {
+    if let Some(r) = crate::reserved::refusal(slot, name) {
+        return Some(r.message(what));
+    }
+    core_owned.then(|| {
+        format!(
+            "`{name}` is a core directive (`::{name}`), which content always reads as the \
+             core one, so it cannot name {what} — rename it"
+        )
+    })
+}
 
 /// The keys the CORE stamp owns (compile-IR §4.3 `Stamp`): the dsl §7.5/§10
 /// timing keys `at`/`duration`/`delay`/`wait` — "cross-cutting reserved
@@ -195,7 +232,7 @@ const RESERVED_DIRECTIVE_NAMES: &[&str] = &["scene", "cut", "on", "quest", "obje
 ///
 /// `lute.core` legitimately OWNS the timing keys on its own staging directives
 /// (`camera`'s `duration`/`delay`/`wait`, `video`'s `wait`), so — exactly like
-/// `RESERVED_DIRECTIVE_NAMES` — this is enforced only against NON-core plugin
+/// the reserved directive names — this is enforced only against NON-core plugin
 /// declarations, never core's own embedded ones, and never against
 /// authored-document usage (that's the checker's concern, not assembly's).
 const RESERVED_STAMP_ATTR_NAMES: &[&str] = &[
@@ -235,6 +272,8 @@ pub fn assemble_snapshot(
     let mut oc_owner: BTreeMap<String, String> = BTreeMap::new();
     // Cast owners (dsl 0.23.0 §7), same treatment.
     let mut cast_owner: BTreeMap<String, String> = BTreeMap::new();
+    // Owners of every name `merge_map` and the bridge merge, per kind.
+    let mut owners: Owners = BTreeMap::new();
 
     for ap in active {
         if ap.id == "lute.core" {
@@ -261,12 +300,25 @@ pub fn assemble_snapshot(
             continue;
         };
         let pkg = &inst.loaded;
+        let merging = Merging {
+            plugin: &ap.id,
+            pkg,
+            installed,
+        };
 
         for d in &pkg.directives {
-            if RESERVED_DIRECTIVE_NAMES.contains(&d.name.as_str()) {
+            let core_owned = dir_owner.get(&d.name).is_some_and(|o| o == "lute.core");
+            if let Some(why) = reserved_why(
+                crate::reserved::Slot::Directive,
+                "a plugin directive",
+                &d.name,
+                core_owned,
+            ) {
                 errs.push(AssembleError::ReservedName {
                     id: d.name.clone(),
                     plugin: ap.id.clone(),
+                    why,
+                    site: pkg.site("directive", &d.name).map(str::to_string),
                 });
                 continue;
             }
@@ -286,12 +338,7 @@ pub fn assemble_snapshot(
                 continue;
             }
             if let Some(first) = dir_owner.get(&d.name) {
-                errs.push(AssembleError::DuplicateAcrossPlugins {
-                    kind: "directive".into(),
-                    id: d.name.clone(),
-                    first: first.clone(),
-                    second: ap.id.clone(),
-                });
+                errs.push(merging.duplicate("directive", "directive", &d.name, first));
                 continue;
             }
             for me in crate::validate::validate_directive(d) {
@@ -308,8 +355,9 @@ pub fn assemble_snapshot(
         merge_map(
             &mut snap.state_shapes,
             pkg.state_shapes.iter().map(|s| (s.name.clone(), s.clone())),
-            "shape",
-            &ap.id,
+            ("shape", "shape"),
+            &merging,
+            &mut owners,
             &mut errs,
         );
         merge_map(
@@ -317,29 +365,33 @@ pub fn assemble_snapshot(
             pkg.state_templates
                 .iter()
                 .map(|t| (t.name.clone(), t.clone())),
-            "template",
-            &ap.id,
+            ("template", "template"),
+            &merging,
+            &mut owners,
             &mut errs,
         );
         merge_map(
             &mut snap.providers,
             pkg.providers.iter().map(|p| (p.name.clone(), p.clone())),
-            "provider",
-            &ap.id,
+            ("provider", "provider"),
+            &merging,
+            &mut owners,
             &mut errs,
         );
         merge_map(
             &mut snap.defs,
             pkg.defs.iter().map(|d| (d.name.clone(), d.clone())),
-            "def",
-            &ap.id,
+            ("def", "def"),
+            &merging,
+            &mut owners,
             &mut errs,
         );
         merge_map(
             &mut snap.frontmatter,
             pkg.frontmatter.iter().map(|(k, v)| (k.clone(), v.clone())),
-            "frontmatter",
-            &ap.id,
+            ("frontmatter", "frontmatter"),
+            &merging,
+            &mut owners,
             &mut errs,
         );
         merge_map(
@@ -347,8 +399,9 @@ pub fn assemble_snapshot(
             pkg.enums
                 .iter()
                 .map(|(k, v)| (k.clone(), v.members.clone())),
-            "enum",
-            &ap.id,
+            ("enum", "enum"),
+            &merging,
+            &mut owners,
             &mut errs,
         );
         // Fold the same plugin `enums` export into `domains` (plugin
@@ -361,8 +414,9 @@ pub fn assemble_snapshot(
         merge_map(
             &mut snap.domains,
             pkg.enums.iter().map(|(k, v)| (k.clone(), v.clone())),
-            "domain",
-            &ap.id,
+            ("domain", "enum"),
+            &merging,
+            &mut owners,
             &mut errs,
         );
         // dsl 0.9.0 D-D: the member semantics a plugin-declared domain carries
@@ -380,8 +434,9 @@ pub fn assemble_snapshot(
         merge_map(
             &mut snap.asset_kinds,
             pkg.asset_kinds.iter().map(|k| (k.kind.clone(), k.clone())),
-            "assetKind",
-            &ap.id,
+            ("assetKind", "assetKind"),
+            &merging,
+            &mut owners,
             &mut errs,
         );
         // plugin §14.1 `stampAttrs`: the CROSS-CUTTING attr vocabulary. A name
@@ -404,25 +459,28 @@ pub fn assemble_snapshot(
         merge_map(
             &mut snap.stamp_attrs,
             stamp_attrs.into_iter(),
-            "stampAttr",
-            &ap.id,
+            ("stampAttr", "stampAttr"),
+            &merging,
+            &mut owners,
             &mut errs,
         );
         for e in &pkg.events {
-            if crate::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&e.name.as_str()) {
+            if let Some(why) = reserved_why(
+                crate::reserved::Slot::Event,
+                "a plugin event",
+                &e.name,
+                false,
+            ) {
                 errs.push(AssembleError::ReservedName {
                     id: e.name.clone(),
                     plugin: ap.id.clone(),
+                    why,
+                    site: pkg.site("event", &e.name).map(str::to_string),
                 });
                 continue;
             }
             if let Some(first) = ev_owner.get(&e.name) {
-                errs.push(AssembleError::DuplicateAcrossPlugins {
-                    kind: "event".into(),
-                    id: e.name.clone(),
-                    first: first.clone(),
-                    second: ap.id.clone(),
-                });
+                errs.push(merging.duplicate("event", "event", &e.name, first));
                 continue;
             }
             ev_owner.insert(e.name.clone(), ap.id.clone());
@@ -430,25 +488,30 @@ pub fn assemble_snapshot(
         }
         for rk in &pkg.reward_kinds {
             if let Some(first) = rk_owner.get(&rk.name) {
-                errs.push(AssembleError::DuplicateAcrossPlugins {
-                    kind: "rewardKind".into(),
-                    id: rk.name.clone(),
-                    first: first.clone(),
-                    second: ap.id.clone(),
-                });
+                errs.push(merging.duplicate("rewardKind", "rewardKind", &rk.name, first));
                 continue;
             }
             rk_owner.insert(rk.name.clone(), ap.id.clone());
             rk_pending.push((ap.id.clone(), rk.clone()));
         }
         for oc in &pkg.occasions {
-            if let Some(first) = oc_owner.get(&oc.name) {
-                errs.push(AssembleError::DuplicateAcrossPlugins {
-                    kind: "occasion".into(),
+            // Reported, still merged: dropping it would make every beat
+            // answering it an unknown occasion besides.
+            if let Some(why) = reserved_why(
+                crate::reserved::Slot::Occasion,
+                "a plugin occasion",
+                &oc.name,
+                false,
+            ) {
+                errs.push(AssembleError::ReservedName {
                     id: oc.name.clone(),
-                    first: first.clone(),
-                    second: ap.id.clone(),
+                    plugin: ap.id.clone(),
+                    why,
+                    site: pkg.site("occasion", &oc.name).map(str::to_string),
                 });
+            }
+            if let Some(first) = oc_owner.get(&oc.name) {
+                errs.push(merging.duplicate("occasion", "occasion", &oc.name, first));
                 continue;
             }
             oc_owner.insert(oc.name.clone(), ap.id.clone());
@@ -456,30 +519,38 @@ pub fn assemble_snapshot(
         }
         // dsl 0.23.0 §7: cast members merge like occasions — one owner per id.
         for c in &pkg.cast {
-            if let Some(owner) = cast_owner.get(&c.id) {
-                errs.push(AssembleError::DuplicateAcrossPlugins {
-                    kind: "cast".into(),
+            if let Some(why) = reserved_why(
+                crate::reserved::Slot::Cast,
+                "a plugin cast id",
+                &c.id,
+                false,
+            ) {
+                errs.push(AssembleError::ReservedName {
                     id: c.id.clone(),
-                    first: owner.clone(),
-                    second: ap.id.clone(),
+                    plugin: ap.id.clone(),
+                    why,
+                    site: pkg.site("cast", &c.id).map(str::to_string),
                 });
+            }
+            if let Some(owner) = cast_owner.get(&c.id) {
+                errs.push(merging.duplicate("cast", "cast", &c.id, owner));
                 continue;
             }
             cast_owner.insert(c.id.clone(), ap.id.clone());
             snap.cast.insert(c.id.clone(), c.clone());
         }
         for b in &pkg.bridge {
+            let id = format!("{}.{}", b.service, b.operation);
             let k = (b.service.clone(), b.operation.clone());
             match snap.bridge_capabilities.entry(k) {
                 std::collections::btree_map::Entry::Occupied(_) => {
-                    errs.push(AssembleError::DuplicateAcrossPlugins {
-                        kind: "bridge".into(),
-                        id: format!("{}.{}", b.service, b.operation),
-                        first: "?".into(),
-                        second: ap.id.clone(),
-                    });
+                    let first = owners
+                        .get(&("bridge", id.clone()))
+                        .map_or("lute.core", String::as_str);
+                    errs.push(merging.duplicate("bridge", "bridge", &id, first));
                 }
                 std::collections::btree_map::Entry::Vacant(e) => {
+                    owners.insert(("bridge", id), ap.id.clone());
                     e.insert(b.clone());
                 }
             }
@@ -567,24 +638,60 @@ fn validate_asset_kind_refs(snap: &CapabilitySnapshot, errs: &mut Vec<AssembleEr
     }
 }
 
+/// Which plugin first declared each name, keyed by (kind, name). A name in
+/// the snapshot with no owner here is `lute.core`'s.
+type Owners = BTreeMap<(&'static str, String), String>;
+
+/// The plugin being merged: its id and package, and every installed
+/// package, to locate a duplicate in both.
+struct Merging<'a> {
+    plugin: &'a str,
+    pkg: &'a crate::loader::LoadedPlugin,
+    installed: &'a InstalledPlugins,
+}
+
+impl Merging<'_> {
+    /// [`AssembleError::DuplicateAcrossPlugins`] for this plugin's `kind`
+    /// `id` — a `site_kind` declaration in its package — after plugin
+    /// `first` declared it.
+    fn duplicate(&self, kind: &str, site_kind: &str, id: &str, first: &str) -> AssembleError {
+        let first_site = self
+            .installed
+            .get(first)
+            .and_then(|p| p.loaded.site(site_kind, id))
+            .map(|s| s.rsplit_once(':').map_or(s, |(at, _)| at).to_string());
+        AssembleError::DuplicateAcrossPlugins {
+            kind: kind.into(),
+            id: id.into(),
+            first: first.into(),
+            second: self.plugin.into(),
+            site: self.pkg.site(site_kind, id).map(str::to_string),
+            first_site,
+        }
+    }
+}
+
+/// Merge `items` into `dst`, first owner kept; a name already held is a
+/// duplicate. `kind` names it in the error, `site_kind` in the packages'
+/// [`crate::loader::LoadedPlugin::site`]s.
 fn merge_map<V: Clone>(
     dst: &mut BTreeMap<String, V>,
     items: impl Iterator<Item = (String, V)>,
-    kind: &str,
-    plugin: &str,
+    (kind, site_kind): (&'static str, &'static str),
+    merging: &Merging,
+    owners: &mut Owners,
     errs: &mut Vec<AssembleError>,
 ) {
     for (k, v) in items {
         match dst.entry(k) {
             std::collections::btree_map::Entry::Occupied(e) => {
-                errs.push(AssembleError::DuplicateAcrossPlugins {
-                    kind: kind.into(),
-                    id: e.key().clone(),
-                    first: "?".into(),
-                    second: plugin.into(),
-                });
+                let first = owners
+                    .get(&(kind, e.key().clone()))
+                    .map_or("lute.core", String::as_str);
+                errs.push(merging.duplicate(kind, site_kind, e.key(), first));
             }
             std::collections::btree_map::Entry::Vacant(e) => {
+                owners.insert((kind, e.key().clone()), merging.plugin.to_string());
                 e.insert(v);
             }
         }

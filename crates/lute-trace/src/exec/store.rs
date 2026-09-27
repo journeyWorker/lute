@@ -26,6 +26,34 @@ use crate::datalog::{Fact, Program};
 use crate::eval::{Read, ReservedReadKind};
 use crate::{eval, EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value};
 
+/// One member's declared label forms (the artifact's `labelForms` entry).
+#[derive(Clone, Debug, Default)]
+pub(crate) struct LabelForms {
+    pub(crate) start: Option<String>,
+    pub(crate) indefinite: Option<String>,
+}
+
+impl LabelForms {
+    /// An artifact `labelForms` object: member → `{ start?, indefinite? }`.
+    fn map_of(forms: &Json) -> BTreeMap<String, LabelForms> {
+        let form = |f: &Json, key: &str| f.get(key).and_then(Json::as_str).map(str::to_string);
+        forms
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(m, f)| {
+                (
+                    m.clone(),
+                    LabelForms {
+                        start: form(f, "start"),
+                        indefinite: form(f, "indefinite"),
+                    },
+                )
+            })
+            .collect()
+    }
+}
+
 pub(crate) struct Store {
     /// Live scalar state (path → value).
     pub(crate) values: BTreeMap<String, Value>,
@@ -38,6 +66,12 @@ pub(crate) struct Store {
     /// artifact `entities[].labels` declares — what an `occasionTarget`
     /// placeholder of that kind renders.
     pub(crate) kind_labels: BTreeMap<String, BTreeMap<String, String>>,
+    /// Per state path, the member → declared label forms its artifact
+    /// `state[].labelForms` carries (a `{{path:start}}` renders them).
+    pub(crate) label_forms: BTreeMap<String, BTreeMap<String, LabelForms>>,
+    /// Per entity kind, the member → declared label forms its artifact
+    /// `entities[].labelForms` carries.
+    pub(crate) kind_label_forms: BTreeMap<String, BTreeMap<String, LabelForms>>,
     /// Always empty: every declared default is already in `values`, so a
     /// schema tier would only shadow reserved defaults.
     schema: StateSchema,
@@ -75,6 +109,7 @@ impl Store {
     pub(crate) fn of_artifact(art: &Json, derive: bool) -> Self {
         let mut types = BTreeMap::new();
         let mut labels = BTreeMap::new();
+        let mut label_forms = BTreeMap::new();
         let mut values = BTreeMap::new();
         for e in art
             .get("state")
@@ -94,6 +129,9 @@ impl Store {
                     .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
                     .collect();
                 labels.insert(path.to_string(), map);
+            }
+            if let Some(forms) = e.get("labelForms") {
+                label_forms.insert(path.to_string(), LabelForms::map_of(forms));
             }
             if let Some(v) = e.get("default").and_then(json_to_value) {
                 values.insert(path.to_string(), v);
@@ -169,6 +207,17 @@ impl Store {
             values,
             types,
             labels,
+            label_forms,
+            kind_label_forms: art
+                .get("entities")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|k| {
+                    let name = k.get("name")?.as_str()?;
+                    Some((name.to_string(), LabelForms::map_of(k.get("labelForms")?)))
+                })
+                .collect(),
             kind_labels: art
                 .get("entities")
                 .and_then(Json::as_array)

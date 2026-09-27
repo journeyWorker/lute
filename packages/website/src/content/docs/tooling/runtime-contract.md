@@ -67,7 +67,7 @@ Every artifact opens with a fixed envelope (the `Artifact` struct in
 | `state` | the folded init/type table. |
 | `entities` / `enums` / `relations` / `seedFacts` / `rules` | the declared vocabulary (omitted when empty). |
 | `commands` | the flat, ordered, addressed command stream. |
-| `prereqEdges` | advisory raw `after` prerequisite edges (omitted when empty). |
+| `prereqEdges` | advisory raw graph edges, `{node, after}` (scene, bundle beat) or `{node, follows}` (quest; graph metadata only) (omitted when empty). |
 | `shots` | authored `## ` shot headings, `{shot, heading}` (omitted when empty). |
 | `seasons` | the project's declared seasons, `{name, live: {raw, expr}}`, name-sorted (omitted without seasons; dsl 0.27.0). |
 | `gates` | every occasion's `raisedWhen` gate, `{occasion, raisedWhen: {raw, expr}}`, occasion-sorted (omitted when none; dsl 0.27.0). |
@@ -121,8 +121,13 @@ artifacts loads 0.27 ones. Cadence (dsl 0.27.0 §5):
 - **`once: "season:<name>"`** on the same records: spent from its presentation until the season
   `<name>` opens again.
 - **`spentBy: {raw, expr}`** on `BeatIr`, `BeatCmd` and `EntryCmd` (its `raw` alone on the index
-  beat row): the beat carries `once: "none"` and is not eligible while this condition holds.
-  Omitted when unauthored.
+  beat row): the beat is spent by this condition instead of by being presented. Observe it at
+  every quest settle (per member of a kind or `for` beat, `occasion.target` bound) and when the
+  beat is judged: once it has held, the beat is spent for its `once` period — `run` when `once`
+  is `run` or absent (a new run clears it), `user` never, `day` / `slot` / `week` while the
+  clock stays in the period it was first seen holding in, `season:<name>` until that season
+  opens again — even if the condition turns false. A presentation of a `spentBy` beat spends
+  nothing. Omitted when unauthored.
 - **`QuestCmd.rearm: {raw, expr}`**: observe it at every quest settle of a playthrough, the first
   observation being the baseline. Each time it goes false→true, return the quest to `unset`
   (objectives not done, `failedBy` cleared, deadlines forgotten); a `start` that holds activates it
@@ -140,8 +145,8 @@ Text (dsl 0.27.0 §7):
 
 - **`entities[].labels: { <member>: "<text>" }`**: display text for a kind's members, with a
   sub-kind's and its ancestors' labels for shared members. Render an `occasionTarget`
-  placeholder of `entityKind` K as the cast `name:` when the member is a cast id, else
-  `labels[member]` of K, else the id. A `{ domain: K }` or `{ entity: K }` state path carries the same map as
+  placeholder of `entityKind` K as `labels[member]` of K, else the cast `name:` when the member
+  is a cast id, else the id. A `{ domain: K }` or `{ entity: K }` state path carries the same map as
   its `state[].labels`, which `path` placeholders already render. Omitted when none.
 - **Placeholder `format: "plural"` with `forms: [one, other]`**: render `one` when the number is
   1, `other` otherwise, each `#` in the form replaced by the number (`{{n:plural(# lamp|# lamps)}}`
@@ -183,6 +188,12 @@ Members bound by occasions (dsl 0.27.0 §3):
   (`user.bond[occasion.target]`). Substitute the bound member: the pattern argument becomes that
   member id, and `F[occasion.target]` reads `F.<member>`. The checker has proved every member's
   instance well-typed.
+- **Writes through `occasion.target`** (dsl 0.28.0 §3): in the same beats, a `set` record's `path`
+  may end in `[occasion.target]` (`run.count[occasion.target]`: write `run.count.<member>`), an
+  `assert` / `retract` argument may be `occasion.target`, and so may a `plugin` record's field
+  value, effect path index (`effects[].path`) or fact argument (`asserts` / `retracts`). Substitute
+  the bound member before applying the write, exactly as for a read. A component argument never
+  reaches you this way: it is compiled to one `match` arm on `occasion.target` per member.
 - **`forKind: { kind, members }`** on `BeatIr` (a scene's `meta.beat`), `BeatCmd`, `EntryCmd` and
   `project.index.json` beat rows: the beat answers an untargeted `select: sequence` occasion once
   per listed member, in list order. Judge each member's eligibility at the raise with

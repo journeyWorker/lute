@@ -134,22 +134,23 @@ pub fn payload_value(
 /// dsl 0.27.0 §3: a raise's payload as authored (`copies: 2`), each field
 /// typed by `occasion`'s `payload:` declaration — keyed by its
 /// `occasion.payload.<field>` path. `Err` names an occasion without a
-/// payload, an undeclared field, or a value its type refuses.
+/// payload, an undeclared field, a value its type refuses, or a declared
+/// field the raise leaves out (every raise carries its whole payload).
 pub fn typed_payload(
     p: &ExecProject,
     occasion: &str,
     fields: &[(String, String)],
 ) -> Result<BTreeMap<String, Value>, String> {
     let mut out = BTreeMap::new();
-    if fields.is_empty() {
-        return Ok(out);
-    }
     let declared = p
         .occasions
         .get(occasion)
         .map(|d| &d.payload)
         .filter(|p| !p.is_empty());
     let Some(declared) = declared else {
+        if fields.is_empty() {
+            return Ok(out);
+        }
         return Err(format!(
             "`payload` — occasion `{occasion}` declares no `payload:`"
         ));
@@ -173,7 +174,62 @@ pub fn typed_payload(
             value,
         );
     }
-    Ok(out)
+    match missing_payload(occasion, declared, |f| fields.iter().any(|(k, _)| k == f)) {
+        Some(why) => Err(format!(
+            "{why} — add `payload: {{ {} }}` to the step",
+            payload_example(declared)
+        )),
+        None => Ok(out),
+    }
+}
+
+/// dsl 0.28.0 (T1-13): the declared payload fields of `occasion` a raise
+/// leaves out (`given` answers whether a field is supplied), as the
+/// sentence naming them — `None` when every declared field is given.
+pub fn missing_payload(
+    occasion: &str,
+    declared: &BTreeMap<String, lute_manifest::types::Type>,
+    given: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let missing: Vec<String> = declared
+        .keys()
+        .filter(|f| !given(f))
+        .map(|f| format!("`{f}`"))
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let (noun, verb) = if missing.len() == 1 {
+        ("field", "is")
+    } else {
+        ("fields", "are")
+    };
+    Some(format!(
+        "occasion `{occasion}` declares payload {noun} {}, which {verb} missing from this raise",
+        missing.join(", ")
+    ))
+}
+
+/// `seconds: <number>, mood: <calm|storm>` — each declared payload field
+/// with a placeholder of its type, for a remedy.
+pub fn payload_example(declared: &BTreeMap<String, lute_manifest::types::Type>) -> String {
+    declared
+        .iter()
+        .map(|(f, ty)| format!("{f}: {}", payload_placeholder(ty)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// A placeholder value for a payload field of type `ty` (`<number>`).
+pub fn payload_placeholder(ty: &lute_manifest::types::Type) -> String {
+    use lute_manifest::types::Type;
+    match ty {
+        Type::Bool => "<true|false>".to_string(),
+        Type::Number => "<number>".to_string(),
+        Type::Enum(members) => format!("<{}>", members.join("|")),
+        Type::Domain(k) | Type::Entity(k) => format!("<a {k}>"),
+        _ => "<value>".to_string(),
+    }
 }
 
 /// The entry id and flag of a reserved `entry.<id>.read` /
@@ -330,21 +386,17 @@ pub fn resolve_bridges(
 /// Resolve one ground atom a script asserts or retracts (`facts:`,
 /// `engine.facts` / `engine.retract`, a `newRun` seed): a declared,
 /// non-derived relation at its arity whose closed-domain args are members.
-/// Reserved relations are allowed — the engine is exactly who asserts them
-/// (dsl 0.22.0 §1.1). `Err` is the reason, unprefixed.
-pub fn resolve_fact(p: &ExecProject, f: &str) -> Result<Fact, String> {
+/// Reserved relations are allowed — the engine is exactly who asserts them.
+/// `next` is the list entry after `f`, for [`split_atom_hint`]. `Err` is
+/// the reason, unprefixed.
+pub fn resolve_fact(p: &ExecProject, f: &str, next: Option<&str>) -> Result<Fact, String> {
     let fact = parse_ground_fact(f)
         .filter(|(_, args)| args.iter().all(|a| !a.is_empty() && a != "_"))
         .ok_or_else(|| {
-            // dsl 0.24.0 (T3-10): YAML splits an unquoted flow-list atom at
-            // its comma — `[heard(tavi, regent)]` reaches us as `heard(tavi`.
-            if f.matches('(').count() != f.matches(')').count() {
-                "is not a ground fact `rel(arg, …)` — quote the atom: YAML splits an unquoted \
-                 `[a(b, c)]` at the comma (write `[\"a(b, c)\"]`)"
-                    .to_string()
-            } else {
-                "is not a ground fact `rel(arg, …)`".to_string()
-            }
+            format!(
+                "is not a ground fact `rel(arg, …)`{}",
+                split_atom_hint(f, next)
+            )
         })?;
     if p.index
         .relations
@@ -356,6 +408,24 @@ pub fn resolve_fact(p: &ExecProject, f: &str) -> Result<Fact, String> {
     match atom_problem(p, &fact.0, &fact.1) {
         Some(why) => Err(why),
         None => Ok(fact),
+    }
+}
+
+/// Why an atom whose parentheses do not balance is malformed, read after
+/// the atom; empty when they balance. YAML splits an unquoted flow-list atom
+/// at its comma — `[heard(tavi, regent)]` reaches us as `heard(tavi` then
+/// `regent)` — so when `next` (the following list entry) closes what `atom`
+/// opened, the fix is quoting; otherwise the atom itself is unbalanced (a
+/// quoted `"empty(ada"`).
+pub fn split_atom_hint(atom: &str, next: Option<&str>) -> &'static str {
+    let open = |s: &str| s.matches('(').count() as isize - s.matches(')').count() as isize;
+    match open(atom) {
+        0 => "",
+        o if o > 0 && next.is_some_and(|n| open(n) < 0) => {
+            " — quote the atom: YAML splits an unquoted `[a(b, c)]` at its comma (write \
+             `[\"a(b, c)\"]`)"
+        }
+        _ => " — its parentheses do not balance",
     }
 }
 

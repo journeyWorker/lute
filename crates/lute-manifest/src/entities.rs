@@ -36,7 +36,7 @@ use crate::snapshot::Domain;
 /// when the key is absent — a non-mapping value yields an empty map). An
 /// entry value that is neither a sequence nor a mapping, a long form without
 /// a usable `members:`, or a non-string member is skipped for that entry; a
-/// non-string label is skipped here and reported by [`label_shape_errors`].
+/// non-string label is skipped here and reported by [`enum_shape_errors`].
 pub fn parse_enums(value: &Value) -> BTreeMap<String, Domain> {
     let mut out = BTreeMap::new();
     let Some(map) = value.as_mapping() else {
@@ -99,11 +99,18 @@ pub fn parse_enums(value: &Value) -> BTreeMap<String, Domain> {
     out
 }
 
-/// The `labels:` shape mistakes in an `enums:` block that [`parse_enums`]
-/// (total, diagnostic-free) silently drops: a `labels:` value that is not a
-/// mapping, or a label that is not a string (dsl 0.24.0 §1). One message per
-/// mistake, in declaration order; the caller owns the diagnostic code.
-pub fn label_shape_errors(value: &Value) -> Vec<String> {
+/// The keys an `enums:` long form may carry (dsl 0.9.0 D-D, `labels:` dsl
+/// 0.24.0 §1).
+pub const ENUM_LONG_FORM_KEYS: [&str; 4] = ["members", "default", "exits", "labels"];
+
+/// The shape mistakes in an `enums:` block that [`parse_enums`] (total,
+/// diagnostic-free) would otherwise drop silently: an unknown long-form key
+/// (`lables:`, `member:`), a long form without `members:`, a `default:` that
+/// is no member, a `labels:` value that is not a mapping, and a label that is
+/// not a string. One `(message, key path)` per mistake, in declaration
+/// order; the path (from the `enums:` key down) is where the caller anchors
+/// it, and the caller owns the diagnostic code.
+pub fn enum_shape_errors(value: &Value) -> Vec<(String, Vec<String>)> {
     let mut out = Vec::new();
     let Some(map) = value.as_mapping() else {
         return out;
@@ -112,24 +119,75 @@ pub fn label_shape_errors(value: &Value) -> Vec<String> {
         let (Some(name), Some(long)) = (k.as_str(), v.as_mapping()) else {
             continue;
         };
+        let at = |key: &str| vec!["enums".to_string(), name.to_string(), key.to_string()];
+        for key in long.keys() {
+            let Some(key) = key.as_str() else { continue };
+            if ENUM_LONG_FORM_KEYS.contains(&key) {
+                continue;
+            }
+            let hint = crate::suggest::did_you_mean(key, ENUM_LONG_FORM_KEYS);
+            out.push((
+                format!(
+                    "enum `{name}`: unknown key `{key}`{hint} — a long-form enum takes \
+                     `members:`, `default:`, `exits:` and `labels:`"
+                ),
+                at(key),
+            ));
+        }
+        // A non-member `default:` is `E-ENUM-DEFAULT-NOT-MEMBER`, from the
+        // shared `validate_domain` rules.
+        match long.get(Value::from("members")) {
+            Some(Value::Sequence(_)) => {}
+            Some(_) => {
+                out.push((
+                    format!(
+                        "enum `{name}`: `members:` must be a list of member names, as \
+                         `members: [mon, tue]`"
+                    ),
+                    at("members"),
+                ));
+                continue;
+            }
+            None => {
+                out.push((
+                    format!(
+                        "enum `{name}`: a long-form enum needs `members:`, as \
+                         `{name}: {{ members: [a, b] }}`"
+                    ),
+                    vec!["enums".to_string(), name.to_string()],
+                ));
+                continue;
+            }
+        }
         let Some(labels) = long.get(Value::from("labels")) else {
             continue;
         };
         let Some(labels) = labels.as_mapping() else {
-            out.push(format!(
-                "enum `{name}`: `labels:` must map each member to its display text, \
-                 as `labels: {{ sun: Sunday }}` (dsl 0.24.0 §1)"
+            out.push((
+                format!(
+                    "enum `{name}`: `labels:` must map each member to its display text, \
+                     as `labels: {{ sun: Sunday }}`"
+                ),
+                at("labels"),
             ));
             continue;
         };
         for (member, label) in labels {
             if label.as_str().is_none() {
-                let member = member
-                    .as_str()
-                    .map_or_else(|| format!("{member:?}"), str::to_string);
-                out.push(format!(
-                    "enum `{name}`: the label for `{member}` must be a string of display text \
-                     (dsl 0.24.0 §1)"
+                let member = match member {
+                    Value::String(s) => s.clone(),
+                    other => serde_yaml::to_string(other)
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string(),
+                };
+                let mut path = at("labels");
+                path.push(member.clone());
+                out.push((
+                    format!(
+                        "enum `{name}`: the label for `{member}` must be a string of display text"
+                    ),
+                    path,
                 ));
             }
         }
@@ -198,15 +256,33 @@ mod tests {
         // The non-string label is dropped; the string one beside it survives.
         assert_eq!(doms["slot"].labels.len(), 1);
         assert!(doms["mood"].labels.is_empty());
-        let errs = label_shape_errors(&v);
+        let errs = enum_shape_errors(&v);
         assert_eq!(errs.len(), 2, "{errs:?}");
         assert!(
-            errs[0].contains("`slot`") && errs[0].contains("`am`"),
+            errs[0].0.contains("`slot`") && errs[0].0.contains("`am`"),
             "{errs:?}"
         );
+        assert_eq!(errs[0].1, ["enums", "slot", "labels", "am"]);
         assert!(
-            errs[1].contains("`mood`") && errs[1].contains("must map"),
+            errs[1].0.contains("`mood`") && errs[1].0.contains("must map"),
             "{errs:?}"
         );
+    }
+
+    // Round-6 T1-2: a long-form typo was dropped silently (`lables:` left
+    // every member unlabelled; `member:` dropped the whole enum).
+    #[test]
+    fn enum_long_form_refuses_unknown_keys() {
+        let v: Value = serde_yaml::from_str(
+            "day:\n  members: [mon, tue]\n  lables: { mon: Monday }\n\
+             hour:\n  member: [h1, h2]\n",
+        )
+        .unwrap();
+        let errs = enum_shape_errors(&v);
+        assert_eq!(errs.len(), 3, "{errs:?}");
+        assert!(errs[0].0.contains("did you mean `labels`"), "{errs:?}");
+        assert_eq!(errs[0].1, ["enums", "day", "lables"]);
+        assert!(errs[1].0.contains("did you mean `members`"), "{errs:?}");
+        assert!(errs[2].0.contains("needs `members:`"), "{errs:?}");
     }
 }

@@ -4,6 +4,6 @@ profiles:
     plugins: {}
 defaults:
   uses: [world.schema.yaml]
-sequence:
-  occasion: chapter
-  scenes: [prologue, counter, accusation]
+chapters:
+  - on: chapter
+    scenes: [prologue, counter, accusation]

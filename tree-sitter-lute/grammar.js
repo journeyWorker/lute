@@ -140,18 +140,30 @@ module.exports = grammar({
       ),
 
     // ---- hub (nest; §7.3.2) -----------------------------------------------
-    // Hub ::= "<hub" Attrs ">" HubChoice+ "</hub>" (§7.3.2). A revisit
-    // conversation that re-presents eligible choices. `id` required; the
-    // `once`/`exit` flags and `into`/`persist`/`value`/`when` sugar all ride the
-    // generic `_tag_attr` machinery (bare-bool `once`/`exit`; string/ref values)
-    // — no new attr vocabulary needed.
+    // Hub ::= "<hub" Attrs ">" (HubChoice | HubReturn)+ "</hub>" (§7.3.2,
+    // dsl 0.28.0 §5). A revisit conversation that re-presents eligible
+    // choices. `id` required; the `once`/`exit` flags and
+    // `into`/`persist`/`value`/`when` sugar all ride the generic `_tag_attr`
+    // machinery (bare-bool `once`/`exit`; string/ref values) — no new attr
+    // vocabulary needed. At most one `<return>` is the checker's rule.
     hub: ($) =>
       seq(
         "<hub",
         repeat($._tag_attr),
         ">",
-        repeat($.hub_choice),
+        repeat(choice($.hub_choice, $.hub_return)),
         "</hub>",
+      ),
+
+    // HubReturn ::= "<return>" Node* "</return>" (dsl 0.28.0 §5): the text
+    // that runs each time an option hands control back to the hub.
+    hub_return: ($) =>
+      seq(
+        "<return",
+        repeat($._tag_attr),
+        ">",
+        repeat($._node),
+        "</return>",
       ),
 
     // HubChoice ::= "<choice" Attrs ">" Node* "</choice>" (§7.3.2). Same surface
@@ -363,12 +375,12 @@ module.exports = grammar({
 
     // CelKey — the reserved attribute keys whose value is CEL (§7.3): `on` is a
     // `<match>` subject, `test` a `<when>` guard, `when` a `<choice>` guard,
-    // `rearm` a quest's re-arm condition and `spentBy` a beat's spend
-    // condition (dsl 0.27.0 §5). A named node (lexes ahead of the generic `key`
-    // on a tie) so editors treat these keys distinctly and know their value is
-    // embedded CEL.
+    // `visibleWhen` an objective's visibility condition, `rearm` a quest's
+    // re-arm condition and `spentBy` a beat's spend condition (dsl 0.27.0 §5).
+    // A named node (lexes ahead of the generic `key` on a tie) so editors treat
+    // these keys distinctly and know their value is embedded CEL.
     cel_key: ($) =>
-      choice("on", "test", "when", "done", "start", "fail", "rearm", "spentBy"),
+      choice("on", "test", "when", "visibleWhen", "done", "start", "fail", "rearm", "spentBy"),
 
     // CelString (§4.4) — a double-quoted CEL expression used as an attribute
     // value. Unlike the opaque `string` token, its interior is *structured* so

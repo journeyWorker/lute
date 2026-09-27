@@ -15,7 +15,7 @@ facts:
   - "awake(vesna)"
   - "awake(ilsabet)"
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Ottavio. I load ships. I have loaded this one four times and never once been aboard it."
     - "Only the schedule's running at twice the rate I planned for, and I've been doing arithmetic I don't enjoy."

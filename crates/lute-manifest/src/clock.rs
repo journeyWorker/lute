@@ -4,8 +4,9 @@
 //! paths — a number `day` and an enum `slot` — plus the order of the slots,
 //! an optional occasion raised after every advance, and an optional week.
 //! The clock stores nothing of its own (D-B): it gives those paths meaning —
-//! an order (`clock.index`), a weekday (`clock.weekday`,
-//! `clock.weekdayLabel`), `once: day|slot`, and `lute play`'s `advance:`.
+//! an order (`clock.index`), read-only aliases (`clock.day`, `clock.slot`),
+//! a weekday (`clock.weekday`, `clock.weekdayLabel`), a finite clock's end
+//! (`clock.ended`), `once: day|slot`, and `lute play`'s `advance:`.
 //!
 //! This module is pure data and arithmetic, shared by the checker, the
 //! compiler (the IR carries the declaration verbatim), trace and the
@@ -19,6 +20,15 @@ pub const CLOCK_INDEX: &str = "clock.index";
 pub const CLOCK_WEEKDAY: &str = "clock.weekday";
 /// `clock.weekdayLabel`: `week.labels[clock.weekday]`.
 pub const CLOCK_WEEKDAY_LABEL: &str = "clock.weekdayLabel";
+/// dsl 0.28.0 §5: `clock.day` — the day path's value, read-only.
+pub const CLOCK_DAY: &str = "clock.day";
+/// dsl 0.28.0 §5: `clock.slot` — the slot path's value, read-only (a clock
+/// with a `slot:` only).
+pub const CLOCK_SLOT: &str = "clock.slot";
+/// dsl 0.28.0 §5: `clock.ended` — `true` once a finite clock ended (from the
+/// settle of the `advance:` that ends it until a `newRun` starts it over). A
+/// finite clock only. Not a function of the position: the runtime carries it.
+pub const CLOCK_ENDED: &str = "clock.ended";
 /// dsl 0.27.0 §4 (T2-5): an `advance:` step after a finite clock ended (or
 /// from past its last position) — a `lute play` / `lute test` usage error.
 pub const E_CLOCK_END: &str = "E-CLOCK-END";
@@ -155,6 +165,19 @@ pub enum ClockValue {
     Str(String),
 }
 
+/// The type of one reserved `clock.*` path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClockPathType {
+    /// A whole number (`clock.index`, `clock.day`, `clock.weekday`).
+    Number,
+    /// One of the week's labels (`clock.weekdayLabel`).
+    WeekdayLabel,
+    /// One of `slots` (`clock.slot`).
+    Slot,
+    /// `clock.ended`.
+    Bool,
+}
+
 impl ClockDecl {
     /// The problems the declaration has on its own, before any path is
     /// resolved: empty or repeated slots, a zero-length week, a `first`
@@ -260,17 +283,30 @@ impl ClockDecl {
         self.last_at().is_some_and(|last| at > last)
     }
 
-    /// The reserved paths this clock declares, with their types: `true` for
-    /// a number, `false` for a string.
-    pub fn reserved_paths(&self) -> Vec<(&'static str, bool)> {
-        let mut out = vec![(CLOCK_INDEX, true)];
+    /// The reserved paths this clock declares, with their types.
+    pub fn reserved_paths(&self) -> Vec<(&'static str, ClockPathType)> {
+        let mut out = vec![
+            (CLOCK_INDEX, ClockPathType::Number),
+            (CLOCK_DAY, ClockPathType::Number),
+        ];
+        if self.slot.is_some() {
+            out.push((CLOCK_SLOT, ClockPathType::Slot));
+        }
         if let Some(week) = &self.week {
-            out.push((CLOCK_WEEKDAY, true));
+            out.push((CLOCK_WEEKDAY, ClockPathType::Number));
             if !week.labels.is_empty() {
-                out.push((CLOCK_WEEKDAY_LABEL, false));
+                out.push((CLOCK_WEEKDAY_LABEL, ClockPathType::WeekdayLabel));
             }
         }
+        if self.is_finite() {
+            out.push((CLOCK_ENDED, ClockPathType::Bool));
+        }
         out
+    }
+
+    /// `true` for a clock that declares where it ends (`last:` / `days:`).
+    pub fn is_finite(&self) -> bool {
+        self.last.is_some() || self.days.is_some()
     }
 
     /// Slots per day: `slots`' length, or 1 for a day-granular clock.
@@ -384,10 +420,16 @@ impl ClockDecl {
         week.labels.get(wd as usize).map(String::as_str)
     }
 
-    /// Every reserved `clock.*` path's value at `at`, in
-    /// [`Self::reserved_paths`] order.
+    /// Every reserved `clock.*` path's value at `at` that the position
+    /// decides, in [`Self::reserved_paths`] order — all but `clock.ended`.
     pub fn values(&self, at: ClockAt) -> Vec<(&'static str, ClockValue)> {
-        let mut out = vec![(CLOCK_INDEX, ClockValue::Num(self.index(at)))];
+        let mut out = vec![
+            (CLOCK_INDEX, ClockValue::Num(self.index(at))),
+            (CLOCK_DAY, ClockValue::Num(at.day)),
+        ];
+        if let (Some(_), Some(name)) = (&self.slot, self.slot_name(at.slot)) {
+            out.push((CLOCK_SLOT, ClockValue::Str(name.to_string())));
+        }
         if let Some(wd) = self.weekday(at.day) {
             out.push((CLOCK_WEEKDAY, ClockValue::Num(wd)));
         }

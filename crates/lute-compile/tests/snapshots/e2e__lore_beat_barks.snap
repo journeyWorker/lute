@@ -6,7 +6,7 @@ expression: json
   "kind": "lore",
   "lute": "0.27.0",
   "irVersion": "0.27.0",
-  "capabilityVersion": "0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3",
+  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
   "meta": {
     "title": "Achilles barks"
   },

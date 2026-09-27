@@ -3,7 +3,7 @@ title: 스토리 플레이
 description: "계기(occasion)와 비트(beat, dsl 0.21.0) — 어떤 스토리 조각이 어떤 엔진 순간에 응답하는지 프로젝트가 선언하는 방법 — 그리고 스크립트로 적은 플레이스루를 프로젝트 전체에 걸쳐 걷는 참조 플레이어 `lute play`: 발생시킨 계기, 엔진 자신의 쓰기, 출발점이 되는 세이브, `lute test`가 실행하는 단언(dsl 0.22.0), 시퀀스 전체를 재생하는 계기, 곁들이는 대사, 기한, 대상 지정 목표, 비트 번들(dsl 0.23.0), 스크립트가 앞으로 돌리는 시계, 플러그인 브리지 호출에 대한 응답, 트랜스크립트에 드러나는 퀘스트 구조(dsl 0.24.0), 그리고 이름 붙은 슬롯이나 요일까지 돌리는 시계, 엔진이 수락하는 퀘스트, 엔티티 종류 전체에 응답하는 비트(dsl 0.26.0, 초안)."
 ---
 
-내러티브 게임은 저마다의 순간에 다음 스토리 조각을 고릅니다: 허브 방문, 방 입장, NPC와의 대화, 새로운
+내러티브 게임은 저마다의 순간에 다음 스토리 조각을 고릅니다: 마을 방문, 방 입장, NPC와의 대화, 새로운
 하루, 새 런의 시작. Lute는 그런 순간을 **계기(occasion)**, 그 순간에 응답하는 스토리 조각을
 **비트(beat)** 라고 부릅니다(dsl 0.21.0). 엔진이 계기를 발생시키고, Lute는 어떤 비트가 자격이 있고 어느
 비트가 이기는지를 정의합니다. `lute play`는 이 계약의 참조 플레이어입니다: 발생시킬 계기를 적은
@@ -39,7 +39,7 @@ dsl 0.26.0(초안)부터 스크립트는 시계를 다음의 이름 붙은 슬�
 하네스), [0.23.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)(계기
 조합, 기한, 번들), [0.24.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)(시계,
 퀘스트 구조, 브리지 응답), [0.26.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)(시계
-목표, 엔진 수락, 종류 대상, 테스트와 플레이의 일치), [0.27.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)(하나의 런타임, 엔진 게이트와 종료 상태, 끝이 있는 시계, 시즌, 비트 템플릿, `sequence:`)가 이를 확장합니다. 엔진 측 계약(IR 필드와 엔진이 구현하는 선택 알고리즘)은
+목표, 엔진 수락, 종류 대상, 테스트와 플레이의 일치), [0.27.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)(하나의 런타임, 엔진 게이트와 종료 상태, 끝이 있는 시계, 시즌, 비트 템플릿, 지금은 `chapters:`인 매니페스트의 장면 사슬)가 이를 확장합니다. 엔진 측 계약(IR 필드와 엔진이 구현하는 선택 알고리즘)은
 [`docs/runtime/beats-and-occasions.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/beats-and-occasions.md)입니다.
 0.21.0 이전의 `lute play`는 틱 클록 스케줄 파일을 걸었습니다. 그 레이어와 클록/레인/배치 모델, 그리고
 관련 플래그는 모두 제거되었습니다. 이제 시간은 틀이 아니라 비트 조건의 입력 중 하나입니다.
@@ -52,7 +52,7 @@ dsl 0.26.0(초안)부터 스크립트는 시계를 다음의 이름 붙은 슬�
 
 ```yaml
 occasions:
-  hubVisit:  { select: first }
+  townVisit: { select: first }
   talk:      { select: first, target: { prefix: npc, entity: person } }
   roomEnter: { select: first, target: true }
   inbox:     { select: all, description: Letters waiting at the fountain }
@@ -243,6 +243,23 @@ placeholder는 `{"kind": "occasionTarget", "entityKind": "trainer"}`이므로 �
 @narrator: Happy birthday, cyra!
 ```
 
+스텝의 `winner`, `offered`, `notOffered`, `presented`는 트랜스크립트처럼 한 멤버의 제시를
+`<beat id> for <member>`로 가리킵니다. 로어 문서 `greet`의 비트 `wave`가 `for="kind:npc"`(`mara`, `tomas`),
+`once="run"`일 때:
+
+```yaml
+steps:
+  - occasion: morning
+    expect: { presented: [greet.wave for mara, greet.wave for tomas] }
+  - occasion: morning
+    expect: { notOffered: [greet.wave for mara], winner: none }
+```
+
+비트가 제시되지 않는 멤버는 did-you-mean이 붙은 사용법 오류입니다:
+`` `expect.notOffered` names `greet.wave for mra`, and `mra` is no member `greet.wave` is presented for — did you mean `mara`? (members: mara, tomas) ``.
+`once`는 멤버마다 따로 소진되므로 Mara에게 재생된 `once: run` 비트도 Tomas에게는 재생될 수 있고, 같은 이유로
+소진된 멤버는 한 줄로 찍힙니다(`✗ greet.wave for mara, tomas [beat, priority 0] — once: run — already presented this run`).
+
 [멤버마다 한 번](/language/beats/#once-per-member-for)을 참고하세요.
 
 ## 선택
@@ -272,9 +289,12 @@ placeholder는 `{"kind": "occasionTarget", "entityKind": "trainer"}`이므로 �
 `check-project`는 `W-BEAT-PRIORITY-TIE`를 경고합니다. 이 경고와 다른 비트 권고는 [비트](/language/beats/)
 문서를 보세요.
 
-`select: sequence`와 `also`에서 자격은 **계기가 발생할 때 한 번** 정해집니다: 첫 비트를 제시해도 뒤의
-비트가 자격을 얻거나 잃지 않습니다. 퀘스트 라이프사이클은 제시마다 정산되므로
-[기한](#기한과-대상-지정-목표)은 비트 사이에서 판정됩니다. `W-BEAT-SHADOWED`와 `W-BEAT-PRIORITY-TIE`는
+`select: sequence`에서 후보는 계기가 발생할 때 정해지고, 그 발생의 비트 하나가 재생된 뒤로는 뒤의 비트마다
+제 차례 직전에 다시 판정됩니다: 앞선 비트가 `when`을 거짓으로 만든 비트는 건너뛰고, 참으로 만든 비트는
+재생됩니다. 그런 후보의 줄 끝에는 `(judged at its turn, after an earlier beat of this raise)`가 붙습니다.
+`also` 비트는 계기가 발생할 때 한 번 판정됩니다. 퀘스트 라이프사이클은 제시마다 정산되므로
+[기한](#기한과-대상-지정-목표)은 비트 사이에서 판정되고, 그 발생이 답하는 `<on event>` 핸들러는 모든 비트
+뒤에 실행됩니다. `W-BEAT-SHADOWED`와 `W-BEAT-PRIORITY-TIE`는
 승리를 다투지 않는 `also` 비트를 무시합니다.
 
 ## `lute play`
@@ -310,10 +330,10 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive
 
 ```yaml
 occasions:
-  hubVisit: { select: first }
-  talk:     { select: first, target: { prefix: npc, entity: person } }
-  board:    { select: all, description: Notices pinned by the stair }
-  runStart: { select: sequence, description: A run begins at the foot of the stair }
+  townVisit: { select: first }
+  talk:      { select: first, target: { prefix: npc, entity: person } }
+  board:     { select: all, description: Notices pinned by the stair }
+  runStart:  { select: sequence, description: A run begins at the foot of the stair }
 ```
 
 ```yaml
@@ -338,7 +358,7 @@ entities:
   person: { members: [maud, oskar] }
   foe:    { members: [warden, hound] }
 relations:
-  boss:   { args: [foe] }
+  boss:   { args: [foe], tier: run }
   slew:   { args: [foe], tier: run, reserved: true }
   threat: { args: [foe], derive: true }
 facts:
@@ -347,7 +367,7 @@ rules:
   - "threat(F) :- boss(F), not slew(F)"
 ```
 
-비트: `hub.idle`은 매번 `hubVisit`에 응답하고(`once: false`), `hub.victory`(priority 10,
+비트: `town.idle`은 매번 `townVisit`에 응답하고(`once: false`), `town.victory`(priority 10,
 `when: "!holds(threat(warden))"`, 역시 `once: false`)는 워든이 더 이상 위협이 아니게 되는 순간 그보다
 앞섭니다. `maud.talk`는 `npc.maud`를 위한 `talk`에 응답하고, 오스카의 [번들 비트](#번들-비트) 둘 —
 `oskar.hunt`와 곁들이는 대사 `oskar.rumor` — 는 `npc.oskar`를 위한 `talk`에 응답합니다.
@@ -424,8 +444,8 @@ state: { user.runs: 2 }                   # path -> scalar literal, over the dec
 facts: ["slew(hound)"]                    # ground facts, added to the project's seed facts
 entriesRead: { user: [notice] }           # the save this play starts from
 steps:                                    # required, non-empty
-  - occasion: hubVisit                    # raise an occasion
-    expect: { winner: hub.idle }          # assert what this step did
+  - occasion: townVisit                   # raise an occasion
+    expect: { winner: town.idle }         # assert what this step did
   - occasion: talk
     target: npc.maud                      # a targeted occasion: a target in its domain
   - occasion: board
@@ -436,7 +456,7 @@ steps:                                    # required, non-empty
       state: { run.floor: 6, user.runs: { add: 1 } }
       facts: [slew(warden)]
   - newRun: { state: { run.floor: 1 } }   # start a new run (`newRun: true` without a seed)
-  - occasion: hubVisit
+  - occasion: townVisit
     repeat: 2                             # the same step, twice
 expect:                                   # assert the end of the play
   quests: { climb: active, veteran: complete }
@@ -469,7 +489,7 @@ expect:                                   # assert the end of the play
 `{ occasion, target?, payload?, engine?, pick?, choose?, expect?, bridges? }`는 엔진과 똑같이 계기를 발생시킵니다.
 
 - `target` — 대상과 함께 선언된 계기에는 필수, 대상 없는 계기에는 거부됩니다. 대상 도메인이 있으면
-  대상은 그 도메인의 `<prefix>.<member>`여야 하며, 벗어나면 did-you-mean이 붙은 사용법 오류입니다(`` target `npc.mawd` is outside occasion `talk`'s domain `npc.<person>` (`npc.maud`, `npc.oskar`) — did you mean `npc.maud`? (dsl 0.22.0 §8) ``).
+  대상은 그 도메인의 `<prefix>.<member>`여야 하며, 벗어나면 did-you-mean이 붙은 사용법 오류입니다(`` target `npc.mawd` is outside occasion `talk`'s domain `npc.<person>` (`npc.maud`, `npc.oskar`) — did you mean `npc.maud`? ``).
   어떤 비트도 응답하지 않는 멤버는 합법입니다: 계기가 그냥 지나갑니다. 대상은 그 스텝이 판정할
   [대상 지정 목표](#기한과-대상-지정-목표)도 정합니다.
 - `payload` — `payload:`를 선언한 계기에서 그 발생이 넘기는 타입 있는 값입니다(dsl 0.27.0 §3):
@@ -557,15 +577,15 @@ steps:
 
 ```yaml
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
   - label: the warden falls on floor six
     engine:
       state: { run.floor: 6 }
       facts: [slew(warden)]
-  - occasion: hubVisit
+  - occasion: townVisit
   - engine:
       retract: [slew(warden), slew(hound)]
-  - occasion: hubVisit
+  - occasion: townVisit
 ```
 
 ```
@@ -573,33 +593,33 @@ steps:
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── step 2 (the warden falls on floor six) · engine ──────────────
   set run.floor = 6
   assert slew(warden)
   climb.high done
   quest climb -> complete
-── step 3 · hubVisit ──────────────
-  ✓ hub.victory [scene, priority 10]
-  ✓ hub.idle [scene, priority 0]
-  → hub.victory
+── step 3 · townVisit ──────────────
+  ✓ town.victory [scene, priority 10]
+  ✓ town.idle [scene, priority 0]
+  → town.victory
 @maud: The warden is dead. I never thought I'd say it.
 ── step 4 · engine ──────────────
   retract slew(warden)
   retract slew(hound) (did not hold)
-── step 5 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 5 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── end: complete (5 steps) ──────────────
 ```
 
-처치로 `threat(warden)`이 더 이상 파생되지 않으므로 스텝 3에서 `hub.victory`가 자격을 얻고, 철회가
+처치로 `threat(warden)`이 더 이상 파생되지 않으므로 스텝 3에서 `town.victory`가 자격을 얻고, 철회가
 그것을 다시 닫습니다.
 
 수락도 엔진의 일입니다. [예제](#예제)의 마을에 게시판 퀘스트 `parcel` — `accept="external"`로 선언하고 목표
@@ -607,7 +627,7 @@ steps:
 
 ```yaml
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
   - label: the player takes a notice from the board
     engine: { accept: [parcel] }
     expect: { quests: { parcel: active } }
@@ -618,11 +638,11 @@ expect:
 ```
 
 ```
-── step 1 · hubVisit ──────────────
-  ✓ hub.welcome [scene, priority 10]
-  ✗ hub.morning [scene, priority 0] — when: false
-  → hub.welcome
-::bg{location="hub" time="day"}
+── step 1 · townVisit ──────────────
+  ✓ town.welcome [scene, priority 10]
+  ✗ town.morning [scene, priority 0] — when: false
+  → town.welcome
+::bg{location="town" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 (the player takes a notice from the board) · engine ──────────────
   quest parcel accepted (engine)
@@ -688,10 +708,10 @@ steps:
 
 ```yaml
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
   - end: true
   - label: never reached
-    occasion: hubVisit
+    occasion: townVisit
 ```
 
 ```
@@ -699,10 +719,10 @@ steps:
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── step 2 · end (the playthrough ends) ──────────────
 ── step 3 (never reached) · skipped (the playthrough ended) ──────────────
@@ -735,12 +755,33 @@ steps:
 ── end: terminal — `terminal: run.fate == 'taken'` holds ──────────────
 ```
 
-`--json`에서는 루트에 `"exit": "complete"` 옆으로 `"end": "terminal"`이 붙습니다. 그 뒤의 `occasion:` 스텝은
+`--json`에서는 루트에 `"exit": "complete"` 옆으로 `"end": "terminal"`이 붙고, 최상위 `expect: { end: terminal }`이
+그것을 단언합니다. 그 뒤의 `occasion:` 스텝은
 `E-OCCASION-GATE`입니다(종료 코드 1:
 `` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on ``).
-그 뒤의 `advance:`도 마찬가지이며 시계도 움직이지 않습니다. `newRun: true`는 새 런을 시작하고 —
-`terminal:`이 런 상태를 읽는다면 그것도 초기화됩니다 — 플레이는 이어집니다. `engine:` 스텝은 엔진 자신의
-쓰기이므로 여전히 받아들여집니다.
+그 뒤의 `advance:`도 마찬가지이며 시계도 움직이지 않습니다. `engine:` 스텝은 엔진 자신의 쓰기이므로 여전히 받아들여집니다.
+[`outsideRun: true`](/plugins/manifests/)를 선언한 계기(타이틀 화면, 런 사이의 갤러리)는 그래도 발생합니다.
+
+`newRun: true`는 새 런을 시작하지만, 플레이가 이어지는 것은 새 런이 `terminal:`을 거짓으로 만들 때뿐입니다.
+런 상태(`run.*`, 런 티어 퀘스트나 관계)를 읽는 `terminal:`은 초기화되고, 새 런이 유지하는 것(`user.*`,
+`visited(…)`)을 읽는 것은 그대로 성립하며 `check-project`가 스키마에 `W-TERMINAL-PERSISTENT`를 경고합니다.
+다음 발생은 멈춥니다:
+`` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
+
+`terminal:`은 계기가 발생할 때 판정되므로, 그것을 성립시키는 발생은 끝까지 진행됩니다: 게임을 끝내는 쓰기가
+있는 비트는 마지막 줄까지 재생되고, `select: sequence` 발생의 나머지 비트와 그 발생이 정산한
+`questComplete` / `questFailed` 핸들러가 뒤따릅니다. 그래서 에필로그는 `terminal:`을 성립시키는 쓰기 뒤나,
+`terminal:`이 읽는 퀘스트의 `<on event="questComplete">` 핸들러에 둡니다.
+
+플레이스루에서 "끝"은 다섯 가지이며, 게임을 끝내는 것은 `terminal:`뿐입니다:
+
+| 쓰는 것 | 끝나는 것 | 플레이는 이어지나? |
+|---|---|---|
+| 콘텐츠의 `::end` | 그것이 실행되는 제시(퀘스트 핸들러에서는 그 퀘스트 문서의 진행) | 예, 다음 스텝으로 |
+| 스크립트의 `- end: true` | 그 스텝에서 플레이스루; 이후 스텝은 건너뜀 | 아니요 — `end: complete` |
+| 스키마의 `terminal:` | 게임: 새 런이 거짓으로 만들 때까지 엔진은 계기를 발생시키지 않음(`outsideRun` 제외) | 그것을 초기화하는 `newRun` 뒤에만 — `end: terminal` |
+| 시계의 `last:` / `days:` | 시계: `clock.ended`가 참이 되고, 마지막 위치를 넘는 `advance:`는 플레이를 멈춤(`E-CLOCK-END`) | 예, 시계를 옮기지 않는 스텝으로; 거기서 게임을 끝내려면 `terminal: "clock.ended"` |
+| `expect: { end: … }` | 없음: 워크가 어떻게 끝났는지 단언(`complete`, `terminal`, `incomplete`, `error`) | — |
 
 관문이 있는 시계 발생: 시계가 발생시키는 계기(`raise.slot`, `dayStart`, `dayEnd`)의 `raisedWhen:` 관문이
 시계가 선 자리에서 거짓이면 전진은 그 계기를 발생시키지 않습니다. 오류가 아닙니다: 시계는 움직이고 퀘스트도
@@ -773,6 +814,13 @@ steps:
 (`` step 1: `pick` answers the slot occasion an `advance:` raises where the clock stops, and the clock declares no `raise.slot` occasion ``),
 아무것도 발생시키지 않는 시계에서는 `choose`와 선택 키도 사용법 오류입니다
 (`` step 1: `expect.winner` judges what an `advance:` raises, and the clock declares no `raise:` occasion — the advance presents nothing ``).
+
+전진이 `slot` 계기를 발생시키지 않고 위치를 지나칠 때 — `advance: 2`, 또는 아침에서 `{ to: night }` — 그 계기에
+응답하는 비트가 있으면, 스텝은 지나친 위치를 날별로 대는 메모로 그렇다고 알립니다:
+`` note: passed day 1 (Mon) afternoon without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops) ``.
+출발한 위치와 멈춘 위치는 나열하지 않으며, `advance: day`는 지나치는 위치가 없습니다: 그날의 나머지를 자고
+넘깁니다. 비트 수는 그 계기에 응답하는 비트를 셉니다. 거기서 자격이 있든 없든 같습니다. `--json`은 메모를 스텝의
+`notes`에, 위치를 `advance.passed`에 담습니다.
 
 여기의 예제는 탑 대신 작은 하루 시계 프로젝트를 씁니다. 날과 슬롯은 엔진이 소유하고, 시계는 매 advance
 뒤에 `slotStart`(`select: sequence` 계기)를 발생시킵니다:
@@ -877,6 +925,10 @@ steps:
 }
 ```
 
+`slot` 발생 없이 위치를 지나친 전진은 `advance`에
+`"passed": { "occasion": "slotStart", "beats": 2, "at": [ { "day": 1, "slot": "afternoon" } ] }`를 더합니다(슬롯
+없는 시계에서는 `slot`이 빠짐).
+
 **자정: `dayEnd`와 `dayStart`.** `raise:`는 순간마다 계기를 정하는 맵일 수도 있으며, 키는 모두
 선택입니다 — `raise: { slot, dayStart, dayEnd }`. 스칼라 `raise: slotStart`는 `slot` 형태입니다. advance는
 넘는 자정마다 그 날의 마지막 슬롯에서, 날이 아직 넘어가기 전에 `dayEnd`를 발생시키고, 이어서 다음 날의 첫
@@ -935,6 +987,7 @@ expect:
   ✗ routine.night [scene, priority 5] — when: false
   → routine.morning
 @narrator: Tue morning. The kettle sings.
+  note: passed day 1 (Mon) night without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops)
 ── step 3 · advance day: day 2 (Tue) morning → day 3 (Wed) morning ──────────────
 ── step 3 · day 2 (Tue) morning · dayEnd ──────────────
   ✓ day.close [scene, priority 0]
@@ -958,7 +1011,7 @@ expect:
 
 - **스텝 2** — 오후에서 시작한 `advance: 2`는 밤에 멈춰 1일째를 닫고(`── step 2 · day 1 (Mon) night · dayEnd`),
   자정을 넘어 2일째를 연 뒤, 끝나는 아침에서 `slotStart`를 한 번 발생시킵니다: 가는 길의 밤 일과는 발생하지
-  않습니다. 각 이동의 쓰기와 정착은 그 이동이 닿는 멈춤 바로 앞에 출력됩니다.
+  않으며, 스텝 아래의 메모가 그렇다고 알립니다. 각 이동의 쓰기와 정착은 그 이동이 닿는 멈춤 바로 앞에 출력됩니다.
 - **스텝 3** — 아침에서 시작한 `advance: day`는 시계가 서 있는 곳에서 2일째를 닫고, 3일째로의 이동이
   `dayStart` 전의 정착에서 `fest`를 실패시킵니다.
 - 자정의 발생도 여느 스텝처럼 콘텐츠를 재생합니다: `transcriptContains` / `transcriptLacks`는 그 줄과
@@ -966,6 +1019,14 @@ expect:
   (`asserted by scene `day.close`, step 3`). `lute test --coverage`에서는 거기서 제시된 문서도 커버된 것으로
   셉니다. 스텝 2에서 `expect: { presented: [day.close, day.open, routine.morning] }`는 성립하고,
   `winner: routine.morning`은 마지막 발생을 판정합니다.
+- 여러 계기를 발생시키는 전진은 `presented`를 계기별로 나눌 수 있습니다: 스텝 2에서
+  `expect: { presented: { dayStart: [day.open], slotStart: [routine.morning] } }`는 그 두 발생만 각각 순서대로
+  판정하고 `dayEnd`는 판정하지 않습니다. 불일치는 계기를 댑니다:
+  `` expect presented dayEnd: expected [day.open], actual [day.close (dayEnd at day 1 (Mon) night)] ``. 시계가
+  발생시키지 않는 키는 제안과 함께 사용법 오류입니다
+  (`` `expect.presented` names `dayStrat`, which the clock's `advance:` does not raise — did you mean `dayStart`? (it raises: slotStart, dayStart, dayEnd) ``).
+  목록 형태는 여전히 스텝의 모든 비트를 판정합니다. `occasion:` 스텝은 계기를 하나만 발생시키므로 그
+  `presented`는 언제나 목록입니다.
 
 시계가 `dayEnd`와 `dayStart`를 스스로 발생시키므로, 그중 하나를 다시 발생시키는 `occasion:` 스텝은 advance가
 그 순간을 지나면 그것을 두 번 재생합니다. 스텝은 그래도 재생되며, 노트가 붙습니다:
@@ -1124,6 +1185,7 @@ steps:
   ✗ routine.morning [scene, priority 5] — when: false
   → routine.night
 @narrator: The lamps go out on day 1.
+  note: passed day 1 (Mon) afternoon without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops)
 ── step 3 · advance to night: day 1 (Mon) night → day 2 (Tue) night ──────────────
   set run.day = 2
 ── step 3 · slotStart (select: sequence) ──────────────
@@ -1131,6 +1193,7 @@ steps:
   ✗ routine.morning [scene, priority 5] — when: false
   → routine.night
 @narrator: The lamps go out on day 2.
+  note: passed day 2 (Tue) morning, afternoon without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops)
 ── step 4 · advance to Fri morning: day 2 (Tue) night → day 5 (Fri) morning ──────────────
   set run.day = 3
   set run.slot = "morning"
@@ -1142,6 +1205,7 @@ steps:
   ✗ routine.night [scene, priority 5] — when: false
   → routine.morning
 @narrator: Fri morning. The kettle sings.
+  note: passed day 3 (Wed) to day 4 (Thu), every slot without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops)
 ── end: complete (4 steps) ──────────────
 ── expect: every expectation held ──────────────
 ```
@@ -1197,14 +1261,26 @@ steps:
 
 스텝 번호는 끼워 넣은 뒤에 매겨지므로 이 스크립트는 일곱 스텝으로 재생됩니다 — 레이블은 스텝 4에 붙고
 (`── step 4 (the next morning) · advance slot: day 1 (Mon) night → day 2 (Tue) morning`), 기대값 불일치는
-끼워 넣은 스텝의 번호를 댑니다. 읽을 수 없는 파일, 모양이 틀린 파일, `repeat`, `choose`, `bridges` 말고 다른
+끼워 넣은 스텝의 번호를 댑니다. 읽을 수 없는 파일, 모양이 틀린 파일, `label`, `repeat`, `choose`, `bridges` 말고 다른
 키와 함께 쓴 `include:`, 그리고 이미 포함되는 중인 파일은 사용법 오류입니다:
 `` plays/routes/loop.yaml: `include: ../loop.play.yaml` is a cycle — plays/routes/../loop.play.yaml is already being included ``.
 
 `include:` 항목이 끝날 때 — `repeat:`의 모든 반복을 통틀어 — 그 항목 자신의 `choose:` 키를 어느 스텝도
 제시하지 않았거나 `bridges:` 태그의 답을 어느 호출도 가져가지 않았다면, 그 항목의 마지막 스텝 아래에 그
 `include:` 줄과 쓰이지 않은 키를 대는 노트가 붙습니다(잘못된 `include:`에 적은 결정). 결정과 답은 그 항목과
-함께 버려집니다.
+함께 버려집니다. 스텝 자신의 `choose:` 키를 그 스텝의 어느 제시도 쓰지 않았을 때도 같은 노트가 붙습니다:
+
+```
+  note: `include: routes/day.yaml` at plays/inc.play.yaml:3:5 never used its own `choose: maraAsk` (no step of the include presented `maraAsk`) — a decision or answer for a step outside the include belongs on that step, or on the script
+  …
+  note: step 3 never used its own `choose: maraAsk` (no presentation of the step presented `maraAsk`) — a decision for a later step belongs on that step, or on the script
+```
+
+스크립트가 정하지 않은 선택에서 멈춘 플레이는, 그 결정을 쓰지 않은 채 끝난 `include:`를 댑니다.
+
+`include:`의 `label:`은 끼워 넣는 스텝 중 자기 레이블이 없는 스텝 모두에(중첩된 include의 스텝까지) 레이블을
+붙입니다. `label: first day`인 `- include: routes/day.yaml`은 `── step 1 (first day) · townVisit`로 찍히고,
+`label: own label`을 쓴 스텝은 그 레이블을 유지합니다.
 
 **인터페이스로서의 steps 파일.** 여러 작가가 한 플레이스루를 나눠 쓸 때 — 각 지역이 `include:`되는 steps
 파일을 소유하고, 리드의 스크립트가 그것들을 지도 순서대로 포함할 때 — steps 파일은 자신의 계약을 밝히므로,
@@ -1236,7 +1312,7 @@ steps:
 
 `label: <text>`는 스텝에 이름을 붙입니다: 스텝 헤더에 출력되고(`── step 4 (the engine closes the day) · engine`),
 `--json`에 실리며, 그 스텝의 모든 기대값 불일치가 이 이름을 댑니다. `repeat: <n>`(1 이상의 정수)은 스텝을
-`n`번 실행합니다 — `── step 7 [1/2] · hubVisit`, `── step 7 [2/2] · hubVisit` — 그리고 각 반복은 자신의
+`n`번 실행합니다 — `── step 7 [1/2] · townVisit`, `── step 7 [2/2] · townVisit` — 그리고 각 반복은 자신의
 스텝 레코드이고, 퀘스트 라이프사이클을 따로 정착시키며, `── end: complete (<n> steps)`에 세어집니다.
 `repeat`는 엔진의 일상에 어울립니다: 세 번의 런 종료(`engine: { state: { user.runs: { add: 1 } } }`,
 `repeat: 3`), 또는 플레이어가 매일 하는 방문.
@@ -1248,13 +1324,13 @@ steps:
 
 | 키 | 의미 |
 |---|---|
-| `visited: [scene ids]` | 이 세이브에서 제시된 씬 — `visited('<id>')`와 `after: visited(…)`가 읽습니다. |
+| `visited: [scene ids]` | 이 세이브에서 제시된 씬 — `visited('<id>')`와 `after: visited(…)`가 읽습니다. 방문한 씬은 제시된 것이므로 그 `once: user`(와 `share` 키)가 소진됩니다. 방문이 이전 런의 것일 수 있어 `once: run`은 소진되지 않습니다 — 그러려면 `presented: { run: […] }`에 넣습니다. |
 | `presented: { run: [beat ids], user: [beat ids] }` | 이미 제시된 씬 비트: `user` — 이전 런에서, 그래서 `once: user` 비트가 소진됨. `run` — 현재 런에서, 그래서 `once: run`과 `once: user`가 모두 소진됨. 나열된 모든 씬은 방문한 것으로도 셉니다. |
 | `quests: { <id>: unset \| active \| complete \| failed }` | 퀘스트 라이프사이클 상태. 시작 정착은 퀘스트를 처음부터 다시 시작하지 않고 이 상태를 이어받습니다. 모든 목표는 미완료로 시작합니다 — 목표 진행은 `state:`로 시드하세요(아래). |
 | `entriesRead: { run: [entry ids], user: [entry ids] }` | `run` — 현재 런에서 읽음: `entry.<id>.read`와 `entry.<id>.everRead`. `user` — 이전 런에서 읽음: `entry.<id>.everRead`만. |
 
 프로젝트가 선언하지 않은 id는 did-you-mean이 붙은 사용법 오류이며
-(`` `visited:` names `hub.welcom`, which is no scene in this project — did you mean `hub.welcome`? ``),
+(`` `visited:` names `town.welcom`, which is no scene in this project — did you mean `town.welcome`? ``),
 `presented:` 아래의 엔트리(엔트리의 읽기 이력은 `entriesRead:`입니다)나 네 상태 밖의 값도 마찬가지입니다.
 
 ```yaml
@@ -1337,7 +1413,7 @@ steps:
       state: { run.floor: 6, user.runs: { add: 1 } }
       facts: [slew(warden)]
   - newRun: { state: { run.floor: 1 } }
-  - occasion: hubVisit
+  - occasion: townVisit
   - label: a run ends
     engine:
       state: { user.runs: { add: 1 } }
@@ -1361,10 +1437,10 @@ steps:
   quest climb -> unset (tier: run; was complete)
   set run.floor = 1
   quest climb -> active
-── step 3 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 3 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── step 4 (a run ends) [1/2] · engine ──────────────
   set user.runs = 2
@@ -1375,7 +1451,7 @@ steps:
 ── end: complete (5 steps) ──────────────
 ```
 
-`slew`는 run 등급 관계이므로 처치 기록은 새 런까지 살아남지 못하고 `hub.victory`는 다시 닫힙니다.
+`slew`는 run 등급 관계이므로 처치 기록은 새 런까지 살아남지 못하고 `town.victory`는 다시 닫힙니다.
 `climb`(`tier="run"`)은 처음부터 다시 시작하지만 `veteran`은 계속 셉니다.
 
 [`prev.run.<path>`](/state/state-model/#the-previous-run)는 읽기 전용이고 런이 한 번 끝나기 전까지
@@ -1458,8 +1534,9 @@ steps:
 출력되고, 성립하는 `start`가 있으면 같은 정산에서 다시 활성화됩니다.
 여러 날을 건너는 `advance:` 하나는 지나는 모든 위치에서 둘 다 살핍니다: 도중에 열리고 닫히는 시즌은 그 자리에서
 퀘스트를 시작하고 실패시키며, rearm은 조건이 참이 되는 날에 작동하고, 각각 그 위치로의 시계 이동 뒤에 출력됩니다.
-[`spentBy`](/language/beats/#until-it-is-solved-spentby) 조건으로 소진된 비트는 ``spentBy: `run.solved` holds``라는
-이유와 함께, 소진된 `once: week` 비트는 `once: week — already presented this week`와 함께 나열됩니다.
+[`spentBy`](/language/beats/#until-it-is-solved-spentby) 조건으로 소진된 비트는 조건이 성립하는 동안 ``spentBy: `run.solved` holds``,
+한 번 성립한 뒤에는 ``spentBy: `run.solved` held — spent this run``이라는 이유와 함께(조건이 다시 거짓이 되어도 `once` 기간
+동안 소진된 채로 남습니다), 소진된 `once: week` 비트는 `once: week — already presented this week`와 함께 나열됩니다.
 
 ### 계기 조합하기
 
@@ -1515,8 +1592,10 @@ steps:
 - **스텝 4** — 두 비트 모두 자격이 있습니다: 각자 `→` 줄을 받고, 차례로 재생되며, 각자 자신의 `once`를
   소진합니다. 스텝의 `presented:` 기대값은 목록 전체를 순서대로 단언합니다.
 
-어떤 비트가 재생될지는 계기가 발생할 때 정해집니다: 목록의 앞선 비트가 상태를 바꿔 자격을 얻게 된 비트는
-끼어들지 않고, 자격을 잃게 된 비트도 그대로 재생됩니다. 퀘스트 라이프사이클은 제시 **하나하나** 뒤에
+목록의 비트 하나가 재생된 뒤로는 뒤의 비트마다 제 차례 직전에 다시 판정됩니다: `run.day`를 2로 옮기는 저녁
+비트 뒤에서는 같은 발생의 `when: 'run.day >= 2'` 편지가 재생되고, 앞선 비트가 `when`을 거짓으로 만든 비트는
+건너뜁니다. 그렇게 판정된 후보 줄 끝에는 `(judged at its turn, after an earlier beat of this raise)`가 붙고,
+발생의 `<on event>` 핸들러는 모든 비트 뒤에 실행됩니다. 퀘스트 라이프사이클은 제시 **하나하나** 뒤에
 정착하므로, 목표 — 또는 기한 — 는 한 스텝의 두 비트 사이에서 판정됩니다. 고를 것이 없으므로
 `sequence` 계기에 `pick:`을 쓰면 사용법 오류입니다.
 
@@ -1702,11 +1781,11 @@ steps:
   스텝, 다른 대상, 라이프사이클 전이에서는 실행되지 않습니다.
 
 모든 실패는 이유를 댑니다: 기한이면 `quest X -> failed (by)`나 `(until)`, 자신의 `fail=`이 성립하면
-`(fail)`, 부모가 실패하면 `(cascade)`, 그리고 `(superseded)`. `--json`의 `quest` 레코드에는 같은 `failedBy`가
+`(fail)`, 필수 하위 퀘스트가 실패하면 `(subquest)`, 부모가 실패하면 `(cascade)`, 그리고 `(superseded)`. `--json`의 `quest` 레코드에는 같은 `failedBy`가
 담기고, 콘텐츠는 이를 `quest.<id>.failedBy`로 읽습니다(퀘스트가 실패하기 전까지 `unset`).
 
 강 건너기가 이것들을 한데 모읍니다. 플러그인은 `chapterEnd: { select: first, judge: before }`를 선언하고,
-`road`는 허브에서 각각 받는 두 하위 퀘스트 중 하나로 완료되고, `toll`에는 `questFailed` 핸들러가 있으며,
+`road`는 마을에서 각각 받는 두 하위 퀘스트 중 하나로 완료되고, `toll`에는 `questFailed` 핸들러가 있으며,
 `purse`는 엔진이 `run.robbed`를 쓰면 실패합니다:
 
 ```lute
@@ -1735,7 +1814,7 @@ steps:
 </quest>
 ```
 
-허브의 branch `offer`는 `toll`(`silver`)이나 `parley`(`words` — `run.talked`도 세움)를 수락하고,
+마을 씬의 branch `offer`는 `toll`(`silver`)이나 `parley`(`words` — `run.talked`도 세움)를 수락하고,
 `chapterEnd`에 응답하는 씬은 `toll`이 왜 끝났는지 읽습니다:
 
 ```lute
@@ -1752,8 +1831,8 @@ steps:
 ```yaml
 choose: { offer: [silver, words] }
 steps:
-  - occasion: hubVisit
-  - occasion: hubVisit
+  - occasion: townVisit
+  - occasion: townVisit
   - label: robbers on the road
     engine: { state: { run.robbed: true } }
   - occasion: chapterEnd
@@ -1766,17 +1845,17 @@ expect:
   quest road -> active
   quest purse -> active
   quest coin -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.offer [scene, priority 0]
-  → hub.offer
+── step 1 · townVisit ──────────────
+  ✓ town.offer [scene, priority 0]
+  → town.offer
 @maud: Two ways across.
 ▷ choice offer: words [silver]        ← chosen: silver
 @maud: Pay, then.
   quest toll accepted
   quest toll -> active
-── step 2 · hubVisit ──────────────
-  ✓ hub.offer [scene, priority 0]
-  → hub.offer
+── step 2 · townVisit ──────────────
+  ✓ town.offer [scene, priority 0]
+  → town.offer
 @maud: Two ways across.
 ▷ choice offer: [words] silver        ← chosen: words
 @maud: Talk, then.
@@ -1883,7 +1962,7 @@ expect:
 `<tag>`는 지시문의 이름이고 목록의 항목 하나가 그 태그의 호출 하나에 호출 순서대로 답합니다.
 
 예제는 [예제](#예제)의 마을에 기술 판정을 더합니다: 플러그인은 `::check{skill dc resultKey}`를 선언하고, 그
-효과는 `dice` 서비스의 `passed`와 `margin`으로 `scene.check.<key>.passed`와 `.margin`을 씁니다. `hubVisit`에
+효과는 `dice` 서비스의 `passed`와 `margin`으로 `scene.check.<key>.passed`와 `.margin`을 씁니다. `townVisit`에
 priority 50으로 응답하는 씬 `gate.guards`는 판정을 두 번 하며, 각 판정 뒤에 결과에 대한 `<match>`가 옵니다.
 가드 달린 줄 하나가 첫 판정의 margin도 읽습니다:
 
@@ -1917,14 +1996,14 @@ bridges:
     - { passed: true, margin: 3 }
     - { passed: false, margin: -2 }
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
 ```
 
 ```
-── step 1 · hubVisit ──────────────
+── step 1 · townVisit ──────────────
   ✓ gate.guards [scene, priority 50]
-  ✓ hub.welcome [scene, priority 10]
-  ✗ hub.morning [scene, priority 0] — when: false
+  ✓ town.welcome [scene, priority 10]
+  ✗ town.morning [scene, priority 0] — when: false
   → gate.guards
 ::check{skill="persuasion" dc="12" resultKey="guards"}        (bridge answered: passed=true, margin=3)
   match -> arm 1
@@ -1989,6 +2068,7 @@ steps:
 | `offered: [beat ids]` | 나열된 모든 비트가 그 스텝에서 자격이 있었음 — 부분집합, 순서 무관 |
 | `notOffered: [beat ids]` | 나열된 비트 중 어느 것도 자격이 없었음 |
 | `presented: [beat ids]` | 정확히 이 비트들이 이 순서로 제시됨(dsl 0.23.0): [`select: sequence`](#계기-조합하기) 스텝의 목록 전체, 또는 승자와 그 뒤의 `also` 비트. `[]` — 아무것도 제시되지 않음 |
+| `presented: { <occasion>: [beat ids] }` | `advance` 스텝에서: 시계가 발생시키는 계기 가운데 이름을 댄 계기마다, 이 스텝의 그 발생들이 정확히 이 비트들을 이 순서로 제시함. 이름을 대지 않은 계기는 판정하지 않음([시계 앞으로 돌리기](#시계-앞으로-돌리기)) |
 
 다섯 키가 더 있어 **스텝이 정착한 직후**의 월드를 판정합니다 — 계기 스텝이라면 제시, 계기의 목표 판정,
 그 뒤의 정착이 모두 끝난 다음 — 그리고 어떤 종류의 스텝에든 쓸 수 있습니다(`end` 옆은 안 됨). 각 키는
@@ -1999,7 +2079,7 @@ steps:
 | `quests: { <id>: <status> }` | 스텝 뒤에 퀘스트가 그 상태임 |
 | `state: { <path>: <value> }` | 스텝 뒤 경로의 유효 값이 그 값과 같음. 타입까지 비교 |
 | `facts: [atoms]` / `notFacts: [atoms]` | 각 원자가 스텝 뒤에, **파생 이후** 성립함 / 성립하지 않음 |
-| `clock: { weekday, slot, day }` | 스텝 뒤에 시계가 그 위치에 있음(dsl 0.26.0 §7): `weekday`는 `week.labels` 레이블이나 `clock.weekday` 숫자, `slot`은 선언된 슬롯, `day`는 날 번호 — 셋 중 아무거나 |
+| `clock: { weekday, slot, day, ended }` | 스텝 뒤에 시계가 그 위치에 있음(dsl 0.26.0 §7): `weekday`는 `week.labels` 레이블이나 `clock.weekday` 숫자, `slot`은 선언된 슬롯, `day`는 날 번호, `ended`는 끝나는 시계가 끝났는지(`clock.ended`, 끝나지 않는 시계에서는 사용 오류) — 아무거나 |
 
 그래서 `engine:` 스텝은 자신의 쓰기가 한 일을 단언할 수 있고 — [기한 예제](#기한과-대상-지정-목표)의
 `expect: { quests: { houndHunt: failed } }` — 계기 스텝은 끝까지 기다리지 않고 퀘스트 진행을 확인할 수
@@ -2019,11 +2099,11 @@ steps:
 
 | 키 | 성립 조건 |
 |---|---|
-| `exit: complete \| incomplete \| error` | 워크가 그렇게 끝남 |
+| `end: complete \| terminal \| incomplete \| error` | 워크가 그렇게 끝남: `complete` — 모든 스텝이 재생됨; `terminal` — 끝난 자리에서 프로젝트의 [`terminal:`](#게임이-끝났을-때)이 성립; `incomplete` — 정해지지 않은 선택이나 `when`에서 멈춤; `error` — 오류로 멈춤. 옛 이름 `exit:`는 그렇다고 알려 줍니다 |
 | `quests: { <id>: <status> }` | 퀘스트가 그 상태로 끝남(아무것도 활성화하지 않은 퀘스트는 `unset`) |
 | `state: { <path>: <value> }` | 경로의 최종 **유효** 값 — 마지막 쓰기, 없으면 시드, 없으면 선언된 기본값 — 이 그 값과 같음. 타입까지 비교(`1`은 `"1"`이 아님) |
 | `facts: [atoms]` / `notFacts: [atoms]` | 각 원자가 끝에서, **파생 이후** 성립함 / 성립하지 않음 |
-| `transcriptContains: [text]` / `transcriptLacks: [text]` | 각 텍스트가 재생된 콘텐츠 줄의 부분 문자열임 / 아님. 콘텐츠 줄은 한 가지 형태 `@speaker: text`로만 비교합니다(dsl 0.24.0). 속성 블록이 없는 바늘은 줄의 전달 속성과 상관없이 맞으므로 `"@mara: Any luck with the lamp?"`는 `@mara{emotion="shy"}: Any luck with the lamp?`로 출력된 줄과 일치하고, 블록이 있는 바늘 줄은 그 속성을 가진 줄과만 맞습니다(아래 참고). 스텝 헤더, 후보, 연출, 노트, `skip` 줄은 결코 일치하지 않습니다 — 재생되지 않은 가드된 줄은 어떤 `transcriptContains`도 만족시키지 않습니다. `lute test`도 같은 형태로 비교하며, `--ir`이 무엇을 출력하든 같습니다 |
+| `transcriptContains: [text]` / `transcriptLacks: [text]` | 각 텍스트가 재생된 콘텐츠 줄의 부분 문자열임 / 아님. 콘텐츠 줄은 한 가지 형태 `@speaker: text`로만 비교합니다(dsl 0.24.0). 속성 블록이 없는 바늘은 줄의 전달 속성과 상관없이 맞으므로 `"@mara: Any luck with the lamp?"`는 `@mara{emotion="shy"}: Any luck with the lamp?`로 출력된 줄과 일치하고, 블록이 있는 바늘 줄은 그 속성을 가진 줄과만 맞습니다(아래 참고). 스텝 헤더, 후보, 연출, 노트, `skip` 줄은 결코 일치하지 않습니다 — 재생되지 않은 가드된 줄은 어떤 `transcriptContains`도 만족시키지 않습니다. 보고 줄은 제 키로 단언합니다: `quest wire -> failed`는 `quests: { wire: failed }`로, 놓친 기한은 `state: { quest.wire.objectives.sent.failed: true }`로, `set` 줄은 `state:`로. 보고 줄 모양의 바늘은 결코 맞을 수 없으므로 사용법 오류입니다(`` `expect.transcriptContains` needle "quest lampOut -> active" is the shape of a line the engine's report prints, not of a content line — needles judge only what is said, so this one can never match; assert the quest with `quests: { <id>: <state> }` ``). `lute test`도 같은 형태로 비교하며, `--ir`이 무엇을 출력하든 같습니다 |
 
 `repeat:` 스텝의 기대값은 반복마다 판정되며, 워크가 도달하지 못한 스텝의 기대값은 그 자체로 불일치입니다.
 각 `expect:`는 아무것도 재생하기 전에 검증됩니다 — 알 수 없는 키는 합법 키 목록과 did-you-mean을 붙인
@@ -2077,7 +2157,7 @@ dsl 0.27.0부터 바늘의 속성 블록은 버리지 않고 판정합니다(0.2
 `*.test.yaml` 시나리오 테스트와 나란히, `--project`에 대해 또는 없으면 플레이 위쪽의 가장 가까운
 `lute.project.yaml`에 대해 실행하고, 각각 `PASS` / `FAIL` 줄을 출력합니다(`--json`: `"kind": "play"`와
 `misses`를 가진 항목). `expect:`가 없는 플레이는 테스트가 아니므로 건너뜁니다. 멈춘 플레이는 최상위
-`expect:`가 종료를 선언하지 않는 한(`expect: { exit: incomplete }`) 실패합니다. `--coverage`에서는 플레이가
+`expect:`가 종료를 선언하지 않는 한(`expect: { end: incomplete }`) 실패합니다. `--coverage`에서는 플레이가
 — `occasion:` 스텝으로든 `advance:`가 발생시킨 계기로든 — 제시한 모든 문서와, 라이프사이클을 움직인 모든
 퀘스트 문서가 커버된 것으로 셉니다. 플레이는 제시된 문서에만 반영되며, branch/hub와 갈래 행은 추적한
 경로에서만 나옵니다. dsl 0.26.0부터 `lute test`는 플레이 프로젝트를 모든 플레이에 대해 한 번만 컴파일하고 —
@@ -2106,10 +2186,10 @@ $ lute play tower --script tower/plays/night.play.yaml --no-derive
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ? hub.victory [scene, priority 10] — when: unknown (`!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined)
-── halted: step 1: the `when` of scene `hub.victory` (scenes/hub-victory.lute) decides the hubVisit outcome but `!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ? town.victory [scene, priority 10] — when: unknown (`!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined)
+── halted: step 1: the `when` of scene `town.victory` (scenes/town-victory.lute) decides the townVisit outcome but `!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
 ```
 
 `--explain <atom>`(반복 가능)은 플레이가 끝난 뒤 그라운드 원자가 끝에서 왜 성립하는지, 또는 왜 성립하지
@@ -2118,7 +2198,7 @@ $ lute play tower --script tower/plays/night.play.yaml --no-derive
 결론지을 수 있는 모든 규칙이 전제 표시와 함께 나옵니다 — 없는 기반 팩트는 `✗ <atom>  (absent)`, 없는 파생
 팩트는 `✗ <atom>  (not derived)`(그 자체도 설명됨), 존재하는 부정 전제는 `✗ not <atom>  (but it holds: …)`,
 비교나 가드는 `✗ <test>  (false)` / `? <test>  (undecided)`, 첫 실패 뒤의 전제는
-`· <premise>  (not reached)`. `plays/night.play.yaml`이 `hubVisit` 스텝 하나일 때:
+`· <premise>  (not reached)`. `plays/night.play.yaml`이 `townVisit` 스텝 하나일 때:
 
 ```console
 $ lute play tower --script tower/plays/night.play.yaml --explain "threat(warden)" --explain "threat(hound)"
@@ -2129,10 +2209,10 @@ $ lute play tower --script tower/plays/night.play.yaml --explain "threat(warden)
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── end: complete (1 step) ──────────────
 explain threat(warden): holds
@@ -2145,7 +2225,7 @@ explain threat(hound): does not hold
   └─ · not slew(hound)  (not reached)
 ```
 
-단언된 팩트는 누가 언제 단언했는지 댑니다(dsl 0.24.0). `plays/kill.play.yaml` — `hubVisit` 하나, 그다음
+단언된 팩트는 누가 언제 단언했는지 댑니다(dsl 0.24.0). `plays/kill.play.yaml` — `townVisit` 하나, 그다음
 `engine: { state: { run.floor: 6 }, facts: [slew(warden)] }`를 가진 스텝 `label: the warden falls on floor six` —
 뒤에는 같은 원자가 이렇게 읽힙니다:
 
@@ -2327,10 +2407,10 @@ explain safe(warden): holds
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── step 2 · talk → npc.maud ──────────────
   ✓ maud.talk [scene, priority 0]
@@ -2359,15 +2439,15 @@ explain safe(warden): holds
   quest climb -> unset (tier: run; was complete)
   set run.floor = 1
   quest climb -> active
-── step 7 [1/2] · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 7 [1/2] · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
-── step 7 [2/2] · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 7 [2/2] · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── end: complete (8 steps) ──────────────
 ── expect: every expectation held ──────────────
@@ -2402,7 +2482,7 @@ explain safe(warden): holds
   `→ (pick: none — the list closes; nothing presented)`로 표시됩니다. 번들 비트의 `beat` 레코드는
   출력되지 않습니다 — `→`나 `+` 줄이 이미 그 비트를 가리킵니다. 목표의 기한 실패는
   `<quest>.<objective> failed (by)`(또는 `failed (until)`), 퀘스트 실패는 이유를 붙인
-  `quest <id> -> failed (by)` / `(until)` / `(fail)` / `(cascade)` / `(superseded)`(dsl 0.24.0 §2), 상태에
+  `quest <id> -> failed (by)` / `(until)` / `(fail)` / `(subquest)` / `(cascade)` / `(superseded)`(dsl 0.24.0 §2), 상태에
   적립되는 보상 지급은 `grant <quest> <KIND> <amount> (credits <path> = <value>)`로 표시되며, 정수 값은
   소수점 없이 나옵니다(`= 50`).
 - 그 뒤에 제시된 비트 자신의 트랜스크립트가 소스처럼 읽히게 이어집니다: 콘텐츠 줄은 `@speaker: text`로,
@@ -2457,10 +2537,10 @@ explain safe(warden): holds
   ``── end: terminal — `terminal: <condition>` holds``로(dsl 0.27.0 §4), 중간에 멈추면 `── halted: <message>`로
   끝납니다. 그 뒤에 `--explain` 트리, 그다음 `── expect:` 블록이 옵니다.
 
-플러그인이 없는 모양만 검사하는 프로젝트에서, 부업을 제안하는 허브 씬과 `calm` 목표가 `runEnd`에서
+플러그인이 없는 모양만 검사하는 프로젝트에서, 부업을 제안하는 마을 씬과 `calm` 목표가 `runEnd`에서
 판정되는 퀘스트:
 
-```lute unverified="one file of a multi-file project: the scene answering hubVisit and a world schema declaring run.pressure sit beside it"
+```lute unverified="one file of a multi-file project: the scene answering townVisit and a world schema declaring run.pressure sit beside it"
 <quest id="holdLine" title="Hold the line" start="true">
   <objective id="sawShed" title="See the shed" done="visited('haven.shed')"/>
   <objective id="calm" title="Keep it calm" on="runEnd" done="run.pressure < 2"/>
@@ -2471,14 +2551,14 @@ explain safe(warden): holds
 </quest>
 ```
 
-`steps: [{occasion: hubVisit}, {occasion: runEnd}]`와 `choose: { offer: take }` — 본문이
+`steps: [{occasion: townVisit}, {occasion: runEnd}]`와 `choose: { offer: take }` — 본문이
 `::accept{quest="sideJob"}`인 선택지 — 로, 플레이스루는 제시 중에 부업을 수락하고, 바로 뒤에 활성화하며,
 `runEnd`가 발생해야만 `holdLine`을 완료합니다:
 
 ```
 ── start ──────────────
   quest holdLine -> active
-── step 1 · hubVisit ──────────────
+── step 1 · townVisit ──────────────
   ✓ haven.shed [scene, priority 0]
   → haven.shed
 @vesna: Somebody has to mind the shed.
@@ -2506,7 +2586,7 @@ type PlayTranscript = {
   steps: Step[];                           // one record per repetition
   skipped?: { step: number; label?: string }[]; // the steps an `end: true` step left unplayed
   endReason?: string;                      // "complete (8 steps)", or "`end: true` at step 2 (1 later step skipped)"
-  end?: "terminal";                        // dsl 0.27.0 §4: the play ended with the schema's `terminal:` holding
+  end: "complete" | "terminal" | "incomplete" | "error"; // how the walk ended — the values `expect.end` names; `terminal`: the schema's `terminal:` held
   error?: { message: string };
   expect?: { misses: ExpectMiss[] };       // when the script carries an `expect:`
   explain?: Explanation[];                 // one per `--explain` atom
@@ -2571,6 +2651,12 @@ type AdvanceStep = {
     from: string;                          // "day 1 (Mon) afternoon"
     to: string;
     days?: DayStop[];                      // each midnight stop, in order, when `raise:` names `dayEnd` / `dayStart`
+    ended?: true;                          // 0.27.0: the advance reached a finite clock's end (its last `dayEnd` is in `days`; no slot raise)
+    passed?: {                             // the positions it passed without raising its `raise.slot` occasion (neither start nor stop)
+      occasion: string;
+      beats: number;                       // how many beats answer that occasion
+      at: { day: number; slot?: string }[];
+    };
     writes: WriteRecord[];                 // the last move, to where the clock stops, then an `engine:` beside the advance
     quests: QuestGroup[];                  // the settle right after that move
   };
@@ -2640,9 +2726,9 @@ town/
 │   ├── plugin.yaml
 │   └── occasions/game.yaml
 ├── scenes/
-│   ├── hub/welcome.lute
-│   ├── hub/morning.lute
-│   ├── hub/day-end.lute
+│   ├── town/welcome.lute
+│   ├── town/morning.lute
+│   ├── town/day-end.lute
 │   ├── talk/mara-first.lute
 │   └── talk/mara-idle.lute
 ├── quests/lamp.lute
@@ -2659,9 +2745,9 @@ town/
 
 ```yaml
 occasions:
-  hubVisit: { select: first, description: The player arrives at the hub }
-  talk:     { select: first, target: { prefix: npc, entity: npc }, description: The player talks to someone (npc.<name>) }
-  dayEnd:   { select: first, description: "The engine closed the day; run.day is already advanced" }
+  townVisit: { select: first, description: The player arrives in town }
+  talk:      { select: first, target: { prefix: npc, entity: npc }, description: The player talks to someone (npc.<name>) }
+  dayEnd:    { select: first, description: "The engine closed the day; run.day is already advanced" }
 ```
 
 공유 상태, `world.schema.yaml`. 하루는 엔진의 것입니다: 콘텐츠는 `run.day`를 읽지만, 쓰는 것은
@@ -2688,9 +2774,9 @@ defs:
 
 | 비트 | 문서 | 응답 | 조건 | `once` |
 |---|---|---|---|---|
-| `hub.welcome` | `scenes/hub/welcome.lute` | `hubVisit` | priority 10 | `user` |
-| `hub.morning` | `scenes/hub/morning.lute` | `hubVisit` | `when: '!@firstDay'` — `Day {{run.day}}.`를 출력 | `false` |
-| `hub.dayEnd` | `scenes/hub/day-end.lute` | `dayEnd` | — | `false` |
+| `town.welcome` | `scenes/town/welcome.lute` | `townVisit` | priority 10 | `user` |
+| `town.morning` | `scenes/town/morning.lute` | `townVisit` | `when: '!@firstDay'` — `Day {{run.day}}.`를 출력 | `false` |
+| `town.dayEnd` | `scenes/town/day-end.lute` | `dayEnd` | — | `false` |
 | `mara.first` | `scenes/talk/mara-first.lute` | `talk` → `npc.mara` | priority 10 | `user` |
 | `mara.idle` | `scenes/talk/mara-idle.lute` | `talk` → `npc.mara` | — | `false` |
 | `tomasOil`(엔트리) | `lore/tomas.lute` | `talk` → `npc.tomas` | priority 10, `when="quest.lampOut.state == 'active'"`, `knows(lamp)`를 단언 | — |
@@ -2731,8 +2817,8 @@ defs:
 choose:
   maraAsk: lamp
 steps:
-  - occasion: hubVisit
-    expect: { winner: hub.welcome }
+  - occasion: townVisit
+    expect: { winner: town.welcome }
   - occasion: talk
     target: npc.mara
     expect: { winner: mara.first }
@@ -2743,10 +2829,10 @@ steps:
     engine:
       state: { run.day: { add: 1 } }
   - occasion: dayEnd
-  - occasion: hubVisit
-    expect: { winner: hub.morning, notOffered: [hub.welcome] }
+  - occasion: townVisit
+    expect: { winner: town.morning, notOffered: [town.welcome] }
 expect:
-  exit: complete
+  end: complete
   quests: { lampOut: complete }
   state: { run.day: 2, user.bond.mara: 1 }
   facts: [knows(lamp)]
@@ -2759,11 +2845,11 @@ $ lute play . --script plays/first-day.play.yaml
 ```
 
 ```
-── step 1 · hubVisit ──────────────
-  ✓ hub.welcome [scene, priority 10]
-  ✗ hub.morning [scene, priority 0] — when: false
-  → hub.welcome
-::bg{location="hub" time="day"}
+── step 1 · townVisit ──────────────
+  ✓ town.welcome [scene, priority 10]
+  ✗ town.morning [scene, priority 0] — when: false
+  → town.welcome
+::bg{location="town" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 · talk → npc.mara ──────────────
   ✓ mara.first [scene, priority 10]
@@ -2786,16 +2872,16 @@ $ lute play . --script plays/first-day.play.yaml
 ── step 4 (the engine closes the day) · engine ──────────────
   set run.day = 2
 ── step 5 · dayEnd ──────────────
-  ✓ hub.dayEnd [scene, priority 0]
-  → hub.dayEnd
+  ✓ town.dayEnd [scene, priority 0]
+  → town.dayEnd
 @narrator: One by one, the lamps go out.
   lampOut.wait done
   quest lampOut -> complete
 @narrator: By morning the lamp by the door is burning again.
-── step 6 · hubVisit ──────────────
-  ✓ hub.morning [scene, priority 0]
-  ✗ hub.welcome [scene, priority 10] — once: user — already presented
-  → hub.morning
+── step 6 · townVisit ──────────────
+  ✓ town.morning [scene, priority 0]
+  ✗ town.welcome [scene, priority 10] — once: user — already presented
+  → town.morning
 @narrator: Day 2. The square is already awake.
 ── end: complete (6 steps) ──────────────
 ── expect: every expectation held ──────────────
@@ -2805,7 +2891,7 @@ $ lute play . --script plays/first-day.play.yaml
 
 - **시작** — `lampOut`에는 `start`가 없으므로 첫 스텝 전에 아무것도 활성화되지 않고, `── start` 블록도
   없습니다.
-- **스텝 1** — 1일째이므로 `hub.morning`의 `@firstDay` 가드가 그것을 막고, 환영 인사가 재생됩니다.
+- **스텝 1** — 1일째이므로 `town.morning`의 `@firstDay` 가드가 그것을 막고, 환영 인사가 재생됩니다.
 - **스텝 2** — `talk`가 `npc` 종류의 멤버인 `npc.mara`를 위해 발생합니다. 마라의 씬 둘이 모두 후보이고
   첫 만남이 대체 씬보다 앞섭니다. `lamp`를 고르면 유대가 오르고 퀘스트가 수락되며, 퀘스트는 제시 직후
   활성화됩니다.
@@ -2815,7 +2901,7 @@ $ lute play . --script plays/first-day.play.yaml
   쓰며, 아무것도 제시되지 않고 계기도 발생하지 않습니다.
 - **스텝 5** — `dayEnd`가 밤 씬을 제시한 뒤 `lampOut.wait`(`on="dayEnd"`)을 판정하고, 퀘스트가
   완료됩니다. 그 `questComplete` 핸들러가 재생됩니다.
-- **스텝 6** — `hub.welcome`은 영구히 소진되었고(`once: user`) `run.day`가 2이므로 아침 씬이 재생됩니다.
+- **스텝 6** — `town.welcome`은 영구히 소진되었고(`once: user`) `run.day`가 2이므로 아침 씬이 재생됩니다.
 
 ### 한 스텝만 다르게 결정하기
 
@@ -2826,7 +2912,7 @@ $ lute play . --script plays/first-day.play.yaml
 choose:
   maraAsk: lamp
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
   - occasion: talk
     target: npc.mara
     choose: { maraAsk: leave }
@@ -2840,11 +2926,11 @@ expect:
 ```
 
 ```
-── step 1 · hubVisit ──────────────
-  ✓ hub.welcome [scene, priority 10]
-  ✗ hub.morning [scene, priority 0] — when: false
-  → hub.welcome
-::bg{location="hub" time="day"}
+── step 1 · townVisit ──────────────
+  ✓ town.welcome [scene, priority 10]
+  ✗ town.morning [scene, priority 0] — when: false
+  → town.welcome
+::bg{location="town" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 · talk → npc.mara ──────────────
   ✓ mara.first [scene, priority 10]
@@ -2875,13 +2961,13 @@ expect:
 
 ```yaml
 state: { user.bond.mara: 1 }
-presented: { user: [hub.welcome, mara.first] }
+presented: { user: [town.welcome, mara.first] }
 quests: { lampOut: complete }
 steps:
   - label: the engine starts run two on day 3
     newRun: { state: { run.day: 3 } }
-  - occasion: hubVisit
-    expect: { winner: hub.morning, notOffered: [hub.welcome] }
+  - occasion: townVisit
+    expect: { winner: town.morning, notOffered: [town.welcome] }
   - occasion: talk
     target: npc.mara
     expect: { winner: mara.idle }
@@ -2893,9 +2979,9 @@ steps:
       state: { run.day: { add: 1 } }
     repeat: 2
   - occasion: dayEnd
-    expect: { winner: hub.dayEnd }
+    expect: { winner: town.dayEnd }
 expect:
-  exit: complete
+  end: complete
   state: { run.day: 5 }
   transcriptContains: ["Any luck with the lamp?", "Day 3."]
   transcriptLacks: ["You're new."]
@@ -2906,10 +2992,10 @@ expect:
   run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
   prev.run.day = 1
   set run.day = 3
-── step 2 · hubVisit ──────────────
-  ✓ hub.morning [scene, priority 0]
-  ✗ hub.welcome [scene, priority 10] — once: user — already presented
-  → hub.morning
+── step 2 · townVisit ──────────────
+  ✓ town.morning [scene, priority 0]
+  ✗ town.welcome [scene, priority 10] — once: user — already presented
+  → town.morning
 @narrator: Day 3. The square is already awake.
 ── step 3 · talk → npc.mara ──────────────
   ✓ mara.idle [scene, priority 0]
@@ -2928,8 +3014,8 @@ expect:
 ── step 5 (a quiet day passes) [2/2] · engine ──────────────
   set run.day = 5
 ── step 6 · dayEnd ──────────────
-  ✓ hub.dayEnd [scene, priority 0]
-  → hub.dayEnd
+  ✓ town.dayEnd [scene, priority 0]
+  → town.dayEnd
 @narrator: One by one, the lamps go out.
 ── end: complete (7 steps) ──────────────
 ── expect: every expectation held ──────────────
@@ -2975,9 +3061,9 @@ PASS  ./plays/first-day.play.yaml  (play of .)
 3 passed, 0 failed
 
 coverage over 2 traced path(s) and 1 play(s) (plays count toward what they presented and the choices they picked, not match arms):
-  branch/hub maraAsk (./tests/../scenes/talk/mara-first.lute:maraAsk): 1/2 chosen [lamp]; never chosen [leave]
+  branch/hub maraAsk (scenes/talk/mara-first.lute:maraAsk): 1/2 chosen [lamp]; never chosen [leave]
   1 untested unit(s) under . — no *.test.yaml presents them and no play presents them:
-    ./scenes/talk/mara-idle.lute
+    scenes/talk/mara-idle.lute
 ```
 
 플레이가 환영 인사, 아침, 밤 씬, 마라와의 첫 만남, 토마스의 엔트리를 제시했으므로 남은 것은

@@ -15,6 +15,7 @@
 (otherwise) @fold
 (hub) @fold
 (hub_choice) @fold
+(hub_return) @fold
 
 ; Timeline blocks (§7.4) — the timeline and each of its tracks.
 (timeline) @fold

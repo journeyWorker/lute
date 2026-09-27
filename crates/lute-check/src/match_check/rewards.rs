@@ -5,8 +5,8 @@ use super::*;
 
 /// `E-REWARD-ATTR` (dsl 0.16.0 §2/§6): a `<reward>` element's shape is
 /// malformed — missing/empty `kind`, an `amount=` value that is not a
-/// signed integer or an inclusive `N..M` range with `N <= M`, an `on=`
-/// value other than `"failed"`, or `on=` authored on an objective-level
+/// signed integer or an inclusive `N..M` range with `N <= M`, an `outcome=`
+/// value other than `"failed"`, or `outcome=` authored on an objective-level
 /// reward (only quest-level rewards fire on failure). Anchored at the
 /// offending attribute value (or the reward element for missing `kind`).
 /// Unknown attribute keys are `E-UNKNOWN-ATTR` via the D-J closure.
@@ -180,7 +180,7 @@ fn collect_sets<'a>(nodes: &'a [Node], out: &mut Vec<&'a lute_syntax::ast::Set>)
         match node {
             Node::Set(s) => out.push(s),
             Node::Branch(b) => b.choices.iter().for_each(|c| collect_sets(&c.body, out)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| collect_sets(&c.body, out)),
+            Node::Hub(h) => h.bodies().for_each(|b| collect_sets(b, out)),
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {
@@ -198,7 +198,7 @@ fn collect_sets<'a>(nodes: &'a [Node], out: &mut Vec<&'a lute_syntax::ast::Set>)
 }
 
 /// The two owner positions a `<reward/>` can occupy (dsl 0.16.0 §2 / D-D).
-/// A quest-level reward MAY carry `on="failed"`; an objective-level reward
+/// A quest-level reward MAY carry `outcome="failed"`; an objective-level reward
 /// MAY NOT (an objective grants at first `done`, never at fail).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RewardPos {
@@ -216,7 +216,7 @@ fn check_one_reward(
     // Shape: `kind=` is required (dsl 0.16.0 §2). An empty value hits
     // `E-REWARD-ATTR` at the value span (or the open-tag span when the
     // attribute is missing — the parser stores the same span in both
-    // cases, matching how `<quest after=>` / `<objective quest=>` degrade
+    // cases, matching how `<quest follows=>` / `<objective quest=>` degrade
     // an absent attr).
     if r.kind.trim().is_empty() {
         diags.push(diag(
@@ -246,30 +246,30 @@ fn check_one_reward(
             ));
         }
     }
-    // `on=` enum: `"failed"` is the only legal value (dsl 0.16.0 §2), and
-    // ONLY on a quest-level reward — an objective reward fires at first
+    // `outcome=` enum: `"failed"` is the only legal value (dsl 0.16.0 §2),
+    // and ONLY on a quest-level reward — an objective reward fires at first
     // `done`, never at fail. Both misuses share the E-REWARD-ATTR code
-    // because they are the same rule ("the on= surface has no meaning
+    // because they are the same rule ("the outcome= surface has no meaning
     // here"); the message names which half.
-    if let (Some(on), Some(on_span)) = (r.on.as_deref(), r.on_span) {
+    if let (Some(outcome), Some(outcome_span)) = (r.outcome.as_deref(), r.outcome_span) {
         if matches!(pos, RewardPos::Objective) {
             diags.push(diag(
                 E_REWARD_ATTR,
                 Severity::Error,
-                "`<reward on=…>` is legal only on a quest-level reward; an objective grants at \
-                 first `done` and never at fail (dsl 0.16.0 §2)"
+                "`<reward outcome=…>` is legal only on a quest-level reward; an objective grants \
+                 at first `done` and never at fail"
                     .to_string(),
-                on_span,
+                outcome_span,
             ));
-        } else if on != "failed" {
+        } else if outcome != "failed" {
             diags.push(diag(
                 E_REWARD_ATTR,
                 Severity::Error,
                 format!(
-                    "`<reward on=\"{on}\">` is not a legal trigger; `failed` is the only \
-                     accepted value (dsl 0.16.0 §2)"
+                    "`<reward outcome=\"{outcome}\">` is not a legal outcome; `failed` is the only \
+                     accepted value (a reward without `outcome=` grants on `complete`)"
                 ),
-                on_span,
+                outcome_span,
             ));
         }
     }
@@ -284,9 +284,13 @@ fn check_one_reward(
             E_REWARD_KIND,
             Severity::Error,
             format!(
-                "`<reward kind=\"{}\">` names no declared reward kind; add it to a plugin's \
-                 `rewardKinds:` export (dsl 0.16.0 §4)",
-                r.kind
+                "`<reward kind=\"{}\">` names no declared reward kind{}; add it to a plugin's \
+                 `rewardKinds:` export",
+                r.kind,
+                lute_manifest::suggest::did_you_mean(
+                    r.kind.trim(),
+                    snapshot.reward_kinds.keys().map(String::as_str)
+                )
             ),
             r.kind_span,
         ));

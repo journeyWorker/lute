@@ -292,7 +292,7 @@ $ lute compile my-scene.lute
   "kind": "scene",
   "lute": "0.27.0",
   "irVersion": "0.27.0",
-  "capabilityVersion": "0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3",
+  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
   "meta": {
     "id": "mira.s01ep01",
     "title": "A Quiet Table"
@@ -583,21 +583,21 @@ file you give it:
 ```
 $ lute context episodes/diner.lute
 lute: note: using project episodes (nearest lute.project.yaml); pass --project to choose another
-capabilityVersion: 0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3
+capabilityVersion: ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319
 permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (12):
-  auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
-  bg: location, time, assetId   [mutatesScene]
-  camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
+  auto: character: string, anchor: domain:anchor, action: domain:action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
+  bg: location: string, time: string, assetId: string   [mutatesScene]
+  camera: focus: string, zoom: number, moveX: number, moveY: number, shake: number, reset: bool, duration: number, easing: string, delay: number, wait: bool
   clear:    [reads.onStage mayExitCharacter]
-  cut: assetId, action, full
-  end: reason   [terminatesWalk]
-  mark: id
-  music: action, mood, volume, assetId, track   [mutatesScene]
-  next: to, when
-  sfx: sound, assetId, name
-  vfx: type, label, transition
-  video: assetId, action, wait
+  cut: assetId: string, action: enum[show, hide], full: bool
+  end: reason: string   [terminatesWalk]
+  mark: id: string (required)
+  music: action: domain:musicAction, mood: domain:mood, volume: domain:volume, assetId: string, track: string   [mutatesScene]
+  next: to: string (required), when: string
+  sfx: sound: string, assetId: string, name: string
+  vfx: type: domain:vfxType, label: string, transition: string
+  video: assetId: string, action: enum[show, hide], wait: bool
 bridges (0):
 rewardKinds (0):
 occasions (0):
@@ -606,7 +606,7 @@ enums (0):
 stateSchema (4):
   prev.run.metMira: bool (owner: engine)
   run.metMira: bool
-  scene.choices.orderChoice: enum [black, familiar, unset]
+  scene.choices.orderChoice: enum [black, familiar, unset] (owner: engine)
   scene.knowsMira: bool
 deliveryFlags (3):
   {mono}: interior monologue / thought (not spoken aloud in-scene)
@@ -614,33 +614,77 @@ deliveryFlags (3):
   {vo}: voiceover: narration-style delivery layered over the scene
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
-builtinDirectives (5):
-  ::set{ <path> = <expr> [when="<condition>"] }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
+builtinDirectives (10):
+  ::set{ <path> = <expr> [when="<condition>"] }  (also += / -=) — write a declared state path; engine-owned paths are the engine's (E-ENGINE-OWNED-WRITE)
   ::assert{ <relation>(<arg>, …) [when="<condition>"] } — assert a ground fact of a declared, non-derived, non-reserved relation
   ::retract{ <relation>(<arg | _>, …) [when="<condition>"] } — retract the matching facts of a declared, non-derived, non-reserved relation
-  ::accept{quest="<questId>" [when="<condition>"]} — accept a quest that has no `start` condition
+  ::accept{quest="<questId>" [at="nextRun"] [when="<condition>"]} — accept a quest that has no `start` condition; `at="nextRun"` queues it until after the next new run
   ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
-beatKeys (11; scene frontmatter; <entry> / <beat> attributes):
+  ::body — in a component with a `beat:` header, at the top level of its body: where a `<beat use=…>`'s own body goes
+  ::next{to="<string>" [when="<condition>"]} — jump forward to the `::mark` named by `to` (only while `when` holds)
+  ::mark{id="<string>" [when="<condition>"]} — name the position a `::next{to=…}` jumps to
+  ::end{[reason="<string>"] [when="<condition>"]} — end this presentation here
+  ::clear{[when="<condition>"]} — take every character on stage off it; takes no attributes
+directiveAttrs (5; beyond each directive's own):
+  when: condition — every directive
+  duration: number — every directive but ::clear
+  delay: number — every directive but ::clear
+  wait: bool — every directive but ::clear
+  at: time — a directive inside a <track> clip only
+beatKeys (11; scene frontmatter `key: value`; <entry> / <beat> attributes `key="value"`):
   on: <occasion> — the occasion the beat answers
   target: <prefix>.<member> | kind:<kind> — the one target it answers, or every member of a kind (read as occasion.target)
   for: kind:<kind> — on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, binding occasion.target
   when: <condition> — eligible only while it holds
   priority: <integer> — the higher eligible beat wins
   once: run | user | false | day | slot | week | season:<name> — presented at most once per run, ever, without limit, per clock day / slot / week, or per window of a season
-  spentBy: <condition> — instead of `once`: repeatable until the condition holds
+  spentBy: <condition> — spent once the condition has held; `once` sets how long it stays spent (`run` unless written)
   also: true — scene and bundle beats, on a `select: first` occasion: presented after the winner too
   share: <key> — beats with one `share` key spend one `once` together
   after: <prerequisite> — scene and bundle beats: eligible once it holds, e.g. visited("<id>")
   use: <component> — bundle `<beat>`: its header from the component's `beat:` template, the component's params as attributes
-questKeys (8; <quest> attributes):
-  start: <condition> — activates the quest when it holds; without it the quest is accept-driven
-  fail: <condition> — fails the active quest when it holds
-  after: <prerequisite> — its place in the scene graph; does not gate activation
-  tier: user | run | season:<name> — when it returns to unset: never, at each new run, or each time the season opens
-  rearm: <condition> — returns the quest to unset (objectives cleared) each time the condition goes false→true
-  complete: all | any — completes when every / any one required objective is done
-  activate: accept — a child that waits for an ::accept instead of activating with its parent
-  accept: external — the engine accepts the quest outside any document
+questKeys (10; <quest> attributes):
+  id="<questId>" — read as quest.<id>.state
+  title="<text>" — the quest's name
+  start="<condition>" — activates the quest when it holds; without it the quest is accept-driven
+  fail="<condition>" — fails the active quest when it holds
+  follows="<prerequisite>" — the quest's place in the scene graph; never gates activation (to wait, write start="visited('…')")
+  tier="user | run | season:<name>" — when it returns to unset: never, at each new run, or each time the season opens
+  activate="accept" — a child that waits for an ::accept instead of activating with its parent
+  complete="all | any" — completes when every / any one required objective is done
+  accept="external" — the engine accepts the quest outside any document
+  rearm="<condition>" — returns the quest to unset (objectives cleared) each time the condition goes false→true
+objectiveKeys (10; <objective> attributes):
+  id="<objectiveId>" — read as quest.<quest>.objectives.<id>.done / .failed
+  done="<condition>" — the objective is done once it holds
+  quest="<questId>" — a subquest objective: done when that quest completes
+  visibleWhen="<condition>" — hides the objective while false; never gates `done`
+  title="<text>" — the objective's name
+  optional="true" — not required for the quest to complete
+  on="<occasion>" — judged when that occasion is raised
+  by="<condition>" — a deadline: the first time it holds while not done, the objective fails
+  target="<prefix>.<member>" — with `on`: judged only for a raise for that target
+  until="<condition>" — with `on`: a deadline judged only when the objective's occasion is raised, after `done`
+rewardKeys (5; <reward> attributes):
+  kind="<rewardKind>" — what the engine pays
+  target="<id>" — what the reward is for, per its kind
+  amount="<integer> | <N>..<M>" — how much
+  when="<condition>" — granted only while it holds
+  outcome="failed" — grant when the quest fails; without it the reward grants on complete
+enginePaths (13; the engine writes these — read them, never declare or ::set them):
+  quest.<quest>.state: enum [active, complete, failed, unset] [quest] — the quest's lifecycle; `unset` until it activates (always assigned)
+  quest.<quest>.failedBy: enum [unset, fail, by, until, subquest, cascade, superseded] [quest] — why the quest failed: its `fail`, a required objective's `by` / `until`, a required `subquest` that failed, a `cascade` from its parent, or `superseded` by a sibling; `unset` while it has not failed
+  quest.<quest>.activatedAt: narrativeTime [quest] — the moment the quest activated
+  quest.<quest>.objectives.<objective>.done: bool [quest] — the objective is done
+  quest.<quest>.objectives.<objective>.failed: bool [quest] — the objective failed (its `by` / `until` deadline passed first)
+  entry.<entry>.read: bool [run] — the entry was read this run
+  entry.<entry>.everRead: bool [user] — the entry was ever read (a new run does not reset it)
+  scene.choices.<branch> [scene] — the choice a `<branch>` / `<hub>` took: one of its choice ids, `unset` before
+  scene.visited.<hub>.<choice> [scene] — that `<hub>` choice was ever taken (bool)
+  occasion.target [occasion] — in a beat of a targeted occasion: the member the answered raise is for
+  occasion.payload.<field> [occasion] — in a beat of an occasion with a `payload:`: that field of the answered raise
+  clock.<field> [run] — derived from the declared `clock:` (day, slot, weekday, index, ended …)
+  prev.<path> [run] — the previous run's (or season window's) value of `<path>`
 scenes (2; read as visited("<id>")):
   mira.s01ep01, mira.s01ep02
 ```

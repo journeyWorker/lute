@@ -154,19 +154,47 @@ fn walk(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) -> Option<PrereqFo
     None
 }
 
+/// dsl 0.28.0 (T3-4): the offending part as written, and what to write
+/// instead — a quoted id, a bare id's `visited("…")`, or `when:` for a
+/// condition `after` cannot order by.
 fn out_of_profile_message(expr: &Expr) -> String {
+    const PROFILE: &str = "`after` lists what must come first: `visited(\"id\")`, \
+                           `completed(\"id\")` and `active(\"id\")` joined with `&&` / `||`";
+    let shown = crate::cel_types::show(expr);
     match expr {
-        Expr::Call(c) => format!(
-            "`{}(…)` is outside the `after` prerequisite profile — only \
-             `visited(\"id\")`, `completed(\"id\")`, `active(\"id\")`, `&&`, and \
-             `||` are permitted (no negation, arithmetic, comparisons, or other \
-             calls)",
-            c.func_name
+        Expr::Call(c)
+            if c.target.is_none()
+                && matches!(c.func_name.as_str(), "visited" | "completed" | "active") =>
+        {
+            let id = match c.args.as_slice() {
+                [a] => crate::cel_paths::select_path(&a.expr),
+                _ => None,
+            };
+            match id {
+                Some(id) => format!(
+                    "`{shown}`: `{}` takes a quoted id — write `{}(\"{id}\")`",
+                    c.func_name, c.func_name
+                ),
+                None => format!(
+                    "`{shown}`: `{}` takes one quoted id; {PROFILE}",
+                    c.func_name
+                ),
+            }
+        }
+        Expr::Ident(_) | Expr::Select(_) => match crate::cel_paths::select_path(expr) {
+            Some(id) if !crate::cel_paths::is_state_path(&id) => format!(
+                "`{shown}` is a bare id; {PROFILE} — did you mean `visited(\"{id}\")` (a scene) \
+                 or `completed(\"{id}\")` (a quest)?"
+            ),
+            _ => format!(
+                "`{shown}` is a state read, which `after` cannot order by; {PROFILE} — move the \
+                 condition to `when:`"
+            ),
+        },
+        _ => format!(
+            "`{shown}` is a condition, which `after` cannot order by; {PROFILE} — move it to \
+             `when:`"
         ),
-        _ => "this construct is outside the `after` prerequisite profile — only \
-              `visited(\"id\")` / `completed(\"id\")` / `active(\"id\")` combined \
-              with `&&` / `||` are permitted"
-            .to_string(),
     }
 }
 

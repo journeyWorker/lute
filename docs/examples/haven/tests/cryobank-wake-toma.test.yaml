@@ -4,7 +4,7 @@ file: ../scenes/cryobank.lute
 choose:
   whoWakes: wakeToma
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "How long have I been under?"
   state:

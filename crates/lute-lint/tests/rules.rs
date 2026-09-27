@@ -267,6 +267,120 @@ fn scene_length_spread_ignores_components_and_quests() {
     assert!(rows.is_empty(), "codes: {:?}", codes(&out.diagnostics));
 }
 
+// ---------------------------------------------------------------------------
+// scenes a manifest `chapters:` chain lists
+// ---------------------------------------------------------------------------
+
+/// A scene document desugared with `chapters:` (as every surface hands the
+/// engine its documents).
+fn chapter_input(
+    path: &str,
+    text: &str,
+    defaults: &lute_manifest::project::MetaDefaults,
+    occasions: &std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+) -> LintDocInput {
+    let mut doc = input(path, text);
+    lute_check::chapters::apply_chapters(&mut doc.doc, defaults, occasions);
+    doc
+}
+
+fn chapters(on: &str, scenes: &[&str]) -> lute_manifest::project::MetaDefaults {
+    lute_manifest::project::MetaDefaults::default().with_chapters(vec![
+        lute_manifest::project::Chain {
+            on: on.to_string(),
+            scenes: scenes.iter().map(|s| s.to_string()).collect(),
+            applied: true,
+            retired: false,
+        },
+    ])
+}
+
+/// A scene that gets `on:` only from the chain is a beat, like one that
+/// wrote `on:` itself: no background finding on its bare shot, and its short
+/// body stays out of the scene-length spread.
+#[test]
+fn chain_derived_on_makes_a_beat() {
+    let defaults = chapters("stageClear", &["c1s1", "c1s2"]);
+    let occasions = std::collections::BTreeMap::new();
+    let stage = chapter_input(
+        "c1s1.lute",
+        "---\nkind: scene\nid: c1s1\n---\n## After the fight\n@alice: one two\n",
+        &defaults,
+        &occasions,
+    );
+    let own_on = input(
+        "c1s2.lute",
+        "---\nkind: scene\nid: c1s2\non: stageClear\n---\n## Onward\n@alice: three four\n",
+    );
+    let long_a = input(
+        "a.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n::bg{location=\"a\"}\n\
+         @alice: one two three four five six seven eight nine ten\n",
+    );
+    let long_b = input(
+        "b.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n::bg{location=\"b\"}\n\
+         @alice: one two three four five six seven eight nine ten eleven twelve\n",
+    );
+    let out = lint_default(vec![stage, own_on, long_a, long_b]);
+    assert!(
+        only_code(&out, "L-SHOT-STARTS-WITH-BACKGROUND").is_empty(),
+        "codes: {:?}",
+        codes(&out)
+    );
+    assert!(
+        only_code(&out, "L-SCENE-LENGTH-SPREAD").is_empty(),
+        "codes: {:?}",
+        codes(&out)
+    );
+}
+
+/// On a `select: sequence` occasion a chain plays its scenes one after
+/// another in one raise: the second continues on the stage the first set,
+/// so it gets no background finding. A linear scene no chain lists still
+/// does.
+#[test]
+fn sequence_chain_continuation_needs_no_background() {
+    let defaults = chapters("inquest", &["board.hearing", "board.rail"]);
+    let occasions = std::collections::BTreeMap::from([(
+        "inquest".to_string(),
+        lute_manifest::schema::OccasionDecl {
+            name: "inquest".to_string(),
+            select: lute_manifest::schema::OccasionSelect::Sequence,
+            ..Default::default()
+        },
+    )]);
+    let hearing = chapter_input(
+        "hearing.lute",
+        "---\nkind: scene\nid: board.hearing\n---\n## The Hearing Room\n\
+         ::bg{location=\"board_room\"}\n@chair: The inquiry is open.\n",
+        &defaults,
+        &occasions,
+    );
+    let rail = chapter_input(
+        "hearing-rail.lute",
+        "---\nkind: scene\nid: board.rail\n---\n## The Hearing Room\n\
+         @chair: The rail was reported unsafe.\n",
+        &defaults,
+        &occasions,
+    );
+    let loose = input(
+        "loose.lute",
+        "---\nkind: scene\nid: rock.night\n---\n## The Gallery\n@keeper: Salt again.\n",
+    );
+    let out = lint_default(vec![hearing, rail, loose]);
+    let bg: Vec<_> = only_code(&out, "L-SHOT-STARTS-WITH-BACKGROUND")
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
+    assert_eq!(
+        bg,
+        vec![PathBuf::from("loose.lute")],
+        "codes: {:?}",
+        codes(&out)
+    );
+}
+
 /// dsl 0.19.0 §8: a lore document is excluded from scene metrics (its one
 /// short entry would push the spread ratio to 12.0 if it counted as a
 /// scene), yet its entry lines are still translatable lines that line rules

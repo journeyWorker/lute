@@ -128,8 +128,9 @@ that names an undeclared season.
 ### The end of the game: `terminal:`
 
 Some games end: the ward takes the player, or the run's fate is sealed. A schema may say when with
-**`terminal:`** (dsl 0.27.0 §4), a CEL condition. Once it holds the game is over, and the engine
-raises no occasion:
+**`terminal:`**, a CEL condition. Once it holds the game is over, and the engine raises no
+occasion, a title screen or a menu between runs included, unless the occasion declares
+[`outsideRun: true`](/plugins/manifests/):
 
 ```yaml
 state:
@@ -160,7 +161,16 @@ The checker reads the condition like any other:
 [`lute play`](/tooling/play/) follows the engine. The step after which `terminal:` holds gets a
 note that the game is over, and a playthrough that ends there reports `end: terminal`
 (`"end": "terminal"` at the root of `--json`). A later `occasion:` or `advance:` step is
-`E-OCCASION-GATE` (exit 1); a `newRun: true` step starts a new run and play goes on.
+`E-OCCASION-GATE` (exit 1). A `newRun: true` step starts a new run, and play goes on only when the
+new run makes the condition false: a `terminal:` over run state is reset by it, one that reads what
+a new run keeps (`user.*`, `visited(…)`) is not, and `check-project` warns `W-TERMINAL-PERSISTENT`.
+
+The condition is judged when an occasion is raised, so the raise that makes it hold plays out: the
+beat whose write ends the game finishes, the rest of a `select: sequence` raise plays, and the
+`questComplete` / `questFailed` handlers the raise settles run last. An epilogue goes after that
+write, or in the `<on event="questComplete">` handler of the quest `terminal:` reads. `::end` in
+content never ends the game; see [The game is over](/tooling/play/#the-game-is-over) for every
+meaning of "end".
 
 The compiled artifact and `project.index.json` carry the condition at the top level as
 `terminal: { raw, expr }`, after `@def` expansion and joined with `||` when several schemas

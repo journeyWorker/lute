@@ -85,7 +85,7 @@ state:
 entities:
   actor: { members: [ana] }
 relations:
-  memory: { args: [actor] }
+  memory: { args: [actor], tier: run }
 facts:
   - "memory(ana)"
 ---

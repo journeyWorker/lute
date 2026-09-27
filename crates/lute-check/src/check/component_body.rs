@@ -15,7 +15,10 @@ use super::*;
 /// document imports but never `::use`s (e.g. one every document gets through
 /// `defaults: components:`) contributes nothing here: its body is not this
 /// document's fault, and the component file's own check reports it
-/// (round-5 T3-4). Deterministic: components iterate in name order.
+/// (round-5 T3-4). Deterministic: components iterate in name order. `host`
+/// is the importing document's env and `host_params` its own params (when
+/// it is itself a component): a body reading one of `host`'s defs is
+/// [`component_def_reads`]' report.
 ///
 /// Each body ALSO gets its own isolated run of the whole-document
 /// duplicate-line-code pass ([`check_line_codes`], dsl §12) — see the comment
@@ -28,6 +31,8 @@ pub(super) fn validate_components(
     at: Span,
     use_sites: &std::collections::BTreeMap<String, Span>,
     cast: &std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
+    host: &Env,
+    host_params: &[lute_manifest::schema::DefParam],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (name, def) in &components.table {
@@ -49,7 +54,7 @@ pub(super) fn validate_components(
         // its own enclosing one.
         let param_domains: std::collections::BTreeMap<String, DomainInfo> = params
             .iter()
-            .map(|(pname, ty)| (pname.clone(), param_domain(ty)))
+            .map(|(pname, ty)| (pname.clone(), param_domain(ty, domains)))
             .collect();
         let body_scope = BodyScope {
             effects: def.effects,
@@ -77,6 +82,15 @@ pub(super) fn validate_components(
                 &mut body_diags,
             );
         }
+        // A read of a host def: the one report the component's own check
+        // gives too, standing for the undeclared-ref one its params-only env
+        // raised at the same read.
+        let reads = component_def_reads(&body, &param_domains, host, host_params);
+        body_diags.retain(|d| {
+            d.code != "E-UNDECLARED-REF"
+                || !reads.iter().any(|r| r.span.byte_start == d.span.byte_start)
+        });
+        body_diags.extend(reads);
         // Task 7f, the SAME class as Task 7b/7c/7e — but one level out: not a
         // rule that skipped the body, a whole SURFACE nothing walked.
         // `check_admission` has exactly ONE callsite (`check()` step 8, over
@@ -169,6 +183,7 @@ pub(super) fn validate_components(
                 def_types: &env.def_types,
                 beat_when: None,
                 snapshot: None,
+                folded: None,
             },
         ));
         // D6 (dsl 0.4.0 §6.2): the positive `E-COMPONENT-STATE` scan
@@ -720,6 +735,7 @@ pub(super) fn walk_component_body(
                 // against, and the purity contract forbids the read anyway).
                 component_interp_scan(&l.interps, ctx, &scope.own, diags);
                 diags.extend(text_looks_like_ref(l, ctx));
+                super::literal_text::line_text(l, ctx, None, diags);
                 // dsl 0.26.0 §3.2: `@@p:` speaks as the member the `speaker`
                 // param `p` names at each `::use`.
                 if let Some(p) = l.speaker.strip_prefix('@') {
@@ -770,7 +786,7 @@ pub(super) fn walk_component_body(
                 }
             }
             Node::Directive(d) if d.tag == "use" => {
-                check_use(d, components, ctx, diags);
+                check_use(d, components, ctx, param_domains, diags);
                 check_use_typed_args(d, components, snapshot, providers, domains, diags);
                 check_speaker_args(d, components, scope.cast, scope.speakers, diags);
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, None, &scope.own, diags);
@@ -1115,8 +1131,8 @@ fn collect_use_targets(nodes: &[Node], out: &mut Vec<String>) {
                 }
             }
             Node::Hub(h) => {
-                for c in &h.choices {
-                    collect_use_targets(&c.body, out);
+                for b in h.bodies() {
+                    collect_use_targets(b, out);
                 }
             }
             Node::Line(_)
@@ -1189,4 +1205,91 @@ fn dfs_use_cycle(
     stack.pop();
     on_stack.remove(node);
     done.insert(node.to_string());
+}
+
+/// A component body reads its params only (dsl §13): every `@name` a CEL
+/// slot or a `{{@…}}` interpolation of `body` reads that is no param of the
+/// component (`params`) but a def of `env` (bar `env_params`, the params of
+/// a component whose env it is) is `E-COMPONENT-STATE` at the read, naming
+/// the param that carries the def in. The component's own check and each
+/// host's `::use` report it alike, so `check-project` keeps the one in the
+/// component.
+pub(super) fn component_def_reads(
+    body: &Document,
+    params: &std::collections::BTreeMap<String, DomainInfo>,
+    env: &Env,
+    env_params: &[lute_manifest::schema::DefParam],
+) -> Vec<Diagnostic> {
+    let is_def = |n: &str| {
+        !params.contains_key(n) && env.defs.contains(n) && !env_params.iter().any(|p| p.name == n)
+    };
+    let report = |name: &str, span: Span| {
+        use_diag(
+            E_COMPONENT_STATE,
+            format!(
+                "a component body cannot read defs or state, and `@{name}` is a def, not a \
+                 param — declare the param `{name}: {{ type: {}, default: \"@{name}\" }}` under \
+                 `params:`, so each `::use` passes the def in",
+                param_type_spelling(env.def_types.get(name))
+            ),
+            span,
+        )
+    };
+    let mut out = Vec::new();
+    for_each_cel_slot(body, &mut |slot| {
+        for r in scan_refs(&slot.raw) {
+            if !r.is_dollar && is_def(&r.name) {
+                let base = slot.span.byte_start;
+                let span = Span {
+                    byte_start: base + r.span.byte_start,
+                    byte_end: base + r.span.byte_end,
+                    line: 0,
+                    column: 0,
+                    utf16_range: (0, 0),
+                };
+                out.push(report(&r.name, span));
+            }
+        }
+    });
+    fn interps<'a>(nodes: &'a [Node], out: &mut Vec<&'a Interp>) {
+        for node in nodes {
+            match node {
+                Node::Line(l) => out.extend(&l.interps),
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                        interps(body, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut found = Vec::new();
+    for shot in &body.shots {
+        interps(&shot.body, &mut found);
+    }
+    for interp in found.into_iter().filter(|i| i.kind == InterpKind::Ref) {
+        if let Some(r) = scan_refs(&interp.raw)
+            .into_iter()
+            .find(|r| !r.is_dollar && is_def(&r.name))
+        {
+            out.push(report(&r.name, interp.span));
+        }
+    }
+    out
+}
+
+/// A [`Type`] as a `params:` entry spells it (`bool`, `{ enum: [a, b] }`);
+/// `<type>` for one no param declares.
+fn param_type_spelling(ty: Option<&Type>) -> String {
+    match ty {
+        Some(Type::Bool) => "bool".to_string(),
+        Some(Type::Number) => "number".to_string(),
+        Some(Type::Str) => "string".to_string(),
+        Some(Type::Enum(members)) => format!("{{ enum: [{}] }}", members.join(", ")),
+        Some(Type::Domain(d)) => format!("{{ domain: {d} }}"),
+        Some(Type::Entity(k)) => format!("{{ entity: {k} }}"),
+        _ => "<type>".to_string(),
+    }
 }

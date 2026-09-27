@@ -473,15 +473,14 @@ pub(super) fn take_str(attrs: &mut Vec<Attr>, key: &str) -> Option<String> {
     }
 }
 
-/// Remove the first attr named `key` and report whether it was present as a
-/// bare boolean-true flag (dsl 0.2.0 §6.4 `optional`). A bare `key` with no
-/// `=` parses to `AttrValue::BoolTrue`; a `key="…"` value is still consumed but
-/// reported `false` (it is not a bare flag).
-pub(super) fn take_bool(attrs: &mut Vec<Attr>, key: &str) -> bool {
-    if let Some(pos) = attrs.iter().position(|a| a.key == key) {
-        return matches!(attrs.remove(pos).value, AttrValue::BoolTrue);
-    }
-    false
+/// Take (remove) flag attribute `key` with its span, read through the one
+/// flag reader [`AttrValue::flag`] (dsl 0.28.0 §1): bare, `="true"` or
+/// `="false"`. Any other value is NOT taken — it stays in `attrs` so the
+/// checker reports it (`E-FLAG-VALUE`) instead of it reading as `false`.
+pub(super) fn take_flag(attrs: &mut Vec<Attr>, key: &str) -> Option<(bool, Span)> {
+    let pos = attrs.iter().position(|a| a.key == key)?;
+    let flag = attrs[pos].value.flag()?;
+    Some((flag, attrs.remove(pos).span))
 }
 
 /// Take (remove) the string value of attribute `key` together with its

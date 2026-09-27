@@ -229,6 +229,20 @@ fn main() -> ExitCode {
             permission_profile.as_deref(),
         ),
         Command::Trace {
+            occasion, target, ..
+        } if !target.is_empty() => {
+            let t = &target[0];
+            let spelled = match occasion.as_slice() {
+                [o] if !o.contains('@') => format!("`--occasion {o}@{t}`"),
+                _ => format!("`--occasion <occasion>@{t}`"),
+            };
+            eprintln!(
+                "lute trace: `--target {t}`: trace names a raise's target in the occasion — \
+                 {spelled}"
+            );
+            ExitCode::from(2)
+        }
+        Command::Trace {
             file,
             state,
             fact,
@@ -236,6 +250,7 @@ fn main() -> ExitCode {
             event,
             accept,
             occasion,
+            target: _,
             mock,
             json,
             providers,
@@ -271,17 +286,27 @@ fn main() -> ExitCode {
             kind,
             name,
             dir,
-            on,
+            occasion,
+            retired_on,
             target,
             start,
-        } => scaffold::run_new(
-            &kind,
-            &name,
-            dir.as_deref(),
-            on.as_deref(),
-            target.as_deref(),
-            start,
-        ),
+        } => match retired_on {
+            Some(on) => {
+                eprintln!(
+                    "lute new: `--on` is now `--occasion`, as in every other command — \
+                     `lute new {kind} {name} --occasion {on}`"
+                );
+                ExitCode::from(2)
+            }
+            None => scaffold::run_new(
+                &kind,
+                &name,
+                dir.as_deref(),
+                occasion.as_deref(),
+                target.as_deref(),
+                start,
+            ),
+        },
         Command::Lore { dir, json } => lore_report::run_lore(&dir, json),
         Command::Refs {
             dir,

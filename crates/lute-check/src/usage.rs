@@ -344,7 +344,7 @@ fn scan<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
         f(node);
         match node {
             Node::Branch(b) => b.choices.iter().for_each(|c| scan(&c.body, f)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| scan(&c.body, f)),
+            Node::Hub(h) => h.bodies().for_each(|b| scan(b, f)),
             Node::Match(m) => {
                 for arm in &m.arms {
                     let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;

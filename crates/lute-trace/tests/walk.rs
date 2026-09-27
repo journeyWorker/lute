@@ -211,7 +211,7 @@ fn forcing_false_guard_is_refused() {
     // `unknown` (eval.rs: `non_derived_relation_absent_fact_is_definitely_false`).
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                 entities:\n  character: { members: [halsin] }\n\
-                relations:\n  claims: { args: [character] }\n\
+                relations:\n  claims: { args: [character], tier: run }\n\
                 ---\n\
                 ## Shot 1.\n\
                 <branch id=\"approach\">\n\
@@ -335,7 +335,7 @@ fn no_arm_match_reports_and_continues() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                 state:\n  run.flag: { type: bool, default: false }\n\
                 entities:\n  character: { members: [halsin] }\n\
-                relations:\n  claims: { args: [character] }\n\
+                relations:\n  claims: { args: [character], tier: run }\n\
                 ---\n\
                 ## Shot 1.\n\
                 <match on=\"run.flag\">\n\
@@ -460,6 +460,40 @@ fn hub_reevaluates_between_picks() {
     );
 }
 
+/// dsl 0.28.0 §5: the hub's `<return>` block runs after each non-`exit`
+/// arm and before the next presentation — never before the first menu,
+/// never after the `exit` arm.
+#[test]
+fn hub_return_runs_after_each_non_exit_arm() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+                ## Shot 1.\n\
+                @narrator: up\n\
+                <hub id=\"lamp\">\n\
+                <choice id=\"ledger\" label=\"Ledger\">\n@narrator: ledger\n</choice>\n\
+                <return>\n@narrator: again\n</return>\n\
+                <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
+                </hub>\n\
+                @narrator: down\n";
+    let lines = |picks: &[&str]| {
+        let input = input_for(text, "hub-return", Path::new("."));
+        let (report, exit) = trace_document(&input, choose(&[("lamp", picks)]));
+        assert_complete(&exit);
+        report
+            .steps
+            .iter()
+            .filter_map(|s| match s {
+                lute_trace::Step::Line { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        lines(&["ledger", "ledger", "leave"]),
+        ["up", "ledger", "again", "ledger", "again", "bye", "down"]
+    );
+    assert_eq!(lines(&["leave"]), ["up", "bye", "down"]);
+}
+
 // ---------------------------------------------------------------------
 // 8. writes_are_sequential — §4.6's second paragraph, verbatim.
 // ---------------------------------------------------------------------
@@ -488,9 +522,9 @@ fn writes_are_sequential() {
     // the transcript — both effects hold at once (sequential in-flow
     // visibility never overwrites the earlier seed).
     let tip_set = report.steps.iter().find_map(|s| match s {
-        lute_trace::Step::Set { path, value, sugar } if path == "run.tip" => {
-            Some((value.clone(), *sugar))
-        }
+        lute_trace::Step::Set {
+            path, value, sugar, ..
+        } if path == "run.tip" => Some((value.clone(), *sugar)),
         _ => None,
     });
     let (value, sugar) = tip_set.expect("run.tip ::set must appear in the transcript");
@@ -765,7 +799,7 @@ fn unmocked_objective_done_match_fires_false_arm_not_no_arm() {
 /// `no_arm_match_reports_and_continues`'s idiom) with ONE
 /// `<on event="questActive">` handler.
 fn never_completing_quest_text() -> String {
-    "---\nkind: quest\nrelations:\n  claims: { args: [character] }\n\
+    "---\nkind: quest\nrelations:\n  claims: { args: [character], tier: run }\n\
      entities:\n  character: { members: [halsin] }\n---\n\
      <quest id=\"q\" start=\"true\">\n\
      <objective id=\"o\" done=\"holds(claims(halsin))\"/>\n\
@@ -806,7 +840,7 @@ fn unmatched_event_emits_note_and_leaves_exit_unchanged() {
 /// unmatched-event note.
 #[test]
 fn matched_event_emits_no_unmatched_note() {
-    let text = "---\nkind: quest\nrelations:\n  claims: { args: [character] }\n\
+    let text = "---\nkind: quest\nrelations:\n  claims: { args: [character], tier: run }\n\
                 entities:\n  character: { members: [halsin] }\n---\n\
                 <quest id=\"q\" start=\"true\">\n\
                 <objective id=\"o\" done=\"holds(claims(halsin))\"/>\n\
@@ -867,7 +901,7 @@ fn builtin_lifecycle_event_still_refused_end_to_end() {
 fn mock_fact_over_unproducible_relation_warns() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                 entities:\n  character: { members: [halsin] }\n\
-                relations:\n  orphan: { args: [character] }\n\
+                relations:\n  orphan: { args: [character], tier: run }\n\
                 ---\n\
                 ## Shot 1.\n\
                 @narrator: hi\n";
@@ -894,7 +928,7 @@ fn mock_fact_over_unproducible_relation_warns() {
 fn mock_fact_over_seeded_relation_is_silent() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                 entities:\n  character: { members: [halsin] }\n\
-                relations:\n  seeded: { args: [character] }\n\
+                relations:\n  seeded: { args: [character], tier: run }\n\
                 facts:\n  - \"seeded(halsin)\"\n\
                 ---\n\
                 ## Shot 1.\n\
@@ -922,7 +956,7 @@ fn mock_fact_over_seeded_relation_is_silent() {
 fn mock_fact_over_reserved_relation_is_silent() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                 entities:\n  character: { members: [halsin] }\n\
-                relations:\n  flagged: { args: [character], reserved: true }\n\
+                relations:\n  flagged: { args: [character], tier: run, reserved: true }\n\
                 ---\n\
                 ## Shot 1.\n\
                 @narrator: hi\n";
@@ -950,7 +984,7 @@ fn mock_fact_over_reserved_relation_is_silent() {
 fn mock_fact_over_asserted_relation_is_silent() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                 entities:\n  character: { members: [halsin] }\n\
-                relations:\n  seen: { args: [character] }\n\
+                relations:\n  seen: { args: [character], tier: run }\n\
                 ---\n\
                 ## Shot 1.\n\
                 ::assert{seen(halsin)}\n";
@@ -1109,22 +1143,31 @@ fn guarded_set_writes_only_when_its_guard_holds() {
         report
             .decisions
             .iter()
-            .filter(|d| d.construct == "match")
-            .map(|d| d.outcome.clone())
+            .filter(|d| d.construct == "match" || d.construct == "guard")
+            .map(|d| format!("{} {}", d.construct, d.outcome))
             .collect()
     };
 
+    // T3-22: the `when=` is a guard, taken or skipped — not a one-arm match.
     let input = input_for(text, "set-when-true", Path::new("."));
     let (report, exit) = trace_document(&input, state_mocks(&[("run.flag", "true")]));
     assert_complete(&exit);
     assert_eq!(sets(&report), ["run.n=5"], "{report:#?}");
-    assert_eq!(outcomes(&report), ["arm 1", "arm 1"], "{report:#?}");
+    assert_eq!(
+        outcomes(&report),
+        ["guard taken", "match arm 1"],
+        "{report:#?}"
+    );
 
     let input = input_for(text, "set-when-false", Path::new("."));
     let (report, exit) = trace_document(&input, MockSet::default());
     assert_complete(&exit);
     assert!(sets(&report).is_empty(), "{report:#?}");
-    assert_eq!(outcomes(&report), ["otherwise", "otherwise"], "{report:#?}");
+    assert_eq!(
+        outcomes(&report),
+        ["guard skipped", "match otherwise"],
+        "{report:#?}"
+    );
 }
 
 /// dsl 0.26.0 §7 (T1-4): a taken `::next` is followed to its label — the

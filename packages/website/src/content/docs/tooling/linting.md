@@ -108,7 +108,9 @@ binding: `scene` for a linear scene, `beat` for a scene with `on:` (a
 declaring `component:`, and otherwise its authored `kind:` — `quest`, `lore`, or
 any other value. A rule meant for linear episodes guards on
 `scene.kind == "scene"`; the three core rules below that encode linear-VN norms
-already do.
+already do. A scene that the manifest's `chapters:` lists is a `beat` too, by the
+`on:` its chain gives it — including one that continues the scene before it in
+the same raise of a `select: sequence` occasion, on the stage that scene set.
 
 `scene.directives` and `shot.firstStagingTag` count **staging** directives only:
 `::accept`, `::use`, `::end`, `::mark`, and `::next` present nothing, so they are

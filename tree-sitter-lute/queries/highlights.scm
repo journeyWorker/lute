@@ -63,6 +63,8 @@
 ; distinct node from a branch choice (a hub arm may carry `once`/`exit`).
 (hub ["<hub" "</hub>"] @keyword.control)
 (hub_choice ["<choice" "</choice>"] @keyword.control)
+; `<return>` (dsl 0.28.0 §5) — the hub's revisit text.
+(hub_return ["<return" "</return>"] @keyword.control)
 
 ; `<match>` / `<when>` / `<otherwise>` first-match-wins conditional.
 (match ["<match" "</match>"] @keyword.conditional)

@@ -84,7 +84,7 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
                     .iter()
                     .map(|d| (&*d.occasion, d.at.as_str()))
                     .chain(raised.as_deref().map(|b| (b, to.as_str())));
-                (row.presented, row.presented_from) = raises
+                let tagged: Vec<(String, String, String)> = raises
                     .flat_map(|(b, at)| match b {
                         StepBody::Occasion {
                             occasion,
@@ -97,12 +97,16 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
                                 (
                                     presented_label(candidates, &pr.id, pr.member.as_deref()),
                                     format!("{occasion} at {at}"),
+                                    occasion.clone(),
                                 )
                             })
                             .collect::<Vec<_>>(),
                         _ => Vec::new(),
                     })
-                    .unzip();
+                    .collect();
+                row.presented = tagged.iter().map(|(id, _, _)| id.clone()).collect();
+                row.presented_from = tagged.iter().map(|(_, from, _)| from.clone()).collect();
+                row.presented_occasion = tagged.into_iter().map(|(_, _, o)| o).collect();
                 row.occasion = match stop {
                     Some(StepBody::Occasion { occasion, .. }) => {
                         format!("advance {by} → {occasion}")
@@ -141,10 +145,7 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
         end: world_view(p, &play.world, true),
         said,
         said_steps,
-        exit: match &play.outcome {
-            Ok(_) => "complete",
-            Err(h) => h.exit_label(),
-        },
+        ended: play.ended(),
         entry_aliases: p.entry_aliases.clone(),
     }
 }

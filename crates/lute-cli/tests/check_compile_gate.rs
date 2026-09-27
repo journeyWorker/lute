@@ -174,24 +174,30 @@ fn the_compile_gate_runs_only_past_the_check_gate() {
     );
 }
 
-/// A component with a declared param used as a `<match>` subject — legal, and
-/// the one logic block a component body admits (dsl 0.4.0 §6.2) — and, when
-/// `cycle` is set, a genuinely broken `defs:` pair reached from a content-line
-/// attribute.
-fn component(tag: &str, cycle: bool) -> PathBuf {
+/// A component with two declared params — `@pressure` used as a `<match>`
+/// subject (legal, and the one logic block a component body admits, dsl
+/// 0.4.0 §6.2) and `@code` in a content-line attribute — both unbound only
+/// because a standalone file has no call site. When `broken` is set, the
+/// attribute reads `@a` instead, one of a genuinely broken `defs:` pair.
+fn component(tag: &str, broken: bool) -> PathBuf {
     let dir = temp_dir(tag);
     let file = dir.join("c.component.lute");
-    // `'0010'` is a CEL string, matching `type: string`; a bare `0010` is a
-    // CEL number, which dsl 0.21.0 §7b's type agreement rejects.
-    let b = if cycle { "\"@a\"" } else { "\"'0010'\"" };
+    let (defs, code) = if broken {
+        (
+            "defs:\n  a:\n    cel: \"@b\"\n    type: string\n\
+             \x20 b:\n    cel: \"@a\"\n    type: string\n",
+            "@a",
+        )
+    } else {
+        ("", "@code")
+    };
     std::fs::write(
         &file,
         format!(
-            "---\ncomponent: interject\nparams:\n  pressure: string\n\
-             defs:\n  a:\n    cel: \"@b\"\n    type: string\n\
-             \x20 b:\n    cel: {b}\n    type: string\n---\n\n\
+            "---\ncomponent: interject\nparams:\n  pressure: string\n  code: string\n\
+             {defs}---\n\n\
              ## Interjection\n<match on=\"@pressure\">\n<when is=\"rising\">\n\
-             @purser{{code=@a}}: The schedule advances.\n</when>\n\
+             @purser{{code={code}}}: The schedule advances.\n</when>\n\
              <otherwise>\n@purser: Allocation is nominal.\n</otherwise>\n</match>\n"
         ),
     )
@@ -246,40 +252,47 @@ fn a_component_is_refused_as_a_root_for_the_true_reason() {
 
 /// The discriminating case for the component leg of the gate.
 ///
-/// One component carries BOTH shapes: `@pressure`, a declared param that is
-/// unbound only because there is no call site, and `a -> b -> a`, a real fault
-/// of the body. `check` must report the second and not the first.
+/// One component carries BOTH shapes: `@pressure` and `@code`, declared params
+/// unbound only because there is no call site, and a read of `@a`, a real
+/// fault of the body. `check` must report the second and not the first.
 ///
-/// Three implementations are separated here. Skipping the gate for components
-/// reports neither. Running it against the component's raw body — the input
-/// `trace` uses — reports both, reddening every parameterised component in
-/// every corpus over the absence of a caller. Only binding the params as
-/// `::use` binds them measures the body.
+/// dsl 0.28.0: a component body reading a def at all is `E-COMPONENT-STATE`
+/// in the component's own check (the def reaches the body only as a param
+/// default the host passes in), so the body's fault is that read, reported
+/// before the `a -> b -> a` cycle behind it could be expanded. Running the
+/// gate against the component's raw body — the input `trace` uses — would
+/// report the unbound params too, reddening every parameterised component in
+/// every corpus over the absence of a caller; the clean half below is what
+/// catches that. Only binding the params as `::use` binds them measures the
+/// body.
 #[test]
-fn a_components_own_compile_fault_is_reported_but_its_unbound_params_are_not() {
+fn a_components_own_fault_is_reported_but_its_unbound_params_are_not() {
     let broken = run(&["check", component("broken", true).to_str().unwrap()]);
     let lines = diag_lines(&broken);
     assert_eq!(
         broken.status.code(),
         Some(1),
-        "a real compile fault in a component body gates; got:\n{lines:?}"
+        "a real fault in a component body gates; got:\n{lines:?}"
     );
     assert!(
         lines
             .iter()
-            .any(|l| l.contains("E-COMPILE-EXPAND") && l.contains("def expansion cycle")),
+            .any(|l| l.contains("E-COMPONENT-STATE") && l.contains("`@a` is a def, not a param")),
         "the body's own fault is reported; got:\n{lines:?}"
     );
     assert!(
-        !lines.iter().any(|l| l.contains("names no known def body")),
+        !lines
+            .iter()
+            .any(|l| l.contains("names no known def body") || l.contains("`@pressure`")),
         "`@pressure` is a DECLARED param, unbound only because a standalone \
          check has no call site — that is not a fault of the component; \
          got:\n{lines:?}"
     );
 
-    // The other direction: the same component without the cycle is clean, so
-    // the assertion above is not passing on an implementation that reports
-    // nothing at all.
+    // The other direction: the same component reading its param instead is
+    // clean, so its unbound params are not reported by any leg — the gate
+    // included — and the assertion above is not passing on an implementation
+    // that reports every `@` read.
     let clean = run(&["check", component("clean", false).to_str().unwrap()]);
     assert_eq!(
         clean.status.code(),

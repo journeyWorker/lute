@@ -243,13 +243,11 @@ pub fn mocked_accepts_under(root: &Path) -> BTreeMap<String, Vec<PathBuf>> {
                 continue;
             };
             let rel = path.strip_prefix(root).unwrap_or(&path);
-            for key in ["accept", "accepts"] {
-                if let Some(serde_yaml::Value::Sequence(items)) = top.get(key) {
-                    for id in items.iter().filter_map(|i| i.as_str()) {
-                        let files = out.entry(id.to_string()).or_default();
-                        if !files.iter().any(|f| f == rel) {
-                            files.push(rel.to_path_buf());
-                        }
+            if let Some(serde_yaml::Value::Sequence(items)) = top.get("accepts") {
+                for id in items.iter().filter_map(|i| i.as_str()) {
+                    let files = out.entry(id.to_string()).or_default();
+                    if !files.iter().any(|f| f == rel) {
+                        files.push(rel.to_path_buf());
                     }
                 }
             }

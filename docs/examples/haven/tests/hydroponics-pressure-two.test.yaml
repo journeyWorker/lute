@@ -7,7 +7,7 @@ state:
 choose:
   thePlainAnswer: ownIt
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "It moved twice while you were in the bank. I was counting."
     - "Two pods, two modules. Now you know the exchange rate."

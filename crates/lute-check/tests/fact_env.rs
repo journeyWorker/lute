@@ -39,7 +39,7 @@ const VOCAB: &str = "entities:\n  crew: { members: [vesna, toma, ilsabet] }\n  \
     topic: { members: [heading, manifest, shed_sequence] }\n  \
     place: { members: [bridge, hold] }\n\
     relations:\n  awake: { args: [crew], tier: run }\n  knows: { args: [crew, topic], tier: run }\n  \
-    found: { args: [crew], tier: run }\n  sealed: { args: [crew], reserved: true }\n  \
+    found: { args: [crew], tier: run }\n  sealed: { args: [crew], tier: run, reserved: true }\n  \
     can_halt: { args: [crew], derive: true }\n  \
     at: { args: [crew, place], tier: run, key: [0] }\n  near: { args: [crew], tier: scene }\n\
     facts:\n  - \"awake(vesna)\"\n\
@@ -1162,7 +1162,16 @@ fn wip_downgrades_only_a_guard_dead_for_want_of_any_producer() {
         .iter()
         .find(|d| d.message.starts_with("entry `found`"))
         .unwrap();
-    assert!(found.message.contains("`--wip`"), "{}", found.message);
+    // The downgrade is its own warning code, never an `E-` code printed as
+    // a warning; the message names the error it is without the flag.
+    assert_eq!(found.code, "W-WIP", "{found:?}");
+    assert!(
+        found
+            .message
+            .contains("`E-ENTRY-UNREACHABLE` without `--wip`"),
+        "{}",
+        found.message
+    );
 }
 
 #[test]
@@ -1179,9 +1188,16 @@ fn wip_follows_rules_to_the_missing_producer() {
     let wip = root(&[("notes.lute", &text)])
         .with_wip()
         .guards("notes.lute");
-    assert_eq!(
-        only(&wip, "E-ENTRY-UNREACHABLE").severity,
-        Severity::Warning
+    let d = only(&wip, "W-WIP");
+    assert_eq!(d.severity, Severity::Warning);
+    assert!(
+        d.message.contains("`E-ENTRY-UNREACHABLE` without `--wip`"),
+        "{}",
+        d.message
+    );
+    assert!(
+        !wip.iter().any(|d| d.code == "E-ENTRY-UNREACHABLE"),
+        "{wip:?}"
     );
 }
 
@@ -1203,11 +1219,16 @@ fn wip_downgrades_a_dead_choice_and_gated_line_too() {
         "{plain:?}"
     );
     let wip = root(&[("a.lute", &text)]).with_wip().guards("a.lute");
-    let dead: Vec<&Diagnostic> = wip.iter().filter(|d| d.code == "E-ARM-DEAD").collect();
+    assert!(!wip.iter().any(|d| d.code == "E-ARM-DEAD"), "{wip:?}");
+    let dead: Vec<&Diagnostic> = wip.iter().filter(|d| d.code == "W-WIP").collect();
     assert_eq!(dead.len(), 2, "{wip:?}");
     for d in dead {
         assert_eq!(d.severity, Severity::Warning, "{d:?}");
-        assert!(d.message.contains("`--wip`"), "{}", d.message);
+        assert!(
+            d.message.contains("`E-ARM-DEAD` without `--wip`"),
+            "{}",
+            d.message
+        );
     }
 }
 

@@ -314,8 +314,8 @@ fn collect(nodes: &[Node], src: &[u8], out: &mut Vec<WhenTestRewrite>) {
                 }
             }
             Node::Hub(h) => {
-                for choice in &h.choices {
-                    collect(&choice.body, src, out);
+                for b in h.bodies() {
+                    collect(b, src, out);
                 }
             }
             Node::Match(m) => {

@@ -2,7 +2,7 @@
 //! T3-1): the knowledge map of a project. For every fact-guarded condition —
 //! one that queries a relation (`holds(…)`, `count(…)`, `countDistinct(…)`,
 //! `validAt(…)`) — in every guard slot (scene and bundle beat `when`, entry
-//! `when`, quest `start`/`fail`, objective `done`/`when`/`by`/`until`, reward
+//! `when`, quest `start`/`fail`, objective `done`/`visibleWhen`/`by`/`until`, reward
 //! `when`, `<on when>`, line `when=`, `<choice when>`, `<when>` arm tests,
 //! `::next{when}`, `::set{when}`),
 //! grouped by document: the relations it reads, and for each relation who
@@ -114,7 +114,7 @@ fn fact_args(p: &lute_syntax::datalog::FactPattern) -> Vec<Option<String>> {
         .map(|a| match &a.term {
             FactTerm::Ident(s) => Some(s.clone()),
             FactTerm::Bool(b) => Some(b.to_string()),
-            FactTerm::Wildcard | FactTerm::Param(_) => None,
+            FactTerm::Wildcard | FactTerm::Param(_) | FactTerm::Target => None,
         })
         .collect()
 }
@@ -289,7 +289,12 @@ impl Walk<'_> {
                     }
                 }
                 Node::Branch(b) => self.choices(&b.choices, Some(&b.id), handles),
-                Node::Hub(h) => self.choices(&h.choices, None, handles),
+                Node::Hub(h) => {
+                    self.choices(&h.choices, None, handles);
+                    if let Some(r) = &h.on_return {
+                        self.body(&r.body, handles);
+                    }
+                }
                 Node::Match(m) => {
                     for arm in &m.arms {
                         match arm {
@@ -363,7 +368,7 @@ impl Walk<'_> {
         let mut inner = vec![id.clone()];
         inner.extend(handles.iter().cloned());
         let mut slots = vec![("done", &o.done)];
-        slots.extend(o.when.iter().map(|s| ("when", s)));
+        slots.extend(o.visible_when.iter().map(|s| ("visibleWhen", s)));
         slots.extend(o.by.iter().map(|s| ("by", s)));
         slots.extend(o.until.iter().map(|s| ("until", s)));
         self.push(format!("objective `{id}`"), None, inner.clone(), slots);
@@ -486,12 +491,93 @@ fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<G
     per_doc.into_iter().flatten().collect()
 }
 
+/// The component documents of one root, by component name.
+pub(crate) fn components(group: &DocGroup) -> BTreeMap<&str, &Document> {
+    group
+        .iter()
+        .filter_map(|(_, d, f)| Some((f.typed.component.as_deref()?, d)))
+        .collect()
+}
+
+/// Every fact a component asserts at each `::use` of it in `nodes` — its
+/// `::assert`s and directive calls, with the call's arguments bound (a
+/// param the call does not give stays a variable) — as `(component,
+/// pattern)`. A component used inside a component is followed with the
+/// outer call's arguments, a few levels deep.
+pub(crate) fn component_asserts(
+    nodes: &[Node],
+    components: &BTreeMap<&str, &Document>,
+    effects: &lute_check::directive_facts::EffectDirectives,
+) -> Vec<(String, lute_syntax::datalog::FactPattern)> {
+    fn uses(
+        nodes: &[Node],
+        components: &BTreeMap<&str, &Document>,
+        effects: &lute_check::directive_facts::EffectDirectives,
+        outer: &BTreeMap<String, String>,
+        depth: u8,
+        out: &mut Vec<(String, lute_syntax::datalog::FactPattern)>,
+    ) {
+        use lute_syntax::ast::AttrValue;
+        use lute_syntax::datalog::FactTerm;
+        if depth > 8 {
+            return;
+        }
+        lute_check::directive_facts::for_each_call(nodes, &mut |d| {
+            if d.tag != "use" {
+                return;
+            }
+            let args: BTreeMap<String, String> = d
+                .attrs
+                .iter()
+                .filter_map(|a| {
+                    let AttrValue::Str(s) = &a.value else {
+                        return None;
+                    };
+                    let v = match s.strip_prefix('@') {
+                        Some(p) => outer.get(p)?.clone(),
+                        None => s.clone(),
+                    };
+                    Some((a.key.clone(), v))
+                })
+                .collect();
+            let Some((name, doc)) = args
+                .get("component")
+                .and_then(|n| components.get_key_value(n.as_str()))
+            else {
+                return;
+            };
+            for shot in &doc.shots {
+                let mut sites = Vec::new();
+                lute_check::connectivity::collect_asserted(&shot.body, effects, &mut sites);
+                for p in sites.into_iter().filter(|p| !p.relation.is_empty()) {
+                    let mut p = p.into_owned();
+                    for arg in &mut p.args {
+                        if let FactTerm::Param(param) = &arg.term {
+                            if let Some(v) = args.get(param) {
+                                arg.term = FactTerm::Ident(v.clone());
+                            }
+                        }
+                    }
+                    out.push((name.to_string(), p));
+                }
+                uses(&shot.body, components, effects, &args, depth + 1, out);
+            }
+        });
+    }
+    let mut out = Vec::new();
+    uses(nodes, components, effects, &BTreeMap::new(), 0, &mut out);
+    out
+}
+
 /// Every asserting site in one root: ``scene `key` (path)``, ``quest `id` ``,
 /// ``entry `id` ``, ``beat `doc.id` ``, with the pattern it asserts — an
-/// `::assert`'s, or (dsl 0.27.0 §4) a directive call's declared one.
+/// `::assert`'s, or (dsl 0.27.0 §4) a directive call's declared one. A
+/// component asserts at each `::use` of it, with the call's arguments:
+/// ``component `c` via scene `key` (path)``.
 fn asserters(root: &Path, group: &DocGroup) -> Asserters {
     let mut out = Asserters::new();
     let effects = lute_check::directive_facts::root_table(group.iter().map(|(_, _, f)| f));
+    let components = components(group);
     let mut record = |nodes: &[Node], label: String| {
         let mut sites = Vec::new();
         lute_check::connectivity::collect_asserted(nodes, &effects, &mut sites);
@@ -504,8 +590,19 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
                 out.push((label.clone(), pattern));
             }
         }
+        for (component, p) in component_asserts(nodes, &components, &effects) {
+            let pattern = Pattern {
+                rel: p.relation.clone(),
+                args: fact_args(&p),
+            };
+            out.push((format!("component `{component}` via {label}"), pattern));
+        }
     };
-    for (path, doc, _) in group {
+    for (path, doc, folded) in group {
+        // A component asserts where it is used, never on its own.
+        if folded.typed.component.is_some() {
+            continue;
+        }
         let document = rel_path(root, path);
         let scene = lute_check::connectivity::scene_key(doc)
             .map(|k| format!("scene `{k}`"))
@@ -1167,7 +1264,10 @@ impl Tracer<'_> {
         }
         self.expanded.insert(p.clone(), here.clone());
         for r in rules {
-            outln!(out, "{pad}  rule: {}", r.raw.trim());
+            match rule_at(&r.raw, k) {
+                Some(at) => outln!(out, "{pad}  rule: {} ({at})", r.raw.trim()),
+                None => outln!(out, "{pad}  rule: {}", r.raw.trim()),
+            }
             let mut bound: BTreeMap<&str, String> = BTreeMap::new();
             for (term, arg) in r.rule.head.terms.iter().zip(&p.args) {
                 if let (RuleTerm::Var(v), Some(c)) = (term, arg) {
@@ -1372,10 +1472,31 @@ pub(crate) struct DerivedFact {
     pub gates: Vec<String>,
 }
 
-/// One rule instance over the may set: its ground positive premises, and
-/// its other premises as written under the same binding (`not liar(tobias)`,
-/// `cel("run.day >= 2")`, `X != S` with values; `_` where unbound).
-type Derivation = (Vec<GroundFact>, Vec<String>);
+/// One rule instance over the may set: its ground positive premises, its
+/// other premises as written under the same binding (`not liar(tobias)`,
+/// `cel("run.aff.ren >= 3")`, `X != S` with values; `_` where unbound), and
+/// where the rule is declared ([`rule_at`]).
+type Derivation = (Vec<GroundFact>, Vec<String>, Option<String>);
+
+/// Where rule `raw` is declared, `world.schema.yaml:8` — a rule of another
+/// schema is followed there.
+fn rule_at(raw: &str, k: &RootKnowledge) -> Option<String> {
+    let o = k.vocab.origins.rules.get(raw)?;
+    // The origin is a resolved (canonical) path; the root may not be.
+    let file = match o.file.strip_prefix(&k.root) {
+        Ok(rel) => rel.display().to_string(),
+        Err(_) => std::fs::canonicalize(&k.root)
+            .ok()
+            .and_then(|root| {
+                o.file
+                    .strip_prefix(root)
+                    .ok()
+                    .map(|r| r.display().to_string())
+            })
+            .unwrap_or_else(|| o.file.display().to_string()),
+    };
+    Some(format!("{file}:{}", o.span.line))
+}
 
 /// The rule instances that can conclude `g` over the may set.
 fn derivations(g: &GroundFact, k: &RootKnowledge) -> Vec<Derivation> {
@@ -1413,7 +1534,14 @@ fn derivations(g: &GroundFact, k: &RootKnowledge) -> Vec<Derivation> {
                         let args: Vec<String> = a.terms.iter().map(value).collect();
                         other.push(format!("not {}({})", a.relation, args.join(", ")));
                     }
-                    BodyLiteral::Guard { cel, .. } => other.push(format!("cel({cel:?})")),
+                    // The knowledge tree's substitution: `run.aff[S]` under
+                    // `S = ren` reads `run.aff.ren`.
+                    BodyLiteral::Guard { cel, .. } => {
+                        let at: BTreeMap<&str, &str> =
+                            s.iter().map(|(v, c)| (v.as_str(), c.as_str())).collect();
+                        let cel = lute_check::rule_index::ground_guard(cel, &at);
+                        other.push(format!("cel({cel:?})"));
+                    }
                     BodyLiteral::Cmp {
                         lhs, rhs, negated, ..
                     } => {
@@ -1427,25 +1555,31 @@ fn derivations(g: &GroundFact, k: &RootKnowledge) -> Vec<Derivation> {
                     }
                 }
             }
-            if !out.contains(&(pos.clone(), other.clone())) {
-                out.push((pos, other));
+            let d = (pos, other, rule_at(&r.raw, k));
+            if !out.contains(&d) {
+                out.push(d);
             }
         }
     }
     out
 }
 
-/// A derivation's premises with where each positive one comes from.
-fn derivation_text((pos, other): &Derivation, k: &RootKnowledge) -> String {
+/// A derivation's premises with where each positive one comes from, and
+/// where its rule is declared.
+fn derivation_text((pos, other, at): &Derivation, k: &RootKnowledge) -> String {
     let premises: Vec<String> = pos
         .iter()
         .map(|f| format!("{} [{}]", ground_text(f), fact_source(f, k)))
         .chain(other.iter().cloned())
         .collect();
-    if premises.is_empty() {
+    let text = if premises.is_empty() {
         "(a rule with no premises)".to_string()
     } else {
         premises.join(", ")
+    };
+    match at {
+        Some(at) => format!("{text}  (rule at {at})"),
+        None => text,
     }
 }
 
@@ -1511,7 +1645,7 @@ fn evidence(
         }
     }
     if k.vocab.relations.get(&g.relation).is_some_and(|d| d.derive) {
-        for (premises, _) in derivations(g, k) {
+        for (premises, _, _) in derivations(g, k) {
             for f in &premises {
                 evidence(f, k, seen, out);
             }

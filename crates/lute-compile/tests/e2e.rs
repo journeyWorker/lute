@@ -147,8 +147,8 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
                 }
                 for obj in c["objectives"].as_array().into_iter().flatten() {
                     assert_cel_clean("objective.done", obj["done"]["raw"].as_str().unwrap());
-                    if let Some(when) = obj["when"]["raw"].as_str() {
-                        assert_cel_clean("objective.when", when);
+                    if let Some(when) = obj["visibleWhen"]["raw"].as_str() {
+                        assert_cel_clean("objective.visibleWhen", when);
                     }
                     if let Some(body) = obj["body"].as_str() {
                         assert_target(body, &valid);
@@ -291,7 +291,7 @@ fn quest_subquest() {
 /// The load-bearing snapshot pins the exact wire — declaration-order
 /// `rewards[]` on both `QuestCmd` and `ObjectiveEntry`, `amountMin`/
 /// `amountMax` for a range, `amount` default `1` for an unauthored scalar,
-/// `on="failed"` only on the quest entry, `when.raw` verbatim. Task 4/5
+/// `outcome="failed"` only on the quest entry, `when.raw` verbatim. Task 4/5
 /// (vocabulary + runtime grant events) read this exact shape.
 #[test]
 fn quest_rewards() {
@@ -479,12 +479,12 @@ fn gated_line() {
 }
 
 /// Connectivity T15 grounding: the FIRST corpus example declaring `after`
-/// (dsl connectivity spec §2.2/§4.4/§7) -- `<quest after="visited('kestrel.s01ep01')">`
+/// (dsl connectivity spec §2.2/§4.4/§7) -- `<quest follows="visited('kestrel.s01ep01')">`
 /// routes through connected-intro.lute's canonical key. Proves T13's
 /// `prereqEdges` IR emission end-to-end against a REAL, otherwise-ordinary
 /// worked example (not just the synthetic unit fixtures in
 /// `lute-compile/src/lib.rs`'s own test module) -- the golden's
-/// `prereqEdges` entry carries the raw `after` text verbatim.
+/// `prereqEdges` entry carries the raw `follows` text verbatim.
 #[test]
 fn connected_quest() {
     golden(

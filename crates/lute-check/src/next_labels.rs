@@ -92,7 +92,7 @@ impl Collector {
         if self.labels.contains_key(id) {
             self.dups.push(diag(
                 E_MARK_DUP,
-                format!("label `{id}` is already declared elsewhere in this document (dsl 0.12.0)"),
+                format!("mark `{id}` is already declared elsewhere in this document"),
                 span,
             ));
         } else {
@@ -152,8 +152,8 @@ impl Collector {
                 }
                 Node::Hub(h) => {
                     self.tick();
-                    for c in &h.choices {
-                        self.walk(&c.body);
+                    for b in h.bodies() {
+                        self.walk(b);
                     }
                 }
                 Node::Match(m) => {
@@ -198,15 +198,31 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = dups;
     for next in nexts {
         match labels.get(&next.to) {
-            None => diags.push(diag(
-                E_NEXT_UNDEFINED,
-                format!("`::next` targets undefined label `{}` (dsl 0.12.0)", next.to),
-                next.span,
-            )),
+            None => {
+                // Round-6 T3-60: a target that names a heading, a choice or
+                // a menu says what it is; otherwise the nearest mark.
+                let hint = match not_a_mark(doc, &next.to) {
+                    Some(why) => format!(" — {why}"),
+                    None => lute_manifest::suggest::did_you_mean(
+                        &next.to,
+                        labels.keys().map(String::as_str),
+                    ),
+                };
+                diags.push(diag(
+                    E_NEXT_UNDEFINED,
+                    format!(
+                        "`::next` targets `{}`, which no `::mark` or line `id=` in this document declares{hint}",
+                        next.to
+                    ),
+                    next.span,
+                ));
+            }
             Some(label) if label.pos <= next.pos => diags.push(diag(
                 E_NEXT_BACKWARD,
                 format!(
-                    "`::next` targets label `{}`, which is not forward of this `::next` in document order (dsl 0.12.0)",
+                    "`::next` targets mark `{}`, which is not forward of this `::next` in document \
+                     order — `::next` only jumps forward; to offer choices again, use a `<hub>` \
+                     (it asks until an `exit` choice is taken)",
                     next.to
                 ),
                 next.span,
@@ -215,6 +231,78 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
         }
     }
     diags
+}
+
+/// Why `to` is no jump target when it names something else in `doc` — a
+/// `## ` heading, a `<branch>`/`<hub>` id, a choice id — or Ink's `END`;
+/// `None` when it names nothing (a typo, answered by did-you-mean). A
+/// heading matches ignoring case and spacing (`## Lamp Room` for
+/// `lampRoom`).
+fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
+    const TARGET: &str = "a `::next` target is a `::mark{id=\"…\"}` (or a line's `id=`) later in \
+                          this document";
+    if matches!(to, "END" | "DONE") {
+        return Some("a scene ends with `::end`".to_string());
+    }
+    let fold = |s: &str| -> String {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    if let Some(shot) = doc.shots.iter().find(|s| fold(&s.heading) == fold(to)) {
+        return Some(format!(
+            "`{to}` is the `## {}` heading, not a mark; {TARGET}, so put `::mark{{id=\"{to}\"}}` \
+             under that heading",
+            shot.heading
+        ));
+    }
+    fn find(nodes: &[Node], to: &str) -> Option<String> {
+        nodes.iter().find_map(|node| {
+            let (tag, id, choices) = match node {
+                Node::Branch(b) => ("branch", Some(b.id.as_str()), b.choices.as_slice()),
+                Node::Hub(h) => ("hub", attr_str(&h.attrs, "id"), h.choices.as_slice()),
+                Node::Match(m) => {
+                    return m.arms.iter().find_map(|arm| match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => find(body, to),
+                    })
+                }
+                Node::On(o) => return find(&o.body, to),
+                Node::Objective(o) => return find(&o.body, to),
+                _ => return None,
+            };
+            let menu = id.map_or(format!("`<{tag}>`"), |id| format!("`<{tag} id=\"{id}\">`"));
+            if id == Some(to) {
+                return Some(format!("`{to}` is the id of {menu}, not a mark"));
+            }
+            choices
+                .iter()
+                .find_map(|c| {
+                    if c.id == to {
+                        Some(format!("`{to}` is a choice id in {menu}, not a mark"))
+                    } else {
+                        find(&c.body, to)
+                    }
+                })
+                .or_else(|| match node {
+                    Node::Hub(h) => h.on_return.as_ref().and_then(|r| find(&r.body, to)),
+                    _ => None,
+                })
+        })
+    }
+    let bodies = doc
+        .shots
+        .iter()
+        .map(|s| s.body.as_slice())
+        .chain(doc.quests.iter().map(|q| q.body.as_slice()))
+        .chain(doc.entries.iter().map(|e| e.body.as_slice()))
+        .chain(doc.beats.iter().map(|b| b.body.as_slice()));
+    for body in bodies {
+        if let Some(what) = find(body, to) {
+            return Some(format!("{what}; {TARGET}"));
+        }
+    }
+    None
 }
 
 /// dsl 0.27.0 (round-5 T3-7): every label id some `::next{to}` in `doc`
@@ -233,7 +321,7 @@ pub(crate) fn holds_label(node: &Node, targets: &BTreeSet<String>) -> bool {
         Node::Directive(d) => d.tag == lute_manifest::core::MARK_DIRECTIVE && named(&d.attrs),
         Node::Line(l) => named(&l.attrs),
         Node::Branch(b) => b.choices.iter().any(|c| any(&c.body)),
-        Node::Hub(h) => h.choices.iter().any(|c| any(&c.body)),
+        Node::Hub(h) => h.bodies().any(|b| any(b)),
         Node::Match(m) => m.arms.iter().any(|arm| match arm {
             Arm::When { body, .. } | Arm::Otherwise { body, .. } => any(body),
         }),
@@ -308,10 +396,45 @@ mod tests {
         assert_eq!(codes(&check_next_labels(&d)), ["E-NEXT-UNDEFINED"]);
     }
 
+    // A misspelled target names the document's closest mark; a target
+    // nothing resembles gets no guess.
+    #[test]
+    fn undefined_target_suggests_the_nearest_mark() {
+        let d = doc("::next{to=\"endng\"}\n::mark{id=\"ending\"}\n@narrator: bye\n");
+        let diags = check_next_labels(&d);
+        assert_eq!(codes(&diags), ["E-NEXT-UNDEFINED"]);
+        assert!(
+            diags[0].message.contains("did you mean `ending`?"),
+            "{}",
+            diags[0].message
+        );
+        let d = doc("::next{to=\"nowhere\"}\n::mark{id=\"ending\"}\n@narrator: bye\n");
+        assert!(!check_next_labels(&d)[0].message.contains("did you mean"));
+    }
+
+    // Round-6 T3-60: a backward jump says what loops instead.
     #[test]
     fn backward_target_errors() {
         let d = doc("::mark{id=\"x\"}\n@narrator: hi\n::next{to=\"x\"}\n");
-        assert_eq!(codes(&check_next_labels(&d)), ["E-NEXT-BACKWARD"]);
+        let diags = check_next_labels(&d);
+        assert_eq!(codes(&diags), ["E-NEXT-BACKWARD"]);
+        assert!(diags[0].message.contains("`<hub>`"), "{}", diags[0].message);
+    }
+
+    // Round-6 T3-60: a target naming a heading, a choice, or Ink's `END`
+    // says what that id is instead of only "undefined".
+    #[test]
+    fn undefined_target_names_what_the_id_is() {
+        let message = |src: &str| check_next_labels(&doc(src))[0].message.clone();
+        let m = message("::next{to=\"gallery\"}\n\n## Gallery\n\n@narrator: fog\n");
+        assert!(m.contains("`## Gallery` heading"), "{m}");
+        let m = message(
+            "<branch id=\"door\">\n  <choice id=\"inside\" label=\"In\">\n    @narrator: in\n  \
+             </choice>\n  <choice id=\"stay\" label=\"Stay\">\n    ::next{to=\"inside\"}\n  \
+             </choice>\n</branch>\n",
+        );
+        assert!(m.contains("choice id in `<branch id=\"door\">`"), "{m}");
+        assert!(message("::next{to=\"END\"}\n").contains("`::end`"));
     }
 
     #[test]

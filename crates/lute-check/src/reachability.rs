@@ -148,30 +148,81 @@ pub const E_ENTRY_UNREACHABLE: &str = "E-ENTRY-UNREACHABLE";
 pub(crate) const E_UNSET_LITERAL: &str = "E-UNSET-LITERAL";
 
 /// Push one diagnostic per faulty literal comparison (§2.1: every distinct
-/// comparison in the slot, not just the first) at `span` — the enclosing
-/// guard slot's location (CEL `Expr` nodes carry no per-node span of their
-/// own, only the slot's, `cel_paths.rs`'s carry-forward note): a misspelt
-/// unset sentinel is `E-UNSET-LITERAL`, a string no member of the
-/// subject's finite domain is `E-WHEN-LITERAL-DOMAIN` (dsl 0.26.0) — the
-/// code a foreign `<when is>` literal gets, since `S == 'x'` is the same
-/// claim.
+/// comparison in the slot, not just the first): a misspelt unset sentinel is
+/// `E-UNSET-LITERAL`, a string no member of the subject's finite domain is
+/// `E-WHEN-LITERAL-DOMAIN` (dsl 0.26.0) — the code a foreign `<when is>`
+/// literal gets, since `S == 'x'` is the same claim. Each points AT THE
+/// LITERAL inside `text` — the slot's own text, when `span` is where it is
+/// written (CEL `Expr` nodes carry no span of their own, so the quoted
+/// literal is found in the text, in hit order); otherwise at `span`.
 pub(crate) fn push_literal_cmp_diags(
     diags: &mut Vec<Diagnostic>,
     hits: &[LiteralCmpHit],
+    text: Option<&str>,
     span: Span,
 ) {
+    // A text that does not fill the span (an unescaped attribute value, a
+    // YAML scalar) has no byte-for-byte mapping into the source.
+    let text = text.filter(|t| span.byte_end.saturating_sub(span.byte_start) == t.len());
+    let mut cursor = 0usize;
     for hit in hits {
-        let (code, message) = match &hit.kind {
+        let (code, message, literal) = match &hit.kind {
             LiteralCmpKind::UnsetSentinel { not_equals } => (
                 E_UNSET_LITERAL,
                 unset_literal_message(&hit.subject, *not_equals),
+                "unset",
             ),
             LiteralCmpKind::ForeignMember { literal, members } => (
                 E_WHEN_LITERAL_DOMAIN,
                 foreign_comparison_message(&hit.subject, literal, members),
+                literal.as_str(),
             ),
+            // `E-CEL-TYPE`'s, reported by the slot's own type pass.
+            LiteralCmpKind::TypeMismatch => continue,
         };
-        diags.push(diag(code, Severity::Error, message, span));
+        let at = text
+            .and_then(|t| quoted_literal_at(t, literal, cursor).map(|r| (t, r)))
+            .map_or(span, |(t, (start, end))| {
+                cursor = end;
+                sub_span(span, t, start, end)
+            });
+        diags.push(diag(code, Severity::Error, message, at));
+    }
+}
+
+/// The byte range of the string literal `literal` written in `text` —
+/// `'lit'` or `"lit"`, quotes included — at or after `from`, else anywhere.
+fn quoted_literal_at(text: &str, literal: &str, from: usize) -> Option<(usize, usize)> {
+    let find = |from: usize| {
+        ['\'', '"'].into_iter().find_map(|q| {
+            let needle = format!("{q}{literal}{q}");
+            text.get(from..)?
+                .find(&needle)
+                .map(|i| (from + i, from + i + needle.len()))
+        })
+    };
+    find(from).or_else(|| find(0))
+}
+
+/// `text[start..end]` as a span, `text` being written at `span`: line,
+/// character column and UTF-16 offsets advance by the prefix's own counts.
+fn sub_span(span: Span, text: &str, start: usize, end: usize) -> Span {
+    let prefix = &text[..start];
+    let u16 = |s: &str| s.encode_utf16().count() as u32;
+    let (line, column) = match prefix.rfind('\n') {
+        Some(nl) => (
+            span.line + prefix.matches('\n').count() as u32,
+            prefix[nl + 1..].chars().count() as u32 + 1,
+        ),
+        None => (span.line, span.column + prefix.chars().count() as u32),
+    };
+    let u16_start = span.utf16_range.0 + u16(prefix);
+    Span {
+        byte_start: span.byte_start + start,
+        byte_end: span.byte_start + end,
+        line,
+        column,
+        utf16_range: (u16_start, u16_start + u16(&text[start..end])),
     }
 }
 
@@ -308,7 +359,7 @@ pub(crate) fn check_reachability(
             .typed
             .params
             .iter()
-            .map(|p| (p.name.clone(), param_domain(&p.ty)))
+            .map(|p| (p.name.clone(), param_domain(&p.ty, &folded.domains)))
             .collect()
     } else {
         BTreeMap::new()
@@ -323,13 +374,28 @@ pub(crate) fn check_reachability(
         def_types: &folded.env.def_types,
         beat_when: folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()),
         snapshot: Some(snapshot),
+        folded: Some(folded),
+    };
+    // dsl 0.28.0: a kind or `for=` beat's slots are judged over its own
+    // environment — `occasion.target` typed by its own members.
+    let beat_ctx = |span: Span| DecideCtx {
+        schema: &folded.env_at(span).state,
+        dollar: None,
+        params: &param_domains,
+        facts: None,
+    };
+    let members_at = |span: Span| {
+        folded
+            .env
+            .occasion_scopes
+            .members_at(span.byte_start, span.byte_end)
     };
     let mut diags = check_reachability_in(doc, &defs, &base_ctx, &env);
-    // dsl 0.21.0 §5: a scene beat's `when` is a listed guard slot (the
-    // `<quest start>` treatment: `E-UNSET-LITERAL` independently, no
-    // suppression) and a `when` that decides false never lets the beat be
-    // chosen. An entry beat's `when` is the entry's own eligibility guard and
-    // keeps `E-ENTRY-UNREACHABLE` above.
+    // dsl 0.21.0 §5: a scene beat's `when` is a listed guard slot and a
+    // `when` that decides false never lets the beat be chosen. dsl 0.28.0
+    // §1: when a literal or type fault is why it decides false, that fault
+    // is the one report. An entry beat's `when` is the entry's own
+    // eligibility guard and keeps `E-ENTRY-UNREACHABLE` above.
     if let Some(when) = folded
         .typed
         .beat
@@ -338,18 +404,20 @@ pub(crate) fn check_reachability(
         .filter(|w| !w.raw.trim().is_empty())
     {
         let analysis = analyze_literal_comparisons(&when.raw, &defs, &base_ctx);
-        push_literal_cmp_diags(&mut diags, &analysis.hits, when.span);
-        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, &defs, &base_ctx) {
-            diags.push(diag(
-                crate::beats::E_BEAT_UNREACHABLE,
-                Severity::Error,
-                crate::beats::beat_unreachable_message(
-                    &crate::beats::scene_beat_name(folded),
-                    when.raw.trim(),
-                    crate::clock::end_reason(base_ctx.schema, &when.raw).as_deref(),
-                ),
-                when.span,
-            ));
+        push_literal_cmp_diags(&mut diags, &analysis.hits, Some(&when.raw), when.span);
+        if !analysis.owns_dead_guard() {
+            if let Some(why) = never_holds(&when.raw, members_at(when.span), &defs, &base_ctx) {
+                diags.push(diag(
+                    crate::beats::E_BEAT_UNREACHABLE,
+                    Severity::Error,
+                    crate::beats::beat_unreachable_message(
+                        &crate::beats::scene_beat_name(folded),
+                        when.raw.trim(),
+                        why.as_deref(),
+                    ),
+                    when.span,
+                ));
+            }
         }
     }
     // dsl 0.23.0 §4: a bundle beat's `when` gets the scene beat's treatment.
@@ -358,29 +426,60 @@ pub(crate) fn check_reachability(
         let Some(when) = beat.when.as_ref().filter(|w| !w.raw.trim().is_empty()) else {
             continue;
         };
-        let analysis = analyze_literal_comparisons(&when.raw, &defs, &base_ctx);
-        push_literal_cmp_diags(&mut diags, &analysis.hits, when.span);
-        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, &defs, &base_ctx) {
+        let ctx = beat_ctx(beat.span);
+        let analysis = analyze_literal_comparisons(&when.raw, &defs, &ctx);
+        push_literal_cmp_diags(&mut diags, &analysis.hits, Some(&when.raw), when.span);
+        if analysis.owns_dead_guard() {
+            continue;
+        }
+        if let Some(why) = never_holds(&when.raw, members_at(beat.span), &defs, &ctx) {
             diags.push(diag(
                 crate::beats::E_BEAT_UNREACHABLE,
                 Severity::Error,
                 crate::beats::beat_unreachable_message(
                     &crate::bundles::bundle_beat_key(doc_id, &beat.id),
                     when.raw.trim(),
-                    crate::clock::end_reason(base_ctx.schema, &when.raw).as_deref(),
+                    why.as_deref(),
                 ),
                 when.span,
             ));
         }
     }
-    // dsl 0.27.0 §4: beats judged under their occasion's gate and `!terminal`.
-    diags.extend(crate::gates::seam_reachability(
-        doc, folded, &defs, &base_ctx,
-    ));
+    // dsl 0.28.0 §1 (T1-5): a `spentBy` is a condition slot like `when` —
+    // the same literal-domain checks.
+    let scene_on = crate::beats::top_value_span(&doc.meta, "on");
+    let spent_bys = folded
+        .typed
+        .beat
+        .iter()
+        .filter_map(|b| Some((b.spent_by.as_ref()?, scene_on)))
+        .chain(
+            doc.beats
+                .iter()
+                .filter_map(|b| Some((b.spent_by.as_ref()?, b.span))),
+        )
+        .chain(
+            doc.entries
+                .iter()
+                .filter_map(|e| Some((e.spent_by.as_ref()?, e.span))),
+        );
+    for (slot, at) in spent_bys.filter(|(s, _)| !s.raw.trim().is_empty()) {
+        let analysis = analyze_literal_comparisons(&slot.raw, &defs, &beat_ctx(at));
+        push_literal_cmp_diags(&mut diags, &analysis.hits, Some(&slot.raw), slot.span);
+    }
+    // dsl 0.27.0 §4: beats judged under their occasion's gate and `!terminal`
+    // — one already never eligible on its own `when` keeps that report.
+    for d in crate::gates::seam_reachability(doc, folded, &defs, &base_ctx) {
+        if !diags.iter().any(|x| x.code == d.code && x.span == d.span) {
+            diags.push(d);
+        }
+    }
     // dsl 0.27.0 §5: a `spentBy` that always holds, or already holds at start.
     diags.extend(crate::spent_by::check_spent_by(
         doc, folded, &defs, &base_ctx,
     ));
+    // A season-spent beat or season-tier quest not gated on the season.
+    diags.extend(crate::season::check_ungated(doc, folded, &defs, &base_ctx));
     diags
 }
 
@@ -408,39 +507,52 @@ pub(crate) fn check_reachability_in(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let targets = crate::next_labels::next_targets(doc);
-    // One body's walk under the `when` it runs behind (dsl 0.24.0).
-    let walk_body = |bodies: &[&[Node]], when: Option<&CelSlot>, diags: &mut Vec<Diagnostic>| {
+    // One body's walk under the `when` it runs behind (dsl 0.24.0), over
+    // `ctx` — its beat's own environment.
+    let walk_body = |bodies: &[&[Node]],
+                     when: Option<&CelSlot>,
+                     ctx: &DecideCtx<'_>,
+                     diags: &mut Vec<Diagnostic>| {
         let assumption = when.zip(env.snapshot).and_then(|(when, snapshot)| {
-            Assumption::new(when, bodies, defs, env.def_types, base_ctx.schema, snapshot)
+            Assumption::new(when, bodies, defs, env.def_types, ctx.schema, snapshot)
         });
         let rx = Reach {
             def_types: env.def_types,
             assume: assumption.as_ref(),
             targets: &targets,
+            picks: &[],
         };
         for body in bodies {
-            walk_reach(body, defs, &rx, base_ctx, diags);
+            walk_reach(body, defs, &rx, ctx, diags);
         }
     };
     // A scene's shots are one body: `scene.*`/`run.*` persist across shots.
     let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
-    walk_body(&shots, env.beat_when, &mut diags);
+    walk_body(&shots, env.beat_when, base_ctx, &mut diags);
     for quest in &doc.quests {
         diags.extend(check_quest_reach(quest, defs, base_ctx));
         diags.extend(check_objective_contradiction(quest, defs, base_ctx));
         diags.extend(check_handler_after_completion(quest, defs));
-        walk_body(&[&quest.body], None, &mut diags);
+        walk_body(&[&quest.body], None, base_ctx, &mut diags);
     }
     // dsl 0.19.0 §4: an entry body is an ordinary node stream — its
     // `<match>` arms get the same dead-arm / dead-otherwise verdicts.
     // dsl 0.20.0 §5: a `when` that decides false never lets the entry show.
     for entry in &doc.entries {
+        let ctx = env.ctx_at(base_ctx, entry.span);
         if let Some(when) = entry.when.as_ref().filter(|w| !w.raw.trim().is_empty()) {
-            if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, base_ctx) {
+            // dsl 0.28.0 §1 (T1-5): the literal checks every `when` gets; a
+            // literal or type fault that makes the guard false is the report.
+            let analysis = analyze_literal_comparisons(&when.raw, defs, &ctx);
+            push_literal_cmp_diags(&mut diags, &analysis.hits, Some(&when.raw), when.span);
+            let never = (!analysis.owns_dead_guard())
+                .then(|| never_holds(&when.raw, env.members_at(entry.span), defs, &ctx))
+                .flatten();
+            if let Some(why) = never {
                 diags.push(diag(
                     E_ENTRY_UNREACHABLE,
                     Severity::Error,
-                    match crate::clock::end_reason(base_ctx.schema, &when.raw) {
+                    match why {
                         Some(why) => format!(
                             "entry `{}` is never eligible: its `when` guard `{}` is provably \
                              false — {why} (dsl 0.20.0 §5, 0.27.0 §4)",
@@ -458,11 +570,12 @@ pub(crate) fn check_reachability_in(
                 ));
             }
         }
-        walk_body(&[&entry.body], entry.when.as_ref(), &mut diags);
+        walk_body(&[&entry.body], entry.when.as_ref(), &ctx, &mut diags);
     }
     // dsl 0.23.0 §4: a bundle beat body is a scene body.
     for beat in &doc.beats {
-        walk_body(&[&beat.body], beat.when.as_ref(), &mut diags);
+        let ctx = env.ctx_at(base_ctx, beat.span);
+        walk_body(&[&beat.body], beat.when.as_ref(), &ctx, &mut diags);
     }
     diags
 }
@@ -471,19 +584,47 @@ pub(crate) fn check_reachability_in(
 /// 0.24.0): the def result types a `<match on="@def">` subject takes its
 /// domain from, the scene beat's `when` (a frontmatter slot, outside the
 /// document tree), and the snapshot a body's directives are looked up in —
-/// `None` (a component body) makes no [`Assumption`].
+/// `None` (a component body) makes no [`Assumption`]. dsl 0.28.0: and the
+/// document's per-beat environments ([`FoldedEnv::env_at`]) — `None` for a
+/// component body, which has no kind beat.
 pub(crate) struct ReachEnv<'a> {
     pub(crate) def_types: &'a BTreeMap<String, Type>,
     pub(crate) beat_when: Option<&'a CelSlot>,
     pub(crate) snapshot: Option<&'a CapabilitySnapshot>,
+    pub(crate) folded: Option<&'a FoldedEnv>,
+}
+
+impl<'a> ReachEnv<'a> {
+    /// `base` over the environment of the entry or beat written at `span`.
+    fn ctx_at<'c>(&self, base: &DecideCtx<'c>, span: Span) -> DecideCtx<'c>
+    where
+        'a: 'c,
+    {
+        DecideCtx {
+            schema: self.folded.map_or(base.schema, |f| &f.env_at(span).state),
+            dollar: None,
+            params: base.params,
+            facts: base.facts,
+        }
+    }
+
+    /// The members of the kind or `for=` beat written at `span`.
+    fn members_at(&self, span: Span) -> Option<&'a [String]> {
+        self.folded?
+            .env
+            .occasion_scopes
+            .members_at(span.byte_start, span.byte_end)
+    }
 }
 
 /// One body's walk context: [`ReachEnv::def_types`], the body's own
-/// [`Assumption`], and the document's `::next` targets (dsl 0.27.0).
+/// [`Assumption`], the document's `::next` targets (dsl 0.27.0), and the
+/// pick records the enclosing options hold (dsl 0.28.0, [`Pick`]).
 struct Reach<'a> {
     def_types: &'a BTreeMap<String, Type>,
     assume: Option<&'a Assumption>,
     targets: &'a BTreeSet<String>,
+    picks: &'a [Pick],
 }
 
 /// A beat's / entry's `when` as an assumption over the body it guards (dsl
@@ -492,7 +633,10 @@ struct Reach<'a> {
 /// the body cannot change: the guard's top-level conjuncts over `run.*` /
 /// `user.*` / `prev.*` paths no `::set` / `<choice into>` in the body writes
 /// — none at all once the body runs a `::use` or a state-writing directive —
-/// plus the paths its presence guards prove (nothing unsets a path).
+/// plus the paths its presence guards prove (nothing unsets a path). dsl
+/// 0.28.0: in a kind or `for=` beat, also the members `occasion.target` can
+/// be there — those the guard holds for, judged once per member before the
+/// body runs, so nothing the body writes changes them.
 pub(crate) struct Assumption {
     raw: String,
     conjuncts: Vec<(String, SolutionSet)>,
@@ -517,7 +661,7 @@ impl Assumption {
         for body in bodies {
             opaque |= scan_writes(body, snapshot, &mut written);
         }
-        let conjuncts = if opaque {
+        let mut conjuncts: Vec<(String, SolutionSet)> = if opaque {
             Vec::new()
         } else {
             let overlaps = |p: &str, w: &str| {
@@ -532,6 +676,20 @@ impl Assumption {
                 })
                 .collect()
         };
+        if let Some(members) = schema.string_members(crate::beats::OCCASION_TARGET) {
+            let params = BTreeMap::new();
+            let ctx = DecideCtx {
+                schema,
+                dollar: None,
+                params: &params,
+                facts: None,
+            };
+            let dead = dead_members(raw, members, defs, &ctx);
+            // All of them: the beat's own unreachable verdict.
+            if !dead.is_empty() && dead.len() < members.len() {
+                conjuncts.push(member_conjunct(members, &dead));
+            }
+        }
         let scope = crate::defassign::Scope {
             schema,
             defs: DefTable {
@@ -586,6 +744,254 @@ impl Assumption {
     }
 }
 
+/// dsl 0.28.0: the members of `members` a kind or `for=` beat's `when`
+/// (`raw`) can never hold for, each judged with `occasion.target` bound to
+/// it. Empty when `raw` does not read `occasion.target`.
+pub(crate) fn dead_members(
+    raw: &str,
+    members: &[String],
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> Vec<String> {
+    if !crate::occasion_bind::mentions_target(raw) {
+        return Vec::new();
+    }
+    members
+        .iter()
+        .filter(|m| {
+            decide_slot(&crate::occasion_bind::instantiate(raw, m), defs, ctx)
+                == Some(Decided::Bool(false))
+        })
+        .cloned()
+        .collect()
+}
+
+/// `occasion.target` is one of `members` other than `dead`.
+fn member_conjunct(members: &[String], dead: &[String]) -> (String, SolutionSet) {
+    let live = members
+        .iter()
+        .filter(|m| !dead.contains(m))
+        .map(|m| DomainValue::Str(m.clone()))
+        .collect();
+    (
+        crate::beats::OCCASION_TARGET.to_string(),
+        SolutionSet::Values(live),
+    )
+}
+
+/// Whether a beat's or entry's `when` (`raw`) never holds, and why: decided
+/// false as written (naming a finite clock's end when that is the cause),
+/// or, in a kind or `for=` beat answering `members`, false for each of them.
+fn never_holds(
+    raw: &str,
+    members: Option<&[String]>,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> Option<Option<String>> {
+    if decide_slot(raw, defs, ctx) == Some(Decided::Bool(false)) {
+        return Some(crate::clock::false_reason(raw, defs, ctx));
+    }
+    let members = members.filter(|ms| !ms.is_empty())?;
+    (dead_members(raw, members, defs, ctx).len() == members.len())
+        .then(|| Some(for_every_member(members)))
+}
+
+/// Why a `when` false for each member its beat runs for never holds.
+pub(crate) fn for_every_member(members: &[String]) -> String {
+    let named: Vec<String> = members.iter().map(|m| format!("`{m}`")).collect();
+    format!("for every member it runs for ({})", named.join(", "))
+}
+
+/// dsl 0.28.0: the dead-arm verdicts in a kind or `for=` beat's `body` once
+/// `occasion.target` can only be one of `members` other than `dead` — the
+/// members its `when` (`raw`) can never hold for, as the project's facts
+/// decide. Judged over `schema` (the beat's own environment) without the
+/// facts otherwise, so what differs from the per-file walk is only what that
+/// narrowing kills.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn member_arm_verdicts(
+    doc: &Document,
+    body: &[Node],
+    raw: &str,
+    members: &[String],
+    dead: &[String],
+    defs: &DefTable<'_>,
+    def_types: &BTreeMap<String, Type>,
+    schema: &crate::meta::StateSchema,
+) -> Vec<Diagnostic> {
+    let assume = Assumption {
+        raw: raw.trim().to_string(),
+        conjuncts: vec![member_conjunct(members, dead)],
+        present: Default::default(),
+    };
+    let targets = crate::next_labels::next_targets(doc);
+    let params = BTreeMap::new();
+    let ctx = DecideCtx {
+        schema,
+        dollar: None,
+        params: &params,
+        facts: None,
+    };
+    let rx = Reach {
+        def_types,
+        assume: Some(&assume),
+        targets: &targets,
+        picks: &[],
+    };
+    let mut diags = Vec::new();
+    walk_reach(body, defs, &rx, &ctx, &mut diags);
+    diags.retain(|d| d.code == E_ARM_DEAD || d.code == W_OTHERWISE_DEAD);
+    diags
+}
+
+/// dsl 0.28.0 (T1-23): a menu's pick record inside the arm of the option it
+/// records. The engine writes `scene.choices.<menu>` — and, for a hub,
+/// `scene.visited.<hub>.<option>` — when the option is picked, before its
+/// arm runs, and nothing unsets either there: inside that arm the record
+/// holds exactly this value.
+#[derive(Clone, Debug)]
+pub(crate) struct Pick {
+    path: String,
+    value: DomainValue,
+    /// "the pick record" / "the visit record", for the message.
+    record: &'static str,
+}
+
+impl Pick {
+    /// What option `choice` of `menu` (`hub`: a `<hub>`) records in its own
+    /// arm, added to the `outer` picks — just `outer` when a `::next` in
+    /// `targets` can jump into the arm, which reaches it without the pick.
+    pub(crate) fn with(
+        outer: &[Pick],
+        menu: &str,
+        choice: &Choice,
+        hub: bool,
+        targets: &BTreeSet<String>,
+    ) -> Vec<Pick> {
+        let mut out = outer.to_vec();
+        let jumped_into = choice
+            .body
+            .iter()
+            .any(|n| crate::next_labels::holds_label(n, targets));
+        if menu.is_empty() || choice.id.is_empty() || jumped_into {
+            return out;
+        }
+        out.push(Pick {
+            path: format!("scene.choices.{menu}"),
+            value: DomainValue::Str(choice.id.clone()),
+            record: "the pick record",
+        });
+        if hub {
+            out.push(Pick {
+                path: format!("scene.visited.{menu}.{}", choice.id),
+                value: DomainValue::Bool(true),
+                record: "the visit record",
+            });
+        }
+        out
+    }
+
+    /// The pick among `picks` that rules `item` out as the value of `path`.
+    pub(crate) fn ruling_out<'p>(
+        picks: &'p [Pick],
+        path: &str,
+        item: &CoverItem,
+    ) -> Option<&'p Pick> {
+        picks.iter().find(|p| {
+            p.path == path
+                && match item {
+                    CoverItem::Value(v) => *v != p.value,
+                    CoverItem::Unset | CoverItem::Num(_) => true,
+                }
+        })
+    }
+
+    /// `raw` decided with each pick's path read as its value: the pick that
+    /// makes it provably false, when it is not false without them.
+    pub(crate) fn deciding_false<'p>(
+        picks: &'p [Pick],
+        raw: &str,
+        defs: &DefTable<'_>,
+        ctx: &DecideCtx<'_>,
+    ) -> Option<&'p Pick> {
+        if picks.is_empty() || raw.trim().is_empty() {
+            return None;
+        }
+        let mut stack = Vec::new();
+        let expanded = crate::cel_expand::expand_cel(raw, defs, Some("$"), &mut stack)
+            .unwrap_or_else(|_| raw.to_string());
+        let mut arena = lute_cel::CelArena::default();
+        let handle = lute_cel::parse_slot_marked_refs(&mut arena, &expanded)?;
+        let mut tree = arena.get(handle)?.clone();
+        let mut used = Vec::new();
+        pin_picks(&mut tree, picks, &mut used);
+        let first = *used.first()?;
+        matches!(
+            crate::decide::decide(&tree.expr, ctx),
+            Some(Decided::Bool(false))
+        )
+        .then(|| &picks[first])
+    }
+
+    /// Why the pick decides: "`scene.visited.lamp.ledger` is `true` in its
+    /// option's own arm — the visit record is set when the choice is
+    /// picked, before its arm runs".
+    pub(crate) fn why(&self) -> String {
+        let value = match &self.value {
+            DomainValue::Str(s) => format!("'{s}'"),
+            DomainValue::Bool(b) => b.to_string(),
+        };
+        format!(
+            "`{}` is `{value}` in its option's own arm — {} is set when the choice is picked, \
+             before its arm runs",
+            self.path, self.record
+        )
+    }
+}
+
+/// Replace every read of a pick's path in `e` by the pick's value, noting
+/// which picks were read in `used` (a `has()` test is left alone).
+fn pin_picks(e: &mut cel_parser::ast::IdedExpr, picks: &[Pick], used: &mut Vec<usize>) {
+    use cel_parser::ast::EntryExpr;
+    if let Expr::Select(sel) = &e.expr {
+        if !sel.test {
+            let at = crate::cel_paths::select_path(&e.expr)
+                .and_then(|p| picks.iter().position(|pk| pk.path == p));
+            if let Some(i) = at {
+                e.expr = Expr::Literal(match &picks[i].value {
+                    DomainValue::Bool(b) => Val::Boolean(*b),
+                    DomainValue::Str(s) => Val::String(s.clone().into()),
+                });
+                used.push(i);
+                return;
+            }
+        }
+    }
+    match &mut e.expr {
+        Expr::Call(c) => {
+            if let Some(t) = &mut c.target {
+                pin_picks(t, picks, used);
+            }
+            for a in &mut c.args {
+                pin_picks(a, picks, used);
+            }
+        }
+        Expr::List(l) => l
+            .elements
+            .iter_mut()
+            .for_each(|x| pin_picks(x, picks, used)),
+        Expr::Map(m) => m.entries.iter_mut().for_each(|x| match &mut x.expr {
+            EntryExpr::MapEntry(me) => {
+                pin_picks(&mut me.key, picks, used);
+                pin_picks(&mut me.value, picks, used);
+            }
+            EntryExpr::StructField(f) => pin_picks(&mut f.value, picks, used),
+        }),
+        Expr::Select(sel) => pin_picks(&mut sel.operand, picks, used),
+        _ => {}
+    }
+}
+
 /// Every state path a `::set` / `<choice into>` in `nodes` writes (at any
 /// depth), into `out`; `true` when the body also runs something whose writes
 /// are not spelled out here — a `::use` or a directive that writes state.
@@ -607,6 +1013,9 @@ fn scan_writes(nodes: &[Node], snapshot: &CapabilitySnapshot, out: &mut BTreeSet
             Node::Hub(h) => {
                 for c in &h.choices {
                     opaque |= scan_choice_writes(c, snapshot, out);
+                }
+                if let Some(r) = &h.on_return {
+                    opaque |= scan_writes(&r.body, snapshot, out);
                 }
             }
             Node::Match(m) => {
@@ -697,7 +1106,12 @@ fn walk_reach(
                 // (a subject has no guarded body of its own), so no
                 // suppression accompanies this one.
                 let subject_analysis = analyze_literal_comparisons(&m.subject.raw, defs, ctx);
-                push_literal_cmp_diags(diags, &subject_analysis.hits, m.subject.span);
+                push_literal_cmp_diags(
+                    diags,
+                    &subject_analysis.hits,
+                    Some(&m.subject.raw),
+                    m.subject.span,
+                );
                 let match_ctx = DecideCtx {
                     schema: ctx.schema,
                     dollar: Some(DollarBinding::Domain(&dom)),
@@ -710,6 +1124,7 @@ fn walk_reach(
                     defs,
                     &match_ctx,
                     rx.assume,
+                    rx.picks,
                 ));
                 for arm in &m.arms {
                     let body = match arm {
@@ -725,9 +1140,16 @@ fn walk_reach(
                         .filter_map(|c| c.when.as_ref().map(|w| (w, c.span))),
                     defs,
                     ctx,
+                    rx.picks,
                 ));
+                // dsl 0.28.0 (T1-23): inside an option's arm its pick is recorded.
                 for choice in &b.choices {
-                    walk_reach(&choice.body, defs, rx, ctx, diags);
+                    let picks = Pick::with(rx.picks, &b.id, choice, false, rx.targets);
+                    let inner = Reach {
+                        picks: &picks,
+                        ..*rx
+                    };
+                    walk_reach(&choice.body, defs, &inner, ctx, diags);
                 }
             }
             Node::Hub(h) => {
@@ -737,9 +1159,27 @@ fn walk_reach(
                         .filter_map(|c| c.when.as_ref().map(|w| (w, c.span))),
                     defs,
                     ctx,
+                    rx.picks,
                 ));
+                let id = h
+                    .attrs
+                    .iter()
+                    .find(|a| a.key == "id")
+                    .and_then(|a| match &a.value {
+                        AttrValue::Str(s) => Some(s.as_str()),
+                        _ => None,
+                    });
                 for choice in &h.choices {
-                    walk_reach(&choice.body, defs, rx, ctx, diags);
+                    let picks = Pick::with(rx.picks, id.unwrap_or(""), choice, true, rx.targets);
+                    let inner = Reach {
+                        picks: &picks,
+                        ..*rx
+                    };
+                    walk_reach(&choice.body, defs, &inner, ctx, diags);
+                }
+                // dsl 0.28.0 §5: the `<return>` body follows whichever option ran.
+                if let Some(r) = &h.on_return {
+                    walk_reach(&r.body, defs, rx, ctx, diags);
                 }
             }
             Node::On(o) => {
@@ -751,7 +1191,7 @@ fn walk_reach(
                 // quest/objective slots above.
                 if let Some(when) = &o.when {
                     let analysis = analyze_literal_comparisons(&when.raw, defs, ctx);
-                    push_literal_cmp_diags(diags, &analysis.hits, when.span);
+                    push_literal_cmp_diags(diags, &analysis.hits, Some(&when.raw), when.span);
                 }
                 walk_reach(&o.body, defs, rx, ctx, diags);
             }
@@ -770,7 +1210,7 @@ fn walk_reach(
                         // dsl 0.5.2 §2.1: independent lint, regardless of
                         // `decide_slot`'s outcome.
                         let analysis = analyze_literal_comparisons(&when.raw, defs, ctx);
-                        push_literal_cmp_diags(diags, &analysis.hits, when.span);
+                        push_literal_cmp_diags(diags, &analysis.hits, Some(&when.raw), when.span);
                         // §2.3: suppress `E-ARM-DEAD` only when the literal
                         // comparison(s) are LOAD-BEARING for the
                         // decided-false — an independently-dead guard (a
@@ -782,6 +1222,19 @@ fn walk_reach(
                                     E_ARM_DEAD,
                                     Severity::Error,
                                     "this gated line can never be shown: its `when` guard is provably false (dsl 0.4 §7.2, §5.2)".to_string(),
+                                    when.span,
+                                ));
+                            } else if let Some(pick) =
+                                Pick::deciding_false(rx.picks, &when.raw, defs, ctx)
+                            {
+                                diags.push(diag(
+                                    E_ARM_DEAD,
+                                    Severity::Error,
+                                    format!(
+                                        "this gated line can never be shown: its `when` guard is \
+                                         provably false here — {}",
+                                        pick.why()
+                                    ),
                                     when.span,
                                 ));
                             }
@@ -804,7 +1257,7 @@ fn walk_reach(
                         d.tag
                     )
                 };
-                guard_reach(d.when.as_ref(), what, defs, ctx, diags);
+                guard_reach(d.when.as_ref(), what, defs, ctx, rx.picks, diags);
             }
             // dsl 0.24.0 §1: a guarded `::set{… when=}` is the same one-arm
             // construct — a decided-false guard makes the write provably dead.
@@ -814,6 +1267,7 @@ fn walk_reach(
                     .to_string(),
                 defs,
                 ctx,
+                rx.picks,
                 diags,
             ),
             // dsl 0.26.0 §4: so is a guarded `::assert` / `::retract`.
@@ -823,6 +1277,7 @@ fn walk_reach(
                     .to_string(),
                 defs,
                 ctx,
+                rx.picks,
                 diags,
             ),
             Node::Retract(r) if r.when.is_some() => guard_reach(
@@ -831,6 +1286,7 @@ fn walk_reach(
                     .to_string(),
                 defs,
                 ctx,
+                rx.picks,
                 diags,
             ),
             Node::Directive(_)
@@ -852,6 +1308,7 @@ fn guard_reach(
     what: String,
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
+    picks: &[Pick],
     diags: &mut Vec<Diagnostic>,
 ) {
     let Some(when) = when.filter(|w| !w.raw.trim().is_empty()) else {
@@ -859,10 +1316,15 @@ fn guard_reach(
     };
     let mut own = Vec::new();
     let analysis = analyze_literal_comparisons(&when.raw, defs, ctx);
-    push_literal_cmp_diags(&mut own, &analysis.hits, when.span);
+    push_literal_cmp_diags(&mut own, &analysis.hits, Some(&when.raw), when.span);
     let suppress_arm_dead = analysis.owns_dead_guard();
     if !suppress_arm_dead {
         if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
+            own.push(diag(E_ARM_DEAD, Severity::Error, what, when.span));
+        } else if let Some(pick) = Pick::deciding_false(picks, &when.raw, defs, ctx) {
+            // dsl 0.28.0 (T1-23): false inside the option's own arm.
+            let base = what.find(" (dsl").map_or(what.as_str(), |i| &what[..i]);
+            let what = format!("{base} here — {}", pick.why());
             own.push(diag(E_ARM_DEAD, Severity::Error, what, when.span));
         }
     }
@@ -984,12 +1446,15 @@ impl Coverage {
 /// no literal-domain claim is ever made without proof. `subject` is the
 /// resolved subject path; `assume` the enclosing body's [`Assumption`] (dsl
 /// 0.24.0): a literal it rules out is as dead as one an earlier arm covers.
+/// `picks` are the pick records of the options enclosing the match (dsl
+/// 0.28.0, [`Pick`]): a value other than the recorded one is dead too.
 fn check_match_reach(
     m: &Match,
     subject: Option<&str>,
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
     assume: Option<&Assumption>,
+    picks: &[Pick],
 ) -> Vec<Diagnostic> {
     let dom = match &ctx.dollar {
         Some(DollarBinding::Domain(d)) => (*d).clone(),
@@ -1000,9 +1465,20 @@ fn check_match_reach(
         },
     };
     let mut diags = Vec::new();
-    let ruled_out = |item: &CoverItem| {
-        subject.is_some_and(|p| assume.is_some_and(|a| a.rules_out(p, item, ctx.schema)))
+    // dsl 0.28.0 (T3-40): a slot a finite clock never reaches needs no arm.
+    let unreached = |item: &CoverItem| match item {
+        CoverItem::Value(DomainValue::Str(s)) => {
+            subject.is_some_and(|p| ctx.schema.clock_excludes(p, s))
+        }
+        _ => false,
     };
+    let picked = |item: &CoverItem| subject.and_then(|p| Pick::ruling_out(picks, p, item));
+    let ruled_out = |item: &CoverItem| {
+        unreached(item)
+            || picked(item).is_some()
+            || subject.is_some_and(|p| assume.is_some_and(|a| a.rules_out(p, item, ctx.schema)))
+    };
+    let clock_reason = subject.and_then(|p| crate::clock::slot_end_reason(ctx.schema, p));
     let mut u = Coverage::default();
     let mut otherwise_span: Option<Span> = None;
 
@@ -1020,7 +1496,7 @@ fn check_match_reach(
                     Some(analyze_literal_comparisons(&test.raw, defs, ctx))
                 };
                 if let Some(a) = &analysis {
-                    push_literal_cmp_diags(&mut diags, &a.hits, *span);
+                    push_literal_cmp_diags(&mut diags, &a.hits, Some(&test.raw), test.span);
                 }
 
                 // Cause 1: decided-false guard (dsl 0.4.0 §5.2 rule 1). A
@@ -1043,12 +1519,19 @@ fn check_match_reach(
                 let literal_cmp_owns = analysis.as_ref().is_some_and(|a| a.owns_dead_guard());
                 if !foreign_literal && !literal_cmp_owns && !test.raw.trim().is_empty() {
                     if let Some(Decided::Bool(false)) = decide_slot(&test.raw, defs, ctx) {
-                        diags.push(diag(
-                            E_ARM_DEAD,
-                            Severity::Error,
-                            dead_guard_message("arm", &test.raw),
-                            *span,
-                        ));
+                        let mut message = dead_guard_message("arm", &test.raw);
+                        if let Some(why) = crate::clock::false_reason(&test.raw, defs, ctx) {
+                            message.push_str(&format!(" — {why}"));
+                        }
+                        diags.push(diag(E_ARM_DEAD, Severity::Error, message, *span));
+                        dead = true;
+                    } else if let Some(pick) = Pick::deciding_false(picks, &test.raw, defs, ctx) {
+                        let message = format!(
+                            "arm can never fire: guard `{}` is provably false here — {}",
+                            test.raw.trim(),
+                            pick.why()
+                        );
+                        diags.push(diag(E_ARM_DEAD, Severity::Error, message, *span));
                         dead = true;
                     }
                 }
@@ -1073,7 +1556,17 @@ fn check_match_reach(
                             let mut joint = false;
                             let mut fully_covered = true;
                             let mut by_assumption = false;
+                            let mut by_clock = false;
+                            let mut by_pick: Option<&Pick> = None;
                             for item in &residual {
+                                if unreached(item) {
+                                    by_clock = true;
+                                    continue;
+                                }
+                                if let Some(pk) = picked(item) {
+                                    by_pick = Some(pk);
+                                    continue;
+                                }
                                 if ruled_out(item) {
                                     by_assumption = true;
                                     continue;
@@ -1095,6 +1588,7 @@ fn check_match_reach(
                                 }
                             }
                             let assumed = assume.filter(|_| by_assumption);
+                            let clocked = clock_reason.as_deref().filter(|_| by_clock);
                             let message = match (fully_covered, covering, assumed) {
                                 (false, _, _) => None,
                                 (true, Some((cov_span, cov_pattern)), assumed) => {
@@ -1111,12 +1605,36 @@ fn check_match_reach(
                                             a.raw
                                         ));
                                     }
+                                    if let Some(why) = clocked {
+                                        msg.push_str(&format!("; the rest never comes: {why}"));
+                                    }
                                     Some(msg)
                                 }
                                 (true, None, Some(a)) => {
-                                    Some(assumed_dead_message(pat.raw.trim(), &a.raw))
+                                    let mut msg = assumed_dead_message(pat.raw.trim(), &a.raw);
+                                    if let Some(why) = clocked {
+                                        msg.push_str(&format!("; the rest never comes: {why}"));
+                                    }
+                                    Some(msg)
                                 }
-                                (true, None, None) => None,
+                                (true, None, None) => clocked.map(|why| {
+                                    format!(
+                                        "arm can never fire: its pattern `{}` never comes — {why}",
+                                        pat.raw.trim()
+                                    )
+                                }),
+                            };
+                            // dsl 0.28.0 (T1-23): the option's own pick record.
+                            let message = match (fully_covered, message, by_pick) {
+                                (true, Some(m), Some(pk)) => {
+                                    Some(format!("{m}; the rest is ruled out: {}", pk.why()))
+                                }
+                                (true, None, Some(pk)) => Some(format!(
+                                    "arm can never fire: its pattern `{}` never matches here — {}",
+                                    pat.raw.trim(),
+                                    pk.why()
+                                )),
+                                (_, m, _) => m,
                             };
                             if let Some(message) = message {
                                 diags.push(diag(E_ARM_DEAD, Severity::Error, message, *span));
@@ -1175,6 +1693,7 @@ fn check_match_reach(
         if u.unset.is_some() || !dom.maybe_unset || covered_or_ruled_out(false, CoverItem::Unset) {
             let whole = match assume.filter(|_| narrowed.get()) {
                 Some(a) => format!("the domain left by the body's `when` guard `{}`", a.raw),
+                None if narrowed.get() => "the values the subject can hold here".to_string(),
                 None => "the subject's whole domain".to_string(),
             };
             diags.push(diag(
@@ -1200,6 +1719,7 @@ pub(crate) fn check_choices_reach<'a>(
     whens: impl Iterator<Item = (&'a CelSlot, Span)>,
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
+    picks: &[Pick],
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for (slot, span) in whens {
@@ -1209,7 +1729,7 @@ pub(crate) fn check_choices_reach<'a>(
         // dsl 0.5.2 §2.1: independent lint, regardless of `decide_slot`'s
         // outcome.
         let analysis = analyze_literal_comparisons(&slot.raw, defs, ctx);
-        push_literal_cmp_diags(&mut diags, &analysis.hits, span);
+        push_literal_cmp_diags(&mut diags, &analysis.hits, Some(&slot.raw), slot.span);
         // §2.3: suppress `E-ARM-DEAD` only when the literal comparison(s)
         // are LOAD-BEARING for the decided-false (mirrors the arm-level
         // causality check above).
@@ -1220,6 +1740,17 @@ pub(crate) fn check_choices_reach<'a>(
                     E_ARM_DEAD,
                     Severity::Error,
                     dead_guard_message("choice", &slot.raw),
+                    span,
+                ));
+            } else if let Some(pick) = Pick::deciding_false(picks, &slot.raw, defs, ctx) {
+                diags.push(diag(
+                    E_ARM_DEAD,
+                    Severity::Error,
+                    format!(
+                        "choice can never fire: guard `{}` is provably false here — {}",
+                        slot.raw.trim(),
+                        pick.why()
+                    ),
                     span,
                 ));
             }
@@ -1242,9 +1773,13 @@ fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) ->
     // lint fires independently of `E-QUEST-UNREACHABLE`, which this spec
     // revision's §2.3 ownership clause does NOT scope (it names only
     // `E-ARM-DEAD`/`W-OTHERWISE-DEAD`), so no suppression accompanies this.
-    for slot in [&quest.start, &quest.fail].into_iter().flatten() {
+    // dsl 0.28.0 §1 (T1-5): `rearm` is a condition slot like `start`.
+    for slot in [&quest.start, &quest.fail, &quest.rearm]
+        .into_iter()
+        .flatten()
+    {
         let analysis = analyze_literal_comparisons(&slot.raw, defs, ctx);
-        push_literal_cmp_diags(&mut diags, &analysis.hits, slot.span);
+        push_literal_cmp_diags(&mut diags, &analysis.hits, Some(&slot.raw), slot.span);
     }
     let dead_start = quest
         .start
@@ -1461,12 +1996,17 @@ fn check_objective_reach(
     // independent of `E-OBJECTIVE-UNSATISFIABLE`/`W-OBJECTIVE-HIDDEN`, which
     // §2.3's ownership clause does NOT scope (it names only
     // `E-ARM-DEAD`/`W-OTHERWISE-DEAD`), so no suppression accompanies this.
-    if let Some(when) = &o.when {
+    if let Some(when) = &o.visible_when {
         let analysis = analyze_literal_comparisons(&when.raw, defs, ctx);
-        push_literal_cmp_diags(&mut diags, &analysis.hits, when.span);
+        push_literal_cmp_diags(&mut diags, &analysis.hits, Some(&when.raw), when.span);
     }
     let done_analysis = analyze_literal_comparisons(&o.done.raw, defs, ctx);
-    push_literal_cmp_diags(&mut diags, &done_analysis.hits, o.done.span);
+    push_literal_cmp_diags(
+        &mut diags,
+        &done_analysis.hits,
+        Some(&o.done.raw),
+        o.done.span,
+    );
     if let Some(Decided::Bool(false)) = decide_slot(&o.done.raw, defs, ctx) {
         diags.push(diag(
             E_OBJECTIVE_UNSATISFIABLE,
@@ -1476,7 +2016,7 @@ fn check_objective_reach(
         ));
     }
     if !o.optional {
-        if let Some(when) = &o.when {
+        if let Some(when) = &o.visible_when {
             if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
                 diags.push(diag(
                     W_OBJECTIVE_HIDDEN,
@@ -1492,7 +2032,7 @@ fn check_objective_reach(
     if let Some(by) = o.by.as_ref().filter(|b| !b.raw.trim().is_empty()) {
         if decide_slot(&by.raw, defs, ctx) == Some(Decided::Bool(false)) {
             let (id, deadline) = (&o.id, by.raw.trim());
-            let message = match crate::clock::end_reason(ctx.schema, &by.raw) {
+            let message = match crate::clock::false_reason(&by.raw, defs, ctx) {
                 Some(why) => format!(
                     "objective `{id}` never fails: its deadline `by: {deadline}` can never hold \
                      ({why}) — write a deadline the clock can reach, or drop it (dsl 0.24.0 §2.1)"
@@ -1880,7 +2420,7 @@ fn schedule_conjuncts(
             && f.fact.args.iter().zip(&consts).all(|(a, k)| match &a.term {
                 FactTerm::Ident(i) => i == k,
                 FactTerm::Bool(b) => b.to_string() == *k,
-                FactTerm::Wildcard | FactTerm::Param(_) => true,
+                FactTerm::Wildcard | FactTerm::Param(_) | FactTerm::Target => true,
             })
     });
     if seeded {
@@ -2270,7 +2810,7 @@ fn objective_unsat_message(required: bool, raw: &str) -> String {
 /// `W-OBJECTIVE-HIDDEN` message (dsl 0.4.0 §5.3 rule 3): carries `0.2
 /// §6.3`'s own advice — mark the objective `optional` or fix the gate.
 fn objective_hidden_message() -> String {
-    "objective's `when` is provably false: it is never visible or tracked, yet still gates \
+    "objective's `visibleWhen` is provably false: it is never visible or tracked, yet still gates \
      completion (dsl 0.4 §5.3) — mark it `optional` or fix the gate (0.2 §6.3)"
         .to_string()
 }
@@ -2342,10 +2882,21 @@ fn unset_literal_message(subject: &str, not_equals: bool) -> String {
 
 /// `E-WHEN-LITERAL-DOMAIN` message for a guard's comparison (dsl 0.26.0):
 /// the `<when is>` wording — the literal and the subject's members — plus
-/// the nearest member when one is close.
+/// the nearest member when one is close. dsl 0.28.0 (T1-5): a member written
+/// with a prefix (`'place.village'`, the spelling a target or a step uses)
+/// names the bare member.
 fn foreign_comparison_message(subject: &str, literal: &str, members: &[String]) -> String {
-    let hint = lute_manifest::suggest::nearest(literal, members.iter().map(String::as_str), 2)
-        .map_or_else(String::new, |near| format!(" — did you mean `'{near}'`?"));
+    let prefixed = literal
+        .rsplit_once('.')
+        .filter(|(_, m)| members.iter().any(|x| x == m));
+    let hint = match prefixed {
+        Some((prefix, m)) => format!(
+            " — did you mean `'{m}'`? `{subject}` holds the member alone, without the \
+             `{prefix}.` prefix"
+        ),
+        None => lute_manifest::suggest::nearest(literal, members.iter().map(String::as_str), 2)
+            .map_or_else(String::new, |near| format!(" — did you mean `'{near}'`?")),
+    };
     format!(
         "`'{literal}'` is not a member of `{subject}`'s domain [{}]{hint} (dsl 0.4 §5.2)",
         members.join(", ")

@@ -36,6 +36,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::snapshot::Domain;
+use lute_manifest::types::Type;
 use lute_syntax::ast::{
     Attr, AttrValue, BundleBeat, CelKind, CelSlot, Directive, Document, Meta, Node,
 };
@@ -46,18 +48,130 @@ use lute_manifest::schema::{DefParam, OccasionDecl};
 /// Beat template misuse (dsl 0.27.0 §6).
 pub const E_TEMPLATE: &str = "E-TEMPLATE";
 
+/// A use's `when=` replaces its template's `when` (dsl 0.28.0 §3).
+pub const W_TEMPLATE_OVERRIDE: &str = "W-TEMPLATE-OVERRIDE";
+
+/// A template condition spells a param member as a path segment
+/// (`user.bond.@who`) where a component body indexes it
+/// (`user.bond[@who]`, dsl 0.28.0 §3).
+pub const W_TEMPLATE_DOT_PARAM: &str = "W-TEMPLATE-DOT-PARAM";
+
 /// `::body` — in a template body, where the use's body goes.
 pub const BODY_DIRECTIVE: &str = "body";
 
 /// The keys a `beat:` header template may declare: every `<beat>` header
-/// attribute but `id` (each use names its own) and `also`.
+/// attribute but `id` (each use names its own).
 pub const TEMPLATE_KEYS: &[&str] = &[
-    "on", "target", "for", "title", "priority", "once", "share", "after", "when", "spentBy",
+    "on", "target", "for", "title", "priority", "once", "share", "after", "when", "spentBy", "also",
 ];
 
 /// The header keys that are conditions: an argument may be an expression
 /// (`rank=@best`) there; everywhere else a `@param` stands for literal text.
 const CEL_KEYS: &[&str] = &["when", "spentBy"];
+
+/// Whether a component param may not be called `name`: a `::use`'s own keys
+/// (`component`, `when`) for every component, and a `<beat>` header key for
+/// a beat template (`template`) — an attribute of that name sets the use's
+/// own key, never the param. The names live in [`lute_manifest::reserved`].
+pub fn reserved_param(name: &str, template: bool) -> bool {
+    lute_manifest::reserved::COMPONENT_PARAM_NAMES.contains(&name)
+        || (template && lute_manifest::reserved::BEAT_TEMPLATE_PARAM_NAMES.contains(&name))
+}
+
+/// `E-TEMPLATE` at every param declaration [`reserved_param`] refuses, with
+/// a name to use instead. `template`: the component declares a `beat:`
+/// header.
+pub fn check_param_names(meta: &Meta, params: &[DefParam], template: bool) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for p in params.iter().filter(|p| reserved_param(&p.name, template)) {
+        let name = p.name.as_str();
+        let why = match name {
+            "component" => "`::use{component=…}` names the component with it".to_string(),
+            "when" if !template => "`::use{… when=…}` is the use's own guard".to_string(),
+            _ => format!(
+                "it is a `<beat>` header key: `<beat use=… {name}=…>` sets the beat's own \
+                 `{name}`"
+            ),
+        };
+        let instead = match name {
+            "id" => "key",
+            "use" => "usage",
+            "on" => "occasion",
+            "target" => "subject",
+            "for" => "kind",
+            "title" => "heading",
+            "priority" => "rank",
+            "once" => "repeat",
+            "share" => "pool",
+            "after" => "prev",
+            "when" => "condition",
+            "spentBy" => "doneWhen",
+            "also" => "extra",
+            _ => "part",
+        };
+        out.push(diag(
+            format!(
+                "param `{name}` can never be passed: {why}, never this param — rename it \
+                 (e.g. `{instead}`)"
+            ),
+            crate::meta::meta_path_span(meta, &["params", name]),
+        ));
+    }
+    out
+}
+
+/// What the host document says about a template use's arguments before any
+/// check runs: the declared cast (a `speaker` argument's id, and the name
+/// `{{@who}}` renders in a `title:`) and the member lists of its entity
+/// kinds and domains. A header key that reads an argument the use-site
+/// checks reject, or a param the use leaves unbound, is not derived: the
+/// argument's one report stands for it.
+#[derive(Clone, Debug, Default)]
+pub struct HostArgs {
+    /// Cast id → display name. Empty when no cast is declared (any speaker
+    /// id is accepted then).
+    pub cast: BTreeMap<String, String>,
+    /// The merged kinds and domains; `None` when the document declares its
+    /// own inline (membership is then left to the checks alone).
+    pub domains: Option<BTreeMap<String, Domain>>,
+}
+
+impl HostArgs {
+    /// Whether the use-site checks refuse `value` for param `param` of
+    /// type `ty` (`E-COMPONENT-ARG`, `E-CAST-UNKNOWN`, `E-BAD-ENUM`). Only
+    /// a verdict those checks certainly reach is `true`: a `@def` argument
+    /// is typed where it is bound.
+    fn rejects(&self, def: &ComponentDef, param: &str, ty: &Type, value: &AttrValue) -> bool {
+        if def.speakers.iter().any(|s| s == param) {
+            return match value {
+                AttrValue::Str(id) => {
+                    !is_ident(id)
+                        || (!self.cast.is_empty()
+                            && id != "narrator"
+                            && !self.cast.contains_key(id))
+                }
+                AttrValue::Ref(_) | AttrValue::BoolTrue => true,
+            };
+        }
+        match (ty, value) {
+            (_, AttrValue::Ref(_)) => false,
+            (Type::Entity(_) | Type::Domain(_), AttrValue::BoolTrue) => true,
+            (Type::Entity(kind) | Type::Domain(kind), AttrValue::Str(v)) => self
+                .domains
+                .as_ref()
+                .and_then(|d| d.get(kind))
+                .is_some_and(|d| !d.open && !d.members.contains(v)),
+            _ => !crate::check::literal_arg_ok(ty, value),
+        }
+    }
+}
+
+/// `[A-Za-z_][A-Za-z0-9_-]*` — a cast or member id.
+fn is_ident(s: &str) -> bool {
+    s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
 
 /// A component's `beat:` header template (dsl 0.27.0 §6): each declared key
 /// in declaration order, and the `beat:` key's span in the component file.
@@ -103,7 +217,15 @@ impl TemplateKey {
         }
         let mut out = crate::bundles::value_faults(&self.key, &self.raw, span);
         if self.key == "on" && out.is_empty() {
-            crate::beats::check_occasion(&self.raw, span, None, occasions, Layer::Logic, &mut out);
+            crate::beats::check_occasion(
+                &self.raw,
+                span,
+                None,
+                true,
+                occasions,
+                Layer::Logic,
+                &mut out,
+            );
         }
         out
     }
@@ -126,6 +248,45 @@ pub fn check_template_header(
             );
             out.push(d);
         }
+        if CEL_KEYS.contains(&k.key.as_str()) {
+            out.extend(dot_param_warnings(k));
+        }
+    }
+    out
+}
+
+/// dsl 0.28.0 §3: `W-TEMPLATE-DOT-PARAM` for every `F.@param` in a
+/// condition key — it works in a header (the argument's text lands in the
+/// path), but a component body refuses it, so the header is pointed at the
+/// one spelling both accept, `F[@param]`.
+fn dot_param_warnings(k: &TemplateKey) -> Vec<Diagnostic> {
+    let b = k.raw.as_bytes();
+    let mut out = Vec::new();
+    for (s, e, name) in at_refs(&k.raw) {
+        let Some(dot) = s.checked_sub(1).filter(|&d| b[d] == b'.') else {
+            continue;
+        };
+        let start = k.raw[..dot]
+            .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
+            .map_or(0, |i| i + 1);
+        let family = &k.raw[start..dot];
+        if family.is_empty() {
+            continue;
+        }
+        let written = &k.raw[start..e];
+        out.push(Diagnostic {
+            code: W_TEMPLATE_DOT_PARAM.to_string(),
+            severity: Severity::Warning,
+            ..diag(
+                format!(
+                    "template header `beat.{}` writes `{written}` — did you mean \
+                     `{family}[@{name}]`? That is the spelling a component body accepts; the \
+                     dot form works only in a header",
+                    k.key
+                ),
+                k.span,
+            )
+        });
     }
     out
 }
@@ -203,11 +364,21 @@ fn at_refs(raw: &str) -> Vec<(usize, usize, &str)> {
     out
 }
 
-/// `raw` with every `@param` that `args` binds replaced by its text.
+/// `raw` with every `@param` that `args` binds replaced by its text. A
+/// member index `F[@param]` whose argument is an id reads that member,
+/// `F.<id>` — the spelling a component body binds (dsl 0.28.0 §3).
 fn substitute(raw: &str, args: &BTreeMap<String, String>) -> String {
+    let b = raw.as_bytes();
     let mut out = raw.to_string();
     for (s, e, name) in at_refs(raw).into_iter().rev() {
-        if let Some(text) = args.get(name) {
+        let Some(text) = args.get(name) else {
+            continue;
+        };
+        let indexed = s > 0 && b[s - 1] == b'[' && b.get(e) == Some(&b']');
+        let member = is_ident(text) && !text.contains('-');
+        if indexed && member {
+            out.replace_range(s - 1..e + 1, &format!(".{text}"));
+        } else {
             out.replace_range(s..e, text);
         }
     }
@@ -341,7 +512,7 @@ pub fn parse_beat_template(
             ));
             continue;
         };
-        let at = crate::meta::meta_key_span(meta, key);
+        let at = crate::meta::meta_path_span(meta, &["beat", key]);
         if !TEMPLATE_KEYS.contains(&key) {
             let why = match key {
                 "id" => " — each `<beat use=…>` names its own `id=`".to_string(),
@@ -356,6 +527,17 @@ pub fn parse_beat_template(
             continue;
         }
         let text = match v {
+            // `also` is a flag: `also: true` makes every use ride along.
+            serde_yaml::Value::Bool(b) if key == "also" => b.to_string(),
+            _ if key == "also" => {
+                diags.push(diag(
+                    "`beat.also` takes `true` or `false`, unquoted — `also: true` makes every \
+                     use ride along after the winner, like `<beat also>`"
+                        .to_string(),
+                    at,
+                ));
+                continue;
+            }
             serde_yaml::Value::String(s) => s.clone(),
             serde_yaml::Value::Number(n) => n.to_string(),
             serde_yaml::Value::Bool(b) => b.to_string(),
@@ -453,6 +635,7 @@ fn written(beat: &BundleBeat, key: &str) -> bool {
         "after" => beat.after.is_some(),
         "when" => beat.when.is_some(),
         "spentBy" => beat.spent_by.is_some(),
+        "also" => beat.also.is_some(),
         _ => true,
     }
 }
@@ -477,8 +660,212 @@ fn set_key(beat: &mut BundleBeat, key: &str, value: String, at: Span) {
         }
         "when" => beat.when = Some(CelSlot::raw(CelKind::Condition, value, at)),
         "spentBy" => beat.spent_by = Some(CelSlot::raw(CelKind::Condition, value, at)),
+        "also" => beat.also = Some((value == "true", at)),
         _ => {}
     }
+}
+
+/// A `title:` with every `{{@param}}` rendered as the text a line would
+/// show — a `speaker` argument's cast name, any other argument's text — so
+/// a template's `title: "{{@who}}"` labels the beat `Isolde`, never
+/// `{{isolde}}`. A bare `@param` is the argument's text (see [`substitute`]).
+fn render_title(
+    raw: &str,
+    text: &BTreeMap<String, String>,
+    def: &ComponentDef,
+    host: &HostArgs,
+) -> String {
+    let mut out = String::new();
+    let mut rest = raw;
+    while let Some(open) = rest.find("{{") {
+        let Some(close) = rest[open..].find("}}").map(|c| open + c) else {
+            break;
+        };
+        let inner = rest[open + 2..close].trim();
+        let shown = inner
+            .strip_prefix('@')
+            .and_then(|p| text.get(p).map(|t| (p, t)))
+            .map(|(p, t)| match def.speakers.iter().any(|s| s == p) {
+                true => host.cast.get(t).cloned().unwrap_or_else(|| t.clone()),
+                false => t.clone(),
+            });
+        match shown {
+            Some(s) => {
+                out.push_str(&rest[..open]);
+                out.push_str(&s);
+            }
+            None => out.push_str(&rest[..close + 2]),
+        }
+        rest = &rest[close + 2..];
+    }
+    out.push_str(rest);
+    substitute(&out, text)
+}
+
+/// Whether component `def`'s body mentions `@param` (a `{{@p}}`, a `@p`
+/// argument or condition, a `@@p:` line). `true` when the file cannot be
+/// read: no claim is made about a body that was not seen.
+fn body_mentions(def: &ComponentDef, param: &str) -> bool {
+    let Ok(src) = std::fs::read_to_string(&def.src) else {
+        return true;
+    };
+    let body = src.get(def.body.meta.span.byte_end..).unwrap_or(&src);
+    let b = body.as_bytes();
+    body.match_indices(&format!("@{param}")).any(|(i, m)| {
+        !b.get(i + m.len())
+            .is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'_')
+    })
+}
+
+/// `s` as one operand of `&&`: parenthesized when a top-level `||` or `?`
+/// would otherwise bind looser.
+fn conjunct(s: &str) -> String {
+    let s = unparen(s);
+    if top_level_and(s).len() == 1 && (top_level_split(s, b"||").len() > 1 || s.contains('?')) {
+        format!("({s})")
+    } else {
+        s.to_string()
+    }
+}
+
+/// dsl 0.28.0 §3: `W-TEMPLATE-OVERRIDE` at a use's own `when=`, which
+/// replaces the template's `when` whole — naming the dropped condition, the
+/// arguments only it read (now unused), and the two ways to keep it.
+#[allow(clippy::too_many_arguments)]
+fn override_warning(
+    name: &str,
+    def: &ComponentDef,
+    template: &BeatTemplate,
+    dropped: &TemplateKey,
+    own: &CelSlot,
+    args: &[Attr],
+    user_keys: &BTreeSet<&str>,
+    text: &BTreeMap<String, String>,
+) -> Diagnostic {
+    let read_elsewhere = |p: &str| {
+        template
+            .keys
+            .iter()
+            .filter(|k| k.key != "when" && !user_keys.contains(k.key.as_str()))
+            .any(|k| at_refs(&k.raw).iter().any(|(_, _, n)| *n == p))
+            || body_mentions(def, p)
+    };
+    let mut unused: Vec<String> = Vec::new();
+    for (_, _, p) in at_refs(&dropped.raw) {
+        let Some(arg) = args.iter().find(|a| a.key == p) else {
+            continue;
+        };
+        let shown = match &arg.value {
+            AttrValue::Str(s) => format!("`{p}=\"{s}\"`"),
+            AttrValue::Ref(slot) => format!("`{p}={}`", slot.raw.trim()),
+            AttrValue::BoolTrue => format!("`{p}`"),
+        };
+        if !unused.contains(&shown) && !read_elsewhere(p) {
+            unused.push(shown);
+        }
+    }
+    let unused = match unused.as_slice() {
+        [] => String::new(),
+        [one] => format!(", and argument {one} is now unused (only that condition read it)"),
+        many => format!(
+            ", and arguments {} are now unused (only that condition read them)",
+            many.join(", ")
+        ),
+    };
+    let kept = substitute_condition(&dropped.raw, text);
+    let both = format!("{} && {}", conjunct(&kept), conjunct(&own.raw));
+    Diagnostic {
+        code: W_TEMPLATE_OVERRIDE.to_string(),
+        severity: Severity::Warning,
+        layer: Layer::Logic,
+        ..diag(
+            format!(
+                "`when=` replaces template `{name}`'s `when: {}`, so that condition no longer \
+                 gates this beat{unused} — to keep it, write both: `when=\"{both}\"`; to let \
+                 every use add a condition, give the template a param such as \
+                 `only: {{ type: string, default: \"\" }}`, conjoin it in the header \
+                 (`when: \"{} && (@only)\"`) and pass `only=` instead of `when=`",
+                dropped.raw,
+                conjunct(&dropped.raw)
+            ),
+            own.span,
+        )
+    }
+}
+
+/// How a message names the construct that passes `dir`'s arguments: the
+/// `::use` a `<beat use=…>` expands to has its `component` attribute spanned
+/// at the use site whole ([`component_attr`]), and is named as written —
+/// `<beat use="bondStory">`; any other is `::use{component="bondStory"}`.
+pub fn use_label(dir: &Directive, name: &str) -> String {
+    let synthesized = dir
+        .attrs
+        .first()
+        .is_some_and(|a| a.key == "component" && a.span == dir.span && a.value_span == dir.span);
+    if synthesized {
+        format!("<beat use=\"{name}\">")
+    } else {
+        format!("::use{{component=\"{name}\"}}")
+    }
+}
+
+/// dsl 0.28.0 §3: the diagnostics a use's derived condition key (`when` /
+/// `spentBy`, `key`) drew, attributed to the template header it came from:
+/// anchored at the `use=` value (the derived text has no position of its
+/// own in this document), prefixed with the header key as written, and
+/// located at that key in the component file (a `related` entry). A key the
+/// `<beat>` writes itself is its own and is returned unchanged.
+pub fn attribute_header(
+    beat: &BundleBeat,
+    key: &str,
+    components: &ComponentSet,
+    mut diags: Vec<Diagnostic>,
+) -> Vec<Diagnostic> {
+    if diags.is_empty() {
+        return diags;
+    }
+    let Some(tu) = beat.template.as_ref() else {
+        return diags;
+    };
+    let slot = match key {
+        "when" => beat.when.as_ref(),
+        _ => beat.spent_by.as_ref(),
+    };
+    // Derived keys are spanned at the use site; an authored one is not.
+    if slot.is_none_or(|s| s.span != tu.span) {
+        return diags;
+    }
+    let Some((def, k)) = components.table.get(&tu.name).and_then(|def| {
+        let k = def.beat.as_ref()?.keys.iter().find(|k| k.key == key)?;
+        Some((def, k))
+    }) else {
+        return diags;
+    };
+    let src = std::fs::read_to_string(&def.src).ok();
+    let index = src.as_deref().map(lute_core_span::TextIndex::new);
+    let at = match &index {
+        Some(idx) => Span::from_bytes(idx, k.span.byte_start, k.span.byte_end),
+        None => k.span,
+    };
+    for d in &mut diags {
+        let inner = Diagnostic {
+            span: at,
+            fixits: Vec::new(),
+            related: Vec::new(),
+            ..d.clone()
+        };
+        d.message = format!(
+            "template `{}`'s `beat.{key}: {}`: {}",
+            tu.name, k.raw, d.message
+        );
+        d.span = tu.span;
+        d.fixits.clear();
+        d.related.push(lute_core_span::RelatedDiagnostic {
+            file: def.src.display().to_string(),
+            diagnostic: inner,
+        });
+    }
+    diags
 }
 
 fn component_attr(name: &str, at: Span) -> Attr {
@@ -495,21 +882,28 @@ fn component_attr(name: &str, at: Span) -> Attr {
 /// call it on the document it parsed; the diagnostics come with the first
 /// expansion. `components` is the document's resolved `components:`;
 /// `occasions` the resolved vocabulary a fixed `on:` is judged against;
-/// `host_defs` the def names the document resolves `@name` against.
+/// `host_defs` the def names the document resolves `@name` against;
+/// `host` what the document's cast and kinds say about the arguments.
 ///
 /// A header value no use can change ([`TemplateKey::fixed`]) that is faulty
 /// is [`check_template_header`]'s, reported once in the component: the use
 /// derives nothing for that key. So is a condition key naming a `@name`
 /// that is no param, no def the component sees and no def of the host
-/// ([`check_template_refs`]). Such a use — and one of a faulty header, an
-/// unknown component or one with no `beat:` — is marked
-/// `TemplateUse::failed`, so the checks say nothing about what the template
-/// would have supplied.
+/// ([`check_template_refs`]), and (dsl 0.28.0 §7) a key that reads a param
+/// the use leaves unbound or an argument the use-site checks refuse
+/// ([`HostArgs`]): that argument's one report stands for it. Such a use —
+/// and one of a faulty header, an unknown component or one with no `beat:`
+/// — is marked `TemplateUse::failed`, so the checks say nothing about what
+/// the template would have supplied. `replaced` gives the hint for a name
+/// only the manifest's `defaults.components` imports, when the document's
+/// own `components:` replaced that list.
 pub fn expand_beat_templates(
     doc: &mut Document,
     components: &ComponentSet,
     occasions: &BTreeMap<String, OccasionDecl>,
     host_defs: &BTreeSet<String>,
+    host: &HostArgs,
+    replaced: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for beat in &mut doc.beats {
@@ -520,17 +914,20 @@ pub fn expand_beat_templates(
         tu.failed = true;
         let (name, at) = (tu.name.clone(), tu.span);
         let Some(def) = components.table.get(&name) else {
-            let hint = lute_manifest::suggest::nearest(
-                &name,
-                components.table.keys().map(String::as_str),
-                2,
-            )
-            .map(|n| format!(" — did you mean `{n}`?"))
-            .unwrap_or_else(|| {
-                " — import the component file under `components:` in this document's \
-                 frontmatter (or the project's `defaults:`)"
-                    .to_string()
-            });
+            let hint = replaced(&name)
+                .or_else(|| {
+                    lute_manifest::suggest::nearest(
+                        &name,
+                        components.table.keys().map(String::as_str),
+                        2,
+                    )
+                    .map(|n| format!(" — did you mean `{n}`?"))
+                })
+                .unwrap_or_else(|| {
+                    " — import the component file under `components:` in this document's \
+                     frontmatter (or the project's `defaults:`)"
+                        .to_string()
+                });
             diags.push(diag(
                 format!("`<beat use=\"{name}\">` names no component{hint} (dsl 0.27.0 §6)"),
                 at,
@@ -551,27 +948,54 @@ pub fn expand_beat_templates(
             continue;
         };
         let mut failed = template.faulty;
+        let mut replaced_when = None;
         let args = std::mem::take(&mut beat.attrs);
-        // Each param's text: the use's argument, else its `default:`.
+        // Each param's text: the use's argument, else its `default:`. A
+        // param left unbound, or bound to an argument the use-site checks
+        // refuse, is `bad`: no header key reading it is derived.
         let mut text: BTreeMap<String, String> = BTreeMap::new();
         let mut expr: BTreeMap<String, Span> = BTreeMap::new();
-        for (p, _) in &def.params {
+        let mut bad: BTreeSet<&str> = BTreeSet::new();
+        for (p, ty) in &def.params {
             let (value, span) = match args.iter().find(|a| &a.key == p) {
                 Some(a) => (&a.value, a.value_span),
                 None => match def.defaults.get(p) {
                     Some(v) => (v, at),
-                    None => continue,
+                    None => {
+                        bad.insert(p);
+                        continue;
+                    }
                 },
             };
+            if host.rejects(def, p, ty, value) {
+                bad.insert(p);
+            }
             let (t, literal) = arg_text(value);
             if !literal {
                 expr.insert(p.clone(), span);
             }
             text.insert(p.clone(), t);
         }
+        // The keys the `<beat>` writes itself, before any is derived.
+        let user_keys: BTreeSet<&str> = TEMPLATE_KEYS
+            .iter()
+            .copied()
+            .filter(|k| written(beat, k))
+            .collect();
         for k in &template.keys {
             let (key, raw) = (&k.key, &k.raw);
-            if written(beat, key) {
+            if user_keys.contains(key.as_str()) {
+                // A faulty template says nothing about its uses.
+                if let (true, false, Some(own)) = (key == "when", template.faulty, &beat.when) {
+                    diags.push(override_warning(
+                        &name, def, template, k, own, &args, &user_keys, &text,
+                    ));
+                    replaced_when = Some(raw.clone());
+                }
+                continue;
+            }
+            if at_refs(raw).iter().any(|(_, _, n)| bad.contains(n)) {
+                failed = true;
                 continue;
             }
             if !k.faults(occasions, at).is_empty() {
@@ -604,10 +1028,10 @@ pub fn expand_beat_templates(
                     continue;
                 }
             }
-            let value = if CEL_KEYS.contains(&key.as_str()) {
-                substitute_condition(raw, &text)
-            } else {
-                substitute(raw, &text)
+            let value = match key.as_str() {
+                "when" | "spentBy" => substitute_condition(raw, &text),
+                "title" => render_title(raw, &text, def, host),
+                _ => substitute(raw, &text),
             };
             if value.trim().is_empty() {
                 continue;
@@ -616,6 +1040,7 @@ pub fn expand_beat_templates(
         }
         if let Some(tu) = beat.template.as_mut() {
             tu.failed = failed;
+            tu.replaced_when = replaced_when;
         }
         let mut attrs = vec![component_attr(&name, at)];
         attrs.extend(args);
@@ -712,7 +1137,7 @@ fn collect_nested<'a>(nodes: &'a [Node], out: &mut Vec<&'a Directive>) {
     for node in nodes {
         match node {
             Node::Branch(b) => b.choices.iter().for_each(|c| collect_all(&c.body, out)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| collect_all(&c.body, out)),
+            Node::Hub(h) => h.bodies().for_each(|b| collect_all(b, out)),
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {

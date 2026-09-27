@@ -5,7 +5,7 @@ state:
 choose:
   accuse: accuseBlake
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "The cuffs close on the right wrists. Case closed."
     - "Booked. The file can finally rest."

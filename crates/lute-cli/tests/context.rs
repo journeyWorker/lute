@@ -144,7 +144,70 @@ fn context_json_lists_defs_ownership_tiers_builtins_and_ids() {
         .iter()
         .filter_map(|b| b["name"].as_str())
         .collect();
-    assert_eq!(builtins, ["set", "assert", "retract", "accept", "use"]);
+    assert_eq!(
+        builtins,
+        ["set", "assert", "retract", "accept", "use", "body", "next", "mark", "end", "clear"]
+    );
+    let next = v["builtinDirectives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["name"] == "next")
+        .unwrap();
+    assert_eq!(
+        next["syntax"],
+        "::next{to=\"<string>\" [when=\"<condition>\"]}"
+    );
+
+    // The quest's reserved paths are listed whether or not this document
+    // reads them, typed as the checker types them.
+    let reserved: Vec<(&str, Option<Vec<&str>>)> = v["reservedQuestPaths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                p["path"].as_str().unwrap(),
+                p["domain"]
+                    .as_array()
+                    .map(|d| d.iter().filter_map(|x| x.as_str()).collect()),
+            )
+        })
+        .collect();
+    assert!(
+        reserved.contains(&(
+            "quest.helpMara.state",
+            Some(vec!["active", "complete", "failed", "unset"])
+        )),
+        "{reserved:?}"
+    );
+    for path in [
+        "quest.helpMara.failedBy",
+        "quest.helpMara.activatedAt",
+        "quest.helpMara.objectives.talk.done",
+        "quest.helpMara.objectives.talk.failed",
+    ] {
+        assert!(
+            reserved.iter().any(|(p, _)| *p == path),
+            "{path}: {reserved:?}"
+        );
+    }
+    let shapes: Vec<&str> = v["enginePaths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|p| p["shape"].as_str())
+        .collect();
+    for shape in [
+        "entry.<entry>.read",
+        "entry.<entry>.everRead",
+        "occasion.target",
+        "occasion.payload.<field>",
+        "scene.choices.<branch>",
+        "scene.visited.<hub>.<choice>",
+    ] {
+        assert!(shapes.contains(&shape), "{shape}: {shapes:?}");
+    }
 
     assert_eq!(
         v["ids"],
@@ -164,7 +227,10 @@ fn context_outline_shows_the_new_sections() {
         "  nod(who: string, mood: enum[warm, cold])",
         "  @atLeast(n: number): bool = user.bond >= 1",
         "  @trusted: bool = user.bond >= 2",
-        "  ::accept{quest=\"<questId>\" [when=\"<condition>\"]} — accept a quest that has no `start` condition",
+        "  ::accept{quest=\"<questId>\" [at=\"nextRun\"] [when=\"<condition>\"]} — accept a quest that has no `start` condition; `at=\"nextRun\"` queues it until after the next new run",
+        "  ::body — in a component with a `beat:` header, at the top level of its body: where a `<beat use=…>`'s own body goes",
+        "  start=\"<condition>\" — activates the quest when it holds; without it the quest is accept-driven",
+        "  visibleWhen=\"<condition>\" — hides the objective while false; never gates `done`",
         "scenes (1; read as visited(\"<id>\")):",
         "  mara.first",
         "  helpMara",
@@ -219,7 +285,7 @@ fn context_shows_component_param_defaults_and_directive_guards() {
     let text = context(&proj, false);
     for expected in [
         "  nod(who: string = \"The inspector\", mood: enum[warm, cold] = warm, trust: bool = @trusted, depth: number)",
-        "  ::set{ <path> = <expr> [when=\"<condition>\"] }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)",
+        "  ::set{ <path> = <expr> [when=\"<condition>\"] }  (also += / -=) — write a declared state path; engine-owned paths are the engine's (E-ENGINE-OWNED-WRITE)",
         "  ::assert{ <relation>(<arg>, …) [when=\"<condition>\"] } — assert a ground fact of a declared, non-derived, non-reserved relation",
         "  ::retract{ <relation>(<arg | _>, …) [when=\"<condition>\"] } — retract the matching facts of a declared, non-derived, non-reserved relation",
         "  ::use{component=\"<name>\" <param>=<value> … [when=\"<condition>\"]} — expand an imported component with named arguments; a param with a default may be omitted",
@@ -269,7 +335,7 @@ fn context_shows_the_0_27_project_keys() {
         &proj,
         "lute.project.yaml",
         "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    plugins: { demo.occasions: true }\n\
-         defaults:\n  uses: [world.schema.yaml]\nsequence: { occasion: talk, scenes: [mara.first] }\n",
+         defaults:\n  uses: [world.schema.yaml]\nchapters: [{ on: talk, scenes: [mara.first] }]\n",
     );
     write_at(
         &proj,
@@ -326,20 +392,32 @@ fn context_shows_the_0_27_project_keys() {
         serde_json::json!([{ "name": "harvest", "live": "run.day >= 2" }])
     );
     assert_eq!(
-        v["sequence"],
-        serde_json::json!({ "occasion": "talk", "scenes": ["mara.first"] })
+        v["chapters"],
+        serde_json::json!([{ "on": "talk", "scenes": ["mara.first"], "applied": true, "chained": true }])
+    );
+    // Payload is the occasion's, not state.
+    assert!(
+        !v["stateSchema"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["path"]
+                .as_str()
+                .is_some_and(|p| p.starts_with("occasion."))),
+        "{}",
+        v["stateSchema"]
     );
 
     let text = context(&proj, false);
     for expected in [
         "  talk (select: first, target: npc.<person>, raisedWhen: run.day <= 3)",
-        "  summon (select: sequence, payload: { copies: number })",
+        "  summon (select: sequence, payload: { occasion.payload.copies: number })",
         "  person: mara (\"Mara Voss\"), tomas",
-        "  nod(who: entity:person)",
+        "  nod(who: entity:person)   [template: <beat use=\"nod\">]",
         "clock: day run.day, last day 5",
         "terminal: run.fate == 'dead' (no occasion is raised once it holds)",
         "  harvest — live: run.day >= 2",
-        "sequence (occasion: talk): mara.first",
+        "  on talk: mara.first — each scene gets `on:`, `after: visited(\"<previous>\")` and a descending `priority:` unless it writes its own",
         "  prev.season.harvest.tokens: number (owner: engine)",
     ] {
         assert!(
@@ -352,6 +430,78 @@ fn context_shows_the_0_27_project_keys() {
             .any(|l| l.starts_with("    beat: ") && l.contains("target: npc.@who")),
         "{text}"
     );
+    assert!(
+        text.lines()
+            .any(|l| l.starts_with("  nod(") && l.contains("[template: <beat use=\"nod\">]")),
+        "{text}"
+    );
+}
+
+/// A plugin directive shows its attribute types and declared effects; an
+/// occasion shows `judge:`; a component's `speaker` param prints `speaker`;
+/// a beat reading an occasion payload does not list it as state.
+#[test]
+fn context_shows_directive_effects_judge_and_speaker_params() {
+    let proj = project();
+    write_at(
+        &proj,
+        "plugins/demo.occasions/plugin.yaml",
+        "id: demo.occasions\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports:\n  occasions: occasions/\n  directives: directives/\n",
+    );
+    write_at(
+        &proj,
+        "plugins/demo.occasions/occasions/game.yaml",
+        "occasions:\n  talk: { select: first, target: { prefix: npc, entity: person } }\n  \
+         dusk: { select: first, judge: before, payload: { seconds: number } }\n",
+    );
+    write_at(
+        &proj,
+        "plugins/demo.occasions/directives/game.yaml",
+        "directives:\n  - name: salvage\n    attrs:\n      - { name: what, type: string, required: true }\n    \
+         effects:\n      writes:\n        - { scope: run, path: [salvage], value: { op: increment, by: 1 } }\n",
+    );
+    write_at(
+        &proj,
+        "components/nod.component.lute",
+        "---\ncomponent: nod\nparams:\n  who: speaker\n---\n\n## Nod\n\n@@who: A nod.\n",
+    );
+    write_at(
+        &proj,
+        "scenes/mara.lute",
+        "---\nkind: scene\nid: mara.first\non: dusk\nwhen: \"occasion.payload.seconds > 1\"\ncomponents: [../components/nod.component.lute]\n---\n\n## Mara\n\n@mara: Hello.\n",
+    );
+    let v: serde_json::Value = serde_json::from_str(&context(&proj, true)).unwrap();
+    let salvage = v["directives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["name"] == "salvage")
+        .unwrap_or_else(|| panic!("{}", v["directives"]));
+    assert_eq!(
+        salvage["effects"]["writes"][0]["path"],
+        serde_json::json!(["salvage"])
+    );
+    assert!(
+        !v["stateSchema"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["path"] == "occasion.payload.seconds"),
+        "{}",
+        v["stateSchema"]
+    );
+    let text = context(&proj, false);
+    for expected in [
+        "  salvage: what: string (required)",
+        "    effects: writes run.salvage = {\"by\":1.0,\"op\":\"increment\"}",
+        "  dusk (select: first, payload: { occasion.payload.seconds: number }, judge: before)",
+        "  nod(who: speaker)",
+    ] {
+        assert!(
+            text.lines().any(|l| l == expected),
+            "missing line `{expected}`:\n{text}"
+        );
+    }
 }
 
 /// Every beat key and quest attribute the checker accepts is listed in
@@ -395,13 +545,12 @@ fn context_lists_every_beat_key_and_quest_attribute() {
         "{once}"
     );
     let quest_keys = listed("questKeys");
-    for key in lute_check::logic_attrs::QUEST_ATTRS
-        .iter()
-        .filter(|k| !["id", "title"].contains(k))
-    {
+    for key in lute_check::logic_attrs::QUEST_ATTRS {
         assert!(
-            quest_keys.iter().any(|(k, _)| k == key),
-            "questKeys lacks `{key}`: {quest_keys:?}"
+            quest_keys
+                .iter()
+                .any(|(k, s)| k == key && s.starts_with(&format!("{key}=\""))),
+            "questKeys lacks `{key}=\"…\"`: {quest_keys:?}"
         );
     }
 }

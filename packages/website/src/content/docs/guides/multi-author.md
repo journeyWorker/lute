@@ -83,6 +83,10 @@ defaults:
 - **Never write `uses:` or `components:` in an area document.** A document that writes a key
   replaces the default for that key entirely, with no merging, so one document with its own
   `uses:` silently loses the whole world contract.
+- **`chapters:` is the lead's too.** The manifest's `chapters:` puts the scenes that answer one
+  occasion in order, one chain per occasion; a second chain on the same occasion is `E-CHAPTERS`.
+  An area that needs its own ordered run of scenes asks the lead for a chain on its own occasion,
+  or orders them with `after:` in the scenes it owns.
 
 ## Kinds assembled across files: `add:`
 
@@ -99,6 +103,9 @@ entities:
     members:
       - mira
       - keeper        # contract, written by north
+  trainer:
+    subsetOf: person
+    members: [r3YoungsterAda]
   guard:
     subsetOf: person
     members: [northGuard1]
@@ -106,6 +113,9 @@ entities:
     members:
       - dock
       - lighthouse    # contract, written by north
+  keyItem:
+    members: [lampOil]
+    labels: { lampOil: lamp oil }
 ```
 
 ```yaml unverified="an area schema: its add: lists extend kinds that schema/roster.schema.yaml declares, so it checks only inside its project (check-project clean there)"
@@ -113,9 +123,10 @@ entities:
 state:
   run.northFogLifted: { type: bool, default: false }
 entities:
-  person: { add: [northGull] }
-  guard:  { add: [northGuard2] }
-  place:  { add: [northCliff] }
+  person:  { add: [northGull] }
+  guard:   { add: [northGuard2] }
+  place:   { add: [northCliff] }
+  keyItem: { add: [fogHorn], labels: { fogHorn: fog horn } }
 ```
 
 - **A sub-kind's members are members of its parent.** `northGuard2` above is added only to
@@ -129,6 +140,13 @@ entities:
 - **`add:` needs a base.** An `add:` for a kind no import declares is `E-ENTITY-KIND-SHAPE` with a
   did-you-mean, and so is an `add:` onto an `open:` kind or beside `members:` / `open:` in the same
   entry.
+- **Labels travel with the members.** A kind's `labels:` give each member its display text, and
+  an area writes the labels of the members it adds beside its `add:` (`fogHorn: fog horn` above).
+  Text shows the label wherever it names a member: `{{occasion.target}}`, and a component argument
+  typed by the kind (see [Contract beats](#contract-beats)).
+- **Any area can add to any kind.** An `add:` works on every kind an import declares, including a
+  sub-kind another area declared. The checker does not know which area owns which kind; write it
+  in `AREAS.md`.
 
 Like the other schema errors, `check-project` reports these once, as a project-wide line at the
 schema line ending `(imported by N documents)`, instead of once for every document that imports the
@@ -176,9 +194,12 @@ them with the area:
 | entity member | `<placeOrRoute><Role><Name>` for generic people | `r3YoungsterAda`, `northGuard2` |
 | area state, defs, relations | area prefix | `run.northFogLifted`, `northFogDay` |
 
-Entry ids carry no document prefix, so they are the easiest to collide on. Plays and tests may
-name an entry `<document id>.<entry id>` since dsl 0.26.0 (`north.guards.northGullAfterStorm`),
-which makes a play easier to read, but the entry id itself must still be unique.
+Entry ids carry no document prefix, so they are the easiest to collide on; two documents that
+declare one entry id are `E-ENTRY-ID-DUP`. Plays and tests may name an entry
+`<document id>.<entry id>` since dsl 0.26.0 (`north.guards.northGullAfterStorm`), which makes a
+play easier to read, but the entry id itself must still be unique. Two documents with one
+`<branch>` or `<hub>` id draw `W-BRANCH-ID-SHARED` from `check-project`, since one `choose:` key
+would answer both menus.
 
 ## Display names: one cast file per area
 
@@ -201,6 +222,14 @@ display string, or two such strings name different speakers. A name that is mean
 a role like "Tower Guard" or "Eclipse Grunt", is marked `sharedName: true` on the cast entry and
 not counted.
 
+A cast id that two area files both declare is `E-PLUGIN-DUP-ID`, reported at the later
+declaration; the first one is used:
+
+<!-- lute-diagnostics unverified="byte-exact check-project output; the plugin loader prefixes the file position to a composed message, so no single format! literal holds it" -->
+```
+lute: E-PLUGIN-DUP-ID: ./plugins/harbor.engine/cast/south.yaml:3:3: cast `keeper` is already declared at cast/north.yaml:2; this declaration is ignored — rename or remove one
+```
+
 ## Shared components
 
 The lead writes the components every area uses: a trainer battle, handing over a key item, a
@@ -214,8 +243,11 @@ shop. Since dsl 0.26.0 a component can do what the areas used to copy by hand:
 - **`::use{… when="…"}`** runs the whole expansion or none of it.
 - **A param typed by an entity kind** (`{ type: { entity: keyItem } }`), or passed whole into an
   attribute typed that way, is checked at each `::use` with a did-you-mean.
+- **A `beat:` header** makes the component a [beat template](/language/beats/#beat-templates-use):
+  the header (`on`, `target`, `once`, `spentBy`, …) is written once, with `@param`s in it, and an
+  area's beat is one `<beat use=…>` that passes the params.
 
-```lute unverified="an excerpt of a multi-file project: the ::battle bridge, run.money and the defeated relation come from its engine plugin and schemas"
+```lute unverified="an excerpt of a multi-file project: the trainerSpotted occasion, the ::battle bridge, run.money and the defeated relation come from its engine plugin and schemas"
 ---
 component: trainerBattle
 effects: true
@@ -225,9 +257,12 @@ params:
   win: string
   lose: string
   prize: { type: number, default: 100 }
+beat:
+  on: trainerSpotted
+  target: "trainer.@who"
+  once: user                          # once beaten, gone for good
+  spentBy: "holds(defeated(@who))"    # a lost fight spends nothing
 ---
-
-## Trainer battle
 
 @@who: {{@intro}}
 ::battle{foe=@who kind="trainer" resultKey="fight"}
@@ -243,13 +278,18 @@ params:
 </match>
 ```
 
-An area's route trainer is then one line, and the name on the dialogue box comes from the cast:
+An area's route trainer is then one line in its lore document, and the name on the dialogue box
+comes from the cast:
 
 ```lute
-<beat id="r3YoungsterAda" on="trainerSpotted" target="trainer.r3YoungsterAda" once="false" when="!holds(defeated(r3YoungsterAda))">
-  ::use{component="trainerBattle" who="r3YoungsterAda" intro="I like shorts!" win="Aww, my shorts are torn." lose="Shorts win again!"}
-</beat>
+<beat use="trainerBattle" id="r3YoungsterAda" who="r3YoungsterAda" intro="I like shorts!" win="Aww, my shorts are torn." lose="Shorts win again!"/>
 ```
+
+The header gives the beat `on: trainerSpotted`, `target: trainer.r3YoungsterAda` and
+`spentBy: holds(defeated(r3YoungsterAda))`, and `lute beats` lists it that way. A beat with
+`spentBy` is not spent by being presented: it is spent once its condition has held, here at the
+first win, and `once: user` keeps it spent for good. A lost fight spends nothing, so the trainer
+is still there for a rematch.
 
 Freeze a shared component's params once areas depend on them: adding a param with a `default:`
 is safe, renaming or removing one breaks every area at once. See
@@ -278,7 +318,7 @@ once: run
 ## Shot 1
 
 @keeper: You came for the oil. Everyone does, eventually.
-::use{component="obtain" item="lampOil" label="lamp oil" who="keeper"}
+::use{component="obtain" item="lampOil" who="keeper"}
 ::set{run.northFogLifted = true}
 ```
 
@@ -287,6 +327,10 @@ area may rewrite everything else. Because the stub exists from day one, the spin
 producer for every fact they need, and `check-project` is green before the area has written a
 line. If an area deletes the beat or stops asserting the fact, the spine's objective becomes
 `E-OBJECTIVE-UNSATISFIABLE` at its next check: the checker enforces the contract.
+
+`obtain` takes `item: { type: { entity: keyItem } }` and says `You got the {{@item}}.` An argument
+typed by a kind renders the kind's label, so the line reads "You got the lamp oil." The display
+text is written once, in the roster's `labels:`, instead of as a `label=` argument at every use.
 
 **Contract beats or `--wip`.** A lead who drafts the spine before any contract beat exists can
 check it with `lute check-project . --wip` instead. `E-OBJECTIVE-UNSATISFIABLE`,
@@ -415,6 +459,9 @@ Commit only files you own. The lead's review is the one gate the tool cannot run
 | `add:` to a kind no import declares (a typo) | `E-ENTITY-KIND-SHAPE`, with a did-you-mean |
 | Two documents declare one state path differently | `E-STATE-DECL-CONFLICT` |
 | Two area schemas declare the same state, def or relation name | `E-USES-DUP-STATE`, `E-USES-DUP-DEF`, `E-USES-DUP-RELATION` |
+| Two documents with one scene, quest or entry id | `E-CONN-EPISODE-ID-DUP`, `E-QUEST-ID-DUP`, `E-ENTRY-ID-DUP` |
+| Two cast files declare one cast id | `E-PLUGIN-DUP-ID`, at the later file and line |
+| Two documents give a `<branch>` or `<hub>` the same id | `W-BRANCH-ID-SHARED` in `check-project` |
 | An engine id that does not exist (`::give{item="flair"}`) | `E-BAD-ENUM` with a did-you-mean, when the attribute is typed `{ entity: K }`, also through a component param |
 | A reward with no target, or a target the engine does not know | `E-REWARD-TARGET`, when the reward kind declares a `target:` contract |
 | Two speakers shown with the same name | `W-DISPLAY-NAME-DUP` (unless `sharedName: true`) |
@@ -425,14 +472,17 @@ Commit only files you own. The lead's review is the one gate the tool cannot run
 What Lute does **not** know:
 
 - **Who owns a file.** An area that edits the lead's roster or another area's scene passes every
-  gate. Ownership is the `AREAS.md` table plus review (a `CODEOWNERS` file enforces it on a
-  hosting service).
+  gate, and so does an `add:` to a kind another area declared. Ownership is the `AREAS.md` table
+  plus review (a `CODEOWNERS` file enforces it on a hosting service).
 - **Private state.** The `defaults.uses` glob imports every area schema into every document, so
   one area can read another's `run.southFossil`. The prefix makes it visible in review; nothing
   rejects it.
+- **Whose rules derive what.** An area schema's `rules:` apply in every document too. A rule the
+  south schema adds for north's derived relation changes north's guards, and nothing rejects it.
+  Keep each rule in the schema that declares the relation it derives.
 - **Whether two areas giving the same item is a bug.** `lute refs` lists it; judging it is yours.
-- **Untyped ids.** An engine id in a plain `string` attribute, a colliding entry id, or two areas
-  choosing the same `share=` key (their beats are then spent together) are not checked. Type
-  engine ids with an entity kind, and prefix every project-wide id.
+- **Untyped ids.** An engine id in a plain `string` attribute, or two areas choosing the same
+  `share=` key (their beats are then spent together), are not checked. Type engine ids with an
+  entity kind, and prefix every project-wide id.
 - **Voice and tone.** A character another area wrote, speaking out of character, is a review
   finding.

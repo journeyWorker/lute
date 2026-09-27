@@ -26,8 +26,9 @@ pub(crate) struct Code {
 
 impl Code {
     /// `error` for an `E-` code, `warning` for a `W-` one. The severity a
-    /// run prints can differ (`--deny` promotes a warning; `--wip` demotes
-    /// a few errors), but the grade is what the code means by default.
+    /// run prints can only be raised (`--deny` promotes a warning); an `E-`
+    /// code never prints as a warning — `--wip` reports its downgrades as
+    /// `W-WIP`.
     pub(crate) fn grade(&self) -> &'static str {
         if self.code.starts_with("W-") {
             "warning"
@@ -82,17 +83,31 @@ pub(crate) fn parse_explain_code(raw: &str) -> Result<&'static Code, String> {
 /// `lute --explain <CODE>`: the code and its grade, its sentence, the spec
 /// sections behind it, and its section of the website reference.
 pub(crate) fn explain(code: &Code) -> ExitCode {
+    match crate::write_stdout(&explain_text(code)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::from(2),
+    }
+}
+
+/// The codes whose entry also lists every reserved name (the one table,
+/// [`lute_manifest::reserved`]): `--explain` prints it, and the reference page
+/// links the *Reserved names* page that shows it.
+const RESERVED_NAME_CODES: [&str; 2] = ["E-RESERVED-NAME", "E-PLUGIN-RESERVED-NAME"];
+
+/// [`explain`]'s text. A reserved-name code also lists every reserved name.
+fn explain_text(code: &Code) -> String {
     let mut out = format!("{} ({})\n\n{}\n\n", code.code, code.grade(), code.summary);
+    if RESERVED_NAME_CODES.contains(&code.code) {
+        out.push_str(&lute_manifest::reserved::render_text());
+        out.push('\n');
+    }
     if !code.spec.is_empty() {
         out.push_str(&format!("Spec: {}\n", code.spec.join(", ")));
     }
     if let Some(url) = lute_core_span::doc_url(code.code) {
         out.push_str(&format!("More: {url}\n"));
     }
-    match crate::write_stdout(&out) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(_) => ExitCode::from(2),
-    }
+    out
 }
 
 /// The website's English diagnostics reference
@@ -111,17 +126,29 @@ pub(crate) fn reference_page() -> String {
          LUTE_BLESS_DIAGNOSTICS=1 cargo test -p lute-cli --bins codes -->\n\n\
          Every diagnostic Lute prints carries a code. `E-` codes are errors: the document fails \
          the check and `lute check` exits 1. `W-` codes are warnings: the document passes, \
-         unless `--deny <CODE>` or `--deny-warnings` promotes them. `lute --explain <CODE>` prints \
-         a code's entry below in the terminal, and an editor links each code to its section \
-         here.\n\n\
+         unless `--deny <CODE>` or `--deny-warnings` promotes them. An `E-` code is never \
+         printed as a warning: `check-project --wip` reports the dead guards it spares as \
+         `W-WIP`, and the message names the error code the same guard has without the flag. \
+         `lute --explain <CODE>` prints a code's entry below in the terminal, and an editor \
+         links each code to its section here.\n\n\
          A message says what is wrong in plain words. The spec sections behind a code are listed \
          under it, each linked to its proposal, and `--json` output carries them in each \
-         diagnostic's `spec` field.\n",
+         diagnostic's `spec` field.\n\n\
+         A position `file:line:column` counts lines and columns from 1, and the column counts \
+         characters, not bytes: a Korean syllable or an emoji before the error is one column. \
+         `--json` `span.column` and `lute scenario … reach` `causes[].column` are the same \
+         number. The language server reports UTF-16 positions, as LSP requires.\n",
     );
     for (heading, grade) in [("Errors", "error"), ("Warnings", "warning")] {
         out.push_str(&format!("\n## {heading}\n"));
         for c in CODES.iter().filter(|c| c.grade() == grade) {
             out.push_str(&format!("\n### {}\n\n{}\n", c.code, c.summary));
+            if RESERVED_NAME_CODES.contains(&c.code) {
+                out.push_str(
+                    "\nEvery reserved name, where it is refused and what to write instead: \
+                     [Reserved names](/reference/reserved-names/).\n",
+                );
+            }
             if !c.spec.is_empty() {
                 let links: Vec<String> = c.spec.iter().map(|s| spec_link(s)).collect();
                 out.push_str(&format!("\nSpec: {}\n", links.join(", ")));
@@ -223,8 +250,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-BEAT-ATTR",
-        summary: "A beat's `on`, `target`, `priority`, or `once` attribute is malformed — a non-identifier `on`, a `target` on an occasion not declared `target: true`, a non-integer `priority`, a `once` outside `run`/`user`/`false`, a beat key with no `on`, or a `when` reading the scene's own not-yet-existing `scene.*` state.",
-        spec: &["dsl 0.21.0 §3", "dsl 0.21.0 §5"],
+        summary: "A beat's `on`, `target`, `priority`, or `once` attribute is malformed — a non-identifier `on`, a `target` on an occasion not declared `target: true`, a non-integer `priority`, a `once` outside `run`/`user`/`false`, a beat key with no `on`, a `when` reading the scene's own not-yet-existing `scene.*` state, or a `spentBy` beside `once: false` or a `share` key.",
+        spec: &["dsl 0.21.0 §3", "dsl 0.21.0 §5", "dsl 0.28.0 §6"],
+    },
+    Code {
+        code: "E-BEAT-ID-DUP",
+        summary: "Two declarations of one lore document share an id: a bundle `<beat>` id repeated, or an `<entry>` whose id is a `<beat>`'s — the beat's canonical id `<document id>.<id>` is also the entry's alias, so `visited()` or a play's `expect.winner` would name both.",
+        spec: &["dsl 0.28.0 §7"],
     },
     Code {
         code: "E-BEAT-UNREACHABLE",
@@ -273,17 +305,17 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-CEL-TYPE",
-        summary: "An operand of the integer modulo operator `%` is not an integer — a non-`number` operand or a fractional literal.",
-        spec: &["dsl 0.24.0 §1"],
+        summary: "A condition's types cannot mean what is written: a comparison between a bool, a number and a string (`visited('x') > 2`, `run.oil == true`, `run.day == 'monday'`), an ordering of anything but numbers (`run.hour >= 'h03'`), a non-bool operand of `&&` / `||` / `!` / `?:` or condition, arithmetic that cannot be computed, or an operand of the integer modulo operator `%` that is not an integer.",
+        spec: &["dsl 0.24.0 §1", "dsl 0.28.0 §1"],
+    },
+    Code {
+        code: "E-CHAPTERS",
+        summary: "The project's `chapters:` is malformed — not a list of `{ on, scenes }` chains, a key that is neither (a chain names its occasion with `on:`, not `occasion:`), an entry that is no scene id, a scene listed twice, two chains on one occasion — or the manifest still uses the retired `sequence:` key; or a chain names an occasion no plugin declares (or, shape-only, a near-miss of one other beats answer), lists an id no scene declares (a bundle beat, lore entry or document is named as such), lists a scene whose own `on:` answers another occasion, or, on an occasion raised for a target, lists a scene with no `target:` (it would play for every target). A malformed chain is not applied; the other chains are. Reported at the manifest line — a missing `target:` at the scene's `id:` — and the documents are still checked.",
+        spec: &["dsl 0.28.0 §4"],
     },
     Code {
         code: "E-CHOICE-DUP",
         summary: "A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub.",
-        spec: &["dsl §11.1"],
-    },
-    Code {
-        code: "E-CHOICE-ID-RESERVED",
-        summary: r#"A `<choice id="unset">` collides with `unset`, which is reserved as the implicit default sentinel for the branch's or hub's recorded choice state."#,
         spec: &["dsl §11.1"],
     },
     Code {
@@ -497,6 +529,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.3.0 §3", "dsl 0.9.0 D-D"],
     },
     Code {
+        code: "E-DOMAIN-NAME-CLASH",
+        summary: "One name is declared both as an `enums:` domain and as an entity kind — in one document or across the schemas a document merges. Enums and entity kinds share one domain namespace, so the kind's members would silently replace the enum's wherever the name types a value.",
+        spec: &[],
+    },
+    Code {
         code: "E-DOMAIN-UNKNOWN",
         summary: "A content-line `emotion`/`action` slot, an entity attribute, or an implicit `anchor` read names a domain that no `enums:`/`entities:` declaration defines.",
         spec: &["dsl 0.9.0 D-C", "dsl 0.9.0 D-D"],
@@ -607,6 +644,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.3.0 §5", "dsl 0.3.0 §9.5"],
     },
     Code {
+        code: "E-FLAG-VALUE",
+        summary: "A flag attribute (`<choice once>`/`exit`, `<objective optional>`, `<beat also>`) is given a value other than `true`/`false`; a flag is written bare, and a beat/entry `once` period on a choice is refused.",
+        spec: &["dsl 0.28.0 §1"],
+    },
+    Code {
         code: "E-FRONTMATTER-SCHEMA",
         summary: "A document's frontmatter key, declared by an active plugin, holds a value whose shape does not match the plugin's declared type for that key.",
         spec: &[],
@@ -702,8 +744,18 @@ pub(crate) const CODES: &[Code] = &[
         spec: &[],
     },
     Code {
+        code: "E-MANIFEST",
+        summary: "`lute.project.yaml` cannot be read as a manifest: it does not parse, is not a mapping, lacks `defaultProfile:`, or a value has the wrong shape.",
+        spec: &["dsl 0.28.0 §1"],
+    },
+    Code {
+        code: "E-MANIFEST-KEY",
+        summary: "`lute.project.yaml` has a key it does not define — at the top level, in a profile, or in `identity:` — or a key another layer owns (a schema key such as `terminal:`, a document key that belongs under `defaults:`).",
+        spec: &["dsl 0.28.0 §1"],
+    },
+    Code {
         code: "E-MARK-DUP",
-        summary: "A label or mark id is declared more than once anywhere in the document — labels and marks share one id namespace.",
+        summary: "A mark id — a `::mark{id}` or a content line's `id=` — is declared more than once anywhere in the document; both share one namespace.",
         spec: &["dsl 0.12.0"],
     },
     Code {
@@ -758,12 +810,12 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-NEXT-BACKWARD",
-        summary: "A `::next{to}` names a label that is not forward of the `::next` in document order — jumps must go forward only.",
+        summary: "A `::next{to}` names a mark that is not forward of the `::next` in document order — jumps must go forward only.",
         spec: &["dsl 0.12.0"],
     },
     Code {
         code: "E-NEXT-UNDEFINED",
-        summary: "A `::next{to}` names a label that no `::mark` anywhere in the document defines.",
+        summary: "A `::next{to}` names a mark that no `::mark` (or content line `id=`) anywhere in the document declares.",
         spec: &["dsl 0.12.0"],
     },
     Code {
@@ -863,17 +915,17 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-ASSET-SEGMENT-TYPE",
-        summary: "A plugin's `assetkinds/*.yaml` segment declares a type outside the four a segment position admits — `enum`, `number`, `string`, or `providerRef`.",
+        summary: "A plugin's `assetKinds` export declares a segment type outside the four a segment position admits — `enum`, `number`, `string`, or `providerRef`.",
         spec: &[],
     },
     Code {
         code: "E-PLUGIN-DUP-ACROSS",
-        summary: "Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation.",
+        summary: "Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation; the first plugin's declaration is used.",
         spec: &[],
     },
     Code {
         code: "E-PLUGIN-DUP-ID",
-        summary: "A plugin package declares the same id more than once within one export kind.",
+        summary: "A plugin package declares the same id more than once within one export kind; the first declaration is used and the rest of the project is still checked.",
         spec: &[],
     },
     Code {
@@ -887,8 +939,13 @@ pub(crate) const CODES: &[Code] = &[
         spec: &[],
     },
     Code {
+        code: "E-PLUGIN-KEY",
+        summary: "A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`.",
+        spec: &["dsl 0.28.0 §1"],
+    },
+    Code {
         code: "E-PLUGIN-MANIFEST",
-        summary: "A plugin package's `plugin.yaml` manifest is missing or fails to parse.",
+        summary: "A plugin package's `plugin.yaml` manifest is missing, is not valid YAML, or names no `id`/`version`/`kind`/`exports`.",
         spec: &[],
     },
     Code {
@@ -913,13 +970,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file failed to parse, or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`).",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`).",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-NAME",
-        summary: "A non-core plugin declares a directive named `scene`, `cut`, `on`, `quest`, or `objective`, which the core vocabulary reserves.",
-        spec: &["dsl §10"],
+        summary: "A plugin declares a name the core language owns: a directive named like a core statement (`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), a core block tag (`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`) or a `lute.core` directive (`end`, `mark`, `bg`, …); an event or occasion named like an engine lifecycle event (`questComplete`, …) or a play step key; a cast id `narrator`. Reported at the declaration's file and line.",
+        spec: &["dsl §10", "dsl 0.28.0 §1"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-STAMP-ATTR",
@@ -933,13 +990,18 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-UNKNOWN-EXPORT",
-        summary: "A plugin manifest's `exports:` key is not one of the closed set of known export kinds.",
-        spec: &["plugin §4"],
+        summary: "A plugin manifest's `exports:` key is not one of the export kinds (with a did-you-mean); the old spellings `rewardkinds`/`assetkinds`/`stampattrs` name `rewardKinds`/`assetKinds`/`stampAttrs`.",
+        spec: &["plugin §4", "dsl 0.28.0 §6"],
     },
     Code {
         code: "E-PLUGIN-UNKNOWN-REWARD-TARGET",
         summary: "A `rewardKinds:` entry pins `target: { provider: <name> }` to a provider no active plugin declares.",
         spec: &["dsl 0.16.0 §4"],
+    },
+    Code {
+        code: "E-PLURAL-FORM",
+        summary: "A `{{n:plural(…)}}` hint whose forms are not a bare singular and a bare plural separated by `|` — quoted forms, a `,` separator, a missing or empty form.",
+        spec: &["dsl 0.27.0 §7", "dsl 0.28.0 §5"],
     },
     Code {
         code: "E-PROFILE-EXTENDS-CYCLE",
@@ -1042,11 +1104,6 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.3.0 §4"],
     },
     Code {
-        code: "E-RELATION-RESERVED-NAME",
-        summary: "A relation is named after a reserved CEL call, macro, or keyword, so it could never be queried with `holds(...)`.",
-        spec: &[],
-    },
-    Code {
         code: "E-RELATION-RESERVED-WRITE",
         summary: "A relation is declared both `derive: true` and `reserved: true`, giving it two conflicting write owners.",
         spec: &["dsl 0.3.0 §4", "dsl 0.3.0 §5"],
@@ -1057,13 +1114,18 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.3.0 §4"],
     },
     Code {
+        code: "E-RESERVED-NAME",
+        summary: "A declared name is one the language keeps for itself — a state root naming an entity member, def or season, `unset`/`true`/`false`/`null`/`_` naming a member, `none` or a CEL literal naming an id, a CEL keyword in a state path or id that becomes one, a CEL call or rule word naming a relation, `narrator` in `cast:`, or a number in a member list — so the name would be read as that word where it is used. The message names a replacement; `lute --explain E-RESERVED-NAME` lists every reserved name.",
+        spec: &["dsl 0.28.0 §1"],
+    },
+    Code {
         code: "E-RETRACT-WILDCARD-ASSERT",
         summary: "A relation argument is `_` in a context other than a `::retract` pattern, which alone may contain wildcards.",
         spec: &["dsl 0.3.0 §5"],
     },
     Code {
         code: "E-REWARD-ATTR",
-        summary: r#"A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, or an `on=` used on an objective-level reward or with a value other than `"failed"`."#,
+        summary: r#"A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, or an `outcome=` used on an objective-level reward or with a value other than `"failed"`."#,
         spec: &["dsl 0.16.0 §2", "dsl 0.16.0 §6"],
     },
     Code {
@@ -1093,13 +1155,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-SEASON-DECL",
-        summary: r#"A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead."#,
+        summary: r#"A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead."#,
         spec: &["dsl 0.27.0 §5"],
-    },
-    Code {
-        code: "E-SEQUENCE",
-        summary: "The project's `sequence:` is malformed (not `{ occasion, scenes }`, a key that is neither, an id listed twice), names an occasion no plugin declares (or, shape-only, a near-miss of one other beats answer), lists an id no scene declares, or lists a scene whose own `on:` answers another occasion. Reported at the manifest line; the documents are still checked.",
-        spec: &["dsl 0.27.0 §8"],
     },
     Code {
         code: "E-SET-OP-TYPE",
@@ -1177,6 +1234,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl §4.4"],
     },
     Code {
+        code: "E-SUBQUEST-REARM",
+        summary: "A quest that an `<objective quest=…>` names as a subquest declares `rearm=`; a subquest activates with its parent, so once the parent has ended a rearmed child stays `unset`.",
+        spec: &["dsl 0.27.0 §5", "dsl 0.28.0 §5"],
+    },
+    Code {
         code: "E-TAG-INLINE-BODY",
         summary: "A block's body, and often its close, is written on the opener's own line; the opener, each body line and the `</tag>` close each need a line of their own.",
         spec: &["dsl §2.3"],
@@ -1188,8 +1250,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-TEMPLATE",
-        summary: "A beat template is misused: `<beat use=>` names no component or one without a `beat:` header, a template `beat:` header is malformed or gives a header param a value it cannot take, or `::body` appears outside a template's top level.",
-        spec: &["dsl 0.27.0 §6"],
+        summary: "A beat template is misused: `<beat use=>` names no component or one without a `beat:` header, a template `beat:` header is malformed or gives a header param a value it cannot take, a component declares a param named like a key of its use (`component` or `when`, or for a beat template a `<beat>` header key such as `title`, `once` or `id`) that no use could ever pass, or `::body` appears outside a template's top level.",
+        spec: &["dsl 0.27.0 §6", "dsl 0.28.0 §1"],
     },
     Code {
         code: "E-TEMPORAL-ARG",
@@ -1343,7 +1405,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNSET-UNCOVERED",
-        summary: "A `<match>` subject that may be unset (an unset-able `scene.choices.*` path, or a `run.`/`user.`/`app.` path with no schema `default`) is not covered by an `unset`-matching arm or an `<otherwise>`.",
+        summary: "A `<match>` subject that may be unset (a `run.`/`user.`/`app.` path with no schema `default`; a `scene.*` path, including a branch's `scene.choices.*` record, is judged per path as `E-MAYBE-UNSET`) is not covered by an `unset`-matching arm or an `<otherwise>`.",
         spec: &["dsl §11.2"],
     },
     Code {
@@ -1428,8 +1490,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-BEAT-SPENT-AT-START",
-        summary: "A beat's `spentBy` already holds at the start of a run (often an inverted `!holds(…)` copied from an old `when`), so the beat is not eligible until that stops holding.",
-        spec: &["dsl 0.27.0 §5"],
+        summary: "A beat's `spentBy` already holds at the start of play (every state path at its default, only the seed facts) — often `spentBy` read as \"repeat while\", or an inverted `!holds(…)` copied from an old `when` — so the beat is spent before it can play: a `spentBy` beat stays spent once its condition has held.",
+        spec: &["dsl 0.27.0 §5", "dsl 0.28.0 §6"],
+    },
+    Code {
+        code: "W-BRANCH-ID-SHARED",
+        summary: "Two documents of one project each declare a `<branch>` or `<hub>` with the same id. Ids need only be unique within a document, but a play's or test's `choose:` names a menu by its id alone, so one key answers both menus (and a list of decisions is consumed across both).",
+        spec: &["dsl 0.28.0 §7"],
     },
     Code {
         code: "W-CAST-ABSENT",
@@ -1440,6 +1507,16 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-CATALOG-STALE",
         summary: "A `providerRef` id is not found in the pinned provider catalog, which may mean the snapshot is stale or offline rather than the id being wrong.",
         spec: &["dsl §7.2"],
+    },
+    Code {
+        code: "W-CHAPTER-ORDER",
+        summary: "On a `select: sequence` occasion, where a chain of the project's `chapters:` is the order within one raise, a listed scene writes its own `priority:`, which places it out of the order the chain lists. Remove the scene's `priority:`, or move it in the chain's `scenes:`.",
+        spec: &["dsl 0.28.0 §4"],
+    },
+    Code {
+        code: "W-CHAPTER-STALL",
+        summary: "A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, not only the clock — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A condition over the clock alone only delays the chain and is not reported. If the scene may be skipped, let the next one follow the scene before it (`after: visited(\"<previous>\")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true.",
+        spec: &["dsl 0.28.0 §4"],
     },
     Code {
         code: "W-CODE-AFTER-END",
@@ -1460,6 +1537,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-DEADLINE-BEFORE-DONE",
         summary: "An `on=` objective's `by=` deadline (with no `until=`) provably implies before its `done` predicate can ever be judged, so the deadline fails the objective before it can complete.",
         spec: &["dsl 0.24.0 §2.1"],
+    },
+    Code {
+        code: "W-DEADLINE-BEFORE-WINDOW",
+        summary: "An objective's `done` can only hold at clock positions where its `by=` deadline already holds — typically a `visited` beat whose `when` opens after the deadline — so the deadline fails the objective before it can be done.",
+        spec: &["dsl 0.28.0"],
     },
     Code {
         code: "W-DEADLINE-NEVER",
@@ -1493,7 +1575,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-ENTRY-WRITE-REREAD",
-        summary: "A repeatable entry beat (answers an occasion, has no `once`) writes state with `::set` or `::retract`, but such effects apply only on the first read in a run, so a write meant to repeat is silently skipped on later reads.",
+        summary: "An entry that can be read again in a run (a lookup entry, an entry beat without `once`, a `once` shorter than the run, a `spentBy` entry, a `for=` entry without `once: run|user`) writes state, but an entry's writes apply on its first read in a run only; the message names the remedy for its shape (a `<beat>` with the same attributes, `once=\"run\"`, or a `when=\"!entry.<id>.read\"` guard, which also silences it).",
         spec: &["dsl 0.26.0 §8", "dsl 0.19.0 §6"],
     },
     Code {
@@ -1517,11 +1599,6 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.8.0 §7"],
     },
     Code {
-        code: "W-LABEL-CAST-SHADOWED",
-        summary: "An entity kind's `labels:` entry names a cast member whose cast `name:` is what text renders, so the label is never shown.",
-        spec: &["dsl 0.27.0 §7"],
-    },
-    Code {
         code: "W-LUTE-VERSION-STALE",
         summary: "A document's `luteVersion` frontmatter stamp is present but differs from the toolchain's current DSL version, suggesting it was copied from an older example.",
         spec: &["dsl 0.6.1 §3"],
@@ -1533,7 +1610,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-OBJECTIVE-HIDDEN",
-        summary: "A required (`!optional`) objective's `when` visibility gate provably never holds, so it can never be visible or tracked even though it still gates quest completion.",
+        summary: "A required (`!optional`) objective's `visibleWhen` visibility gate provably never holds, so it can never be visible or tracked even though it still gates quest completion.",
         spec: &["dsl 0.4.0 §5.3"],
     },
     Code {
@@ -1562,6 +1639,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.24.0 §2", "dsl 0.25.0 §5"],
     },
     Code {
+        code: "W-QUEST-REARM-CONSTANT",
+        summary: "A quest's `rearm=` condition is constant (`\"true\"`, `\"false\"`, or a def or comparison that folds to one), so it never turns from false to true and the quest never rearms.",
+        spec: &["dsl 0.27.0 §5", "dsl 0.28.0 §5"],
+    },
+    Code {
         code: "W-QUEST-REF-UNKNOWN",
         summary: "A reserved `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` reference (or similar) names a quest id or objective id no quest document in the project defines.",
         spec: &["dsl 0.5.1 §1.4"],
@@ -1577,6 +1659,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &[],
     },
     Code {
+        code: "W-RELATION-TIER-IMPLICIT",
+        summary: "A stored (not `derive: true`) relation declares no `tier:`, so it is run-tier: its facts — the engine's too, on a `reserved: true` relation — are cleared at every new run. Write `tier: run` to keep that, or `user`, `app` or `season:<name>` for facts that outlive the run.",
+        spec: &["dsl 0.28.0 §5"],
+    },
+    Code {
         code: "W-RELATION-UNREAD",
         summary: "A declared, non-reserved relation is written (asserted, seeded, or derived) but never read by any condition, rule body, or def — the facts it records change nothing.",
         spec: &["dsl 0.24.0"],
@@ -1587,14 +1674,9 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.23.0 §8"],
     },
     Code {
-        code: "W-SEQUENCE-ORDER",
-        summary: "On a `select: sequence` occasion, a scene listed in the project's `sequence:` writes its own `priority:`, which places it out of the order the list gives — the list's order is the priority the sequence derives. Remove the scene's `priority:`, or move it in `sequence.scenes`.",
-        spec: &["dsl 0.27.0 §8"],
-    },
-    Code {
-        code: "W-SEQUENCE-STALL",
-        summary: "A scene listed in the project's `sequence:` has its own `when:`, and the next listed scene waits on it through the `after:` the sequence writes — when the first does not play, the chain stalls. Give the next scene its own `after:`, or take the optional scene out of the list.",
-        spec: &["dsl 0.27.0 §8"],
+        code: "W-SEASON-UNGATED",
+        summary: "A beat with `once: season:<name>` (or a `tier=\"season:<name>\"` quest with a `start`) whose `when` (or `start`) does not imply the season's `live` condition: `once` only sets how long the beat stays spent, so it plays even while the season has never opened. Add the season's `live` condition (or a def that reads it) to the `when`.",
+        spec: &["dsl 0.28.0 §7"],
     },
     Code {
         code: "W-STAGE-ABSENT",
@@ -1602,9 +1684,39 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.22.0 §12"],
     },
     Code {
+        code: "W-TEMPLATE-DOT-PARAM",
+        summary: "A beat template's `when:` or `spentBy:` header reads a member as a path segment spelled with a param (`user.bond.@who`). It works in a header, but a component body refuses that spelling; write `user.bond[@who]`, which both accept.",
+        spec: &["dsl 0.28.0 §3"],
+    },
+    Code {
+        code: "W-TEMPLATE-OVERRIDE",
+        summary: "A `<beat use=…>` writes its own `when=`, which replaces the template's `when:` whole, so the template's condition no longer gates the beat (and an argument only that condition read is unused). Write both conditions in the use's `when=`, or give the template a param to conjoin (`when: \"<condition> && (@only)\"`) and pass it instead.",
+        spec: &["dsl 0.28.0 §3"],
+    },
+    Code {
+        code: "W-TERMINAL-PERSISTENT",
+        summary: "The schema's `terminal:` reads state a new run keeps (`visited(…)`, `user.*`, `app.*`, `entry.<id>.everRead`, a user-tier quest or relation), so once it holds no new run can play on.",
+        spec: &["dsl 0.28.0 §2"],
+    },
+    Code {
+        code: "W-TEXT-BRACKET-LABEL",
+        summary: r#"A `<choice>` label is wrapped in `[…]`, Ink's bracket suppression. Lute shows a label exactly as written, so the brackets appear on the button; write the label without them."#,
+        spec: &["dsl 0.28.0 §2"],
+    },
+    Code {
+        code: "W-TEXT-COMMENT-LIKE",
+        summary: "Line text or a choice label holds a ` // …` comment or ends in an Ink `#tag`. Text after `: ` is literal, so the player sees it; a comment is `// …` on a line of its own, and Lute has no line tags.",
+        spec: &["dsl 0.28.0 §2"],
+    },
+    Code {
         code: "W-TEXT-LOOKS-LIKE-REF",
         summary: r#"A content line's whole text is exactly `@<name>` for a declared def or component param, which ships as the literal string `"@<name>"` instead of being resolved."#,
         spec: &["dsl §7.6"],
+    },
+    Code {
+        code: "W-TEXT-SINGLE-BRACE",
+        summary: "Line text or a choice label holds a single-brace group that reads as another language's markup: a state path or def (`{run.oil}`), a Yarn `{$var}`, Ink conditional text (`{cond: text}`) or alternatives (`{~a|b}`). Single braces are literal; interpolation is `{{run.oil}}`, and conditional text is a guarded line or a `<match>`.",
+        spec: &["dsl 0.28.0 §2"],
     },
     Code {
         code: "W-TIMELINE-CLIPS",
@@ -1630,6 +1742,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-WHEN-TEST-LITERAL",
         summary: r#"A `<when test="…">` arm is written as a CEL literal comparison that the `is=` pattern form would say more clearly and that the checker can reason about directly."#,
         spec: &["dsl 0.18.0 §3", "dsl §7.3.1"],
+    },
+    Code {
+        code: "W-WIP",
+        summary: "Under `check-project --wip`, a guard or objective is dead only because a relation it needs has no producer written yet (no seed, `::assert`, rule, or reserved declaration, or only a component `::assert` with an unbound `@param`); the message names the error code it is without `--wip`: `E-ARM-DEAD`, `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, or `E-OBJECTIVE-UNSATISFIABLE`.",
+        spec: &["dsl 0.23.0 §10", "dsl 0.26.0 §2.6"],
     },
 ];
 
@@ -1675,6 +1792,43 @@ mod tests {
             );
             assert!(lookup(c.code).is_some_and(|l| l.code == c.code));
         }
+    }
+
+    /// The first spec citation or ticket id `text` carries: `§`, `dsl 0.`,
+    /// `dsl 20…`, `Appendix`, or a whole-word `T3-26` / `ML-L15` /
+    /// `D1-quarantined`.
+    pub(crate) fn citation_in(text: &str) -> Option<&str> {
+        for needle in ["§", "dsl 0.", "dsl 20", "Appendix"] {
+            if text.contains(needle) {
+                return Some(needle);
+            }
+        }
+        let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+        text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+            .find(|w| {
+                let w = w.trim_end_matches('-');
+                w.strip_prefix('T')
+                    .and_then(|r| r.split_once('-'))
+                    .is_some_and(|(a, b)| digits(a) && digits(b))
+                    || w.strip_prefix("ML-L").is_some_and(digits)
+                    || w.strip_prefix('D')
+                        .and_then(|r| r.strip_suffix("-quarantined"))
+                        .is_some_and(digits)
+            })
+    }
+
+    /// Every code's sentence is author-facing: no spec section, no ticket id.
+    #[test]
+    fn summaries_cite_no_spec_or_ticket() {
+        for c in CODES {
+            assert_eq!(citation_in(c.summary), None, "{}: {}", c.code, c.summary);
+        }
+        assert_eq!(citation_in("see (T3-26) here"), Some("T3-26"));
+        assert_eq!(
+            citation_in("the D1-quarantined evaluator"),
+            Some("D1-quarantined")
+        );
+        assert_eq!(citation_in("UTF-8 and T-shirts, ML-Lx"), None);
     }
 
     /// Drift guard: every `"E-…"` / `"W-…"` literal in any crate's sources
@@ -1768,5 +1922,40 @@ mod tests {
             "{} drifted from the registry",
             path.display()
         );
+    }
+
+    /// The reserved-names reference is the one table: the English page holds
+    /// its rows verbatim, the Korean twin names every reserved name, and
+    /// `lute --explain E-RESERVED-NAME` prints the list.
+    #[test]
+    fn the_reserved_names_reference_is_the_table() {
+        const BEGIN: &str = "<!-- reserved-names:begin -->\n";
+        const END: &str = "<!-- reserved-names:end -->";
+        let path = docs().join("reference/reserved-names.md");
+        let en = std::fs::read_to_string(&path).unwrap();
+        let table = lute_manifest::reserved::render_markdown();
+        let (Some(b), Some(e)) = (en.find(BEGIN), en.find(END)) else {
+            panic!("{} lacks the {BEGIN:?}…{END:?} markers", path.display());
+        };
+        let region = &en[b + BEGIN.len()..e];
+        if std::env::var_os("LUTE_BLESS_DIAGNOSTICS").is_some() {
+            let blessed = format!("{}{table}{}", &en[..b + BEGIN.len()], &en[e..]);
+            std::fs::write(&path, blessed).unwrap();
+        } else {
+            assert!(
+                region == table,
+                "{} drifted from lute_manifest::reserved::GROUPS; run \
+                 `LUTE_BLESS_DIAGNOSTICS=1 cargo test -p lute-cli --bins codes`",
+                path.display()
+            );
+        }
+        let ko = std::fs::read_to_string(docs().join("ko/reference/reserved-names.md")).unwrap();
+        let explained = explain_text(lookup("E-RESERVED-NAME").unwrap());
+        for group in lute_manifest::reserved::GROUPS {
+            for name in group.names {
+                assert!(ko.contains(&format!("`{name}`")), "ko page lacks `{name}`");
+                assert!(explained.contains(name), "--explain lacks `{name}`");
+            }
+        }
     }
 }

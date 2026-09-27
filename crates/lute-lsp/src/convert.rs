@@ -99,6 +99,27 @@ fn covered_related_information(
     )
 }
 
+/// One `d.related` entry — a sub-diagnostic located in ANOTHER file: the
+/// schema import or plugin file a re-homed diagnostic's declaration sits in,
+/// or an imported file's own parse error — as that file's URI and the UTF-16
+/// range of its span there. `text` is the file's text the span's bytes index;
+/// `None` when the span does not fit it (the file changed since) or the path
+/// is not absolute.
+pub fn related_location(
+    r: &lute_core_span::RelatedDiagnostic,
+    text: &str,
+) -> Option<lsp_types::Location> {
+    let span = &r.diagnostic.span;
+    let fits = |b: usize| text.is_char_boundary(b);
+    if span.byte_start > span.byte_end || !fits(span.byte_start) || !fits(span.byte_end) {
+        return None;
+    }
+    Some(lsp_types::Location {
+        uri: lsp_types::Uri::from_file_path(&r.file)?,
+        range: to_lsp_range(span, &TextIndex::new(text)),
+    })
+}
+
 /// Map a byte [`Span`] to an LSP [`Range`](lsp_types::Range): each endpoint's byte
 /// offset goes through [`TextIndex::position`] and is de-1-indexed for the line and
 /// used as-is for the (already 0-based UTF-16) character. `pub(crate)` so

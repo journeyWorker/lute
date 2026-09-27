@@ -56,8 +56,8 @@ directives:
     attrs:
       - { name: focus, type: string }
       - { name: zoom, type: number }
-      - { name: move-x, type: number }
-      - { name: move-y, type: number }
+      - { name: moveX, type: number }
+      - { name: moveY, type: number }
       - { name: shake, type: number }
       - { name: reset, type: bool }
       - { name: duration, type: number }

@@ -61,6 +61,43 @@ pub fn peel_frontmatter(text: &str) -> Result<(Option<(String, Span)>, usize), C
     Ok((None, 0)) // no closing delimiter: treated as no frontmatter (checker flags)
 }
 
+/// dsl 0.28.0 (T3-46): for a document that opens a frontmatter with `---`
+/// and never closes it, the byte offset just past its last YAML-looking line
+/// — where the closing `---` belongs — and that line's 1-based number.
+/// `None` when the frontmatter is closed, or there is none.
+///
+/// The YAML run is the lines after the opener up to the first blank line or
+/// the first line that is no YAML (a `## heading`, a content line, a tag):
+/// a `key:` line, an indented continuation, a `- ` item or a `#` comment.
+pub fn unclosed_frontmatter_end(text: &str) -> Option<(usize, usize)> {
+    if !text.starts_with("---\n") || !matches!(peel_frontmatter(text), Ok((None, _))) {
+        return None;
+    }
+    let yaml_line = |line: &str| {
+        let t = line.trim_end_matches('\r');
+        if t.starts_with([' ', '\t']) {
+            return !t.trim().is_empty();
+        }
+        if t.starts_with("- ") || (t.starts_with('#') && !t.starts_with("##")) {
+            return true;
+        }
+        let key_end = t
+            .find(|c: char| !(c.is_ascii_alphanumeric() || "_.-\"'".contains(c)))
+            .unwrap_or(t.len());
+        key_end > 0 && t[key_end..].trim_start().starts_with(':')
+    };
+    let mut end = 4;
+    let mut last_line = 1;
+    for (i, line) in text[4..].split_inclusive('\n').enumerate() {
+        if !yaml_line(line.trim_end_matches('\n')) {
+            break;
+        }
+        end += line.len();
+        last_line = i + 2;
+    }
+    Some((end, last_line))
+}
+
 /// Strip `/* … */` block comments from `text`, falling back to the original on
 /// an unterminated comment. Prefer [`strip_comments_checked`] where the error
 /// matters. See it for the exact scanning rules.

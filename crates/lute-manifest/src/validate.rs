@@ -216,15 +216,20 @@ impl ManifestError {
         }
     }
 
-    /// Author-facing message. The two structural errors keep their historical
-    /// `Debug` rendering (consumers key on [`Self::code`], and the field names
-    /// ARE the message); the declarative-lowering errors carry written prose,
-    /// because their fix needs the accepted set spelled out.
+    /// Author-facing message: what is wrong with the declaration and the
+    /// accepted set that fixes it — never a Rust `Debug` form.
     pub fn message(&self) -> String {
         match self {
-            ManifestError::UnknownSemanticsFlag { .. } | ManifestError::DuplicateAttr { .. } => {
-                format!("{self:?}")
-            }
+            ManifestError::UnknownSemanticsFlag { directive, flag } => format!(
+                "directive `::{directive}` declares semantics flag `{flag}`, which is not one \
+                 of {}{}",
+                SEMANTICS_VOCAB.join(", "),
+                crate::suggest::did_you_mean(flag, SEMANTICS_VOCAB.iter().copied())
+            ),
+            ManifestError::DuplicateAttr { directive, attr } => format!(
+                "directive `::{directive}` declares attribute `{attr}` more than once — keep \
+                 one declaration"
+            ),
             ManifestError::UnknownLowerRecord { directive, record } => format!(
                 "directive `::{directive}` lowers to unknown record `{record}`; \
                  declarative lowering targets the staging kinds ({})",
@@ -535,10 +540,12 @@ pub enum DomainIssue {
         name: String,
         key: &'static str,
     },
-    /// dsl 0.24.0 §1: a `labels:` key that is not a member.
+    /// dsl 0.24.0 §1: a `labels:` key that is not a member, with the
+    /// did-you-mean for the member it most likely means (or `""`).
     LabelNotMember {
         name: String,
         value: String,
+        hint: String,
     },
 }
 
@@ -569,9 +576,9 @@ impl DomainIssue {
                 "domain `{name}` declares `{key}:`, which has no meaning for this slot \
                  (dsl 0.9.0 D-D)"
             ),
-            DomainIssue::LabelNotMember { name, value } => format!(
+            DomainIssue::LabelNotMember { name, value, hint } => format!(
                 "domain `{name}` declares a label for `{value}` in `labels:`, which is not one \
-                 of its members (dsl 0.24.0 §1)"
+                 of its members{hint} (dsl 0.24.0 §1)"
             ),
         }
     }
@@ -635,6 +642,7 @@ pub fn validate_domain(name: &str, d: &crate::snapshot::Domain) -> Vec<DomainIss
             out.push(DomainIssue::LabelNotMember {
                 name: name.to_string(),
                 value: member.clone(),
+                hint: crate::suggest::did_you_mean(member, d.members.iter().map(String::as_str)),
             });
         }
     }

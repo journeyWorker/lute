@@ -340,7 +340,7 @@ fn print_scene_envelope(
 }
 
 /// Print a quest node's envelope (T12 [`envelope::quest_envelope`]) — full
-/// tables for an `after`-opted-in quest, defaults-only `D` plus the
+/// tables for a quest with `follows=`, defaults-only `D` plus the
 /// enrichment note for a bare quest (dsl §4.4) — plus its `Possible \
 /// Guaranteed` SET as plain inventory. [`envelope::check_envelope`] is
 /// SCENE-ONLY by design (its own doc comment: quest reads stay
@@ -369,7 +369,7 @@ fn print_quest_envelope(
     // from `reach`), so the `after.is_some()` guard is REQUIRED. A cycle-
     // independent `after` quest keeps its real tables with no note (per-node
     // recovery, spec §4.1); only a cyclic/downstream one prints the note.
-    if quest.after.is_some() && node_cycle_degraded(scenario, &node_id) {
+    if quest.follows.is_some() && node_cycle_degraded(scenario, &node_id) {
         print_cycle_envelope_note(out);
     }
     let qe = envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);
@@ -405,8 +405,8 @@ fn print_quest_envelope(
     if qe.enrichment_note {
         outln!(
             out,
-            "  note: this quest declares no `after` attribute, so this is the defaults-only \
-             `D` table; declaring `after` on quest:{id} would enrich this table \
+            "  note: this quest declares no `follows` attribute, so this is the defaults-only \
+             `D` table; declaring `follows` on quest:{id} would enrich this table \
              with the full project-resolved envelope."
         );
     }

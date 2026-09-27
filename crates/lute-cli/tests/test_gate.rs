@@ -41,7 +41,7 @@ const MANIFEST: &str = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {
 /// never reached. By default the rule derives it and the walk completes.
 const DERIVED_MATCH: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
      entities:\n  npc: { members: [ana, bo] }\n\
-     relations:\n  friend: { args: [npc, npc] }\n  allied: { args: [npc, npc], derive: true }\n\
+     relations:\n  friend: { args: [npc, npc], tier: run }\n  allied: { args: [npc, npc], derive: true }\n\
      state:\n  run.met: { type: bool, default: true }\n\
      facts:\n  - \"friend(ana, bo)\"\n\
      rules:\n  - \"allied(A, B) :- friend(A, B)\"\n---\n\n## One\n\n@narrator: before.\n\
@@ -69,9 +69,9 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
         "incomplete must not pass: {text}"
     );
     assert!(text.contains("FAIL"), "{text}");
-    assert!(text.contains("exit: incomplete"), "{text}");
+    assert!(text.contains("end: incomplete"), "{text}");
     assert!(
-        text.contains("expect: { exit: incomplete }"),
+        text.contains("expect: { end: incomplete }"),
         "the opt-in must be named: {text}"
     );
     // T3-11: the halting guard and the test key that would decide it.
@@ -99,7 +99,7 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
     write_at(
         &dir,
         "t.test.yaml",
-        "file: s.lute\nderive: false\nexpect:\n  exit: incomplete\n  transcriptContains: [\"before.\"]\n",
+        "file: s.lute\nderive: false\nexpect:\n  end: incomplete\n  transcriptContains: [\"before.\"]\n",
     );
     let out = lute(&["test", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
@@ -108,7 +108,7 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
     write_at(
         &dir,
         "t.test.yaml",
-        "file: s.lute\nexpect:\n  exit: incomplete\n  transcriptContains: [\"before.\"]\n",
+        "file: s.lute\nexpect:\n  end: incomplete\n  transcriptContains: [\"before.\"]\n",
     );
     let out = lute(&["test", dir.to_str().unwrap(), "--no-derive"]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
@@ -124,7 +124,7 @@ fn a_rule_derived_fact_decides_a_test_guard_without_mocking_it() {
     write_at(
         &dir,
         "t.test.yaml",
-        "file: s.lute\nexpect:\n  exit: complete\n  transcriptContains: [\"allied.\", \"after.\"]\n",
+        "file: s.lute\nexpect:\n  end: complete\n  transcriptContains: [\"allied.\", \"after.\"]\n",
     );
     let out = lute(&["test", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
@@ -146,7 +146,7 @@ fn a_lore_document_is_a_test_subject_only_with_its_entries_named() {
     write_at(
         &dir,
         "t.test.yaml",
-        "file: book.lute\nexpect:\n  exit: complete\n",
+        "file: book.lute\nexpect:\n  end: complete\n",
     );
     let out = lute(&["test", dir.to_str().unwrap()]);
     let text = stdout(&out);
@@ -168,6 +168,101 @@ fn a_lore_document_is_a_test_subject_only_with_its_entries_named() {
     );
     let out = lute(&["test", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+}
+
+/// T1-21 (0.27 regression): a lore test that presents nothing and judges
+/// its entries by id (map-form `eligible:`) asserted `facts:` / `notFacts:`
+/// against an EMPTY world — the mocked, seeded and derived facts all "did
+/// not hold" while the eligibility verdict read them as holding. The world
+/// asserted is the seeded one; `facts:` alone makes a lookup test too.
+#[test]
+fn a_lore_test_without_an_entry_judges_facts_on_the_seeded_world() {
+    let dir = temp_dir("lore-facts");
+    write_at(&dir, "lute.project.yaml", MANIFEST);
+    write_at(
+        &dir,
+        "book.lute",
+        "---\nkind: lore\nid: book\n\
+         entities:\n  npc: { members: [ana, bo] }\n\
+         relations:\n  friend: { args: [npc, npc], tier: run }\n  allied: { args: [npc, npc], derive: true }\n\
+         facts:\n  - \"friend(ana, bo)\"\n\
+         rules:\n  - \"allied(A, B) :- friend(A, B)\"\n---\n\n\
+         <entry id=\"page\" title=\"Page\" when=\"holds(allied(ana, bo))\">\n\
+         @narrator: a page.\n</entry>\n",
+    );
+    write_at(
+        &dir,
+        "a.test.yaml",
+        "file: book.lute\nexpect:\n  eligible: { page: true }\n  \
+         facts: [\"friend(ana, bo)\", \"allied(ana, bo)\"]\n",
+    );
+    write_at(
+        &dir,
+        "b.test.yaml",
+        "file: book.lute\nexpect:\n  notFacts: [\"allied(ana, bo)\"]\n",
+    );
+    let out = lute(&["test", dir.to_str().unwrap()]);
+    let text = stdout(&out);
+    let verdict = |name: &str| {
+        text.lines()
+            .find(|l| l.contains(name) && (l.starts_with("PASS") || l.starts_with("FAIL")))
+            .map(|l| l.starts_with("PASS"))
+    };
+    assert_eq!(verdict("a.test.yaml"), Some(true), "{text}");
+    assert_eq!(verdict("b.test.yaml"), Some(false), "{text}");
+    assert!(
+        text.contains("FAIL") && text.contains("notFacts allied(ana, bo)"),
+        "a derived fact the seeded world holds is not vacuously absent: {text}"
+    );
+    assert_eq!(out.status.code(), Some(1), "{text}");
+}
+
+/// T1-20: a hub's scripted `choose:` list is its visit sequence. Running
+/// out while the hub is still open left the hub in `lute trace` / `lute
+/// test` (PASS, exit 0) — a path no player can take — while `lute play`
+/// halted. Every tool now halts incomplete and names the longer list.
+#[test]
+fn a_hub_whose_scripted_picks_run_out_halts_in_trace_and_test() {
+    let dir = temp_dir("hub-exhausted");
+    write_at(&dir, "lute.project.yaml", MANIFEST);
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\nid: kitchen\n---\n\n## K\n\n<hub id=\"askCook\">\n\
+         <choice id=\"oven\" label=\"Oven\" once>\n@narrator: Seed cake.\n</choice>\n\
+         <choice id=\"scullery\" label=\"Scullery\" once>\n@narrator: Spoons.\n</choice>\n\
+         <choice id=\"leave\" label=\"Go\" exit>\n@narrator: Mind the step.\n</choice>\n\
+         </hub>\n\n@narrator: Upstairs.\n",
+    );
+    write_at(
+        &dir,
+        "t.test.yaml",
+        "file: s.lute\nchoose: { askCook: scullery }\nexpect:\n  end: complete\n",
+    );
+    let out = lute(&["test", dir.to_str().unwrap()]);
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(
+        text.contains("the hub is still open after 1 scripted pick(s)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("`choose: { askCook: [scullery, <oven|leave>] }`"),
+        "the longer list is named: {text}"
+    );
+
+    let s = dir.join("s.lute");
+    let out = lute(&["trace", s.to_str().unwrap(), "--choose", "askCook=scullery"]);
+    assert_eq!(out.status.code(), Some(3), "{}", stdout(&out));
+    let out = lute(&[
+        "trace",
+        s.to_str().unwrap(),
+        "--choose",
+        "askCook=scullery,leave",
+    ]);
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("Upstairs."), "{text}");
 }
 
 /// T1-13: `lute test tests --coverage` measured the untested set against
@@ -195,7 +290,7 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
     write_at(
         &dir,
         "tests/t.test.yaml",
-        "file: ../scenes/tested.lute\nexpect:\n  exit: complete\n",
+        "file: ../scenes/tested.lute\nexpect:\n  end: complete\n",
     );
     let out = lute(&["test", dir.join("tests").to_str().unwrap(), "--coverage"]);
     let text = stdout(&out);
@@ -212,7 +307,7 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
     write_at(
         &dir,
         "tests/book.test.yaml",
-        "file: ../lore/book.lute\nentry: page\nexpect:\n  exit: complete\n",
+        "file: ../lore/book.lute\nentry: page\nexpect:\n  end: complete\n",
     );
     let out = lute(&["test", dir.join("tests").to_str().unwrap(), "--coverage"]);
     let text = stdout(&out);
@@ -319,7 +414,7 @@ fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
          entities:\n  npc: { members: [ana, bo] }\n\
-         relations:\n  friend: { args: [npc, npc] }\n  allied: { args: [npc, npc], derive: true }\n\
+         relations:\n  friend: { args: [npc, npc], tier: run }\n  allied: { args: [npc, npc], derive: true }\n\
          facts:\n  - \"friend(ana, bo)\"\n\
          rules:\n  - \"allied(A, B) :- friend(A, B)\"\n---\n\n## One\n\n\
          <branch id=\"ask\">\n<choice id=\"trust\" label=\"Trust\" when=\"holds(allied(ana, bo))\">\n\
@@ -486,7 +581,7 @@ fn scenario_and_test_survive_a_closed_stdout() {
     write_at(
         &dir,
         "t.test.yaml",
-        "file: a.lute\nexpect:\n  exit: complete\n",
+        "file: a.lute\nexpect:\n  end: complete\n",
     );
     for args in [
         vec!["scenario", dir.to_str().unwrap()],

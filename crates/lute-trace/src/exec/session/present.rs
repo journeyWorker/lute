@@ -70,19 +70,19 @@ pub fn scene_initial_state(
 }
 
 /// dsl 0.24.0 §1: record where on the declared clock beat `id` was just
-/// presented — `once: day` / `once: slot` are spent until the clock leaves
-/// that day / slot — for every beat its presentation spends (dsl 0.25.0
-/// §2, [`spend_group`]). Nothing without a clock (such a beat is
-/// `E-BEAT-ATTR`).
-pub fn spend_at_clock(p: &ExecProject, w: &mut World, id: &str) {
+/// presented (for `member`, a `for` beat's) — `once: day` / `once: slot`
+/// are spent until the clock leaves that day / slot — for every beat its
+/// presentation spends (dsl 0.25.0 §2, [`spend_keys`]). Nothing without a
+/// clock (such a beat is `E-BEAT-ATTR`).
+pub fn spend_at_clock(p: &ExecProject, w: &mut World, id: &str, member: Option<&str>) {
     if let Some(at) = p
         .index
         .clock
         .as_ref()
         .and_then(|c| crate::clock::position(c, &w.state))
     {
-        for m in spend_group(p, id) {
-            w.spent_at.insert(m.to_string(), at.clone());
+        for key in spend_keys(p, id, member) {
+            w.spent_at.insert(key, at.clone());
         }
     }
 }
@@ -107,15 +107,28 @@ pub fn spend_group<'p>(p: &'p ExecProject, id: &'p str) -> Vec<&'p str> {
     }
 }
 
+/// The `once` keys one presentation of `id` (for `member`) spends: every
+/// beat of its [`spend_group`], a `for` beat's per member (dsl 0.28.0,
+/// [`crate::exec::cadence::spend_key`]).
+fn spend_keys(p: &ExecProject, id: &str, member: Option<&str>) -> Vec<String> {
+    spend_group(p, id)
+        .into_iter()
+        .map(|m| match p.index.beats.iter().find(|b| b.id == m) {
+            Some(b) => crate::exec::cadence::spend_key(b, member),
+            None => m.to_string(),
+        })
+        .collect()
+}
+
 /// Spend the `once: run` (when `run`) and `once: user` of every beat a
-/// presentation of `id` spends ([`spend_group`]), and remember who spent a
-/// `share` key.
-pub fn spend_shared(p: &ExecProject, w: &mut World, id: &str, run: bool) {
-    for m in spend_group(p, id) {
+/// presentation of `id` (for `member`) spends ([`spend_keys`]), and
+/// remember who spent a `share` key.
+pub fn spend_shared(p: &ExecProject, w: &mut World, id: &str, member: Option<&str>, run: bool) {
+    for key in spend_keys(p, id, member) {
         if run {
-            w.spent_run.insert(m.to_string());
+            w.spent_run.insert(key.clone());
         }
-        w.spent_user.insert(m.to_string());
+        w.spent_user.insert(key);
     }
     if let Some(key) = share_of(p, id) {
         w.share_spent_by.insert(key.to_string(), id.to_string());
@@ -154,27 +167,32 @@ pub fn present(
         BeatKind::Scene => m,
         BeatKind::Bundle => m.with_bundle_beat(&beat.id),
     };
+    m.driver_mut().premises = super::producers::Premises::of(p, w, &beat.document);
     let result = m.run();
     let outcome = Walked::of(m);
     absorb(w, &outcome);
+    let made = super::producers::decisions_of(&beat.document, w.step, &outcome.transcript);
+    w.decisions.extend(made);
     match beat.kind {
         BeatKind::Scene | BeatKind::Bundle => {
             w.visited.insert(beat.id.clone());
-            spend_shared(p, w, &beat.id, true);
-            spend_at_clock(p, w, &beat.id);
-            crate::exec::cadence::spend_season(p, w, &beat.id);
+            spend_shared(p, w, &beat.id, member, true);
+            spend_at_clock(p, w, &beat.id, member);
+            crate::exec::cadence::spend_season(p, w, &beat.id, member);
         }
         // dsl 0.22.0 §7: a completed first read sets the user-tier
         // `everRead` beside the runner's run-tier `read`; never reset. dsl
         // 0.25.0 §2: a shared entry's read spends its key's other beats.
+        // dsl 0.28.0 (T1-6): a `for` entry is read per member.
         BeatKind::Entry => {
-            if w.state.get(&format!("entry.{}.read", beat.id)) == Some(&Value::Bool(true)) {
+            let read = crate::exec::cadence::entry_read_flag(beat, member);
+            if w.state.get(&read) == Some(&Value::Bool(true)) {
                 w.state.insert(ever_read_path(&beat.id), Value::Bool(true));
-                if beat.share.is_some() {
-                    spend_shared(p, w, &beat.id, true);
+                if beat.share.is_some() || beat.for_kind.is_some() {
+                    spend_shared(p, w, &beat.id, member, true);
                 }
-                spend_at_clock(p, w, &beat.id);
-                crate::exec::cadence::spend_season(p, w, &beat.id);
+                spend_at_clock(p, w, &beat.id, member);
+                crate::exec::cadence::spend_season(p, w, &beat.id, member);
             }
         }
     }

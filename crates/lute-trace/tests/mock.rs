@@ -227,7 +227,7 @@ fn derived_relation_fact_is_a_legal_mock() {
 fn reserved_relation_fact_is_a_legal_mock() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                 entities:\n  character: { members: [halsin] }\n\
-                relations:\n  flagged: { args: [character], reserved: true }\n\
+                relations:\n  flagged: { args: [character], tier: run, reserved: true }\n\
                 ---\n## Shot 1.\n@narrator: hi\n";
     let (folded, doc) = folded_and_doc(text, "reserved-fact", Path::new("."));
     let mocks = MockSet {
@@ -302,9 +302,14 @@ fn parse_mock_yaml_reads_all_four_surfaces() {
 }
 
 #[test]
-fn parse_mock_yaml_reads_accept_and_accepts_keys() {
-    let mocks = parse_mock_yaml("accept:\n  - rescueHalsin\n").expect("valid mock yaml");
-    assert_eq!(mocks.accepts, vec!["rescueHalsin".to_string()]);
+fn parse_mock_yaml_reads_accepts_and_refuses_the_old_accept_key() {
+    let err = parse_mock_yaml("accept:\n  - rescueHalsin\n").unwrap_err();
+    assert_eq!(err.code, "E-TRACE-MOCK-PARSE", "{err:?}");
+    assert!(
+        err.message.contains("did you mean `accepts`"),
+        "{}",
+        err.message
+    );
     let mocks =
         parse_mock_yaml("accepts:\n  - rescueHalsin\n  - anotherQuest\n").expect("valid mock yaml");
     assert_eq!(
@@ -745,7 +750,7 @@ fn parse_mock_yaml_offers_the_nearest_legal_key() {
 #[test]
 fn every_legal_mock_key_still_parses() {
     let yaml = "file: x.lute\nstate:\n  run.a: 1\nfacts:\n  - \"f(a)\"\n\
-                choose:\n  h: a\nevents:\n  - e\naccept:\n  - q\n";
+                choose:\n  h: a\nevents:\n  - e\naccepts:\n  - q\n";
     let m = parse_mock_yaml(yaml).expect("every legal key parses");
     assert_eq!(m.state.len(), 1);
     assert_eq!(m.facts, vec!["f(a)".to_string()]);
@@ -755,8 +760,6 @@ fn every_legal_mock_key_still_parses() {
     );
     assert_eq!(m.events, vec!["e".to_string()]);
     assert_eq!(m.accepts, vec!["q".to_string()]);
-    // `accepts` is the other spelling of the same key and is legal too.
-    parse_mock_yaml("accepts:\n  - q\n").expect("`accepts:` is legal");
 }
 
 /// dsl 0.22.0 §3: `quests:` / `entriesRead:` are save-history seeds, carried

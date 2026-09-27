@@ -49,6 +49,7 @@ fn plugin_with_directive(id: &str, dname: &str) -> LoadedPlugin {
         occasions: vec![],
         lints: vec![],
         cast: vec![],
+        sites: Default::default(),
     }
 }
 
@@ -650,12 +651,37 @@ fn assemble_rejects_reserved_builtin_event_name() {
     );
 }
 
+/// dsl 0.28.0 §1 (T1-11): a plugin directive named like a core statement
+/// (`use`, `set`, `assert`, `retract`, `accept`, `body`), a core block tag
+/// (`match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`,
+/// and the quest surface `on`/`quest`/`objective`) or a `lute.core`
+/// directive (`end`, `mark`, `bg`) used to load silently while content kept
+/// reading the core one. Each is `E-PLUGIN-RESERVED-NAME` saying what the
+/// name already is, and the directive is not merged.
 #[test]
-fn assemble_rejects_reserved_quest_surface_tags_as_plugin_directive_names() {
-    // dsl Appendix C (0.2.0): "the tags `on`, `quest`, `objective` become
-    // reserved ... a scene that used them as plugin directive/attr names ...
-    // is the only theoretical conflict, surfaced at assembly time."
-    for reserved in ["on", "quest", "objective"] {
+fn assemble_rejects_core_names_as_plugin_directive_names() {
+    for (reserved, says) in [
+        ("use", "`use` is a core statement"),
+        ("set", "`set` is a core statement"),
+        ("assert", "a core statement"),
+        ("retract", "a core statement"),
+        ("accept", "a core statement"),
+        ("body", "a core statement"),
+        ("match", "`match` is a core block tag"),
+        ("branch", "a core block tag"),
+        ("hub", "a core block tag"),
+        ("choice", "a core block tag"),
+        ("when", "a core block tag"),
+        ("otherwise", "a core block tag"),
+        ("entry", "a core block tag"),
+        ("beat", "a core block tag"),
+        ("on", "a core block tag"),
+        ("quest", "a core block tag"),
+        ("objective", "a core block tag"),
+        ("end", "`end` is a core directive (`::end`)"),
+        ("mark", "a core directive"),
+        ("bg", "a core directive"),
+    ] {
         let reg = InstalledPlugins {
             by_id: BTreeMap::from([(
                 "arcia.minigame".to_string(),
@@ -676,18 +702,121 @@ fn assemble_rejects_reserved_quest_surface_tags_as_plugin_directive_names() {
             },
         ];
         let (snap, errs) = assemble_snapshot(&active, &reg);
+        assert_eq!(errs.len(), 1, "{reserved}: {errs:?}");
+        assert_eq!(errs[0].code(), "E-PLUGIN-RESERVED-NAME", "{reserved}");
+        let msg = errs[0].to_string();
+        assert!(msg.contains(says), "{reserved}: {msg}");
         assert!(
-            errs.iter().any(|e| matches!(
-                e,
-                lute_manifest::assemble::AssembleError::ReservedName { id, .. } if id == reserved
-            )),
-            "reserved quest surface tag `{reserved}` as a plugin directive name must be ReservedName, got {errs:?}"
+            msg.contains("cannot name a plugin directive"),
+            "{reserved}: {msg}"
         );
-        assert!(
-            snap.directive(reserved).is_none(),
-            "reserved directive `{reserved}` must not be merged into the snapshot"
+        let core_owned = ["end", "mark", "bg"].contains(&reserved);
+        assert_eq!(
+            snap.directive(reserved).is_some(),
+            core_owned,
+            "reserved directive `{reserved}` must not be merged (a core one stays core's)"
         );
+        if core_owned {
+            assert_eq!(snap.directive_owners[reserved], "lute.core");
+        }
     }
+}
+
+/// T1-11 / audit#32: the refusal points at the plugin file and line, and an
+/// occasion named like a lifecycle event is refused too (still merged, so the
+/// beats answering it are not unknown besides).
+#[test]
+fn reserved_plugin_names_point_at_their_file_and_line() {
+    let root = std::env::temp_dir().join(format!("lute_reserved_site_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let pkg = root.join("p");
+    std::fs::create_dir_all(pkg.join("directives")).unwrap();
+    std::fs::create_dir_all(pkg.join("occasions")).unwrap();
+    std::fs::write(
+        pkg.join("plugin.yaml"),
+        "id: p\nversion: 0.1.0\nkind: capability\n\
+         exports: { directives: directives/, occasions: occasions/ }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        pkg.join("directives/d.yaml"),
+        "directives:\n  - name: give\n  - name: use\n    attrs: [ { name: item, type: string } ]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        pkg.join("occasions/o.yaml"),
+        "occasions:\n  talk: {}\n  questComplete: {}\n",
+    )
+    .unwrap();
+    let (reg, lerrs) = lute_manifest::loader::load_plugins_dir(&root);
+    assert!(lerrs.is_empty(), "{lerrs:?}");
+    let active = vec![ActivePlugin {
+        id: "p".into(),
+        options: BTreeMap::new(),
+    }];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    let msgs: Vec<String> = errs.iter().map(ToString::to_string).collect();
+    assert_eq!(msgs.len(), 2, "{msgs:?}");
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("d.yaml:3:11: plugin `p`: `use` is a core statement")),
+        "{msgs:?}"
+    );
+    assert!(
+        msgs.iter().any(|m| m.contains(
+            "o.yaml:3:3: plugin `p`: `questComplete` is an engine \
+             lifecycle event"
+        )),
+        "{msgs:?}"
+    );
+    assert!(snap.directive("give").is_some() && snap.directive("use").is_none());
+    assert!(snap.occasions.contains_key("questComplete"));
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A cast id two plugins declare names both files and lines, anchored at the
+/// later plugin's declaration; the first plugin's member is kept.
+#[test]
+fn cross_plugin_duplicate_names_both_files() {
+    let root = std::env::temp_dir().join(format!("lute_dup_across_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for (id, name) in [("east", "Captain Orla"), ("isles", "Orla Again")] {
+        let pkg = root.join(id);
+        std::fs::create_dir_all(pkg.join("cast")).unwrap();
+        std::fs::write(
+            pkg.join("plugin.yaml"),
+            format!("id: {id}\nversion: 0.1.0\nkind: capability\nexports: {{ cast: cast/ }}\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            pkg.join("cast/c.yaml"),
+            format!("cast:\n  {id}Guide: {{ name: Guide }}\n  orla: {{ name: {name} }}\n"),
+        )
+        .unwrap();
+    }
+    let (reg, lerrs) = lute_manifest::loader::load_plugins_dir(&root);
+    assert!(lerrs.is_empty(), "{lerrs:?}");
+    let active: Vec<ActivePlugin> = ["east", "isles"]
+        .map(|id| ActivePlugin {
+            id: id.into(),
+            options: BTreeMap::new(),
+        })
+        .into();
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    let msgs: Vec<String> = errs.iter().map(ToString::to_string).collect();
+    let [msg] = msgs.as_slice() else {
+        panic!("expected one duplicate, got {msgs:?}");
+    };
+    let later = root.join("isles/cast/c.yaml").display().to_string();
+    let first = root.join("east/cast/c.yaml").display().to_string();
+    assert!(
+        msg.starts_with(&format!(
+            "{later}:3:3: cast `orla` is declared by both `east` (at {first}:3) and `isles`"
+        )),
+        "{msg}"
+    );
+    assert_eq!(snap.cast["orla"].name.as_deref(), Some("Captain Orla"));
+    std::fs::remove_dir_all(&root).ok();
 }
 
 /// A plugin directive whose lone attr is named `attr_name` (instead of the
@@ -1040,7 +1169,7 @@ fn assemble_rejects_cross_plugin_reward_kind_dup() {
     assert!(
         errs.iter().any(|e| matches!(
             e,
-            lute_manifest::assemble::AssembleError::DuplicateAcrossPlugins { kind, id, first, second }
+            lute_manifest::assemble::AssembleError::DuplicateAcrossPlugins { kind, id, first, second, .. }
                 if kind == "rewardKind" && id == "SHARD" && first == "plug.a" && second == "plug.b"
         )),
         "cross-plugin dup rewardKind must be DuplicateAcrossPlugins{{kind:\"rewardKind\"}} with owner attribution, got {errs:?}"
@@ -1289,7 +1418,7 @@ fn assemble_rejects_cross_plugin_occasion_dup() {
     assert!(
         errs.iter().any(|e| matches!(
             e,
-            lute_manifest::assemble::AssembleError::DuplicateAcrossPlugins { kind, id, first, second }
+            lute_manifest::assemble::AssembleError::DuplicateAcrossPlugins { kind, id, first, second, .. }
                 if kind == "occasion" && id == "talk" && first == "plug.a" && second == "plug.b"
         )),
         "cross-plugin dup occasion must be DuplicateAcrossPlugins with owner attribution: {errs:?}"

@@ -66,7 +66,7 @@ impl GroundFact {
             .map(|a| match &a.term {
                 FactTerm::Ident(id) => Some(id.clone()),
                 FactTerm::Bool(b) => Some(b.to_string()),
-                FactTerm::Wildcard | FactTerm::Param(_) => None,
+                FactTerm::Wildcard | FactTerm::Param(_) | FactTerm::Target => None,
             })
             .collect::<Option<Vec<_>>>()?;
         Some(GroundFact {
@@ -104,7 +104,7 @@ impl QueryPattern {
                 .map(|a| match a.term {
                     FactTerm::Ident(id) => Some(id),
                     FactTerm::Bool(b) => Some(b.to_string()),
-                    FactTerm::Wildcard | FactTerm::Param(_) => None,
+                    FactTerm::Wildcard | FactTerm::Param(_) | FactTerm::Target => None,
                 })
                 .collect(),
         })
@@ -124,7 +124,7 @@ impl QueryPattern {
                 .map(|a| match &a.term {
                     FactTerm::Ident(id) => Some(id.clone()),
                     FactTerm::Bool(b) => Some(b.to_string()),
-                    FactTerm::Wildcard | FactTerm::Param(_) => None,
+                    FactTerm::Wildcard | FactTerm::Param(_) | FactTerm::Target => None,
                 })
                 .collect(),
         })
@@ -233,6 +233,9 @@ pub struct RootVocab {
     incomplete: bool,
     /// dsl 0.24 T3-6: relations heading a rule that failed to parse — their
     /// derivation is unknown, so they are unbounded (no verdict cascades).
+    /// Also each relation the body of a template asserts when a `<beat
+    /// use>` of it was refused (a bad argument): that use is not expanded,
+    /// so what it would have asserted is unknown.
     unparsed_heads: BTreeSet<String>,
     /// dsl 0.27.0 §4: the directives declaring fact effects, by tag
     /// ([`RelVocab::effect_directives`], unioned).
@@ -313,11 +316,38 @@ impl RootVocab {
 
     /// seven F3 (dsl 0.23.1): mark the root incomplete when any of `docs`
     /// has a frontmatter that does not parse (`E-META-PARSE` —
-    /// [`crate::meta::frontmatter_parses`]). Call before [`MaySet::build`].
+    /// [`crate::meta::frontmatter_parses`]). And a `<beat use>` refused at
+    /// its use is not expanded: every relation its template's body asserts
+    /// is unbounded, so nothing reading one is called impossible for want
+    /// of the refused use (its argument error is the one report). Call
+    /// before [`MaySet::build`].
     pub fn note_unreadable_documents(&mut self, docs: &[(PathBuf, lute_syntax::ast::Document)]) {
         self.incomplete |= docs
             .iter()
             .any(|(_, d)| !crate::meta::frontmatter_parses(&d.meta));
+        let refused: BTreeSet<&str> = docs
+            .iter()
+            .flat_map(|(_, d)| &d.beats)
+            .filter_map(|b| b.template.as_ref().filter(|t| t.failed))
+            .map(|t| t.name.as_str())
+            .collect();
+        if refused.is_empty() {
+            return;
+        }
+        for (_, d) in docs {
+            let name = serde_yaml::from_str::<serde_yaml::Value>(&d.meta.raw_yaml)
+                .ok()
+                .and_then(|v| v.get("component")?.as_str().map(str::to_string));
+            if !name.is_some_and(|n| refused.contains(n.as_str())) {
+                continue;
+            }
+            let mut asserts = Vec::new();
+            for shot in &d.shots {
+                crate::connectivity::collect_asserts(&shot.body, &mut asserts);
+            }
+            self.unparsed_heads
+                .extend(asserts.iter().map(|a| a.pattern.relation.clone()));
+        }
     }
 
     /// The member universe a domain / predicate name denotes. `bool` is the

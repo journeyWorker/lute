@@ -20,8 +20,10 @@ use lute_check::gates::E_OCCASION_GATE;
 pub enum Closed {
     /// The project's `terminal:` holds (its raw condition).
     Terminal(String),
-    /// The occasion's `raisedWhen` gate is false: its raw condition and
-    /// the reads it is false over ([`Machine::false_reads`], HW27-10).
+    /// The occasion's `raisedWhen` gate is false: its condition as the
+    /// author wrote it (`@stageReleased`, not the expansion) and the reads
+    /// it is false over — each false conjunct's, so a negated fact that
+    /// holds is named too ([`Machine::false_conjuncts`]).
     Gate { raw: String, reads: Vec<GuardRead> },
     /// The gate or the terminal condition could not be decided: what was
     /// unknown.
@@ -92,25 +94,44 @@ pub fn closed_in<D: Driver>(
     target: Option<&str>,
 ) -> Option<Closed> {
     let gate = p.index.gates.iter().find(|g| g.occasion == occasion);
-    if p.index.terminal.is_none() && gate.is_none() {
+    // dsl 0.28.0 (T2-9): an `outsideRun` occasion (a title screen, a
+    // gallery) is raised after the game is over too.
+    let terminal = p
+        .index
+        .terminal
+        .as_ref()
+        .filter(|_| !p.index.outside_run.iter().any(|o| o == occasion));
+    if terminal.is_none() && gate.is_none() {
         return None;
     }
     let member = target.map(|t| member(p, occasion, t));
     eval.bind_occasion_target(member.as_deref());
-    if let Some(t) = &p.index.terminal {
+    if let Some(t) = terminal {
         match decide(eval, &t.raw) {
-            Ok(true) => return Some(Closed::Terminal(t.raw.clone())),
+            Ok(true) => return Some(Closed::Terminal(t.shown().to_string())),
             Ok(false) => {}
             Err(unknown) => return Some(Closed::Unknown(unknown)),
         }
     }
-    let raw = &gate?.raised_when.raw;
-    match decide(eval, raw) {
+    let gate = &gate?.raised_when;
+    match decide(eval, &gate.raw) {
         Ok(true) => None,
-        Ok(false) => Some(Closed::Gate {
-            raw: raw.clone(),
-            reads: eval.false_reads(raw),
-        }),
+        Ok(false) => {
+            let mut reads: Vec<GuardRead> = Vec::new();
+            for r in eval
+                .false_conjuncts(&gate.raw)
+                .into_iter()
+                .flat_map(|(_, r)| r)
+            {
+                if !reads.contains(&r) {
+                    reads.push(r);
+                }
+            }
+            Some(Closed::Gate {
+                raw: gate.shown().to_string(),
+                reads,
+            })
+        }
         Err(unknown) => Some(Closed::Unknown(unknown)),
     }
 }
@@ -125,14 +146,29 @@ pub fn refusal(n: usize, occasion: &str, target: Option<&str>, why: &Closed) -> 
     match why {
         Closed::Terminal(t) => PlayHalt::Error(format!(
             "step {n}: {E_OCCASION_GATE}: the game is over — `terminal: {t}` holds, so the engine \
-             raises no occasion ({raised} included); start a new run (`newRun: true`) to play on"
+             raises no occasion ({raised} included); {}",
+            play_on(t)
         )),
-        Closed::Gate { raw, reads } => PlayHalt::Error(format!(
-            "step {n}: {E_OCCASION_GATE}: the engine raises {raised} only when `{raw}` (its \
-             `raisedWhen`), which is false here{} — make it hold first (an `engine:` write, an \
-             earlier step), or drop the step",
-            Closed::reads_text(reads)
-        )),
+        Closed::Gate { raw, reads } => {
+            // A payload read is changed by this step's own `payload:`,
+            // anything else before the raise.
+            let payload = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
+            let by_payload =
+                |r: &GuardRead| matches!(r, GuardRead::Path(p, _) if p.starts_with(&payload));
+            let fix = if !reads.is_empty() && reads.iter().all(by_payload) {
+                "raise it with a payload that satisfies it (`payload:` on this step)"
+            } else if reads.iter().any(by_payload) {
+                "make it hold first (an `engine:` write, an earlier step, or `payload:` on this \
+                 step)"
+            } else {
+                "make it hold first (an `engine:` write, an earlier step)"
+            };
+            PlayHalt::Error(format!(
+                "step {n}: {E_OCCASION_GATE}: the engine raises {raised} only when `{raw}` (its \
+                 `raisedWhen`), which is false here{} — {fix}, or drop the step",
+                Closed::reads_text(reads)
+            ))
+        }
         Closed::Unknown(u) => PlayHalt::Incomplete(format!(
             "step {n}: whether the engine may raise {raised} is undecided: {u}"
         )),
@@ -143,9 +179,22 @@ pub fn refusal(n: usize, occasion: &str, target: Option<&str>, why: &Closed) -> 
 pub fn advance_after_terminal(n: usize, terminal: &str) -> PlayHalt {
     PlayHalt::Error(format!(
         "step {n}: {E_OCCASION_GATE}: `advance:` after the game is over — `terminal: {terminal}` \
-         holds, so the engine raises no occasion and the clock does not move on; start a new run \
-         (`newRun: true`) to play on"
+         holds, so the engine raises no occasion and the clock does not move on; {}",
+        play_on(terminal)
     ))
+}
+
+/// dsl 0.28.0 (T3-19): what a script does once `terminal` holds — a new
+/// run, unless the condition reads state a new run keeps
+/// ([`lute_check::gates::persistent_reads`]), when a new run does not help.
+fn play_on(terminal: &str) -> String {
+    let unknown = |_: &str| None;
+    match lute_check::gates::persistent_reads(terminal, &unknown, &unknown).first() {
+        Some(read) => {
+            format!("it still holds after a new run: it reads `{read}`, which a new run keeps")
+        }
+        None => "start a new run (`newRun: true`) to play on".to_string(),
+    }
 }
 
 /// A raise the clock did not make during an `advance:` because the seam

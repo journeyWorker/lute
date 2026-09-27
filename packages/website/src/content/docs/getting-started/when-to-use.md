@@ -48,8 +48,11 @@ that trade-off — read it before you invest, not after.
 
 - **You need general-purpose scripting.** Lute is deliberately **total, not
   Turing-complete**: every scenario provably terminates, which is what lets the
-  checker analyze paths at all. Arbitrary loops, open computation, and
-  general logic belong in your engine, not in `.lute`.
+  checker analyze paths at all. Player-driven loops are covered: a
+  [`<hub>`](/language/choices-and-hubs/#revisit-hubs) asks again until the player
+  leaves, and a scene answers its occasion each time the engine raises it. Loops
+  the script runs on its own, open computation, and general logic belong in your
+  engine, not in `.lute`.
 
 - **Your project is tiny and strictly linear.** A short, single-path visual novel
   with no branching gains little from reachability and envelope analysis. The
@@ -70,4 +73,6 @@ first, or needs open-ended computation, reach for a tool aimed at that instead.
 Still unsure? Walk the [first scene](/getting-started/first-scene/) and the
 [investigation tutorial](/getting-started/build-an-investigation/) — a couple of
 hours there tells you more than any checklist. Then pick a
-[learning path](/getting-started/learning-paths/) for your role.
+[learning path](/getting-started/learning-paths/) for your role. If you write in
+Ink or Yarn Spinner today, [Coming from Ink or Yarn](/guides/coming-from-ink-yarn/)
+maps what you know onto Lute.

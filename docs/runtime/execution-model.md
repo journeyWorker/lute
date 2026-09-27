@@ -55,7 +55,7 @@ One artifact is produced per `.lute` document (`lute compile <file>` →
   **not** appear here — it is part of `capabilityVersion` instead. None of this
   changes the artifact *shape*, and an engine that ignores `enums` is unaffected;
 - a flat, ordered **`commands: Command[]`** stream — the executable body;
-- an advisory **`prereqEdges`** graph (this document's raw `after` formulas;
+- an advisory **`prereqEdges`** graph (this document's raw `after` / quest `follows` formulas;
   connectivity T13 — see [quest-lifecycle.md](./quest-lifecycle.md) for how
   cross-document reachability is out of scope for a single artifact).
 

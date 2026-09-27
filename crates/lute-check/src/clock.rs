@@ -130,8 +130,15 @@ fn key_problems(value: &serde_yaml::Value) -> Vec<(String, String)> {
             } else {
                 format!("{parent}.{name}")
             };
-            let hint = lute_manifest::suggest::nearest(&name, known.iter().copied(), 2)
-                .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+            let hint = match (parent, name.as_str()) {
+                // dsl 0.28.0 (T3-44): `days:` is the clock's own shorthand.
+                ("last", "days") => " — `days: N` is a key of the clock itself, short for \
+                                     `last: { day: N }`; write `last: { day: N }` here, or \
+                                     `days: N` beside `last:` instead of it"
+                    .to_string(),
+                _ => lute_manifest::suggest::nearest(&name, known.iter().copied(), 2)
+                    .map_or_else(String::new, |near| format!(" — did you mean `{near}`?")),
+            };
             out.push((
                 dotted.clone(),
                 format!(
@@ -149,6 +156,27 @@ fn key_problems(value: &serde_yaml::Value) -> Vec<(String, String)> {
                 ),
             ));
         }
+    }
+    // dsl 0.28.0 (T3-64): `week.labels` is a list, unlike an enum's or an
+    // entity kind's `labels:` map — say so instead of the YAML library.
+    let week_labels = clock
+        .get("week")
+        .and_then(|w| w.as_mapping())
+        .and_then(|w| w.get("labels"));
+    if let Some(labels) = week_labels.filter(|l| !l.is_sequence()) {
+        let shape = if labels.is_mapping() {
+            "a map"
+        } else {
+            "not a list"
+        };
+        out.push((
+            "week.labels".to_string(),
+            format!(
+                "`week.labels` is {shape}, but it is a list: one label per weekday, in weekday \
+                 order from weekday 0, as `labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun]` (an \
+                 enum's or entity kind's `labels:` is the map, member → label)"
+            ),
+        ));
     }
     let whole = |v: &serde_yaml::Value, min: u64| {
         v.as_u64().is_some_and(|n| n >= min && n <= u32::MAX as u64)
@@ -186,7 +214,7 @@ fn key_problems(value: &serde_yaml::Value) -> Vec<(String, String)> {
 /// scan of the clock's block (flow or block style), each segment searched
 /// after the previous one.
 fn clock_key_span(meta: &lute_syntax::ast::Meta, clock_span: Span, dotted: &str) -> Span {
-    let authored = crate::sequence::authored_yaml(&meta.raw_yaml);
+    let authored = crate::chapters::authored_yaml(&meta.raw_yaml);
     if clock_span == meta.span {
         return clock_span;
     }
@@ -329,6 +357,16 @@ pub fn clock_problems(
                     clock.day
                 ));
             }
+            // dsl 0.28.0 (T3-44): the clock counts from day 1.
+            if let Some(Literal::Num(d)) = &decl.default {
+                if *d < 1.0 || d.fract() != 0.0 {
+                    out.push(format!(
+                        "`day: {}` starts at {d} (its default) — the clock counts whole days \
+                         from day 1; give it `default: 1`",
+                        clock.day
+                    ));
+                }
+            }
         }
     }
     if let Some(slot) = &clock.slot {
@@ -371,16 +409,29 @@ pub fn clock_problems(
     ];
     for (moment, raise) in named {
         let Some(raise) = raise else { continue };
-        if !occasions.is_empty() && !occasions.contains_key(raise) {
-            let hint =
-                lute_manifest::suggest::nearest(raise, occasions.keys().map(String::as_str), 2)
-                    .map(|n| format!(" — did you mean `{n}`?"))
-                    .unwrap_or_default();
-            let key = match &clock.raise {
-                Some(lute_manifest::clock::ClockRaise::Slot(_)) => "raise".to_string(),
-                _ => format!("raise.{moment}"),
-            };
-            out.push(format!("`{key}: {raise}` is not a declared occasion{hint}"));
+        let key = match &clock.raise {
+            Some(lute_manifest::clock::ClockRaise::Slot(_)) => "raise".to_string(),
+            _ => format!("raise.{moment}"),
+        };
+        match occasions.get(raise) {
+            None if !occasions.is_empty() => {
+                let hint =
+                    lute_manifest::suggest::nearest(raise, occasions.keys().map(String::as_str), 2)
+                        .map(|n| format!(" — did you mean `{n}`?"))
+                        .unwrap_or_default();
+                out.push(format!("`{key}: {raise}` is not a declared occasion{hint}"));
+            }
+            // A clock raise hands over nothing: its beats would read an
+            // unset `occasion.payload.*`.
+            Some(decl) if !decl.payload.is_empty() => {
+                let fields: Vec<String> = decl.payload.keys().map(|f| format!("`{f}`")).collect();
+                out.push(format!(
+                    "`{key}: {raise}` names an occasion with a payload ({}), and a clock raise \
+                     carries none — raise `{raise}` from the engine, or drop its `payload:`",
+                    fields.join(", ")
+                ));
+            }
+            _ => {}
         }
     }
     // dsl 0.27.0 §4: a finite clock starts where the day/slot defaults put
@@ -404,13 +455,14 @@ pub fn clock_problems(
 }
 
 /// The reserved read-only `clock.*` decls a clock implies: `clock.index`
-/// (number) always, `clock.weekday` (number, `0..length-1` — see
-/// [`weekday_range`]) with a `week:`, and `clock.weekdayLabel` (the enum of
-/// the week's labels, so a `<match>` over it is exhaustive and typo-checked)
-/// with week labels. `owner: engine`, the
-/// day path's tier, and a default computed from the `day`/`slot` defaults
-/// when both have one — so a read is exactly as definitely-assigned as the
-/// clock paths themselves.
+/// and `clock.day` (numbers) always, `clock.slot` (the enum of `slots`) on a
+/// clock with slots, `clock.weekday` (number, `0..length-1` — see
+/// [`weekday_range`]) with a `week:`, `clock.weekdayLabel` (the enum of the
+/// week's labels, so a `<match>` over it is exhaustive and typo-checked)
+/// with week labels, and `clock.ended` (bool, default `false`) on a finite
+/// clock. `owner: engine`, the day path's tier, and a default computed from
+/// the `day`/`slot` defaults when both have one — so a read is exactly as
+/// definitely-assigned as the clock paths themselves.
 pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, StateDecl)> {
     let day = schema.decls.get(&clock.day);
     let namespace = day.map_or(Namespace::Run, |d| d.namespace);
@@ -429,30 +481,65 @@ pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, S
     clock
         .reserved_paths()
         .into_iter()
-        .map(|(path, number)| {
-            let default = values.get(path).map(|v| match v {
-                lute_manifest::clock::ClockValue::Num(n) => Literal::Num(*n as f64),
-                lute_manifest::clock::ClockValue::Str(s) => Literal::Str(s.clone()),
-            });
+        .map(|(path, ty)| {
+            use lute_manifest::clock::ClockPathType;
+            let default = match ty {
+                ClockPathType::Bool => Some(Literal::Bool(false)),
+                _ => values.get(path).map(|v| match v {
+                    lute_manifest::clock::ClockValue::Num(n) => Literal::Num(*n as f64),
+                    lute_manifest::clock::ClockValue::Str(s) => Literal::Str(s.clone()),
+                }),
+            };
+            let ty = match ty {
+                ClockPathType::Number => Type::Number,
+                ClockPathType::Bool => Type::Bool,
+                ClockPathType::Slot => Type::Enum(clock.slots.clone()),
+                ClockPathType::WeekdayLabel => Type::Enum(
+                    clock
+                        .week
+                        .as_ref()
+                        .map(|w| w.labels.clone())
+                        .unwrap_or_default(),
+                ),
+            };
             (
                 path.to_string(),
                 StateDecl {
-                    ty: if number {
-                        Type::Number
-                    } else {
-                        Type::Enum(
-                            clock
-                                .week
-                                .as_ref()
-                                .map(|w| w.labels.clone())
-                                .unwrap_or_default(),
-                        )
-                    },
+                    ty,
                     default,
                     namespace,
                     owner: Some(Owner::Engine),
                 },
             )
+        })
+        .collect()
+}
+
+/// The clock's enum paths as domains a type can name — `{ domain:
+/// clock.slot }` (the clock's slots) and `{ domain: clock.weekdayLabel }`
+/// (the week's labels) — so a component param, a directive attr or a
+/// `state:` path that carries one of them is member-checked against the
+/// clock instead of a copied list.
+pub fn clock_domains(clock: &ClockDecl) -> Vec<(String, Domain)> {
+    use lute_manifest::clock::ClockPathType;
+    clock
+        .reserved_paths()
+        .into_iter()
+        .filter_map(|(path, ty)| {
+            let members = match ty {
+                ClockPathType::Slot => clock.slots.clone(),
+                ClockPathType::WeekdayLabel => clock.week.as_ref()?.labels.clone(),
+                ClockPathType::Number | ClockPathType::Bool => return None,
+            };
+            (!members.is_empty()).then(|| {
+                (
+                    path.to_string(),
+                    Domain {
+                        members,
+                        ..Domain::default()
+                    },
+                )
+            })
         })
         .collect()
 }
@@ -467,18 +554,63 @@ pub fn weekday_range(clock: &ClockDecl) -> Option<(i64, i64)> {
 /// The whole-number ranges a clock gives its paths
 /// ([`StateSchema::int_ranges`]): `clock.weekday` with a `week:` and — on a
 /// finite clock (dsl 0.27.0 §4) — `clock.index` from where the clock starts
-/// to its last position, and the day path from its declared default (day 1
-/// when unknown) to the last day. The clock only moves forward, and a
-/// `newRun` starts it at the defaults, so a `when` needing a later position
-/// can never hold.
+/// to its last position, and the day path (and `clock.day`) from its
+/// declared default (day 1 when unknown) to the last day. The clock only
+/// moves forward, and a `newRun` starts it at the defaults, so a `when`
+/// needing a later position can never hold.
 pub fn int_ranges(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, (i64, i64))> {
     let mut out = Vec::new();
     if let Some(range) = weekday_range(clock) {
         out.push((lute_manifest::clock::CLOCK_WEEKDAY.to_string(), range));
     }
-    let Some(last) = clock.last_at() else {
+    let Some((first, last)) = finite_span(clock, schema) else {
         return out;
     };
+    out.push((
+        lute_manifest::clock::CLOCK_INDEX.to_string(),
+        (clock.index(first).max(0), clock.index(last)),
+    ));
+    out.push((clock.day.clone(), (first.day, last.day)));
+    out.push((
+        lute_manifest::clock::CLOCK_DAY.to_string(),
+        (first.day, last.day),
+    ));
+    out
+}
+
+/// dsl 0.28.0 (T3-40): the slot members a finite clock that starts and
+/// ends on the same day lets its slot path and `clock.slot` hold — its
+/// starting slot through its last one ([`StateSchema::clock_members`]).
+/// Empty for a clock that never ends, spans several days (every slot comes
+/// round on an earlier day) or counts whole days.
+pub fn slot_members(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, Vec<String>)> {
+    let (Some(slot), Some((first, last))) = (&clock.slot, finite_span(clock, schema)) else {
+        return Vec::new();
+    };
+    if first.day != last.day || (first.slot == 0 && last.slot + 1 == clock.slot_count()) {
+        return Vec::new();
+    }
+    let members = clock.slots[first.slot..=last.slot].to_vec();
+    vec![
+        (slot.clone(), members.clone()),
+        (lute_manifest::clock::CLOCK_SLOT.to_string(), members),
+    ]
+}
+
+/// A finite clock's first position ([`first_at`]) and last one — `None`
+/// for a clock that never ends or starts past its end.
+fn finite_span(
+    clock: &ClockDecl,
+    schema: &StateSchema,
+) -> Option<(lute_manifest::clock::ClockAt, lute_manifest::clock::ClockAt)> {
+    let last = clock.last_at()?;
+    let first = first_at(clock, schema);
+    (first <= last).then_some((first, last))
+}
+
+/// Where the clock starts: its paths' defaults, day 1 and the first slot
+/// when unknown.
+pub(crate) fn first_at(clock: &ClockDecl, schema: &StateSchema) -> lute_manifest::clock::ClockAt {
     let default = |path: &str| schema.decls.get(path).and_then(|d| d.default.as_ref());
     let first_day = match default(&clock.day) {
         Some(Literal::Num(d)) if d.fract() == 0.0 => *d as i64,
@@ -488,19 +620,22 @@ pub fn int_ranges(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, (i64,
         Some(Some(Literal::Str(s))) => clock.slot_index(s).unwrap_or(0),
         _ => 0,
     };
-    let first = lute_manifest::clock::ClockAt {
+    lute_manifest::clock::ClockAt {
         day: first_day,
         slot: first_slot,
-    };
-    if first > last {
-        return out;
     }
-    out.push((
-        lute_manifest::clock::CLOCK_INDEX.to_string(),
-        (clock.index(first).max(0), clock.index(last)),
-    ));
-    out.push((clock.day.clone(), (first_day, last.day)));
-    out
+}
+
+/// Why guard `raw` is provably false because of the clock: no position the
+/// clock can stand at satisfies it
+/// ([`crate::clock_positions::position_reason`]), else a read past a finite
+/// clock's end ([`end_reason`]).
+pub fn false_reason(
+    raw: &str,
+    defs: &crate::cel_expand::DefTable<'_>,
+    ctx: &crate::decide::DecideCtx<'_>,
+) -> Option<String> {
+    crate::clock_positions::position_reason(raw, defs, ctx).or_else(|| end_reason(ctx.schema, raw))
 }
 
 /// dsl 0.27.0 §4: why a guard reading a finite clock's paths can be
@@ -520,6 +655,13 @@ pub fn end_reason(schema: &StateSchema, raw: &str) -> Option<String> {
         .iter()
         .filter(|(path, _)| path.as_str() != lute_manifest::clock::CLOCK_WEEKDAY && names(path))
         .map(|(path, (a, b))| format!("`{path}` only ranges over {a}..{b}"))
+        .chain(
+            schema
+                .clock_members
+                .iter()
+                .filter(|(path, _)| names(path))
+                .map(|(path, ms)| slot_holds(path, ms)),
+        )
         .collect();
     (!reads.is_empty()).then(|| {
         format!(
@@ -527,6 +669,20 @@ pub fn end_reason(schema: &StateSchema, raw: &str) -> Option<String> {
             reads.join(" and ")
         )
     })
+}
+
+/// dsl 0.28.0 (T3-40): why a `<match>` arm on a finite clock's slot `path`
+/// can never match — the reason `E-ARM-DEAD` gives.
+pub fn slot_end_reason(schema: &StateSchema, path: &str) -> Option<String> {
+    let ms = schema.clock_members.get(path)?;
+    Some(format!(
+        "the clock ends at its last position, so {}",
+        slot_holds(path, ms)
+    ))
+}
+
+fn slot_holds(path: &str, members: &[String]) -> String {
+    format!("`{path}` only holds {}", members.join(", "))
 }
 
 /// `once: day` / `once: slot` / `once: week` (a scene's frontmatter, an

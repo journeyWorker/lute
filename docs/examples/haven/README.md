@@ -19,7 +19,7 @@ you want to know what is in the tree.
 | | count | |
 |---|---|---|
 | `scenes/` | 11 | episodes 1–11, one connected graph |
-| `quests/` | 6 | five with `after=`; `hold-the-spine.lute` deliberately without (listed as unanchored) — see "Deliberate imperfections" |
+| `quests/` | 6 | five with `follows=`; `hold-the-spine.lute` deliberately without (listed as unanchored) — see "Deliberate imperfections" |
 | `lore/` | 2 | `kind: lore` documents (dsl 0.19.0) — the purser's ledger as a `series:` bundle, and the ship's records; see "Lore entries" |
 | `components/` | 1 | the Purser's interjection, the only reuse construct in the language |
 | `tests/` | 32 | `*.test.yaml` scenario tests, run by `lute test` |
@@ -106,9 +106,9 @@ lute test docs/examples/haven --coverage    # 24 rows (5 branch/hub, 19 match);
 
 # The prerequisite graph: 11 scenes over 9 topological layers, and 19 edges —
 # 12 scene-to-scene, 5 from a scene to one of the five quests that declare
-# `after=`, and 2 quest-to-quest (`whoWakes` gates two siblings, one on
+# `follows=`, and 2 quest-to-quest (`whoWakes` precedes two siblings, one on
 # `active` and one on `completed`). After the edges, `holdTheSpine` — the one
-# quest without `after=` — is listed as unanchored.
+# quest without `follows=` — is listed as unanchored.
 lute scenario docs/examples/haven
 
 # Preview one scene. `trace` runs no Datalog fixpoint, so a guard over the
@@ -145,20 +145,20 @@ findings, and a reader who "fixes" one deletes the evidence.
    component body as a document. The arm stays because a one-armed component
    is not a component, and because it is the corpus's only example of the one
    document kind that cannot be tested (**T9.12**).
-2. **`quests/hold-the-spine.lute` — the one quest with no `after=`.** Its five
+2. **`quests/hold-the-spine.lute` — the one quest with no `follows=`.** Its five
    siblings all declare one; this one does not, and the file says so in a
    comment. What the omission costs, from `lute scenario docs/examples/haven`:
    the quest has no topological layer and no edge. The graph holds five quests,
-   not six, because `after=` is the only thing that puts a quest into it. It is
+   not six, because `follows=` is the only thing that puts a quest into it. It is
    no longer silently absent, though (dsl 0.21.0 §7a.5): the report lists it
-   after the edges, under ``unanchored (no `after` — available from the start
-   of play; no prerequisites in this graph):``, and `scenario reach
-   quest:holdTheSpine` answers ``Unanchored — a quest with no declared `after`
-   prerequisite: available from the start of play; …`` with `after: (none
+   after the edges, under ``unanchored (no `after` / `follows` — available from
+   the start of play; no prerequisites in this graph):``, and `scenario reach
+   quest:holdTheSpine` answers ``Unanchored — a quest with no declared `follows`
+   edge: available from the start of play; …`` with `follows: (none
    declared) — unanchored: this quest is in no prerequisite graph layer and on
    no edge; it is available from the start of play.` `scenario envelope
    quest:holdTheSpine` still degrades to the defaults-only `D` table plus a note
-   offering the project-resolved one if `after` were declared. The omission
+   offering the project-resolved one if `follows` were declared. The omission
    stays because it is the corpus's only worked example of what the
    connectivity layer does with a bare quest, and because it is honest about the
    story — the coupling can be held the moment somebody who can halt the shed is

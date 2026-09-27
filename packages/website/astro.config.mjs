@@ -83,9 +83,14 @@ export default defineConfig({
           translations: { ko: "진단 코드" },
         },
         {
+          slug: "reference/reserved-names",
+          label: "Reserved names",
+          translations: { ko: "예약된 이름" },
+        },
+        {
           label: "Guides",
           translations: { ko: "가이드" },
-          items: [{ slug: "guides/multi-author" }],
+          items: [{ slug: "guides/multi-author" }, { slug: "guides/coming-from-ink-yarn" }],
         },
         {
           label: "Language",

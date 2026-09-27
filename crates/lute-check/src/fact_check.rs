@@ -44,7 +44,7 @@ use crate::decide::{
 use crate::fact_env::{
     CountInterval, FactEnv, FactScope, GroundFact, HoldsVerdict, MustFact, Provenance, QueryPattern,
 };
-use crate::match_check::{infer_domain, subject_path, DomainInfo};
+use crate::match_check::{infer_domain, subject_path, CoverItem, DomainInfo, DomainValue};
 use crate::meta::StateSchema;
 pub use crate::reachability::E_ENTRY_UNREACHABLE;
 use crate::reachability::{
@@ -75,11 +75,23 @@ pub fn check_fact_guards(
     let params = BTreeMap::new();
     let g = Guards::new(path, folded, env, &params);
     let mut out = Vec::new();
+    // dsl 0.28.0: the members a kind or `for=` beat written at `at` runs for.
+    let members_at = |at: Span| {
+        folded
+            .env
+            .occasion_scopes
+            .members_at(at.byte_start, at.byte_end)
+    };
+    // dsl 0.28.0: the arms of a kind or `for=` beat's body that can match
+    // only members its `when` never holds for — pushed after its body walk.
+    let mut member_arms: Vec<Diagnostic> = Vec::new();
     // dsl 0.21.0 §5: a scene beat's `when` — evaluated when its occasion is
     // raised, before the scene runs; the must set there is the scene's entry
     // set (`crate::fact_must`).
     if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
+        let members = members_at(when.span);
         if let Some(v) = g.eval(when, None) {
+            let per_member = g.members_never(when, members);
             if v.newly_false() {
                 out.push(v.grade(diag(
                     crate::beats::E_BEAT_UNREACHABLE,
@@ -91,8 +103,22 @@ pub fn check_fact_guards(
                     ),
                     when.span,
                 )));
+            } else if let Some((why, graded)) = per_member.unreachable() {
+                out.push(graded.grade(diag(
+                    crate::beats::E_BEAT_UNREACHABLE,
+                    Severity::Error,
+                    crate::beats::beat_unreachable_message(
+                        &crate::beats::scene_beat_name(folded),
+                        when.raw.trim(),
+                        Some(&why),
+                    ),
+                    when.span,
+                )));
             } else {
                 g.push_guaranteed(&v, "`when` guard", when, &mut out);
+                for shot in &doc.shots {
+                    member_arms.extend(g.member_arms(doc, &shot.body, when, &per_member));
+                }
             }
         }
     }
@@ -104,23 +130,31 @@ pub fn check_fact_guards(
         g.walk(&quest.body, &mut out);
     }
     for entry in &doc.entries {
+        // dsl 0.28.0: over the entry's own environment.
+        let g = g.over(&folded.env_at(entry.span).state);
         if let Some(when) = &entry.when {
             if let Some(v) = g.eval(when, None) {
-                if v.newly_false() {
-                    out.push(v.grade(diag(
+                let per_member = g.members_never(when, members_at(entry.span));
+                let dead = if v.newly_false() {
+                    Some((v.dead_reasons(), &v))
+                } else {
+                    per_member.unreachable()
+                };
+                if let Some((why, graded)) = dead {
+                    out.push(graded.grade(diag(
                         E_ENTRY_UNREACHABLE,
                         Severity::Error,
                         format!(
                             "entry `{}` is never eligible: its `when` guard `{}` is provably false \
-                             — {} (dsl 0.20.0 §5)",
+                             — {why} (dsl 0.20.0 §5)",
                             entry.id,
                             when.raw.trim(),
-                            v.dead_reasons()
                         ),
                         when.span,
                     )));
                 } else {
                     g.push_guaranteed(&v, "`when` guard", when, &mut out);
+                    member_arms.extend(g.member_arms(doc, &entry.body, when, &per_member));
                 }
             }
         }
@@ -129,25 +163,38 @@ pub fn check_fact_guards(
     // dsl 0.23.0 §4: a bundle beat's `when` is a beat `when`.
     let doc_id = folded.typed.id.as_deref().unwrap_or("this document");
     for beat in &doc.beats {
+        let g = g.over(&folded.env_at(beat.span).state);
         if let Some(when) = &beat.when {
             if let Some(v) = g.eval(when, None) {
-                if v.newly_false() {
-                    out.push(v.grade(diag(
+                let per_member = g.members_never(when, members_at(beat.span));
+                let dead = if v.newly_false() {
+                    Some((v.dead_reasons(), &v))
+                } else {
+                    per_member.unreachable()
+                };
+                if let Some((why, graded)) = dead {
+                    out.push(graded.grade(diag(
                         crate::beats::E_BEAT_UNREACHABLE,
                         Severity::Error,
                         crate::beats::beat_unreachable_message(
                             &crate::bundles::bundle_beat_key(doc_id, &beat.id),
                             when.raw.trim(),
-                            Some(&v.dead_reasons()),
+                            Some(&why),
                         ),
                         when.span,
                     )));
                 } else {
                     g.push_guaranteed(&v, "`when` guard", when, &mut out);
+                    member_arms.extend(g.member_arms(doc, &beat.body, when, &per_member));
                 }
             }
         }
         g.walk(&beat.body, &mut out);
+    }
+    for d in member_arms {
+        if !out.iter().any(|x| x.code == d.code && x.span == d.span) {
+            out.push(d);
+        }
     }
     // dsl 0.27.0 §4: each beat judged under its occasion's gate and the
     // project's `!terminal`, with the fact envelope in scope.
@@ -213,6 +260,133 @@ pub fn check_fact_guards(
     out
 }
 
+/// dsl 0.28.0: in a kind or `for=` beat, a `<match on="occasion.target">`
+/// needs an arm only for the members the beat's `when` can hold for. With
+/// the fact envelope in scope, members the per-file check could not rule
+/// out may be: the match's `E-NONEXHAUSTIVE` in `diags` (the document's
+/// per-file report) is dropped once every member still uncovered is one of
+/// them, and names only the rest otherwise.
+pub fn reconcile_member_matches(
+    diags: &mut Vec<Diagnostic>,
+    path: &Path,
+    doc: &Document,
+    folded: &FoldedEnv,
+    env: &FactEnv,
+) {
+    const E_NONEXHAUSTIVE: &str = "E-NONEXHAUSTIVE";
+    if !diags.iter().any(|d| d.code == E_NONEXHAUSTIVE) {
+        return;
+    }
+    let params = BTreeMap::new();
+    let base = Guards::new(path, folded, env, &params);
+    // Each beat's `when`, element span and bodies.
+    let mut beats: Vec<(Option<&CelSlot>, Span, Vec<&[Node]>)> = Vec::new();
+    if let Some(b) = &folded.typed.beat {
+        let shots = doc.shots.iter().map(|s| s.body.as_slice()).collect();
+        beats.push((
+            b.when.as_ref(),
+            crate::beats::top_value_span(&doc.meta, "on"),
+            shots,
+        ));
+    }
+    beats.extend(
+        doc.entries
+            .iter()
+            .map(|e| (e.when.as_ref(), e.span, vec![e.body.as_slice()])),
+    );
+    beats.extend(
+        doc.beats
+            .iter()
+            .map(|b| (b.when.as_ref(), b.span, vec![b.body.as_slice()])),
+    );
+    for (when, at, bodies) in beats {
+        let Some(when) = when else {
+            continue;
+        };
+        let members = folded
+            .env
+            .occasion_scopes
+            .members_at(at.byte_start, at.byte_end);
+        let own = folded.env_at(at);
+        let g = base.over(&own.state);
+        let never = g.members_never(when, members).never();
+        if never.is_empty() {
+            continue;
+        }
+        let mut matches = Vec::new();
+        for body in bodies {
+            target_matches(body, &mut matches);
+        }
+        let ctx = crate::ctx::Ctx {
+            env: own,
+            in_match: false,
+            match_subject: None,
+        };
+        let ruled_out = |item: &CoverItem| matches!(item, CoverItem::Value(DomainValue::Str(s)) if never.contains(s));
+        for m in matches {
+            let at_match = |d: &Diagnostic| {
+                d.code == E_NONEXHAUSTIVE
+                    && (d.span.byte_start, d.span.byte_end) == (m.span.byte_start, m.span.byte_end)
+            };
+            let Some(i) = diags.iter().position(at_match) else {
+                continue;
+            };
+            let (subject, info) =
+                crate::match_check::resolve_subject(m, &g.defs, &own.def_types, &own.state);
+            let now = crate::match_check::check_match_with_domain(
+                m,
+                subject.as_deref(),
+                info,
+                &ctx,
+                &ruled_out,
+            )
+            .into_iter()
+            .find(|d| d.code == E_NONEXHAUSTIVE);
+            match now {
+                Some(d) => diags[i].message = d.message,
+                None => {
+                    diags.remove(i);
+                }
+            }
+        }
+    }
+}
+
+/// Every `<match on="occasion.target">` in `nodes`, nested ones included.
+fn target_matches<'n>(nodes: &'n [Node], out: &mut Vec<&'n lute_syntax::ast::Match>) {
+    for node in nodes {
+        match node {
+            Node::Match(m) => {
+                if subject_path(m).as_deref() == Some(crate::beats::OCCASION_TARGET) {
+                    out.push(m);
+                }
+                for arm in &m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    target_matches(body, out);
+                }
+            }
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    target_matches(&c.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for body in h.bodies() {
+                    target_matches(body, out);
+                }
+            }
+            Node::On(o) => target_matches(&o.body, out),
+            Node::Objective(o) => target_matches(&o.body, out),
+            Node::Line(_)
+            | Node::Directive(_)
+            | Node::Set(_)
+            | Node::Timeline(_)
+            | Node::Assert(_)
+            | Node::Retract(_) => {}
+        }
+    }
+}
+
 /// Every `<quest id>` in `doc` with a REQUIRED (`!optional`) `<objective>`
 /// whose `done` decides false under the fact envelope — the structured twin
 /// of `E-OBJECTIVE-UNSATISFIABLE` (scalar and relational causes alike) that
@@ -272,10 +446,57 @@ pub fn dead_lifecycle_quests(
 struct Guards<'a> {
     path: &'a Path,
     defs: DefTable<'a>,
+    def_types: &'a BTreeMap<String, lute_manifest::types::Type>,
     schema: &'a StateSchema,
     vocab: &'a RelVocab,
     env: &'a FactEnv,
     params: &'a BTreeMap<String, DomainInfo>,
+}
+
+/// dsl 0.28.0: a kind or `for=` beat's `when`, decided with the fact
+/// envelope once per member it runs for (`occasion.target` bound to each).
+/// Empty for any other beat, or a `when` that does not read the member.
+struct MemberVerdicts<'m> {
+    members: &'m [String],
+    verdicts: Vec<SlotVerdict>,
+}
+
+impl MemberVerdicts<'_> {
+    /// The members the `when` never holds for.
+    fn never(&self) -> Vec<String> {
+        self.members
+            .iter()
+            .zip(&self.verdicts)
+            .filter(|(_, v)| v.with == Some(Decided::Bool(false)))
+            .map(|(m, _)| m.clone())
+            .collect()
+    }
+
+    /// Why the beat is never eligible — its `when` holds for no member, and
+    /// only the facts make that so — with the verdict it is graded by.
+    fn unreachable(&self) -> Option<(String, &SlotVerdict)> {
+        let vs = &self.verdicts;
+        if vs.is_empty()
+            || !vs.iter().all(|v| v.with == Some(Decided::Bool(false)))
+            || vs.iter().all(|v| v.base == Some(Decided::Bool(false)))
+        {
+            return None;
+        }
+        let mut reasons: Vec<String> = Vec::new();
+        for v in vs {
+            let r = v.dead_reasons();
+            if !r.is_empty() && !reasons.contains(&r) {
+                reasons.push(r);
+            }
+        }
+        let head = crate::reachability::for_every_member(self.members);
+        let why = if reasons.is_empty() {
+            head
+        } else {
+            format!("{head}: {}", reasons.join("; "))
+        };
+        Some((why, vs.iter().find(|v| v.wip).unwrap_or(&vs[0])))
+    }
 }
 
 /// One relational query of a guard and its §5 verdict.
@@ -334,19 +555,18 @@ impl SlotVerdict {
         self.newly(false)
     }
 
-    /// dsl 0.23.0 §10: a dead-guard error downgraded to a warning when the
+    /// dsl 0.23.0 §10: a dead-guard error reported as [`W_WIP`] when the
     /// guard is dead only for want of content not written yet.
-    fn grade(&self, mut d: Diagnostic) -> Diagnostic {
-        if self.wip {
-            d.severity = Severity::Warning;
-            d.message.push_str(
-                " — a warning under `--wip`: it is dead only for want of producers not written \
-                 yet (relations with no seed, assert, rule, or reserved declaration, or written \
-                 only by a component `::assert` with an unbound `@param`) (dsl 0.23.0 §10, \
-                 0.26.0 §2.6)",
-            );
+    fn grade(&self, d: Diagnostic) -> Diagnostic {
+        if !self.wip {
+            return d;
         }
-        d
+        wip_warning(
+            d,
+            "it is dead only for want of producers not written yet (relations with no seed, \
+             assert, rule, or reserved declaration, or written only by a component `::assert` \
+             with an unbound `@param`) (dsl 0.23.0 §10, 0.26.0 §2.6)",
+        )
     }
 
     /// Why the guard decided: every decided relational query, in order.
@@ -417,6 +637,22 @@ impl SlotVerdict {
             .chain(self.redundant.iter().cloned())
             .collect()
     }
+}
+
+/// `check-project --wip`: a dead-guard error (`E-ARM-DEAD`,
+/// `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`)
+/// reported as a warning because only content not written yet kills it.
+pub const W_WIP: &str = "W-WIP";
+
+/// dsl 0.28.0 (T3-66): the error `d` as `check-project --wip` reports it —
+/// [`W_WIP`], a warning, never an `E-` code at warning severity; the message
+/// keeps its sentence and names the code it has without the flag, then
+/// `why` the flag spares it.
+pub fn wip_warning(mut d: Diagnostic, why: &str) -> Diagnostic {
+    d.message = format!("{} — `{}` without `--wip`: {why}", d.message, d.code);
+    d.code = W_WIP.to_string();
+    d.severity = Severity::Warning;
+    d
 }
 
 fn impossible_reason(pattern: &QueryPattern) -> String {
@@ -507,11 +743,80 @@ impl<'a> Guards<'a> {
                 bodies: &folded.def_bodies,
                 params: &folded.env.def_params,
             },
+            def_types: &folded.env.def_types,
             schema: &folded.env.state,
             vocab: &folded.env.rel_vocab,
             env,
             params,
         }
+    }
+
+    /// This environment over `schema` — a kind or `for=` beat's own
+    /// ([`FoldedEnv::env_at`]).
+    fn over(&self, schema: &'a StateSchema) -> Guards<'a> {
+        Guards {
+            path: self.path,
+            defs: DefTable {
+                bodies: self.defs.bodies,
+                params: self.defs.params,
+            },
+            def_types: self.def_types,
+            schema,
+            vocab: self.vocab,
+            env: self.env,
+            params: self.params,
+        }
+    }
+
+    /// dsl 0.28.0: `when` decided once per member of `members` (a kind or
+    /// `for=` beat's), each with `occasion.target` bound to it.
+    fn members_never<'m>(
+        &self,
+        when: &CelSlot,
+        members: Option<&'m [String]>,
+    ) -> MemberVerdicts<'m> {
+        let members = members
+            .filter(|_| crate::occasion_bind::mentions_target(&when.raw))
+            .unwrap_or_default();
+        let verdicts: Option<Vec<SlotVerdict>> = members
+            .iter()
+            .map(|m| {
+                let raw = crate::occasion_bind::instantiate(&when.raw, m);
+                self.eval(&CelSlot::raw(when.kind, raw, when.span), None)
+            })
+            .collect();
+        match verdicts {
+            Some(verdicts) => MemberVerdicts { members, verdicts },
+            None => MemberVerdicts {
+                members: &[],
+                verdicts: Vec::new(),
+            },
+        }
+    }
+
+    /// dsl 0.28.0: the arms of `body` (a kind or `for=` beat's, guarded by
+    /// `when`) that can match only members `when` never holds for.
+    fn member_arms(
+        &self,
+        doc: &Document,
+        body: &[Node],
+        when: &CelSlot,
+        per_member: &MemberVerdicts<'_>,
+    ) -> Vec<Diagnostic> {
+        let never = per_member.never();
+        if never.is_empty() || never.len() == per_member.members.len() {
+            return Vec::new();
+        }
+        crate::reachability::member_arm_verdicts(
+            doc,
+            body,
+            &when.raw,
+            per_member.members,
+            &never,
+            &self.defs,
+            self.def_types,
+            self.schema,
+        )
     }
 
     fn ctx<'c>(&'c self, dollar: Option<&'c DomainInfo>, span: Span, facts: bool) -> DecideCtx<'c> {
@@ -717,14 +1022,14 @@ impl<'a> Guards<'a> {
         if o.optional {
             return;
         }
-        if let Some(when) = &o.when {
+        if let Some(when) = &o.visible_when {
             if let Some(v) = self.eval(when, None) {
                 if v.newly_false() {
                     out.push(diag(
                         W_OBJECTIVE_HIDDEN,
                         Severity::Warning,
                         format!(
-                            "objective's `when` `{}` is provably false — {}: it is never visible \
+                            "objective's `visibleWhen` `{}` is provably false — {}: it is never visible \
                              or tracked, yet still gates completion (dsl 0.20.0 §5) — mark it \
                              `optional` or fix the gate (0.2 §6.3)",
                             when.raw.trim(),
@@ -773,7 +1078,12 @@ impl<'a> Guards<'a> {
                     }
                 }
                 Node::Branch(b) => self.choices(&b.choices, out),
-                Node::Hub(h) => self.choices(&h.choices, out),
+                Node::Hub(h) => {
+                    self.choices(&h.choices, out);
+                    if let Some(r) = &h.on_return {
+                        self.walk(&r.body, out);
+                    }
+                }
                 Node::On(o) => self.walk(&o.body, out),
                 Node::Objective(o) => {
                     self.objective(o, out);
@@ -940,10 +1250,7 @@ impl<'a> Guards<'a> {
                 .choices
                 .iter()
                 .any(|c| self.has_dead_required_objective(&c.body)),
-            Node::Hub(h) => h
-                .choices
-                .iter()
-                .any(|c| self.has_dead_required_objective(&c.body)),
+            Node::Hub(h) => h.bodies().any(|b| self.has_dead_required_objective(b)),
             Node::On(o) => self.has_dead_required_objective(&o.body),
             Node::Line(_)
             | Node::Directive(_)

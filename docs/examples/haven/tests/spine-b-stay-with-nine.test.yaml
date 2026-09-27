@@ -11,7 +11,7 @@ facts:
 choose:
   whatsLeft: stayWithNine
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Nobody had been down to five since the wake."
     - "It did not let go. It tore, and it took nine metres of spine on the way out, and nobody aboard had ever been down there to know it would."

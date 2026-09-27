@@ -6,7 +6,7 @@ expression: json
   "kind": "scene",
   "lute": "0.27.0",
   "irVersion": "0.27.0",
-  "capabilityVersion": "c8e63e6b3a4a27d4e0dad1e6d492e0665b92d12895b487a3330f63cacb9e9e55",
+  "capabilityVersion": "3bf6ddec02b884dfa2c3d51ff76f0ae38d1af42fe3756539e625c5981d4b5ff4",
   "meta": {
     "id": "marina.s01ep01",
     "character": "marina",

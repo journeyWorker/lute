@@ -109,6 +109,7 @@ pub(super) fn render_json(play: &Playthrough) -> Json {
                     raised,
                     ended,
                     closed: _,
+                    passed,
                 } => {
                     let days: Vec<Json> = days
                         .iter()
@@ -136,6 +137,18 @@ pub(super) fn render_json(play: &Playthrough) -> Json {
                     if *ended {
                         advance["ended"] = json!(true);
                     }
+                    // The positions the clock passed without raising its
+                    // slot occasion (it is raised where the clock stops).
+                    if let Some(pr) = passed {
+                        advance["passed"] = json!({
+                            "occasion": pr.occasion,
+                            "beats": pr.beats,
+                            "at": pr.at.iter().map(|a| match &a.slot {
+                                Some(slot) => json!({ "day": a.day, "slot": slot }),
+                                None => json!({ "day": a.day }),
+                            }).collect::<Vec<_>>(),
+                        });
+                    }
                     o.insert("advance".into(), advance);
                     if let Some(body) = raised {
                         render_occasion_json(&mut o, body);
@@ -148,14 +161,13 @@ pub(super) fn render_json(play: &Playthrough) -> Json {
         })
         .collect();
     let mut root = serde_json::Map::new();
+    // How the playthrough ended — what `expect.end` judges: `complete`,
+    // `terminal` (the project's `terminal:` holds), `incomplete` or `error`.
+    root.insert("end".into(), json!(play.ended()));
     match &play.outcome {
         Ok(reason) => {
             root.insert("exit".into(), json!("complete"));
             root.insert("endReason".into(), json!(reason));
-            // dsl 0.27.0 §4: the game ended in the project's terminal state.
-            if play.terminal {
-                root.insert("end".into(), json!("terminal"));
-            }
         }
         Err(h) => {
             root.insert("exit".into(), json!(h.exit_label()));
@@ -196,6 +208,7 @@ fn render_occasion_json(o: &mut serde_json::Map<String, Json>, body: &StepBody) 
         decided: _,
         presented,
         judged,
+        not_raised,
     } = body
     else {
         return;
@@ -207,6 +220,10 @@ fn render_occasion_json(o: &mut serde_json::Map<String, Json>, body: &StepBody) 
     o.insert("select".into(), json!(select.as_str()));
     if let Some(pk) = pick {
         o.insert("pick".into(), json!(pick_label(pk)));
+    }
+    // dsl 0.27.0 §4: the engine would not make this raise (`gate false`).
+    if let Some(why) = not_raised {
+        o.insert("notRaised".into(), json!(why));
     }
     let cands: Vec<Json> = candidates
         .iter()

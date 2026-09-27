@@ -121,8 +121,11 @@ fn once_week_needs_a_clock_week() {
     );
 }
 
+/// A `spentBy` beat is spent by its condition, not by being presented: it
+/// plays until the condition holds, and stays spent when the condition
+/// turns false again — until a new run, for the default `once: run`.
 #[test]
-fn spent_by_keeps_a_beat_until_its_condition_holds() {
+fn spent_by_latches_once_its_condition_has_held() {
     let dir = project(
         "spent-by",
         DAY_CLOCK,
@@ -140,24 +143,67 @@ fn spent_by_keeps_a_beat_until_its_condition_holds() {
     let out = play(
         &dir,
         "steps:\n  - occasion: visit\n  - occasion: visit\n  \
-         - engine: { state: { run.solved: true } }\n  - occasion: visit\n",
+         - engine: { state: { run.solved: true } }\n  - occasion: visit\n  \
+         - engine: { state: { run.solved: false } }\n  - occasion: visit\n  \
+         - newRun: true\n  - occasion: visit\n",
     );
     let t = text(&out);
     assert!(out.status.success(), "{t}");
-    assert_eq!(t.matches("The valves hiss.").count(), 2, "{t}");
-    assert!(t.contains("spentBy: `run.solved` holds"), "{t}");
-    // `spentBy` replaces `once`.
+    // Twice before it holds, never again that run, once more after the
+    // new run.
+    assert_eq!(t.matches("The valves hiss.").count(), 3, "{t}");
+    assert_eq!(
+        t.matches("spentBy: `run.solved` held — spent this run")
+            .count(),
+        2,
+        "{t}"
+    );
+}
+
+/// `once` beside `spentBy` says how long the beat stays spent: with
+/// `once: user` it never comes back, a new run included.
+#[test]
+fn spent_by_once_sets_how_long_it_stays_spent() {
     let dir = project(
         "spent-by-once",
         DAY_CLOCK,
         &[(
             "scenes/valves.lute",
-            &scene("ward.valves", "once: user\nspentBy: \"run.solved\"\n", "x"),
+            &scene(
+                "ward.valves",
+                "once: user\nspentBy: \"run.solved\"\n",
+                "The valves hiss.",
+            ),
+        )],
+    );
+    let out = check_project(&dir);
+    assert!(out.status.success(), "{}", text(&out));
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: visit\n  - engine: { state: { run.solved: true } }\n  \
+         - newRun: true\n  - occasion: visit\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert_eq!(t.matches("The valves hiss.").count(), 1, "{t}");
+    assert!(
+        t.contains("spentBy: `run.solved` held — spent for good (`once: user`)"),
+        "{t}"
+    );
+    // `once: false` keeps nothing spent: that is a `when`.
+    let dir = project(
+        "spent-by-once-false",
+        DAY_CLOCK,
+        &[(
+            "scenes/valves.lute",
+            &scene("ward.valves", "once: false\nspentBy: \"run.solved\"\n", "x"),
         )],
     );
     let t = text(&check_project(&dir));
     assert!(
-        t.contains("E-BEAT-ATTR") && t.contains("`spentBy:` replaces `once:`"),
+        t.contains("E-BEAT-ATTR")
+            && t.contains("`once: false` beside `spentBy`")
+            && t.contains("when: \"!(run.solved)\""),
         "{t}"
     );
 }
@@ -198,6 +244,62 @@ fn a_season_reopening_resets_its_tier_and_a_rearm_takes_the_quest_again() {
     );
     assert!(
         t.contains("quest festival -> unset (rearmed; was complete)"),
+        "{t}"
+    );
+}
+
+/// A `for` beat spent for the season is spent per member; its members
+/// spent for one reason print as one line, a closed window is named as the
+/// last one, and the season opening again makes every member's
+/// presentation spendable again.
+#[test]
+fn a_season_reopening_clears_a_for_beats_spends_for_every_member() {
+    let schema = format!("{SEASON_SCHEMA}entities:\n  suitor: {{ members: [ren, mika] }}\n");
+    let dir = project(
+        "season-for",
+        &schema,
+        &[(
+            "lore/fest.lute",
+            "---\nkind: lore\nid: fest\ntitle: Festival\nuses: ../world.schema.yaml\n---\n\n\
+             <beat id=\"word\" on=\"visit\" for=\"kind:suitor\" once=\"season:harvest\">\n  \
+             @narrator: A word for {{occasion.target}}.\n</beat>\n",
+        )],
+    );
+    let out = check_project(&dir);
+    assert!(out.status.success(), "{}", text(&out));
+    let out = play(
+        &dir,
+        "steps:\n  - advance: 2\n  - occasion: visit\n  - occasion: visit\n  - occasion: visit\n  \
+         - advance: 2\n  - occasion: visit\n  - advance: 3\n  - occasion: visit\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    let step = |n: usize| {
+        let from = t
+            .find(&format!("step {n} ·"))
+            .unwrap_or_else(|| panic!("step {n}\n{t}"));
+        let to = t[from..].find("\n── ").map_or(t.len(), |e| from + e);
+        &t[from..to]
+    };
+    // `select: first` presents one member per raise; once both are spent,
+    // they share one line.
+    assert!(
+        step(4).contains(
+            "✗ fest.word for ren, mika [beat, priority 0] — once: season:harvest — already \
+             presented in this harvest window\n"
+        ),
+        "{t}"
+    );
+    assert!(
+        step(6).contains(
+            "✗ fest.word for ren, mika [beat, priority 0] — once: season:harvest — already \
+             presented in the last harvest window (closed; spendable when it opens again)\n"
+        ),
+        "{t}"
+    );
+    assert!(
+        step(8).contains("✓ fest.word for ren [beat, priority 0]")
+            && step(8).contains("✓ fest.word for mika [beat, priority 0]"),
         "{t}"
     );
 }
@@ -509,7 +611,7 @@ fn beats_lists_spent_by_week_and_season_cadences() {
     let rows = v["roots"][0]["ladders"][0]["beats"].as_array().unwrap();
     let row = |id: &str| rows.iter().find(|r| r["id"] == id).unwrap();
     assert_eq!(row("valves")["spentBy"], "run.solved", "{v}");
-    assert_eq!(row("valves")["once"], "none", "{v}");
+    assert_eq!(row("valves")["once"], "run", "{v}");
     assert_eq!(row("reset")["once"], "week", "{v}");
     assert_eq!(row("fair")["once"], "season:harvest", "{v}");
     assert!(rows.iter().all(|r| r.get("shadowedBy").is_none()), "{v}");
@@ -522,7 +624,7 @@ fn beats_lists_spent_by_week_and_season_cadences() {
 fn test_eligible_honours_spent_by() {
     let schema = format!(
         "{DAY_CLOCK}entities:\n  puzzle: {{ members: [valves] }}\n\
-         relations:\n  solved: {{ args: [puzzle] }}\n"
+         relations:\n  solved: {{ args: [puzzle], tier: run }}\n"
     );
     let dir = project(
         "spent-by-test",

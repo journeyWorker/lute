@@ -822,10 +822,14 @@ fn a_bare_yaml_schemas_key_span_is_not_shifted_by_a_missing_opener() {
         .iter()
         .find(|d| d.code == "E-USES-PARSE")
         .expect("E-USES-PARSE");
+    // The row's shape advice (the unknown `values:` key is its own report,
+    // at that key).
     let child = parent
         .related
         .iter()
-        .find(|r| r.diagnostic.code == "E-STATE-DECL")
+        .find(|r| {
+            r.diagnostic.code == "E-STATE-DECL" && !r.diagnostic.message.contains("unknown key")
+        })
         .expect("the child diagnostic");
     // `  app.rating` starts at byte 9: "state:\n" is 7, then two spaces.
     assert_eq!(

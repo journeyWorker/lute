@@ -34,7 +34,7 @@ must declare an identity: an **`id`**, or the triple **`character`**, **`season`
 
 ## Optional keys
 
-- **`id`** — the scene's canonical key (`hub.welcome`, `mara.first`): what `visited('…')` and
+- **`id`** — the scene's canonical key (`town.welcome`, `mara.first`): what `visited('…')` and
   `after:` name, the artifact's `meta.id`, and the `{prefix}` of every derived `lineId`. Letters,
   digits, `_`, `.`, and `-` only (`E-META-ID`). When omitted, the key is derived as
   `{character}.{episodeId}`.

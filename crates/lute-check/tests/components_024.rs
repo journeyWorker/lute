@@ -144,7 +144,7 @@ fn set_type_is_judged_against_the_host_decl() {
     );
 }
 
-const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  f: { members: [reds] }\nrelations:\n  inParty: { args: [c] }\n";
+const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  f: { members: [reds] }\nrelations:\n  inParty: { args: [c], tier: run }\n";
 
 #[test]
 fn fact_writes_are_judged_against_the_host_vocabulary() {

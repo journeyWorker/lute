@@ -140,7 +140,7 @@ instant, an activated instance transitions to `failed` and fires `questFailed`
 unconditionally is `E-QUEST-UNREACHABLE` (the quest fails at the first
 evaluation instant). A **required** objective that misses its `by` or `until`
 deadline (§Objectives below) fails its quest the same way, at the same point of the
-evaluation instant: the same `failed` transition, `on="failed"` rewards,
+evaluation instant: the same `failed` transition, `outcome="failed"` rewards,
 `questFailed` handlers, and downward cascade to children. A `complete="any"`
 quest is the exception: one missed alternative leaves the others open, and
 the quest fails only through its `fail` predicate (§Subquests synthesizes it
@@ -254,7 +254,7 @@ Each `ObjectiveEntry` in `QuestCmd.objectives`:
 | ------------- | ------- |
 | `id`          | the objective id; recorded at `quest.<id>.objectives.<oid>.done`. |
 | `done`        | a `{raw, expr}` completion predicate over state (**required** field). |
-| `when`        | an optional `{raw, expr}` **visibility** gate — it gates whether the objective is *shown/tracked*, **not** the completion obligation (dsl §6.3). |
+| `visibleWhen` | an optional `{raw, expr}` **visibility** condition (authored `visibleWhen=`) — it decides whether the objective is *shown/tracked*, **never** the completion obligation (dsl §6.3). |
 | `optional`    | `bool` (always present). A non-`optional` objective is *required*: it must be `done` for the quest to complete. |
 | `title` / `titleLineId` | present only when authored; `titleLineId` is `{questId}.{objectiveId}` for localization. |
 | `body`        | **always present**; the `addr` of the objective's completion-body segment, or `null` when the body is empty. |
@@ -273,7 +273,7 @@ body is a forward-only segment (ends by falling through / a forward converge —
 no backward jump); an empty-body objective has `body: null` and emits no
 segment.
 
-A required objective whose `when` visibility gate is provably false is
+A required objective whose `visibleWhen` visibility condition is provably false is
 `W-OBJECTIVE-HIDDEN` (a warning, not an error — `done` is evaluated
 independently of visibility, so completion may still be reachable). A required
 objective whose `done` is provably false is `E-OBJECTIVE-UNSATISFIABLE`; mark
@@ -460,7 +460,7 @@ whatever gate produced it, and the reserved-path guards
 
 ## Rewards
 
-A `<reward kind= target= amount= when= on=/>` (dsl 0.16.0 §2) is a
+A `<reward kind= target= amount= when= outcome=/>` (dsl 0.16.0 §2) is a
 **declaration**, not flow: a self-closing element legal only as a direct
 child of `<quest>` or `<objective>`. It lowers to pure data — a
 `RewardEntry` in `QuestCmd.rewards` or `ObjectiveEntry.rewards`, never
@@ -477,11 +477,10 @@ state, no new event surface:
 
 - **objective grants** — when an objective first becomes `done` (the same
   monotonic transition its body segment plays on, §Objectives above).
-- **quest `on="complete"` grants** (or `on` omitted — `complete` is the
-  default) — at the `→ complete` transition.
-- **quest `on="failed"` grants** — at the `→ failed` transition, including
+- **quest `complete` grants** (a reward without `outcome=`) — at the `→ complete` transition.
+- **quest `outcome="failed"` grants** — at the `→ failed` transition, including
   a parent-cascade `failed` (§Subquests above). A cascade-failed child
-  grants its `on="failed"` rewards **exactly once**, on the cascaded
+  grants its `outcome="failed"` rewards **exactly once**, on the cascaded
   transition, before its own `questFailed` handlers fire.
 
 Each reward is granted **at most once per quest instance** — the same
@@ -533,7 +532,7 @@ by `lute trace` as a `Step::Grant`:
 ```
 
 `objective` is present only for objective-owned rewards. `onFailed` is
-present only for quest-owned `on="failed"` rewards (the default
+present only for quest-owned `outcome="failed"` rewards (the default
 `complete` transition omits the field). `reward` carries the wire-shape
 `RewardEntry` minus `when` — a grant event only fires when `when` (if
 authored) decided `true`, so re-serializing the predicate is noise. Range
@@ -605,8 +604,9 @@ it). The record is still emitted; the warning is for the author.
 
 ## Cross-document reachability is out of scope for one artifact
 
-A quest's `after` prerequisite (dsl §2.4) appears in the artifact only as raw
-text under `prereqEdges` (`node`, `after`) — **unresolved and unvalidated**. A
+A scene's `after:` prerequisite (dsl §2.4) and a quest's `follows=` graph edge
+appear in the artifact only as raw text under `prereqEdges` (`node` plus
+`after` for a scene or bundle beat, `follows` for a quest) — **unresolved and unvalidated**. A
 single `compile` has no project root to resolve `visited(...)` / `completed(...)`
 targets against. Each `prereqEdges[].node` is the containing document's
 **canonical scene id** — a scene's authored `id:` when it declares one, else
@@ -619,11 +619,11 @@ declared `after` routes** — never a claim about every runtime path.
 
 In that project-wide graph (dsl 0.24.0 §2) a bundle beat is a node too:
 `visited('<lore doc id>.<beat id>')` in a scene's `after:` or a quest's
-`after=` names the beat, which has no prerequisites of its own (its occasion
+`follows=` names the beat, which has no prerequisites of its own (its occasion
 presents it whenever it is eligible). An accept-driven quest — a root quest
 with no `start`, or a child with `activate="accept"` — that declares no
-`after=` is anchored at every scene, bundle beat and quest body that
+`follows=` is anchored at every scene, bundle beat and quest body that
 `::accept`s it, so it is drawn and reachable without repeating the accepting
-scene in `after=`; a quest with an explicit `after=` keeps only its declared
+scene in `follows=`; a quest with an explicit `follows=` keeps only its declared
 edges. An anchor never proves a quest unreachable: the engine may accept it
 outside any `::accept`.

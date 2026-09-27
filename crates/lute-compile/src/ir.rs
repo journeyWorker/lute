@@ -97,6 +97,11 @@ pub struct Artifact {
     /// Omitted without seasons. After `clock`, `gates`, `terminal`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub seasons: Vec<SeasonEntry>,
+    /// dsl 0.28.0 (T2-9): the occasions declared `outsideRun: true`,
+    /// name-sorted — the engine raises these even after `terminal` holds (a
+    /// title screen, a gallery). Omitted when none. After `seasons`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub outside_run: Vec<String>,
 }
 
 /// dsl 0.27.0 §4: one occasion's `raisedWhen` gate.
@@ -126,7 +131,7 @@ pub struct ShotEntry {
 }
 
 /// One advisory prerequisite edge (connectivity spec §2.6, T13): a single
-/// node's raw declared `after` formula text, verbatim and unvalidated.
+/// node's raw declared edge formula text, verbatim and unvalidated.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrereqEdgeEntry {
@@ -134,8 +139,20 @@ pub struct PrereqEdgeEntry {
     /// `{character}.{episodeId}` ([`lute_check::meta::canonical_episode_key`])
     /// or a quest's `<quest id>`.
     pub node: String,
-    /// The RAW declared `after` formula text — unresolved, unvalidated CEL.
-    pub after: String,
+    /// The RAW declared formula, keyed by what it means on the wire.
+    #[serde(flatten)]
+    pub edge: PrereqEdge,
+}
+
+/// The two kinds of graph edge a node declares, serialized as the single
+/// key `after` or `follows` of its [`PrereqEdgeEntry`].
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PrereqEdge {
+    /// A scene's `after:` / a bundle beat's `after=`: an eligibility gate.
+    After(String),
+    /// A quest's `follows=`: graph metadata only — it never gates the quest.
+    Follows(String),
 }
 
 /// One merged entity kind (dsl 0.3.0 §3.1).
@@ -150,9 +167,48 @@ pub struct EntityKindEntry {
     /// dsl 0.27.0 §7: member → display text (`labels:`, sub-kind labels
     /// implied), what a `{{…}}` of a value of this kind renders — an
     /// `occasionTarget` placeholder of `entityKind` this kind renders
-    /// `labels[member]` (a cast member's `name:` wins). Omitted when empty.
+    /// `labels[member]` (over a cast member's `name:`). Omitted when empty.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub labels: BTreeMap<String, String>,
+    /// The declared label forms (`labels: { cut: { text, start, indefinite
+    /// } }`) per member that declares one — what a `:start` / `:indefinite`
+    /// placeholder of a value of this kind renders. Omitted when empty.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub label_forms: BTreeMap<String, LabelForms>,
+}
+
+/// One member's declared label forms beside its `labels` text: `start` is
+/// the sentence-start form (`:start`), `indefinite` the form with its
+/// article (`:indefinite`). An absent form falls back: `start` to the text
+/// with its first letter capitalized, `indefinite` to `a` / `an` (by the
+/// text's first letter, `an` before a vowel) and the text.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct LabelForms {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub indefinite: Option<String>,
+}
+
+impl LabelForms {
+    /// The forms `labels` declares, per member that declares one.
+    pub fn of(
+        labels: &BTreeMap<String, lute_manifest::relations::KindLabel>,
+    ) -> BTreeMap<String, LabelForms> {
+        labels
+            .iter()
+            .filter(|(_, l)| l.has_forms())
+            .map(|(m, l)| {
+                (
+                    m.clone(),
+                    LabelForms {
+                        start: l.start.clone(),
+                        indefinite: l.indefinite.clone(),
+                    },
+                )
+            })
+            .collect()
+    }
 }
 
 /// One merged `enums:` entry (dsl 0.3.0 §3).
@@ -359,8 +415,10 @@ pub struct BeatIr {
     /// once per member, as [`EntryCmd::for_kind`]. Omitted when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub for_kind: Option<ForKind>,
-    /// dsl 0.27.0 §5: `spentBy` — the beat (`once: "none"`) stays eligible
-    /// until this `@def`-expanded condition holds. Omitted when not authored.
+    /// `spentBy` (dsl 0.27.0 §5, 0.28.0 §6): the beat is spent by this
+    /// `@def`-expanded condition instead of by being presented — once it
+    /// has held, for the beat's `once` period (`run` unless written), even
+    /// if it turns false again. Omitted when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spent_by: Option<CelPair>,
 }
@@ -436,7 +494,7 @@ impl ForKind {
 
 /// A scene beat's repetition policy (dsl 0.21.0 §3.1, 0.24.0 §1, 0.27.0
 /// §5): `"run"` (once per run), `"user"` (once ever), `"none"` (repeatable;
-/// source `once: false`, or a beat with `spentBy`), `"day"` / `"slot"` /
+/// source `once: false`), `"day"` / `"slot"` /
 /// `"week"` (once per clock day / slot / week), `"season:<name>"` (once per
 /// window of that season). A compile-local mirror of
 /// `lute_check::BeatOnce`, kept separate for the same reason as
@@ -589,6 +647,11 @@ pub struct StateEntry {
     /// present, the value itself otherwise. Omitted when no label is declared.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub labels: BTreeMap<String, String>,
+    /// The label forms of the entity kind the path is typed against
+    /// ([`EntityKindEntry::label_forms`]), so a `{{path:start}}` /
+    /// `{{path:indefinite}}` renders them. Omitted when none is declared.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub label_forms: BTreeMap<String, LabelForms>,
     /// dsl 0.27.0 §2 (T1-2): the named domain `K` of a path typed
     /// `{ domain: K }` / `{ entity: K }` whose `K` is closed, and its members
     /// — what a play or test seed / `engine:` write of the path is
@@ -735,15 +798,21 @@ pub enum Command {
 /// — matching the A3 example and the C1 `ExprNode` kind-keyed convention.
 /// Entries appear in left-to-right order.
 ///
-/// dsl 0.24.0 §4: a `path`/`ref` placeholder carries the interpolation's
-/// format hint as `format` (`{{user.deaths:ordinal}}` → `"format":"ordinal"`),
-/// omitted when the author wrote none — the engine renders the value in that
-/// format (runtime/state-lifecycle.md). `ordinal`, (dsl 0.25.0 §8)
-/// `ordinalWord` and (dsl 0.27.0 §7) `plural` are the hints; the checker
-/// rejects any other, and one on `userName` (a string). A `plural`
-/// placeholder carries its `forms` (`["lantern", "lanterns"]`: the singular,
-/// then the plural; a `#` in a form stands for the number) so the engine can
-/// localize the count.
+/// dsl 0.24.0 §4: a placeholder carries the interpolation's format hint as
+/// `format` (`{{user.deaths:ordinal}}` → `"format":"ordinal"`), omitted when
+/// the author wrote none — the engine renders the value in that format
+/// (runtime/state-lifecycle.md). The number hints are `ordinal`,
+/// `ordinalWord` (dsl 0.25.0 §8), `cardinalWord` (`one` … `twenty`) and
+/// `plural` (dsl 0.27.0 §7); the text hints — on a `path`, `ref`,
+/// `reserved` or `occasionTarget` placeholder — are `capitalize`, `start`
+/// (a label's declared `start` form, else capitalized) and `indefinite` (a
+/// label's declared `indefinite` form, else `a` / `an` + the text; the
+/// forms ride on `entities[].labelForms` / `state[].labelForms`). The
+/// checker rejects any other hint, a number hint on a non-number and a text
+/// hint on a number or bool. A `plural` placeholder carries its `forms`
+/// (`["lantern", "lanterns"]`: the singular, then the plural; in a form `#`
+/// stands for the number, `#word` for it as a cardinal word and `#Word` for
+/// that word capitalized) so the engine can localize the count.
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Placeholder {
@@ -772,15 +841,24 @@ pub enum Placeholder {
         #[serde(skip_serializing_if = "Option::is_none")]
         forms: Option<Vec<String>>,
     },
-    /// A reserved token (only `userName` in 0.1).
-    Reserved { token: String },
+    /// A reserved token (only `userName` in 0.1), with its text hint.
+    Reserved {
+        token: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
+    },
     /// dsl 0.26.0 §5 (prerelease N8): `{{occasion.target}}` in a beat or
     /// entry targeting a kind — the member the occasion was raised for, a
     /// member of `entityKind` (the beat's `target="kind:<kind>"`, as its
-    /// `targetKind.kind`). The engine renders the member's display name —
-    /// its cast `name:` when the member is a cast id — else the id.
+    /// `targetKind.kind`). The engine renders the member's display text —
+    /// its kind label, else its cast `name:`, else the id — in `format`
+    /// when a text hint is written.
     #[serde(rename = "occasionTarget", rename_all = "camelCase")]
-    OccasionTarget { entity_kind: String },
+    OccasionTarget {
+        entity_kind: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
+    },
 }
 
 /// Map one syntactic [`Interp`](lute_syntax::ast::Interp) to its typed IR
@@ -814,6 +892,7 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
         },
         InterpKind::Reserved => Placeholder::Reserved {
             token: i.raw.clone(),
+            format: i.format.clone(),
         },
     }
 }
@@ -1112,6 +1191,13 @@ pub struct HubCmd {
     /// unless authored, so every other hub record is byte-identical.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    /// dsl 0.28.0 §5: the start of the hub's `<return>` segment — run each
+    /// time a non-`exit` option's segment ends, before the hub is judged
+    /// and presented again. It is a segment boundary like an option
+    /// target. Absent unless authored, so every other hub record is
+    /// byte-identical.
+    #[serde(rename = "return", skip_serializing_if = "Option::is_none")]
+    pub on_return: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1373,7 +1459,7 @@ pub struct ObjectiveEntry {
     pub title_line_id: Option<String>,
     pub done: CelPair,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub when: Option<CelPair>,
+    pub visible_when: Option<CelPair>,
     pub optional: bool,
     /// dsl 0.2.0 IR addendum §3.1/§3.2: `body` is ALWAYS present in the
     /// inlined objective entry — `null` (never omitted) when the objective
@@ -1396,8 +1482,8 @@ pub struct ObjectiveEntry {
     pub quest: Option<String>,
     /// Owner-declared `<reward/>` entries (dsl 0.16.0 §2/§3) in declaration
     /// order — objective grants fire once at first `done` (spec D-D), before
-    /// any quest-level grants. `on=` is never legal here (checker rejects it,
-    /// compiler never emits it). Appended AFTER `quest` so every prior
+    /// any quest-level grants. `outcome=` is never legal here (checker
+    /// rejects it, compiler never emits it). Appended AFTER `quest` so every prior
     /// objective serializes byte-identically (`Vec::is_empty`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rewards: Vec<RewardEntry>,
@@ -1564,6 +1650,12 @@ pub struct CelPair {
     pub raw: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expr: Option<ExprNode>,
+    /// A seam condition (a gate, `terminal:`, a season's `live`) as the
+    /// author wrote it, when `@def` expansion changed it (`@stageReleased`
+    /// beside the expanded `raw` an engine evaluates) — what messages show.
+    /// Omitted otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authored: Option<String>,
 }
 
 impl CelPair {
@@ -1573,7 +1665,14 @@ impl CelPair {
         CelPair {
             raw: raw.to_string(),
             expr: crate::expr::lower_expr(raw),
+            authored: None,
         }
+    }
+
+    /// The condition as its author wrote it: [`CelPair::authored`], else
+    /// `raw`.
+    pub fn shown(&self) -> &str {
+        self.authored.as_deref().unwrap_or(&self.raw)
     }
 }
 
@@ -1586,7 +1685,7 @@ impl CelPair {
 ///
 /// Wire (dsl 0.16.0 Global Constraints): exactly one of `amount` XOR
 /// (`amountMin`+`amountMax`) is present after amount defaulting
-/// (unauthored → `amount: 1`). `on` is only ever `Some("failed")`, and
+/// (unauthored → `amount: 1`). `outcome` is only ever `Some("failed")`, and
 /// only on a quest-level entry.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1603,7 +1702,7 @@ pub struct RewardEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<CelPair>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub on: Option<String>,
+    pub outcome: Option<String>,
     /// dsl 0.23.0 §8: the state path the reward kind's `credits:` names —
     /// a grant adds its amount there. Stamped from the capability snapshot
     /// at compile; omitted when the kind credits nothing.
@@ -1613,8 +1712,8 @@ pub struct RewardEntry {
 
 impl RewardEntry {
     /// Lower an AST [`lute_syntax::ast::Reward`] into the wire record.
-    /// `owner_is_quest = true` preserves `on="failed"` (spec §2 — only legal
-    /// on a quest-level entry); every other `on` value is dropped (the
+    /// `owner_is_quest = true` preserves `outcome="failed"` (spec §2 — only legal
+    /// on a quest-level entry); every other `outcome` value is dropped (the
     /// checker rejects it upstream, but this stays defensive so a stray
     /// value never reaches the wire). Amount defaulting (§3 Global
     /// Constraints): unauthored → `amount: 1`; a scalar fills `amount`; a
@@ -1627,8 +1726,8 @@ impl RewardEntry {
             Some(RewardAmount::Scalar(n)) => (Some(n), None, None),
             Some(RewardAmount::Range(lo, hi)) => (None, Some(lo), Some(hi)),
         };
-        let on = if owner_is_quest {
-            reward.on.as_deref().and_then(|v| {
+        let outcome = if owner_is_quest {
+            reward.outcome.as_deref().and_then(|v| {
                 if v == "failed" {
                     Some("failed".to_string())
                 } else {
@@ -1645,7 +1744,7 @@ impl RewardEntry {
             amount_min,
             amount_max,
             when: reward.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
-            on,
+            outcome,
             credits: None,
         }
     }
@@ -1706,6 +1805,9 @@ impl Command {
             Command::Hub(c) => {
                 for o in &mut c.options {
                     f(&mut o.target);
+                }
+                if let Some(r) = &mut c.on_return {
+                    f(r);
                 }
                 f(&mut c.converge);
             }

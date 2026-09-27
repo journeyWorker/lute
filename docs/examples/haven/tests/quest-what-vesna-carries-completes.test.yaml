@@ -9,6 +9,6 @@ facts:
   - "can_halt(vesna)"
   - "knows(vesna, manifest)"
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "She had the page, she had the condition, and she had somebody she could say both to out loud."

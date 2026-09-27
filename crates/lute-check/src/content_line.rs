@@ -124,11 +124,21 @@ pub fn check_content_line_attrs(
                 }
                 continue;
             }
+            let known = KNOWN_ATTRS
+                .iter()
+                .copied()
+                .chain(snapshot.stamp_attrs.keys().map(String::as_str));
+            let hint = lute_manifest::suggest::did_you_mean(&attr.key, known);
             diags.push(err(
                 E_UNKNOWN_ATTR,
                 format!(
-                    "unknown content-line attribute `{}` (dsl 0.1.0 §7.1)",
-                    attr.key
+                    "unknown content-line attribute `{}`{hint}; a line takes {}",
+                    attr.key,
+                    KNOWN_ATTRS
+                        .iter()
+                        .map(|a| format!("`{a}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
                 attr.span,
             ));

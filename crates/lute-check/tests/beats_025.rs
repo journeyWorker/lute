@@ -65,6 +65,7 @@ fn project_beat_diags(files: &[(&str, &str)]) -> Vec<(PathBuf, Diagnostic)> {
         &refs,
         &lute_check::cast::fact_producers(&docs, &Default::default()),
         None,
+        &Default::default(),
     )
 }
 

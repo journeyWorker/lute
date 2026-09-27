@@ -53,7 +53,7 @@ fn run(dir: &Path, args: &[&str]) -> (Option<i32>, String) {
 
 const KINDS: &str = "entities:\n  npc: { members: [sefa, quill, tavi] }\n  \
                      item: { members: [compass, shell] }\n";
-const GIFTED: &str = "relations:\n  gifted: { args: [npc, item] }\n";
+const GIFTED: &str = "relations:\n  gifted: { args: [npc, item], tier: run }\n";
 
 fn scene(body: &str) -> String {
     format!("---\nkind: scene\nid: s\non: visit\n---\n\n## S\n\n{body}")

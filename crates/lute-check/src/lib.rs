@@ -8,8 +8,11 @@ pub mod cel_expand;
 pub mod cel_message;
 pub mod cel_paths;
 pub mod cel_resolve;
+pub(crate) mod cel_types;
+pub mod chapters;
 pub mod check;
 pub mod clock;
+pub mod clock_positions;
 pub mod component_effects;
 pub mod component_import;
 pub mod connectivity;
@@ -20,6 +23,7 @@ pub mod decide;
 pub mod def_decl;
 pub mod def_inline;
 pub mod defassign;
+pub(crate) mod defaults_note;
 pub mod directive_facts;
 pub mod directives;
 pub mod display_names;
@@ -45,16 +49,17 @@ pub mod producible;
 pub mod project_check;
 pub mod reachability;
 pub mod rel_schema;
+pub(crate) mod reserved_names;
 pub mod rule_index;
 pub mod schema_import;
 pub mod season;
-pub mod sequence;
 pub mod set_op;
 pub mod set_type;
 pub(crate) mod solution;
 pub mod spent_by;
 pub mod state_decls;
 pub mod tag;
+pub mod target_writes;
 pub mod templates;
 pub mod temporal;
 pub mod time;
@@ -73,7 +78,7 @@ pub const LUTE_LANG_VERSION: &str = "0.27.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
-/// default, its `sequence:`'s derived scene keys (dsl 0.27.0 §8), and every
+/// default, its `chapters:`'s derived scene keys (dsl 0.28.0 §4), and every
 /// `<beat use="…">` template use (dsl 0.27.0 §6). Idempotent; returns the
 /// template diagnostics of the first expansion (`check` reports them).
 pub fn desugar_document(
@@ -81,7 +86,7 @@ pub fn desugar_document(
     input: &CheckInput,
 ) -> Vec<lute_core_span::Diagnostic> {
     meta::apply_quest_tier_default(doc, &input.defaults);
-    sequence::apply_sequence(doc, &input.defaults, &input.snapshot.occasions);
+    chapters::apply_chapters(doc, &input.defaults, &input.snapshot.occasions);
     if !doc
         .beats
         .iter()
@@ -98,11 +103,47 @@ pub fn desugar_document(
     if let Some(defs) = inline.as_ref().and_then(|v| v.get("defs")?.as_mapping()) {
         host_defs.extend(defs.keys().filter_map(|k| k.as_str().map(str::to_string)));
     }
+    // What the host's cast and kinds say about each argument (a header key
+    // reading a refused one is not derived). A document that declares its
+    // own kinds or enums leaves membership to the checks.
+    let mut host = templates::HostArgs::default();
+    for c in cast::declared_cast(&input.snapshot, &input.imports, &[]).into_values() {
+        host.cast.insert(c.id.clone(), c.name.unwrap_or(c.id));
+    }
+    if let Some(cast) = inline.as_ref().and_then(|v| v.get("cast")?.as_mapping()) {
+        for (id, v) in cast {
+            let Some(id) = id.as_str() else { continue };
+            let name = v.get("name").and_then(|n| n.as_str()).unwrap_or(id);
+            host.cast.insert(id.to_string(), name.to_string());
+        }
+    }
+    let own_vocab = inline
+        .as_ref()
+        .is_some_and(|v| v.get("entities").is_some() || v.get("enums").is_some());
+    if !own_vocab {
+        let mut domains = input.snapshot.domains.clone();
+        domains.extend(input.imports.domains.clone());
+        host.domains = Some(domains);
+    }
+    // A component only the manifest's `defaults.components` imports, when
+    // this document's own `components:` replaced that list: the use names it.
+    let replaced = defaults_note::replaced(inline.as_ref(), input, "components");
+    let at = doc.meta.span;
+    let defaults_set = std::cell::OnceCell::new();
+    let replaced_hint = |name: &str| {
+        let paths = replaced.as_ref()?;
+        let set = defaults_set.get_or_init(|| {
+            component_import::resolve_components(std::path::Path::new("."), paths, at)
+        });
+        Some(defaults_note::component_hint(&set.table.get(name)?.src))
+    };
     templates::expand_beat_templates(
         doc,
         &input.components,
         &input.snapshot.occasions,
         &host_defs,
+        &host,
+        &replaced_hint,
     )
 }
 
@@ -130,8 +171,8 @@ pub use cel_resolve::{
     E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,
 };
 pub use check::{
-    check, check_parsed, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved,
-    INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
+    check, check_parsed, diagnostic_order, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv,
+    Resolved, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
 };
 pub use component_effects::{display_args, splice_component_effects};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
@@ -179,13 +220,13 @@ pub use permissions::{
 };
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
 pub use project_check::{
-    check_project_domain_reads, check_project_entry_ids, check_project_entry_refs,
-    check_project_quest_handlers, check_project_quest_ids, check_project_quest_refs,
-    check_project_quest_tree, check_project_subquest_unsatisfiable, colliding_entry_occurrences,
-    colliding_occurrences, component_unverified_diag, domain_reading_set, ComponentScope,
-    E_QUEST_MULTI_PARENT, E_QUEST_REF_UNKNOWN, E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE,
-    W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN,
-    W_QUEST_TIER_IMPLICIT,
+    check_project_branch_ids, check_project_domain_reads, check_project_entry_ids,
+    check_project_entry_refs, check_project_quest_handlers, check_project_quest_ids,
+    check_project_quest_refs, check_project_quest_tree, check_project_subquest_unsatisfiable,
+    colliding_entry_occurrences, colliding_occurrences, component_unverified_diag,
+    domain_reading_set, ComponentScope, E_QUEST_MULTI_PARENT, E_QUEST_REF_UNKNOWN,
+    E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE, W_BRANCH_ID_SHARED, W_COMPONENT_UNVERIFIED,
+    W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN, W_QUEST_TIER_IMPLICIT,
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;

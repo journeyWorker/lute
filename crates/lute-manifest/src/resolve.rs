@@ -721,6 +721,7 @@ mod tests {
             occasions: vec![],
             lints: vec![],
             cast: vec![],
+            sites: Default::default(),
         }
     }
 

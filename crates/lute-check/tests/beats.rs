@@ -524,6 +524,7 @@ impl Project {
             &refs,
             &lute_check::cast::fact_producers(&self.docs, &Default::default()),
             None,
+            &Default::default(),
         )
         .into_iter()
         .filter(|(_, d)| d.code == "W-BEAT-SHADOWED")

@@ -99,6 +99,29 @@ fn mixed_alternation_flags_only_foreign() {
     );
 }
 
+// `is="bronze,gold"`: each comma-separated part is a member, so the author
+// meant alternatives — the verdict says to separate them with `|`.
+#[test]
+fn comma_separated_members_suggest_the_bar() {
+    let result = run(&format!(
+        "{HDR}<match on=\"run.rank\">\n\
+         <when is=\"bronze, gold\">\n@narrator: x\n</when>\n\
+         <otherwise>\n@narrator: o\n</otherwise>\n\
+         </match>\n"
+    ));
+    let d = result
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-WHEN-LITERAL-DOMAIN")
+        .unwrap_or_else(|| panic!("{:?}", result.diagnostics));
+    assert!(
+        d.message
+            .contains("separate alternatives with `|`: `is=\"bronze|gold\"`"),
+        "{}",
+        d.message
+    );
+}
+
 // Finding 2 (D4 double-report): an arm carrying BOTH a foreign `is` literal
 // AND a decided-false `test=` guard must flag ONLY E-WHEN-LITERAL-DOMAIN —
 // the foreign-literal code owns the root; cause 1 (dead-guard) must never
@@ -665,7 +688,7 @@ fn spec_54_quest_example_two_roots() {
 fn hidden_required_objective_warns() {
     let text = format!(
         "{QUEST_HDR}<quest id=\"q\">\n\
-         <objective id=\"o\" when=\"false\" done=\"run.flag\"/>\n</quest>\n"
+         <objective id=\"o\" visibleWhen=\"false\" done=\"run.flag\"/>\n</quest>\n"
     );
     let res = run(&text);
     assert!(
@@ -687,7 +710,8 @@ fn hidden_required_objective_warns() {
 // clean, exactly the quest-grove/rescue-halsin shape (dsl 0.4 §5.1).
 #[test]
 fn holds_guards_stay_undecided() {
-    let vocab = "entities:\n  c: { members: [ana] }\nrelations:\n  inParty: { args: [c] }\n";
+    let vocab =
+        "entities:\n  c: { members: [ana] }\nrelations:\n  inParty: { args: [c], tier: run }\n";
     let text = format!(
         "---\nkind: quest\n{vocab}---\n<quest id=\"q\" start=\"holds(inParty(ana))\">\n\
          <objective id=\"o\" done=\"true\"/>\n</quest>\n"
@@ -1299,5 +1323,96 @@ fn one_scalar_gate_per_quest_is_clean() {
     assert!(
         !cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
         "{cs:?}"
+    );
+}
+
+/// dsl 0.28.0 (T1-23): inside a hub option's own arm its visit record is
+/// `true` — it is written when the option is picked, before the arm runs —
+/// so an arm (or a guard) needing it false is dead, and needs no arm either.
+#[test]
+fn an_options_own_visit_record_is_true_in_its_arm() {
+    let hub = |inner: &str| {
+        format!(
+            "---\nkind: scene\nid: h\n---\n## Room\n<hub id=\"lamp\">\n\
+             <choice id=\"ledger\" label=\"Read\">\n{inner}</choice>\n\
+             <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: Out.\n</choice>\n</hub>\n"
+        )
+    };
+    let text = hub(
+        "<match on=\"scene.visited.lamp.ledger\">\n<when is=\"false\">\n@narrator: First.\n</when>\n\
+         <otherwise>\n@narrator: Again.\n</otherwise>\n</match>\n",
+    );
+    let ds = run(&text).diagnostics;
+    let dead: Vec<_> = ds.iter().filter(|d| d.code == "E-ARM-DEAD").collect();
+    assert_eq!(dead.len(), 1, "{ds:#?}");
+    assert!(
+        dead[0]
+            .message
+            .contains("set when the choice is picked, before its arm runs"),
+        "{}",
+        dead[0].message
+    );
+    // A guard deciding the record false there is dead the same way.
+    let guard = run(&hub(
+        "<match on=\"scene.visited.lamp.leave\">\n<when test=\"!scene.visited.lamp.ledger\">\n\
+         @narrator: First.\n</when>\n<otherwise>\n@narrator: Again.\n</otherwise>\n</match>\n",
+    ))
+    .diagnostics;
+    assert!(
+        guard
+            .iter()
+            .any(|d| d.code == "E-ARM-DEAD" && d.message.contains("its option's own arm")),
+        "{guard:#?}"
+    );
+    // One `true` arm is exhaustive there: no arm for `false` is demanded.
+    let one = codes(&hub(
+        "<match on=\"scene.visited.lamp.ledger\">\n<when is=\"true\">\n@narrator: Again.\n</when>\n</match>\n",
+    ));
+    assert!(!one.contains(&"E-NONEXHAUSTIVE".to_string()), "{one:?}");
+    // The other option's arm knows nothing about `ledger`'s record.
+    let other = codes(&format!(
+        "---\nkind: scene\nid: h\n---\n## Room\n<hub id=\"lamp\">\n\
+         <choice id=\"ledger\" label=\"Read\">\n@narrator: Read.\n</choice>\n\
+         <choice id=\"leave\" label=\"Leave\" exit>\n<match on=\"scene.visited.lamp.ledger\">\n\
+         <when is=\"false\">\n@narrator: Unread.\n</when>\n<otherwise>\n@narrator: Read.\n</otherwise>\n\
+         </match>\n</choice>\n</hub>\n"
+    ));
+    assert!(!other.contains(&"E-ARM-DEAD".to_string()), "{other:?}");
+}
+
+/// dsl 0.28.0 (T3-61): after a `<branch>` that always picks (an unguarded
+/// choice, no `timeout`) its record is set: a match on it needs no `unset`
+/// arm. A `timeout` can end the branch without a pick, and the one report
+/// names the branch.
+#[test]
+fn a_branch_that_always_picks_sets_its_record() {
+    let branch = |attrs: &str| {
+        format!(
+            "---\nkind: scene\nid: w\n---\n## A\n<branch id=\"door\"{attrs}>\n\
+             <choice id=\"inside\" label=\"In\">\n@narrator: In.\n</choice>\n\
+             <choice id=\"stay\" label=\"Out\">\n@narrator: Out.\n</choice>\n</branch>\n\
+             <match on=\"scene.choices.door\">\n<when is=\"inside\">\n@narrator: a\n</when>\n\
+             <when is=\"stay\">\n@narrator: b\n</when>\n</match>\n"
+        )
+    };
+    let clean = run(&branch("")).diagnostics;
+    assert!(
+        !clean
+            .iter()
+            .any(|d| d.code == "E-UNSET-UNCOVERED" || d.code == "E-MAYBE-UNSET"),
+        "{clean:#?}"
+    );
+    let timed = run(&branch(" timeout=\"10\"")).diagnostics;
+    let unset: Vec<_> = timed
+        .iter()
+        .filter(|d| d.code == "E-UNSET-UNCOVERED" || d.code == "E-MAYBE-UNSET")
+        .collect();
+    assert_eq!(unset.len(), 1, "{timed:#?}");
+    assert!(
+        unset[0]
+            .message
+            .contains("`<branch id=\"door\">` has a `timeout`"),
+        "{}",
+        unset[0].message
     );
 }

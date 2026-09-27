@@ -25,7 +25,7 @@ fn scene_with(front_extra: &str) -> String {
     format!("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{front_extra}{HDR_TAIL}")
 }
 
-const VOCAB: &str = "entities:\n  faction: { members: [harpers, absolute] }\n  location: { members: [grove, moonrise] }\nrelations:\n  hostile: { args: [faction, faction] }\n  connected: { args: [location, location], tier: app }\n  ally: { args: [faction, faction], derive: true }\n  canReach: { args: [faction, location], derive: true }\n  orphan: { args: [faction], derive: true }\n";
+const VOCAB: &str = "entities:\n  faction: { members: [harpers, absolute] }\n  location: { members: [grove, moonrise] }\nrelations:\n  hostile: { args: [faction, faction], tier: run }\n  connected: { args: [location, location], tier: app }\n  ally: { args: [faction, faction], derive: true }\n  canReach: { args: [faction, location], derive: true }\n  orphan: { args: [faction], derive: true }\n";
 
 #[test]
 fn rule_head_must_be_derive_true() {
@@ -160,7 +160,7 @@ fn guard_tainted(text: &str) -> std::collections::BTreeSet<String> {
 
 #[test]
 fn positive_recursion_is_legal() {
-    let front = "entities:\n  c: { members: [ana] }\n  loc: { members: [grove, moonrise] }\nrelations:\n  atLocation: { args: [c, loc], key: [0] }\n  connected: { args: [loc, loc], tier: app }\n  canReach: { args: [c, loc], derive: true }\nrules:\n  - \"canReach(C, L) :- atLocation(C, L)\"\n  - \"canReach(C, L2) :- canReach(C, L1), connected(L1, L2)\"\n";
+    let front = "entities:\n  c: { members: [ana] }\n  loc: { members: [grove, moonrise] }\nrelations:\n  atLocation: { args: [c, loc], tier: run, key: [0] }\n  connected: { args: [loc, loc], tier: app }\n  canReach: { args: [c, loc], derive: true }\nrules:\n  - \"canReach(C, L) :- atLocation(C, L)\"\n  - \"canReach(C, L2) :- canReach(C, L1), connected(L1, L2)\"\n";
     let c = codes(&scene_with(front));
     assert!(
         !c.contains(&"E-DATALOG-UNSTRATIFIED".to_string()),
@@ -219,7 +219,7 @@ fn negation_cycle_spanning_two_files_is_caught_post_merge() {
 
 #[test]
 fn guard_taint_propagates_to_downstream_readers() {
-    let front = "entities:\n  faction: { members: [harpers, absolute] }\nrelations:\n  hostile: { args: [faction, faction] }\n  guarded: { args: [faction], derive: true }\n  downstream: { args: [faction], derive: true }\n  clean: { args: [faction], derive: true }\nstate:\n  run.act: { type: number, default: 1 }\nrules:\n  - \"guarded(A) :- faction(A), cel(\\\"run.act == 1\\\")\"\n  - \"downstream(A) :- guarded(A)\"\n  - \"clean(A) :- faction(A)\"\n";
+    let front = "entities:\n  faction: { members: [harpers, absolute] }\nrelations:\n  hostile: { args: [faction, faction], tier: run }\n  guarded: { args: [faction], derive: true }\n  downstream: { args: [faction], derive: true }\n  clean: { args: [faction], derive: true }\nstate:\n  run.act: { type: number, default: 1 }\nrules:\n  - \"guarded(A) :- faction(A), cel(\\\"run.act == 1\\\")\"\n  - \"downstream(A) :- guarded(A)\"\n  - \"clean(A) :- faction(A)\"\n";
     let tainted = guard_tainted(&scene_with(front));
     assert!(tainted.contains("guarded"), "directly guarded: {tainted:?}");
     assert!(

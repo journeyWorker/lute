@@ -25,23 +25,46 @@ fn project_rel(path: &Path, root: &Path) -> Option<String> {
     (!out.is_empty()).then_some(out)
 }
 
+/// The command a project is compiled for, as its messages name it.
+#[derive(Clone, Copy)]
+pub(crate) struct Gate {
+    /// `lute play`, `lute calendar`, `lute test`.
+    pub cmd: &'static str,
+    /// What the command refuses to do over a project that does not compile.
+    pub refuses: &'static str,
+}
+
+pub(crate) const PLAY: Gate = Gate {
+    cmd: "lute play",
+    refuses: "play",
+};
+pub(crate) const CALENDAR: Gate = Gate {
+    cmd: "lute calendar",
+    refuses: "evaluate the calendar",
+};
+pub(crate) const TEST: Gate = Gate {
+    cmd: "lute test",
+    refuses: "play",
+};
+
 /// Compile every non-component document under `project_dir` in memory with
-/// the `compile --all` gate — refusing to play a project that does not
-/// wholly compile — and build its index. `Err` carries the exit code after
-/// the diagnostics are printed.
-pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCode> {
+/// the `compile --all` gate — refusing to run `gate`'s command over a
+/// project that does not wholly compile — and build its index. `Err`
+/// carries the exit code after the diagnostics are printed.
+pub(super) fn compile_project(project_dir: &Path, gate: Gate) -> Result<ExecProject, ExitCode> {
+    let Gate { cmd, refuses } = gate;
     match crate::manifests::validate_manifests_under(project_dir) {
         Ok(mut verdicts) => {
             crate::manifests::mark_inert_under(&mut verdicts, project_dir);
             if crate::manifests::report_and_gate(&verdicts)
-                | crate::manifests::gate_sequences(&verdicts)
+                | crate::manifests::gate_chapters(&verdicts)
             {
                 return Err(ExitCode::from(1));
             }
         }
         Err(e) => {
             eprintln!(
-                "lute play: cannot walk {} for manifests: {e}",
+                "{cmd}: cannot walk {} for manifests: {e}",
                 project_dir.display()
             );
             return Err(ExitCode::from(2));
@@ -58,8 +81,8 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
             println!("{line}");
         }
         eprintln!(
-            "lute play: {} schema or plugin error(s) every importing document shares; refusing \
-             to play",
+            "{cmd}: {} schema or plugin error(s) every importing document shares; refusing \
+             to {refuses}",
             faults.len()
         );
         return Err(ExitCode::from(1));
@@ -80,6 +103,7 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
     let cache = crate::InputCache::default();
     let mut display_names: BTreeMap<String, String> = BTreeMap::new();
     let mut needles = NeedleVocab::default();
+    let mut chapter_afters: BTreeSet<String> = BTreeSet::new();
 
     for (file, base) in &reconciled.per_doc {
         if crate::compile_all::is_component_file(file) {
@@ -87,7 +111,7 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
         }
         let Some(rel) = project_rel(file, project_dir) else {
             eprintln!(
-                "lute play: {} is not under {}",
+                "{cmd}: {} is not under {}",
                 file.display(),
                 project_dir.display()
             );
@@ -97,8 +121,13 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
         else {
             return Err(ExitCode::from(2));
         };
-        built.report_project_diags();
+        // The project's resolve lines (a plugin that fails to load, a bad
+        // option) were printed once, above, by the reconcile pass.
         if built.resolve_error {
+            eprintln!(
+                "{cmd}: the project's plugins or manifest do not resolve (see above); refusing \
+                 to {refuses}"
+            );
             return Err(ExitCode::from(1));
         }
         for (name, decl) in &built.input.snapshot.occasions {
@@ -116,8 +145,18 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
         }
         bridge_types = bridge_types.with_result_types(&built.input.snapshot);
         needles.union(NeedleVocab::of(&built.input, &built.meta));
-        let gate = crate::gate_for_doc(&reconciled, file, base);
-        match lute_compile::compile_with_check(&built.input, gate, &identity) {
+        // dsl 0.28.0 §4: whose `after:` a chain wrote — read off the
+        // desugared scene, so an `after:` the scene wrote is never credited
+        // to `chapters:` whatever its text (T3-18).
+        let (mut desugared, _) = lute_syntax::parse(&built.input.text);
+        lute_check::chapters::apply_chapters(
+            &mut desugared,
+            &built.input.defaults,
+            &built.input.snapshot.occasions,
+        );
+        chapter_afters.extend(lute_check::chapters::derived_after(&desugared));
+        let doc_gate = crate::gate_for_doc(&reconciled, file, base);
+        match lute_compile::compile_with_check(&built.input, doc_gate, &identity) {
             Ok(artifact) => {
                 compiled.insert(rel, artifact);
             }
@@ -135,7 +174,7 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
             print!("{rendered}");
         }
         eprintln!(
-            "lute play: {} of {} document(s) failed to compile; refusing to play",
+            "{cmd}: {} of {} document(s) failed to compile; refusing to {refuses}",
             failures.len(),
             failures.len() + compiled.len()
         );
@@ -156,22 +195,21 @@ pub(super) fn compile_project(project_dir: &Path) -> Result<ExecProject, ExitCod
         ExitCode::from(code)
     })?;
     project.needles = needles;
-    project.sequence_after = lute_manifest::project::load_project(project_dir)
-        .ok()
-        .flatten()
-        .map(|c| lute_check::sequence::derived_afters(&c.defaults, &project.occasions))
-        .unwrap_or_default();
+    project.chapter_afters = chapter_afters;
     Ok(project)
 }
 
-/// Compile the project a play runs over ([`compile_project`]); `dir` must be
-/// a directory (exit 2 with the usage error).
-pub(super) fn compile_play_project(dir: &Path) -> Result<ExecProject, (ExitCode, String)> {
+/// Compile the project `gate`'s command runs over ([`compile_project`]);
+/// `dir` must be a directory (exit 2 with the usage error).
+pub(super) fn compile_play_project(
+    dir: &Path,
+    gate: Gate,
+) -> Result<ExecProject, (ExitCode, String)> {
     if !dir.is_dir() {
         return Err((
             ExitCode::from(2),
             format!("{} is not a project directory", dir.display()),
         ));
     }
-    compile_project(dir).map_err(|code| (code, String::new()))
+    compile_project(dir, gate).map_err(|code| (code, String::new()))
 }

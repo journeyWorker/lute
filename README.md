@@ -31,7 +31,7 @@ The website — landing, guides, language reference, CLI docs (en + 한국어) �
 
 ```sh
 lute init my-project           # scaffold project + starter scene + mock (--template beats: occasions, beats, plays, tests)
-lute new quest the-hunt        # scaffold one document (scene | quest | lore | schema; scene --on <occasion> writes a beat)
+lute new quest the-hunt        # scaffold one document (scene | quest | lore | schema; scene --occasion <occasion> writes a beat)
 lute check scene.lute          # static validation of one document
 lute check-project .           # every document + project-wide passes (quest ids, connectivity, fact guards)
 lute lint .                    # advisory L-* findings governed by lute.lint.yaml
@@ -142,7 +142,7 @@ A quest — conditions and rewards as data (`inParty`/`ownsItem` are project-dec
 <quest id="hunt" title="The Hunt" start="holds(inParty(shadowheart))" fail="run.dawnBroke">
   <reward kind="XP" amount="300"/>
   <reward kind="SHARD" amount="1..5" when="run.bonusMet"/>
-  <reward kind="SHARD" amount="2" on="failed"/>
+  <reward kind="SHARD" amount="2" outcome="failed"/>
   <objective id="track" done="count(ownsItem(tracks)) >= 3">
     <reward kind="GOLD" amount="10"/>
   </objective>
@@ -164,8 +164,8 @@ raised occasions through the whole project:
 # plays/tenth-run.play.yaml
 state: { user.runs: 10 }
 steps:
-  - occasion: hubVisit
-    expect: { winner: hub.welcome }
+  - occasion: townVisit
+    expect: { winner: town.welcome }
   - occasion: talk
     target: npc.achilles
   - engine:                # what the engine owns: state, facts, reserved relations

@@ -139,7 +139,11 @@ name. Before 0.26.0 the placeholder record was dropped and the braces shipped as
 A component body is **presentational**: lines, staging directives, and `@param` refs only. It may
 **not** read scene/run state, may **not** write it unless the file declares
 [`effects: true`](#components-that-write-state-effects-true), and may **not** contain logic blocks (`E-COMPONENT-BODY`) —
-pass values in through params instead (a caller's def is a legal argument, above). One notable
+pass values in through params instead (a caller's def is a legal argument, above). A def is no
+exception: `@narrator{when="@late"}` in a body is `E-COMPONENT-STATE` at `@late`, once, in the
+component's own check, and the message names the param that carries it in,
+`late: { type: bool, default: "@late" }`. Declaring it changes nothing in the body, and each
+`::use` defaults it to the host's `@late`. One notable
 exception: a `<match>` that dispatches on the component's own param is admitted, because dispatch on
 a param is a pure read of an invocation argument, not of ambient state:
 
@@ -267,6 +271,9 @@ A param typed **`speaker`** (dsl 0.24.0 §4) takes a cast id, as `who` does in `
   (`who="corvn"` suggests `corvin`). Without a declared cast any identifier is accepted.
 - The argument must be a literal. A def argument, `who=@lead`, is `E-COMPONENT-ARG`, because the
   name is chosen when the component expands, not at run time.
+- A component may pass its own speaker on, `::use{component="nod" who=@who}`: the id the outer
+  `::use` gives is the inner one's too, and the host judges it where it binds it (cast membership,
+  and the member of a `per:` family the inner body writes).
 
 ### Speaking as a param: `@@who:`
 
@@ -410,8 +417,9 @@ literal, as for a `string` param.
 A component whose frontmatter also declares a `beat:` header (`on`, `when`, `once`, `after`, …, its
 values free to use `@param`) is a **beat template** (dsl 0.27.0 §6): a bundle beat names it with
 `<beat use="<component>" id="…" …>`, passes the params as attributes, and gets the header with each
-`@param` replaced. See [Beat templates](/language/beats/#beat-templates-use) for the header rules,
-`::body`, and the `E-TEMPLATE` misuses.
+`@param` replaced. Its body needs no `## ` heading, as a bundle beat's does not. See
+[Beat templates](/language/beats/#beat-templates-use) for the header rules, `::body`, and the
+`E-TEMPLATE` misuses.
 
 ### Line identity
 

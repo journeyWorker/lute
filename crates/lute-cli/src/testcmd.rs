@@ -16,16 +16,16 @@
 //! expect:
 //!   transcriptContains: ["Case closed."]
 //!   transcriptLacks: ["Blake walks free."]
-//!   offered: { accuse: [accuseBlake, accuseMoss] } # the options offered there
+//!   options: { accuse: [accuseBlake, accuseMoss] } # the options offered there
 //!   state: { run.accused: blake }   # the FINAL effective state (write → seed → default)
 //!   quests: { caseClosed: complete } # unset | active | complete | failed
-//!   exit: complete                  # complete | incomplete
+//!   end: complete                   # complete | terminal | incomplete | error
 //! ```
 //!
 //! Each test traces its document once ([`trace_with_check`]) and checks every
 //! declared expectation, naming actual-vs-expected on any miss. An
 //! `incomplete` trace (an unknown guard halted the walk) FAILS unless the
-//! test declares `expect: { exit: incomplete }` — a walk that stopped halfway
+//! test declares `expect: { end: incomplete }` — a walk that stopped halfway
 //! proves nothing about the expectations it never reached (0.21.1, T1-13).
 //! A lore document is looked up, not played: its test names the entries to
 //! present — `entry: <id>` or `entries: [ids]`, walked in order with the
@@ -89,10 +89,13 @@ use crate::play_expect::ExpectMiss;
 /// Every `eprintln!` of this module goes through [`stderr_line`]: `lute
 /// test` runs its tests and plays in parallel (T2-1) and replays each one's
 /// stderr lines in the order they are reported, so what a run prints is
-/// what the sequential run printed.
+/// what the sequential run printed. Every line is plain text
+/// ([`lute_core_span::plain_message`]).
 macro_rules! eprintln {
     ($($arg:tt)*) => {
-        stderr_line(StderrLine::Text(format!($($arg)*)))
+        stderr_line(StderrLine::Text(
+            lute_core_span::plain_message(&format!($($arg)*)).into_owned(),
+        ))
     };
 }
 
@@ -157,8 +160,7 @@ fn replay(lines: Vec<StderrLine>, noted: &mut BTreeSet<PathBuf>) {
 /// **The two sets differ by exactly [`HARNESS_KEYS`]** — asserted by
 /// [`the_test_key_set_is_the_mock_key_set_plus_the_harness_keys`], so the
 /// two cannot drift when a surface is added on either side.
-const TEST_TOP_KEYS: &[&str] = &[
-    "accept",
+pub(crate) const TEST_TOP_KEYS: &[&str] = &[
     "accepts",
     "beat",
     "bridges",
@@ -188,17 +190,17 @@ const HARNESS_KEYS: &[&str] = &["beat", "entries", "entry", "expect"];
 /// The complete legal key set inside `expect:`. Also CLOSED — a new
 /// expectation kind is added HERE, which is the point of a closed set.
 /// `quests:` (dsl 0.21.0 §7a.4) asserts the quest lifecycle the trace ran;
-/// `offered:` / `transcriptLacks:` are dsl 0.22.0 §5; `facts:` / `notFacts:`
+/// `options:` / `transcriptLacks:` are dsl 0.22.0 §5; `facts:` / `notFacts:`
 /// (every fact that holds at the end, after derivation) and `eligible:` (a
 /// presented entry's or beat's `when`) are 0.23.1; `accepts:` (the quests a
 /// scene's `::accept` took) is 0.24.0.
-const TEST_EXPECT_KEYS: &[&str] = &[
+pub(crate) const TEST_EXPECT_KEYS: &[&str] = &[
     "accepts",
     "eligible",
-    "exit",
+    "end",
     "facts",
     "notFacts",
-    "offered",
+    "options",
     "quests",
     "state",
     "transcriptContains",
@@ -210,17 +212,60 @@ const TEST_EXPECT_KEYS: &[&str] = &[
 /// engine's `quest.<id>.state` domain.
 const QUEST_STATES: &[&str] = &["unset", "active", "complete", "failed"];
 
+/// The spellings a `*.test.yaml` no longer reads, each with the error that
+/// names its replacement: `(level, old, message)`.
+const RENAMED_TEST_KEYS: &[(&str, &str, &str)] = &[
+    (
+        "top-level",
+        "accept",
+        "`accept:` is now `accepts:` in a `*.test.yaml`",
+    ),
+    (
+        "`expect:`",
+        "offered",
+        "`expect.offered` is now `expect.options` — in a test and in a play, `options` are \
+         the menu choices a branch/hub presents (a play's `offered` lists beat candidates)",
+    ),
+    (
+        "`expect:`",
+        "exit",
+        "`expect.exit` is now `expect.end` — write `end: <how the walk ended>`, one of: \
+         complete, terminal, incomplete, error",
+    ),
+];
+
 /// One `E-TEST-KEY` line for an unrecognised key, with the same
 /// edit-distance did-you-mean four checker codes already use (dsl 0.5.0
 /// §2.2), over the workspace's ONE suggestion helper. `where_` names the
 /// level so a top-level typo and an `expect:`-level typo are
-/// distinguishable.
+/// distinguishable. A renamed key names its new spelling; a key a play
+/// script reads at that level says so.
 fn unknown_key_line(where_: &str, key: &str, allowed: &[&str]) -> String {
-    let sugg = lute_manifest::suggest::nearest(key, allowed.iter().copied(), 2)
-        .map(|k| format!(" — did you mean `{k}`?"))
+    if let Some((_, _, msg)) = RENAMED_TEST_KEYS
+        .iter()
+        .find(|(level, old, _)| *level == where_ && *old == key)
+    {
+        return format!("error [E-TEST-KEY] {msg}");
+    }
+    let sugg = lute_manifest::suggest::did_you_mean(key, allowed.iter().copied());
+    let play = if where_ == "top-level" {
+        if crate::play::STEP_KEYS.contains(&key) {
+            Some("a play step")
+        } else {
+            crate::play::SCRIPT_KEYS
+                .contains(&key)
+                .then_some("a play script's top level")
+        }
+    } else {
+        crate::play_expect::STEP_EXPECT_KEYS
+            .contains(&key)
+            .then_some("a play step's `expect:`")
+    };
+    let hint = play
+        .map(|p| format!(" (`{key}:` belongs to {p}, in a `*.play.yaml`)"))
         .unwrap_or_default();
     format!(
-        "error [E-TEST-KEY] unknown {where_} key `{key}` in a `*.test.yaml`{sugg} (legal: {})",
+        "error [E-TEST-KEY] unknown {where_} key `{key}` in a `*.test.yaml`{sugg}{hint} (legal: {})",
         allowed.join(", ")
     )
 }
@@ -243,8 +288,27 @@ fn closed_key_violations(map: &serde_yaml::Mapping) -> Vec<String> {
         }
         if key == "expect" {
             if let Some(em) = v.as_mapping() {
-                for (ek, _) in em {
+                for (ek, ev) in em {
                     match ek.as_str() {
+                        // How the walk ended: one of play's `expect.end`
+                        // values — a misspelt one could never hold.
+                        Some("end") => {
+                            let ends = crate::play_expect::ENDS;
+                            match ev.as_str() {
+                                Some(e) if ends.contains(&e) => {}
+                                got => out.push(format!(
+                                    "error [E-TEST-KEY] `expect.end: {}` names no way a walk \
+                                     ends{} (one of: {})",
+                                    got.unwrap_or("?"),
+                                    got.map(|g| lute_manifest::suggest::did_you_mean(
+                                        g,
+                                        ends.iter().copied()
+                                    ))
+                                    .unwrap_or_default(),
+                                    ends.join(", ")
+                                )),
+                            }
+                        }
                         Some(ekey) if TEST_EXPECT_KEYS.contains(&ekey) => {}
                         Some(ekey) => {
                             out.push(unknown_key_line("`expect:`", ekey, TEST_EXPECT_KEYS))
@@ -302,6 +366,9 @@ struct TestResult {
     /// The traced document; for a play, the project directory it played.
     lute_file: String,
     exit: String,
+    /// How the walk ended — `complete | terminal | incomplete | error`, the
+    /// values `expect.end` names. `None` when nothing was walked.
+    end: Option<String>,
     passed: bool,
     expectations: Vec<ExpectResult>,
     /// A play's failed expectations, exactly as `lute play` reports them.
@@ -340,6 +407,7 @@ impl TestResult {
             kind: "test",
             lute_file,
             exit: exit.to_string(),
+            end: None,
             passed: false,
             expectations: Vec::new(),
             misses: Vec::new(),
@@ -365,8 +433,8 @@ struct CoverageAccum {
     /// ([`canonical_key`]) is what lets a play's pick and a traced path's
     /// land on one row (T3-20); the row prints the first spelling seen.
     choices: BTreeMap<String, ChoiceRow>,
-    /// key -> (label, chosen arm outcomes, total arms).
-    arms: BTreeMap<String, (String, BTreeSet<String>, usize)>,
+    /// Printed site -> the `<match>` / `when=` guard row.
+    arms: BTreeMap<String, ArmRow>,
     /// Number of documents that produced a report (a non-refused trace).
     paths: usize,
     /// Number of expect-carrying plays that ran (dsl 0.22.0 §4); every
@@ -399,6 +467,28 @@ struct ChoiceRow {
     total: usize,
 }
 
+/// One `<match>` or `when=` guard row of [`CoverageAccum::arms`].
+struct ArmRow {
+    /// The subject (a match) or the guard's text, as authored.
+    label: String,
+    /// Arm outcomes (`arm 1`, `otherwise`), or `taken` / `skipped`.
+    chosen: BTreeSet<String>,
+    total: usize,
+    /// A `when=` guard, not an authored `<match>` (T3-22).
+    guard: bool,
+}
+
+impl ArmRow {
+    fn new(label: String, guard: bool) -> Self {
+        ArmRow {
+            label,
+            chosen: BTreeSet::new(),
+            total: 0,
+            guard,
+        }
+    }
+}
+
 impl CoverageAccum {
     /// Fold a later accumulation in — what accumulating its reports after
     /// this one's would have produced (a label stays the first one seen).
@@ -415,13 +505,16 @@ impl CoverageAccum {
                 }
             }
         }
-        for (key, (label, chosen, total)) in later.arms {
-            let entry = self
-                .arms
-                .entry(key)
-                .or_insert_with(|| (label, BTreeSet::new(), 0));
-            entry.1.extend(chosen);
-            entry.2 = entry.2.max(total);
+        for (key, row) in later.arms {
+            match self.arms.get_mut(&key) {
+                Some(entry) => {
+                    entry.chosen.extend(row.chosen);
+                    entry.total = entry.total.max(row.total);
+                }
+                None => {
+                    self.arms.insert(key, row);
+                }
+            }
         }
         self.paths += later.paths;
         self.plays += later.plays;
@@ -457,6 +550,9 @@ struct CoverageUnit {
     id: Option<String>,
     /// The id as its document writes it (a bundle beat's own `id`).
     local: String,
+    /// The id of the document the unit is in (its frontmatter `id`, or a
+    /// scene's canonical key), when it has one.
+    doc: Option<String>,
     /// `scene` / `quest` / `document` / `beat` / `entry`.
     kind: &'static str,
     /// It answers an occasion, so a play can present it.
@@ -495,7 +591,7 @@ fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> {
     // are units too (dsl 0.27.0 §6).
     let docs = crate::parse_project_docs(root, &paths);
     for (path, parsed) in paths.iter().zip(docs) {
-        let file = path.display().to_string();
+        let file = display_path(path);
         let canonical = canonical_key(path);
         let Ok((doc, _)) = parsed else {
             continue;
@@ -503,11 +599,18 @@ fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> {
         if doc.entries.is_empty() && doc.beats.is_empty() {
             let meta = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
             let scene = lute_check::connectivity::scene_key(&doc);
+            let doc_id = scene.clone().or_else(|| {
+                meta.as_ref()
+                    .and_then(|m| m.get("id"))
+                    .and_then(serde_yaml::Value::as_str)
+                    .map(str::to_string)
+            });
             out.push(CoverageUnit {
                 file,
                 canonical,
                 id: None,
                 local: scene.clone().unwrap_or_default(),
+                doc: doc_id,
                 kind: if !doc.quests.is_empty() {
                     "quest"
                 } else if scene.is_some() {
@@ -532,6 +635,7 @@ fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> {
                         canonical: canonical.clone(),
                         id: Some(e.id.clone()),
                         local: e.id.clone(),
+                        doc: bundle.clone(),
                         kind: "entry",
                         beat: e.on.is_some(),
                     },
@@ -549,6 +653,7 @@ fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> {
                         canonical: canonical.clone(),
                         id: Some(id),
                         local: b.id.clone(),
+                        doc: bundle.clone(),
                         kind: "beat",
                         beat: b.on.is_some(),
                     },
@@ -572,6 +677,25 @@ fn canonical_key(p: &std::path::Path) -> String {
         .unwrap_or_else(|_| p.to_path_buf())
         .display()
         .to_string()
+}
+
+/// A path as the report prints it (T3-23): relative to the directory
+/// `lute test` runs in — `scenes/a.lute`, `.` for that directory itself —
+/// whatever spelling reached it (a test's `file: ../scenes/a.lute`, a
+/// play's project root, the nearest manifest's absolute directory); a path
+/// outside that directory keeps its `..`-folded spelling.
+fn display_path(p: &Path) -> String {
+    static CWD: std::sync::LazyLock<Option<PathBuf>> =
+        std::sync::LazyLock::new(|| std::env::current_dir().and_then(std::fs::canonicalize).ok());
+    let rel = CWD.as_deref().and_then(|cwd| {
+        let abs = std::fs::canonicalize(p).ok()?;
+        abs.strip_prefix(cwd).ok().map(Path::to_path_buf)
+    });
+    match rel {
+        Some(r) if r.as_os_str().is_empty() => ".".to_string(),
+        Some(r) => r.display().to_string(),
+        None => fold_parent_dirs(p).display().to_string(),
+    }
 }
 
 /// Run every `*.test.yaml` scenario test under `dir`, then every
@@ -1095,13 +1219,28 @@ fn run_one_test(
     /// A transcript needle naming what no presented line can carry (0.27).
     const E_TEST_NEEDLE: &str = "E-TEST-NEEDLE";
     if !lute_path.is_file() {
+        // `file:` is relative to the test file: name the `../` spelling
+        // when the path resolves from a directory above it.
+        let hint = base
+            .ancestors()
+            .skip(1)
+            .take(4)
+            .enumerate()
+            .find(|(_, dir)| dir.join(&rel).is_file())
+            .map(|(up, _)| {
+                format!(
+                    " — `file:` is relative to the test file; did you mean `{}{rel}`?",
+                    "../".repeat(up + 1)
+                )
+            })
+            .unwrap_or_default();
         return Ok(TestResult::refused(
             test_file,
             lute_display.clone(),
             "invalid",
             vec![format!(
-                "error [{E_TEST_FILE}] {}",
-                format!("`file: {rel}` names no document ({lute_display} does not exist)")
+                "error [{E_TEST_FILE}] `file: {rel}` names no document ({lute_display} does not \
+                 exist){hint}"
             )],
         ));
     }
@@ -1329,12 +1468,19 @@ fn run_one_test(
 
     // T1-13: a lore document is looked up, not played — `lute trace` refuses
     // one without `--entry`/`--beat`, and a test naming it without `entry:`
-    // / `entries:` / `beat:` would walk nothing and PASS `exit: complete`.
-    // Say so instead of asserting against nothing.
+    // / `entries:` / `beat:` would walk nothing and PASS `end: complete`.
+    // Say so instead of asserting against nothing — unless it judges the
+    // entries by id (map-form `eligible:`) or the seeded world (`facts:` /
+    // `notFacts:`), which presenting nothing answers.
+    let judges_world = map
+        .get("expect")
+        .is_some_and(|e| e.get("facts").is_some() || e.get("notFacts").is_some());
     if entries.is_empty() && beat.is_none() {
         let doc = desugared(&input);
         let (folded, _, _) = lute_check::fold_env(&doc, &input);
-        if folded.doc_kind == lute_check::DocKind::Lore && judges_eligibility_by_id {
+        if folded.doc_kind == lute_check::DocKind::Lore
+            && (judges_eligibility_by_id || judges_world)
+        {
             lore_lookup_only = true;
         } else if folded.doc_kind == lute_check::DocKind::Lore {
             let ids: Vec<&str> = doc.entries.iter().map(|e| e.id.as_str()).collect();
@@ -1348,7 +1494,8 @@ fn run_one_test(
                      looked up, not played, so there is no walk to assert against until the \
                      test names what to present: `entry: <id>` or `entries: [ids]` (declared: \
                      {}), or `beat: <id>` (declared: {}), or judges them with `expect: \
-                     {{ eligible: {{ <id>: true|false }} }}`",
+                     {{ eligible: {{ <id>: true|false }} }}` or the seeded world with `expect: \
+                     {{ facts: [...] }}`",
                     if ids.is_empty() {
                         "none".to_string()
                     } else {
@@ -1467,6 +1614,12 @@ fn run_one_test(
         TraceExit::Incomplete => "incomplete",
         TraceExit::Refused(_) => unreachable!("handled above"),
     };
+    // How the walk ended: `terminal` when it completed with the project's
+    // `terminal:` holding.
+    let ended = match exit_str {
+        "complete" if report.terminal == Some(true) => "terminal",
+        e => e,
+    };
 
     if let Some(cov) = cov {
         accumulate_coverage(cov, &report);
@@ -1486,16 +1639,17 @@ fn run_one_test(
     let mut expectations = Vec::new();
 
     if let Some(expect) = expect {
-        // exit: complete | incomplete
-        if let Some(want) = expect.get("exit").and_then(|v| v.as_str()) {
+        // end: complete | terminal | incomplete | error — how the walk
+        // ended.
+        if let Some(want) = expect.get("end").and_then(|v| v.as_str()) {
             expectations.push(ExpectResult {
                 not_raised: None,
                 why: None,
-                kind: "exit",
+                kind: "end",
                 subject: String::new(),
                 expected: want.to_string(),
-                actual: Some(exit_str.to_string()),
-                passed: want == exit_str,
+                actual: Some(ended.to_string()),
+                passed: want == ended,
             });
         }
 
@@ -1533,12 +1687,12 @@ fn run_one_test(
             }
         }
 
-        // offered: { <choice id>: [options] } (dsl 0.22.0 §5) — the options
-        // the walk actually offered at that branch/hub, as a set: every
-        // presentation's eligible choices, unioned (a hub is offered once per
-        // visit). `None` when the walk never presented it.
-        if let Some(offered) = expect.get("offered").and_then(|v| v.as_mapping()) {
-            for (k, v) in offered {
+        // options: { <choice id>: [option ids] } (dsl 0.22.0 §5) — the
+        // options the walk actually offered at that branch/hub, as a set:
+        // every presentation's eligible choices, unioned (a hub is offered
+        // once per visit). `None` when the walk never presented it.
+        if let Some(options) = expect.get("options").and_then(|v| v.as_mapping()) {
+            for (k, v) in options {
                 let Some(id) = k.as_str() else { continue };
                 let want: Option<BTreeSet<&str>> = v
                     .as_sequence()
@@ -1560,7 +1714,7 @@ fn run_one_test(
                 expectations.push(ExpectResult {
                     not_raised: None,
                     why: None,
-                    kind: "offered",
+                    kind: "options",
                     subject: id.to_string(),
                     expected: match &want {
                         Some(w) => set_text(w),
@@ -1577,12 +1731,18 @@ fn run_one_test(
         // `default:` — the same read order every guard in the walk used. A
         // path the walk never wrote used to report "never written" even when
         // its default (or the test's seed) was exactly the expected value.
+        // A reserved path of the document's own quests reads its engine
+        // default before any write, as in a play (T3-65).
         if let Some(state) = expect.get("state").and_then(|v| v.as_mapping()) {
             let final_state = &report.final_state;
+            let doc = desugared(&input);
             for (k, v) in state {
                 let Some(path) = k.as_str() else { continue };
                 let want = yaml_scalar_text(v).unwrap_or_default();
-                let actual = final_state.get(path).cloned();
+                let actual = final_state
+                    .get(path)
+                    .cloned()
+                    .or_else(|| reserved_quest_default(&doc, path).map(str::to_string));
                 expectations.push(ExpectResult {
                     not_raised: None,
                     why: None,
@@ -1674,14 +1834,31 @@ fn run_one_test(
         // T3-5) — `eligible:` covers the whole file, not only what played.
         if let Some(want) = &eligible_want {
             let presented = presented_eligibility(&report);
-            let wants: Vec<(Option<String>, Option<bool>)> = match want {
+            // dsl 0.28.0 (T1-25): `{ <id>: { false: <reason> } }` also
+            // names the premise that must close it (`spentBy`, `when`, …) —
+            // so a beat closed by something else does not pass vacuously.
+            let parse = |v: &serde_yaml::Value| -> (Option<bool>, Option<String>) {
+                match v {
+                    serde_yaml::Value::Mapping(m) if m.len() == 1 => {
+                        match m.get(serde_yaml::Value::Bool(false)).map(yaml_scalar_text) {
+                            Some(reason) => (Some(false), Some(reason.unwrap_or_default())),
+                            None => (None, None),
+                        }
+                    }
+                    other => (other.as_bool(), None),
+                }
+            };
+            let wants: Vec<(Option<String>, Option<bool>, Option<String>)> = match want {
                 serde_yaml::Value::Mapping(m) => m
                     .iter()
-                    .map(|(k, v)| (k.as_str().map(str::to_string), v.as_bool()))
+                    .map(|(k, v)| {
+                        let (b, reason) = parse(v);
+                        (k.as_str().map(str::to_string), b, reason)
+                    })
                     .collect(),
-                other => vec![(None, other.as_bool())],
+                other => vec![(None, other.as_bool(), None)],
             };
-            for (id, want) in wants {
+            for (id, want, reason) in wants {
                 let mut matched: Vec<(String, Option<bool>)> = presented
                     .iter()
                     .filter(|(p, _)| id.as_deref().is_none_or(|id| names_presented(p, id)))
@@ -1719,21 +1896,36 @@ fn run_one_test(
                         .flatten()
                         .map(|(p, _)| ineligible_why(alone.as_ref().unwrap_or(&report), p))
                 };
+                let judged = alone.as_ref().unwrap_or(&report);
+                let by = |p: &str| judged.ineligible_by.get(p).copied();
                 let actual = (!matched.is_empty()).then(|| {
                     matched
                         .iter()
-                        .map(|(_, e)| match e {
-                            Some(true) => "true",
-                            Some(false) => "false",
-                            None => "unknown",
+                        .map(|(p, e)| match (e, by(p).filter(|_| reason.is_some())) {
+                            (Some(true), _) => "true".to_string(),
+                            (Some(false), Some(kind)) => format!("false ({kind})"),
+                            (Some(false), None) => "false".to_string(),
+                            (None, _) => "unknown".to_string(),
                         })
                         .collect::<Vec<_>>()
                         .join(", ")
                 });
-                let expected = match want {
-                    Some(b) => b.to_string(),
-                    None => "true or false".to_string(),
+                let known = |r: &str| lute_trace::exec::session::PREMISE_KINDS.contains(&r);
+                let expected = match (want, &reason) {
+                    (Some(_), Some(r)) if known(r) => format!("false ({r})"),
+                    (Some(_), Some(r)) => format!(
+                        "false for a reason, and `{r}` is none (one of: {})",
+                        lute_trace::exec::session::PREMISE_KINDS.join(", ")
+                    ),
+                    (Some(b), None) => b.to_string(),
+                    (None, _) => "true, false or `{ false: <reason> }`".to_string(),
                 };
+                let reason_holds = reason.as_deref().is_none_or(|r| {
+                    known(r)
+                        && matched
+                            .iter()
+                            .all(|(p, e)| *e != Some(false) || by(p) == Some(r))
+                });
                 expectations.push(ExpectResult {
                     not_raised: (want == Some(true))
                         .then(|| matched.iter().find(|(_, e)| *e == Some(false)))
@@ -1746,7 +1938,8 @@ fn run_one_test(
                     subject: id.unwrap_or_default(),
                     passed: want.is_some()
                         && !matched.is_empty()
-                        && matched.iter().all(|(_, e)| *e == want),
+                        && matched.iter().all(|(_, e)| *e == want)
+                        && reason_holds,
                     expected,
                     actual,
                 });
@@ -1801,19 +1994,20 @@ fn run_one_test(
             )],
         );
         r.autopicked = autopicked;
+        r.end = Some(ended.to_string());
         return Ok(r);
     }
 
     // T1-13: an incomplete trace halted at an unknown guard, so everything
     // after it — including whatever the expectations above were written
     // about — was never walked. It passed whenever the test did not mention
-    // `exit:`. Now it fails unless the test opts in with `exit: incomplete`.
-    let declares_exit = expect.is_some_and(|e| e.contains_key("exit"));
+    // `end:`. Now it fails unless the test opts in with `end: incomplete`.
+    let declares_exit = expect.is_some_and(|e| e.contains_key("end"));
     if exit_str == "incomplete" && !declares_exit {
         expectations.push(ExpectResult {
             not_raised: None,
             why: None,
-            kind: "exit",
+            kind: "end",
             subject: IMPLICIT_EXIT.to_string(),
             expected: "complete".to_string(),
             actual: Some(exit_str.to_string()),
@@ -1854,6 +2048,7 @@ fn run_one_test(
         kind: "test",
         lute_file: lute_display,
         exit: exit_str.to_string(),
+        end: Some(ended.to_string()),
         passed,
         expectations,
         misses: Vec::new(),
@@ -1905,7 +2100,7 @@ fn scan_play(play_file: &Path) -> PlayScan {
         return PlayScan::NoExpect;
     }
     PlayScan::Expect {
-        declares_exit: top_expect.is_some_and(|e| e.get("exit").is_some()),
+        declares_exit: top_expect.is_some_and(|e| e.get("end").is_some()),
     }
 }
 
@@ -1924,25 +2119,29 @@ fn run_one_play(
     shared: &Shared,
     cov: Option<&mut CoverageAccum>,
 ) -> Option<TestResult> {
-    let refused = |lute_file: String, line: String| {
-        let mut r = TestResult::refused(play_file, lute_file, "invalid", vec![line]);
+    // One `error:` line per usage error, each plain text.
+    let refused = |lute_file: String, why: &str| {
+        let lines = why
+            .lines()
+            .map(|l| format!("error: {}", lute_core_span::plain_message(l)))
+            .collect();
+        let mut r = TestResult::refused(play_file, lute_file, "invalid", lines);
         r.kind = "play";
         Some(r)
     };
     let declares_exit = match scan_play(play_file) {
         PlayScan::NoExpect => return None,
         PlayScan::Expect { declares_exit } => declares_exit,
-        PlayScan::Broken(why) => return refused(String::new(), format!("error: {why}")),
+        PlayScan::Broken(why) => return refused(String::new(), &why),
     };
     let Some(project_dir) = project_dir_of(play_file, project) else {
         return refused(
             String::new(),
-            "error: no `lute.project.yaml` above this play — a play runs a project; pass \
-             `--project <dir>`"
-                .to_string(),
+            "no `lute.project.yaml` above this play — a play runs a project; pass \
+             `--project <dir>`",
         );
     };
-    let project_display = project_dir.display().to_string();
+    let project_display = display_path(&project_dir);
     let compiled;
     let play_project = match shared.plays.get(&project_dir) {
         Some(p) => p,
@@ -1953,7 +2152,7 @@ fn run_one_play(
     };
     let run = match crate::play::run_play_for_test(play_project, play_file, !no_derive) {
         Ok(run) => run,
-        Err(why) => return refused(project_display, format!("error: {why}")),
+        Err(why) => return refused(project_display, &why),
     };
     if let Some(cov) = cov {
         cov.plays += 1;
@@ -1975,7 +2174,7 @@ fn run_one_play(
             cov.play_units.insert(unit);
         }
         for c in &run.choices {
-            let file = project_dir.join(&c.document).display().to_string();
+            let file = display_path(&project_dir.join(&c.document));
             let row = cov.choice_row(&canon(&c.document), &file, &c.id);
             row.chosen.extend(c.chose.iter().cloned());
             row.eligible.extend(c.offered.iter().cloned());
@@ -1989,9 +2188,9 @@ fn run_one_play(
             label: None,
             occasion: None,
             repetition: None,
-            key: "exit".to_string(),
+            key: "end".to_string(),
             expected: "complete (a halted play fails unless its top-level `expect:` declares \
-                       the exit, e.g. `expect: { exit: incomplete }`)"
+                       how it ends, e.g. `expect: { end: incomplete }`)"
                 .to_string(),
             actual: run.exit.to_string(),
         });
@@ -2001,6 +2200,7 @@ fn run_one_play(
         kind: "play",
         lute_file: project_display,
         exit: run.exit.to_string(),
+        end: Some(run.end.to_string()),
         passed: misses.is_empty(),
         expectations: Vec::new(),
         misses,
@@ -2029,6 +2229,13 @@ fn yaml_atom_hint(atom: &str) -> String {
     }
     if let Some(fact) = atom.strip_prefix("--fact ") {
         return format!("`facts: [{fact}]`");
+    }
+    if let Some((id, list)) = atom
+        .strip_prefix("--choose ")
+        .and_then(|rest| rest.split_once('='))
+    {
+        let list = list.split(',').collect::<Vec<_>>().join(", ");
+        return format!("`choose: {{ {id}: [{list}] }}`");
     }
     atom.to_string()
 }
@@ -2117,7 +2324,7 @@ fn names_presented(p: &str, id: &str) -> bool {
 }
 
 /// `input`'s document as `check` sees it: parsed, then desugared — the beats
-/// a `beat:` template or a `sequence:` derives included (dsl 0.27.0 §6), so a
+/// a `beat:` template or a `chapters:` chain derives included (dsl 0.27.0 §6), so a
 /// test names and judges them like authored ones.
 fn desugared(input: &lute_check::CheckInput) -> lute_syntax::ast::Document {
     let (mut doc, _) = lute_syntax::parse(&input.text);
@@ -2199,6 +2406,24 @@ fn final_quests(report: &TraceReport, input: &lute_check::CheckInput) -> BTreeMa
         }
     }
     out
+}
+
+/// T3-65: what a reserved path of one of `doc`'s own quests reads before the
+/// engine writes it, as a play reads it — `quest.<q>.state` / `.failedBy`
+/// `unset`, `quest.<q>.objectives.<o>.done` / `.failed` `false`. `None` for
+/// any other path.
+fn reserved_quest_default(doc: &lute_syntax::ast::Document, path: &str) -> Option<&'static str> {
+    let segs: Vec<&str> = path.split('.').collect();
+    let quest = |id: &str| doc.quests.iter().find(|q| q.id == id);
+    match segs.as_slice() {
+        ["quest", q, "state" | "failedBy"] => quest(q).map(|_| "unset"),
+        ["quest", q, "objectives", o, "done" | "failed"] => quest(q)?
+            .body
+            .iter()
+            .any(|n| matches!(n, lute_syntax::ast::Node::Objective(obj) if obj.id == *o))
+            .then_some("false"),
+        _ => None,
+    }
 }
 
 /// The quest id a `quest.<id>.state` seed (a `quests:` entry, or a `state:`
@@ -2319,9 +2544,7 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
     cov.paths += 1;
     let canonical = canonical_key(std::path::Path::new(&report.file));
     // OT-F-14: one spelling per file, whichever test directory traced it.
-    let file = fold_parent_dirs(Path::new(&report.file))
-        .display()
-        .to_string();
+    let file = display_path(Path::new(&report.file));
     cov.traced_files.insert(canonical.clone());
     for s in &report.steps {
         if let lute_trace::Step::Entry { id, .. } | lute_trace::Step::Beat { id, .. } = s {
@@ -2335,21 +2558,21 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
                 row.chosen.insert(d.outcome.clone());
                 row.eligible.extend(d.eligible.iter().cloned());
             }
-            "match" => {
-                let key = format!("{file}:{}:{}", d.span.line, d.span.column);
-                let entry = cov
-                    .arms
+            "match" | "guard" => {
+                let site = lute_trace::report::site_key_in(&d.span, d.component.as_ref());
+                let key = arm_row_key(&file, &site, d.component.as_ref());
+                cov.arms
                     .entry(key)
                     // Ember N14: the author's `@def` spelling, not its
                     // expansion (as `lute trace` prints it, T3-12).
                     .or_insert_with(|| {
-                        (
+                        ArmRow::new(
                             d.authored_id.clone().unwrap_or_else(|| d.id.clone()),
-                            BTreeSet::new(),
-                            0,
+                            d.construct == "guard",
                         )
-                    });
-                entry.1.insert(d.outcome.clone());
+                    })
+                    .chosen
+                    .insert(d.outcome.clone());
             }
             _ => {}
         }
@@ -2359,19 +2582,41 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
         row.total = row.total.max(c.total);
     }
     for (site, c) in &report.coverage.arms {
-        let key = format!("{file}:{site}");
-        let entry = cov
+        let key = arm_row_key(&file, site, c.component.as_ref());
+        let row = cov
             .arms
             .entry(key)
             // N14: the author's `@def` spelling, not its expansion (T3-12).
             .or_insert_with(|| {
-                (
+                ArmRow::new(
                     c.authored_label.clone().unwrap_or_else(|| c.label.clone()),
-                    BTreeSet::new(),
-                    0,
+                    c.guard,
                 )
             });
-        entry.2 = entry.2.max(c.total);
+        row.total = row.total.max(c.total);
+    }
+}
+
+/// The printed coverage site of a `<match>` / guard at trace `site` of the
+/// document `file`: `file:line:column`, or — expanded from a component
+/// `::use` (SD-15) — the component's own `file:line:column` and which use
+/// in which document, so a component's match never merges into its host's
+/// construct at the same position, nor into another use's.
+fn arm_row_key(file: &str, site: &str, component: Option<&lute_trace::ComponentSite>) -> String {
+    match component {
+        None => format!("{file}:{site}"),
+        Some(c) => {
+            // `site_key_in`: `"{c.file}:{line}:{column} ({use})"`.
+            let at = site
+                .strip_prefix(c.file.as_str())
+                .and_then(|rest| rest.split_once(" ("))
+                .map_or("", |(at, _)| at);
+            format!(
+                "{}{at} ({} in {file})",
+                display_path(Path::new(&c.file)),
+                c.scope
+            )
+        }
     }
 }
 
@@ -2452,16 +2697,13 @@ fn render_human(
     }
     for r in results {
         let mark = if r.passed { "PASS" } else { "FAIL" };
-        if r.kind == "play" {
-            outln!(
-                out,
-                "{mark}  {}  (play of {})",
-                r.test_file.display(),
-                r.lute_file
-            );
-        } else {
-            outln!(out, "{mark}  {}  ({})", r.test_file.display(), r.lute_file);
-        }
+        // T3-23: a test that never resolved a document names none — no `()`.
+        let what = match (r.kind == "play", r.lute_file.is_empty()) {
+            (_, true) => String::new(),
+            (true, false) => format!("  (play of {})", r.lute_file),
+            (false, false) => format!("  ({})", r.lute_file),
+        };
+        outln!(out, "{mark}  {}{what}", r.test_file.display());
         if let Some(lines) = &r.refusal {
             // The vector carries either the trace's own held diagnostics
             // (#25) or the harness's own `E-TEST-*` refusals (#2). Only the
@@ -2477,6 +2719,14 @@ fn render_human(
             }
             continue;
         }
+        // A halted play: the halt is the root cause, so it comes first, and
+        // the end-of-play expectations it left unmet fold into one line.
+        let halted = r.kind == "play" && !r.notes.is_empty();
+        if halted {
+            for n in &r.notes {
+                outln!(out, "      halted: {n}");
+            }
+        }
         if !r.passed {
             // OT-F-10: a false eligibility is the cause of the state and
             // fact misses its unwalked body leaves, so it comes first.
@@ -2488,8 +2738,25 @@ fn render_human(
             for e in causes.into_iter().chain(rest) {
                 render_miss(out, e);
             }
-            for m in &r.misses {
+            let (at_end, misses): (Vec<&ExpectMiss>, Vec<&ExpectMiss>) = r
+                .misses
+                .iter()
+                .partition(|m| halted && m.step.is_none() && m.key != "end");
+            for m in misses {
                 outln!(out, "      {m}");
+            }
+            match at_end.as_slice() {
+                [] => {}
+                [m] => outln!(out, "      {m}"),
+                ms => {
+                    outln!(
+                    out,
+                    "      end of play: {} expectations missed on the world the halt left ({}) \
+                     — fix the halt first",
+                    ms.len(),
+                    ms.iter().map(|m| m.key.as_str()).collect::<Vec<_>>().join(", ")
+                )
+                }
             }
         }
         // T3-11: WHY the walk stopped (or left a guard undecided), with the
@@ -2521,8 +2788,10 @@ fn render_human(
                 }
             );
         }
-        for n in &r.notes {
-            outln!(out, "      note: {n}");
+        if !halted {
+            for n in &r.notes {
+                outln!(out, "      note: {n}");
+            }
         }
         for a in &r.autopicked {
             outln!(out, "      auto-picked (no selection supplied): {a}");
@@ -2552,15 +2821,15 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
             "      transcriptLacks {:?}: {actual} (expected absent)",
             e.expected
         ),
-        ("offered", Some(actual)) => outln!(
+        ("options", Some(actual)) => outln!(
             out,
-            "      offered {}: expected {}, got {actual}",
+            "      options {}: expected {}, got {actual}",
             e.subject,
             e.expected
         ),
-        ("offered", None) => outln!(
+        ("options", None) => outln!(
             out,
-            "      offered {}: expected {}, but the walk never presented a branch/hub `{}`",
+            "      options {}: expected {}, but the walk never presented a branch/hub `{}`",
             e.subject,
             e.expected,
             e.subject
@@ -2627,13 +2896,13 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
                 );
             }
         }
-        ("exit", Some(actual)) if e.subject == IMPLICIT_EXIT => outln!(
+        ("end", Some(actual)) if e.subject == IMPLICIT_EXIT => outln!(
             out,
-            "      exit: {actual} — an unknown guard halted the walk before the end, so the \
+            "      end: {actual} — an unknown guard halted the walk before the end, so the \
              expectations after it were never walked; an incomplete trace fails unless the \
-             test declares `expect: {{ exit: incomplete }}`"
+             test declares `expect: {{ end: incomplete }}`"
         ),
-        ("exit", Some(actual)) => outln!(out, "      exit: expected {}, got {actual}", e.expected),
+        ("end", Some(actual)) => outln!(out, "      end: expected {}, got {actual}", e.expected),
         ("facts" | "notFacts", Some(actual)) => outln!(
             out,
             "      {} {}: expected {}, got {actual}",
@@ -2641,17 +2910,14 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
             e.subject,
             e.expected
         ),
-        ("eligible", Some(_)) if e.expected == IMPLICIT_ELIGIBLE => {
-            let local = e.subject.rsplit('.').next().unwrap_or(&e.subject);
-            outln!(
-                out,
-                "      eligible {}: not eligible under these mocks ({}) — the engine would never \
-                 present it, so the walk proves nothing about play; fix the mocks, or assert \
-                 `expect: {{ eligible: {{ {local}: false }} }}` (the body is then not walked)",
-                e.subject,
-                e.why.as_deref().unwrap_or("its `when` is false")
-            )
-        }
+        ("eligible", Some(_)) if e.expected == IMPLICIT_ELIGIBLE => outln!(
+            out,
+            "      eligible {id}: not eligible under these mocks ({}) — the engine would never \
+             present it, so the walk proves nothing about play; fix the mocks, or assert \
+             `expect: {{ eligible: {{ {id}: false }} }}` (the body is then not walked)",
+            e.why.as_deref().unwrap_or("its `when` is false"),
+            id = e.subject,
+        ),
         ("eligible", Some(actual)) => outln!(
             out,
             "      eligible{}: expected {}, got {actual}{}",
@@ -2710,6 +2976,7 @@ fn render_coverage_human(
     root: &Path,
     units: &[CoverageUnit],
 ) {
+    let root = display_path(root);
     if cov.plays == 0 {
         outln!(out, "\ncoverage over {} traced path(s):", cov.paths);
     } else {
@@ -2765,7 +3032,23 @@ fn render_coverage_human(
         }
         outln!(out, "{line}");
     }
-    for (key, (label, chosen, total)) in &cov.arms {
+    for (key, row) in &cov.arms {
+        let (label, chosen, total) = (&row.label, &row.chosen, &row.total);
+        if row.guard {
+            // T3-22: a `when=` guard is taken or skipped, not a match.
+            let (taken, skipped) = (
+                chosen.contains(lute_trace::report::GUARD_TAKEN),
+                chosen.contains(lute_trace::report::GUARD_SKIPPED),
+            );
+            let seen = match (taken, skipped) {
+                (true, true) => "taken and skipped",
+                (true, false) => "taken; never skipped",
+                (false, true) => "skipped; never taken",
+                (false, false) => "never decided",
+            };
+            outln!(out, "  guard `{label}` ({key}): {seen}");
+            continue;
+        }
         let unexecuted = total.saturating_sub(chosen.len());
         // A `<match>` with no `on` has no subject to quote (ML-F4).
         let what = if label.trim().is_empty() {
@@ -2802,7 +3085,7 @@ fn render_coverage_human(
             out,
             "  every testable document, beat and entry under {} is presented by at least one \
              test or play",
-            root.display()
+            root
         );
     } else {
         outln!(
@@ -2810,7 +3093,7 @@ fn render_coverage_human(
             "  {} untested unit(s) under {} — no *.test.yaml presents them and no play presents \
              them:",
             untested.len(),
-            root.display()
+            root
         );
         for line in grouped(&untested) {
             outln!(out, "    {line}");
@@ -2828,7 +3111,7 @@ fn render_coverage_human(
             out,
             "  no play ran, so none of the {} beat(s) under {} is proven presented in play",
             beats.len(),
-            root.display()
+            root
         );
         return;
     }
@@ -2843,16 +3126,12 @@ fn render_coverage_human(
         .filter(|u| u.covered(cov))
         .collect();
     if unplayed.is_empty() {
-        outln!(
-            out,
-            "  every beat under {} is presented by a play",
-            root.display()
-        );
+        outln!(out, "  every beat under {} is presented by a play", root);
     } else if traced_only.is_empty() {
         outln!(
             out,
             "  every other beat under {} is presented by a play",
-            root.display()
+            root
         );
     } else {
         outln!(
@@ -2896,12 +3175,16 @@ fn grouped(units: &[&CoverageUnit]) -> Vec<String> {
         .collect()
 }
 
-/// One unit as JSON: its file, its index id (`null` for a whole document),
-/// and its kind.
+/// One unit as JSON: its file, its project id (an entry's global id, a
+/// bundle beat's `<doc>.<beat>`, a scene's key), the document it is in
+/// (`doc`), its id there (`local`, `null` for a whole document), and its
+/// kind.
 fn unit_json(u: &CoverageUnit) -> serde_json::Value {
     serde_json::json!({
         "file": u.file,
         "id": u.id.clone().or_else(|| (!u.local.is_empty()).then(|| u.local.clone())),
+        "doc": u.doc,
+        "local": u.id.as_ref().map(|_| u.local.clone()),
         "kind": u.kind,
     })
 }
@@ -2956,6 +3239,7 @@ fn render_json(
                 "kind": r.kind,
                 "file": r.lute_file,
                 "exit": r.exit,
+                "end": r.end,
                 "passed": r.passed,
                 "refusal": r.refusal,
                 "autopicked": r.autopicked.clone(),
@@ -3000,14 +3284,15 @@ fn render_json(
         let arms: serde_json::Map<String, Value> = cov
             .arms
             .iter()
-            .map(|(key, (label, chosen, total))| {
+            .map(|(key, row)| {
                 (
                     key.clone(),
                     json!({
-                        "label": label,
-                        "total": total,
-                        "executed": chosen.iter().cloned().collect::<Vec<_>>(),
-                        "unexecuted": total.saturating_sub(chosen.len()),
+                        "kind": if row.guard { "guard" } else { "match" },
+                        "label": row.label,
+                        "total": row.total,
+                        "executed": row.chosen.iter().cloned().collect::<Vec<_>>(),
+                        "unexecuted": row.total.saturating_sub(row.chosen.len()),
                     }),
                 )
             })
@@ -3017,7 +3302,7 @@ fn render_json(
             "plays": cov.plays,
             "choices": Value::Object(choices),
             "arms": Value::Object(arms),
-            "root": cov_root.display().to_string(),
+            "root": display_path(cov_root),
             // T3-20: the units (whole documents, bundle beats, entries) no
             // test and no play presented.
             "untested": units
@@ -3025,11 +3310,12 @@ fn render_json(
                 .filter(|u| !u.covered(cov))
                 .map(unit_json)
                 .collect::<Vec<_>>(),
-            // T3-20: the beats (anything answering an occasion) no play
-            // presented — every beat when `plays` is 0.
+            // T3-20: the beats (anything answering an occasion) a test
+            // traces but no play presented — an untested beat is listed
+            // once, under `untested`, as the text does (OT-F-14).
             "notPresentedByPlay": units
                 .iter()
-                .filter(|u| u.beat && !u.presented_by_play(cov))
+                .filter(|u| u.beat && u.covered(cov) && !u.presented_by_play(cov))
                 .map(unit_json)
                 .collect::<Vec<_>>(),
         });

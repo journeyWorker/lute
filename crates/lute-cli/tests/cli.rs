@@ -623,7 +623,7 @@ fn context_json_surfaces_relational_vocabulary() {
          entities:\n\
          \x20 npc: { members: [ana, bo] }\n\
          relations:\n\
-         \x20 friend: { args: [npc, npc] }\n\
+         \x20 friend: { args: [npc, npc], tier: run }\n\
          \x20 allied: { args: [npc, npc], derive: true }\n\
          facts:\n\
          \x20 - \"friend(ana, bo)\"\n\
@@ -744,7 +744,7 @@ fn context_human_output_shows_enum_members_and_relational_vocabulary() {
          entities:\n\
          \x20 npc: { members: [ana, bo] }\n\
          relations:\n\
-         \x20 friend: { args: [npc, npc] }\n\
+         \x20 friend: { args: [npc, npc], tier: run }\n\
          \x20 allied: { args: [npc, npc], derive: true }\n\
          facts:\n\
          \x20 - \"friend(ana, bo)\"\n\
@@ -864,9 +864,9 @@ fn context_json_lists_referenced_reserved_quest_paths() {
 }
 
 #[test]
-fn context_json_omits_unreferenced_reserved_quest_paths() {
-    // A document that never reads a reserved quest path lists none — the
-    // reserved namespace is unbounded, so absence, not exhaustive listing.
+fn context_json_lists_reserved_paths_of_declared_quests_only() {
+    // A document that reads no reserved quest path still lists the reserved
+    // paths of every quest its project declares — and of no other quest.
     let out = Command::new(BIN)
         .args([
             "context",
@@ -881,10 +881,27 @@ fn context_json_omits_unreferenced_reserved_quest_paths() {
         String::from_utf8_lossy(&out.stderr)
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let reserved = v["reservedQuestPaths"]
+    let reserved: Vec<&str> = v["reservedQuestPaths"]
         .as_array()
-        .expect("reservedQuestPaths array");
-    assert!(reserved.is_empty(), "{v}");
+        .expect("reservedQuestPaths array")
+        .iter()
+        .filter_map(|p| p["path"].as_str())
+        .collect();
+    let quests: Vec<&str> = v["ids"]["quests"]
+        .as_array()
+        .expect("ids.quests")
+        .iter()
+        .filter_map(|q| q.as_str())
+        .collect();
+    assert!(!quests.is_empty(), "{v}");
+    for q in &quests {
+        let state = format!("quest.{q}.state");
+        assert!(reserved.contains(&state.as_str()), "{state}: {reserved:?}");
+    }
+    for p in &reserved {
+        let id = p.split('.').nth(1).unwrap();
+        assert!(quests.contains(&id), "{p} names no declared quest");
+    }
 }
 
 #[test]
@@ -1322,7 +1339,9 @@ fn doctor_reports_a_broken_project_manifest_once_as_a_check() {
         "a reportable project problem belongs in the checklist, not on stderr:\n{stderr}"
     );
     let text = String::from_utf8_lossy(&out.stdout).to_string();
-    let hits = text.matches("invalid type: sequence").count();
+    let hits = text
+        .matches("[E-MANIFEST] a value has the wrong shape: defaultProfile")
+        .count();
     assert_eq!(
         hits, 1,
         "the project problem must appear ONCE regardless of document count:\n{text}"
@@ -1342,7 +1361,9 @@ fn doctor_reports_a_broken_project_manifest_once_as_a_check() {
     assert_eq!(entry["ok"], false, "a broken project is a ✗: {v}");
     let detail = entry["detail"].as_str().unwrap_or_default();
     assert_eq!(
-        detail.matches("invalid type: sequence").count(),
+        detail
+            .matches("[E-MANIFEST] a value has the wrong shape: defaultProfile")
+            .count(),
         1,
         "deduplicated in `--json` as well: {v}"
     );
@@ -1366,7 +1387,7 @@ fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
     write_at(
         &dir,
         "stale.test.yaml",
-        "file: s.lute\nchoose:\n  pick: noSuchArm\nexpect:\n  exit: complete\n",
+        "file: s.lute\nchoose:\n  pick: noSuchArm\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
         .args(["test", dir.to_str().unwrap()])
@@ -1524,7 +1545,7 @@ fn autopicked_branch_is_reported_not_silent() {
     write_at(
         &dir,
         "auto.test.yaml",
-        "file: s.lute\nexpect:\n  exit: complete\n",
+        "file: s.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
         .args(["test", dir.to_str().unwrap()])
@@ -1677,7 +1698,7 @@ fn test_file_key_resolves_relative_to_the_test_file_not_the_cwd() {
     write_at(
         &dir,
         "tests/t.test.yaml",
-        "file: ../scenes/s.lute\nexpect:\n  exit: complete\n",
+        "file: ../scenes/s.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
         .args(["test", dir.to_str().unwrap()])
@@ -1708,7 +1729,7 @@ fn coverage_keys_on_the_construct_not_on_the_guard_text() {
     write_at(
         &dir,
         "t.test.yaml",
-        "file: s.lute\nexpect:\n  exit: complete\n",
+        "file: s.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
         .args(["test", dir.to_str().unwrap(), "--coverage"])
@@ -1756,7 +1777,7 @@ fn coverage_reports_documents_with_no_test_at_all() {
     write_at(
         &dir,
         "t.test.yaml",
-        "file: tested.lute\nexpect:\n  exit: complete\n",
+        "file: tested.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
         .args(["test", dir.to_str().unwrap(), "--coverage"])
@@ -1784,7 +1805,7 @@ fn coverage_names_each_bundle_beat_as_its_own_unit() {
     write_at(
         &dir,
         "t.test.yaml",
-        "file: ren.lute\nbeat: lantern\nexpect:\n  exit: complete\n",
+        "file: ren.lute\nbeat: lantern\nexpect:\n  end: complete\n",
     );
     let d = dir.to_str().unwrap();
     let out = Command::new(BIN)
@@ -1838,7 +1859,7 @@ fn untested_denominator_excludes_component_documents() {
     write_at(
         &dir,
         "t.test.yaml",
-        "file: tested.lute\nexpect:\n  exit: complete\n",
+        "file: tested.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
         .args(["test", dir.to_str().unwrap(), "--coverage"])
@@ -1877,7 +1898,7 @@ fn coverage_names_a_def_match_as_authored() {
     write_at(
         &dir,
         "t.test.yaml",
-        "file: s.lute\nexpect:\n  exit: complete\n",
+        "file: s.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
         .args(["test", dir.to_str().unwrap(), "--coverage"])

@@ -691,10 +691,16 @@ fn calendar_clock_axis_expands_day_by_slot_in_order() {
             + last;
         last = at + cell.len();
     }
-    // The night cells present nothing; the others the slot scene.
+    // The night cells present nothing; the others the slot scene — but the
+    // position the run starts at, where no advance raises `slotStart`.
     assert_eq!(
         t.lines().filter(|l| l.contains("day.slot")).count(),
-        4,
+        3,
+        "{t}"
+    );
+    assert!(
+        t.lines()
+            .any(|l| l.starts_with("1 Mon morning,slotStart") && l.contains("not raised")),
         "{t}"
     );
 
@@ -817,6 +823,230 @@ fn advance_raises_day_end_and_day_start_at_every_midnight_it_crosses() {
     assert!(
         at("Start day 3 morning.") < at("Slot day 3 morning."),
         "{t}"
+    );
+}
+
+/// A `raise: { slot, dayStart, dayEnd }` project: a scene answering each
+/// raise, plus a `dayStart` scene only day 1 would take.
+fn day_raises_project(tag: &str) -> PathBuf {
+    let scene = |id: &str, on: &str, when: &str| {
+        format!(
+            "---\nkind: scene\nid: {id}\nuses: ../world.schema.yaml\non: {on}\nonce: false\n{when}---\n\n\
+             ## S\n\n@narrator: {id} day {{{{run.day}}}} {{{{run.slot}}}}.\n"
+        )
+    };
+    project_with(
+        tag,
+        ", owner: engine",
+        "clock: { day: run.day, slot: run.slot, slots: [morning, afternoon, night], \
+         week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }, \
+         raise: { slot: slotStart, dayStart: dayStart, dayEnd: dayEnd } }\n",
+        &[
+            ("scenes/end.lute", &scene("c.end", "dayEnd", "")),
+            ("scenes/start.lute", &scene("c.start", "dayStart", "")),
+            (
+                "scenes/first.lute",
+                &scene("c.first", "dayStart", "when: 'run.day == 1'\n"),
+            ),
+            ("scenes/slot.lute", &scene("c.slot", "slotStart", "")),
+        ],
+    )
+}
+
+/// An `advance:` raises its slot occasion only where the clock stops: the
+/// step notes the positions it passed without it (not where it started,
+/// not where it stopped), and `--json` lists them under `advance.passed`.
+#[test]
+fn an_advance_notes_the_positions_it_passed_without_its_slot_raise() {
+    let dir = day_raises_project("passed");
+    let script = "steps:\n  - advance: slot\n  - advance: 4\n  - advance: day\n";
+    let out = play(&dir, script);
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert_eq!(
+        t.matches("note: passed").count(),
+        1,
+        "only step 2 passes a slot: {t}"
+    );
+    let note = "note: passed day 1 (Mon) night; day 2 (Tue) morning, afternoon without raising \
+                `slotStart` (1 beat answers it; an `advance:` raises it only where the clock stops)";
+    let at = t.find(note).unwrap_or_else(|| panic!("no note: {t}"));
+    assert!(
+        t.find("── step 2").unwrap() < at && at < t.find("── step 3").unwrap(),
+        "{t}"
+    );
+
+    write(&dir, "s.play.yaml", script);
+    let out = Command::new(BIN)
+        .args(["play", &dir.display().to_string(), "--json", "--script"])
+        .arg(dir.join("s.play.yaml"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v["steps"][0]["advance"].get("passed").is_none(), "{v}");
+    assert_eq!(
+        v["steps"][1]["advance"]["passed"],
+        serde_json::json!({
+            "occasion": "slotStart",
+            "beats": 1,
+            "at": [
+                { "day": 1, "slot": "night" },
+                { "day": 2, "slot": "morning" },
+                { "day": 2, "slot": "afternoon" },
+            ],
+        }),
+        "{v}"
+    );
+    assert!(v["steps"][2]["advance"].get("passed").is_none(), "{v}");
+}
+
+/// `lute calendar --axis clock` follows the clock's raise map: `dayStart`
+/// only at a day's first slot and never on the day the run starts, `dayEnd`
+/// only at a day's last slot, the slot occasion anywhere but where the run
+/// starts. Elsewhere a cell is `not raised`, with no verdicts, and a beat
+/// eligible only there is never eligible.
+#[test]
+fn calendar_marks_the_cells_the_clock_does_not_raise() {
+    let dir = day_raises_project("calendar-raise-map");
+    let calendar = |args: &[&str]| {
+        Command::new(BIN)
+            .arg("calendar")
+            .arg(&dir)
+            .args(["--axis", "clock=1..2"])
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let out = calendar(&[
+        "--occasion",
+        "dayStart",
+        "--occasion",
+        "dayEnd",
+        "--occasion",
+        "slotStart",
+        "--json",
+    ]);
+    assert!(out.status.success(), "{}", text(&out));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let cells = v["cells"].as_array().unwrap();
+    assert_eq!(cells.len(), 6, "{v}");
+    // Cells: 1 morning, 1 afternoon, 1 night, 2 morning, 2 afternoon, 2 night.
+    let raised = [
+        ("dayStart", [false, false, false, true, false, false]),
+        ("dayEnd", [false, false, true, false, false, true]),
+        ("slotStart", [false, true, true, true, true, true]),
+    ];
+    for (occasion, at) in raised {
+        for (cell, raised) in cells.iter().zip(at) {
+            let r = cell["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|r| r["occasion"] == occasion)
+                .unwrap();
+            assert_eq!(r.get("notRaised").is_none(), raised, "{occasion}: {r}");
+            if !raised {
+                assert_eq!(r["presented"], serde_json::json!([]), "{r}");
+                assert_eq!(r["shadowed"], serde_json::json!([]), "{r}");
+            }
+        }
+    }
+    // Day 1's `dayStart` is never raised, so the beat only it would take
+    // is never eligible, and says where it was.
+    let never = v["neverEligible"].as_array().unwrap();
+    let first = never
+        .iter()
+        .find(|b| b["id"] == "c.first")
+        .unwrap_or_else(|| panic!("{v}"));
+    assert!(
+        first["reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r
+                == "eligible at day 1 (Mon) morning, where the clock does not raise `dayStart`"),
+        "{first}"
+    );
+
+    let out = calendar(&["--occasion", "dayEnd"]);
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(
+        t.contains("the clock raises `dayEnd` only at a day's last slot; `not raised` elsewhere"),
+        "{t}"
+    );
+    assert_eq!(
+        t.matches("not raised").count(),
+        5,
+        "4 cells and the header: {t}"
+    );
+    // `dayEnd@clock.day` holds the slot where the clock raises it; a slot the
+    // user names (an `advance: day` closes the day there) is judged as asked.
+    let out = calendar(&["--occasion", "dayEnd@clock.day", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        v["columns"][0]["heldAt"],
+        serde_json::json!({ "clock.slot": "night" }),
+        "{v}"
+    );
+    let out = calendar(&[
+        "--occasion",
+        "dayEnd@clock.day,clock.slot=afternoon",
+        "--json",
+    ]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        v["cells"][1]["results"][0]["presented"],
+        serde_json::json!(["c.end"]),
+        "{v}"
+    );
+}
+
+/// An `advance:` step's `presented` may be keyed by occasion, judging only
+/// the named raises; a wrong list names the occasion, an occasion the clock
+/// does not raise is a usage error with a suggestion.
+#[test]
+fn an_advance_step_judges_presented_per_occasion() {
+    let dir = day_raises_project("presented-keyed");
+    let out = play(
+        &dir,
+        "steps:\n  - advance: 3\n    expect: { presented: { dayStart: [c.start], slotStart: [c.slot] } }\n",
+    );
+    assert!(out.status.success(), "{}", text(&out));
+    let out = play(
+        &dir,
+        "steps:\n  - advance: 3\n    expect: { presented: { dayEnd: [c.slot] } }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(
+        t.contains(
+            "expect presented dayEnd: expected [c.slot], actual [c.end (dayEnd at day 1 (Mon) night)]"
+        ),
+        "{t}"
+    );
+    let out = play(
+        &dir,
+        "steps:\n  - advance: 3\n    expect: { presented: { dayStrat: [c.start] } }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(
+        t.contains(
+            "`expect.presented` names `dayStrat`, which the clock's `advance:` does not raise"
+        ) && t.contains("did you mean `dayStart`"),
+        "{t}"
+    );
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: dayStart\n    expect: { presented: { dayStart: [c.start] } }\n",
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(
+        text(&out).contains("keyed by occasion applies to an `advance:` step"),
+        "{}",
+        text(&out)
     );
 }
 
@@ -1011,7 +1241,7 @@ fn a_schema_checked_alone_reports_what_its_importers_would() {
         "enums:\n  weekday:\n    members: [mon, tue]\n    labels: { mon: Monday, sunday: Sunday }\n\
          state:\n  run.weekday: { type: { domain: weekday }, default: mon }\n\
          entities:\n  person: { members: [ada, bo] }\n  pet: { members: [bo] }\n\
-         relations:\n  likes: { args: [person] }\nfacts:\n  - \"likes(zed)\"\n",
+         relations:\n  likes: { args: [person], tier: run }\nfacts:\n  - \"likes(zed)\"\n",
     );
     let scene = |id: &str| {
         format!("---\nkind: scene\nid: {id}\nuses: ../w.schema.yaml\n---\n\n## S\n\n@narrator: {{{{run.weekday}}}}.\n")
@@ -1026,8 +1256,8 @@ fn a_schema_checked_alone_reports_what_its_importers_would() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     for want in [
-        "w.schema.yaml:2:3: error [E-ENUM-LABEL-NOT-MEMBER]",
-        "w.schema.yaml:9:3: error [E-ENTITY-KIND-CLASH]",
+        "w.schema.yaml:4:28: error [E-ENUM-LABEL-NOT-MEMBER]",
+        "w.schema.yaml:9:20: error [E-ENTITY-KIND-CLASH]",
         "w.schema.yaml:13:6: error [E-FACT-DOMAIN]",
     ] {
         assert!(t.contains(want), "missing `{want}`:\n{t}");
@@ -1039,7 +1269,7 @@ fn a_schema_checked_alone_reports_what_its_importers_would() {
         "once, at its schema line: {t}"
     );
     assert!(
-        t.contains("w.schema.yaml:2:3: error [E-ENUM-LABEL-NOT-MEMBER]"),
+        t.contains("w.schema.yaml:4:28: error [E-ENUM-LABEL-NOT-MEMBER]"),
         "{t}"
     );
     assert!(
@@ -1133,7 +1363,7 @@ fn calendar_names_the_unknown_when_of_an_undecided_cell() {
     let dir = project_with(
         "calendar-undecided",
         "",
-        "entities:\n  person: { members: [ada] }\nrelations:\n  met: { args: [person] }\n",
+        "entities:\n  person: { members: [ada] }\nrelations:\n  met: { args: [person], tier: run }\n",
         &[
             ("scenes/odd.lute", odd),
             ("scenes/quiet.lute", quiet),

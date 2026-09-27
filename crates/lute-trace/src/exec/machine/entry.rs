@@ -38,7 +38,17 @@ impl<D: Driver> Machine<D> {
             return;
         };
         let cmd = self.commands[at].clone();
-        let read_path = format!("entry.{id}.read");
+        // dsl 0.28.0 (T1-6): a `for="kind:<kind>"` entry is read per member
+        // — the member bound as `occasion.target` has its own first read.
+        let member = match self.store.read(lute_check::beats::OCCASION_TARGET) {
+            Read::Value(Value::Str(m)) if cmd.get("forKind").is_some() => Some(m),
+            _ => None,
+        };
+        let any_read = format!("entry.{id}.read");
+        let read_path = match &member {
+            Some(m) => crate::exec::cadence::entry_member_read_path(&id, m),
+            None => any_read.clone(),
+        };
         let first_read = self.store.read(&read_path) != Read::Value(Value::Bool(true));
         let eligible = match cel_raw(cmd.get("when")) {
             None => Json::Bool(true),
@@ -68,6 +78,9 @@ impl<D: Driver> Machine<D> {
             // `read` on a first read, `everRead` on any completed read.
             if first_read {
                 self.write(&read_path, Value::Bool(true));
+                if member.is_some() {
+                    self.write(&any_read, Value::Bool(true));
+                }
             }
             self.write(&format!("entry.{id}.everRead"), Value::Bool(true));
         }

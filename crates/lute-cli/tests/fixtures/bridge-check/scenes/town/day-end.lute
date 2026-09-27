@@ -1,6 +1,6 @@
 ---
 kind: scene
-id: hub.dayEnd
+id: town.dayEnd
 title: Lamps out
 on: dayEnd
 once: false

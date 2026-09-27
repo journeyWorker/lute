@@ -50,10 +50,11 @@ pub(crate) fn run_check_project(
         return ExitCode::FAILURE;
     }
 
-    let (file_results, by_root, inputs) = match collect_project_inputs(dir, providers, false) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    let (file_results, by_root, inputs, resolve_errors) =
+        match collect_project_inputs(dir, providers, false) {
+            Ok(v) => v,
+            Err(code) => return code,
+        };
     // Keyed before `reconcile_collected` takes the (aligned) results.
     let inputs: BTreeMap<PathBuf, (PathBuf, CheckInput)> = file_results
         .iter()
@@ -152,9 +153,12 @@ pub(crate) fn run_check_project(
 
     // §5 verdict: a promoted (denied) diagnostic — in a per-file result OR the
     // project-wide set — fails an otherwise-clean project.
-    let project_ok = !project_diags
-        .iter()
-        .any(|(_, d)| d.severity == Severity::Error || policy.denied(d));
+    // A plugin error the walk checked past (printed on the `lute:` channel)
+    // still fails the project.
+    let project_ok = resolve_errors == 0
+        && !project_diags
+            .iter()
+            .any(|(_, d)| d.severity == Severity::Error || policy.denied(d));
     let file_ok = |r: &lute_check::CheckResult| r.ok && !policy.any_denied(&r.diagnostics);
     let ok = project_ok && file_results.iter().all(|(_, r)| file_ok(r));
 
@@ -243,6 +247,7 @@ pub(crate) fn run_check_project(
             .filter(|(_, d)| d.severity == Severity::Error || policy.denied(d))
             .count();
         let project_warning_count = project_diags.len() - project_error_count;
+        let project_error_count = project_error_count + resolve_errors;
         if ok {
             println!(
                 "ok: {} ({} file(s), {} project-wide warning(s))",

@@ -89,8 +89,8 @@ fn fold_nodes(nodes: &[Node], idx: &TextIndex, out: &mut Vec<FoldingRange>) {
             }
             Node::Hub(h) => {
                 push_fold(out, &h.span, idx);
-                for c in &h.choices {
-                    fold_nodes(&c.body, idx, out);
+                for b in h.bodies() {
+                    fold_nodes(b, idx, out);
                 }
             }
             Node::On(o) => {

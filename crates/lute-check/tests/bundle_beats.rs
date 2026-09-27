@@ -76,8 +76,10 @@ fn beat_shape_faults_are_beat_attr() {
             "<beat id=\"a\" on=\"talk\" once=\"never\">",
             "`once=\"never\"`",
         ),
-        ("<beat id=\"a\" on=\"talk\" also=\"maybe\">", "is a flag"),
-        ("<beat id=\"a\" on=\"talk\" target=\"npc..x\">", "malformed"),
+        (
+            "<beat id=\"a\" on=\"talk\" target=\"npc..x\">",
+            "must be a dotted id",
+        ),
     ] {
         let ds = with_code(&doc(&format!("{open}\n@n: hi\n</beat>\n")), "E-BEAT-ATTR");
         assert!(
@@ -93,12 +95,51 @@ fn beat_shape_faults_are_beat_attr() {
         ds.iter().any(|d| d.message.contains("document `id:`")),
         "{ds:#?}"
     );
-    let dup = doc("<beat id=\"a\" on=\"talk\">\n@n: 1\n</beat>\n<beat id=\"a\" on=\"talk\">\n@n: 2\n</beat>\n");
-    assert!(with_code(&dup, "E-BEAT-ATTR")
-        .iter()
-        .any(|d| d.message.contains("duplicate")));
     let unknown = doc("<beat id=\"a\" on=\"talk\" series=\"s\">\n@n: hi\n</beat>\n");
     assert_eq!(with_code(&unknown, "E-UNKNOWN-ATTR").len(), 1);
+}
+
+/// A bundle beat id names one declaration of the document: a repeated
+/// `<beat id>` and an `<entry id>` equal to a `<beat id>` (the beat's
+/// canonical `<document id>.<id>` is the entry's alias too) are one
+/// `E-BEAT-ID-DUP` each, at the later declaration.
+#[test]
+fn a_beat_id_shared_in_one_document_is_beat_id_dup() {
+    let dup = doc("<beat id=\"a\" on=\"talk\">\n@n: 1\n</beat>\n<beat id=\"a\" on=\"talk\">\n@n: 2\n</beat>\n");
+    let ds = with_code(&dup, "E-BEAT-ID-DUP");
+    assert_eq!(ds.len(), 1, "{ds:#?}");
+    assert!(
+        ds[0]
+            .message
+            .contains("`<beat id=\"a\">` is already declared"),
+        "{}",
+        ds[0].message
+    );
+    assert!(with_code(&dup, "E-BEAT-ATTR").is_empty());
+
+    let beat = "<beat id=\"meal\" on=\"talk\" target=\"npc.tavi\">\n@n: hot\n</beat>\n";
+    let entry =
+        "<entry id=\"meal\" on=\"talk\" target=\"npc.tavi\" once=\"run\">\n@n: bark\n</entry>\n";
+    let ds = with_code(&doc(&format!("{beat}{entry}")), "E-BEAT-ID-DUP");
+    assert_eq!(ds.len(), 1, "{ds:#?}");
+    let m = &ds[0].message;
+    assert!(
+        m.starts_with("`<entry>` id `meal` is already declared by `<beat id=\"meal\">`")
+            && m.contains("`interviews.meal`")
+            && m.contains("expect: { winner: interviews.meal }"),
+        "{m}"
+    );
+    // Reported at the later declaration, whichever kind it is.
+    let ds = with_code(&doc(&format!("{entry}{beat}")), "E-BEAT-ID-DUP");
+    assert_eq!(ds.len(), 1, "{ds:#?}");
+    assert!(
+        ds[0].message.starts_with("`<beat>` id `meal`"),
+        "{}",
+        ds[0].message
+    );
+    // Distinct ids are fine.
+    let ok = doc(&format!("{beat}{}", entry.replace("\"meal\"", "\"snack\"")));
+    assert!(with_code(&ok, "E-BEAT-ID-DUP").is_empty());
 }
 
 #[test]
@@ -155,6 +196,7 @@ fn an_always_eligible_repeatable_beat_shadows_a_later_one() {
         &[&folded],
         &lute_check::cast::fact_producers(&docs, &Default::default()),
         None,
+        &Default::default(),
     );
     let shadowed: Vec<_> = out
         .iter()

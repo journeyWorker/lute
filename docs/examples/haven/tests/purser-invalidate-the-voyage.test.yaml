@@ -16,7 +16,7 @@ facts:
 choose:
   theCorrection: invalidateTheVoyage
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "It's a navigation problem. I am the navigator, and it has been flying my ship to a plan I did not file."
     - "Voyage complete. Allocation against voyage: not applicable. Release is withdrawn."

@@ -28,6 +28,9 @@ pub struct PlayDriver {
     pub choices: ScriptedChoices,
     pub bridges: BridgeQueues,
     pub transcript: Vec<Json>,
+    /// What a refused pick's closed guard names ([`Driver::premise_hint`]):
+    /// the project's producers and the play's decisions.
+    pub premises: super::producers::Premises,
 }
 
 impl PlayDriver {
@@ -38,6 +41,7 @@ impl PlayDriver {
             choices: ScriptedChoices::new(choose.clone(), w.choice_cursor.clone()),
             bridges: w.bridges.clone(),
             transcript: Vec::new(),
+            premises: Default::default(),
         }
     }
 }
@@ -69,6 +73,23 @@ impl Driver for PlayDriver {
 
     fn emit(&mut self, rec: Json) {
         self.transcript.push(rec);
+    }
+
+    /// A play has no mocks: a fact the guard misses names what in the
+    /// project asserts it and what the play chose there so far — this
+    /// walk's own decisions included.
+    fn premise_hint(&self, read: &crate::exec::GuardRead) -> String {
+        let pr = &self.premises;
+        let Some(producers) = &pr.producers else {
+            return String::new();
+        };
+        let mut decisions = pr.decisions.clone();
+        decisions.extend(super::producers::decisions_of(
+            &pr.document,
+            pr.step,
+            &self.transcript,
+        ));
+        producers.hint(read, &decisions)
     }
 }
 
@@ -146,9 +167,13 @@ impl PlayHalt {
         }
     }
 
-    pub fn message(&self) -> &str {
+    /// The halt as every surface prints it: plain text, no spec citations
+    /// ([`lute_core_span::plain_message`]).
+    pub fn message(&self) -> std::borrow::Cow<'_, str> {
         match self {
-            PlayHalt::Error(m) | PlayHalt::Fatal(m) | PlayHalt::Incomplete(m) => m,
+            PlayHalt::Error(m) | PlayHalt::Fatal(m) | PlayHalt::Incomplete(m) => {
+                lute_core_span::plain_message(m)
+            }
         }
     }
 
@@ -199,11 +224,15 @@ pub fn outcome_halt(outcome: &Walked, what: &str, doc_json: &Json) -> Option<Pla
                 .and_then(Json::as_str)
                 .unwrap_or("?");
             let options = decision_options(doc_json, id);
-            let used_up = rec
-                .get("scripted")
-                .and_then(Json::as_u64)
-                .map(|n| format!(" — all {n} decisions of its `choose:` list were used by earlier presentations"))
-                .unwrap_or_default();
+            let used_up = match (kind, rec.get("scripted").and_then(Json::as_u64)) {
+                ("hub", Some(n)) => format!(
+                    " — the hub is still open after the {n} scripted pick(s) of its `choose:` list"
+                ),
+                (_, Some(n)) => format!(
+                    " — all {n} decisions of its `choose:` list were used by earlier presentations"
+                ),
+                (_, None) => String::new(),
+            };
             return Some(PlayHalt::Incomplete(format!(
                 "{what} reached {kind} `{id}` with no scripted `choose:` decision{used_up} (options: {})",
                 if options.is_empty() {

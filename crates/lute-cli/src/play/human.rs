@@ -387,9 +387,19 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
         // dsl 0.27.0 §5: a season's window opening / closing.
         "season" => match str_of(rec, "state") {
             "open" => format!(
-                "  season {} opens — season.{}.* reset to defaults{}",
+                "  season {} opens — season.{}.* reset to defaults{}{}",
                 str_of(rec, "season"),
                 str_of(rec, "season"),
+                match rec.get("relations").and_then(Json::as_array) {
+                    Some(rels) if !rels.is_empty() => format!(
+                        ", {} facts back to their seed facts",
+                        rels.iter()
+                            .filter_map(Json::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    _ => String::new(),
+                },
                 match rec.get("prev").and_then(Json::as_object) {
                     Some(prev) if !prev.is_empty() => format!(
                         "; last window: {}",
@@ -494,10 +504,16 @@ fn render_candidate(c: &Candidate) -> String {
         kind_label(c.kind),
         c.priority
     );
+    // dsl 0.28.0 (T2-10): a `select: sequence` beat judged again at its turn.
+    let turn = if c.rejudged {
+        " (judged at its turn, after an earlier beat of this raise)"
+    } else {
+        ""
+    };
     match &c.verdict {
-        Verdict::Eligible => format!("  ✓ {head}\n"),
-        Verdict::Ineligible(reason) => format!("  ✗ {head} — {reason}\n"),
-        Verdict::Unknown(detail) => format!("  ? {head} — when: unknown ({detail})\n"),
+        Verdict::Eligible => format!("  ✓ {head}{turn}\n"),
+        Verdict::Ineligible(reason) => format!("  ✗ {head} — {reason}{turn}\n"),
+        Verdict::Unknown(detail) => format!("  ? {head} — when: unknown ({detail}){turn}\n"),
     }
 }
 
@@ -575,6 +591,23 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                     ));
                 }
                 out.push('\n');
+                if let Some(clock) = p
+                    .index
+                    .clock
+                    .as_ref()
+                    .filter(|c| !lute_trace::clock::restarts_each_run(c))
+                {
+                    out.push_str(&format!(
+                        "  the clock is kept: its day `{}` outlives the run, so its position, \
+                         its once: day / slot / week spends{} stay\n",
+                        clock.day,
+                        if clock.is_finite() {
+                            " and its end"
+                        } else {
+                            ""
+                        }
+                    ));
+                }
                 for (path, v) in prev_run {
                     out.push_str(&format!("  {path} = {}\n", value_to_json(v)));
                 }
@@ -619,6 +652,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                 raised,
                 ended,
                 closed: _,
+                passed: _,
             } => {
                 // dsl 0.27.0 §4: an advance that reached a finite clock's
                 // end says so on its own line.
@@ -714,6 +748,7 @@ fn render_occasion_human(
         decided,
         presented,
         judged,
+        not_raised,
     } = body
     else {
         return;
@@ -738,8 +773,12 @@ fn render_occasion_human(
     for q in judged {
         render_records(out, p, view, &q.document, &q.transcript);
     }
-    if candidates.is_empty() {
-        out.push_str("  (no candidates)\n");
+    // dsl 0.27.0 §4: a raise the engine would not make has no candidates
+    // to judge — say it was not raised, not that nothing answered.
+    match not_raised {
+        Some(why) => out.push_str(&format!("  (not raised: {why})\n")),
+        None if candidates.is_empty() => out.push_str("  (no candidates)\n"),
+        None => {}
     }
     for c in candidates
         .iter()
@@ -762,8 +801,50 @@ fn render_occasion_human(
         .map(|c| c.id.as_str())
         .collect();
     let fold = folded.len() >= FOLD_WHEN_FALSE;
-    for c in not_eligible.iter().filter(|c| !(fold && when_false(c))) {
-        out.push_str(&render_candidate(c));
+    // A `for` beat's members rejected for one reason print as one line
+    // (`✗ id for a, b [...] — reason`), at the first member's place.
+    let rest: Vec<&Candidate> = not_eligible
+        .iter()
+        .copied()
+        .filter(|c| !(fold && when_false(c)))
+        .collect();
+    let reason_of = |c: &Candidate| match &c.verdict {
+        Verdict::Ineligible(reason) => Some(reason.to_string()),
+        _ => None,
+    };
+    let same_row = |a: &Candidate, b: &Candidate| {
+        a.id == b.id
+            && b.for_member.is_some()
+            && (a.priority, a.read, a.also, a.rejudged) == (b.priority, b.read, b.also, b.rejudged)
+            && reason_of(a).is_some()
+            && reason_of(a) == reason_of(b)
+    };
+    let mut done = vec![false; rest.len()];
+    for (i, c) in rest.iter().enumerate() {
+        if done[i] {
+            continue;
+        }
+        let line = render_candidate(c);
+        let Some(first) = c.for_member.as_deref() else {
+            out.push_str(&line);
+            continue;
+        };
+        let mut members = vec![first];
+        for (j, d) in rest.iter().enumerate().skip(i + 1) {
+            if !done[j] && same_row(c, d) {
+                done[j] = true;
+                members.extend(d.for_member.as_deref());
+            }
+        }
+        if members.len() == 1 {
+            out.push_str(&line);
+        } else {
+            out.push_str(&line.replacen(
+                &format!(" for {first} ["),
+                &format!(" for {} [", members.join(", ")),
+                1,
+            ));
+        }
     }
     if fold {
         let shown = &folded[..3];

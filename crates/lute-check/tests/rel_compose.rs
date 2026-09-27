@@ -42,12 +42,12 @@ fn peer_relation_dup_is_uses_dup_relation() {
     write(
         &dir,
         "a.yaml",
-        "entities:\n  c: { members: [x] }\nrelations:\n  inParty: { args: [c] }\n",
+        "entities:\n  c: { members: [x] }\nrelations:\n  inParty: { args: [c], tier: run }\n",
     );
     write(
         &dir,
         "b.yaml",
-        "entities:\n  d: { members: [y] }\nrelations:\n  inParty: { args: [d] }\n",
+        "entities:\n  d: { members: [y] }\nrelations:\n  inParty: { args: [d], tier: run }\n",
     );
     let imp = lute_check::resolve_imports(&dir, &["a.yaml".into(), "b.yaml".into()], &[], span());
     assert!(
@@ -221,12 +221,12 @@ fn extends_relation_signature_checks_key_too() {
     write(
         &dir,
         "base.yaml",
-        "entities:\n  c: { members: [x] }\nrelations:\n  r: { args: [c, c], key: [0] }\n",
+        "entities:\n  c: { members: [x] }\nrelations:\n  r: { args: [c, c], tier: run, key: [0] }\n",
     );
     write(
         &dir,
         "child.yaml",
-        "extends: base.yaml\nrelations:\n  r: { args: [c, c], key: [1] }\n",
+        "extends: base.yaml\nrelations:\n  r: { args: [c, c], tier: run, key: [1] }\n",
     );
     let imp = lute_check::resolve_imports(&dir, &["child.yaml".into()], &[], span());
     assert!(
@@ -246,7 +246,7 @@ fn extends_tier_default_run_matches_explicit_run() {
     write(
         &dir,
         "base_omitted.yaml",
-        "entities:\n  c: { members: [x] }\nrelations:\n  r: { args: [c] }\n",
+        "entities:\n  c: { members: [x] }\nrelations:\n  r: { args: [c], tier: run }\n",
     );
     write(
         &dir,
@@ -269,7 +269,7 @@ fn extends_tier_default_run_matches_explicit_run() {
     write(
         &dir,
         "child_omitted.yaml",
-        "extends: base_explicit.yaml\nrelations:\n  r: { args: [c] }\n",
+        "extends: base_explicit.yaml\nrelations:\n  r: { args: [c], tier: run }\n",
     );
     let b = lute_check::resolve_imports(&dir, &["child_omitted.yaml".into()], &[], span());
     assert!(
@@ -285,7 +285,7 @@ fn facts_and_rules_union_across_dag() {
     write(
         &dir,
         "base.yaml",
-        "entities:\n  c: { members: [x] }\nrelations:\n  b: { args: [c] }\n  d: { args: [c], derive: true }\nfacts:\n  - \"b(x)\"\nrules:\n  - \"d(X) :- b(X)\"\n",
+        "entities:\n  c: { members: [x] }\nrelations:\n  b: { args: [c], tier: run }\n  d: { args: [c], derive: true }\nfacts:\n  - \"b(x)\"\nrules:\n  - \"d(X) :- b(X)\"\n",
     );
     write(
         &dir,

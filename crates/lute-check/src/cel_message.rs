@@ -130,6 +130,27 @@ pub fn translate_cel_parse(
         };
     }
 
+    // dsl 0.28.0 (T3-4): `has(knows(mira))` — `has()` takes a state path,
+    // and a fact is asked about with `holds(…)`.
+    if let Some((start, end)) = scan_has_atom(raw, &mask) {
+        let atom = &raw[start + 4..end - 1];
+        return Translation {
+            message: format!(
+                "`{}`: `has()` asks whether a state path is set; a fact is asked about with \
+                 `holds({atom})`",
+                &raw[start..end]
+            ),
+            fixits: vec![splice_fixit(
+                "write `holds(…)`".to_string(),
+                slot_span,
+                start,
+                start + 3,
+                "holds",
+            )],
+            span: Some(rebase(slot_span, start, end)),
+        };
+    }
+
     // Rule 3: a reversed comparison, `=<` / `=>`.
     if let Some((pos, right)) = scan_reversed_compare(raw, &mask) {
         let wrong = if right == "<=" { "=<" } else { "=>" };
@@ -234,7 +255,7 @@ pub fn translate_cel_parse(
 
     // Rule 7 (dsl 0.24 T3-8): a fact query over a relation named like a CEL
     // macro/keyword (`holds(has(lamp))`) — the declaration is
-    // `E-RELATION-RESERVED-NAME`; say why this use cannot parse.
+    // `E-RESERVED-NAME`; say why this use cannot parse.
     if let Some((start, end, name)) = scan_reserved_query_relation(raw, &mask) {
         return Translation {
             message: format!(
@@ -265,7 +286,7 @@ pub fn translate_cel_parse(
 }
 
 /// The first `holds(`/`count(`/`countDistinct(`/`validAt(` whose pattern
-/// relation is a [`crate::rel_schema::RESERVED_RELATION_NAMES`] name, outside
+/// relation is a CEL word ([`lute_manifest::reserved::is_cel_word`]), outside
 /// string literals: `(start, end, name)` of that relation token.
 fn scan_reserved_query_relation<'r>(
     raw: &'r str,
@@ -307,7 +328,7 @@ fn scan_reserved_query_relation<'r>(
         while j < b.len() && b[j] == b' ' {
             j += 1;
         }
-        if b.get(j) == Some(&b'(') && crate::rel_schema::RESERVED_RELATION_NAMES.contains(&rel) {
+        if b.get(j) == Some(&b'(') && lute_manifest::reserved::is_cel_word(rel) {
             return Some((rs, rs + rel.len(), rel));
         }
     }
@@ -407,6 +428,50 @@ fn scan_reversed_compare(raw: &str, mask: &[bool]) -> Option<(usize, &'static st
             }
         }
         i += 1;
+    }
+    None
+}
+
+/// The byte range of the first `has(<name>(…))` outside a string literal —
+/// `has` applied to a call, the shape of a relation atom.
+fn scan_has_atom(raw: &str, mask: &[bool]) -> Option<(usize, usize)> {
+    let b = raw.as_bytes();
+    let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut from = 0;
+    while let Some(at) = raw[from..].find("has(").map(|i| from + i) {
+        from = at + 4;
+        if mask[at] || (at > 0 && (ident(b[at - 1]) || b[at - 1] == b'.')) {
+            continue;
+        }
+        let mut i = at + 4;
+        while i < b.len() && b[i] == b' ' {
+            i += 1;
+        }
+        let name_start = i;
+        while i < b.len() && ident(b[i]) {
+            i += 1;
+        }
+        if i == name_start || b.get(i) != Some(&b'(') {
+            continue;
+        }
+        // The `has(`'s own closing paren.
+        let mut depth = 0usize;
+        for (j, &c) in b.iter().enumerate().skip(at + 3) {
+            if mask[j] {
+                continue;
+            }
+            match c {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some((at, j + 1));
+                    }
+                }
+                _ => {}
+            }
+        }
+        return None;
     }
     None
 }

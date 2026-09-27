@@ -1,5 +1,5 @@
 //! Integration tests for the connectivity layer's `after` surface (Task 2):
-//! the scene `after:` frontmatter key and the `<quest after="…">` attribute,
+//! the scene `after:` frontmatter key and the `<quest follows="…">` attribute,
 //! each validated LOCALLY (grammar only, via `prereq::parse_prereq`) by the
 //! single-file `check()` entrypoint. Node existence (whether the referenced
 //! `visited`/`completed` id actually exists in the project) is NOT resolved
@@ -42,14 +42,14 @@ fn scene_after_malformed_raises_profile_error() {
 
 #[test]
 fn quest_after_attribute_is_parsed_and_validated() {
-    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" after=\"visited('y.s01ep01')\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" follows=\"visited('y.s01ep01')\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
     let res = check(&input_for(text));
     assert!(!res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"));
 }
 
 #[test]
 fn quest_after_malformed_raises_profile_error() {
-    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" after=\"!visited('x')\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" follows=\"!visited('x')\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
     let res = check(&input_for(text));
     assert!(res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"));
 }
@@ -80,7 +80,7 @@ fn scene_after_whitespace_only_raises_profile_error_without_panic() {
 
 #[test]
 fn quest_after_exact_empty_raises_no_profile_error() {
-    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" after=\"\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" follows=\"\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
     let res = check(&input_for(text));
     assert!(
         !res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"),
@@ -91,7 +91,7 @@ fn quest_after_exact_empty_raises_no_profile_error() {
 
 #[test]
 fn quest_after_whitespace_only_raises_profile_error_without_panic() {
-    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" after=\"   \">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" follows=\"   \">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
     let res = check(&input_for(text));
     assert!(res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"));
 }
@@ -166,7 +166,7 @@ fn known_visited_key_resolves_clean() {
 fn known_completed_quest_attribute_resolves_clean() {
     // `q2`'s `after="completed('q1')"` references `q1`, a real declared
     // quest id in the same doc.
-    let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" after=\"completed('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" follows=\"completed('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
@@ -183,7 +183,7 @@ fn unknown_completed_quest_attribute_is_flagged_and_anchored_on_quest_after() {
     // declared nowhere in the project — must be flagged, and anchored on
     // `q2`'s OWN `after` attribute span (not any scene's `after:` span; this
     // doc has no scene at all).
-    let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" after=\"completed('ghost')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" follows=\"completed('ghost')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
@@ -195,8 +195,8 @@ fn unknown_completed_quest_attribute_is_flagged_and_anchored_on_quest_after() {
     let q2 = &docs[0].1.quests[1];
     assert_eq!(q2.id, "q2");
     assert_eq!(
-        hit.1.span, q2.after_span,
-        "unknown-node diagnostic for a quest-sourced formula must anchor on that quest's after_span"
+        hit.1.span, q2.follows_span,
+        "unknown-node diagnostic for a quest-sourced formula must anchor on that quest's follows_span"
     );
 }
 
@@ -522,7 +522,7 @@ fn scene_and_quest_sharing_a_string_are_distinct_nodes() {
     // must resolve to the correctly-typed node.
     let text_shared = "---\nkind: scene\ncharacter: shared\nseason: 1\nepisode: 1\nepisodeId: key\n---\n## Shot 1.\n@a: hi\n";
     let text_referencer = "---\nkind: scene\ncharacter: referencer\nseason: 1\nepisode: 1\nafter: 'visited(\"shared.key\")'\n---\n## Shot 1.\n@a: hi\n";
-    let text_quests = "---\nkind: quest\n---\n<quest id=\"shared.key\" start=\"true\" after=\"completed('placeholder')\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"consumer\" start=\"true\" after=\"completed('shared.key')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let text_quests = "---\nkind: quest\n---\n<quest id=\"shared.key\" start=\"true\" follows=\"completed('placeholder')\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"consumer\" start=\"true\" follows=\"completed('shared.key')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[
         ("shared.lute", text_shared),
         ("referencer.lute", text_referencer),
@@ -575,7 +575,7 @@ fn completed_on_a_plain_after_less_quest_is_a_leaf_not_an_edge() {
     // `plain` declares no `after` -- it is NEVER a graph node. `dependent`'s
     // `completed('plain')` must therefore contribute NO edge at all (a leaf
     // dependency, resolved by Task 6's quest-lifecycle signal, not the DAG).
-    let text = "---\nkind: quest\n---\n<quest id=\"plain\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"dependent\" start=\"true\" after=\"completed('plain')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let text = "---\nkind: quest\n---\n<quest id=\"plain\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"dependent\" start=\"true\" follows=\"completed('plain')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
@@ -748,7 +748,7 @@ fn quest_admitted_regardless_of_stale_quest_ids_set() {
     // graph node even when the caller-supplied `quest_ids` set does not
     // contain it (stale/filtered relative to `docs`) -- admission depends
     // ONLY on the quest itself declaring a nonempty `after`.
-    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" after=\"completed('other')\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"other\" start=\"true\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" follows=\"completed('other')\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"other\" start=\"true\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
     let key_set = scene_key_set(&docs);
     let stale_quest_ids: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -935,7 +935,7 @@ fn completed_on_known_quest_node_defaults_reachable() {
     // `q1` declares a present-but-empty `after` (admitted as a node,
     // PrereqState::Absent); `q2` gates on `completed('q1')`. `q1` is a
     // known graph node and NOT in `unreachable_quests` -> Reachable.
-    let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\" after=\"\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" after=\"completed('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\" follows=\"\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" follows=\"completed('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
@@ -1051,7 +1051,7 @@ fn transitive_unreachable_through_opted_in_quest_completed() {
     // quest gating on `completed('deadQ')`. `s` gates on `completed("qOpt")`
     // -- both `qOpt`'s own node and `s` must resolve Unreachable (T6
     // review's step-3/4 transitivity through a memoized graph node).
-    let quest_text = "---\nkind: quest\n---\n<quest id=\"deadQ\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"qOpt\" start=\"true\" after=\"completed('deadQ')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let quest_text = "---\nkind: quest\n---\n<quest id=\"deadQ\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"qOpt\" start=\"true\" follows=\"completed('deadQ')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let scene_text = "---\nkind: scene\ncharacter: s\nseason: 1\nepisode: 1\nafter: 'completed(\"qOpt\")'\n---\n## Shot 1.\n@s: hi\n";
     let docs = docs_for(&[("quests.lute", quest_text), ("scene.lute", scene_text)]);
     let key_set = scene_key_set(&docs);
@@ -1198,7 +1198,7 @@ fn duplicate_quest_id_graph_dead_completed_is_unknown() {
     // declarations.
     let quest_text = "---\nkind: quest\n---\n<quest id=\"deadQ\" start=\"true\">\n\
          <objective id=\"o0\" done=\"true\"/>\n</quest>\n\
-         <quest id=\"dupQ\" start=\"true\" after=\"completed('deadQ')\">\n\
+         <quest id=\"dupQ\" start=\"true\" follows=\"completed('deadQ')\">\n\
          <objective id=\"o1\" done=\"true\"/>\n</quest>\n\
          <quest id=\"dupQ\" start=\"true\">\n\
          <objective id=\"o2\" done=\"true\"/>\n</quest>\n";
@@ -2274,8 +2274,8 @@ fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachab
 fn active_gated_three_node_chain_is_reachable() {
     let text = "---\nkind: quest\n---\n\
         <quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n\
-        <quest id=\"q2\" start=\"true\" after=\"active('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n\
-        <quest id=\"q3\" start=\"true\" after=\"active('q2')\">\n<objective id=\"o3\" done=\"true\"/>\n</quest>\n";
+        <quest id=\"q2\" start=\"true\" follows=\"active('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n\
+        <quest id=\"q3\" start=\"true\" follows=\"active('q2')\">\n<objective id=\"o3\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
@@ -2322,8 +2322,8 @@ fn active_gated_three_node_chain_is_reachable() {
 #[test]
 fn cycle_through_active_edges_is_conn_cycle() {
     let text = "---\nkind: quest\n---\n\
-        <quest id=\"pa\" start=\"true\" after=\"active('pb')\">\n<objective id=\"oa\" done=\"true\"/>\n</quest>\n\
-        <quest id=\"pb\" start=\"true\" after=\"active('pa')\">\n<objective id=\"ob\" done=\"true\"/>\n</quest>\n";
+        <quest id=\"pa\" start=\"true\" follows=\"active('pb')\">\n<objective id=\"oa\" done=\"true\"/>\n</quest>\n\
+        <quest id=\"pb\" start=\"true\" follows=\"active('pa')\">\n<objective id=\"ob\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
@@ -2347,7 +2347,7 @@ fn cycle_through_active_edges_is_conn_cycle() {
 fn active_on_an_undeclared_quest_is_unknown_node() {
     let text = "---\nkind: quest\n---\n\
         <quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n\
-        <quest id=\"q2\" start=\"true\" after=\"active('nope')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+        <quest id=\"q2\" start=\"true\" follows=\"active('nope')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
@@ -2369,9 +2369,9 @@ fn active_on_an_undeclared_quest_is_unknown_node() {
 #[test]
 fn active_and_completed_on_one_target_record_both_edge_kinds() {
     let text = "---\nkind: quest\n---\n\
-        <quest id=\"src\" start=\"true\" after=\"active('leaf')\">\n<objective id=\"o0\" done=\"true\"/>\n</quest>\n\
+        <quest id=\"src\" start=\"true\" follows=\"active('leaf')\">\n<objective id=\"o0\" done=\"true\"/>\n</quest>\n\
         <quest id=\"leaf\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n\
-        <quest id=\"dep\" start=\"true\" after=\"active('src') || completed('src')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+        <quest id=\"dep\" start=\"true\" follows=\"active('src') || completed('src')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
@@ -2466,7 +2466,7 @@ fn oversized_active_only_formula_is_capped() {
     let clauses: Vec<String> = (0..300).map(|i| format!("active('q{i}')")).collect();
     let formula = clauses.join(" || ");
     let text = format!(
-        "---\nkind: quest\n---\n<quest id=\"big\" start=\"true\" after=\"{formula}\">\n\
+        "---\nkind: quest\n---\n<quest id=\"big\" start=\"true\" follows=\"{formula}\">\n\
          <objective id=\"o\" done=\"true\"/>\n</quest>\n"
     );
     let docs = docs_for(&[("quests.lute", &text)]);
@@ -2636,7 +2636,7 @@ fn kinds(
 #[test]
 fn a_bundle_beat_is_a_legal_after_predecessor_of_a_quest_and_a_scene() {
     let quest = "---\nkind: quest\n---\n<quest id=\"scheme\" start=\"true\" \
-                 after=\"visited('camp.talks.corvinScheme')\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+                 follows=\"visited('camp.talks.corvinScheme')\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
     let scene = "---\nkind: scene\nid: camp.after\nafter: \"visited('camp.talks.corvinScheme')\"\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[
         ("camp.lute", CAMP_TALKS),
@@ -2666,7 +2666,7 @@ fn a_bundle_beat_is_a_legal_after_predecessor_of_a_quest_and_a_scene() {
 fn an_accept_driven_quest_is_anchored_at_every_accepting_node() {
     let quest = "---\nkind: quest\n---\n\
         <quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n\
-        <quest id=\"main\" start=\"true\" after=\"\">\n\
+        <quest id=\"main\" start=\"true\" follows=\"\">\n\
         <on event=\"questActive\">\n::accept{quest=\"helpVesna\"}\n</on>\n\
         <objective id=\"m\" done=\"true\"/>\n</quest>\n";
     let lore = "---\nkind: lore\nid: camp.talks\n---\n\
@@ -2766,7 +2766,7 @@ fn an_accept_anchor_reads_the_anchor_reachability_but_never_proves_the_quest_dea
 
 #[test]
 fn a_quest_with_an_explicit_after_keeps_only_its_declared_edges() {
-    let quest = "---\nkind: quest\n---\n<quest id=\"helpVesna\" after=\"visited('camp.day')\">\n\
+    let quest = "---\nkind: quest\n---\n<quest id=\"helpVesna\" follows=\"visited('camp.day')\">\n\
         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
     let day = "---\nkind: scene\nid: camp.day\n---\n## Shot 1.\n@a: hi\n";
     let night = accepting_scene("camp.night", "", "helpVesna");
@@ -2810,7 +2810,7 @@ fn an_accept_anchor_that_would_close_a_cycle_is_not_drawn() {
 #[test]
 fn an_unresolvable_quest_after_suggests_dropping_after_not_when() {
     let quest =
-        "---\nkind: quest\n---\n<quest id=\"scheme\" after=\"visited('camp.talks.nope')\">\n\
+        "---\nkind: quest\n---\n<quest id=\"scheme\" follows=\"visited('camp.talks.nope')\">\n\
         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
     let docs = docs_for(&[("camp.lute", CAMP_TALKS), ("q.lute", quest)]);
     let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
@@ -2818,7 +2818,7 @@ fn an_unresolvable_quest_after_suggests_dropping_after_not_when() {
         panic!("one miss: {res:?}")
     };
     assert_eq!(d.code, "E-CONN-UNKNOWN-NODE");
-    assert!(d.message.contains("drop `after=`"), "{}", d.message);
+    assert!(d.message.contains("drop `follows=`"), "{}", d.message);
     assert!(!d.message.contains("`when`"), "{}", d.message);
 }
 
@@ -2918,8 +2918,8 @@ fn only_top_level_conjuncts_and_disjunctions_of_reads_anchor() {
 fn an_explicit_after_replaces_start_anchors_but_keeps_the_subquest_edge() {
     let quest = "---\nkind: quest\n---\n\
         <quest id=\"main\" start=\"true\">\n<objective id=\"c\" quest=\"child\"/>\n</quest>\n\
-        <quest id=\"child\" after=\"visited('road.ford')\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n\
-        <quest id=\"road\" start=\"visited('road.departure')\" after=\"visited('road.ford')\">\n\
+        <quest id=\"child\" follows=\"visited('road.ford')\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n\
+        <quest id=\"road\" start=\"visited('road.departure')\" follows=\"visited('road.ford')\">\n\
         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
     let ford = "---\nkind: scene\nid: road.ford\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("s.lute", DEPARTURE), ("f.lute", ford), ("q.lute", quest)]);

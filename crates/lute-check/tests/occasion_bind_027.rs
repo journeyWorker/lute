@@ -58,9 +58,9 @@ fn errors(text: &str) -> Vec<(String, String)> {
 const VOCAB: &str = "entities:\n  hero: { members: [aria, bram, cyra] }\n  \
                      ssr: { subsetOf: hero, members: [aria] }\n  \
                      room: { members: [lobby, chapel] }\n\
-                     relations:\n  owned: { args: [hero], reserved: true }\n  \
-                     birthday: { args: [hero] }\n  \
-                     visitedRoom: { args: [room] }\n\
+                     relations:\n  owned: { args: [hero], tier: run, reserved: true }\n  \
+                     birthday: { args: [hero], tier: run }\n  \
+                     visitedRoom: { args: [room], tier: run }\n\
                      state:\n  user.bond: { type: number, default: 0, per: hero, owner: engine }\n  \
                      user.heat: { type: number, default: 0, per: room, owner: engine }\n";
 
@@ -273,7 +273,7 @@ fn a_scene_for_key_binds_each_member_like_the_attribute() {
 #[test]
 fn a_rule_variable_compared_with_a_domain_path_is_instantiated() {
     let schema = "entities:\n  room: { members: [lobby, morgue, chapel] }\n\
-                  relations:\n  adjacent: { args: [room, room] }\n  close: { args: [room], derive: true }\n\
+                  relations:\n  adjacent: { args: [room, room], tier: run }\n  close: { args: [room], derive: true }\n\
                   facts:\n  - \"adjacent(lobby, chapel)\"\n\
                   rules:\n  - \"close(R) :- adjacent(R, S), cel(\\\"run.stalker == S\\\")\"\n\
                   state:\n  run.stalker: { type: { domain: room }, default: morgue, owner: engine }\n  \
@@ -308,7 +308,7 @@ fn a_rule_variable_compared_with_a_domain_path_is_instantiated() {
 fn a_rule_variable_is_grounded_per_member_for_the_evaluator() {
     let text = "---\nkind: lore\nid: lore.ward\ntitle: Ward\n\
                 entities:\n  room: { members: [lobby, morgue, chapel] }\n\
-                relations:\n  adjacent: { args: [room, room] }\n  close: { args: [room], derive: true }\n\
+                relations:\n  adjacent: { args: [room, room], tier: run }\n  close: { args: [room], derive: true }\n\
                 rules:\n  - \"close(R) :- adjacent(R, S), cel(\\\"run.stalker == S\\\")\"\n\
                 state:\n  run.stalker: { type: { domain: room }, default: morgue, owner: engine }\n---\n";
     let (doc, _) = lute_syntax::parse(text);
@@ -351,4 +351,59 @@ fn a_payload_field_is_typed_and_scoped_to_its_occasion() {
         "<beat id=\"many\" on=\"summon\" target=\"kind:hero\" once=\"false\" when=\"occasion.payload.copy >= 2\">\n  @narrator: hi\n</beat>\n",
     ));
     assert!(typo.iter().any(|(c, _)| c == "E-UNDECLARED"), "{typo:?}");
+}
+
+/// A kind read only by `for="kind:K"` (a bundle beat's, an entry's, a
+/// scene's `for:`) is read — the beat is presented once per member of `K` —
+/// exactly as `target="kind:K"` is: no `W-DOMAIN-UNREAD`.
+#[test]
+fn a_kind_read_only_by_for_is_not_unread() {
+    let crowd = "entities:\n  crowd: { members: [ada, bo] }\n";
+    let unread = |text: &str| -> Vec<String> {
+        let res = check(&input(text));
+        lute_check::check_project_domain_reads(&[(
+            std::path::PathBuf::from("x.lute"),
+            &res.domain_use,
+        )])
+        .into_iter()
+        .filter(|(_, d)| d.message.contains("`crowd`"))
+        .map(|(_, d)| d.code)
+        .collect()
+    };
+    let lore = |attrs: &str| {
+        format!(
+            "---\nkind: lore\nid: roll\ntitle: Roll\n{crowd}---\n\
+             <beat id=\"b\" on=\"dailyReset\" {attrs} once=\"false\">\n  @narrator: hi\n</beat>\n\
+             <entry id=\"e\" on=\"dailyReset\" {attrs} once=\"false\">\n  @narrator: yo\n</entry>\n"
+        )
+    };
+    assert!(unread(&lore("for=\"kind:crowd\"")).is_empty());
+    let scene = format!(
+        "---\nkind: scene\nid: s\non: dailyReset\nfor: \"kind:crowd\"\nonce: false\n{crowd}---\n\n\
+         ## S\n\n@narrator: hi\n"
+    );
+    assert!(unread(&scene).is_empty());
+    // Nothing reads it: the warning stands.
+    assert_eq!(unread(&lore("")), vec!["W-DOMAIN-UNREAD".to_string()]);
+}
+
+/// dsl 0.28.0 (T2-8): an `<objective on="O">` is judged at O's raise, so its
+/// `done` reads O's payload; its `by` is judged between raises and keeps
+/// the error, saying why.
+#[test]
+fn an_on_objective_reads_its_occasions_payload_but_not_in_by() {
+    let quest = |attrs: &str| {
+        format!(
+            "---\nkind: quest\nid: qs\n---\n<quest id=\"q\" start=\"true\">\n  \
+             <objective id=\"pull\" on=\"summon\" {attrs} optional/>\n</quest>\n"
+        )
+    };
+    let ok = errors(&quest("done=\"occasion.payload.copies >= 2\""));
+    assert!(ok.is_empty(), "{ok:?}");
+    let by = errors(&quest("done=\"true\" by=\"occasion.payload.copies >= 2\""));
+    assert_eq!(by.len(), 1, "{by:?}");
+    assert!(
+        by[0].1.contains("bound only while its occasion is raised"),
+        "{by:?}"
+    );
 }

@@ -1,6 +1,6 @@
 ---
 title: 치트시트
-description: "Lute 0.27.0(시계, 퀘스트 구조, 파티, 브리지 응답, 배타 관계, 공유 소진, 퀘스트 그래프 간선, `add:`로 조립하는 종류, 종류 대상, 디렉티브 `when=`, 컴포넌트 기본값과 `@@who`, 규칙의 개수 세기, 엔진 게이트와 종료 상태, 끝이 있는 시계, 주, 시즌, `rearm`과 `spentBy`, 비트 템플릿, `sequence:` 챕터, 라벨과 복수형 포함)으로 글을 쓰는 동안 열어 두는 한 페이지: 모든 구문을 검사된 최소 스니펫으로 보여 줍니다(프로젝트 구성, 프론트매터, 대사, 선택지, match, 상태, CEL, 비트, 시계, 퀘스트, 로어, 컴포넌트, 타임라인). CLI 요약, 작가가 가장 자주 만나는 진단 코드, 주의할 점도 담았습니다."
+description: "Lute 0.27.0(시계, 퀘스트 구조, 파티, 브리지 응답, 배타 관계, 공유 소진, 퀘스트 그래프 간선, `add:`로 조립하는 종류, 종류 대상, 디렉티브 `when=`, 컴포넌트 기본값과 `@@who`, 규칙의 개수 세기, 엔진 게이트와 종료 상태, 끝이 있는 시계, 주, 시즌, `rearm`과 `spentBy`, 비트 템플릿, `chapters:` 챕터, 라벨과 복수형 포함)으로 글을 쓰는 동안 열어 두는 한 페이지: 모든 구문을 검사된 최소 스니펫으로 보여 줍니다(프로젝트 구성, 프론트매터, 대사, 선택지, match, 상태, CEL, 비트, 시계, 퀘스트, 로어, 컴포넌트, 타임라인). CLI 요약, 작가가 가장 자주 만나는 진단 코드, 주의할 점도 담았습니다."
 ---
 
 모든 구문을 한 페이지에 복사해 쓸 수 있는 스니펫으로 모았습니다. 아래의 `lute` 블록은 모두 CI에서 실제
@@ -72,7 +72,7 @@ choose: { order: tea }
 expect:
   state: { run.tips: 5 }
   transcriptContains: ["@mira: Stay as long as you like."]
-  exit: complete
+  end: complete
 ```
 
 ```yaml
@@ -131,16 +131,18 @@ defaults:                               # frontmatter every document inherits
     - world.schema.yaml
     - schema/areas/*.schema.yaml        # 0.26.0: a glob, expanded in path order; matching nothing is fine
   questTier: run                        # 0.26.0: the tier= of every <quest> that writes none
-sequence:                               # 0.27.0: chain scenes by id, in play order
-  occasion: chapter                     # the occasion every listed scene answers
-  scenes: [prologue, counter, accusation]
+chapters:                               # 0.28.0: chains of scenes by id, in play order
+  - on: chapter                         # one chain per occasion: every listed scene answers it
+    scenes: [prologue, counter, accusation]
 ```
 
-`sequence:`(0.27.0)는 나열된 장면마다 `on:`, `after: 'visited("<앞 장면 id>")'`, 그리고 앞에서부터
-줄어드는 `priority:`(30, 20, 10, …)를 써 넣습니다. 장면이 직접 쓴 키가 이깁니다. 어떤 장면도 선언하지 않은
-id, 모르는 계기, 모양이 틀린 블록은 `E-SEQUENCE`입니다. 계기의 `select: sequence`(한 번의 발생에서 자격 있는
-비트를 모두 선택 순서대로 재생)와는 별개입니다. 시퀀스의 계기 자체가 `select: sequence`이면 체인은 `on:`과
-`priority:`만 만들므로, 나열된 장면이 한 번의 발생 안에서 목록 순서대로 재생됩니다.
+`chapters:`(0.28.0, 0.27.0의 단일 사슬을 대신함)는 계기마다 하나씩 있는 사슬의 목록입니다. 사슬은 나열한
+장면마다 `on:`, `after: 'visited("<앞 장면 id>")'`, 그리고 앞에서부터 줄어드는 `priority:`(30, 20, 10, …)를
+써 넣습니다. 장면이 직접 쓴 키가 이깁니다. 어떤 장면도 선언하지 않은 id, 모르는 `on:`, 두 번 적은 장면, 한
+계기의 두 사슬, 모양이 틀린 사슬은 `E-CHAPTERS`입니다(그 사슬만 적용되지 않고 나머지는 적용됩니다). 계기의
+`select: sequence`(한 번의 발생에서 자격 있는 비트를 모두 선택 순서대로 재생)와는 별개입니다. 그런 계기에서는
+사슬이 `on:`과 `priority:`만 만들므로, 나열된 장면이 한 번의 발생 안에서 목록 순서대로 재생됩니다. 대상에게
+발생하는 계기라면 나열된 모든 장면이 자기 `target:`을 선언합니다.
 [장면 연결하기](/ko/getting-started/connect-scenes/)를 보세요.
 
 `defaults:`에는 `kind`, `character`, `season`, `episode`, `pov`, `luteVersion`, `contentLang`,
@@ -187,7 +189,7 @@ relations:
   can_halt: { args: [crew], derive: true }
   onWatch:  { args: [crew], derive: true }
   asleep:   { args: [crew], tier: run, excludes: [awake] }   # 0.25.0: never both on the same args (symmetric)
-  hurt:     { args: [crew], reserved: true, changedOn: [dusk] }   # 0.25.0: the engine writes it only on `dusk`
+  hurt:     { args: [crew], tier: run, reserved: true, changedOn: [dusk] }   # 0.25.0: the engine writes it only on `dusk`
 facts:
   - "awake(vesna)"
 rules:
@@ -251,7 +253,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`, `isSet`은 `bool`이�
 값을 주고 나머지는 `_`로 채웁니다. 멤버가 아닌 키, 값도 `_`도 없는 멤버, `per:` 없는 맵 기본값은
 `E-STATE-DECL`입니다. 긴 형태 enum의 `labels:`는
 `{ domain: … }` 타입 경로를 `{{path}}`로 렌더링할 때 나오는 표시 이름이며, 멤버가 아닌 키의 라벨은
-`E-ENUM-LABEL-NOT-MEMBER`입니다. entity kind도 같은 방식으로 `labels:`를 받습니다(0.27.0, `room: { members: [chapel], labels: { chapel: the chapel } }`). 멤버가 아닌 라벨은 `E-ENTITY-KIND-SHAPE`입니다. 캐스트 멤버의 `name:`이 라벨보다 우선하므로, `name:`이 있는 캐스트 멤버의 라벨은 표시되지 않으며 그 라벨 위치에 `W-LABEL-CAST-SHADOWED` 경고가 붙습니다. `clock:` 블록은 [시계](#시계)에서 설명합니다.
+`E-ENUM-LABEL-NOT-MEMBER`입니다. entity kind도 같은 방식으로 `labels:`를 받습니다(0.27.0, `room: { members: [chapel], labels: { chapel: the chapel } }`). 멤버가 아닌 라벨은 `E-ENTITY-KIND-SHAPE`입니다. 텍스트(`{{occasion.target}}`, 타입이 있는 경로, 타입이 있는 컴포넌트 인자)에서는 kind 라벨이 캐스트 `name:`보다 우선하고, 대사의 화자 이름은 캐스트 이름 그대로입니다. `clock:` 블록은 [시계](#시계)에서 설명합니다.
 `seasons:`(0.27.0)는 되풀이되는 기간을 이름 붙여 선언합니다(`harvest: { live: "@harvestLive" }`). 시즌이
 열릴 때마다(`live`가 거짓→참) `season.<name>.*`를 `prev.season.<name>.*`로 옮기고 기본값으로 되돌리며,
 `once: season:<name>` 소진을 지우고 `tier="season:<name>"` 퀘스트를 초기화합니다. 잘못되었거나 선언되지
@@ -271,7 +273,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`, `isSet`은 `bool`이�
 모든 루트 kind는 `title`, `luteVersion`, `contentLang`, `profile`, `plugins`, `uses`, `extends`,
 `components`, `state`, `defs`, `enums`, `entities`, `relations`, `facts`, `rules`, `codesLocked`,
 `mode`, `extra`(자유로운 설명 데이터)도 받습니다. 이 목록 밖의 키는 `E-META-UNKNOWN-KEY`입니다. 퀘스트의
-선행 조건은 `<quest>`의 `after=` 속성이며, 프론트매터 키가 아닙니다.
+그래프 간선은 `<quest>`의 `follows=` 속성이며, 프론트매터 키가 아닙니다.
 
 → [프론트매터와 프로필](/language/frontmatter-and-profiles/)
 
@@ -318,9 +320,9 @@ state:
 | 요소 | 규칙 |
 |---|---|
 | `@speaker{attrs}: text` | `@narrator`는 내레이션이고, 그 밖의 화자는 모두 대사입니다(`pov:` 화자도 마찬가지이며, `pov`는 설명용일 뿐입니다). `: ` 뒤의 텍스트는 줄 끝까지 그대로입니다. `cast:`가 선언되어 있으면 화자는 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). 줄의 가드가 캐스트의 `present:`를 함의하지 않으면 `W-CAST-ABSENT`이고, 화자의 `emotions:` 밖의 `emotion=`은 `E-BAD-ENUM`입니다(0.24.0). |
-| 줄 속성 | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as`(이름표 덮어쓰기), `when`(가드), `id`(점프 라벨). 따옴표로 감싼 값은 `&quot;` `&apos;` `&amp;` `&lt;` `&gt;` `&#NN;` `&#xHH;`를 해석합니다(0.24.0). 그 밖의 `&`는 그대로이며 `\"`도 여전히 됩니다. |
+| 줄 속성 | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as`(이름표 덮어쓰기), `when`(가드), `id`(`::mark{id}`처럼 점프 대상). 따옴표로 감싼 값은 `&quot;` `&apos;` `&amp;` `&lt;` `&gt;` `&#NN;` `&#xHH;`를 해석합니다(0.24.0). 그 밖의 `&`는 그대로이며 `\"`도 여전히 됩니다. |
 | 전달 플래그 | `{mono}` 속마음, `{os}` 화면 밖, `{vo}` 보이스오버. 한 줄에 하나까지이며 `@narrator`에는 쓸 수 없습니다. 플래그는 속성과 함께 쓸 수 있습니다: `{mono when="…"}`. |
-| `{{…}}` | `{{userName}}`, 선언된 상태 경로, 또는 `{{@def}}`(산출물에 def 본문이 실리고 `lute run` / `lute play`가 그 값을 계산합니다). 값이 없을 수 있는 경로를 읽으면 `E-MAYBE-UNSET`입니다. 줄의 텍스트 전체가 `@name`이면 그 글자가 그대로 출하됩니다(`W-TEXT-LOOKS-LIKE-REF`). `{{@name}}`으로 쓰세요. 0.24.0: `{{run.visits:ordinal}}`은 `1st`, `2nd`, …로 렌더링되며(숫자 전용), `labels:`가 있는 enum 타입 경로는 라벨로 렌더링됩니다. 0.25.0: `{{run.day:ordinalWord}}`는 `first` … `twentieth`로 렌더링됩니다(엔진이 현지화하며, `lute play`는 스물을 넘으면 `21st` 같은 숫자로 돌아갑니다). 0.27.0: `{{run.lamps:plural(lamp|lamps)}}`는 수가 1이면 첫 형태, 아니면 둘째 형태로 렌더링되고(형태 안의 `#`은 그 수: `plural(# lamp|# lamps)`), `labels:`가 있는 entity kind의 값(`{{occasion.target}}`, `{ domain: <kind> }` 경로)은 라벨로 렌더링됩니다. cast `name:`이 우선합니다. 다른 힌트는 없습니다. |
+| `{{…}}` | `{{userName}}`, 선언된 상태 경로, 또는 `{{@def}}`(산출물에 def 본문이 실리고 `lute run` / `lute play`가 그 값을 계산합니다). 값이 없을 수 있는 경로를 읽으면 `E-MAYBE-UNSET`입니다. 줄의 텍스트 전체가 `@name`이면 그 글자가 그대로 출하됩니다(`W-TEXT-LOOKS-LIKE-REF`). `{{@name}}`으로 쓰세요. 0.24.0: `{{run.visits:ordinal}}`은 `1st`, `2nd`, …로 렌더링되며(숫자 전용), `labels:`가 있는 enum 타입 경로는 라벨로 렌더링됩니다. 0.25.0: `{{run.day:ordinalWord}}`는 `first` … `twentieth`로 렌더링됩니다(엔진이 현지화하며, `lute play`는 스물을 넘으면 `21st` 같은 숫자로 돌아갑니다). 0.27.0: `{{run.lamps:plural(lamp\|lamps)}}`는 수가 1이면 첫 형태, 아니면 둘째 형태로 렌더링되고(형태 안의 `#`은 그 수: `plural(# lamp\|# lamps)`), `labels:`가 있는 entity kind의 값(`{{occasion.target}}`, `{ domain: <kind> }` 경로)은 라벨로 렌더링됩니다. cast `name:`이 우선합니다. 0.28.0: `:cardinalWord`는 `one` … `twenty`로 씁니다. plural 형태 안의 `#word` / `#Word`는 그 수를 단어로 씁니다(`plural(One wagon\|#Word wagons)` → `Eleven wagons`). plural 형태는 `\|`로 나눈 따옴표 없는 텍스트입니다(따옴표나 `,` 형태는 `E-PLURAL-FORM`). `:capitalize`, `:start`, `:indefinite`는 텍스트를 다듬고, kind 라벨은 이를 위해 `{ text, start, indefinite }` 형태를 선언할 수 있습니다(없으면 첫 글자 대문자, `a`/`an` + 텍스트). 그 밖의 힌트는 `E-CEL-PROFILE`입니다. |
 | 샷 | 모든 콘텐츠는 `## 제목` 아래에 둡니다. `# 제목`만으로는 샷이 열리지 않습니다. |
 | 디렉티브 | `::bg` `::music` `::sfx` `::auto`(등장, 포즈, 퇴장) `::camera` `::cut` `::vfx` `::video` `::end`, 그리고 `::clear`(0.24.0: 무대의 모두가 퇴장, 배경과 음악은 유지). 타이밍 키: `duration`, `delay`, `wait="true"`(대기). 캐스트가 선언되어 있으면 `::auto{character}`와 `::camera{focus}`도 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). |
 | 주석 | `// …`는 줄 끝까지이며, 그 줄에 홀로 있거나 디렉티브 뒤에 올 수 있습니다(`::set{run.n += 1} // why`). 그리고 `/* … */`. `<tag>` 뒤에 쓰면 `E-TAG-INLINE-BODY`이고, 대사 텍스트 안의 `//`는 글자 그대로입니다. |
@@ -381,7 +383,7 @@ defs:
 | `<branch id>` | 메뉴입니다. 고른 값은 `scene.choices.<id>`에 기록되고, 씬이 끝나면 지워집니다. 가드 없는 선택지가 하나 이상 있어야 합니다(`E-BRANCH-ALL-GUARDED`). `prompt=`와 `timeout="N"`은 선택입니다. |
 | `<choice id label>` | `when=` 가드. `into="run.x"`는 `true`를 쓰고, number나 enum 경로에는 `value=`를 함께 써서 이후 씬이 읽을 수 있게 합니다. |
 | `<hub id>` | `exit`를 고를 때까지 자격 있는 선택지를 다시 보여 줍니다. `once`는 한 번 고른 선택지를 없앱니다. 가드 없는 `exit`가 있거나 모든 선택지가 `once`여야 합니다(`E-HUB-NO-EXIT`). 고를 때마다 `scene.visited.<hub>.<choice>`가 설정됩니다. 선택 속성 `prompt=`(0.23.0)는 선택지와 함께 보여 줄 질문이며, 비어 있으면 `E-BRANCH-PROMPT`입니다. |
-| `::next{to when}` | `::mark{id}`나 줄의 `id=`로 가는 앞쪽 전용 점프입니다. 뒤로 가는 점프는 `E-NEXT-BACKWARD`입니다. `when`이 없으면 그 뒤의 콘텐츠는 죽은 코드입니다(`W-CODE-AFTER-NEXT`). 0.26.0부터 `lute trace`와 `lute test`도 `lute play`처럼 실행된 점프를 따라 라벨로 갑니다(트랜스크립트에 `<next -> outro>`). |
+| `::next{to when}` | `::mark{id}`나 줄의 `id=`로 가는 앞쪽 전용 점프입니다. 뒤로 가는 점프는 `E-NEXT-BACKWARD`입니다. `when`이 없으면 그 뒤의 콘텐츠는 죽은 코드입니다(`W-CODE-AFTER-NEXT`). 0.26.0부터 `lute trace`와 `lute test`도 `lute play`처럼 실행된 점프를 따라 마크로 갑니다(트랜스크립트에 `<next -> outro>`). |
 | `::end{reason}` | 씬을 끝냅니다. `lute play`에서는 자신이 실행된 제시(또는 퀘스트 핸들러)만 끝내고, 플레이는 계속됩니다. 같은 본문에서 그 뒤의 콘텐츠는 `W-CODE-AFTER-END`입니다. |
 | `::accept{quest}` | 수락형 퀘스트(`start`가 없는 퀘스트, 또는 `activate="accept"`인 자식)를 받아들입니다. `at="nextRun"`(0.24.0)은 다음 `newRun` 초기화 직후로 수락을 미루며, 그 밖의 `at`은 `E-ACCEPT-TARGET`입니다. [퀘스트](#퀘스트)를 보세요. `when=`을 받습니다(0.26.0). |
 
@@ -515,11 +517,13 @@ relations:
   sawAt:   { args: [person, place], tier: run }
   loyal:   { args: [companion], derive: true }
   witness: { args: [person], derive: true }
+  unseen:  { args: [companion], derive: true }
 defs:
   evenDay: "run.day % 2 == 0"
 rules:
   - "loyal(P) :- inParty(P), cel(\"run.approval[P] >= 3\")"   # [P]: rule guards only
   - "witness(W) :- sawAt(W, _), cel(\"@evenDay\")"             # `_` in a body; a @def in a guard
+  - "unseen(P) :- companion(P), not sawAt(P, _)"               # not: no such fact holds
 ---
 
 ## Camp
@@ -530,6 +534,7 @@ rules:
 @isolde{when="holds(loyal(isolde))"}: I'm with you.
 @hollis{when="countDistinct(sawAt(W, _), W) >= 2"}: Two of us saw it.
 @hollis{when="holds(witness(hollis))"}: I was there.
+@hollis{when="holds(unseen(corvin))"}: Nobody saw Corvin.
 ```
 
 - `per: companion`은 멤버마다 `run.approval.<member>`를 선언합니다. 콘텐츠는 멤버 이름으로 씁니다. 이
@@ -539,6 +544,8 @@ rules:
   [컴포넌트](#컴포넌트-extends-파라미터) 참고).
 - 규칙 본문의 `_`는 새 익명 변수입니다(`not` 아래에서는 "그런 튜플이 아예 없음"). 규칙 머리
   (`E-DATALOG-PARSE`)와 비교식에서는 여전히 오류입니다.
+- 규칙 본문의 `not r(…)`은 그런 팩트가 없을 때 성립합니다(`unseen(P)`: `sawAt(P, _)`가 아예 없음). 부정은
+  아무것도 묶지 않으므로, 그 변수는 모두 같은 본문의 양의 원자가 묶어야 합니다. 아니면 `E-DATALOG-UNSAFE`입니다.
 - `countDistinct(sawAt(W, _), W)`는 한 위치의 서로 다른 값 개수를 세고, `count(…)`는 튜플 개수를 셉니다.
   `count`처럼 규칙 가드에는 쓸 수 없습니다.
 - 규칙 가드는 `@def`를 부를 수 있습니다. 없는 def, 잘못된 인자 개수, `$`는 `E-RULE-GUARD-DEF`입니다.
@@ -549,7 +556,7 @@ rules:
   실행하거나 전혀 실행하지 않으며, play는 `skip ::give{item="potion"} — when: false`로 출력). 검사기는 가드
   달린 디렉티브를 확정된 쓰기, 팩트, 수락으로 세지 않습니다. 내장 레코드로 로워링되는 디렉티브(`::bg`,
   `::sfx`, `::auto`, `::clear` 같은 모든 코어 연출 디렉티브와 `::end`, `::mark`, 플러그인 `lower:` 레코드)는
-  `when=`을 거부하며(`E-UNKNOWN-ATTR`, `<match>`에 넣으세요), `<track>` 클립도 마찬가지입니다(`E-TIMELINE-CONTENT`). CEL 호출처럼 이름 붙인 관계(`has`, `holds`, `count`, `isSet`, `now`, …)는 `E-RELATION-RESERVED-NAME`입니다.
+  `when=`을 거부하며(`E-UNKNOWN-ATTR`, `<match>`에 넣으세요), `<track>` 클립도 마찬가지입니다(`E-TIMELINE-CONTENT`). CEL 호출처럼 이름 붙인 관계(`has`, `holds`, `count`, `isSet`, `now`, …)는 `E-RESERVED-NAME`입니다(예약된 이름 전체: [예약된 이름](/ko/reference/reserved-names/)).
 
 배타 관계(0.25.0): `excludes:`는 같은 인자에서 결코 함께 성립하지 않는 관계를 적습니다.
 
@@ -596,7 +603,7 @@ rules:
 | `user.*` | 프로필 초기화 시 | 예 |
 | `app.*` | 앱 삭제 시 | 아니요 |
 | `quest.<id>.state`(항상 값이 있음: 퀘스트가 활성화되기 전에는 `unset`, 그 뒤로 `active` `complete` `failed`), `quest.<id>.activatedAt`, `quest.<id>.objectives.<o>.done` | 엔진. `tier="run"` 퀘스트는 새 런에서 `unset`으로 돌아감 | 아니요 |
-| `quest.<id>.failedBy`(`unset` `fail` `by` `until` `cascade` `superseded`), `quest.<id>.objectives.<o>.failed`(0.24.0) | 엔진. run 등급 퀘스트와 함께 지워짐 | 아니요(`E-QUEST-RESERVED-WRITE`) |
+| `quest.<id>.failedBy`(`unset` `fail` `by` `until` `subquest` `cascade` `superseded`), `quest.<id>.objectives.<o>.failed`(0.24.0) | 엔진. run 등급 퀘스트와 함께 지워짐 | 아니요(`E-QUEST-RESERVED-WRITE`) |
 | `clock.index`, `clock.weekday`, `clock.weekdayLabel`(0.24.0, 시계를 선언했을 때. `weekday*`는 `week:`가 있을 때) | 엔진: 시계의 날과 슬롯에서 계산 | 아니요(`E-QUEST-RESERVED-WRITE`) |
 | `entry.<id>.read` | 엔진, run 등급 | 아니요 |
 | `entry.<id>.everRead` | 엔진, user 등급: 처음 읽을 때 설정되고 새 런에서도 초기화되지 않음 | 아니요 |
@@ -622,7 +629,7 @@ rules:
 
 CEL이 들어가는 곳: `<match on>`, `<when test>`, 줄이나 선택지의 `when=`, `::set`의 우변과 `when=`,
 그것을 받는 다른 디렉티브의 `when=`(0.26.0), `::next when`, 비트 `when:`, 엔트리 `when=`, 퀘스트 `start` / `fail`, 목표 `done` / `by` / `until` /
-`when`, `<on when>`, `<reward when>`, 캐스트 항목의 `present:`. 디렉티브 속성에서 def 참조는 따옴표 없이
+`visibleWhen`, `<on when>`, `<reward when>`, 캐스트 항목의 `present:`. 디렉티브 속성에서 def 참조는 따옴표 없이
 씁니다: `zoom="@closeUp"`이 아니라 `::camera{zoom=@closeUp}`입니다. 속성에는 def가 접히는 상수가 들어가므로, 위의 `zoom`처럼 상태를 읽는
 def는 `E-ATTR-DEF-DYNAMIC`입니다. `<match>`로 나누고 갈래마다 리터럴을 쓰세요.
 
@@ -724,9 +731,9 @@ state:
 | `once` | 씬: `run`(기본값), `user`(평생 한 번), `false`(반복 가능). 엔트리: `once="run"`(새 런이 `entry.<id>.read`를 초기화할 때까지) 또는 `once="user"`(`entry.<id>.everRead`가 설정되면 소진). 엔트리에 `once`가 없으면 반복됩니다. 시계를 선언했다면(0.24.0) `once: day` / `once: slot`(엔트리는 `once="day"` / `"slot"`)은 날이나 슬롯이 바뀔 때까지 소진 상태로 둡니다. 시계 없이 쓰면 `E-BEAT-ATTR`입니다. 엔트리의 쓰기는 한 런에서 처음 읽을 때만 적용되므로, `once` 없는 엔트리의 본문에 `::set` / `::retract`가 있으면 `W-ENTRY-WRITE-REREAD`입니다(0.26.0, `::assert`는 제외). 반복되어야 하는 쓰기는 `<beat once="false">`에 두세요. |
 | `also` | 0.23.0. `select: first` 계기의 씬(`also: true`)과 번들 비트(`also`): 승자 뒤에, 또는 주 비트가 하나도 자격이 없을 때는 혼자 제시되며, 승자를 대신하지 않습니다. 엔트리에 쓰거나 `select: all` / `sequence` 계기에 쓰면 `E-BEAT-ATTR`입니다. `W-BEAT-SHADOWED`와 `W-BEAT-PRIORITY-TIE`는 `also` 비트를 무시합니다. |
 | `share` | 0.25.0. 씬(`share:`), 엔트리와 번들 비트(`share=`): 여러 곳에서 이야기되는 한 사건을 위한 프로젝트 전체의 키입니다. 키의 어느 비트든 제시되면(엔트리는 읽히면) 그 키의 모든 비트가 `once` 기간 동안 소진됩니다(`lute play`: `` once: user — `share: miraThanks` already spent … by cafe.talks.thanksCounter ``). `false`가 아닌 `once`를 함께 써야 하고, 한 키의 모든 비트는 같은 `once`를 선언해야 합니다. 그렇지 않으면 `E-BEAT-ATTR`입니다. `lute beats`는 `user, share miraThanks`로 보여 줍니다. |
-| `spentBy` | 0.27.0. 씬(`spentBy:`), 엔트리와 번들 비트(`spentBy=`): `once` 대신 쓰는 조건입니다. 조건이 성립할 때까지 비트가 반복되며(`spentBy: "holds(solved(valves))"`), `lute play`는 ``spentBy: `run.solved` holds``로 알립니다. `once`와 함께 쓰면 `E-BEAT-ATTR`입니다. |
+| `spentBy` | 0.27.0. 씬(`spentBy:`), 엔트리와 번들 비트(`spentBy=`): 제시 대신 비트를 소진하는 조건입니다(`spentBy: "holds(solved(valves))"`). 0.28.0부터 래치입니다. 한 번 성립하면 조건이 다시 거짓이 되어도 비트는 `once` 기간(쓰지 않으면 `run`, 주마다 초기화하려면 `once: week`) 동안 소진된 채로 남고, `lute play`는 ``spentBy: `run.solved` held — spent this run``으로 알립니다. `once: false`나 `share`와 함께 쓰면 `E-BEAT-ATTR`, 시작부터 성립하면 `W-BEAT-SPENT-AT-START`입니다. |
 | `use` | 0.27.0. 번들 비트(`use="bondStory"`): 비트 템플릿입니다. 컴포넌트의 `beat:` 머리가 `<beat>`가 직접 쓰지 않은 키를 모두 채웁니다(`@param`은 인자로 바뀌고, 빈 값은 빠지며, id 하나뿐인 `after`는 `visited("<id>")`입니다). 템플릿 본문이 먼저 실행되고(최상위 `::body`가 있으면 비트 자신의 본문이 그 자리에 들어갑니다), 나머지 속성은 파라미터입니다(`E-COMPONENT-ARG`). `<beat use="trainer" id="r3Joey" who="joey"/>`는 한 줄 비트입니다. 잘못 쓰면 `E-TEMPLATE`입니다. |
-| `for` | 0.27.0. 대상 없는 `select: sequence` 계기의 씬(`for: "kind:crew"`), 엔트리와 번들 비트(`for="kind:crew"`): `when`이 성립하는 멤버마다 한 번씩, 멤버 순서대로 제시되며 그 멤버를 `occasion.target`으로 읽습니다(`lute play`: `✓ cafe.birthday for toma`). `once`는 멤버 하나가 아니라 비트 전체를 소진합니다. `target`과 함께 쓰거나, 대상이 있는 계기나 sequence가 아닌 계기에 쓰면 `E-BEAT-ATTR`입니다. |
+| `for` | 0.27.0. 대상 없는 `select: sequence` 계기의 씬(`for: "kind:crew"`), 엔트리와 번들 비트(`for="kind:crew"`): `when`이 성립하는 멤버마다 한 번씩, 멤버 순서대로 제시되며 그 멤버를 `occasion.target`으로 읽습니다(`lute play`: `✓ cafe.birthday for toma`). `once`(와 `spentBy`)는 0.28.0부터 멤버마다 따로 소진됩니다. `target`과 함께 쓰거나, 대상이 있는 계기나 sequence가 아닌 계기에 쓰면 `E-BEAT-ATTR`입니다. |
 
 선택: 후보는 `on`이 일치하고 `target`이 없거나 발생한 대상과 같은 비트입니다. 후보는 `after:`와 `when`이
 성립하고 `once`가 소진되지 않았을 때 자격이 있습니다. 자격 있는 비트는 priority, 문서 경로, 선언 순서로
@@ -743,7 +750,7 @@ state:
 이기고(동점 아님), 종류 대상(또는 `for`)이 없는 비트에서 `occasion.target`을 읽으면 `E-UNDECLARED`입니다.
 0.27.0부터는 사실 인자와 `per:` 인덱스로도 쓸 수 있고, 멤버마다 검사됩니다:
 `holds(regular(occasion.target))`, `user.bond[occasion.target] >= 2`. `lute play`는
-`{{occasion.target}}`을 멤버의 캐스트 `name:`으로(없으면 id로) 렌더링하고, 테스트는
+`{{occasion.target}}`을 종류의 라벨로(없으면 캐스트 `name:`으로, 그것도 없으면 id로) 렌더링하고, 테스트는
 `state: { occasion.target: toma }`로 멤버를 정합니다:
 
 ```lute
@@ -768,20 +775,20 @@ depends: [ { id: lute.core, range: "^0.0.1" } ]
 exports:
   occasions: occasions/
   events: events/
-  rewardkinds: rewardkinds/             # rewardKinds: see Quests
+  rewardKinds: rewardkinds/             # rewardKinds: see Quests
   cast: cast/                           # cast: { <id>: { name, present?, emotions? } }, like a schema's cast:
 ```
 
 ```yaml
 # plugins/game.occasions/occasions/game.yaml
 occasions:
-  hubVisit: { select: first }
-  talk:     { select: first, target: { prefix: npc, entity: crew } }   # or `target: true`: any dotted id
-  greet:    { select: first, target: { prefix: npc, entity: crew, members: [mira, vesna] } }   # only these members (0.23.1)
-  runEnd:   { select: first, judge: before }   # 0.24.0: judge on="runEnd" objectives before the beats
-  evening:  { select: sequence }        # every eligible beat, in selection order (0.23.0)
-  inbox:    { select: all, description: Letters waiting at the fountain }
-  gift:     { select: first, target: { prefix: npc, entity: crew }, payload: { hearts: number } }   # 0.27.0: beats read occasion.payload.hearts; a play step gives payload: { hearts: 2 }
+  townVisit: { select: first }
+  talk:      { select: first, target: { prefix: npc, entity: crew } }   # or `target: true`: any dotted id
+  greet:     { select: first, target: { prefix: npc, entity: crew, members: [mira, vesna] } }   # only these members (0.23.1)
+  runEnd:    { select: first, judge: before }   # 0.24.0: judge on="runEnd" objectives before the beats
+  evening:   { select: sequence }        # every eligible beat, in selection order (0.23.0)
+  inbox:     { select: all, description: Letters waiting at the fountain }
+  gift:      { select: first, target: { prefix: npc, entity: crew }, payload: { hearts: number } }   # 0.27.0: beats read occasion.payload.hearts; a play step gives payload: { hearts: 2 }
 ```
 
 ```yaml
@@ -836,7 +843,8 @@ when: "clock.weekday < 5"
 
 - `day`(number)는 `owner: engine` 경로여야 합니다. `slot`(enum, 역시 `owner: engine`)과 `slots`(그 멤버를
   순서대로)는 선택이지만 둘을 함께 써야 하며, 둘 다 없으면 날 단위로만 세는 시계입니다. 잘못된 시계나 두 번째
-  시계, 콘텐츠 소유 경로, `slot` 없는 `slots`, 모르는 `raise` 계기는 `E-CLOCK-DECL`입니다.
+  시계, 콘텐츠 소유 경로, `slot` 없는 `slots`, 모르는 `raise` 계기(프로젝트의 플러그인이 계기를 선언할 때부터
+  검사), `payload:`가 있는 `raise` 계기는 `E-CLOCK-DECL`입니다.
 - 조건과 보간 어디서나 읽을 수 있는 읽기 전용 경로: `clock.index`(`(day-1) * len(slots) + slotIndex`,
   단조 증가, 날 시계에서는 `day-1`), `clock.weekday`(정수 `0..length-1`이므로 `is="0..5"` + `is="6"`은
   빠짐없고 `is="7"`은 `E-WHEN-LITERAL-DOMAIN`), `clock.weekdayLabel`(`week.labels`의 enum. 둘 다 `week:`
@@ -857,6 +865,13 @@ when: "clock.weekday < 5"
   위치까지만 가서 마지막 `dayEnd`를 한 번 발생시키고(`slot` 발생 없음) 멈춥니다. 그 뒤의 `advance:`는
   `newRun` 전까지 `E-CLOCK-END`(종료 코드 1)입니다. 더 늦은 위치가 필요한 `when`(`run.night == 2`)은 도달할
   수 없고, `lute calendar --axis clock`은 끝에서 멈춥니다.
+- 0.28.0: `clock.day`와 `clock.slot`은 날과 슬롯 경로를 이름으로 읽고, `last:` / `days:`가 있는 시계에는
+  `clock.ended`가 있습니다. 시계를 끝내는 전진의 정산부터 `newRun` 전까지 참입니다. `by="clock.ended"`는 그
+  순간 목표를 실패시키고(마지막 위치를 가리키는 `by="clock.index >= N"`은 한 슬롯 먼저 실패시킴),
+  `terminal: "clock.ended"`는 거기서 게임을 끝내며, 플레이 스텝은 `expect: { clock: { ended: true } }`로
+  확인합니다. 슬롯 계기를 발생시키지 않고 슬롯을 지나친 `advance:`는 그 슬롯을 메모로 남기고(`note: passed
+  day 1 (Mon) afternoon, night without raising …`), `lute calendar --axis clock`은 시계가 계기를 발생시키지
+  않는 칸을 `not raised`로 읽습니다.
 - 0.27.0: 계기는 `raisedWhen: "holds(canEnter(occasion.target))"`를 선언할 수 있습니다(플러그인
   `occasions/*.yaml`): 그 계기의 비트는 관문 아래에서 판정되고(`E-BEAT-UNREACHABLE`이 관문을 댐), `lute beats`는
   관문이 결코 성립하지 않는 대상을 표시하며, `lute play`는 관문이 거짓일 때 그 계기를 발생시키는 스텝을
@@ -906,7 +921,7 @@ state:
   user.xp:   { type: number, default: 0 }
 ---
 
-<quest id="regular" title="Become a regular" start="true" fail="run.fired" after="visited('cafe.counter')">
+<quest id="regular" title="Become a regular" start="true" fail="run.fired" follows="visited('cafe.counter')">
   <reward kind="BADGE" amount="1"/>
   <objective id="tip" title="Tip three times" done="run.tips >= 3">
     @narrator: Mira starts your order when you walk in.
@@ -939,7 +954,7 @@ state:
 | `start=` | 성립하면 퀘스트를 활성화합니다(`unset` → `active`). `start`가 없으면 수락형입니다: 씬이 `::accept{quest="…"}`를 실행하거나 목(mock)이 수락할 때까지 `unset`으로 남습니다. 플레이 스크립트는 `quests:`로 세이브의 상태를 시드합니다. 어떤 `::accept`도 이름을 부르지 않는 수락형 퀘스트는 `W-QUEST-NEVER-ACCEPTED`입니다(0.24.0, `check-project`). 0.25.0부터 `accepts:` 목은 더 이상 치지 않습니다. 0.26.0부터 테스트의 `accepts:`는 퀘스트를 프로젝트 전체에서 찾고, 플레이는 `engine: { accept: [id] }` 스텝으로 도중에 수락합니다. |
 | `accept="external"` | 0.25.0. 엔진이 문서 밖(퀘스트 게시판, 메뉴)에서 퀘스트를 수락합니다. `W-QUEST-NEVER-ACCEPTED`를 잠재웁니다. `start`와 함께 쓰면 `E-ATTR-TYPE`, 부모와 함께 활성화되는 자식에 쓰면 `E-ACCEPT-TARGET`입니다(`activate="accept"`를 더하세요). IR: `QuestCmd.accept`. |
 | `fail=` | `active` → `failed`. 완료 조건과 동시에 성립하면 실패가 이깁니다. |
-| `after=` | 씬 그래프를 위한 구조적 선행 조건: `&&` / `\|\|`로 묶은 `visited` / `completed` / `active`. 활성화를 막지 않으며, 활성화는 `start`가 정합니다. 씬은 프론트매터에 `after:`로 씁니다. 이것이 없으면 퀘스트는 자신의 `::accept`, 부모(`[subquest]`, 0.25.0), 그리고 `visited(…)` / `entry.X.everRead` / `quest.Y.state == …`를 읽는 `start` 연언항(`[start]`, 0.25.0)에 고정됩니다. |
+| `follows=` | 씬 그래프를 위한 그래프 메타데이터: `&&` / `\|\|`로 묶은 `visited` / `completed` / `active`. 활성화를 결코 막지 않으며, 활성화는 `start`가 정합니다. 씬은 활성화를 막는 선행 조건을 프론트매터에 `after:`로 씁니다. 0.28.0 전에는 `after=`로 썼습니다(이제 `E-UNKNOWN-ATTR`). 이것이 없으면 퀘스트는 자신의 `::accept`, 부모(`[subquest]`, 0.25.0), 그리고 `visited(…)` / `entry.X.everRead` / `quest.Y.state == …`를 읽는 `start` 연언항(`[start]`, 0.25.0)에 고정됩니다. |
 | `tier="run"` | 새 런에서 퀘스트가 `unset`으로 돌아가고 목표도 모두 미완료가 됩니다. 기본값 `tier="user"`는 런이 바뀌어도 상태를 유지합니다. 0.26.0부터 매니페스트의 `defaults: questTier: run`은 `tier=`를 쓰지 않은 모든 퀘스트의 기본값을 바꿉니다. 하위 퀘스트의 등급은 부모와 같아야 합니다(`E-QUEST-TIER-MIX`). |
 | `rearm=` | 0.27.0. 조건이 거짓에서 참으로 바뀔 때마다 퀘스트가 `unset`으로 돌아가고(목표, `failedBy`, 기한 초기화) 다시 시작하거나 수락할 수 있습니다: `<quest id="harvestMissions" start="@harvestLive" rearm="@harvestLive">`. `tier="season:<name>"`은 대신 그 시즌이 열릴 때마다 초기화합니다. |
 | `<objective done>` | `done`은 필수입니다(`E-OBJECTIVE-MISSING-DONE`). `optional`이 아닌 목표가 모두 완료되면 퀘스트가 완료됩니다. 완료는 되돌려지지 않으며 본문은 한 번만 재생됩니다. |
@@ -947,11 +962,11 @@ state:
 | `by=` | 기한이며, 0.24.0부터는 시점입니다: `on=`이 있든 없든 매 정산마다 판정합니다. 목표가 완료되지 않은 동안 처음으로 성립하면 목표는 영구히 실패하고, 필수 목표가 실패하면 퀘스트도 실패합니다(`failed` 보상, `questFailed`). 같은 정산에서는 `done`이 이기고, `on=` 목표의 계기를 발생시키는 스텝에서는 `done`을 먼저 판정합니다. `done`이 `by`를 함의하는 `on=` 목표는 그 스텝에서 둘이 함께 성립하지 않는 한 실패하며, `W-DEADLINE-BEFORE-DONE`이 `until=`을 제안합니다. |
 | `until=`(0.24.0) | 장소에 묶인 기한(0.23.1에서 `on=` 목표의 `by`)입니다. 목표의 계기(와 `target`)가 발생할 때만, `done` 다음에 판정합니다. `on=` 없이 쓰면 `E-BEAT-ATTR`입니다. |
 | `on="talk" target="npc.mira"`(0.23.0) | 계기가 그 대상에 대해 발생했을 때만 판정하며, 비트의 대상처럼 검사합니다(`E-BEAT-ATTR`). 도구에서는 `talk@npc.mira`로 발생시키고, `lute play`에서는 `target:`이 있는 스텝이 판정합니다. |
-| 목표의 `when=` | 표시 여부만 정합니다. 완료에는 영향을 주지 않습니다. |
+| 목표의 `visibleWhen=` | 표시 여부만 정하며 `done`을 막지 않습니다(완료를 조건에 묶으려면 `done=`에 쓰세요). 0.28.0 전에는 `when=`으로 썼습니다. |
 | `quest="child"` | 하위 퀘스트: 자식이 완료되면 완료되고, 필수 자식이 실패하면 부모도 실패합니다. `done=`과 함께 쓸 수 없습니다(`E-OBJECTIVE-QUEST-DONE`). `start`가 없는 자식은 부모와 함께 활성화되지만, `activate="accept"`(0.24.0)를 선언하면 부모가 활성인 동안 `::accept`를 기다립니다. 부모와 함께 활성화되는 자식을 `::accept`하면 `E-ACCEPT-TARGET`입니다. |
 | `complete="any"`(0.24.0) | 필수 목표 중 하나만 완료되어도 퀘스트가 완료되고, 아직 활성인 나머지 자식은 `failedBy` `superseded`로 실패합니다. 대안 하나가 실패해도 퀘스트는 열려 있습니다. 기본값은 `complete="all"`입니다. |
-| `quest.<id>.failedBy`(0.24.0) | 실패한 이유: 실패 전에는 `unset`, 그 뒤로 `fail`, `by`, `until`, `cascade`, `superseded`. `quest.<id>.objectives.<o>.failed`는 `by`/`until`이 그 목표를 실패시키면 `true`입니다. `lute play`는 `quest X -> failed (by)`로 출력합니다. |
-| `<reward kind amount target when on/>` | 엔진이 지급하는 데이터입니다. 콘텐츠는 보상을 읽을 수 없으므로 같은 재화를 `<on>` 핸들러에서 `::set`으로 또 올리지 마세요. 두 번 지급됩니다. `amount`는 정수나 범위 `N..M`입니다. `on="failed"`는 실패 시에 지급합니다. `lute run`, `lute play`, `lute trace`, `lute test`는 `grant`를 출력하고, 보상 종류가 `credits:`(아래)를 선언했다면 스칼라 금액을 그 경로에 더합니다. 그 퀘스트의 `<on>`이나 목표 본문에서 같은 경로를 `::set`하면 `W-REWARD-DOUBLE-CREDIT`입니다. |
+| `quest.<id>.failedBy`(0.24.0) | 실패한 이유: 실패 전에는 `unset`, 그 뒤로 `fail`, `by`, `until`, `subquest`(필수 하위 퀘스트가 실패함), `cascade`, `superseded`. `quest.<id>.objectives.<o>.failed`는 `by`/`until`이 그 목표를 실패시키면 `true`입니다. `lute play`는 `quest X -> failed (by)`로 출력합니다. |
+| `<reward kind amount target when outcome/>` | 엔진이 지급하는 데이터입니다. 콘텐츠는 보상을 읽을 수 없으므로 같은 재화를 `<on>` 핸들러에서 `::set`으로 또 올리지 마세요. 두 번 지급됩니다. `amount`는 정수나 범위 `N..M`입니다. `outcome="failed"`는 실패 시에 지급합니다(0.28.0 전: `on=`). `lute run`, `lute play`, `lute trace`, `lute test`는 `grant`를 출력하고, 보상 종류가 `credits:`(아래)를 선언했다면 스칼라 금액을 그 경로에 더합니다. 그 퀘스트의 `<on>`이나 목표 본문에서 같은 경로를 `::set`하면 `W-REWARD-DOUBLE-CREDIT`입니다. |
 | `<on event>` | `questActive`, `questComplete`, `questFailed`, 또는 플러그인의 월드 이벤트. `when=`으로 가드할 수 있습니다. `target=`(0.24.0)을 쓰면 같은 이름의 계기가 그 대상에 대해 발생할 때만 실행됩니다(일반 `event:` 스텝에서는 실행되지 않음). 결코 실패할 수 없는 퀘스트(`fail`도, `by=` 기한이 있는 필수 목표도, 실패할 수 있는 필수 하위 퀘스트 목표도, 부모 퀘스트도 없음)의 `questFailed` 핸들러는 `W-QUEST-HANDLER-DEAD`입니다. 핸들러 안의 `::accept`는 `lute trace` / `lute test`에서도 `lute play`처럼 적용됩니다(0.26.0). |
 
 퀘스트 문서에는 `#`/`##` 제목, `<hub>`, `<timeline>`이 없습니다. 다른 문서는
@@ -997,7 +1012,7 @@ state:
 
 씬의 `::accept{quest="storm"}`은 자식을 받아들입니다. `::accept{quest="lamp" at="nextRun"}`은 다음
 `newRun` 초기화 직후로 수락을 미루므로, 런 사이 허브에서 받은 run 등급 퀘스트가 초기화를 견딥니다.
-`after=`가 없는 수락형 퀘스트는 그것을 `::accept`하는 모든 씬, 번들 비트, 퀘스트 본문에 고정됩니다
+`follows=`가 없는 수락형 퀘스트는 그것을 `::accept`하는 모든 씬, 번들 비트, 퀘스트 본문에 고정됩니다
 (`lute scenario`가 `accept` 간선을 그립니다).
 
 보상 종류는 지급액이 들어갈 상태 경로(0.23.0)와 `target=` 계약(0.26.0)을 지정할 수 있습니다:
@@ -1053,15 +1068,17 @@ state:
   `priority`, `once`(`run` 또는 `user`, 시계가 있으면 `day` / `slot`도, 비트에만). 여러 파일에 걸친 시리즈에는 `series`와 `order`를 씁니다.
   문서 수준의 `series:`는 파일 안의 위치로 엔트리 순서를 정하며, 그런 문서에서 엔트리별 `series=`/`order=`는
   `E-ENTRY-ATTR`입니다.
-- 엔트리 본문에는 콘텐츠 줄, `<match>`, `::set`, `::assert`, `::retract`만 둘 수 있습니다. `<branch>`,
-  디렉티브, 제목을 비롯한 그 밖의 것은 `E-GRAMMAR-NOT-ADMITTED`입니다.
+- 엔트리 본문에는 콘텐츠 줄, `<match>`, `::set`, `::assert`, `::retract`, 그리고(0.27.0) 선언된 효과만
+  가진 플러그인 디렉티브(`::pickup{item=…}`)를 둘 수 있습니다. `<branch>`, 그 밖의 디렉티브, 제목을 비롯한
+  나머지는 `E-GRAMMAR-NOT-ADMITTED`입니다.
 - 효과는 한 런에서 처음 읽을 때만 적용됩니다. 그 뒤로 `entry.<id>.read`는 `true`이며 어느 문서에서나 읽을
   수 있습니다. run 등급이라 새 런에서 초기화됩니다. `entry.<id>.everRead`는 그 user 등급 짝으로, 처음 읽을
   때 설정되고 새 런에서도 초기화되지 않습니다. `entry.X.read`를 가정하는 가드 아래에서 `check-project`는
   X가 모든 경로에서 assert하는 팩트를 압니다(0.24.0). 그래서 거기서 중복된 `holds(…)`는
-  `W-FACT-GUARANTEED`이고, `everRead`는 `tier: user` / `app` 팩트만 셉니다. `once` 없는 엔트리가
-  `::set`이나 `::retract`를 쓰면 `W-ENTRY-WRITE-REREAD`입니다(0.26.0): 엔트리가 반복돼도 쓰기는 반복되지
-  않습니다. 반복되어야 하는 쓰기는 `<beat once="false">`에 두세요.
+  `W-FACT-GUARANTEED`이고, `everRead`는 `tier: user` / `app` 팩트만 셉니다. 한 런에서 다시 읽힐 수
+  있는 엔트리(조회 엔트리, `once` 없음, 런보다 짧은 `once`, `spentBy`, `for`)가 쓰기를 하면
+  `W-ENTRY-WRITE-REREAD`입니다: 쓰기는 한 런의 첫 읽기에만(`for`는 멤버마다) 적용됩니다. 반복되어야 하는
+  쓰기는 `<beat … once="false">`에 두세요. `<beat>`의 `once` 기본값은 반복이 아니라 `run`입니다.
 - 0.26.0: `lute play`와 `lute test`는 엔트리 id를 받는 모든 곳에서 `<문서 id>.<엔트리 id>`(`ship.records.log1`)도
   받고, 엔트리는 한 종류 전체를 대상으로 할 수 있습니다(`target="kind:crew"`,
   [비트](#비트-계기에-응답하는-씬과-엔트리) 참고).
@@ -1235,7 +1252,7 @@ id: storm.beat
 | `lute fix <file\|dir>` | 기계적 이전을 제자리에서 적용합니다: 옛 `:line` 표기, `as=` → `into=`, `test="$ == …"` → `is=`. 디렉터리를 주면 그 아래의 모든 `.lute` 파일을 재귀적으로, 정렬 순서대로 처리합니다. |
 | `lute tag <file\|dir>` | 파일 하나, 또는 디렉터리 아래 모든 `.lute` 파일의 모든 줄에 안정적인 `code`를 채웁니다. |
 | `lute compile <file> -o out.json` · `--all --project <dir> -o <outdir>` | 산출물을 만듭니다. `--all`은 `beats`를 포함한 `project.index.json`도 씁니다. `--project`가 없으면 파일 하나를 그 위쪽에서 가장 가까운 `lute.project.yaml`로 컴파일합니다(0.27.0). `check`와 같습니다. |
-| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | 프로젝트의 시드 팩트와 규칙을 적용한 채 소스를 목에 맞춰 미리 봅니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`이 프로젝트입니다(0.27.0, `check`와 같음). 종료 코드 `3`은 판정할 수 없는 가드를 만났다는 뜻입니다. `--occasion talk@npc.mira`는 대상에 대해 계기를 발생시킵니다(0.23.0). `--beat`는 번들 비트 하나를 로컬 id나 정식 id로 제시합니다(없는 id면 `E-TRACE-BEAT`). `@def`는 쓴 그대로 출력되고(`<match @weekday>`), `--expand`(0.24.0)는 펼친 식을 출력합니다. `--accept`는 `activate="accept"` 자식도 받습니다. 0.26.0: `--entry`는 `<doc>.<entry>`도 받고, 실행된 `::next`는 라벨까지 따라갑니다. |
+| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | 프로젝트의 시드 팩트와 규칙을 적용한 채 소스를 목에 맞춰 미리 봅니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`이 프로젝트입니다(0.27.0, `check`와 같음). 종료 코드 `3`은 판정할 수 없는 가드를 만났다는 뜻입니다. `--occasion talk@npc.mira`는 대상에 대해 계기를 발생시킵니다(0.23.0). `--beat`는 번들 비트 하나를 로컬 id나 정식 id로 제시합니다(없는 id면 `E-TRACE-BEAT`). `@def`는 쓴 그대로 출력되고(`<match @weekday>`), `--expand`(0.24.0)는 펼친 식을 출력합니다. `--accept`는 `activate="accept"` 자식도 받습니다. 0.26.0: `--entry`는 `<doc>.<entry>`도 받고, 실행된 `::next`는 마크까지 따라갑니다. |
 | `lute run <artifact> [--mock m.yaml] [--occasion o[@target]] [--entry id \| --beat id]` | 컴파일된 산출물을 엔진처럼 실행합니다. 로어 산출물에는 `--entry`와 `--beat`(번들 비트의 정식 id, 모호하지 않으면 로컬 id) 중 정확히 하나가 필요합니다. 목의 `bridges:`가 플러그인 호출에 응답합니다(0.24.0). |
 | `lute play <dir> --script p.play.yaml [--json] [--ir] [--quiet] [--explain <atom>] [--no-derive]` | 프로젝트 전체에 계기를 발생시키며 퀘스트를 진행합니다. `expect:`가 어긋나면 종료 코드 `1`입니다. 연출은 작성한 그대로 출력되고, `--ir`은 대신 로워링된 레코드를 주입된 것까지 표시해 출력합니다. `--explain`(반복 가능)은 플레이가 끝난 뒤 ground atom의 도출 트리를, 성립하지 않으면 그것을 결론 낼 수 있는 규칙마다 실패한 전제를 출력합니다. 0.24.0부터 assert된 잎은 출처를 밝힙니다(``asserted by scene `cafe.open`, step 1``). |
 | `lute test [<dir> \| <file>] [--project <dir>] [--coverage] [--no-derive]` | 모든 `*.test.yaml`과, `expect:`가 있는 모든 `*.play.yaml`을 실행합니다. 파일 하나를 주면 그 테스트나 플레이만 실행합니다. `--project`가 없으면 가장 가까운 `lute.project.yaml`을 기준으로 해석합니다(stderr에 알림). 미완료로 끝난 워크는 실패하고, `file:`이 없는 테스트도 스위트를 멈추지 않고 실패 하나(`E-TEST-FILE`)로 남습니다. `--coverage`는 `--project`나 가장 가까운 `lute.project.yaml`의 프로젝트에서 어떤 테스트도 트레이스하지 않고 어떤 플레이도 제시하지 않은 문서를 나열합니다. 0.24.0부터 `advance:` 스텝의 발생이 제시한 문서도 셈에 들고, 머리글은 두 수를 함께 셉니다: `coverage over N traced path(s) and M play(s) (…):`. 0.26.0부터 프로젝트를 한 번만 적재하고 테스트와 플레이를 병렬로 실행하며(`RAYON_NUM_THREADS` 존중), 결과는 원래 순서로 보고합니다. 0.27.0부터 단위는 비트입니다: 번들 비트와 엔트리를 하나씩 나열하고(`lore/endings/ren.lute: ember`), 플레이가 고른 선택지도 branch/hub 행에 세며, 머리글은 `(plays count toward what they presented and the choices they picked, not match arms)`이고, 마지막 절에 어떤 플레이도 제시하지 않은 비트를 나열합니다(`--json`: `untested`, `notPresentedByPlay`, 각각 `{file, id, kind}`). |
@@ -1247,7 +1264,7 @@ id: storm.beat
 | `lute context <file> [--project <dir>]` | 여기서 쓸 수 있는 모든 것: 디렉티브(내장 포함), 어휘, 상태(`owner: engine` 표시), def, 등급과 `reserved` 여부를 담은 관계, 대상 도메인을 담은 계기, 캐스트, 컴포넌트 시그니처, 모든 씬·퀘스트·엔트리 id. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`의 것입니다(0.27.0). |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | 프로젝트별로 설정하는 권고성 편집 린트(`L-*`). 선형 VN 지표는 비트, 컴포넌트, 퀘스트, 로어를 건너뜁니다. 0.26.0부터 `W-DISPLAY-NAME-DUP`도 보고합니다(`--deny W-DISPLAY-NAME-DUP`로 오류로 올림). |
 | `lute doctor [<dir>] [--strict]` | 툴체인과 프로젝트 설정: 버전, 활성 플러그인, 계기별로 응답하는 비트 수, 플레이 스크립트와 테스트, `PATH`의 `lute-lsp`가 이 버전인지, (0.24.0) 실행 중인 `lute` 옆의 빌드와 같은지(`lute-lsp beside lute`), 실행 중인 `lute-lsp`가 낡았는지(에디터 재시작). `--strict`(0.26.0)는 실패한 검사(`✗`)가 하나라도 있으면 `1`로 끝납니다. 0.26.0부터 `lute-lsp`는 자기 바이너리가 교체된 것을 알아채고, 옛 빌드의 결과 대신 재시작하라는 `lute-lsp-stale` 진단 하나를 보냅니다. |
-| `lute new scene\|quest\|lore\|schema <name> [--dir <dir>]` · `lute init <dir> [--template minimal\|investigation\|beats]` | 문서나 프로젝트의 뼈대를 만듭니다. 새 문서에는 `id:`가 들어가고 `defaults:`가 채워 주는 것은 빠집니다. `lute new scene <name> --on <occasion> [--target <prefix>.<member>]`은 계기와 대상을 프로젝트에 맞춰 검사한 뒤 비트를 씁니다. |
+| `lute new scene\|quest\|lore\|schema <name> [--dir <dir>]` · `lute init <dir> [--template minimal\|investigation\|beats]` | 문서나 프로젝트의 뼈대를 만듭니다. 새 문서에는 `id:`가 들어가고 `defaults:`가 채워 주는 것은 빠집니다. 파일 이름은 입력한 대소문자를 그대로 둔 id를 따릅니다. `lute new scene <name> --occasion <occasion> [--target <prefix>.<member>]`은 계기와 대상을 프로젝트에 맞춰 검사한 뒤 비트를 씁니다. 대상 있는 계기에는 `--target`이 필요합니다. |
 
 trace 목(`--mock`). 테스트의 목 키도 같은 형식입니다:
 
@@ -1284,7 +1301,7 @@ expect:
   notFacts: ["banned(mira)"]
   transcriptContains: ["@narrator: You are a regular now."]   # lines that played, as `@speaker: text`
   transcriptLacks: ["You are no longer welcome."]
-  exit: complete                                  # complete | incomplete; without it, incomplete fails
+  end: complete                                  # complete | terminal | incomplete | error; without it, incomplete fails
 ```
 
 ```yaml
@@ -1292,7 +1309,7 @@ expect:
 file: ../scenes/counter.lute
 choose: { greet: wave, chat: [coffee, cup, leave] }
 expect:
-  offered: { greet: [wave, tip], chat: [coffee, cup, leave] }   # exact sets: flirt's `when` failed
+  options: { greet: [wave, tip], chat: [coffee, cup, leave] }   # exact sets: flirt's `when` failed
   accepts: [lostCup]                    # 0.24.0: the quests this walk's ::accept took, as a set
 ```
 
@@ -1315,7 +1332,7 @@ expect:
   eligible: true
 ```
 
-`offered:`는 branch나 허브가 제시한 선택지 집합 전체를 여러 번의 제시에 걸쳐 정확히 비교합니다(허브는
+`options:`는 branch나 허브가 제시한 선택지 집합 전체를 여러 번의 제시에 걸쳐 정확히 비교합니다(허브는
 0.24.0부터 방문마다 자격 있던 선택지를 모두 합칩니다). `entry:`, `entries:`, `beat:`가 모두 없는 로어
 테스트는 `E-TEST-LORE`입니다. 엔트리 하나는 `lute trace <file> --entry <id>`로 미리 볼 수 있습니다.
 엔트리는 `<doc>.<entry>`로도 부를 수 있습니다(0.26.0). 테스트도 목의 `bridges:`를 받습니다.
@@ -1350,7 +1367,7 @@ facts: ["knows(vesna, manifest)"]
 choose: { greet: wave, chat: [coffee, leave] }   # hub: visit order; a branch list: one per presentation
 bridges: { check: [ { passed: true, margin: 3 } ] }   # 0.24.0: answers to plugin calls, consumed in order
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
     label: arrival                      # printed in the step header
     choose: { greet: tip }              # this step only, replacing that key
     expect: { options: { greet: [wave, tip] } }   # 0.24.0: the options this step offered, as a set
@@ -1379,16 +1396,17 @@ steps:
   - engine: { accept: [lostCup] }       # 0.26.0: the engine accepts an accept-driven quest (quest lostCup accepted (engine))
   - include: common.steps.yaml          # 0.24.0: splice another script's steps here (path relative to this file)
   - include: day.steps.yaml             # 0.27.0: repeat / choose / bridges on an include script its spliced steps
+    label: a day                        # 0.28.0: labels every spliced step without its own
     repeat: 3
     choose: { firstLook: ren }
     bridges: { exam: [ { grade: pass } ] }
   - newRun: { facts: ["knows(vesna, manifest)"] }   # or `true`; resets run.*, run facts, once: run, tier="run" quests
-  - occasion: hubVisit
+  - occasion: townVisit
     repeat: 2
   - end: true                           # ends the playthrough (exit 0); later steps print as skipped
-  - occasion: hubVisit                  # skipped
+  - occasion: townVisit                 # skipped
 expect:                                 # judged at the end; a miss exits 1
-  exit: complete
+  end: complete
   quests: { regular: complete, lostCup: unset }
   state: { user.xp: 50, run.day: 1 }
   facts: ["can_halt(vesna)"]            # after derivation
@@ -1453,7 +1471,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-KIND-MISSING` | 프론트매터에 `kind:`가 없고 `defaults:`도 채워 주지 않습니다. |
 | `E-META-MISSING` | 씬에 `id:`도 `character` + `season` + `episode`도 없습니다. |
 | `E-META-PARSE` | 프론트매터가 올바른 YAML이 아닙니다. 대개 `: `가 들어간 값을 따옴표 없이 썼을 때입니다. |
-| `E-META-UNKNOWN-KEY` | 이 kind에서 쓸 수 없는 키입니다. 예: 퀘스트의 `after:`(`<quest after=…>`를 쓰세요). |
+| `E-META-UNKNOWN-KEY` | 이 kind에서 쓸 수 없는 키입니다. 예: 퀘스트의 `after:`(`<quest follows=…>`를 쓰세요). |
 | `E-CONTENT-OUTSIDE-SHOT` | 첫 `## 제목` 앞에 콘텐츠가 있습니다. |
 | `E-DOMAIN-UNKNOWN` | `emotion=`, `action=`, `anchor`, `mood` 등을 썼지만 그 슬롯에 선언된 멤버가 없습니다. |
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | 상태 경로나 `@def`가 선언되지 않았거나, 그 스키마를 가져오지 않았습니다. |
@@ -1476,13 +1494,13 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-OBJECTIVE-MISSING-DONE` / `E-OBJECTIVE-QUEST-DONE` | 목표에 `done`이 없거나, `quest=`와 `done=`을 함께 썼습니다. |
 | `E-QUEST-TIER-MIX` | 하위 퀘스트의 `tier`가 부모와 다릅니다. 둘의 등급을 맞추세요: 섞인 트리는 새 런이 한쪽만 초기화하면 영영 잠깁니다. |
 | `E-GRAMMAR-NOT-ADMITTED` | 이 kind에서 허용되지 않는 구문입니다. 예: 엔트리 안의 `<branch>`, 퀘스트 안의 제목. |
-| `E-BEAT-ATTR` | 비트 키 형식이 잘못되었거나 `on`이 없거나, `when`이 `scene.*`를 읽거나, 대상 없는 계기에 씬이나 번들 비트의 `target`을 썼거나 대상이 대상 도메인 밖에 있거나(비슷한 이름 제안과 함께), 엔트리의 `once`가 `run`, `user`, `day`, `week`, `slot`, `season:<name>`이 아니거나, 시계가 없는데 `once: day` / `week` / `slot`을 썼거나(`week`는 `week:`도 필요), `once`와 `spentBy`를 함께 썼거나(0.27.0), `also`가 bool이 아니거나 엔트리 또는 `select: all` / `sequence` 계기에 있습니다. `id`가 없거나 `id`에 `-`가 있거나 문서에 `id:`가 없는 `<beat>`, 형식이 잘못되었거나 `on`이 없는 목표의 `target=`, `on=` 없는 `until=`도 `E-BEAT-ATTR`입니다. 0.26.0: `target="kind:K"`의 종류가 계기 도메인 안의 닫힌 종류가 아니거나, 도메인을 가진 계기로 플러그인이 선언하지 않은 계기에 쓴 경우. |
+| `E-BEAT-ATTR` | 비트 키 형식이 잘못되었거나 `on`이 없거나, `when`이 `scene.*`를 읽거나, 대상 없는 계기에 씬이나 번들 비트의 `target`을 썼거나 대상이 대상 도메인 밖에 있거나(비슷한 이름 제안과 함께), 엔트리의 `once`가 `run`, `user`, `day`, `week`, `slot`, `season:<name>`이 아니거나, 시계가 없는데 `once: day` / `week` / `slot`을 썼거나(`week`는 `week:`도 필요), `spentBy`를 `once: false`나 `share`와 함께 썼거나(0.28.0), `also`가 bool이 아니거나 엔트리 또는 `select: all` / `sequence` 계기에 있습니다. `id`가 없거나 `id`에 `-`가 있거나 문서에 `id:`가 없는 `<beat>`, 형식이 잘못되었거나 `on`이 없는 목표의 `target=`, `on=` 없는 `until=`도 `E-BEAT-ATTR`입니다. 0.26.0: `target="kind:K"`의 종류가 계기 도메인 안의 닫힌 종류가 아니거나, 도메인을 가진 계기로 플러그인이 선언하지 않은 계기에 쓴 경우. |
 | `E-OCCASION-UNKNOWN` | 플러그인이 계기를 선언했는데 이 계기는 그중에 없습니다. |
 | `W-BEAT-PRIORITY-TIE` | 한 `select: first` 계기에서 대상이 같거나 둘 다 없고 priority도 같은 두 비트의 `when`이 서로 배타적임을 증명할 수 없습니다. 승자는 파일 순서로 정해집니다. 0.26.0부터 부정을 먼저 정규화하고(`!(x < 1)`은 `x >= 1`), 두 조건이 왜 배타적이지 않은지(`once: run`보다 오래 사는 플래그, 다른 곳에서 assert되는 팩트, 각자 읽는 경로) 말해 줍니다. 종류 대상 비트는 멤버를 지목한 비트와 동점이 되지 않습니다. |
 | `W-BEAT-ONCE-RUN-USER` | 기본값 `once: run`을 그대로 둔 비트의 `when`이 user 등급 상태만 읽어서 런마다 다시 재생됩니다. 의도한 것이면 `once: run`을 직접 쓰고, 아니면 `once: user`를 쓰세요. |
 | `W-QUEST-HANDLER-DEAD` | 결코 실패할 수 없는 퀘스트(`fail`도, `by=` 기한이 있는 필수 목표도, 실패할 수 있는 필수 하위 퀘스트도, 부모 퀘스트도 없음)에 `<on event="questFailed">`가 있습니다. |
 | `W-STAGE-ABSENT` | 어떤 경로에서 퇴장했거나 `::bg` 장면 전환으로 자동으로 숨겨진 캐릭터를 줄이 무대에 세웁니다. 선택지와 `<match>` 갈래는 따로 따라가므로 한 갈래의 퇴장이 형제 갈래에서 경고를 내지 않습니다. 갈래가 다시 합쳐진 뒤에는 모든 갈래가 무대에 남겨 둔 캐릭터만 무대에 있습니다. |
-| `E-BEAT-UNREACHABLE` / `E-ARM-DEAD` | 조건이 결코 성립할 수 없습니다. `check-project`는 팩트 질의도 판정합니다. 0.23.0부터는 한 `&&` 안의 모순(`run.n > 5 && run.n < 3`)도 잡습니다. `check-project --wip`에서는 아직 아무것도 만들어 내지 않는 관계 때문에만 죽은 가드가 경고입니다. |
+| `E-BEAT-UNREACHABLE` / `E-ARM-DEAD` | 조건이 결코 성립할 수 없습니다. `check-project`는 팩트 질의도 판정합니다. 0.23.0부터는 한 `&&` 안의 모순(`run.n > 5 && run.n < 3`)도 잡습니다. `check-project --wip`에서는 아직 아무것도 만들어 내지 않는 관계 때문에만 죽은 가드가 경고 `W-WIP`이고, 메시지가 원래 코드를 밝힙니다. |
 | `E-ACCEPT-TARGET` | `::accept`가 없는 퀘스트나 `start`가 있는 퀘스트를 가리키거나, (0.24.0) 부모와 함께 활성화되는 자식을 가리키거나(그 자식에 `activate="accept"`를 선언하세요), `at`이 `"nextRun"`이 아닙니다. |
 | `W-QUEST-NEVER-ACCEPTED` | 0.24.0, `check-project`. 어떤 `::accept`도 이름을 부르지 않는 수락형 퀘스트(`start` 없음, 또는 `activate="accept"` 자식)입니다. 결코 활성화되지 않습니다. 0.25.0부터 목의 `accepts:`는 치지 않으며(메시지가 그 목을 밝힙니다), 엔진이 수락하는 퀘스트에는 `accept="external"`을 선언하세요. |
 | `E-FACT-EXCLUSIVE` / `E-RULE-EXCLUSIVE` | 0.25.0. `::assert`가 두 `excludes:` 관계를 모든 경로에서(`lute trace` / `lute test`에서는 걸은 경로에서) 함께 성립하게 하거나, 규칙이 다른 쪽이 성립하는 곳에서만 한쪽을 도출합니다. |
@@ -1495,20 +1513,22 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-REWARD-TARGET` | 0.26.0. 보상의 `target=`이 보상 종류의 `target:` 계약을 어깁니다: `{ entity: K }` 종류의 멤버가 아니거나, `{ provider: … }`가 모르거나, `required: true`인데 없습니다. |
 | `E-RULE-AGGREGATE-CYCLE` | 0.26.0. 규칙의 `count(…)` / `countDistinct(…)`가 그 규칙의 머리에 의존하는 관계를 셉니다. 머리가 먹이지 않는 관계만 세세요. |
 | `W-DISPLAY-NAME-DUP` | 0.26.0, `check-project`와 `lute lint`. 두 화자가 같은 표시 이름으로 보입니다: 캐스트 `name:` 둘, 캐스트 이름과 `::use{… name="…"}` 문자열, 또는 그런 문자열 둘. 하나를 바꾸거나, 의도한 역할 이름이면 캐스트 항목에 `sharedName: true`를 적으세요. |
-| `W-ENTRY-WRITE-REREAD` | 0.26.0. `once` 없는 엔트리가 `::set`이나 `::retract`를 씁니다: 다시 제시되지만 쓰기는 한 런에서 처음 읽을 때만 적용됩니다. 반복되는 쓰기는 `<beat once="false">`에, 아니면 `once="run"`을 쓰세요. `::assert`는 제외입니다. |
+| `W-ENTRY-WRITE-REREAD` | 0.26.0. 한 런에서 다시 읽힐 수 있는 엔트리(조회 엔트리, `once` 없음, 런보다 짧은 `once`, `spentBy`, `for`)가 `::set`, `::retract`, 또는 쓰기 효과만 가진 디렉티브를 씁니다: 쓰기는 한 런에서 처음 읽을 때만 적용됩니다. 반복되는 쓰기는 `<beat … once="false">`에, 아니면 `once="run"`이나 `when="!entry.<id>.read"` 가드를 쓰세요. `::assert`는 제외입니다. |
 | `E-COMPONENT-ARG` | `::use` 인자가 파라미터에 맞지 않거나 없는 파라미터를 가리킵니다. 0.26.0부터는 `speaker` 파라미터가 아닌 것에 쓴 `@@x:`나 컴포넌트 밖의 `@@x:`도 해당합니다. |
 | `E-UNKNOWN-ATTR` | 디렉티브가 선언하지 않은 속성입니다. 0.26.0부터는 내장 레코드로 로워링되는 디렉티브(`::bg`, `::sfx` 같은 코어 연출 디렉티브, `::end`, `::mark`, 플러그인 `lower:` 레코드)의 `when=`과 `when`이라는 이름의 플러그인 속성도 해당합니다. |
 | `E-CONN-UNKNOWN-NODE` | `visited('…')`나 `after`가 프로젝트에 없는 씬(0.24.0부터는 번들 비트도 가능)을 가리킵니다. |
-| `E-CLOCK-DECL` | 0.24.0. 스키마의 `clock:`이 잘못되었습니다: `day` / `slot`이 선언되지 않았거나 타입이 틀렸거나 `owner: engine`이 아니거나(`` `day: run.day` must be declared `owner: engine` ``), `slots`가 슬롯 enum의 멤버가 아니거나 `slot` 없이 쓰였거나, 모르는 `raise` 계기이거나, 두 번째 시계입니다. |
+| `E-CLOCK-DECL` | 0.24.0. 스키마의 `clock:`이 잘못되었습니다: `day` / `slot`이 선언되지 않았거나 타입이 틀렸거나 `owner: engine`이 아니거나(`` `day: run.day` must be declared `owner: engine` ``), `slots`가 슬롯 enum의 멤버가 아니거나 `slot` 없이 쓰였거나, 모르는 `raise` 계기(플러그인이 계기를 선언할 때)나 `payload:`가 있는 `raise` 계기(0.28.0)이거나, 두 번째 시계입니다. |
 | `E-SEASON-DECL` | 0.27.0. `seasons:` 항목이 잘못되었거나(맵이 아님, `live`가 없거나 비어 있음, 알 수 없는 키, 잘못된 이름), 두 스키마가 한 시즌을 다르게 선언했거나, `season.<name>.*` 경로·`once: season:<name>`·`tier="season:<name>"`가 선언되지 않은 시즌을 가리킵니다. `prev.season.*`에 쓰면 `prev.run.*`처럼 `E-QUEST-RESERVED-WRITE`입니다. |
 | `E-TEMPLATE` | 0.27.0. 비트 템플릿을 잘못 썼습니다: `<beat use>`가 가져오지 않은 컴포넌트(비슷한 이름 제안)나 `beat:` 머리가 없는 컴포넌트를 가리키거나, 머리에 모르는 키(`id` 포함)나 파라미터가 아닌 `@name`이 있거나, 일반 텍스트 머리 키에 식 인자가 들어가거나, `::body`가 템플릿 최상위가 아닌 곳에 있습니다. |
-| `E-SEQUENCE` | 0.27.0. `lute.project.yaml`의 `sequence: { occasion, scenes }`가 잘못되었거나 id를 두 번 적었거나, (`check-project`) 어느 씬도 선언하지 않은 id(비슷한 id 제안)나 자기 `on:`으로 다른 계기에 응답하는 씬을 적었습니다. 그 밖에는 목록의 각 씬이 직접 쓰지 않은 `on:`, `after: visited("<앞 씬>")`, 내려가는 `priority:`를 받습니다. |
+| `E-CHAPTERS` | 0.28.0. `lute.project.yaml`의 `chapters:`가 `{ on, scenes }` 사슬의 목록이 아니거나, 씬을 두 번 적었거나, 한 계기에 사슬을 둘 두었거나, 폐지된 `sequence:` 키를 아직 씁니다. 또는 (`check-project`) 사슬이 어떤 플러그인도 선언하지 않은 계기에 응답하거나, 어느 씬도 선언하지 않은 id(비슷한 id 제안)나 자기 `on:`으로 다른 계기에 응답하는 씬을 적었거나, 대상 있는 계기에서 `target:`이 없는 씬을 적었습니다. 그 밖에는 적용된 사슬의 각 씬이 직접 쓰지 않은 `on:`, 내려가는 `priority:`, 그리고 (`select: sequence` 계기가 아니면) `after: visited("<앞 씬>")`를 받습니다. |
+| `W-CHAPTER-STALL` | 0.28.0. 사슬의 씬이 가진 자기 `when:`이 끝내 참이 되지 않을 수도 있는 상태를 읽는데, 다음 씬의 `after:`가 그 씬을 기다리므로 장이 거기서 멈출 수 있습니다. 시계만 읽는 `when:`은 늦출 뿐이라 보고하지 않습니다. |
+| `W-CHAPTER-ORDER` | 0.28.0. `select: sequence` 계기에서 사슬의 씬이 가진 자기 `priority:`가 목록 순서를 벗어나게 재생합니다. |
 | `E-ENUM-LABEL-NOT-MEMBER` | 0.24.0. enum의 `labels:`가 그 멤버가 아닌 것을 가리킵니다. |
 | `E-CEL-TYPE` | 0.24.0. `%`의 피연산자가 정수가 아닙니다: `` `%` takes two integers: `2.5` is not an integer ``. |
 | `E-RULE-GUARD-DEF` | 0.24.0. 규칙의 `cel()` 가드가 없는 `@def`를 부르거나 인자 개수가 틀렸거나 `$`를 씁니다. |
-| `E-RELATION-RESERVED-NAME` | 0.24.0. 관계 이름이 CEL 호출, 매크로, 키워드(`has`, `holds`, `count`, `isSet`, `now`, …)와 같아서 `holds(has(…))`를 쓸 수 없습니다. 이름을 바꾸세요. |
+| `E-RESERVED-NAME` | 0.28.0. 선언한 이름이 Lute가 스스로 쓰는 이름입니다. CEL 호출·키워드·규칙 단어(`has`, `holds`, `visited`, `not`, …)와 같은 관계 이름, entity 멤버나 def 이름인 state 루트(`clock`), 멤버나 id 이름인 `unset`/`true`/`false`/`null`, id 이름인 `none`, `cast:`의 `narrator`가 그렇습니다. 메시지가 대신 쓸 이름을 제시합니다(`visited` → `wasAt`). 전체 목록은 [예약된 이름](/ko/reference/reserved-names/)에 있습니다. |
 | `W-RELATION-UNREAD` / `W-DEF-UNUSED` | 0.24.0, `check-project`, 선언 위치에서. 관계가 assert, 시드, 도출되지만 어떤 조건, 규칙 본문, def도 읽지 않거나, 어떤 콘텐츠, def, 규칙 가드도 `@def`를 참조하지 않습니다. 플레이 스크립트와 테스트는 읽기로 치지 않습니다. |
-| `E-PLUGIN-PARSE` | 플러그인 내보내기를 파싱할 수 없습니다. 0.24.0부터는 모르는 키(``unknown field `selct` … did you mean `select`?``)와 코어 훅이 아닌 `lower: { kind: builtin }`도 포함하며, 이어지는 `E-PLUGIN-MISSING-ACTIVE`는 플러그인을 불러오지 못했다고 알려 줍니다. |
+| `E-PLUGIN-PARSE` / `E-PLUGIN-KEY` | 플러그인 내보내기를 파싱할 수 없거나, (`E-PLUGIN-KEY`) 받지 않는 키가 있습니다(``has no key `selct` — did you mean `select`?``, 그 줄에서. 0.28.0부터 `plugin.yaml`도 검사합니다). `E-PLUGIN-PARSE`는 코어 훅이 아닌 `lower: { kind: builtin }`도 포함하며, 이어지는 `E-PLUGIN-MISSING-ACTIVE`는 플러그인을 불러오지 못했다고 알려 줍니다. |
 | `E-CONN-EPISODE-ID-DUP` / `E-QUEST-ID-DUP` | 두 문서가 같은 씬 id나 퀘스트 id를 쓰거나, 번들 비트의 정식 `<doc>.<beat>` id가 씬 id와 같습니다. |
 | `E-DUP-VOICEKEY` | 텍스트가 다른 줄들이 같은 `voiceKey`로 컴파일됩니다. 대개 `{speaker}-{code}` 템플릿으로 고정했을 때입니다. 기본값 `{prefix}.{speaker}-{code}`를 쓰거나 줄마다 다른 `code=`를 주세요. |
 | `E-CAPABILITY-MISMATCH` | 프로젝트의 문서들이 서로 다른 기능 스냅샷으로 해석되어(다른 프로필이나 씬별 `plugins:`) 하나로 컴파일할 수 없습니다. |
@@ -1539,12 +1559,15 @@ expect:                                 # judged at the end; a miss exits 1
 
 **`after:`는 구조이고, 상태는 `when:`이 담당합니다.** `after:`는 `&&`와 `||`로 묶은 `visited`,
 `completed`, `active`만 읽으며 씬 그래프에 쓰입니다. 비트는 둘 다 성립할 때만 자격이 있습니다.
-`<quest>`의 `after=`는 그래프 메타데이터일 뿐 활성화를 늦추지 않습니다. 퀘스트를 씬에 묶으려면 조건을
+`<quest>`의 `follows=`는 그래프 메타데이터일 뿐 활성화를 늦추지 않습니다. 퀘스트를 씬에 묶으려면 조건을
 `start`에 넣으세요: `start="visited('cafe.counter')"`.
 
 **`::end`는 `lute play`에서 자신의 제시만 끝냅니다.** 플레이 전체가 끝나지는 않습니다. 그 스텝은 정산되고
 플레이는 다음 스텝으로 이어집니다. 플레이를 일찍 멈추려면 `- end: true` 스텝을 추가하세요. 뒤의 스텝은
-건너뜀으로 출력되고 플레이는 `0`으로 종료합니다.
+건너뜀으로 출력되고 플레이는 `0`으로 종료합니다. 게임을 끝내는 것은 스키마의 `terminal:`뿐이고(그 뒤로는
+`outsideRun: true` 계기만 발생), 시계의 `last:`는 시계를 끝냅니다(`clock.ended`). 플레이는 어느 쪽이었는지
+`expect: { end: terminal }`로 단언합니다. 에필로그는 `terminal:`을 성립시키는 쓰기 뒤나, 그것이 읽는
+퀘스트의 `questComplete` 핸들러에 둡니다.
 
 **`visited()`는 세이브 전체에 걸칩니다.** 새 런에서도 지워지지 않습니다. 단일 파일 `check`는 이를 판정하지
 않고, `check-project`는 id를 검증하며, `trace`와 `test`에는 `visited:` 목록이 필요하고, 세이브에서
@@ -1611,10 +1634,11 @@ title: Chapter 1: Start
 @narrator: Once upon a time.
 ```
 
-**`scene.choices.<branch>`는 branch 바로 뒤에서도 값이 없을 수 있습니다.** match에 `is="unset"` 갈래나
-`<otherwise>`를 두세요:
+**`scene.choices.<branch>`는 branch가 고르면 설정됩니다(0.28.0).** `timeout`이 없는 branch 뒤의 match에는
+`unset` 갈래가 필요 없습니다. `timeout`은 고르지 않고 branch를 끝낼 수 있으니, 그때는 match에 `is="unset"`
+갈래나 `<otherwise>`를 두세요:
 
-```lute expect="E-MAYBE-UNSET,E-UNSET-UNCOVERED"
+```lute expect="E-MAYBE-UNSET"
 ---
 kind: scene
 id: choice.readback
@@ -1622,7 +1646,7 @@ id: choice.readback
 
 ## Ask
 
-<branch id="ask">
+<branch id="ask" timeout="10">
   <choice id="yes" label="Yes">
     @mira: Great.
   </choice>
@@ -1653,7 +1677,7 @@ stderr에 알립니다(`lute: note: using project <dir> (nearest lute.project.ya
 불러오고, 목으로 준 팩트와 assert된 팩트 위에 Datalog 규칙을 적용합니다. `lute run`과 같습니다. 도출된
 atom을 목으로 주어도 시드 하나로 받아들여집니다. 목으로 주지 않은 기본 팩트는 거짓입니다. trace가 판정할 수
 없는 상태에 걸린 규칙 가드는 결론을 unknown으로 남기고 워크를 멈춥니다(종료 코드 3). `lute test`에서는
-`expect: { exit: incomplete }`를 선언하지 않은 테스트가 이때 실패합니다. `derive: false`(목, 테스트, 플레이
+`expect: { end: incomplete }`를 선언하지 않은 테스트가 이때 실패합니다. `derive: false`(목, 테스트, 플레이
 스크립트 키)나 `--no-derive`는 0.21의 명시적 세계로 되돌립니다: 시드가 없고, 목으로 주지 않은 도출 atom은
 unknown입니다.
 
@@ -1680,7 +1704,7 @@ unknown입니다.
 ---
 kind: scene
 id: late.shift
-on: hubVisit
+on: townVisit
 when: "run.day > 5 && run.day < 3"
 state:
   run.day: { type: number, default: 1 }
@@ -1692,8 +1716,8 @@ state:
 ```
 
 **`lute trace`는 실행된 `::next`를 따라갑니다(0.26.0).** 0.26 전에는 트레이스가 점프를 보고한 뒤 끝났기
-때문에, `::mark` 뒤의 콘텐츠에 닿지 않은 워크로도 테스트가 `exit: complete`로 통과할 수 있었습니다. 이제
-trace와 test는 `lute play`, `lute run`처럼 라벨에서 이어 가고(`<next -> outro>`), `exit: complete`는 워크가
+때문에, `::mark` 뒤의 콘텐츠에 닿지 않은 워크로도 테스트가 `end: complete`로 통과할 수 있었습니다. 이제
+trace와 test는 `lute play`, `lute run`처럼 마크에서 이어 가고(`<next -> outro>`), `end: complete`는 워크가
 본문 끝에 닿았다는 뜻입니다.
 
 **자격 없는 비트를 걷는 테스트는 실패합니다(0.26.0).** trace는 여전히 `when`이 거짓인 엔트리나 비트를

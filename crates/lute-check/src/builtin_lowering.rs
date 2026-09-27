@@ -40,7 +40,7 @@ pub fn canonicalize_builtin_directives(doc: &mut Document, snapshot: &Capability
             match node {
                 Node::Directive(d) => f(d),
                 Node::Branch(b) => b.choices.iter_mut().for_each(|c| walk(&mut c.body, f)),
-                Node::Hub(h) => h.choices.iter_mut().for_each(|c| walk(&mut c.body, f)),
+                Node::Hub(h) => h.bodies_mut().for_each(|b| walk(b, f)),
                 Node::Match(m) => {
                     for arm in &mut m.arms {
                         let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;

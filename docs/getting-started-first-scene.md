@@ -292,7 +292,7 @@ $ ./target/debug/lute compile my-scene.lute
   "kind": "scene",
   "lute": "0.27.0",
   "irVersion": "0.27.0",
-  "capabilityVersion": "0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3",
+  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
   "meta": {
     "id": "mira.s01ep01",
     "character": "mira",
@@ -634,12 +634,12 @@ specific file you give it:
 
 ```
 $ ./target/debug/lute context my-scene.lute
-capabilityVersion: 0ab99b80a3a3ed52af7fdef5cc3e31a663f9fd6eb2408ccf967ec51a54a1e4f3
+capabilityVersion: ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319
 permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (12):
   auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location, time, assetId   [mutatesScene]
-  camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
+  camera: focus, zoom, moveX, moveY, shake, reset, duration, easing, delay, wait
   clear:    [reads.onStage mayExitCharacter]
   cut: assetId, action, full
   end: reason   [terminatesWalk]

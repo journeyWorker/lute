@@ -1,0 +1,431 @@
+//! The 0.28 clock edges through the built `lute` binary: the slot path of a
+//! clock that ends on its first day is narrowed to the slots it reaches; a
+//! clock whose day outlives the run keeps its spends across `newRun`;
+//! `clock.ended` turns true at the advance that ends the clock; a relation's
+//! `tier: season:<name>` resets when the season opens; a component param
+//! typed `{ domain: clock.weekdayLabel }` is checked against the clock.
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+const BIN: &str = env!("CARGO_BIN_EXE_lute");
+
+fn temp_dir(tag: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("lute-clock028-{tag}-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn write(dir: &Path, rel: &str, text: &str) {
+    let p = dir.join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(&p, text).unwrap();
+}
+
+fn text(o: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
+}
+
+fn check_project(dir: &Path) -> Output {
+    Command::new(BIN)
+        .arg("check-project")
+        .arg(dir)
+        .output()
+        .unwrap()
+}
+
+fn play(dir: &Path, script: &str) -> Output {
+    write(dir, "s.play.yaml", script);
+    Command::new(BIN)
+        .args(["play", &dir.display().to_string(), "--script"])
+        .arg(dir.join("s.play.yaml"))
+        .output()
+        .unwrap()
+}
+
+/// A project whose schema is `schema` and whose plugin `p` declares
+/// `occasions` (a YAML mapping body), plus `docs`.
+fn project(tag: &str, schema: &str, occasions: &str, docs: &[(&str, &str)]) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: p\nprofiles: { p: { plugins: { p: true } } }\n\
+         defaults: { uses: [world.schema.yaml] }\n",
+    );
+    write(
+        &dir,
+        "plugins/p/plugin.yaml",
+        "id: p\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n",
+    );
+    write(
+        &dir,
+        "plugins/p/occasions/o.yaml",
+        &format!("occasions:\n{occasions}"),
+    );
+    write(&dir, "world.schema.yaml", schema);
+    for (rel, body) in docs {
+        write(&dir, rel, body);
+    }
+    dir
+}
+
+/// hollow-ward's one-night clock, ending at `last_slot` on night 1.
+fn ward_schema(last_slot: &str) -> String {
+    format!(
+        "state:\n  run.night: {{ type: number, default: 1, owner: engine }}\n  \
+         run.hour: {{ type: {{ enum: [h23, h00, h01, h02, h03, h04, h05] }}, default: h23, owner: engine }}\n\
+         clock:\n  day: run.night\n  slot: run.hour\n  slots: [h23, h00, h01, h02, h03, h04, h05]\n  \
+         raise: {{ slot: hourStrikes, dayEnd: dawn }}\n{last_slot}"
+    )
+}
+
+fn scene(id: &str, on: &str, head: &str, body: &str) -> String {
+    format!("---\nkind: scene\nid: {id}\non: {on}\n{head}---\n\n## S\n\n{body}\n")
+}
+
+/// A clock that ends at h03 on its first night never reaches h04 or h05:
+/// the slot path (and `clock.slot`) holds only h23..h03, so a `when` on a
+/// later slot is unreachable, an arm for one is dead, and a `<match>` needs
+/// no arm for them. The same content on a clock that never ends is clean.
+#[test]
+fn a_one_day_clock_narrows_its_slot_path_to_the_slots_it_reaches() {
+    let arms = |slots: &[&str]| {
+        let mut s = String::from("<match on=\"run.hour\">\n");
+        for slot in slots {
+            s.push_str(&format!(
+                "  <when is=\"{slot}\">\n    @narrator: {slot}.\n  </when>\n"
+            ));
+        }
+        s.push_str("</match>");
+        s
+    };
+    let reached = ["h23", "h00", "h01", "h02", "h03"];
+    let all = ["h23", "h00", "h01", "h02", "h03", "h04", "h05"];
+    let docs = [
+        (
+            "scenes/late.lute",
+            scene(
+                "late",
+                "hourStrikes",
+                "when: \"run.hour == 'h05'\"\npriority: 10\n",
+                "@narrator: Five.",
+            ),
+        ),
+        (
+            "scenes/lateslot.lute",
+            scene(
+                "lateslot",
+                "hourStrikes",
+                "when: \"clock.slot == 'h04'\"\npriority: 20\n",
+                "@narrator: Four.",
+            ),
+        ),
+        (
+            "scenes/strike.lute",
+            scene("strike", "hourStrikes", "once: false\n", &arms(&all)),
+        ),
+        (
+            "scenes/short.lute",
+            scene(
+                "short",
+                "hourStrikes",
+                "once: false\npriority: 5\n",
+                &arms(&reached),
+            ),
+        ),
+    ];
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(p, s)| (*p, s.as_str())).collect();
+    let dir = project(
+        "narrow",
+        &ward_schema("  last: { day: 1, slot: h03 }\n"),
+        "  hourStrikes: { select: first }\n  dawn: { select: first }\n",
+        &docs,
+    );
+    let out = check_project(&dir);
+    let t = text(&out);
+    let holds =
+        "the clock ends at its last position, so `run.hour` only holds h23, h00, h01, h02, h03";
+    assert!(
+        t.contains(&format!(
+            "[E-BEAT-UNREACHABLE] beat `late` is never eligible: its `when` `run.hour == 'h05'` is provably false — {holds}"
+        )),
+        "{t}"
+    );
+    assert!(
+        t.contains("[E-BEAT-UNREACHABLE] beat `lateslot` is never eligible"),
+        "`clock.slot` narrows with the slot path: {t}"
+    );
+    assert!(
+        t.contains(&format!(
+            "[E-ARM-DEAD] arm can never fire: its pattern `h04` never comes — {holds}"
+        )),
+        "{t}"
+    );
+    assert!(t.contains("its pattern `h05` never comes"), "{t}");
+    assert!(
+        !t.contains("short.lute:"),
+        "a match over the reached slots is exhaustive: {t}"
+    );
+
+    // The same content on a clock that never ends: every slot comes round.
+    let dir = project(
+        "narrow-open",
+        &ward_schema(""),
+        "  hourStrikes: { select: first }\n  dawn: { select: first }\n",
+        &docs,
+    );
+    let t = text(&check_project(&dir));
+    assert!(!t.contains("E-BEAT-UNREACHABLE"), "{t}");
+    assert!(!t.contains("E-ARM-DEAD"), "{t}");
+    assert!(
+        t.contains("[E-NONEXHAUSTIVE]") && t.contains("short.lute:"),
+        "{t}"
+    );
+}
+
+const DIVE_OCCASIONS: &str = "  hub: { select: first }\n";
+
+fn dive(tag: &str, day: &str) -> PathBuf {
+    let schema = format!(
+        "state:\n  {day}: {{ type: number, default: 1, owner: engine }}\n\
+         clock:\n  day: {day}\n  week: {{ length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }}\n"
+    );
+    let docs = [
+        (
+            "scenes/deck.lute",
+            scene("deck", "hub", "once: false\n", "@narrator: The deck."),
+        ),
+        (
+            "scenes/stew.lute",
+            scene(
+                "stew",
+                "hub",
+                "once: week\npriority: 10\n",
+                "@narrator: {{clock.weekdayLabel}} stew.",
+            ),
+        ),
+    ];
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(p, s)| (*p, s.as_str())).collect();
+    project(tag, &schema, DIVE_OCCASIONS, &docs)
+}
+
+/// The Drowned Crown's calendar: a clock whose day is `user.dive` outlives
+/// the run, so a `once: week` beat spent on Monday stays spent on Tuesday
+/// of the next run, and the new-run step says the clock is kept. A run-tier
+/// clock starts over, and its spends go with it.
+#[test]
+fn a_user_tier_clock_keeps_its_spends_across_a_new_run() {
+    let dir = dive("user", "user.dive");
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: hub\n    expect: { winner: stew }\n  \
+         - newRun: { state: { user.dive: 2 } }\n    expect: { clock: { weekday: Tue } }\n  \
+         - occasion: hub\n    expect: { winner: deck }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(
+        t.contains(
+            "  the clock is kept: its day `user.dive` outlives the run, so its position, its once: \
+             day / slot / week spends stay\n"
+        ),
+        "{t}"
+    );
+    assert!(
+        t.contains("once: week — already presented this week"),
+        "{t}"
+    );
+
+    let dir = dive("run", "run.dive");
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: hub\n    expect: { winner: stew }\n  - newRun: true\n  \
+         - occasion: hub\n    expect: { winner: stew }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(!t.contains("the clock is kept"), "{t}");
+}
+
+/// `clock.ended` turns true in the settle of the advance that ends the
+/// clock: the dawn raise of that advance sees it, a `by="clock.ended"`
+/// deadline fails there and not one slot early, and `expect.clock.ended`
+/// judges it. On a clock that never ends `expect.clock.ended` is a usage
+/// error.
+#[test]
+fn clock_ended_turns_true_at_the_advance_that_ends_the_clock() {
+    let quest = "---\nkind: quest\nid: q\n---\n\n\
+                 <quest id=\"escape\" title=\"Out\" start=\"true\" tier=\"run\">\n  \
+                 <objective id=\"out\" title=\"Leave\" done=\"visited('exit')\" by=\"clock.ended\"/>\n\
+                 </quest>\n";
+    let docs = [
+        (
+            "scenes/strike.lute",
+            scene(
+                "strike",
+                "hourStrikes",
+                "once: false\n",
+                "@narrator: Strike.",
+            ),
+        ),
+        (
+            "scenes/dawn.lute",
+            scene(
+                "dawn",
+                "dawn",
+                "when: \"clock.ended\"\n",
+                "@narrator: The ward is closed.",
+            ),
+        ),
+        (
+            "scenes/exit.lute",
+            scene("exit", "leave", "", "@narrator: Out."),
+        ),
+        ("quests/q.lute", quest.to_string()),
+    ];
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(p, s)| (*p, s.as_str())).collect();
+    let occasions =
+        "  hourStrikes: { select: first }\n  dawn: { select: first }\n  leave: { select: first }\n";
+    let dir = project(
+        "ended",
+        &ward_schema("  last: { day: 1, slot: h05 }\n"),
+        occasions,
+        &docs,
+    );
+    let out = play(
+        &dir,
+        "steps:\n  - advance: 6\n    expect: { clock: { slot: h05, ended: false }, quests: { escape: active } }\n  \
+         - advance: slot\n    expect: { clock: { ended: true }, presented: [dawn], quests: { escape: failed } }\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(t.contains("The ward is closed."), "{t}");
+
+    // A wrong expectation names the key and the actual value.
+    let out = play(
+        &dir,
+        "steps:\n  - advance: 6\n    expect: { clock: { ended: true } }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(
+        t.contains("expect clock ended: expected true, actual false"),
+        "{t}"
+    );
+
+    let dir = project("ended-open", &ward_schema(""), occasions, &docs[..1]);
+    let out = play(
+        &dir,
+        "steps:\n  - advance: slot\n    expect: { clock: { ended: false } }\n",
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(
+        t.contains(
+            "`expect.clock.ended` — the clock never ends (it declares no `last:` or `days:`)"
+        ),
+        "{t}"
+    );
+}
+
+/// A relation with `tier: season:<name>` goes back to the seed facts each
+/// time the season opens (and the play says so); naming an undeclared
+/// season is `E-SEASON-DECL` with a did-you-mean.
+#[test]
+fn a_season_tier_relation_resets_when_its_season_opens() {
+    let schema = "state:\n  user.fest: { type: bool, default: false, owner: engine }\n\
+                  entities:\n  crew: { members: [mira, ren] }\n\
+                  relations:\n  wished: { args: [crew], tier: \"season:lanterns\" }\n\
+                  seasons:\n  lanterns: { live: \"user.fest\" }\n";
+    let wish = "<match>\n  <when test=\"holds(wished(mira))\">\n    @narrator: Already wished.\n  </when>\n  \
+                <otherwise>\n    @narrator: A wish.\n    ::assert{wished(mira)}\n  </otherwise>\n</match>";
+    let docs = [(
+        "scenes/wish.lute",
+        scene("wish", "hub", "once: false\n", wish),
+    )];
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(p, s)| (*p, s.as_str())).collect();
+    let dir = project("season", schema, DIVE_OCCASIONS, &docs);
+    let out = play(
+        &dir,
+        "steps:\n  - engine: { state: { user.fest: true } }\n  - occasion: hub\n  \
+         - occasion: hub\n    expect: { facts: [wished(mira)] }\n  \
+         - engine: { state: { user.fest: false } }\n  \
+         - engine: { state: { user.fest: true } }\n    expect: { notFacts: [wished(mira)] }\n  \
+         - occasion: hub\n",
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(
+        t.contains("season lanterns opens — season.lanterns.* reset to defaults, wished facts back to their seed facts"),
+        "{t}"
+    );
+    assert_eq!(t.matches("@narrator: A wish.").count(), 2, "{t}");
+    assert_eq!(t.matches("@narrator: Already wished.").count(), 1, "{t}");
+
+    let typo = schema.replace("tier: \"season:lanterns\"", "tier: \"season:lantern\"");
+    let dir = project("season-typo", &typo, DIVE_OCCASIONS, &docs);
+    let t = text(&check_project(&dir));
+    assert!(
+        t.contains("[E-SEASON-DECL] relation `wished`'s `tier: season:lantern` names season `lantern`, which no schema declares (declared: lanterns) — did you mean `lanterns`?"),
+        "{t}"
+    );
+}
+
+/// A component param typed `{ domain: clock.weekdayLabel }` takes the
+/// clock's labels as its members: the body's `<match>` is judged against
+/// them (a misspelt label, a missing one) without copying the list.
+#[test]
+fn a_component_param_can_name_the_clock_s_weekday_labels() {
+    let schema = "state:\n  run.day: { type: number, default: 1, owner: engine }\n\
+                  clock:\n  day: run.day\n  week: { length: 3, first: 0, labels: [Mon, Tue, Wed] }\n\
+                  defs:\n  today: \"clock.weekdayLabel\"\n";
+    let card = |arms: &str| {
+        format!(
+            "---\ncomponent: dayCard\nparams:\n  day: {{ domain: clock.weekdayLabel }}\n---\n\n\
+             ## Day card\n\n<match on=\"@day\">\n{arms}</match>\n"
+        )
+    };
+    let arm =
+        |label: &str| format!("  <when is=\"{label}\">\n    @narrator: {label}.\n  </when>\n");
+    let host = scene(
+        "morning",
+        "hub",
+        "once: false\ncomponents: [../components/day-card.component.lute]\n",
+        "::use{component=\"dayCard\" day=@today}\n::use{component=\"dayCard\" day=\"Tue\"}",
+    );
+    let good = card(&format!("{}{}{}", arm("Mon"), arm("Tue"), arm("Wed")));
+    let docs = [
+        ("scenes/morning.lute", host.clone()),
+        ("components/day-card.component.lute", good),
+    ];
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(p, s)| (*p, s.as_str())).collect();
+    let dir = project("card", schema, DIVE_OCCASIONS, &docs);
+    let out = check_project(&dir);
+    assert!(out.status.success(), "{}", text(&out));
+
+    let bad = card(&format!("{}{}", arm("Mon"), arm("Wednesdy")));
+    write(&dir, "components/day-card.component.lute", &bad);
+    let t = text(&check_project(&dir));
+    assert!(
+        t.contains("[E-WHEN-LITERAL-DOMAIN] `Wednesdy` is not a member of the subject's domain [Mon, Tue, Wed]"),
+        "{t}"
+    );
+    assert!(
+        t.contains("[E-NONEXHAUSTIVE]") && t.contains("`Tue`"),
+        "{t}"
+    );
+    assert!(
+        !t.contains("W-DOMAIN-UNREAD"),
+        "the clock's enums are not declarations: {t}"
+    );
+}

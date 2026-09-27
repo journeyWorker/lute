@@ -12,7 +12,7 @@ facts:
 choose:
   whatsLeft: goAtItDirect
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "You had both hands on that shim an hour ago, and both hands were not the thing the ring wanted."
     - "It went with margin, the way the Purser had promised it would, and margin turned out to mean the module and everything holding it."

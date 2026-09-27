@@ -144,9 +144,10 @@ pub fn beat_seam(
     seam_with(
         gate_of(occasions, on),
         occasions.get(on),
-        kinds,
         terminal,
-        target,
+        occasions
+            .get(on)
+            .and_then(|d| beat_members(d, target, kinds)),
         when,
     )
 }
@@ -162,36 +163,50 @@ pub(crate) fn folded_seam(
     target: Option<&str>,
     when: Option<&str>,
 ) -> Option<BeatSeam> {
-    let sound = |raw: &str| literal_hits(raw, folded).is_empty();
-    let gate = gate_of(&folded.occasions, on)
-        .filter(|g| ground_gate(folded, on, g).is_none_or(|g| sound(&g)));
-    let terminal = folded.env.terminal.as_deref().filter(|t| sound(t));
-    seam_with(
-        gate,
-        folded.occasions.get(on),
-        &folded.env.rel_vocab.kinds,
-        terminal,
-        target,
-        when,
-    )
+    let members = folded
+        .occasions
+        .get(on)
+        .and_then(|d| beat_members(d, target, &folded.env.rel_vocab.kinds));
+    folded_seam_over(folded, on, members, when)
 }
 
+/// [`folded_seam`] with `occasion.target` ranging over `members` — a kind
+/// or `for=` beat's own, when known.
+fn folded_seam_over(
+    folded: &crate::check::FoldedEnv,
+    on: &str,
+    members: Option<Vec<String>>,
+    when: Option<&str>,
+) -> Option<BeatSeam> {
+    let gate = gate_of(&folded.occasions, on).filter(|g| gate_hits(folded, on, g).is_empty());
+    let terminal = folded
+        .env
+        .terminal
+        .as_deref()
+        .filter(|t| literal_hits(t, &folded_defs(folded), &folded.env.state).is_empty());
+    seam_with(gate, folded.occasions.get(on), terminal, members, when)
+}
+
+/// `members`: what `occasion.target` ranges over for the beat, when known.
 fn seam_with(
     gate: Option<&str>,
     decl: Option<&OccasionDecl>,
-    kinds: &BTreeMap<String, EntityKindDecl>,
     terminal: Option<&str>,
-    target: Option<&str>,
+    members: Option<Vec<String>>,
     when: Option<&str>,
 ) -> Option<BeatSeam> {
-    let terminal = terminal.map(str::trim).filter(|t| !t.is_empty());
+    // dsl 0.28.0 (T2-9): an `outsideRun` occasion is raised after the game
+    // is over too — its beats are not judged under `!terminal`.
+    let terminal = terminal
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && !decl.is_some_and(|d| d.outside_run));
     if gate.is_none() && terminal.is_none() {
         return None;
     }
     let when = when.map(str::trim).filter(|w| !w.is_empty());
     let reads_target = gate.is_some_and(mentions_target) || when.is_some_and(mentions_target);
     let members: Vec<Option<String>> = if reads_target {
-        let ms = beat_members(decl?, target, kinds)?;
+        let ms = members?;
         if ms.is_empty() {
             return None;
         }
@@ -396,31 +411,265 @@ pub(crate) fn check_seam_texts(
             continue;
         };
         let mut found = check_condition(&ground, b.on_span, ctx);
-        found.extend(foreign_literals(&ground, folded, b.on_span));
+        found.extend(gate_literals(folded, &b.on, gate, b.on_span));
         out.extend(found.into_iter().map(|d| {
             crate::rel_schema::at_plugin_origin(gate_diag(&b.on, gate, d, b.on_span), origin)
         }));
     }
     if let Some(own) = &folded.typed.terminal {
-        let mut found = check_condition(&own.raw, own.span, ctx);
-        found.extend(foreign_literals(&own.raw, folded, own.span));
+        let found = outside_occasion(&own.raw, own.span).map_or_else(
+            || {
+                let mut found = check_condition(&own.raw, own.span, ctx);
+                found.extend(foreign_literals(&own.raw, folded, Some(&own.raw), own.span));
+                found
+            },
+            |d| vec![d],
+        );
         out.extend(
             found
                 .into_iter()
                 .map(|d| terminal_diag(&own.raw, d, own.span)),
         );
+        out.extend(terminal_persistent(&own.raw, doc, folded, own.span));
     }
     for (file, raw, span) in &imports.terminal {
         let origin = crate::rel_schema::DeclOrigin {
             file: file.clone(),
             span: *span,
         };
-        let mut found = check_condition(raw, doc.meta.span, ctx);
-        found.extend(foreign_literals(raw, folded, doc.meta.span));
+        let found = outside_occasion(raw, doc.meta.span).map_or_else(
+            || {
+                let mut found = check_condition(raw, doc.meta.span, ctx);
+                found.extend(foreign_literals(raw, folded, None, doc.meta.span));
+                found
+            },
+            |d| vec![d],
+        );
         out.extend(found.into_iter().map(|d| {
             crate::rel_schema::at_origin(terminal_diag(raw, d, doc.meta.span), Some(&origin))
         }));
+        out.extend(
+            terminal_persistent(raw, doc, folded, doc.meta.span)
+                .map(|d| crate::rel_schema::at_origin(d, Some(&origin))),
+        );
     }
+    out
+}
+
+/// dsl 0.28.0 (T3-19): a `terminal:` reading state a new run keeps — once
+/// it holds, it holds in every later run, so no new run can play on.
+pub const W_TERMINAL_PERSISTENT: &str = "W-TERMINAL-PERSISTENT";
+
+/// [`W_TERMINAL_PERSISTENT`] for terminal condition `raw` (its `@def`s
+/// expanded), at `at`: the quests this document declares and the relations
+/// it sees decide which of their reads a new run keeps.
+fn terminal_persistent(
+    raw: &str,
+    doc: &lute_syntax::ast::Document,
+    folded: &crate::check::FoldedEnv,
+    at: Span,
+) -> Option<Diagnostic> {
+    let defs = crate::cel_expand::DefTable {
+        bodies: &folded.def_bodies,
+        params: &folded.env.def_params,
+    };
+    let expanded = crate::cel_expand::expand_cel(raw, &defs, None, &mut Vec::new())
+        .unwrap_or_else(|_| raw.to_string());
+    let quest_kept = |id: &str| {
+        doc.quests.iter().find(|q| q.id == id).map(|q| {
+            !q.tier
+                .as_ref()
+                .is_some_and(|(t, _)| t == "run" || t.starts_with("season:"))
+        })
+    };
+    let relation_kept = |name: &str| {
+        folded
+            .env
+            .rel_vocab
+            .relations
+            .get(name)
+            .map(|r| matches!(r.tier.as_deref(), Some("user" | "app")))
+    };
+    let reads = persistent_reads(&expanded, &quest_kept, &relation_kept);
+    let first = reads.first()?;
+    Some(Diagnostic {
+        code: W_TERMINAL_PERSISTENT.to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "`terminal:` reads `{first}`, which a new run keeps — once it holds, no new run can \
+             play on; end the game on run state (`run.*`, a run-tier quest or relation), or \
+             declare what a new run should forget as run-tier"
+        ),
+        span: at,
+        layer: Layer::Cel,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    })
+}
+
+/// dsl 0.28.0 (T3-19): the reads of condition `raw` a new run keeps, each
+/// once, in reading order, as a message shows them — `visited('h')`,
+/// `user.*`, `app.*`, `entry.<id>.everRead`, and a quest's `completed(…)` /
+/// `active(…)` / `quest.<id>.*` or a relation's `holds(…)` / `count(…)` when
+/// `quest_kept` / `relation_kept` say it survives a new run (`None`:
+/// unknown, not named). Shared by the checker ([`W_TERMINAL_PERSISTENT`])
+/// and the runtime's refusal after the game is over.
+pub fn persistent_reads(
+    raw: &str,
+    quest_kept: &dyn Fn(&str) -> Option<bool>,
+    relation_kept: &dyn Fn(&str) -> Option<bool>,
+) -> Vec<String> {
+    use cel_parser::ast::Expr;
+    fn walk(
+        e: &Expr,
+        quest_kept: &dyn Fn(&str) -> Option<bool>,
+        relation_kept: &dyn Fn(&str) -> Option<bool>,
+        out: &mut Vec<String>,
+    ) {
+        let mut keep = |text: String| {
+            if !out.contains(&text) {
+                out.push(text);
+            }
+        };
+        match e {
+            Expr::Ident(_) | Expr::Select(_) => {
+                let Some(p) = crate::cel_paths::select_path(e) else {
+                    return;
+                };
+                let kept = p.starts_with("user.")
+                    || p.starts_with("app.")
+                    || crate::cel_paths::is_entry_ever_read(&p)
+                    || p.strip_prefix("quest.")
+                        .and_then(|r| r.split('.').next())
+                        .is_some_and(|id| quest_kept(id) == Some(true));
+                if kept {
+                    keep(p);
+                }
+            }
+            Expr::Call(c) if c.target.is_none() => {
+                let lit = || match c.args.first().map(|a| &a.expr) {
+                    Some(Expr::Literal(cel_parser::reference::Val::String(s))) => {
+                        Some(s.to_string())
+                    }
+                    _ => None,
+                };
+                let kept = match c.func_name.as_str() {
+                    "visited" => lit().is_some(),
+                    "completed" | "active" => lit().is_some_and(|q| quest_kept(&q) == Some(true)),
+                    "holds" | "count" | "countDistinct" => match c.args.first().map(|a| &a.expr) {
+                        Some(Expr::Call(atom)) => relation_kept(&atom.func_name) == Some(true),
+                        _ => false,
+                    },
+                    _ => {
+                        for a in &c.args {
+                            walk(&a.expr, quest_kept, relation_kept, out);
+                        }
+                        return;
+                    }
+                };
+                if kept {
+                    keep(crate::cel_types::show(e));
+                }
+            }
+            Expr::Call(c) => {
+                for a in c.target.iter().map(|t| &**t).chain(&c.args) {
+                    walk(&a.expr, quest_kept, relation_kept, out);
+                }
+            }
+            Expr::List(l) => {
+                for x in &l.elements {
+                    walk(&x.expr, quest_kept, relation_kept, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut arena = lute_cel::CelArena::default();
+    let Ok(handle) = lute_cel::parse_slot(&mut arena, raw, 0) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    if let Some(root) = arena.get(handle) {
+        walk(&root.expr, quest_kept, relation_kept, &mut out);
+    }
+    out
+}
+
+/// dsl 0.28.0 (T1-5): a condition judged outside any occasion — the
+/// project's `terminal:`, a season's `live:` — reading `occasion.*`, which
+/// has a value only while a beat answers its occasion. One report, at `at`,
+/// the same in every document (a kind beat elsewhere in the importing
+/// document gives it no value here).
+pub(crate) fn outside_occasion(raw: &str, at: Span) -> Option<Diagnostic> {
+    let mut arena = lute_cel::CelArena::default();
+    let handle = lute_cel::parse_slot(&mut arena, raw, 0).ok()?;
+    let root = arena.get(handle)?;
+    let path = crate::cel_paths::collect_path_uses(&root.expr)
+        .into_iter()
+        .map(|u| u.path)
+        .find(|p| p.split('.').next() == Some("occasion"))?;
+    Some(Diagnostic {
+        code: "E-UNDECLARED".to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "it is judged between steps, outside any occasion, so it cannot read `{path}` — \
+             `occasion.*` has a value only while a beat answers its occasion; judge the member \
+             in that beat's `when` (dsl 0.28.0 §1)"
+        ),
+        span: at,
+        layer: Layer::Cel,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    })
+}
+
+/// dsl 0.28.0 §1 (T1-5): the literal faults of occasion `on`'s `gate`, with
+/// `occasion.target` typed as the members the occasion is raised for — a
+/// typo (`'vilage'`) or a prefixed member (`'place.village'`) is a literal
+/// no member equals, and the gate would hold (or fail) for every member.
+fn gate_hits(
+    folded: &crate::check::FoldedEnv,
+    on: &str,
+    gate: &str,
+) -> Vec<crate::decide::LiteralCmpHit> {
+    let members = folded
+        .occasions
+        .get(on)
+        .filter(|_| mentions_target(gate))
+        .and_then(|d| domain_members(d, &folded.env.rel_vocab.kinds));
+    let mut schema;
+    let schema = match members {
+        Some(members) => {
+            schema = folded.env.state.clone();
+            schema.decls.insert(
+                crate::beats::OCCASION_TARGET.to_string(),
+                crate::meta::StateDecl {
+                    ty: lute_manifest::types::Type::Enum(members),
+                    default: None,
+                    namespace: crate::meta::Namespace::Scene,
+                    owner: Some(lute_manifest::types::Owner::Engine),
+                },
+            );
+            &schema
+        }
+        None => &folded.env.state,
+    };
+    literal_hits(gate, &folded_defs(folded), schema)
+}
+
+/// [`gate_hits`] as diagnostics, at `at`.
+fn gate_literals(
+    folded: &crate::check::FoldedEnv,
+    on: &str,
+    gate: &str,
+    at: Span,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    crate::reachability::push_literal_cmp_diags(&mut out, &gate_hits(folded, on, gate), None, at);
     out
 }
 
@@ -440,26 +689,57 @@ fn ground_gate(folded: &crate::check::FoldedEnv, on: &str, gate: &str) -> Option
 
 /// `E-WHEN-LITERAL-DOMAIN` / `E-UNSET-LITERAL` for each comparison of a
 /// finite-domain subject with a string outside its domain in `raw`, at `at`
-/// — the literal check every `when` gets.
-fn foreign_literals(raw: &str, folded: &crate::check::FoldedEnv, at: Span) -> Vec<Diagnostic> {
+/// — the literal check every `when` gets. `text` is the slot's text when it
+/// is written at `at`, so each diagnostic can point at its literal.
+fn foreign_literals(
+    raw: &str,
+    folded: &crate::check::FoldedEnv,
+    text: Option<&str>,
+    at: Span,
+) -> Vec<Diagnostic> {
+    condition_literals(raw, &folded_defs(folded), &folded.env.state, text, at)
+}
+
+fn folded_defs(folded: &crate::check::FoldedEnv) -> crate::cel_expand::DefTable<'_> {
+    crate::cel_expand::DefTable {
+        bodies: &folded.def_bodies,
+        params: &folded.env.def_params,
+    }
+}
+
+/// [`foreign_literals`] over any def table and schema — the literal check
+/// every condition slot judged outside the document tree gets (a gate, the
+/// terminal condition, a season's `live:`, a rule guard).
+pub(crate) fn condition_literals(
+    raw: &str,
+    defs: &crate::cel_expand::DefTable<'_>,
+    schema: &crate::meta::StateSchema,
+    text: Option<&str>,
+    at: Span,
+) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    crate::reachability::push_literal_cmp_diags(&mut out, &literal_hits(raw, folded), at);
+    crate::reachability::push_literal_cmp_diags(
+        &mut out,
+        &literal_hits(raw, defs, schema),
+        text,
+        at,
+    );
     out
 }
 
-fn literal_hits(raw: &str, folded: &crate::check::FoldedEnv) -> Vec<crate::decide::LiteralCmpHit> {
+fn literal_hits(
+    raw: &str,
+    defs: &crate::cel_expand::DefTable<'_>,
+    schema: &crate::meta::StateSchema,
+) -> Vec<crate::decide::LiteralCmpHit> {
     let params = BTreeMap::new();
-    let defs = crate::cel_expand::DefTable {
-        bodies: &folded.def_bodies,
-        params: &folded.env.def_params,
-    };
     let ctx = crate::decide::DecideCtx {
-        schema: &folded.env.state,
+        schema,
         dollar: None,
         params: &params,
         facts: None,
     };
-    crate::decide::analyze_literal_comparisons(raw, &defs, &ctx).hits
+    crate::decide::analyze_literal_comparisons(raw, defs, &ctx).hits
 }
 
 /// `raw` checked as a `Bool` condition slot; every diagnostic anchored at
@@ -518,6 +798,11 @@ pub(crate) struct SeamBeat<'d> {
     pub span: Span,
     /// The `on` value.
     pub on_span: Span,
+    /// The beat element (a scene beat: its `on` value) — where
+    /// [`crate::check::FoldedEnv::env_at`] finds its environment.
+    pub at: Span,
+    /// dsl 0.28.0: the members a kind or `for=` beat runs for.
+    pub members: Option<&'d [String]>,
 }
 
 /// Every beat `doc` declares: its scene beat, its entry beats and its
@@ -526,6 +811,12 @@ pub(crate) fn seam_beats<'d>(
     doc: &'d lute_syntax::ast::Document,
     folded: &'d crate::check::FoldedEnv,
 ) -> Vec<SeamBeat<'d>> {
+    let members_at = |at: Span| {
+        folded
+            .env
+            .occasion_scopes
+            .members_at(at.byte_start, at.byte_end)
+    };
     let mut out = Vec::new();
     if let Some(b) = &folded.typed.beat {
         let on_span = crate::beats::top_value_span(&doc.meta, "on");
@@ -537,6 +828,8 @@ pub(crate) fn seam_beats<'d>(
             when: b.when.as_ref(),
             span: b.when.as_ref().map_or(on_span, |w| w.span),
             on_span,
+            at: on_span,
+            members: members_at(on_span),
         });
     }
     for e in &doc.entries {
@@ -551,6 +844,8 @@ pub(crate) fn seam_beats<'d>(
             when: e.when.as_ref(),
             span: e.when.as_ref().map_or(*on_span, |w| w.span),
             on_span: *on_span,
+            at: e.span,
+            members: members_at(e.span),
         });
     }
     let doc_id = folded.typed.id.as_deref().unwrap_or("this document");
@@ -566,20 +861,22 @@ pub(crate) fn seam_beats<'d>(
             when: b.when.as_ref(),
             span: b.when.as_ref().map_or(*on_span, |w| w.span),
             on_span: *on_span,
+            at: b.span,
+            members: members_at(b.span),
         });
     }
     out
 }
 
 impl SeamBeat<'_> {
-    /// The beat's [`BeatSeam`] in `folded`'s project.
+    /// The beat's [`BeatSeam`] in `folded`'s project — over its own members
+    /// when it is a kind or `for=` beat.
     pub(crate) fn seam(&self, folded: &crate::check::FoldedEnv) -> Option<BeatSeam> {
-        folded_seam(
-            folded,
-            &self.on,
-            self.target.as_deref(),
-            self.when.map(|w| w.raw.as_str()),
-        )
+        let when = self.when.map(|w| w.raw.as_str());
+        match self.members {
+            Some(ms) => folded_seam_over(folded, &self.on, Some(ms.to_vec()), when),
+            None => folded_seam(folded, &self.on, self.target.as_deref(), when),
+        }
     }
 }
 
@@ -592,13 +889,20 @@ pub(crate) fn seam_reachability(
     defs: &crate::cel_expand::DefTable<'_>,
     ctx: &crate::decide::DecideCtx<'_>,
 ) -> Vec<Diagnostic> {
-    use crate::decide::{decide_slot, Decided};
-    let dead = |c: &str| matches!(decide_slot(c, defs, ctx), Some(Decided::Bool(false)));
+    use crate::decide::{decide_slot, DecideCtx, Decided};
     let mut out = Vec::new();
     for b in seam_beats(doc, folded) {
         let Some(seam) = b.seam(folded) else {
             continue;
         };
+        // dsl 0.28.0: over the beat's own environment.
+        let own = DecideCtx {
+            schema: &folded.env_at(b.at).state,
+            dollar: None,
+            params: ctx.params,
+            facts: None,
+        };
+        let dead = |c: &str| matches!(decide_slot(c, defs, &own), Some(Decided::Bool(false)));
         if b.when.is_some_and(|w| dead(&w.raw)) {
             continue;
         }

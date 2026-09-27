@@ -281,6 +281,16 @@ fn walk_nodes(nodes: &[Node], src: &str, out: &mut Vec<RawTok>) {
                     );
                     walk_nodes(&c.body, src, out);
                 }
+                if let Some(r) = &h.on_return {
+                    // `<return` open keyword (dsl 0.28.0 §5; logic layer).
+                    push(
+                        out,
+                        r.span.byte_start,
+                        r.span.byte_start + "<return".len(),
+                        TokType::Logic,
+                    );
+                    walk_nodes(&r.body, src, out);
+                }
             }
             Node::On(o) => {
                 // `<on` open keyword (dsl 0.2.0 §4 ECA trigger; logic layer).

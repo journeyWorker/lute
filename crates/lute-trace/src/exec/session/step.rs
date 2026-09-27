@@ -3,13 +3,12 @@
 
 use std::collections::BTreeMap;
 
-use lute_compile::index::IndexBeat;
 use lute_manifest::schema::OccasionSelect;
 use serde_json::{json, Value as Json};
 
 use super::advance::{DayRaise, Played};
 use super::eligibility::{
-    deciding_unknown, eligible_at, kind_label, presented, Candidate, Verdict,
+    candidates, deciding_unknown, kind_label, presented, rejudge, Candidate, RaiseSeam, Verdict,
 };
 use super::lifecycle::{advance_quests, raise, run_deferred_handlers, QuestAdvance, Raise};
 use super::present::{present_with_choose, Presented};
@@ -49,6 +48,10 @@ pub enum StepBody {
         /// occasion's raise made before its candidates were decided — shown
         /// and transcribed ahead of the presentations. Empty otherwise.
         judged: Vec<QuestAdvance>,
+        /// dsl 0.27.0 §4: the engine would not make this raise — why, in
+        /// a few words (`gate false`, `the game is over`, `undecided`);
+        /// the step then has no candidates. `None` for a raise made.
+        not_raised: Option<&'static str>,
     },
     /// `writes`: the long form's seed records; `reset_quests`/`prev_run`:
     /// [`NewRunReport`].
@@ -76,7 +79,9 @@ pub enum StepBody {
     /// it stopped at the last position, raised the last `dayEnd` (in
     /// `days`) and no `raise.slot`. `closed` (dsl 0.27.0 §4): the raises it
     /// did not make because the seam was closed (a false `raisedWhen`, the
-    /// terminal state).
+    /// terminal state). `passed`: the positions the clock stood at on the
+    /// way, between `from` and `to`, where its `raise.slot` occasion was not
+    /// raised (it is raised once, where the clock stops).
     Advance {
         by: String,
         from: String,
@@ -87,6 +92,7 @@ pub enum StepBody {
         raised: Option<Box<StepBody>>,
         ended: bool,
         closed: Vec<crate::exec::seam::ClosedRaise>,
+        passed: Option<super::advance::PassedRaise>,
     },
     /// `end: true` — the playthrough ends here.
     End,
@@ -175,6 +181,10 @@ pub fn run_occasion(
     }
     let mut quests = Vec::new();
     let mut judged = Vec::new();
+    // dsl 0.28.0 (T1-22): the seam (`terminal:`, the gate) is decided when
+    // the occasion is raised — before a `judge: before` judgement — and the
+    // raise's own beats are judged under it.
+    let seam = RaiseSeam::decide(p, w, occasion, target.as_deref());
     if before {
         // dsl 0.24.0 §2: the quests are judged and settled before the beats;
         // the `<on>` handlers that answer (the same-named event, the
@@ -195,12 +205,13 @@ pub fn run_occasion(
                 decided: false,
                 presented: Vec::new(),
                 judged,
+                not_raised: None,
             };
             return (body, quests, s);
         }
     }
     let select = p.select_of(occasion);
-    let cands = eligible_at(p, w, occasion, target.as_deref());
+    let mut cands = candidates(p, w, occasion, target.as_deref(), Some(&seam));
     let halt = if let Some(c) = deciding_unknown(&cands, select) {
         let Verdict::Unknown(detail) = &c.verdict else {
             unreachable!("deciding_unknown returns only unknown verdicts")
@@ -240,45 +251,72 @@ pub fn run_occasion(
     let decided = halt.is_none();
     // What the step presents, in order (dsl 0.23.0 §3): the `pick` on
     // `select: all`; otherwise [`presented`] — the `select: first` winner
-    // then its eligible `also` beats, or every eligible beat of a
-    // `select: sequence`. Eligibility was decided once, above.
-    let order: Vec<&Candidate> = match (decided, pick) {
+    // then its eligible `also` beats. dsl 0.28.0 (T2-10): a `select:
+    // sequence` raise judges each beat again just before its turn, once an
+    // earlier beat of the raise has played.
+    let sequence = decided && pick.is_none() && select == OccasionSelect::Sequence;
+    let order: Vec<usize> = match (decided, pick) {
         (false, _) | (true, Some(Pick::Pass)) => Vec::new(),
-        (true, Some(Pick::Beat(pk))) => cands.iter().filter(|c| &c.id == pk).take(1).collect(),
-        (true, None) => presented(select, &cands)
-            .into_iter()
-            .map(|i| &cands[i])
-            .collect(),
+        (true, Some(Pick::Beat(pk))) => {
+            cands.iter().position(|c| &c.id == pk).into_iter().collect()
+        }
+        (true, None) if sequence => (0..cands.len()).collect(),
+        (true, None) => presented(select, &cands),
     };
-    // The winner is the main beat: never an `also` rider.
-    let winner = order.iter().find(|c| !c.also).map(|c| c.id.clone());
-    let beats: Vec<(&IndexBeat, Option<&str>)> = order
-        .iter()
-        .filter_map(|c| {
-            let b = p
-                .index
-                .beats
-                .iter()
-                .find(|b| b.id == c.id && b.document == c.document && b.kind == c.kind)?;
-            // dsl 0.27.0 §3: a `for` beat presents for its candidate's member.
-            let member = match &c.for_member {
-                Some(m) => Some(m.as_str()),
-                None => b.answers(occasion, target.as_deref()).flatten(),
-            };
-            Some((b, member))
-        })
-        .collect();
     // Each presentation that plays through settles every quest before the
     // next one (so a `by` deadline is judged after each). One that halts
     // presents and advances nothing further. A `::end` ends only its own
     // presentation (0.23.1): its settle runs, the step's other
     // presentations (`also` riders, a `sequence`) still play, the occasion
     // still judges, and the playthrough goes on with the next step.
-    let mut presented_beats = Vec::new();
+    let mut presented_beats: Vec<Presented> = Vec::new();
+    // The winner is the main beat: never an `also` rider.
+    let mut winner = None;
     let mut stop = halt;
-    for (b, member) in beats {
+    for i in order {
         if stop.is_some() {
             break;
+        }
+        if sequence {
+            if !presented_beats.is_empty() {
+                let now = rejudge(p, w, occasion, target.as_deref(), &cands[i], &seam);
+                if now != cands[i].verdict {
+                    cands[i].verdict = now;
+                    cands[i].rejudged = true;
+                }
+            }
+            match &cands[i].verdict {
+                Verdict::Eligible => {}
+                Verdict::Ineligible(_) => continue,
+                Verdict::Unknown(detail) => {
+                    let c = &cands[i];
+                    stop = Some(PlayHalt::Incomplete(format!(
+                        "step {n}: the `when` of {} `{}` ({}) decides the {occasion} outcome but \
+                         {detail} (judged at its turn, after an earlier beat of this raise)",
+                        kind_label(c.kind),
+                        c.id,
+                        c.document
+                    )));
+                    break;
+                }
+            }
+        }
+        let c = &cands[i];
+        let Some(b) = p
+            .index
+            .beats
+            .iter()
+            .find(|b| b.id == c.id && b.document == c.document && b.kind == c.kind)
+        else {
+            continue;
+        };
+        // dsl 0.27.0 §3: a `for` beat presents for its candidate's member.
+        let member = match &c.for_member {
+            Some(m) => Some(m.as_str()),
+            None => b.answers(occasion, target.as_deref()).flatten(),
+        };
+        if !c.also && winner.is_none() {
+            winner = Some(c.id.clone());
         }
         let (pr, s) = present_with_choose(p, w, b, member, choose);
         presented_beats.push(pr);
@@ -313,6 +351,7 @@ pub fn run_occasion(
         decided,
         presented: presented_beats,
         judged,
+        not_raised: None,
     };
     (body, quests, stop)
 }
@@ -337,7 +376,8 @@ pub struct NewRunReport {
 }
 
 /// `newRun`: `run.*` state back to its declared defaults, `entry.<id>.read`
-/// flags too (run-tier, dsl 0.19.0 §5), run-tier facts back to the
+/// flags too (run-tier, dsl 0.19.0 §5; a `for` entry's per-member
+/// `entry.<id>.readFor.<member>`, dsl 0.28.0), run-tier facts back to the
 /// project's seed facts, `<quest tier="run">` quests back to `unset` with
 /// their objectives undone (dsl 0.22.0 §7), and `once: run` spending
 /// cleared; then the long form's seed (§1.1). `user.*`/`app.*`, user-tier
@@ -345,7 +385,9 @@ pub struct NewRunReport {
 /// spending persist.
 pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunReport, String> {
     let run_tier = |path: &str| {
-        path.starts_with("run.") || entry_flag(path).is_some_and(|(_, flag)| flag == "read")
+        path.starts_with("run.")
+            || entry_flag(path).is_some_and(|(_, flag)| flag == "read")
+            || (path.starts_with("entry.") && path.contains(".readFor."))
     };
     // dsl 0.23.0 §6: the ending run's `run.*` values become `prev.run.*`
     // (a path unset at run end stays unset in the mirror).
@@ -398,9 +440,22 @@ pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunRe
         }
     }
     w.spent_run.clear();
-    w.spent_at.clear();
-    // dsl 0.27.0 §4: a new run starts a finite clock over.
-    w.clock_ended = false;
+    // dsl 0.27.0 §4: a new run starts a run-tier clock over — its day back
+    // to the default, so its `once: day|slot|week` spends and its end go
+    // too. A clock whose day path outlives the run (`user.*`, `app.*`) keeps
+    // its position, so it keeps both.
+    let clock_restarts = p
+        .index
+        .clock
+        .as_ref()
+        .filter(|c| crate::clock::restarts_each_run(c));
+    if let Some(clock) = clock_restarts {
+        w.spent_at.clear();
+        crate::clock::set_ended(clock, &mut w.state, false);
+    }
+    // A `spentBy` beat spent this run is spendable again (its `user` /
+    // `season:<name>` latches stay; its clock-period ones go with the clock).
+    crate::exec::cadence::new_run_latches(p, w, clock_restarts.is_some());
     // dsl 0.24.0 §2: acceptances queued for the next run apply now, after
     // the reset, so a run-tier quest taken between runs survives it.
     let accepted = std::mem::take(&mut w.next_run_accepts);

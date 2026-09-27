@@ -7,6 +7,6 @@ file: ../scenes/cryobank.lute
 choose:
   whoWakes: wakeNobody
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Cheapest crew is the one still asleep."

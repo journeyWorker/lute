@@ -206,6 +206,9 @@ fn expand_nodes(
                     expand_attrs(&mut c.attrs, defs, subject, diags);
                     expand_nodes(&mut c.body, defs, subject, diags);
                 }
+                if let Some(r) = &mut h.on_return {
+                    expand_nodes(&mut r.body, defs, subject, diags);
+                }
             }
             Node::On(on) => {
                 if let Some(w) = &mut on.when {
@@ -216,7 +219,7 @@ fn expand_nodes(
             }
             Node::Objective(o) => {
                 expand_slot(&mut o.done, defs, subject, diags);
-                if let Some(w) = &mut o.when {
+                if let Some(w) = &mut o.visible_when {
                     expand_slot(w, defs, subject, diags);
                 }
                 for deadline in o.by.iter_mut().chain(o.until.iter_mut()) {
@@ -378,6 +381,9 @@ fn fold_nodes(nodes: &mut [Node], schema: &StateSchema, diags: &mut Vec<Diagnost
                     fold_choice_attrs(&mut c.attrs, schema, diags);
                     fold_nodes(&mut c.body, schema, diags);
                 }
+                if let Some(r) = &mut h.on_return {
+                    fold_nodes(&mut r.body, schema, diags);
+                }
             }
             Node::Match(m) => {
                 for arm in &mut m.arms {
@@ -493,11 +499,13 @@ pub fn type_occasion_target_placeholders(commands: &mut [Command], scene_kind: O
     let fix = |phs: &mut [Placeholder], kind: &Option<String>| {
         let Some(kind) = kind else { return };
         for ph in phs {
-            if matches!(ph, Placeholder::Path { path, .. } if path == lute_check::beats::OCCASION_TARGET)
-            {
-                *ph = Placeholder::OccasionTarget {
-                    entity_kind: kind.clone(),
-                };
+            if let Placeholder::Path { path, format, .. } = ph {
+                if path == lute_check::beats::OCCASION_TARGET {
+                    *ph = Placeholder::OccasionTarget {
+                        entity_kind: kind.clone(),
+                        format: format.take(),
+                    };
+                }
             }
         }
     };

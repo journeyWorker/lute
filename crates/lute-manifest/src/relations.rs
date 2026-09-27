@@ -37,14 +37,38 @@ pub enum KindShape {
 /// parent. Raw — the checker validates the parent (`E-ENTITY-KIND-SHAPE`).
 /// `labels` is dsl 0.27.0 §7's `labels: { <member>: <display text> }`: what
 /// a `{{…}}` of a value of this kind renders instead of the member id
-/// (partial — an unlabelled member renders its id). The string entries of a
-/// well-formed map; every shape mistake is in [`ParsedKinds::label_problems`].
+/// (partial — an unlabelled member renders its id). The well-formed entries
+/// of the map ([`KindLabel`]); every shape mistake is in
+/// [`ParsedKinds::label_problems`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityKindDecl {
     pub shape: KindShape,
     pub subset_of: Option<String>,
-    pub labels: BTreeMap<String, String>,
+    pub labels: BTreeMap<String, KindLabel>,
 }
+
+/// One member's entry in a kind's `labels:` — a plain string (`text` only)
+/// or `{ text, start, indefinite }`: `text` is what `{{…}}` renders, `start`
+/// the sentence-start form a `:start` hint renders (`The smugglers' cut`),
+/// `indefinite` the form with its article a `:indefinite` hint renders
+/// (`an ashwraith`). Absent forms fall back
+/// (the renderer applies `lute_syntax::ast::format_text`).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct KindLabel {
+    pub text: String,
+    pub start: Option<String>,
+    pub indefinite: Option<String>,
+}
+
+impl KindLabel {
+    /// `true` when the label declares a form beside its text.
+    pub fn has_forms(&self) -> bool {
+        self.start.is_some() || self.indefinite.is_some()
+    }
+}
+
+/// The keys a `labels:` entry's mapping form may carry.
+pub const KIND_LABEL_KEYS: &[&str] = &["text", "start", "indefinite"];
 
 /// A `relations:` entry (spec §4). Raw — nothing here is validated; the
 /// checker owns `E-RELATION-EMPTY`/`-DOMAIN`/`-DUP`, `E-DERIVE-TIER`,
@@ -95,7 +119,7 @@ pub struct ParsedKinds {
     /// dsl 0.27.0 §7: the `labels:` written beside an `add:` list, by kind
     /// name — display text for the members that `add:` brings (the checker
     /// merges them with the members and reports a key the list does not add).
-    pub add_labels: BTreeMap<String, BTreeMap<String, String>>,
+    pub add_labels: BTreeMap<String, BTreeMap<String, KindLabel>>,
     /// dsl 0.27.0 §7: `(kind, problem)` for every `labels:` shape mistake — a
     /// value that is not a mapping, a label that is not a string (checker →
     /// `E-ENTITY-KIND-SHAPE`). The mistaken entries are left out of `labels`.
@@ -118,6 +142,17 @@ pub struct ParsedRelations {
 /// The keys an `entities:` entry may carry (spec §3.1, dsl 0.24.0 §3, 0.26.0
 /// §2.3, 0.27.0 §7). Every other key is reported, never ignored.
 pub const ENTITY_KIND_KEYS: &[&str] = &["members", "open", "add", "subsetOf", "labels"];
+
+/// The keys one `relations:` entry takes; any other is reported.
+pub const RELATION_KEYS: &[&str] = &[
+    "args",
+    "tier",
+    "derive",
+    "reserved",
+    "changedOn",
+    "key",
+    "excludes",
+];
 
 /// Classify one `entities:` value: `{ members: […] }` (closed), `{ open: … }`
 /// (engine-populated — the value itself is not inspected, only key
@@ -146,14 +181,15 @@ fn kind_shape(v: &Value) -> KindShape {
     }
 }
 
-/// The `labels:` of one `entities:` entry: the string entries of its mapping,
+/// The `labels:` of one `entities:` entry: the well-formed entries of its
+/// mapping — a string, or `{ text, start, indefinite }` ([`KindLabel`]) —
 /// each shape mistake pushed to `problems` as `(kind, problem)` (dsl 0.27.0
 /// §7). Absent → empty.
 fn kind_labels(
     kind: &str,
     v: &Value,
     problems: &mut Vec<(String, String)>,
-) -> BTreeMap<String, String> {
+) -> BTreeMap<String, KindLabel> {
     let mut out = BTreeMap::new();
     let Some(labels) = v.get("labels") else {
         return out;
@@ -169,17 +205,62 @@ fn kind_labels(
     };
     for (member, label) in map {
         let member = member.as_str().unwrap_or_default();
-        match label.as_str() {
-            Some(text) => {
-                out.insert(member.to_string(), text.to_string());
+        match kind_label(member, label) {
+            Ok(label) => {
+                out.insert(member.to_string(), label);
             }
-            None => problems.push((
-                kind.to_string(),
-                format!("the label of `{member}` must be text, as `{member}: \"…\"`"),
-            )),
+            Err(problem) => problems.push((kind.to_string(), problem)),
         }
     }
     out
+}
+
+/// One `labels:` entry: a string, or a mapping with a string `text:` and
+/// optional string `start:` / `indefinite:` forms.
+fn kind_label(member: &str, label: &Value) -> Result<KindLabel, String> {
+    if let Some(text) = label.as_str() {
+        return Ok(KindLabel {
+            text: text.to_string(),
+            ..KindLabel::default()
+        });
+    }
+    let shape = || {
+        format!(
+            "the label of `{member}` must be text, as `{member}: \"…\"`, or its forms, as \
+             `{member}: {{ text: \"…\", start: \"…\", indefinite: \"…\" }}`"
+        )
+    };
+    let map = label.as_mapping().ok_or_else(shape)?;
+    for key in map.keys() {
+        let key = key.as_str().unwrap_or_default();
+        if !KIND_LABEL_KEYS.contains(&key) {
+            return Err(format!(
+                "the label of `{member}` has an unknown key `{key}`{}; a label's forms are \
+                 `text:` (what `{{{{…}}}}` shows), `start:` (`:start`, at the start of a \
+                 sentence) and `indefinite:` (`:indefinite`, with its article)",
+                crate::suggest::did_you_mean(key, KIND_LABEL_KEYS.iter().copied())
+            ));
+        }
+    }
+    let form = |key: &str| -> Result<Option<String>, String> {
+        match map.get(key) {
+            None => Ok(None),
+            Some(v) => v
+                .as_str()
+                .map(|s| Some(s.to_string()))
+                .ok_or_else(|| format!("the `{key}:` form of `{member}`'s label must be text")),
+        }
+    };
+    Ok(KindLabel {
+        text: form("text")?.ok_or_else(|| {
+            format!(
+                "the label of `{member}` needs `text:` — what `{{{{…}}}}` shows; `start:` and \
+                 `indefinite:` are forms beside it"
+            )
+        })?,
+        start: form("start")?,
+        indefinite: form("indefinite")?,
+    })
 }
 
 /// Parse a schema doc's `entities:` block: `{ <kind>: { members: [<id>…] } |
@@ -267,7 +348,7 @@ pub fn parse_entity_kinds(value: &Value) -> ParsedKinds {
 /// for its own members (nearest first). A kind's own label always wins.
 pub fn imply_sub_kind_members(kinds: &mut BTreeMap<String, EntityKindDecl>, order: &[String]) {
     let mut implied: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut up: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let mut up: BTreeMap<String, Vec<(String, KindLabel)>> = BTreeMap::new();
     let mut chains: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let declared = order.iter().filter(|n| kinds.contains_key(*n));
     let rest = kinds.keys().filter(|n| !order.contains(n));
@@ -326,7 +407,7 @@ pub fn imply_sub_kind_members(kinds: &mut BTreeMap<String, EntityKindDecl>, orde
         }
     }
     for (name, chain) in chains {
-        let inherited: Vec<(String, String)> = chain
+        let inherited: Vec<(String, KindLabel)> = chain
             .iter()
             .filter_map(|p| kinds.get(p))
             .flat_map(|p| p.labels.iter().map(|(m, l)| (m.clone(), l.clone())))
@@ -508,7 +589,11 @@ pub fn kinds_to_domains(kinds: &BTreeMap<String, EntityKindDecl>) -> BTreeMap<St
                     name.clone(),
                     Domain {
                         members: members.clone(),
-                        labels: decl.labels.clone(),
+                        labels: decl
+                            .labels
+                            .iter()
+                            .map(|(m, l)| (m.clone(), l.text.clone()))
+                            .collect(),
                         ..Default::default()
                     },
                 );
@@ -621,7 +706,10 @@ mod tests {
              item: { add: [lamp], labels: { lamp: the lamp } }",
         ));
         assert_eq!(
-            p.kinds["room"].labels.get("chapel").map(String::as_str),
+            p.kinds["room"]
+                .labels
+                .get("chapel")
+                .map(|l| l.text.as_str()),
             Some("the chapel")
         );
         assert_eq!(p.kinds["room"].labels.get("ward"), None);
@@ -629,9 +717,40 @@ mod tests {
         assert_eq!(p.label_problems.len(), 2, "{:?}", p.label_problems);
         assert!(p.unknown_keys.is_empty(), "{:?}", p.unknown_keys);
         assert_eq!(p.adds["item"], vec!["lamp"]);
-        assert_eq!(p.add_labels["item"]["lamp"], "the lamp");
+        assert_eq!(p.add_labels["item"]["lamp"].text, "the lamp");
         let d = kinds_to_domains(&p.kinds);
         assert_eq!(d["room"].labels["chapel"], "the chapel");
+    }
+
+    /// A label may carry its forms: `{ text, start, indefinite }`; a form
+    /// that is not text, an unknown key and a missing `text:` are mistakes.
+    #[test]
+    fn kind_labels_take_start_and_indefinite_forms() {
+        let p = parse_entity_kinds(&yaml(
+            "place: { members: [cut, well, bog, fen, moor], labels: {\n\
+             cut: { text: \"the smugglers' cut\", start: \"The smugglers' cut\" },\n\
+             well: the well,\n\
+             bog: { text: bog, indefinte: a bog },\n\
+             fen: { start: The fen },\n\
+             moor: { text: moor, indefinite: 3 } } }",
+        ));
+        let cut = &p.kinds["place"].labels["cut"];
+        assert_eq!(cut.text, "the smugglers' cut");
+        assert_eq!(cut.start.as_deref(), Some("The smugglers' cut"));
+        assert_eq!(cut.indefinite, None);
+        assert!(!p.kinds["place"].labels["well"].has_forms());
+        assert_eq!(p.kinds["place"].labels.len(), 2);
+        let problems: Vec<&str> = p.label_problems.iter().map(|(_, m)| m.as_str()).collect();
+        assert_eq!(problems.len(), 3, "{problems:?}");
+        assert!(
+            problems[0].contains("did you mean `indefinite`"),
+            "{problems:?}"
+        );
+        assert!(problems[1].contains("needs `text:`"), "{problems:?}");
+        assert!(
+            problems[2].contains("`indefinite:` form of `moor`"),
+            "{problems:?}"
+        );
     }
 
     /// A label names a member whichever kind wrote it: the parent takes its
@@ -644,9 +763,12 @@ mod tests {
         ));
         let mut kinds = parsed.kinds;
         imply_sub_kind_members(&mut kinds, &parsed.order);
-        assert_eq!(kinds["room"].labels["crypt"], "the crypt");
-        assert_eq!(kinds["room"].labels["ward"], "a room", "own label wins");
-        assert_eq!(kinds["ward"].labels["ward"], "a room");
+        assert_eq!(kinds["room"].labels["crypt"].text, "the crypt");
+        assert_eq!(
+            kinds["room"].labels["ward"].text, "a room",
+            "own label wins"
+        );
+        assert_eq!(kinds["ward"].labels["ward"].text, "a room");
         assert_eq!(kinds["ward"].labels.get("hall"), None, "not a ward member");
     }
 

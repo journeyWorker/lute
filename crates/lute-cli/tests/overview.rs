@@ -71,8 +71,8 @@ fn town(tag: &str) -> PathBuf {
         "world.schema.yaml",
         "state:\n  run.day: { type: number, default: 1 }\n  run.slot: { type: { enum: [morning, night] }, default: morning }\n\
          entities:\n  person: { members: [ada, bo] }\n  place: { members: [inn, dock] }\n\
-         relations:\n  present: { args: [person, place], derive: true }\n  met: { args: [person] }\n\
-         \x20 rumor: { args: [person] }\n  trusted: { args: [person], derive: true }\n\
+         relations:\n  present: { args: [person, place], derive: true }\n  met: { args: [person], tier: run }\n\
+         \x20 rumor: { args: [person], tier: run }\n  trusted: { args: [person], derive: true }\n\
          rules:\n  - \"present(ada, inn) :- cel(\\\"run.slot == 'night'\\\")\"\n\
          \x20 - \"present(bo, dock) :- cel(\\\"run.slot == 'morning' && run.day != 2\\\")\"\n\
          \x20 - \"trusted(P) :- met(P), not rumor(P)\"\n",
@@ -705,8 +705,8 @@ fn calendar_family_axes_set_every_member_or_the_one_another_axis_names() {
          \x20 run.aff: { type: number, default: 0, per: person }\n\
          \x20 run.route: { type: { enum: [none, ada, bo] }, default: none }\n\
          entities:\n  person: { members: [ada, bo] }\n  place: { members: [inn, dock] }\n\
-         relations:\n  present: { args: [person, place], derive: true }\n  met: { args: [person] }\n\
-         \x20 rumor: { args: [person] }\n  trusted: { args: [person], derive: true }\n\
+         relations:\n  present: { args: [person, place], derive: true }\n  met: { args: [person], tier: run }\n\
+         \x20 rumor: { args: [person], tier: run }\n  trusted: { args: [person], derive: true }\n\
          rules:\n  - \"present(ada, inn) :- cel(\\\"run.slot == 'night'\\\")\"\n\
          \x20 - \"present(bo, dock) :- cel(\\\"run.slot == 'morning' && run.day != 2\\\")\"\n\
          \x20 - \"trusted(P) :- met(P), not rumor(P)\"\n",

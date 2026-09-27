@@ -138,6 +138,10 @@ fn hub<'a>(h: &'a Hub, f: &mut impl FnMut(&'a CelSlot)) {
         attrs(&choice.attrs, f);
         body(&choice.body, f);
     }
+    if let Some(r) = &h.on_return {
+        attrs(&r.attrs, f);
+        body(&r.body, f);
+    }
 }
 
 fn quest<'a>(q: &'a Quest, f: &mut impl FnMut(&'a CelSlot)) {
@@ -184,7 +188,7 @@ fn bundle_beat<'a>(b: &'a BundleBeat, f: &mut impl FnMut(&'a CelSlot)) {
 
 fn objective<'a>(o: &'a Objective, f: &mut impl FnMut(&'a CelSlot)) {
     f(&o.done);
-    if let Some(w) = &o.when {
+    if let Some(w) = &o.visible_when {
         f(w);
     }
     if let Some(b) = &o.by {
@@ -341,6 +345,10 @@ fn hub_mut(h: &mut Hub, f: &mut impl FnMut(&mut CelSlot)) {
         attrs_mut(&mut choice.attrs, f);
         body_mut(&mut choice.body, f);
     }
+    if let Some(r) = &mut h.on_return {
+        attrs_mut(&mut r.attrs, f);
+        body_mut(&mut r.body, f);
+    }
 }
 
 fn quest_mut(q: &mut Quest, f: &mut impl FnMut(&mut CelSlot)) {
@@ -384,7 +392,7 @@ fn bundle_beat_mut(b: &mut BundleBeat, f: &mut impl FnMut(&mut CelSlot)) {
 
 fn objective_mut(o: &mut Objective, f: &mut impl FnMut(&mut CelSlot)) {
     f(&mut o.done);
-    if let Some(w) = &mut o.when {
+    if let Some(w) = &mut o.visible_when {
         f(w);
     }
     if let Some(b) = &mut o.by {
@@ -674,7 +682,7 @@ mod tests {
         // declaration order.
         let (doc, _) = crate::parse(
             "<quest id=\"q\" start=\"run.s\" fail=\"run.f\">\n\
-             <objective id=\"o\" done=\"run.d\" when=\"run.w\">\n\
+             <objective id=\"o\" done=\"run.d\" visibleWhen=\"run.w\">\n\
              <reward kind=\"gold\" when=\"run.rk\"/>\n\
              </objective>\n\
              <on event=\"questComplete\" when=\"run.g\">\n@x: hi\n</on>\n\
