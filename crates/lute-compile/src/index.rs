@@ -208,6 +208,10 @@ pub struct ProjectIndex {
     /// `terminal`, one per project). OMITTED without one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<crate::ir::CelPair>,
+    /// The artifacts' `terminalPersists`: the ending outlives runs on
+    /// purpose. OMITTED when false.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub terminal_persists: bool,
     /// dsl 0.27.0 §5: the project's declared seasons (the artifacts'
     /// `seasons`, one declaration per name), name-sorted. OMITTED when none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -397,7 +401,12 @@ pub fn build_index(
             gates.push(&g.occasion, g, &d.path, &mut errors);
         }
         if let Some(t) = &a.terminal {
-            terminals.push("terminal", t, &d.path, &mut errors);
+            terminals.push(
+                "terminal",
+                &(t.clone(), a.terminal_persists),
+                &d.path,
+                &mut errors,
+            );
         }
         for s in &a.seasons {
             seasons.push(&s.name, s, &d.path, &mut errors);
@@ -513,6 +522,11 @@ pub fn build_index(
         })
         .collect();
 
+    let (terminal, terminal_persists) = terminals
+        .finish()
+        .into_iter()
+        .next()
+        .map_or((None, false), |(t, p)| (Some(t), p));
     Ok(ProjectIndex {
         ir_version: ir_version.to_string(),
         capability_version: capability.map(|(_, v)| v.to_string()).unwrap_or_default(),
@@ -527,7 +541,8 @@ pub fn build_index(
         beats,
         clock: clocks.finish().into_iter().next(),
         gates: gates.finish(),
-        terminal: terminals.finish().into_iter().next(),
+        terminal,
+        terminal_persists,
         seasons: seasons.finish(),
         outside_run: outside_run.into_iter().collect(),
     })
@@ -691,6 +706,7 @@ mod tests {
             clock: None,
             gates: Vec::new(),
             terminal: None,
+            terminal_persists: false,
             seasons: Vec::new(),
             outside_run: Vec::new(),
         }

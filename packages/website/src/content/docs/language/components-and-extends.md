@@ -25,7 +25,7 @@ uses: ../base.schema.yaml
 
 ## A Familiar Face
 
-::auto{character=@who action="fade-in-up"}
+::auto{character=@who action="fadeInUp"}
 @narrator: A familiar face steps into the light.
 ```
 
@@ -40,7 +40,7 @@ since dsl 0.23.0, a **`string`** param whose argument is a literal. So `who: str
 also appear as `{{@who}}` in a line. See [Sentences in string params](#sentences-in-string-params).
 
 The `uses:` line is the component's own [content vocabulary](/language/vocabulary/) import — since
-`0.9.0` `action="fade-in-up"` resolves against a declared `action` domain, and a component file has
+`0.9.0` `action="fadeInUp"` resolves against a declared `action` domain, and a component file has
 to reach one to check on its own. Through `::use` it is the **importing** document's vocabulary that
 applies (see [the known limitation](/language/vocabulary/#known-limitation-a-component-body-resolves-against-the-importing-document)), so both sides declare it.
 

@@ -369,6 +369,7 @@ fn component_env(params: &[(String, Type)]) -> Env {
         domains: std::collections::BTreeMap::new(),
         clock: None,
         terminal: None,
+        terminal_persists: false,
         seasons: Default::default(),
         occasion_scopes: Default::default(),
     }

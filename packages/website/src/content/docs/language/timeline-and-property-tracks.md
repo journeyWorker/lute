@@ -50,10 +50,10 @@ her position and her opacity simultaneously, alongside an independent camera tra
 ```lute
 <timeline duration="1.2">
   <track subject="marina" property="pos">
-    ::auto{character="marina" anchor="left" action="slide-in-left"}
+    ::auto{character="marina" anchor="left" action="slideInLeft"}
   </track>
   <track subject="marina" property="opacity">
-    ::auto{character="marina" action="fade-in-up"}
+    ::auto{character="marina" action="fadeInUp"}
   </track>
   <track subject="camera">
     ::camera{focus="marina" zoom="1.2" duration="0.6"}

@@ -429,7 +429,7 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
                     // dsl 0.27.0 §5: `season:<name>` (declared: `E-SEASON-DECL`).
                     && !(key == "tier"
                         && lute_manifest::season::season_ref(v)
-                            .is_some_and(lute_manifest::season::is_season_name))
+                            .is_some_and(lute_manifest::ident::is_ident))
             })
             .map(|(v, span)| {
                 let hint = lute_manifest::suggest::did_you_mean(v, legal.iter().copied());

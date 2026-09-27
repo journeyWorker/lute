@@ -200,9 +200,8 @@ pub use inject::{
 };
 pub use lore::{
     check_entries, document_series, entry_read_decl, entry_read_path, is_beat_target,
-    is_entry_ident, is_entry_target, kind_target, parse_entry_order, resolve_entry_series,
-    EntryRecord, EntrySeries, E_ENTRY_ATTR, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER,
-    W_ENTRY_REF_UNKNOWN,
+    is_entry_target, kind_target, parse_entry_order, resolve_entry_series, EntryRecord,
+    EntrySeries, E_ENTRY_ATTR, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER, W_ENTRY_REF_UNKNOWN,
 };
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, check_quest_rewards,

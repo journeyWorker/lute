@@ -31,7 +31,8 @@ use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
 use crate::decide::{decide_slot, DecideCtx, Decided};
 use crate::fact_env::{FactEnv, FactScope};
-use crate::lore::{is_beat_target, is_entry_ident, is_entry_target, kind_target};
+use crate::lore::{is_beat_target, is_entry_target, kind_target};
+use lute_manifest::ident::is_ident;
 
 /// A beat attribute's shape (dsl 0.21.0 §5), anchored at the offending key
 /// or value.
@@ -105,7 +106,7 @@ impl BeatOnce {
             "week" => BeatOnce::Week,
             _ => BeatOnce::Season(
                 lute_manifest::season::season_ref(raw)
-                    .filter(|n| lute_manifest::season::is_season_name(n))?
+                    .filter(|n| lute_manifest::ident::is_ident(n))?
                     .to_string(),
             ),
         })
@@ -248,13 +249,17 @@ pub(crate) fn lift_scene_beat(
             }
             return None;
         }
-        Some(v) => match v.as_str().filter(|s| is_entry_ident(s)) {
-            Some(on) => Some(on.to_string()),
+        Some(v) => match v.as_str() {
+            Some(on) if is_ident(on) => Some(on.to_string()),
+            Some(on) => {
+                push(occasion_malformed("scene", on), top_value_span(meta, "on"));
+                None
+            }
             None => {
                 push(
                     format!(
-                        "`on:` must name an occasion — an identifier \
-                         (`[A-Za-z][A-Za-z0-9_-]*`), got {} (dsl 0.21.0 §3.1)",
+                        "`on:` must name an occasion — an identifier (a letter, then \
+                         letters, digits or `_`), got {}",
                         describe(v)
                     ),
                     top_value_span(meta, "on"),
@@ -386,15 +391,16 @@ pub(crate) fn lift_scene_beat(
     };
 
     let share = get("share").and_then(|v| {
-        let Some(key) = v.as_str().filter(|s| is_entry_ident(s)) else {
-            push(
-                format!(
-                    "`share:` must be a key — an identifier (`[A-Za-z][A-Za-z0-9_-]*`) every \
-                     beat standing for the same event writes, got {} (dsl 0.25.0 §2)",
+        let Some(key) = v.as_str().filter(|s| is_ident(s)) else {
+            let message = match v.as_str() {
+                Some(key) => share_malformed("scene", key),
+                None => format!(
+                    "`share:` must be a key — an identifier every beat standing for the same \
+                     event writes, got {}",
                     describe(v)
                 ),
-                top_value_span(meta, "share"),
-            );
+            };
+            push(message, top_value_span(meta, "share"));
             return None;
         };
         if spent_by.is_some() {
@@ -519,14 +525,8 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
         );
     }
     if let Some((on, span)) = &entry.on {
-        if !is_entry_ident(on) {
-            push(
-                format!(
-                    "`<entry>` `on=\"{on}\"` must name an occasion — an identifier \
-                     (`[A-Za-z][A-Za-z0-9_-]*`) (dsl 0.21.0 §3.2)"
-                ),
-                *span,
-            );
+        if !is_ident(on) {
+            push(occasion_malformed("`<entry>`", on), *span);
         }
     }
     if let Some((raw, span)) = &entry.priority {
@@ -564,7 +564,7 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
         }
     }
     if let Some((key, span)) = &entry.share {
-        if !is_entry_ident(key) {
+        if !is_ident(key) {
             push(share_malformed("`<entry>`", key), *span);
         } else if entry.spent_by.is_some() {
             push(share_with_spent_by(key), *span);
@@ -605,7 +605,7 @@ pub(crate) fn check_entry_occasions(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for entry in entries {
-        let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_entry_ident(on)) else {
+        let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_ident(on)) else {
             continue;
         };
         check_occasion(
@@ -708,14 +708,11 @@ pub(crate) fn check_objective_occasions(
             }
         }
         let Some((on, span)) = &o.on else { continue };
-        if !is_entry_ident(on) {
+        if !is_ident(on) {
             diags.push(beat_diag(
                 E_BEAT_ATTR,
                 Severity::Error,
-                format!(
-                    "`<objective>` `on=\"{on}\"` must name an occasion — an identifier \
-                     (`[A-Za-z][A-Za-z0-9_-]*`) (dsl 0.21.0 §7a.2)"
-                ),
+                occasion_malformed("`<objective>`", on),
                 *span,
                 Layer::Logic,
             ));
@@ -1072,7 +1069,7 @@ pub(crate) fn check_beat_target_domains(
         let (Some((on, _)), Some((target, span))) = (&entry.on, &entry.target) else {
             continue;
         };
-        if is_entry_ident(on) && is_beat_target(target) {
+        if is_ident(on) && is_beat_target(target) {
             judge(on, target, *span, Layer::Logic, false);
         }
     }
@@ -1081,7 +1078,7 @@ pub(crate) fn check_beat_target_domains(
         let (Some((on, _)), Some((target, span))) = (&beat.on, &beat.target) else {
             continue;
         };
-        if is_entry_ident(on) && is_beat_target(target) {
+        if is_ident(on) && is_beat_target(target) {
             judge(on, target, *span, Layer::Logic, true);
         }
     }
@@ -1091,7 +1088,7 @@ pub(crate) fn check_beat_target_domains(
         let (Some((on, _)), Some((target, span))) = (&o.on, &o.target) else {
             continue;
         };
-        if is_entry_ident(on) && is_entry_target(target) {
+        if is_ident(on) && is_entry_target(target) {
             judge(on, target, *span, Layer::Logic, true);
         }
     }
@@ -1617,7 +1614,7 @@ pub fn project_beats<'a>(
         // A lore document's entry beats and bundle beats, by source position.
         let mut lore: Vec<(usize, ProjectBeat<'a>)> = Vec::new();
         for entry in &doc.entries {
-            let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_entry_ident(on)) else {
+            let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_ident(on)) else {
                 continue;
             };
             let priority = match &entry.priority {
@@ -1689,8 +1686,7 @@ pub fn project_beats<'a>(
         // malformed `on` / `target` / `priority` / `once`.
         if let Some(doc_id) = folded.typed.id.as_deref() {
             for beat in &doc.beats {
-                let Some((on, on_span)) = beat.on.as_ref().filter(|(on, _)| is_entry_ident(on))
-                else {
+                let Some((on, on_span)) = beat.on.as_ref().filter(|(on, _)| is_ident(on)) else {
                     continue;
                 };
                 if beat.id.is_empty()
@@ -1767,7 +1763,7 @@ pub fn project_beats<'a>(
 /// A lore beat's `share` attribute when it is a well-formed key.
 fn well_formed_share(share: Option<&(String, Span)>) -> Option<(&str, Span)> {
     share
-        .filter(|(k, _)| is_entry_ident(k))
+        .filter(|(k, _)| is_ident(k))
         .map(|(k, s)| (k.as_str(), *s))
 }
 
@@ -3072,6 +3068,46 @@ pub(crate) fn top_value_span(meta: &Meta, key: &str) -> Span {
     bare_span(begin, begin + len)
 }
 
+/// The span of a NESTED frontmatter key's inline scalar value (`path` from
+/// the top level, e.g. `["terminal", "when"]`, in a block or one-line flow
+/// mapping) — minus surrounding quotes, a trailing comment and, in a flow
+/// mapping, the `,`/`}` after it. Falls back to [`crate::meta::meta_path_span`].
+pub(crate) fn nested_value_span(meta: &Meta, path: &[&str]) -> Span {
+    let authored = crate::chapters::authored_yaml(&meta.raw_yaml);
+    let fallback = || crate::meta::meta_path_span(meta, path);
+    let Some(key) = lute_manifest::yaml_text::key_span(authored, path) else {
+        return fallback();
+    };
+    let rest = &authored[key.end..];
+    let Some(after) = rest.trim_start_matches([' ', '\t']).strip_prefix(':') else {
+        return fallback();
+    };
+    let colon_end = key.end + (rest.len() - after.len());
+    let lead = after.len() - after.trim_start_matches([' ', '\t']).len();
+    let value = &after[lead..];
+    let (start, len) = match value.chars().next() {
+        Some(q @ ('\'' | '"')) => {
+            let body = &value[1..];
+            let close = body
+                .char_indices()
+                .find(|&(i, c)| c == q && (q == '\'' || !body[..i].ends_with('\\')));
+            match close {
+                Some((i, _)) => (lead + 1, i),
+                None => return fallback(),
+            }
+        }
+        _ => {
+            let end = value.find(['\n', ',', '}', '#']).unwrap_or(value.len());
+            (lead, value[..end].trim_end().len())
+        }
+    };
+    if len == 0 {
+        return fallback();
+    }
+    let begin = interior_base(meta) + colon_end + start;
+    bare_span(begin, begin + len)
+}
+
 /// A top-level frontmatter key's inline value text (unquoted) and its
 /// [`top_value_span`]; `None` for an absent key or a block value.
 pub(crate) fn top_value_text<'m>(meta: &'m Meta, key: &str) -> Option<(&'m str, Span)> {
@@ -3134,10 +3170,18 @@ pub(crate) fn malformed_target(what: &str, t: &str, kind_ok: bool) -> String {
 /// dsl 0.25.0 §2: a `share` key that is no identifier (`what` names the
 /// construct: `` `<entry>` `` / `` `<beat>` ``).
 pub(crate) fn share_malformed(what: &str, key: &str) -> String {
-    format!(
-        "{what} `share=\"{key}\"` must be a key — an identifier (`[A-Za-z][A-Za-z0-9_-]*`) every \
-         beat standing for the same event writes (dsl 0.25.0 §2)"
-    )
+    ident_message(&format!("{what} `share` key"), key)
+}
+
+/// The occasion an `on` names must be an identifier (plugins declare no
+/// other name).
+pub(crate) fn occasion_malformed(what: &str, on: &str) -> String {
+    ident_message(&format!("{what} `on` occasion"), on)
+}
+
+fn ident_message(what: &str, name: &str) -> String {
+    lute_manifest::ident::ident_fault(what, name)
+        .unwrap_or_else(|| format!("{what} `{name}` is not an identifier"))
 }
 
 /// The spending `once` periods — every value [`BeatOnce::parse`] accepts —

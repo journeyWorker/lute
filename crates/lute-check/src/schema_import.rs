@@ -38,6 +38,20 @@ use crate::meta::{
     parse_meta_kind, FactDecl, MetaKind, RuleDecl, StateDecl, StateSchema, TypedMeta,
 };
 
+/// An import-reachable schema's `terminal:` ([`crate::gates::TerminalDecl`]
+/// as its importers see it).
+#[derive(Clone, Debug)]
+pub struct ImportedTerminal {
+    /// The schema file (canonical).
+    pub file: PathBuf,
+    /// The condition, raw.
+    pub when: String,
+    /// Its value's positioned span in [`Self::file`].
+    pub span: Span,
+    /// Its `persists` (`Yes` at the value's positioned span in [`Self::file`]).
+    pub persists: crate::gates::Persists,
+}
+
 /// The resolved result of a scene's composition imports (dsl §9.2): the merged
 /// imported state schema, the merged imported `defs` (untyped YAML values, like
 /// inline defs), the resolution diagnostics, and the state paths the importing
@@ -99,9 +113,9 @@ pub struct SchemaImports {
     /// declares at most one.
     pub clock: Vec<(PathBuf, lute_manifest::clock::ClockDecl, Span)>,
     /// dsl 0.27.0 §4: every `terminal:` an import-reachable schema declares,
-    /// by file (canonical path order): the raw condition and the positioned
-    /// span of its value there. The game is over when any of them holds.
-    pub terminal: Vec<(PathBuf, String, Span)>,
+    /// by file (canonical path order). The game is over when any of them
+    /// holds.
+    pub terminal: Vec<ImportedTerminal>,
     /// dsl 0.27.0 §5: every `seasons:` an import-reachable schema declares,
     /// by file (canonical path order), with the positioned span of its
     /// `seasons:` key there.
@@ -213,9 +227,9 @@ struct ParsedDoc {
     /// dsl 0.24.0 §1: this schema's `clock:`.
     /// The `clock:` and its key's positioned span in this file.
     clock: Option<(lute_manifest::clock::ClockDecl, Span)>,
-    /// dsl 0.27.0 §4: this schema's `terminal:` raw condition and its
-    /// value's positioned span in this file.
-    terminal: Option<(String, Span)>,
+    /// dsl 0.27.0 §4: this schema's `terminal:` condition, its value's
+    /// positioned span in this file, and whether it `persists`.
+    terminal: Option<(String, Span, crate::gates::Persists)>,
     /// dsl 0.27.0 §5: this schema's `seasons:` (when it declares any), its
     /// key's positioned span in this file, and each season's `live:` key's.
     seasons: Option<(crate::season::Seasons, Span, BTreeMap<String, Span>)>,
@@ -873,12 +887,17 @@ pub fn resolve_imports(
         .iter()
         .filter_map(|(path, doc)| doc.clock.clone().map(|(c, at)| (path.clone(), c, at)))
         .collect();
-    let terminal: Vec<(PathBuf, String, Span)> = parsed
+    let terminal: Vec<ImportedTerminal> = parsed
         .iter()
         .filter_map(|(path, doc)| {
             doc.terminal
                 .clone()
-                .map(|(raw, at)| (path.clone(), raw, at))
+                .map(|(when, span, persists)| ImportedTerminal {
+                    file: path.clone(),
+                    when,
+                    span,
+                    persists,
+                })
         })
         .collect();
     let seasons: Vec<(PathBuf, crate::season::Seasons, Span)> = parsed
@@ -1513,7 +1532,13 @@ fn read_and_parse(
         .collect();
     let cast = tm.cast;
     let clock = tm.clock.map(|c| (c, key("clock").span));
-    let terminal = tm.terminal.map(|t| (t.raw, here(t.span).span));
+    let terminal = tm.terminal.map(|t| {
+        let persists = match t.persists {
+            crate::gates::Persists::Yes(at) => crate::gates::Persists::Yes(here(at).span),
+            p => p,
+        };
+        (t.when.raw, here(t.when.span).span, persists)
+    });
     let seasons = (!tm.seasons.is_empty()).then(|| {
         let lives = tm
             .seasons

@@ -307,6 +307,9 @@ pub(crate) fn extend_surface(
     }
     if let Some(terminal) = &env.terminal {
         root.insert("terminal".into(), terminal.clone().into());
+        if env.terminal_persists {
+            root.insert("terminalPersists".into(), true.into());
+        }
     }
     if !env.seasons.is_empty() {
         let seasons: Vec<Value> = env
@@ -598,7 +601,15 @@ pub(crate) fn outline_extras(out: &mut String, surface: &Value) {
         let _ = writeln!(out, "clock: {}", clock_line(clock));
     }
     if let Some(t) = surface["terminal"].as_str() {
-        let _ = writeln!(out, "terminal: {t} (no occasion is raised once it holds)");
+        let persists = if surface["terminalPersists"] == true {
+            "; it persists — a new run does not reopen the game"
+        } else {
+            ""
+        };
+        let _ = writeln!(
+            out,
+            "terminal: {t} (no occasion is raised once it holds{persists})"
+        );
     }
     if let Some(seasons) = surface["seasons"].as_array() {
         let _ = writeln!(out, "seasons ({}):", seasons.len());

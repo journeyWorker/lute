@@ -84,15 +84,15 @@ season: 1
 episode: 1
 enums:
   anchor: { members: [left, center, right], default: center }
-  action: { members: [slide-in-left, fade-in-up, fade-out], exits: [fade-out] }
+  action: { members: [slideInLeft, fadeInUp, fadeOut], exits: [fadeOut] }
 ---
 
 <timeline duration="1.2">
   <track subject="marina" property="pos">
-    ::auto{character="marina" anchor="left" action="slide-in-left"}
+    ::auto{character="marina" anchor="left" action="slideInLeft"}
   </track>
   <track subject="marina" property="opacity">
-    ::auto{character="marina" action="fade-in-up"}
+    ::auto{character="marina" action="fadeInUp"}
   </track>
   <track subject="camera">
     ::camera{focus="marina" zoom="1.2" duration="0.6"}
@@ -302,7 +302,8 @@ pov: fixer
 - `kind: scene` — this file is a scene: dialogue the player sees. The other two kinds are `quest`
   (goals the story tracks) and `lore` (text the game looks up, such as item descriptions).
 - `id` — the scene's name, unique in your project. Other scenes and your tests refer to this scene
-  by it. Letters, digits, `_`, `-` and `.` are allowed; `mira.s01ep01` reads as "Mira, season 1,
+  by it. It is identifiers joined by `.` (an identifier is a letter, then letters, digits or `_`;
+  no `-`: write `doorNotes`, not `door-notes`); `mira.s01ep01` reads as "Mira, season 1,
   episode 1", but any name works (`prologue`, `diner.opening`).
 - `title` — a human-readable title for tools and search.
 - `pov` — the id of the player character (the protagonist the player controls).
@@ -2145,7 +2146,7 @@ state:                                   # scalar only: number | bool | string |
   app.rating:   { type: { enum: [teen, adult] }, default: teen }
 enums:                                   # content vocabulary: you declare every member
   emotion: [neutral, happy, worried]
-  action:  { members: [fade-in-up, fade-out-down], exits: [fade-out-down] }
+  action:  { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor:  { members: [left, center, right], default: center }
   weekday: { members: [mon, tue], labels: { mon: Monday, tue: Tuesday } }   # labels: 0.24.0
 entities:
@@ -2260,11 +2261,11 @@ id: diner.night
 pov: fixer
 enums:
   emotion: [neutral, happy]
-  action: { members: [fade-in-up, fade-out-down], exits: [fade-out-down] }
+  action: { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor: { members: [left, center, right], default: center }
   mood: [peaceful]
   volume: [down, normal]
-  musicAction: [start, fade-out]
+  musicAction: [start, fadeOut]
   vfxType: [whiteOut]
 state:
   run.affection: { type: number, default: 0 }
@@ -2274,7 +2275,7 @@ state:
 
 ::bg{location="diner" time="night"}
 ::music{action="start" mood="peaceful" volume="down"}
-::auto{character="mira" anchor="center" action="fade-in-up"}
+::auto{character="mira" anchor="center" action="fadeInUp"}
 ::camera{focus="mira" zoom="1.2" duration="0.5" wait="true"}
 @narrator: The diner hums.
 @mira{code="0010" emotion="happy"}: You're back, {{userName}}! Warmth: {{run.affection}}.
@@ -2287,7 +2288,7 @@ state:
 ::sfx{sound="door bell"}
 ::vfx{type="whiteOut"}
 ::clear
-::music{action="fade-out"}
+::music{action="fadeOut"}
 ::end{reason="closing"}
 ```
 
@@ -2609,8 +2610,13 @@ An unset value is not the string `'unset'` (`E-UNSET-LITERAL`); test it with
 write `quest.q.state == 'unset'`, because `isSet(quest.q.state)` is always true
 (`W-QUEST-STATE-ISSET`). Since 0.26.0 a string a guard compares with an enum path, `occasion.target`
 or a quest's `state` / `failedBy` (`==`, `!=`, or an `in [...]` element) must be one of its members:
-`run.rank == 'silvr'` is `E-WHEN-LITERAL-DOMAIN`, with a did-you-mean, as `is="silvr"` is. Path
-segments, def names, and param names cannot contain `-`.
+`run.rank == 'silvr'` is `E-WHEN-LITERAL-DOMAIN`, with a did-you-mean, as `is="silvr"` is.
+
+0.29.0: every name you write is an **identifier** — a letter, then letters, digits or `_` — and a
+dotted id joins identifiers with `.`: scene, beat, entry, quest, objective, branch, hub, choice and
+mark ids, document id segments, `share` keys, seasons, relations, defs, enum and entity kinds and
+their members, component params, and the occasions and events a plugin declares. A `-` is an error
+at the name, under that slot's code, naming the camelCase spelling (`lamp-duty` → `lampDuty`).
 
 Where CEL goes: `<match on>`, `<when test>`, `when=` on a line or choice, `::set` right-hand sides
 and `when=`, `when=` on any other directive that takes it (0.26.0), `::next when`, beat `when:`, entry `when=`, quest `start` / `fail`, objective `done` /
@@ -2700,7 +2706,7 @@ state:
 
 A bundle beat takes `id`, `on`, `target`, `title`, `when`, `priority`, `once`, `also`, and since
 0.25.0 `after` and `share`, and its body is a scene body (lines, branches, hubs, match, directives).
-The document needs `id:`, the beat `id` is an identifier without `-`, and the beat's canonical id is
+The document needs `id:`, the beat `id` is an identifier, and the beat's canonical id is
 `<document id>.<beat id>` (`cafe.talks.miraOrder`): the id that `lute play`, `presented:`,
 `visited('cafe.talks.miraOrder')`, and `lute trace --beat` use. It behaves like a scene beat: `once`
 defaults to `run`, and presentation spends it. Since 0.24.0 a scene or quest may name it as a
@@ -3614,16 +3620,16 @@ With a `::bg`:
 kind: scene
 id: dock.night
 enums:
-  action: { members: [fade-in-up, fade-out-down], exits: [fade-out-down] }
+  action: { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor: { members: [left, center, right], default: center }
 ---
 
 ## Dock
 
-::auto{character="mira" action="fade-in-up"}
+::auto{character="mira" action="fadeInUp"}
 @mira: Over here.
 ::bg{location="street" time="night"}
-::auto{character="mira" action="fade-in-up"}
+::auto{character="mira" action="fadeInUp"}
 @mira: Keep walking.
 ```
 
@@ -4950,11 +4956,11 @@ enums:
     members: [left, center, right]
     default: center
   action:
-    members: [fade-in-up, sway, lean, idle, fade-out, hide]
-    exits: [fade-out, hide]
+    members: [fadeInUp, sway, lean, idle, fadeOut, hide]
+    exits: [fadeOut, hide]
   mood: [peaceful, tense, romantic, sad, upbeat]
   volume: [silent, down, normal, up, full]
-  musicAction: [start, change, stop, resume, fade-out]
+  musicAction: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
 ```
 
@@ -5442,9 +5448,9 @@ accepts.
 | Directive | Attributes |
 |---|---|
 | `::bg` | `location`, `time`, `assetId` — a scene change: characters still on stage are hidden first (below) |
-| `::music` | `action` (`start`\|`change`\|`stop`\|`resume`\|`fade-out`), `mood`, `volume` (`silent`\|`down`\|`normal`\|`up`\|`full`), `assetId`, `track` |
+| `::music` | `action` (`start`\|`change`\|`stop`\|`resume`\|`fadeOut`), `mood`, `volume` (`silent`\|`down`\|`normal`\|`up`\|`full`), `assetId`, `track` |
 | `::sfx` | `sound` (description), `assetId`, `name` |
-| `::auto` | `character`, `anchor` (`left`\|`center`\|`right`), `action` (a named action id such as `fade-in-up` / `pose-*`) — character entrance/exit/pose |
+| `::auto` | `character`, `anchor` (`left`\|`center`\|`right`), `action` (a named action id such as `fadeInUp` / `pose-*`) — character entrance/exit/pose |
 | `::clear` | none — every character on stage exits; background and music stay (below) |
 | `::camera` | `focus`, `zoom`, `moveX`, `moveY`, `shake`, `reset`, `duration`, `easing`, `delay`, `wait` |
 | `::cut` | `assetId` (`CUT.*`), `action` (`show`\|`hide`), `full` |
@@ -5455,15 +5461,15 @@ accepts.
 ```lute
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
 ::music{action="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
-::auto{character="marina" anchor="center" action="fade-in-up"}
+::auto{character="marina" anchor="center" action="fadeInUp"}
 ::camera{focus="marina" zoom="1.1" duration="0.5"}
 ```
 
 *(From [`docs/examples/marina-s01ep02.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/marina-s01ep02.lute).)*
 
 Character staging lives on `::auto` with an action id (there is no `::sprite`/`::char`); music
-fade-out is `::music{action="fade-out"}`; a character exit is
-`::auto{action="fade-out-down"}`. All attribute values are strings in double quotes (a `"` inside
+fadeOut is `::music{action="fadeOut"}`; a character exit is
+`::auto{action="fadeOutDown"}`. All attribute values are strings in double quotes (a `"` inside
 one is written `\"` or [`&quot;`](#character-references-in-quoted-values); single quotes are `E-ATTR-QUOTE`), or a bare `@ref` to a
 [def](/language/params/) that folds to a constant (`::camera{zoom=@closeUp}`; a def that reads state
 is `E-ATTR-DEF-DYNAMIC`). There are no inline code expressions, which keeps staging
@@ -5476,10 +5482,10 @@ the new place must enter again with `::auto`; a line from one before that is `W-
 
 ```lute
 ::bg{location="station" time="night"}
-::auto{character="marina" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
 @marina: The last train is gone.
 ::bg{location="street" time="night"}
-::auto{character="marina" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
 @marina: We walk, then.
 ```
 
@@ -5540,8 +5546,8 @@ kind: scene
 id: demo.platform
 enums:
   action:
-    members: [fade-in-up, fade-out-down]
-    exits: [fade-out-down]
+    members: [fadeInUp, fadeOutDown]
+    exits: [fadeOutDown]
   anchor:
     members: [left, center, right]
     default: center
@@ -5550,11 +5556,11 @@ enums:
 ## The Platform
 
 ::bg{location="station" time="night"}
-::auto{character="marina" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
 @marina: The last train is gone.
 <branch id="wait">
   <choice id="leave" label="Let her go">
-    ::auto{character="marina" action="fade-out-down"}
+    ::auto{character="marina" action="fadeOutDown"}
     @narrator: She walks off without a word.
   </choice>
   <choice id="stay" label="Ask her to stay">
@@ -5572,7 +5578,7 @@ the branch is not, because the `leave` path reaches it with her gone:
 platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit
 ```
 
-An `::auto{character="marina" action="fade-in-up"}` before that line, or at the end of the `leave`
+An `::auto{character="marina" action="fadeInUp"}` before that line, or at the end of the `leave`
 choice, puts her on stage on every path and silences it. `lute compile` stages the artifact over
 the same join: after the convergence she is not on stage, so an `::auto` there is a fresh entrance
 and gets its anchor again.
@@ -5588,8 +5594,8 @@ kind: scene
 id: demo.lastTrain
 enums:
   action:
-    members: [fade-in-up, fade-out-down]
-    exits: [fade-out-down]
+    members: [fadeInUp, fadeOutDown]
+    exits: [fadeOutDown]
   anchor:
     members: [left, center, right]
     default: center
@@ -5601,8 +5607,8 @@ enums:
 
 ::bg{location="station" time="night"}
 ::music{action="start" mood="peaceful"}
-::auto{character="marina" action="fade-in-up"}
-::auto{character="oskar" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
+::auto{character="oskar" action="fadeInUp"}
 @marina: The last train is gone.
 @oskar: So it is.
 ::clear
@@ -6385,10 +6391,10 @@ her position and her opacity simultaneously, alongside an independent camera tra
 ```lute
 <timeline duration="1.2">
   <track subject="marina" property="pos">
-    ::auto{character="marina" anchor="left" action="slide-in-left"}
+    ::auto{character="marina" anchor="left" action="slideInLeft"}
   </track>
   <track subject="marina" property="opacity">
-    ::auto{character="marina" action="fade-in-up"}
+    ::auto{character="marina" action="fadeInUp"}
   </track>
   <track subject="camera">
     ::camera{focus="marina" zoom="1.2" duration="0.6"}
@@ -6459,7 +6465,7 @@ uses: ../base.schema.yaml
 
 ## A Familiar Face
 
-::auto{character=@who action="fade-in-up"}
+::auto{character=@who action="fadeInUp"}
 @narrator: A familiar face steps into the light.
 ```
 
@@ -6474,7 +6480,7 @@ since dsl 0.23.0, a **`string`** param whose argument is a literal. So `who: str
 also appear as `{{@who}}` in a line. See [Sentences in string params](#sentences-in-string-params).
 
 The `uses:` line is the component's own [content vocabulary](/language/vocabulary/) import — since
-`0.9.0` `action="fade-in-up"` resolves against a declared `action` domain, and a component file has
+`0.9.0` `action="fadeInUp"` resolves against a declared `action` domain, and a component file has
 to reach one to check on its own. Through `::use` it is the **importing** document's vocabulary that
 applies (see [the known limitation](/language/vocabulary/#known-limitation-a-component-body-resolves-against-the-importing-document)), so both sides declare it.
 
@@ -8625,7 +8631,7 @@ A `<beat>` takes the scene beat keys as attributes:
 
 | Attribute | Meaning |
 |---|---|
-| `id` | required; an identifier without `-` (`[A-Za-z][A-Za-z0-9_]*`), unique in the document |
+| `id` | required; an identifier (`[A-Za-z][A-Za-z0-9_]*`), unique in the document |
 | `on` | required; the occasion the beat answers |
 | `target`, `when`, `priority`, `once`, `also`, `share`, `spentBy`, `for` | as on a [scene beat](#scene-beat-keys). `once="false"` makes the beat repeatable, and `also` may be written bare |
 | `after` | optional (dsl 0.25.0 §3); a scene `after:` formula, with the same meaning: an eligibility conjunct and an edge of the [scenario graph](/connectivity/scene-graph/) |
@@ -11265,8 +11271,13 @@ The checker reads the condition like any other:
 
 - Its text is checked as a condition slot. An error in it is prefixed `` `terminal: …`: ``, and an
   error in an imported schema's `terminal:` is reported at that schema's line.
-- A value that is not a string, or is empty, is `E-META-VALUE`: `terminal:` must be a CEL condition
-  string naming when the game is over.
+- A value that is not a string or a `{ when, persists }` mapping, or names no condition, is
+  `E-META-VALUE`: `terminal:` must name when the game is over.
+- The long form `terminal: { when: "user.crowned", persists: true }` states that the ending outlives
+  runs on purpose (a roguelike's permanent ending): `W-TERMINAL-PERSISTENT` is silent and `lute play`
+  says the game is over for good instead of offering a new run. Its keys are closed (`E-META-VALUE`
+  names the key a slip meant); `persists: true` over run state only is `E-META-VALUE`. The IR carries
+  `terminalPersists: true` beside `terminal`.
 - Every beat is judged under `!terminal`, since no occasion is raised once it holds. A beat whose
   `when` is provably false while the game is not yet over, one that needs `run.fate == 'taken'`,
   is `E-BEAT-UNREACHABLE`. The same seam gates occasions one at a time, through an occasion's
@@ -11653,7 +11664,7 @@ Statically validate one `.lute` document. Without `--project`, the nearest `lute
 $ lute check-project <dir> [--json] [--providers <DIR>] [--deny <CODE>]… [--deny-warnings] [--wip]
 ```
 
-Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted order, each against its own nearest-ancestor `lute.project.yaml` root, **plus** project-wide `<quest id>` uniqueness, the connectivity passes (`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`), and the [relational guard analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards) (dsl 0.20.0): every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project, so a guard that can never hold is reported through its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`) and a redundant one as `W-FACT-GUARANTEED`. The project-wide beat and quest advisories run here too (dsl 0.22.0): `W-BEAT-PRIORITY-TIE` (beats on one `select: first` occasion, for the same or no target, with equal priority and `when`s not provably exclusive, so file order picks the winner), `W-BEAT-ONCE-RUN-USER` (a `once: run` beat whose `when` reads only user-tier state, so it replays every run), and `W-QUEST-HANDLER-DEAD` (an `<on event="questFailed">` on a quest that has no `fail`, no required subquest objective, and no parent quest, so it can never fail). It then compiles every document that checked clean under its project's `identity:`, so compile-stage errors fail here rather than only at `compile`: `E-DUP-VOICEKEY` (lines with different text on one `voiceKey` — since 0.22.0 the default `{prefix}.{speaker}-{code}` keeps scenes apart, so this is what a project pinning the older unprefixed `identity.voiceKey: "{speaker}-{code}"` risks) and `E-CAPABILITY-MISMATCH` (documents resolving two capability snapshots, which `compile --all` and `play` refuse). Exit **0** clean, **1** when any file has an error or a project-wide collision, **2** on I/O. The same `--deny <CODE>`/`--deny-warnings` promotion (see `check`) applies project-wide.
+Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted order (0.29.0: the report prints causes first — rows at `lute.project.yaml`, then plugins, then schemas, then each document in path order, then the project-wide rows), each against its own nearest-ancestor `lute.project.yaml` root, **plus** project-wide `<quest id>` uniqueness, the connectivity passes (`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`), and the [relational guard analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards) (dsl 0.20.0): every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project, so a guard that can never hold is reported through its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`) and a redundant one as `W-FACT-GUARANTEED`. The project-wide beat and quest advisories run here too (dsl 0.22.0): `W-BEAT-PRIORITY-TIE` (beats on one `select: first` occasion, for the same or no target, with equal priority and `when`s not provably exclusive, so file order picks the winner), `W-BEAT-ONCE-RUN-USER` (a `once: run` beat whose `when` reads only user-tier state, so it replays every run), and `W-QUEST-HANDLER-DEAD` (an `<on event="questFailed">` on a quest that has no `fail`, no required subquest objective, and no parent quest, so it can never fail). It then compiles every document that checked clean under its project's `identity:`, so compile-stage errors fail here rather than only at `compile`: `E-DUP-VOICEKEY` (lines with different text on one `voiceKey` — since 0.22.0 the default `{prefix}.{speaker}-{code}` keeps scenes apart, so this is what a project pinning the older unprefixed `identity.voiceKey: "{speaker}-{code}"` risks) and `E-CAPABILITY-MISMATCH` (documents resolving two capability snapshots, which `compile --all` and `play` refuse). Exit **0** clean, **1** when any file has an error or a project-wide collision, **2** on I/O. The same `--deny <CODE>`/`--deny-warnings` promotion (see `check`) applies project-wide.
 
 Since dsl 0.24.0 `check-project` also warns `W-QUEST-NEVER-ACCEPTED` (an accept-driven quest — no `start`, a root or an `activate="accept"` child — that no `::accept` in the project names), `W-RELATION-UNREAD` (a relation asserted, seeded or derived that no condition, rule body or def reads) and `W-DEF-UNUSED` (a `@def` nothing references), each once per project at its declaration, and its `mocks/*.yaml` pass checks a mock's `bridges:` answers against the plugin calls of the document it names (`E-TRACE-MOCK-UNDECLARED` / `E-TRACE-MOCK-TYPE`).
 
@@ -12037,7 +12048,7 @@ $ lute new scene talk/tomas-evening --occasion talk
 lute new: occasion `talk` is raised for a target, and a scene without `target:` would play for every one — pass `--target npc.<member>`, the target this scene answers; nothing was written
 ```
 
-When the occasion is the one a chain of the manifest's [`chapters:`](/getting-started/connect-scenes/#the-chapters-chapters) answers, the scene gets no `on:` or `priority:` of its own: a comment and the command's output tell you to list its id in that chain, which then derives them.
+`--occasion O` always writes `on: O` (0.29.0). When `O` is the occasion a chain of the manifest's [`chapters:`](/getting-started/connect-scenes/#the-chapters-chapters) answers, the output adds how to make the scene a chapter instead: list its id in that chain's `scenes:` and drop `on:`.
 
 `--target` without `--occasion` is a usage error, and so is `--occasion` on anything but a scene. Outside a project `--occasion` is refused, since no occasion is declared. The old `--on` spelling is refused too, naming `--occasion`. Exit **0** on success, **2** on I/O, an invalid kind, a refused `--occasion`/`--target`, an id another document declares, or a `--dir` (or, without one, a current directory) below the project root.
 
@@ -12062,7 +12073,7 @@ lute doctor — .
   • provider snapshots: no pinned provider snapshots
   • active plugins: game.occasions 0.1.0
   • occasions (beats answering): 3 declared, 7 beat(s) — dayEnd (1), townVisit (2), talk (4)
-  • vocabulary slots declared: emotion, action (exits: fade-out/hide), anchor (default: center), mood, volume, musicAction, vfxType
+  • vocabulary slots declared: emotion, action (exits: fadeOut/hide), anchor (default: center), mood, volume, musicAction, vfxType
   • VS Code extension: not detectable from the CLI
   ✗ lute-lsp on PATH: /usr/local/bin/lute-lsp reports no version (older than 0.22.0) — differs from lute 0.22.0
       → reinstall the language server from this toolchain (`cargo install --path crates/lute-lsp`) and restart the editor
@@ -12827,6 +12838,8 @@ A schema may declare when the game is over: `terminal: "run.fate == 'taken'"` (d
 In `--json` the root carries `"end": "terminal"` beside `"exit": "complete"`, and a top-level `expect: { end: terminal }` asserts it. A later `occasion:` step is `E-OCCASION-GATE` (exit 1: `` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on, or, if the engine raises `enter` outside a run too (a title screen, a gallery), declare it `outsideRun: true` ``), and so is a later `advance:` — the clock does not move on either. An `engine:` step is still accepted: it is the engine's own write. An occasion declared [`outsideRun: true`](/plugins/manifests/) (a title screen, a gallery between runs) is raised anyway.
 
 `newRun: true` starts a new run, and the play goes on only if the new run makes `terminal:` false. A `terminal:` over run state (`run.*`, a run-tier quest or relation) is reset by it. One that reads what a new run keeps (`user.*`, `visited(…)`) still holds, `check-project` warns `W-TERMINAL-PERSISTENT` at the schema, and the next raise halts: `` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
+
+An ending meant to outlive every run says so in the schema: `terminal: { when: "user.crowned", persists: true }`. `check-project` then stays silent, and `lute play` says the game is over for good instead of offering a new run: `` note: the game is over for good — `terminal: user.crowned` holds and persists (`persists: true`), so the engine raises no occasion from here, in this run or any later one (`occasion:` / `advance:` steps are refused; a new run does not reopen it) ``; a `newRun` after it and a later raise say the same, and none suggests `newRun`.
 
 `terminal:` is judged when an occasion is raised, so the raise that makes it hold finishes: the beat whose write ends the game plays to its last line, the rest of a `select: sequence` raise plays, and the `questComplete` / `questFailed` handlers the raise settles run after them. An epilogue therefore goes in one of two places: after the write in the beat that makes `terminal:` hold, or in the `<on event="questComplete">` handler of the quest whose completion it reads:
 
@@ -17243,7 +17256,7 @@ These are the diagnostics a model-driven loop actually trips, grouped by what to
 
 ```console
 $ lute context docs/examples/property-tracks.lute --project docs/examples --json
-{ …, "enums": {}, "projectEnums": { "action": ["fade-in-up", …, "hide"], "anchor": ["left", "center", "right"],
+{ …, "enums": {}, "projectEnums": { "action": ["fadeInUp", …, "hide"], "anchor": ["left", "center", "right"],
   "emotion": ["neutral", "surprised", "delighted", "shy", "content", "angry", "sad"], … } }
 ```
 

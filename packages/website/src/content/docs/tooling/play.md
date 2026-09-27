@@ -519,6 +519,22 @@ In `--json` the root carries `"end": "terminal"` beside `"exit": "complete"`, an
 
 `newRun: true` starts a new run, and the play goes on only if the new run makes `terminal:` false. A `terminal:` over run state (`run.*`, a run-tier quest or relation) is reset by it. One that reads what a new run keeps (`user.*`, `visited(…)`) still holds, `check-project` warns `W-TERMINAL-PERSISTENT` at the schema, and the next raise halts: `` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
 
+An ending meant to outlive every run says so in the schema: `terminal: { when: "user.crowned", persists: true }` ([Schemas](/state/schemas/#an-ending-that-outlives-runs-persists-true)). `check-project` then stays silent, and `lute play` says the game is over for good instead of offering a new run: the step that ends it, a `newRun: true` after it, and a later raise all say so, and none suggests `newRun`:
+
+```
+── step 1 · knock ──────────────
+  ✓ crown [scene, priority 0]
+  → crown
+  set user.crowned = true
+@narrator: The crown is yours.
+  note: the game is over for good — `terminal: user.crowned` holds and persists (`persists: true`), so the engine raises no occasion from here, in this run or any later one (`occasion:` / `advance:` steps are refused; a new run does not reopen it)
+── step 2 · new run ──────────────
+  note: the game is over for good — the new run does not reopen it: `terminal: user.crowned` holds and persists (`persists: true`), so the engine raises no occasion
+── step 3 · visit ──────────────
+  (not raised: the game is over)
+── halted: s.play.yaml:4:5: step 3: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`visit` included); the ending persists (`persists: true`), so the game is over for good and no new run reopens it — drop the step, or, if the engine raises `visit` outside a run too (a title screen, a gallery), declare it `outsideRun: true` ──────────────
+```
+
 `terminal:` is judged when an occasion is raised, so the raise that makes it hold finishes: the beat whose write ends the game plays to its last line, the rest of a `select: sequence` raise plays, and the `questComplete` / `questFailed` handlers the raise settles run after them. An epilogue therefore goes in one of two places: after the write in the beat that makes `terminal:` hold, or in the `<on event="questComplete">` handler of the quest whose completion it reads:
 
 ```
@@ -538,7 +554,7 @@ In `--json` the root carries `"end": "terminal"` beside `"exit": "complete"`, an
 |---|---|---|
 | `::end` in content | the presentation it runs in (in a quest handler, that quest document's advance) | yes, with the next step |
 | `- end: true` in a script | the playthrough, at that step; later steps are skipped | no — `end: complete` |
-| `terminal:` in a schema | the game: the engine raises no occasion (but `outsideRun` ones) until a new run makes it false | only after a `newRun` that resets it — `end: terminal` |
+| `terminal:` in a schema | the game: the engine raises no occasion (but `outsideRun` ones) until a new run makes it false; with `persists: true`, for good | only after a `newRun` that resets it — `end: terminal`; never with `persists: true` |
 | `last:` / `days:` on the clock | the clock: `clock.ended` turns true, and an `advance:` past the last position halts the play (`E-CLOCK-END`) | yes, with steps that do not move the clock; write `terminal: "clock.ended"` to end the game there |
 | `expect: { end: … }` | nothing: it asserts how the walk ended (`complete`, `terminal`, `incomplete`, `error`) | — |
 

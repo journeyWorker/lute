@@ -50,13 +50,6 @@ pub fn is_prev_season_path(path: &str) -> bool {
         .is_some_and(|p| season_of_path(p).is_some())
 }
 
-/// `true` for a season name: an identifier `[A-Za-z][A-Za-z0-9_]*`.
-pub fn is_season_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    chars.next().is_some_and(|c| c.is_ascii_alphabetic())
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,6 +66,5 @@ mod tests {
         assert!(is_prev_season_path("prev.season.harvest.tokens"));
         assert!(!is_prev_season_path("prev.run.x"));
         assert_eq!(season_ref("season:harvest"), Some("harvest"));
-        assert!(is_season_name("harvest_2") && !is_season_name("2x") && !is_season_name(""));
     }
 }

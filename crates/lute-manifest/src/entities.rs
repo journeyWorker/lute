@@ -219,14 +219,14 @@ mod tests {
     fn parse_enums_reads_long_form() {
         let v: Value = serde_yaml::from_str(
             "anchor:\n  members: [left, center, right]\n  default: center\n\
-             action:\n  members: [sway, fade-out, hide]\n  exits: [fade-out, hide]\n",
+             action:\n  members: [sway, fadeOut, hide]\n  exits: [fadeOut, hide]\n",
         )
         .unwrap();
         let doms = parse_enums(&v);
         assert_eq!(doms["anchor"].members, vec!["left", "center", "right"]);
         assert_eq!(doms["anchor"].default.as_deref(), Some("center"));
         assert!(doms["anchor"].exits.is_empty());
-        assert_eq!(doms["action"].exits, vec!["fade-out", "hide"]);
+        assert_eq!(doms["action"].exits, vec!["fadeOut", "hide"]);
         assert_eq!(doms["action"].default, None);
     }
 

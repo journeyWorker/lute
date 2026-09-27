@@ -35,7 +35,7 @@ after: 'visited("haven.s01ep02")'
   </track>
   <track channel="vfx">
     ::vfx{type="shed" label="module four" at="0.8" duration="0.4"}
-    ::vfx{type="pressure-drop" transition="cut" at="1.2"}
+    ::vfx{type="pressureDrop" transition="cut" at="1.2"}
   </track>
 </timeline>
 

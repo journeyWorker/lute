@@ -536,10 +536,12 @@ mod tests {
             //         choice B (no when, attr s8, body Line ref s9).
             Node::Branch(Branch {
                 id: "b".to_string(),
+                id_span: span(),
                 attrs: vec![ref_attr("flag", "s4")],
                 choices: vec![
                     Choice {
                         id: "cA".to_string(),
+                        id_span: span(),
                         label: "A".to_string(),
                         label_span: span(),
                         when: Some(slot("s5")),
@@ -549,6 +551,7 @@ mod tests {
                     },
                     Choice {
                         id: "cB".to_string(),
+                        id_span: span(),
                         label: "B".to_string(),
                         label_span: span(),
                         when: None,

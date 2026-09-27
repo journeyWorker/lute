@@ -10,7 +10,7 @@ after: 'visited("haven.s01ep07")'
 ## The Archive
 
 ::bg{location="archive" time="ship-night"}
-::music{action="fade-out"}
+::music{action="fadeOut"}
 ::auto{character="vesna" anchor="port" action="unseal"}
 ::auto{character="ottavio" anchor="starboard" action="drift"}
 

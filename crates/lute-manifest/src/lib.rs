@@ -3,6 +3,7 @@ pub mod asset;
 pub mod clock;
 pub mod core;
 pub mod entities;
+pub mod ident;
 pub mod lint;
 pub mod loader;
 pub mod permissions;

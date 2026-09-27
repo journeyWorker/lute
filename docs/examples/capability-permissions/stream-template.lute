@@ -1,6 +1,6 @@
 ---
 kind: scene
-id: permission-stream
+id: permissionStream
 profile: authored
 state:
   # No default: the host may supply the value as read-only context.

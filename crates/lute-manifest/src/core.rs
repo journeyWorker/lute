@@ -184,7 +184,7 @@ mod tests {
     /// survives as a SLOT — `::music{action}` still names it, so a project or
     /// plugin declaring `musicAction` members gets them checked — but the core
     /// itself ships none. Asserting the absence, rather than dropping the
-    /// test, is what keeps `fade-out` and friends from creeping back in.
+    /// test, is what keeps `fadeOut` and friends from creeping back in.
     #[test]
     fn music_action_is_a_slot_with_no_members() {
         let snap = load_core_snapshot();

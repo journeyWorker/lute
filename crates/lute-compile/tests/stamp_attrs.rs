@@ -257,7 +257,7 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
 fn a_plugin_declared_pose_lowers_to_the_stamp_and_never_to_sprite_state() {
     let snap = snap_with_plugin_declared_pose();
     let text = format!(
-        "{HDR}::auto{{character=\"elena\" anchor=\"center\" action=\"fade-in-up\"}}\n\
+        "{HDR}::auto{{character=\"elena\" anchor=\"center\" action=\"fadeInUp\"}}\n\
          @elena{{pose=\"crouch\"}}: A!\n\
          @elena: B.\n"
     );
@@ -312,7 +312,7 @@ fn a_plugin_declared_pose_lowers_to_the_stamp_and_never_to_sprite_state() {
     // `pose=` for the real sprite slot `action=` and the plain line DOES get a
     // `posReset` — so (3)'s absence is a property of stamp-only lowering, not
     // an accident of the fixture.
-    let sprite_slot = text.replace("pose=\"crouch\"", "action=\"pose-lean\"");
+    let sprite_slot = text.replace("pose=\"crouch\"", "action=\"poseLean\"");
     let control = commands(&sprite_slot, snap);
     assert!(
         control

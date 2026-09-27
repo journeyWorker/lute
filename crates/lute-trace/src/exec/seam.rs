@@ -137,15 +137,17 @@ pub fn closed_in<D: Driver>(
 }
 
 /// The halt of a `lute play` step (`n`) raising `occasion` (for `target`)
-/// while it is [`Closed`]. `clock`: the project's clock, so a gate over it
-/// is told to advance the clock rather than write its paths.
+/// while it is [`Closed`]. The project's clock tells a gate over it to
+/// advance the clock rather than write its paths; its `terminalPersists`
+/// says whether a new run reopens a game that is over.
 pub fn refusal(
     n: usize,
     occasion: &str,
     target: Option<&str>,
     why: &Closed,
-    clock: Option<&lute_manifest::clock::ClockDecl>,
+    p: &ExecProject,
 ) -> PlayHalt {
+    let clock = p.index.clock.as_ref();
     let raised = match target {
         Some(t) => format!("`{occasion}` for `{t}`"),
         None => format!("`{occasion}`"),
@@ -155,7 +157,7 @@ pub fn refusal(
             "step {n}: {E_OCCASION_GATE}: the game is over — `terminal: {t}` holds, so the engine \
              raises no occasion ({raised} included); {}, or, if the engine raises `{occasion}` \
              outside a run too (a title screen, a gallery), declare it `outsideRun: true`",
-            play_on(t)
+            play_on(t, p.index.terminal_persists)
         )),
         Closed::Gate { raw, reads } => {
             // A payload read is changed by this step's own `payload:`,
@@ -194,18 +196,25 @@ pub fn refusal(
 }
 
 /// The halt of an `advance:` step (`n`) once the terminal condition holds.
-pub fn advance_after_terminal(n: usize, terminal: &str) -> PlayHalt {
+pub fn advance_after_terminal(n: usize, p: &ExecProject) -> PlayHalt {
+    let terminal = p.index.terminal.as_ref().map_or("", |t| t.raw.as_str());
     PlayHalt::Error(format!(
         "step {n}: {E_OCCASION_GATE}: `advance:` after the game is over — `terminal: {terminal}` \
          holds, so the engine raises no occasion and the clock does not move on; {}",
-        play_on(terminal)
+        play_on(terminal, p.index.terminal_persists)
     ))
 }
 
 /// dsl 0.28.0 (T3-19): what a script does once `terminal` holds — a new
-/// run, unless the condition reads state a new run keeps
-/// ([`persistent_read`]), when a new run does not help.
-fn play_on(terminal: &str) -> String {
+/// run, unless the ending persists (`persists: true`: the game is over for
+/// good) or the condition reads state a new run keeps ([`persistent_read`]),
+/// when a new run does not help.
+fn play_on(terminal: &str, persists: bool) -> String {
+    if persists {
+        return "the ending persists (`persists: true`), so the game is over for good and no new \
+                run reopens it — drop the step"
+            .to_string();
+    }
     match persistent_read(terminal) {
         Some(read) => {
             format!("it still holds after a new run: it reads `{read}`, which a new run keeps")

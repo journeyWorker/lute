@@ -8,7 +8,8 @@
 use std::collections::BTreeMap;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::season::{is_season_name, season_of_path, season_ref, SeasonDecl};
+use lute_manifest::ident::is_ident;
+use lute_manifest::season::{season_of_path, season_ref, SeasonDecl};
 
 use crate::meta::{Namespace, StateDecl, StateSchema};
 
@@ -52,7 +53,7 @@ pub fn parse_seasons(
         return (out, diags);
     };
     for (k, v) in map {
-        let Some(name) = k.as_str().filter(|n| is_season_name(n)) else {
+        let Some(name) = k.as_str().filter(|n| is_ident(n)) else {
             let at = k.as_str().map_or_else(|| span_at(&[]), |k| span_at(&[k]));
             diags.push(diag(bad_season_name(k), at));
             continue;
@@ -89,30 +90,8 @@ fn bad_season_name(k: &serde_yaml::Value) -> String {
             .trim()
             .to_string(),
     };
-    // `lantern-fest` / `lantern fest` → `lanternFest`.
-    let mut fixed = String::new();
-    for (i, part) in shown
-        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
-        .filter(|p| !p.is_empty())
-        .enumerate()
-    {
-        let mut chars = part.chars();
-        if let (true, Some(c)) = (i > 0, chars.next()) {
-            fixed.push(c.to_ascii_uppercase());
-            fixed.extend(chars);
-        } else {
-            fixed.push_str(part);
-        }
-    }
-    let hint = if is_season_name(&fixed) && fixed != shown {
-        format!(" — write `{fixed}`")
-    } else {
-        String::new()
-    };
-    format!(
-        "season name `{shown}` is not a name: it is written in `season.<name>.*` paths and \
-         `once: season:<name>`, so it is letters, digits and `_`, starting with a letter{hint}"
-    )
+    lute_manifest::ident::ident_fault("season name", &shown)
+        .unwrap_or_else(|| format!("season name `{shown}` must be written as a string"))
 }
 
 /// The `live` condition of season `name`'s body `v`: a condition string (the

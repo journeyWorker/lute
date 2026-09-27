@@ -53,7 +53,7 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
     );
     d.insert(
         "musicAction".to_string(),
-        closed(&["start", "change", "stop", "resume", "fade-out"]),
+        closed(&["start", "change", "stop", "resume", "fadeOut"]),
     );
     d.insert(
         "anchor".to_string(),
@@ -69,19 +69,19 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
         "action".to_string(),
         Domain {
             members: [
-                "fade-in-up",
-                "fade-in-slow",
-                "slide-in-left",
-                "walk-in",
+                "fadeInUp",
+                "fadeInSlow",
+                "slideInLeft",
+                "walkIn",
                 "idle",
                 "wave",
                 "sway",
                 "lean",
-                "pose-turn",
-                "pose-lean",
-                "fade-out",
-                "fade-out-down",
-                "fade-out-slow",
+                "poseTurn",
+                "poseLean",
+                "fadeOut",
+                "fadeOutDown",
+                "fadeOutSlow",
                 "hide",
             ]
             .iter()
@@ -89,7 +89,7 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
             .collect(),
             open: false,
             default: None,
-            exits: ["fade-out", "fade-out-down", "fade-out-slow", "hide"]
+            exits: ["fadeOut", "fadeOutDown", "fadeOutSlow", "hide"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),

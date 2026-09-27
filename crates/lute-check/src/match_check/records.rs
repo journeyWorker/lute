@@ -57,6 +57,17 @@ pub struct HubRecord {
     pub diags: Vec<Diagnostic>,
 }
 
+/// A written branch, hub or choice id that is not an identifier
+/// (`E-PATH-IDENT`): it is a segment of `scene.choices.<id>` and
+/// `scene.visited.<hub>.<choice>`. A missing id has its own report.
+fn ident_diag(what: &str, id: &str, span: Span) -> Option<Diagnostic> {
+    if id.is_empty() {
+        return None;
+    }
+    lute_manifest::ident::ident_fault(what, id)
+        .map(|message| diag(E_PATH_IDENT, Severity::Error, message, span))
+}
+
 /// Record a `<branch>` (dsl §11.1): flag a duplicate id within the episode
 /// (`E-DUP-BRANCH`) and return the implicit `scene.choices.<id>` declaration.
 /// `seen` is the caller-owned, document-order set of branch ids seen so far (see
@@ -64,6 +75,10 @@ pub struct HubRecord {
 pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecord {
     let path = format!("scene.choices.{}", branch.id);
     let mut diags = Vec::new();
+    diags.extend(ident_diag("branch id", &branch.id, branch.id_span));
+    for choice in &branch.choices {
+        diags.extend(ident_diag("choice id", &choice.id, choice.id_span));
+    }
     // `insert` returns `false` when the id was already present => a duplicate.
     if !seen.insert(branch.id.clone()) {
         diags.push(diag(
@@ -154,6 +169,15 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
 pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
     let id = attr_str(&hub.attrs, "id").unwrap_or("");
     let mut diags = Vec::new();
+    let id_span = hub
+        .attrs
+        .iter()
+        .find(|a| a.key == "id")
+        .map_or(hub.span, |a| a.value_span);
+    diags.extend(ident_diag("hub id", id, id_span));
+    for choice in &hub.choices {
+        diags.extend(ident_diag("choice id", &choice.id, choice.id_span));
+    }
 
     // E-DUP-BRANCH (§11.1.3): hub and branch ids share ONE per-episode uniqueness
     // domain (both record under `scene.choices.*`), so a hub id may not collide

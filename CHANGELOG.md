@@ -36,6 +36,26 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Added
+
+- `terminal:` long form `{ when: "<condition>", persists: true }` states that an ending outlives runs on purpose (a roguelike's permanent ending): `W-TERMINAL-PERSISTENT` is silent, and `lute play` says the game is over for good (the game-over note, the note on a `newRun` after it, and the refusal of a later raise) instead of offering `newRun`. The long form's keys are closed (`E-META-VALUE` names the key a slip meant); `persists` is `true` or `false`. `persists: true` on a condition that reads only run state is `E-META-VALUE`. The IR (artifact and `project.index.json`) carries `terminalPersists: true` beside `terminal`; `lute context` shows it.
+
+### Changed
+
+- `W-TERMINAL-PERSISTENT` names the long form as the way to say the ending persists on purpose. `W-CHAPTER-STALL` stays specific to `chapters:`: a hand-written `after:` outside a chain never warns (now pinned by a test and documented).
+- One identifier rule: every name an author writes — scene, beat, entry, quest, objective, branch, hub, choice and mark ids, document id segments, `share` keys, seasons, relations, defs and def params, enum and entity kinds and members, component params, and the occasions, events, enums and defs a plugin declares — is a letter, then letters, digits or `_` (a dotted id joins them with `.`). A `-` or any other character is an error at the name under that slot's code (`E-META-ID`, `E-BEAT-ATTR`, `E-ENTRY-ATTR`, `E-PATH-IDENT`, `E-SEASON-DECL`, `E-COMPONENT-PARSE`, `E-PLUGIN-PARSE`), naming the camelCase spelling (`lamp-duty` → `lampDuty`).
+- `lute check-project` prints causes first: rows at `lute.project.yaml`, then plugins, then schemas, then each document in path order, then the project-wide rows.
+- `lute new scene --occasion O` always writes `on: O`; when `O` carries a `chapters:` chain it adds how to make the scene a chapter instead (list it in the chain, drop `on:`).
+
+### Compatibility
+
+- Additive: `terminal:` long form; IR `terminalPersists` (omitted when false) in `schemas/lute-ir-0.28.schema.json`; `schemas/lute.schema.json` accepts both `terminal:` forms.
+- A name with `-` that 0.28 accepted (`share=` keys, document ids, branch/hub/choice/mark ids, enum and entity members, plugin occasions/events/enums) is now an error; rename it to the camelCase spelling the message gives. The scaffolded and example vocabularies are renamed: `action` members `fade-in-up`, `fade-in-slow`, `slide-in-left`, `walk-in`, `pose-turn`, `pose-lean`, `fade-out`, `fade-out-down`, `fade-out-slow` are now `fadeInUp`, `fadeInSlow`, `slideInLeft`, `walkIn`, `poseTurn`, `poseLean`, `fadeOut`, `fadeOutDown`, `fadeOutSlow`, and `musicAction`'s `fade-out` is `fadeOut` — an engine keyed on the old strings maps the new ones.
+- `check-project` output order changes (causes first); `--json` `project_diagnostics` follows the same order.
+- `lute new scene --occasion` on a chained occasion writes `on:`.
+
 ## [0.28.1] - 2026-09-27
 
 **Leftovers from the sixth dogfood round.**

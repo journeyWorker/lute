@@ -1,10 +1,10 @@
 enums:
   emotion: [level, clipped, frayed, hollowed, wry, stricken]
   action:
-    members: [brace, drift, turn-away, seal, unseal, step-out, go-under]
-    exits: [step-out, go-under]
+    members: [brace, drift, turnAway, seal, unseal, stepOut, goUnder]
+    exits: [stepOut, goUnder]
   anchor: { members: [port, center, starboard], default: center }
   mood: [quiet, pressurized, failing, weightless]
   volume: [silent, muted, normal, raised, alarm]
-  musicAction: [start, swell, cut, resume, fade-out]
-  vfxType: [shed, klaxon, pressure-drop, frost]
+  musicAction: [start, swell, cut, resume, fadeOut]
+  vfxType: [shed, klaxon, pressureDrop, frost]

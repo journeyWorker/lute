@@ -23,9 +23,9 @@ accepts.
 | Directive | Attributes |
 |---|---|
 | `::bg` | `location`, `time`, `assetId` — a scene change: characters still on stage are hidden first (below) |
-| `::music` | `action` (`start`\|`change`\|`stop`\|`resume`\|`fade-out`), `mood`, `volume` (`silent`\|`down`\|`normal`\|`up`\|`full`), `assetId`, `track` |
+| `::music` | `action` (`start`\|`change`\|`stop`\|`resume`\|`fadeOut`), `mood`, `volume` (`silent`\|`down`\|`normal`\|`up`\|`full`), `assetId`, `track` |
 | `::sfx` | `sound` (description), `assetId`, `name` |
-| `::auto` | `character`, `anchor` (`left`\|`center`\|`right`), `action` (a named action id such as `fade-in-up` / `pose-*`) — character entrance/exit/pose |
+| `::auto` | `character`, `anchor` (`left`\|`center`\|`right`), `action` (a named action id such as `fadeInUp` / `pose-*`) — character entrance/exit/pose |
 | `::clear` | none — every character on stage exits; background and music stay (below) |
 | `::camera` | `focus`, `zoom`, `moveX`, `moveY`, `shake`, `reset`, `duration`, `easing`, `delay`, `wait` |
 | `::cut` | `assetId` (`CUT.*`), `action` (`show`\|`hide`), `full` |
@@ -36,15 +36,15 @@ accepts.
 ```lute
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
 ::music{action="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
-::auto{character="marina" anchor="center" action="fade-in-up"}
+::auto{character="marina" anchor="center" action="fadeInUp"}
 ::camera{focus="marina" zoom="1.1" duration="0.5"}
 ```
 
 *(From [`docs/examples/marina-s01ep02.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/marina-s01ep02.lute).)*
 
 Character staging lives on `::auto` with an action id (there is no `::sprite`/`::char`); music
-fade-out is `::music{action="fade-out"}`; a character exit is
-`::auto{action="fade-out-down"}`. All attribute values are strings in double quotes (a `"` inside
+fadeOut is `::music{action="fadeOut"}`; a character exit is
+`::auto{action="fadeOutDown"}`. All attribute values are strings in double quotes (a `"` inside
 one is written `\"` or [`&quot;`](#character-references-in-quoted-values); single quotes are `E-ATTR-QUOTE`), or a bare `@ref` to a
 [def](/language/params/) that folds to a constant (`::camera{zoom=@closeUp}`; a def that reads state
 is `E-ATTR-DEF-DYNAMIC`). There are no inline code expressions, which keeps staging
@@ -57,10 +57,10 @@ the new place must enter again with `::auto`; a line from one before that is `W-
 
 ```lute
 ::bg{location="station" time="night"}
-::auto{character="marina" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
 @marina: The last train is gone.
 ::bg{location="street" time="night"}
-::auto{character="marina" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
 @marina: We walk, then.
 ```
 
@@ -121,8 +121,8 @@ kind: scene
 id: demo.platform
 enums:
   action:
-    members: [fade-in-up, fade-out-down]
-    exits: [fade-out-down]
+    members: [fadeInUp, fadeOutDown]
+    exits: [fadeOutDown]
   anchor:
     members: [left, center, right]
     default: center
@@ -131,11 +131,11 @@ enums:
 ## The Platform
 
 ::bg{location="station" time="night"}
-::auto{character="marina" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
 @marina: The last train is gone.
 <branch id="wait">
   <choice id="leave" label="Let her go">
-    ::auto{character="marina" action="fade-out-down"}
+    ::auto{character="marina" action="fadeOutDown"}
     @narrator: She walks off without a word.
   </choice>
   <choice id="stay" label="Ask her to stay">
@@ -153,7 +153,7 @@ the branch is not, because the `leave` path reaches it with her gone:
 platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::auto` before this point, or remove the earlier exit
 ```
 
-An `::auto{character="marina" action="fade-in-up"}` before that line, or at the end of the `leave`
+An `::auto{character="marina" action="fadeInUp"}` before that line, or at the end of the `leave`
 choice, puts her on stage on every path and silences it. `lute compile` stages the artifact over
 the same join: after the convergence she is not on stage, so an `::auto` there is a fresh entrance
 and gets its anchor again.
@@ -169,8 +169,8 @@ kind: scene
 id: demo.lastTrain
 enums:
   action:
-    members: [fade-in-up, fade-out-down]
-    exits: [fade-out-down]
+    members: [fadeInUp, fadeOutDown]
+    exits: [fadeOutDown]
   anchor:
     members: [left, center, right]
     default: center
@@ -182,8 +182,8 @@ enums:
 
 ::bg{location="station" time="night"}
 ::music{action="start" mood="peaceful"}
-::auto{character="marina" action="fade-in-up"}
-::auto{character="oskar" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
+::auto{character="oskar" action="fadeInUp"}
 @marina: The last train is gone.
 @oskar: So it is.
 ::clear

@@ -4,5 +4,5 @@ enums:
     members: [left, center, right]
     default: center
   action:
-    members: [fade-in-up, idle, fade-out-down]
-    exits: [fade-out-down]
+    members: [fadeInUp, idle, fadeOutDown]
+    exits: [fadeOutDown]

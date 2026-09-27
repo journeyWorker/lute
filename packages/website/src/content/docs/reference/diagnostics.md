@@ -688,7 +688,9 @@ Spec: [dsl §9.4](/spec/)
 
 ### E-META-ID
 
-A document's `id:` frontmatter value is empty or contains characters outside `[A-Za-z0-9_.-]+`.
+A document's `id:` frontmatter value is not a dotted id: identifiers (a letter, then letters, digits or `_`) joined by `.`.
+
+Spec: [dsl 0.29.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
 ### E-META-MISSING
 
@@ -706,9 +708,9 @@ A document declares a top-level meta key that is neither a core key nor owned by
 
 ### E-META-VALUE
 
-A frontmatter value has the wrong shape — a malformed `extra:` mapping or key, a non-identifier `series:`, a malformed `cast:`/`enums:`/`terminal:` entry, or a bad `effects:` flag.
+A frontmatter value has the wrong shape — a malformed `extra:` mapping or key, a non-identifier `series:`, a malformed `cast:`/`enums:`/`terminal:` entry (in `terminal:`'s long form, a key other than `when`/`persists` or a `persists` that is not `true`/`false`), `persists: true` on a `terminal:` that reads only run state (its ending cannot outlive the run), or a bad `effects:` flag.
 
-Spec: [dsl 0.15.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md), [dsl 0.19.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md), [dsl 0.23.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
+Spec: [dsl 0.15.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md), [dsl 0.19.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md), [dsl 0.23.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.29.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
 ### E-MISSING-ATTR
 
@@ -786,9 +788,9 @@ Spec: [dsl 0.2.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-PATH-IDENT
 
-A dotted state path has a segment after its leading tier that contains a hyphen, which is not a valid identifier character there.
+A name that must be an identifier (a letter, then letters, digits or `_`) is not one: a state path segment; a quest, objective, entry, branch, hub, choice or mark id; a def or def param; a relation, enum or entity kind; an enum or entity member.
 
-Spec: [dsl §8.4](/spec/)
+Spec: [dsl 0.29.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md), [dsl §8.4](/spec/)
 
 ### E-PERMISSION-BRIDGE
 
@@ -1498,9 +1500,9 @@ Spec: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-CHAPTER-STALL
 
-A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, or a window of the clock that closes: a `when` no raise of the chain's occasion meets (a `dayStart` chain whose scene needs the day the run starts, unless the clock declares `raiseAtStart: true` because the engine raises it there), or one that no later raise meets once the scene before it has played late (a slot of the last day of a clock that ends) — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A clock condition that a later raise still meets only delays the chain, and a condition over other `owner: engine` state is the engine's to make true; neither is reported. If the scene may be skipped, let the next one follow the scene before it (`after: visited("<previous>")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true, or let its `when` hold at a later raise.
+A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, or a window of the clock that closes: a `when` no raise of the chain's occasion meets (a `dayStart` chain whose scene needs the day the run starts, unless the clock declares `raiseAtStart: true` because the engine raises it there), or one that no later raise meets once the scene before it has played late (a slot of the last day of a clock that ends) — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A clock condition that a later raise still meets only delays the chain, and a condition over other `owner: engine` state is the engine's to make true; neither is reported. Only a chain stalls: a hand-written `after:` on a scene outside `chapters:` is itself the statement "wait for that scene" and never warns. If the scene may be skipped, let the next one follow the scene before it (`after: visited("<previous>")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true, or let its `when` hold at a later raise.
 
-Spec: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.29.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
 ### W-CODE-AFTER-END
 
@@ -1714,9 +1716,9 @@ Spec: [dsl 0.28.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-TERMINAL-PERSISTENT
 
-The schema's `terminal:` reads state a new run keeps (`visited(…)`, `user.*`, `app.*`, `entry.<id>.everRead`, a user-tier quest or relation), so once it holds no new run can play on.
+The schema's `terminal:` reads state a new run keeps (`visited(…)`, `user.*`, `app.*`, `entry.<id>.everRead`, a user-tier quest or relation), so once it holds no new run can play on. An ending that outlives runs on purpose (a roguelike's permanent ending) says so with `terminal: { when: "<condition>", persists: true }`, which silences the warning.
 
-Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.29.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
 ### W-TEXT-BRACKET-LABEL
 

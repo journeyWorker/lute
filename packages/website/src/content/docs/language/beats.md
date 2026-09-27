@@ -226,7 +226,7 @@ A `<beat>` takes the scene beat keys as attributes:
 
 | Attribute | Meaning |
 |---|---|
-| `id` | required; an identifier without `-` (`[A-Za-z][A-Za-z0-9_]*`), unique in the document |
+| `id` | required; an identifier (`[A-Za-z][A-Za-z0-9_]*`), unique in the document |
 | `on` | required; the occasion the beat answers |
 | `target`, `when`, `priority`, `once`, `also`, `share`, `spentBy`, `for` | as on a [scene beat](#scene-beat-keys). `once="false"` makes the beat repeatable, and `also` may be written bare |
 | `after` | optional (dsl 0.25.0 §3); a scene `after:` formula, with the same meaning: an eligibility conjunct and an edge of the [scenario graph](/connectivity/scene-graph/) |

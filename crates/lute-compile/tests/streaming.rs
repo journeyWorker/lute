@@ -83,7 +83,7 @@ fn branch_state_and_auto_injection_use_ordinary_compiler() {
     let mut compiler = ContinuationCompiler::new(input(&prefix), IdentityTemplates::default())
         .expect("valid scene template");
 
-    let body = "::auto{character=\"marina\" action=\"fade-in-up\"}\n\
+    let body = "::auto{character=\"marina\" action=\"fadeInUp\"}\n\
                 <branch id=\"route\">\n\
                 <choice id=\"left\" label=\"Left\">\n\
                 @marina{code=\"0010\"}: Left.\n\

@@ -413,7 +413,7 @@ fn trace_accepts_an_agreeing_or_absent_file_key() {
 
 /// #32 / T2.5: the entrance and the exit are the same construct with the same
 /// attribute names, and the entire difference is which of `brace` and
-/// `go-under` appears in a list in another file. `trace` printed both as
+/// `goUnder` appears in a list in another file. `trace` printed both as
 /// `<auto>`. wake.lute's LAST line is the corpus's single declared exit.
 #[test]
 fn trace_marks_an_exiting_auto_as_an_exit() {

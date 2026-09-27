@@ -333,7 +333,7 @@
 <pre><span class="sig">@</span><span class="tag">marina</span>{<span class="atk">emotion</span>=<span class="str">"shy"</span> <span class="atk">code</span>=<span class="str">"0075"</span>}: <span class="txt">…누구세요?</span>
 <span class="sig">@</span><span class="tag">fixer</span>{<span class="flg">mono</span>}: <span class="txt">조심스럽게 접근해야겠군.</span>
 <span class="sig">@</span><span class="tag">halsin</span>{<span class="flg">os</span>}: <span class="txt">(문 너머) 우리를 안쪽 숲으로.</span>
-<span class="sig">::</span><span class="tag">auto</span>{<span class="atk">character</span>=<span class="str">"marina"</span> <span class="atk">action</span>=<span class="str">"fade-in-up"</span>}</pre>
+<span class="sig">::</span><span class="tag">auto</span>{<span class="atk">character</span>=<span class="str">"marina"</span> <span class="atk">action</span>=<span class="str">"fadeInUp"</span>}</pre>
         </div>
       </div>
 
@@ -389,7 +389,7 @@
   <span class="tag">character</span>: { <span class="atk">members</span>: [shadowheart, halsin, player] }
   <span class="tag">location</span>:  { <span class="atk">members</span>: [camp, grove, moonrise] }
 <span class="atk">enums</span>:
-  <span class="tag">action</span>: [fade-in-up, wave, bow]        <span class="com"># 작가가 정의하는 어휘</span>
+  <span class="tag">action</span>: [fadeInUp, wave, bow]        <span class="com"># 작가가 정의하는 어휘</span>
 <span class="atk">relations</span>:
   <span class="tag">atLocation</span>: { <span class="atk">args</span>: [character, location], <span class="atk">tier</span>: run, <span class="atk">key</span>: [0] }
   <span class="tag">canReach</span>:   { <span class="atk">args</span>: [character, location], <span class="atk">derive</span>: true }

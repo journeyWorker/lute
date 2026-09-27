@@ -685,6 +685,7 @@ fn compile_inner(
         clock: folded.env.clock.clone(),
         gates: seam_gates(&folded, &table),
         terminal: folded.env.terminal.as_deref().map(|t| seam_cel(t, &table)),
+        terminal_persists: folded.env.terminal_persists,
         // dsl 0.27.0 §5: `live` expands like a beat `when`.
         seasons: folded
             .env

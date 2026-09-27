@@ -35,7 +35,7 @@ state:
 
 ::bg{location="family_restaurant" time="evening" assetId="BG.space.family_restaurant.interior.evening"}
 ::music{action="start" mood="bright" assetId="sound-bgm-common-vn-mood-bright-0.mp3" volume="normal"}
-::auto{character="marina" anchor="center" action="fade-in-up"}
+::auto{character="marina" anchor="center" action="fadeInUp"}
 
 @marina{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
 @marina{code="0020" emotion="content" variant="0"}: Let me show you how I take an order. Watch the rhythm.

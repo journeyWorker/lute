@@ -103,7 +103,7 @@ fn share_needs_a_written_spending_once() {
     assert!(
         beat_attr(&bad)
             .iter()
-            .any(|d| d.message.contains("must be a key")),
+            .any(|d| d.message.contains("key `sol warm` is not an identifier")),
         "{:#?}",
         beat_attr(&bad)
     );

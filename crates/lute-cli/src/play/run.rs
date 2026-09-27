@@ -227,11 +227,20 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                 if ended_game {
                     notes.push(terminal_note(&s));
                 } else if matches!(body, StepBody::NewRun { .. }) {
-                    notes.push(format!(
-                        "the game is still over after the new run — `terminal: {}` holds, so \
-                         the engine raises no occasion",
-                        terminal_text(&s)
-                    ));
+                    notes.push(if s.project().index.terminal_persists {
+                        format!(
+                            "the game is over for good — the new run does not reopen it: \
+                             `terminal: {}` holds and persists (`persists: true`), so the engine \
+                             raises no occasion",
+                            terminal_text(&s)
+                        )
+                    } else {
+                        format!(
+                            "the game is still over after the new run — `terminal: {}` holds, so \
+                             the engine raises no occasion",
+                            terminal_text(&s)
+                        )
+                    });
                 }
             }
             steps.push(StepRecord {
@@ -297,9 +306,17 @@ fn terminal_text<'s>(s: &'s Session<'_>) -> &'s str {
 }
 
 /// dsl 0.27.0 §4: the note on the step after which `terminal:` holds. A new
-/// run plays on — unless the condition reads state a new run keeps.
+/// run plays on — unless the ending persists (`persists: true`, over for
+/// good), or the condition reads state a new run keeps.
 fn terminal_note(s: &Session<'_>) -> String {
     let terminal = terminal_text(s);
+    if s.project().index.terminal_persists {
+        return format!(
+            "the game is over for good — `terminal: {terminal}` holds and persists (`persists: \
+             true`), so the engine raises no occasion from here, in this run or any later one \
+             (`occasion:` / `advance:` steps are refused; a new run does not reopen it)"
+        );
+    }
     let after = match lute_trace::exec::seam::persistent_read(terminal) {
         Some(read) => {
             format!("it still holds after a new run: it reads `{read}`, which a new run keeps")

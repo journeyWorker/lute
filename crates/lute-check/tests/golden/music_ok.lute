@@ -14,4 +14,4 @@ title: Music cue
 
 @narrator: The loop settles into something almost pleasant.
 
-::music{action="fade-out"}
+::music{action="fadeOut"}

@@ -396,7 +396,7 @@ fn substitute(raw: &str, args: &BTreeMap<String, String>) -> String {
             continue;
         };
         let indexed = s > 0 && b[s - 1] == b'[' && b.get(e) == Some(&b']');
-        let member = is_ident(text) && !text.contains('-');
+        let member = lute_manifest::ident::is_ident(text);
         if indexed && member {
             out.replace_range(s - 1..e + 1, &format!(".{text}"));
         } else {

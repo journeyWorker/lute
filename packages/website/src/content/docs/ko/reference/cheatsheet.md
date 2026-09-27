@@ -176,7 +176,7 @@ state:                                   # scalar only: number | bool | string |
   app.rating:   { type: { enum: [teen, adult] }, default: teen }
 enums:                                   # content vocabulary: you declare every member
   emotion: [neutral, happy, worried]
-  action:  { members: [fade-in-up, fade-out-down], exits: [fade-out-down] }
+  action:  { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor:  { members: [left, center, right], default: center }
   weekday: { members: [mon, tue], labels: { mon: Monday, tue: Tuesday } }   # labels: 0.24.0
 entities:
@@ -287,11 +287,11 @@ id: diner.night
 pov: fixer
 enums:
   emotion: [neutral, happy]
-  action: { members: [fade-in-up, fade-out-down], exits: [fade-out-down] }
+  action: { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor: { members: [left, center, right], default: center }
   mood: [peaceful]
   volume: [down, normal]
-  musicAction: [start, fade-out]
+  musicAction: [start, fadeOut]
   vfxType: [whiteOut]
 state:
   run.affection: { type: number, default: 0 }
@@ -301,7 +301,7 @@ state:
 
 ::bg{location="diner" time="night"}
 ::music{action="start" mood="peaceful" volume="down"}
-::auto{character="mira" anchor="center" action="fade-in-up"}
+::auto{character="mira" anchor="center" action="fadeInUp"}
 ::camera{focus="mira" zoom="1.2" duration="0.5" wait="true"}
 @narrator: The diner hums.
 @mira{code="0010" emotion="happy"}: You're back, {{userName}}! Warmth: {{run.affection}}.
@@ -314,7 +314,7 @@ state:
 ::sfx{sound="door bell"}
 ::vfx{type="whiteOut"}
 ::clear
-::music{action="fade-out"}
+::music{action="fadeOut"}
 ::end{reason="closing"}
 ```
 
@@ -629,7 +629,11 @@ rules:
 0.26.0부터 가드가 enum 경로, `occasion.target`, 퀘스트의 `state` / `failedBy`와 비교하는 문자열(`==`, `!=`,
 `in [...]`의 원소)은 그 멤버여야 합니다. `run.rank == 'silvr'`는 `is="silvr"`처럼
 `E-WHEN-LITERAL-DOMAIN`이며, 비슷한 이름을 제안합니다.
-경로 세그먼트, def 이름, 파라미터 이름에는 `-`를 쓸 수 없습니다.
+0.29.0: 작가가 쓰는 모든 이름은 **식별자**입니다. 글자로 시작하고 글자, 숫자, `_`로 이어지며,
+점으로 이은 id는 식별자를 `.`으로 잇습니다. 씬·비트·엔트리·퀘스트·objective·branch·허브·choice·mark
+id, 문서 id의 각 부분, `share` 키, 시즌, relation, def, enum과 엔티티 종류와 그 멤버, 컴포넌트
+파라미터, 플러그인이 선언하는 계기와 이벤트가 모두 그렇습니다. 이름에 `-`가 있으면 그 자리의
+코드로 오류가 나고, camelCase 철자를 알려 줍니다(`lamp-duty` → `lampDuty`).
 
 CEL이 들어가는 곳: `<match on>`, `<when test>`, 줄이나 선택지의 `when=`, `::set`의 우변과 `when=`,
 그것을 받는 다른 디렉티브의 `when=`(0.26.0), `::next when`, 비트 `when:`, 엔트리 `when=`, 퀘스트 `start` / `fail`, 목표 `done` / `by` / `until` /
@@ -718,7 +722,7 @@ state:
 
 번들 비트는 `id`, `on`, `target`, `title`, `when`, `priority`, `once`, `also`, 그리고 0.25.0부터 `after`와
 `share`를 받고, 본문은 씬 본문(대사, branch, 허브, match, 디렉티브)입니다. 문서에는 `id:`가 있어야 하고, 비트
-`id`는 `-`가 없는 식별자이며, 비트의 정식 id는 `<문서 id>.<비트 id>`(`cafe.talks.miraOrder`)입니다.
+`id`는 식별자이며, 비트의 정식 id는 `<문서 id>.<비트 id>`(`cafe.talks.miraOrder`)입니다.
 `lute play`, `presented:`, `visited('cafe.talks.miraOrder')`, `lute trace --beat`가 이 id를 씁니다. 씬
 비트처럼 동작합니다: `once`의 기본값은 `run`이고, 제시되면 소진됩니다. 0.24.0부터는 씬이나 퀘스트가 번들 비트를
 선행 조건으로 쓸 수 있고(`after: visited('cafe.talks.miraOrder')`), 0.25.0부터는 비트 자신의 `after="…"`가 씬의
@@ -887,6 +891,10 @@ when: "clock.weekday < 5"
   성립하면 플레이는 `── end: terminal — …`로 끝나며(`--json` `"end": "terminal"`), 그 뒤의 `occasion:` /
   `advance:` 스텝은 `newRun` 전까지 `E-OCCASION-GATE`입니다. `occasion:` 스텝은 발생 전에 적용되는
   `engine:` 쓰기를 가질 수 있습니다.
+- 0.29.0: 의도적으로 런을 넘어 남는 결말(로그라이크의 영구 결말)은 긴 형식
+  `terminal: { when: "user.crowned", persists: true }`로 씁니다: `W-TERMINAL-PERSISTENT`는 나오지 않고,
+  `lute play`는 `newRun`을 권하는 대신 게임이 영영 끝났다고 말하며, IR은 `terminalPersists: true`를
+  싣습니다. 런 상태만 읽는 조건에 쓴 `persists: true`는 `E-META-VALUE`입니다.
 
 함께 나온 기능으로, 시계가 없어도 쓸 수 있습니다: enum 라벨, 정수 `%`, 가드 달린 `::set`, `:ordinal` 힌트.
 
@@ -1610,16 +1618,16 @@ state:
 kind: scene
 id: dock.night
 enums:
-  action: { members: [fade-in-up, fade-out-down], exits: [fade-out-down] }
+  action: { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor: { members: [left, center, right], default: center }
 ---
 
 ## Dock
 
-::auto{character="mira" action="fade-in-up"}
+::auto{character="mira" action="fadeInUp"}
 @mira: Over here.
 ::bg{location="street" time="night"}
-::auto{character="mira" action="fade-in-up"}
+::auto{character="mira" action="fadeInUp"}
 @mira: Keep walking.
 ```
 

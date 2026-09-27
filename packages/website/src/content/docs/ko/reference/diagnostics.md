@@ -687,7 +687,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-META-ID
 
-문서의 `id:` 프런트매터 값이 비어 있거나 `[A-Za-z0-9_.-]+` 범위를 벗어난 문자를 포함합니다.
+문서의 `id:` 프런트매터 값이 점으로 이은 id가 아닙니다. id는 식별자(글자로 시작하고 글자, 숫자, `_`로 이어지는 이름)를 `.`으로 이은 것입니다.
+
+명세: [dsl 0.29.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
 ### E-META-MISSING
 
@@ -705,9 +707,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-META-VALUE
 
-프런트매터 값의 형태가 잘못되었습니다 — 잘못된 `extra:` 매핑이나 키, 식별자가 아닌 `series:`, 잘못된 `cast:`/`enums:`/`terminal:` 항목, 또는 잘못된 `effects:` 플래그입니다.
+프런트매터 값의 형태가 잘못되었습니다 — 잘못된 `extra:` 매핑이나 키, 식별자가 아닌 `series:`, 잘못된 `cast:`/`enums:`/`terminal:` 항목(`terminal:` 긴 형식에서 `when`/`persists` 외의 키, 또는 `true`/`false`가 아닌 `persists`), run 상태만 읽는 `terminal:`에 쓴 `persists: true`(그 결말은 run을 넘어 남을 수 없음), 또는 잘못된 `effects:` 플래그입니다.
 
-명세: [dsl 0.15.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md), [dsl 0.19.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md), [dsl 0.23.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
+명세: [dsl 0.15.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md), [dsl 0.19.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md), [dsl 0.23.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.29.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
 ### E-MISSING-ATTR
 
@@ -785,9 +787,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PATH-IDENT
 
-점으로 구분된 상태 경로에서 선행 tier 이후 세그먼트에 하이픈이 포함되어 있는데, 이는 해당 위치에서 유효한 식별자 문자가 아닙니다.
+식별자(글자로 시작하고 글자, 숫자, `_`로 이어지는 이름)여야 하는 이름이 식별자가 아닙니다: 상태 경로 세그먼트, quest·objective·entry·branch·hub·choice·mark id, def와 def 파라미터, relation·enum·엔티티 종류 이름, enum·엔티티 멤버.
 
-명세: [dsl §8.4](/spec/)
+명세: [dsl 0.29.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md), [dsl §8.4](/spec/)
 
 ### E-PERMISSION-BRIDGE
 
@@ -1497,9 +1499,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-CHAPTER-STALL
 
-프로젝트 `chapters:`의 체인에 나열된 장면의 자체 `when:`이 영영 거짓으로 남을 수 있습니다. 이야기가 끝내 쓰지 않을 수도 있는 state를 읽거나, 닫히는 시계 창을 읽는 경우입니다. 체인의 계기가 raise되는 어느 순간에도 맞지 않는 `when`(실행이 시작된 날이 필요한 `dayStart` 체인의 장면. 단, 엔진이 거기서 raise하므로 시계가 `raiseAtStart: true`를 선언했다면 제외)이나, 앞 장면이 늦게 재생된 뒤로는 이후 어떤 raise도 맞추지 못하는 `when`(끝나는 시계의 마지막 날의 슬롯)이 여기에 해당합니다. 그리고 다음 장면의 `after:`(체인이 쓴 것이든 장면이 직접 쓴 것이든)가 그 장면을 기다리므로, 장이 거기서 멈출 수 있습니다. 이후의 raise가 여전히 맞추는 시계 조건은 체인을 늦출 뿐이고, 다른 `owner: engine` state에 대한 조건은 엔진이 참으로 만들 몫이라 둘 다 보고하지 않습니다. 그 장면을 건너뛰어도 된다면 다음 장면이 그 앞 장면을 따르게 하세요(`after: visited("<앞 장면>")`; 건너뛸 수 있는 장면은 우선순위가 높아서 조건이 맞으면 여전히 먼저 재생됩니다). 반드시 재생되어야 한다면 이야기가 그 조건을 참으로 만들도록 하거나, 그 `when`이 이후의 raise에서도 참이 되게 하세요.
+프로젝트 `chapters:`의 체인에 나열된 장면의 자체 `when:`이 영영 거짓으로 남을 수 있습니다. 이야기가 끝내 쓰지 않을 수도 있는 state를 읽거나, 닫히는 시계 창을 읽는 경우입니다. 체인의 계기가 raise되는 어느 순간에도 맞지 않는 `when`(실행이 시작된 날이 필요한 `dayStart` 체인의 장면. 단, 엔진이 거기서 raise하므로 시계가 `raiseAtStart: true`를 선언했다면 제외)이나, 앞 장면이 늦게 재생된 뒤로는 이후 어떤 raise도 맞추지 못하는 `when`(끝나는 시계의 마지막 날의 슬롯)이 여기에 해당합니다. 그리고 다음 장면의 `after:`(체인이 쓴 것이든 장면이 직접 쓴 것이든)가 그 장면을 기다리므로, 장이 거기서 멈출 수 있습니다. 이후의 raise가 여전히 맞추는 시계 조건은 체인을 늦출 뿐이고, 다른 `owner: engine` state에 대한 조건은 엔진이 참으로 만들 몫이라 둘 다 보고하지 않습니다. 멈추는 것은 체인뿐입니다. `chapters:` 밖의 장면에 직접 쓴 `after:`는 그 자체가 "그 장면을 기다린다"는 진술이므로 경고하지 않습니다. 그 장면을 건너뛰어도 된다면 다음 장면이 그 앞 장면을 따르게 하세요(`after: visited("<앞 장면>")`; 건너뛸 수 있는 장면은 우선순위가 높아서 조건이 맞으면 여전히 먼저 재생됩니다). 반드시 재생되어야 한다면 이야기가 그 조건을 참으로 만들도록 하거나, 그 `when`이 이후의 raise에서도 참이 되게 하세요.
 
-명세: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.29.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
 ### W-CODE-AFTER-END
 
@@ -1713,9 +1715,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-TERMINAL-PERSISTENT
 
-스키마의 `terminal:`이 새 run이 유지하는 상태(`visited(…)`, `user.*`, `app.*`, `entry.<id>.everRead`, user tier 퀘스트나 relation)를 읽습니다. 한 번 성립하면 어떤 새 run도 이어서 플레이할 수 없습니다.
+스키마의 `terminal:`이 새 run이 유지하는 상태(`visited(…)`, `user.*`, `app.*`, `entry.<id>.everRead`, user tier 퀘스트나 relation)를 읽습니다. 한 번 성립하면 어떤 새 run도 이어서 플레이할 수 없습니다. 결말이 의도적으로 run을 넘어 남는다면(로그라이크의 영구 결말) `terminal: { when: "<condition>", persists: true }`로 그렇다고 적으면 경고가 사라집니다.
 
-명세: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.29.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
 ### W-TEXT-BRACKET-LABEL
 

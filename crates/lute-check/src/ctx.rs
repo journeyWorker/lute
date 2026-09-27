@@ -88,6 +88,9 @@ pub struct Env {
     /// (several declarations joined by `||`) — `None` without one. While it
     /// holds the engine raises no occasion ([`crate::gates`]).
     pub terminal: Option<String>,
+    /// Every `terminal:` declaration says `persists: true`: the ending
+    /// outlives runs on purpose, so a new run does not reopen the game.
+    pub terminal_persists: bool,
     /// dsl 0.27.0 §5: the project's declared seasons (imports', then a
     /// schema document's own).
     pub seasons: crate::season::Seasons,

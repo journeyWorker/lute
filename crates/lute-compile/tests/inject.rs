@@ -73,7 +73,7 @@ fn anchor_and_preload_inject_after_authored_auto() {
     // entry-emotion-lookahead, each a separate record AFTER the authored
     // sprite (§4.5 worked example).
     let (recs, _) = walk(
-        "::auto{character=\"marina\" action=\"fade-in-up\"}\n@marina{emotion=\"surprised\"}: Oh!",
+        "::auto{character=\"marina\" action=\"fadeInUp\"}\n@marina{emotion=\"surprised\"}: Oh!",
     );
     let sprites: Vec<String> = recs.iter().filter_map(|r| sprite_desc(&r.cmd)).collect();
     assert_eq!(
@@ -97,8 +97,8 @@ fn anchor_and_preload_inject_after_authored_auto() {
 
 #[test]
 fn pos_reset_injects_before_the_plain_line() {
-    let body = "::auto{character=\"marina\" anchor=\"center\" action=\"fade-in-up\"}\n\
-@marina{emotion=\"delighted\" action=\"pose-lean\"}: A!\n\
+    let body = "::auto{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
+@marina{emotion=\"delighted\" action=\"poseLean\"}: A!\n\
 @marina: B.";
     let (recs, _) = walk(body);
     let kinds: Vec<&str> = recs
@@ -123,7 +123,7 @@ fn pos_reset_injects_before_the_plain_line() {
 
 #[test]
 fn scene_change_hides_lingering_sprites_before_the_bg() {
-    let body = "::auto{character=\"marina\" anchor=\"center\" action=\"fade-in-up\"}\n\
+    let body = "::auto{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
 ::bg{location=\"street\" time=\"evening\"}";
     let (recs, state) = walk(body);
     let kinds: Vec<&str> = recs
@@ -157,15 +157,15 @@ fn branch_arms_fork_from_entry_state_and_join_conservatively() {
     // the join drops marina).
     let body = r#"<branch id="fork">
   <choice id="a" label="A">
-    ::auto{character="marina" action="fade-in-up"}
+    ::auto{character="marina" action="fadeInUp"}
     @marina{emotion="surprised"}: Oh!
   </choice>
   <choice id="b" label="B">
-    ::auto{character="marina" action="fade-in-up"}
+    ::auto{character="marina" action="fadeInUp"}
     @marina{emotion="delighted"}: Ha!
   </choice>
 </branch>
-::auto{character="marina" action="fade-in-up"}"#;
+::auto{character="marina" action="fadeInUp"}"#;
     let (recs, _) = walk(body);
     let anchors: Vec<usize> = recs
         .iter()
@@ -189,10 +189,10 @@ fn arm_end_entrance_preloads_post_convergence_emotion() {
     // never consulted.
     let body = r#"<branch id="fork">
   <choice id="a" label="A">
-    ::auto{character="marina" action="fade-in-up"}
+    ::auto{character="marina" action="fadeInUp"}
   </choice>
   <choice id="b" label="B">
-    ::auto{character="marina" action="fade-in-up"}
+    ::auto{character="marina" action="fadeInUp"}
   </choice>
 </branch>
 @marina{emotion="surprised"}: Oh!"#;
@@ -259,7 +259,7 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
     // the join must carry marina AND union her dirty flag — so the next plain
     // line still fires `auto-pose-reset`. Under the old intersection merge the
     // flag was dropped and the reset silently lost.
-    let body = r#"::auto{character="marina" anchor="left" action="fade-in-up"}
+    let body = r#"::auto{character="marina" anchor="left" action="fadeInUp"}
 <branch id="fork">
   <choice id="a" label="A">
     @marina{variant="closeup"}: Hm.
@@ -294,8 +294,8 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
 /// prints); the IR itself is the exits alone.
 #[test]
 fn clear_lowers_to_one_exit_per_character_on_stage() {
-    let body = "::auto{character=\"marina\" anchor=\"left\" action=\"fade-in-up\"}\n\
-::auto{character=\"kenshi\" anchor=\"right\" action=\"fade-in-up\"}\n\
+    let body = "::auto{character=\"marina\" anchor=\"left\" action=\"fadeInUp\"}\n\
+::auto{character=\"kenshi\" anchor=\"right\" action=\"fadeInUp\"}\n\
 @marina: Both of us.\n\
 ::clear\n\
 @narrator: Empty.";
@@ -352,8 +352,7 @@ fn join_unions_dirty_but_only_over_carried_characters() {
     b.on_stage.insert("marina".into(), sprite(None));
     // A char DROPPED at the join (differing SpriteState) must NOT be
     // resurrected into `dirty`, even though an arm marked it dirty.
-    a.on_stage
-        .insert("kenshi".into(), sprite(Some("pose-lean")));
+    a.on_stage.insert("kenshi".into(), sprite(Some("poseLean")));
     a.dirty.insert("kenshi".into());
     b.on_stage.insert("kenshi".into(), sprite(None));
 

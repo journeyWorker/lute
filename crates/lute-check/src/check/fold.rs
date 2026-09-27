@@ -470,6 +470,7 @@ pub fn fold_env(
     // dsl 0.23.0 §4: every bundle `<beat>`'s shape, id, and occasion.
     fold_diags.extend(crate::bundles::check_bundle_beats(
         typed.id.as_deref(),
+        lute_manifest::yaml_text::key_span(&doc.meta.raw_yaml, &["id"]).is_some(),
         &doc.beats,
         &input.snapshot.occasions,
     ));
@@ -780,14 +781,21 @@ pub fn fold_env(
 
     // dsl 0.27.0 §4: the project's `terminal:` — its imports' and, for a
     // schema document, its own; the game is over when any of them holds.
-    let terminal = crate::gates::combine_terminal(
-        input
-            .imports
-            .terminal
-            .iter()
-            .map(|(_, raw, _)| raw.as_str())
-            .chain(typed.terminal.as_ref().map(|t| t.raw.as_str())),
-    );
+    // It persists when every declaration says its ending outlives runs.
+    let terminal_decls: Vec<(&str, bool)> = input
+        .imports
+        .terminal
+        .iter()
+        .map(|t| (t.when.as_str(), t.persists.is_yes()))
+        .chain(
+            typed
+                .terminal
+                .as_ref()
+                .map(|t| (t.when.raw.as_str(), t.persists.is_yes())),
+        )
+        .collect();
+    let terminal = crate::gates::combine_terminal(terminal_decls.iter().map(|(w, _)| *w));
+    let terminal_persists = terminal.is_some() && terminal_decls.iter().all(|(_, p)| *p);
     // dsl 0.28.0 (T3-45): a declared path that is also another's prefix — at
     // this document's own `state:` key, else at the schema that declares it.
     let declared = |path: &str| {
@@ -892,6 +900,7 @@ pub fn fold_env(
         domains: domains.clone(),
         clock,
         terminal,
+        terminal_persists,
         seasons,
         occasion_scopes,
     };

@@ -651,7 +651,7 @@ fn default_anchor(domains: &BTreeMap<String, Domain>) -> Option<&str> {
 }
 
 /// Whether `action` is a declared exit member of the resolved `action` domain
-/// (dsl 0.9.0 D-D) — replaces the `fade-out*`/`exit*`/`hide` prefix heuristic
+/// (dsl 0.9.0 D-D) — replaces the `fadeOut*`/`exit*`/`hide` prefix heuristic
 /// that this crate and `lute-compile` each carried a hand-synced copy of.
 /// Named for what it now asks (a lookup in declared data), not for the rule it
 /// replaced.
@@ -737,7 +737,7 @@ pub const W_EXIT_INERT: &str = "W-EXIT-INERT";
 /// there is no `--allow` and no in-source acknowledgement (`0.6.1 §6`,
 /// untouched) — so a warning added here must not repeat that defect. The
 /// second remedy is also the argument for keeping the warning at all: if a
-/// project declares `go-under` an exit, then in that project `go-under` MEANS
+/// project declares `goUnder` an exit, then in that project `goUnder` MEANS
 /// exit, and a pose sharing the name is ambiguous by construction. The
 /// ambiguity lives in the vocabulary, which is where it is fixed.
 fn exit_inert_diag(speaker: &str, action: &str, span: Span) -> Diagnostic {
@@ -1081,9 +1081,9 @@ mod tests {
         st.dirty.insert("marina".into());
         let exit = auto(vec![
             attr("character", "marina"),
-            attr("action", "fade-out-down"),
+            attr("action", "fadeOutDown"),
         ]);
-        // The shipped test vocabulary declares `fade-out-down` an exit, which is
+        // The shipped test vocabulary declares `fadeOutDown` an exit, which is
         // what this test always meant by it.
         let (st2, injected) = lower_node(st, &exit, &[], &lute_test_vocab::test_domains());
         assert!(injected.is_empty(), "the ::auto is itself the hide");
@@ -1115,25 +1115,25 @@ mod tests {
     #[test]
     fn declared_exits_match_the_former_heuristic() {
         fn former_heuristic(action: &str) -> bool {
-            action.starts_with("fade-out") || action.starts_with("exit") || action == "hide"
+            action.starts_with("fadeOut") || action.starts_with("exit") || action == "hide"
         }
         let members = [
-            "fade-in-up",
-            "fade-in-slow",
-            "slide-in-left",
-            "walk-in",
+            "fadeInUp",
+            "fadeInSlow",
+            "slideInLeft",
+            "walkIn",
             "idle",
             "wave",
             "sway",
             "lean",
-            "pose-turn",
-            "pose-lean",
-            "fade-out",
-            "fade-out-down",
-            "fade-out-slow",
+            "poseTurn",
+            "poseLean",
+            "fadeOut",
+            "fadeOutDown",
+            "fadeOutSlow",
             "hide",
         ];
-        let declared_exits = ["fade-out", "fade-out-down", "fade-out-slow", "hide"];
+        let declared_exits = ["fadeOut", "fadeOutDown", "fadeOutSlow", "hide"];
         for m in members {
             assert_eq!(
                 declared_exits.contains(&m),
@@ -1189,7 +1189,7 @@ mod tests {
     }
 
     /// Exit detection follows `exits:`, so a vocabulary that does not use the
-    /// `fade-out*` convention still works.
+    /// `fadeOut*` convention still works.
     #[test]
     fn exit_follows_declared_exits() {
         let doms = anchor_domain("middle");
@@ -1305,7 +1305,7 @@ mod tests {
         m.insert(
             "action".to_string(),
             Domain {
-                members: vec!["brace".into(), "drift".into(), "go-under".into()],
+                members: vec!["brace".into(), "drift".into(), "goUnder".into()],
                 open: false,
                 default: None,
                 exits: exits.iter().map(|s| (*s).to_string()).collect(),
@@ -1330,8 +1330,8 @@ mod tests {
     /// from the stage. The two-event form is what does.
     #[test]
     fn content_line_exit_action_warns_inert() {
-        let doms = action_domain_with_exits(&["go-under"]);
-        let line = line_with_action("vesna", "go-under");
+        let doms = action_domain_with_exits(&["goUnder"]);
+        let line = line_with_action("vesna", "goUnder");
         let (st2, _emit) = lower_node(staged("vesna"), &line, &[], &doms);
         let d = st2
             .diags
@@ -1351,8 +1351,8 @@ mod tests {
     /// and §12.3 removes a code in this same release for exactly that defect.
     #[test]
     fn exit_inert_message_names_both_remedies() {
-        let doms = action_domain_with_exits(&["go-under"]);
-        let line = line_with_action("vesna", "go-under");
+        let doms = action_domain_with_exits(&["goUnder"]);
+        let line = line_with_action("vesna", "goUnder");
         let (st2, _emit) = lower_node(staged("vesna"), &line, &[], &doms);
         let m = &st2
             .diags
@@ -1374,7 +1374,7 @@ mod tests {
     /// is the overwhelmingly common case and it is not the finding.
     #[test]
     fn content_line_non_exit_action_is_silent() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let line = line_with_action("vesna", "brace");
         let (st2, _emit) = lower_node(staged("vesna"), &line, &[], &doms);
         assert!(
@@ -1388,7 +1388,7 @@ mod tests {
     #[test]
     fn no_declared_exits_means_no_warning() {
         let doms = action_domain_with_exits(&[]);
-        let line = line_with_action("vesna", "go-under");
+        let line = line_with_action("vesna", "goUnder");
         let (st2, _emit) = lower_node(staged("vesna"), &line, &[], &doms);
         assert!(st2.diags.is_empty(), "got {:?}", st2.diags);
     }
@@ -1398,14 +1398,14 @@ mod tests {
     /// message names this remedy, so the remedy must work.
     #[test]
     fn exit_inert_discharged_by_the_two_event_form() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let look = [auto(vec![
             attr("character", "vesna"),
-            attr("action", "go-under"),
+            attr("action", "goUnder"),
         ])];
         let (st2, _emit) = lower_node(
             staged("vesna"),
-            &line_with_action("vesna", "go-under"),
+            &line_with_action("vesna", "goUnder"),
             &look,
             &doms,
         );
@@ -1420,20 +1420,20 @@ mod tests {
     /// exit written later is not this line's departure.
     #[test]
     fn exit_inert_still_fires_when_the_speaker_carries_on() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let look = [
             line("vesna", vec![]),
-            auto(vec![attr("character", "vesna"), attr("action", "go-under")]),
+            auto(vec![attr("character", "vesna"), attr("action", "goUnder")]),
         ];
         let (st2, _emit) = lower_node(
             staged("vesna"),
-            &line_with_action("vesna", "go-under"),
+            &line_with_action("vesna", "goUnder"),
             &look,
             &doms,
         );
         assert!(
             st2.diags.iter().any(|d| d.code == "W-EXIT-INERT"),
-            "`go-under` here is a pose, not a departure; got {:?}",
+            "`goUnder` here is a pose, not a departure; got {:?}",
             st2.diags
         );
     }
@@ -1453,10 +1453,10 @@ mod tests {
     /// exit earlier in the walk, with no intervening show.
     #[test]
     fn line_after_a_declared_exit_warns_absent() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let (st, _) = lower_node(
             staged("vesna"),
-            &auto_with_action("vesna", "go-under"),
+            &auto_with_action("vesna", "goUnder"),
             &[],
             &doms,
         );
@@ -1473,14 +1473,14 @@ mod tests {
     /// character already off stage — the double exit T2.4 measured.
     #[test]
     fn second_declared_exit_warns_absent() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let (st, _) = lower_node(
             staged("vesna"),
-            &auto_with_action("vesna", "go-under"),
+            &auto_with_action("vesna", "goUnder"),
             &[],
             &doms,
         );
-        let (st2, _) = lower_node(st, &auto_with_action("vesna", "go-under"), &[], &doms);
+        let (st2, _) = lower_node(st, &auto_with_action("vesna", "goUnder"), &[], &doms);
         assert!(
             st2.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"),
             "two exits with nothing between them; got {:?}",
@@ -1494,7 +1494,7 @@ mod tests {
     /// cannot tell the two absences apart.
     #[test]
     fn a_never_shown_character_speaking_is_silent() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let (st2, _) = lower_node(StageState::default(), &plain_line("vesna"), &[], &doms);
         assert!(
             st2.diags.is_empty(),
@@ -1508,10 +1508,10 @@ mod tests {
     /// silent too. Only a SECOND exit is impossible.
     #[test]
     fn a_first_declared_exit_for_a_never_shown_character_is_silent() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let (st2, _) = lower_node(
             StageState::default(),
-            &auto_with_action("vesna", "go-under"),
+            &auto_with_action("vesna", "goUnder"),
             &[],
             &doms,
         );
@@ -1525,10 +1525,10 @@ mod tests {
     /// A re-show clears it: exit, show again, speak — silent.
     #[test]
     fn a_re_show_clears_the_exited_mark() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let (st, _) = lower_node(
             staged("vesna"),
-            &auto_with_action("vesna", "go-under"),
+            &auto_with_action("vesna", "goUnder"),
             &[],
             &doms,
         );
@@ -1555,7 +1555,7 @@ mod tests {
     /// someone who is not there.
     #[test]
     fn a_line_after_a_scene_change_auto_hide_warns_absent() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let (st, hid) = lower_node(staged("vesna"), &bg("hold"), &[], &doms);
         assert!(matches!(
             &hid[..],
@@ -1582,10 +1582,10 @@ mod tests {
     /// the auto-hide ends the absence as it always did.
     #[test]
     fn a_scene_change_keeps_the_exited_mark_and_a_re_show_clears_it() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let (st, _) = lower_node(
             staged("vesna"),
-            &auto_with_action("vesna", "go-under"),
+            &auto_with_action("vesna", "goUnder"),
             &[],
             &doms,
         );
@@ -1610,11 +1610,11 @@ mod tests {
     /// and is recorded as exited (may-absent → warn).
     #[test]
     fn join_keeps_presence_only_when_every_arm_agrees_and_unions_exits() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let entry = staged("vesna");
         let (left, _) = lower_node(
             entry.clone(),
-            &auto_with_action("vesna", "go-under"),
+            &auto_with_action("vesna", "goUnder"),
             &[],
             &doms,
         );
@@ -1640,7 +1640,7 @@ mod tests {
     /// her sprite through the cut), and records the auto-hide.
     #[test]
     fn a_bg_after_a_partial_join_hides_the_maybe_present_character() {
-        let doms = action_domain_with_exits(&["go-under"]);
+        let doms = action_domain_with_exits(&["goUnder"]);
         let entry = StageState::default();
         let shown = staged("pell");
         let joined = StageState::join(&entry, vec![shown, entry.clone()]);

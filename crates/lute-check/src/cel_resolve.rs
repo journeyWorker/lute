@@ -373,12 +373,11 @@ fn hyphenated_path(expr: &Expr, raw: &str) -> Option<(String, String)> {
                 .all(|p| !is_profile_ident_root(&root_of(p)))
             && raw.contains(&glued)
         {
-            let fixed: Vec<String> = glued.split('.').map(crate::cel_paths::one_name).collect();
             let message = format!(
                 "`{glued}` has a `-` in a name, so it reads as `{}`; a name in a state path \
                  cannot contain `-` — write `{}`",
                 parts.join(" - "),
-                fixed.join(".")
+                lute_manifest::ident::camel_case_dotted(&glued)
             );
             return Some((glued, message));
         }

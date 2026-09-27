@@ -46,7 +46,8 @@ pov: fixer
 - `kind: scene` — this file is a scene: dialogue the player sees. The other two kinds are `quest`
   (goals the story tracks) and `lore` (text the game looks up, such as item descriptions).
 - `id` — the scene's name, unique in your project. Other scenes and your tests refer to this scene
-  by it. Letters, digits, `_`, `-` and `.` are allowed; `mira.s01ep01` reads as "Mira, season 1,
+  by it. It is identifiers joined by `.` (an identifier is a letter, then letters, digits or `_`;
+  no `-`: write `doorNotes`, not `door-notes`); `mira.s01ep01` reads as "Mira, season 1,
   episode 1", but any name works (`prologue`, `diner.opening`).
 - `title` — a human-readable title for tools and search.
 - `pov` — the id of the player character (the protagonist the player controls).
