@@ -4,7 +4,7 @@ profiles:
   game:
     plugins: { game.occasions: true }
 defaults:
-  luteVersion: "0.28.1"
+  luteVersion: "0.29.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
   questTier: run
 chapters:

@@ -57,20 +57,24 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.28.0`](docs/proposals/scenario-dsl/0.28.0.md) (one rule per slot, one name per idea: every condition slot and YAML surface checks the same way, reserved names refused where declared, `chapters:` replaces `sequence:`, `<quest follows=>` / `<reward outcome=>` / `<objective visibleWhen=>`, a latching `spentBy`, writable `occasion.target`, `clock.day` / `clock.slot` / `clock.ended`, a hub `<return>`, label forms and number words, `outsideRun:` occasions). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.29.0`](docs/proposals/scenario-dsl/0.29.0.md) (one identifier rule, intent you can state, games as examples: every name an author writes is a letter, then letters, digits or `_`, and a `-` is an error naming the camelCase spelling; `check-project` prints causes first; `W-CHAPTER-STALL` is only for a `chapters:` chain; `lute new scene --occasion` writes `on:`; the `terminal:` long form `{ when, persists: true }` states an ending that outlives runs; the fourteen dogfood games ship under [`docs/examples/games/`](docs/examples/games)). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
 | **writing scenarios, fast** (one page to keep open: every construct, CLI, diagnostics, gotchas) | the spec stack above | the website's [Cheatsheet](https://lute-lang.vercel.app/reference/cheatsheet/) — every snippet on it is compile-checked in CI |
 | **authoring quests** (lifecycle, objectives, subquests, rewards) | [`0.2.0`](docs/proposals/scenario-dsl/0.2.0.md) §6 (quest kind, objectives, lifecycle events) + [`0.14.0`](docs/proposals/scenario-dsl/0.14.0.md) (subquests) + [`0.16.0`](docs/proposals/scenario-dsl/0.16.0.md) (`<reward/>`) + [`0.24.0`](docs/proposals/scenario-dsl/0.24.0.md) §2 (`activate="accept"`, `complete="any"`, `by=` / `until=` deadlines, `failedBy`) + [`0.25.0`](docs/proposals/scenario-dsl/0.25.0.md) §§4–5 (subquest and `start` graph anchors, `accept="external"`) + [`0.27.0`](docs/proposals/scenario-dsl/0.27.0.md) §5 (`rearm=`, `tier="season:<name>"`) + [`0.28.0`](docs/proposals/scenario-dsl/0.28.0.md) §§5–6 (`follows=`, `outcome=`, `visibleWhen=`, `failedBy: subquest`) | [`runtime/quest-lifecycle.md`](docs/runtime/quest-lifecycle.md) |
 | **authoring lore** (item descriptions, found notes, codex pages, barks) | [`0.19.0`](docs/proposals/scenario-dsl/0.19.0.md) (`kind: lore`, `<entry>`, `entry.<id>.read`, document bundles) + [`0.23.0`](docs/proposals/scenario-dsl/0.23.0.md) §4 (scene-like `<beat>` bundles) | [`runtime/lore-entries.md`](docs/runtime/lore-entries.md) |
 | **writing a plugin** (directives, state, providers, bridge, `stampAttrs`, `rewardKinds`, `occasions`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md)–[`0.0.7`](docs/proposals/plugin-system/0.0.7.md) deltas; the `occasions:` export is [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) §2 | [`plugin-system.md`](docs/plugin-system.md) |
-| **building an engine** (consuming the artifact) | [`docs/runtime/`](docs/runtime) — execution model, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol, lore entries, beats and occasions — plus the artifact JSON Schema [`schemas/lute-ir-0.28.schema.json`](schemas/lute-ir-0.28.schema.json) and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
+| **building an engine** (consuming the artifact) | [`docs/runtime/`](docs/runtime) — execution model, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol, lore entries, beats and occasions — plus the artifact JSON Schema [`schemas/lute-ir-0.29.schema.json`](schemas/lute-ir-0.29.schema.json) and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
 | **building the compiler / checker / LSP** | the proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) + [`0.20.0`](docs/proposals/scenario-dsl/0.20.0.md) (what `check-project` proves about fact guards) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
-| **choosing story beats / running `lute play`** | [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) — occasions, scene and entry beats (`on` / `target` / `when` / `priority` / `once`), selection order, and `lute play`'s script and transcript — plus [`0.22.0`](docs/proposals/scenario-dsl/0.22.0.md): `engine:` steps, save seeds, `expect:` assertions, run boundaries, occasion target domains — [`0.23.0`](docs/proposals/scenario-dsl/0.23.0.md): `lute beats` / `lute calendar` overviews, `select: sequence`, `also`, bundle beats — [`0.24.0`](docs/proposals/scenario-dsl/0.24.0.md): a declared clock, `once: day` / `once: slot`, `advance:` / `include:` steps, `judge: before`, `bridges:` answers — [`0.25.0`](docs/proposals/scenario-dsl/0.25.0.md): `share` keys spent together, bundle `<beat after=…>` edges, bridge answers that omit unread fields — [`0.26.0`](docs/proposals/scenario-dsl/0.26.0.md) §§5, 7: `target="kind:<kind>"` beats, `::next` followed by trace/test, `eligible:` for an ineligible beat, `advance: { to: … }` — [`0.27.0`](docs/proposals/scenario-dsl/0.27.0.md) §§3–6, 8: `for="kind:<kind>"`, occasion `payload:`, `raisedWhen:` gates, `terminal:`, a finite clock, `once: week`, `seasons:`, `rearm=`, `spentBy:`, beat templates, the manifest's `sequence:` — and [`0.28.0`](docs/proposals/scenario-dsl/0.28.0.md) §§2–6: the manifest's `chapters:`, a latching `spentBy`, `select: sequence` judged at each turn, `expect.end`, `outsideRun:` occasions | [`runtime/beats-and-occasions.md`](docs/runtime/beats-and-occasions.md); the website's [Playing a story](https://lute-lang.vercel.app/tooling/play/) |
+| **choosing story beats / running `lute play`** | [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) — occasions, scene and entry beats (`on` / `target` / `when` / `priority` / `once`), selection order, and `lute play`'s script and transcript — plus [`0.22.0`](docs/proposals/scenario-dsl/0.22.0.md): `engine:` steps, save seeds, `expect:` assertions, run boundaries, occasion target domains — [`0.23.0`](docs/proposals/scenario-dsl/0.23.0.md): `lute beats` / `lute calendar` overviews, `select: sequence`, `also`, bundle beats — [`0.24.0`](docs/proposals/scenario-dsl/0.24.0.md): a declared clock, `once: day` / `once: slot`, `advance:` / `include:` steps, `judge: before`, `bridges:` answers — [`0.25.0`](docs/proposals/scenario-dsl/0.25.0.md): `share` keys spent together, bundle `<beat after=…>` edges, bridge answers that omit unread fields — [`0.26.0`](docs/proposals/scenario-dsl/0.26.0.md) §§5, 7: `target="kind:<kind>"` beats, `::next` followed by trace/test, `eligible:` for an ineligible beat, `advance: { to: … }` — [`0.27.0`](docs/proposals/scenario-dsl/0.27.0.md) §§3–6, 8: `for="kind:<kind>"`, occasion `payload:`, `raisedWhen:` gates, `terminal:`, a finite clock, `once: week`, `seasons:`, `rearm=`, `spentBy:`, beat templates, the manifest's `sequence:` — [`0.28.0`](docs/proposals/scenario-dsl/0.28.0.md) §§2–6: the manifest's `chapters:`, a latching `spentBy`, `select: sequence` judged at each turn, `expect.end`, `outsideRun:` occasions — and [`0.29.0`](docs/proposals/scenario-dsl/0.29.0.md) §§3–5: `W-CHAPTER-STALL` only for a chain, `lute new scene --occasion` writing `on:`, the `terminal:` long form `{ when, persists: true }` | [`runtime/beats-and-occasions.md`](docs/runtime/beats-and-occasions.md); the website's [Playing a story](https://lute-lang.vercel.app/tooling/play/) |
 | **configuring lints** | [`specs/2026-08-26-lute-lint-system-design.md`](docs/superpowers/specs/2026-08-26-lute-lint-system-design.md) — `lute.lint.yaml`, rule levels, project-local `custom:` rules | [`docs/linting.md`](docs/linting.md) |
 
 Worked examples:
 
+- [`docs/examples/games/`](docs/examples/games) — fourteen complete games (a detective mystery,
+  a roguelike, an otome dating sim, a creature collector, a live-service gacha and more), each
+  with a README saying what it shows of the language and how to run it; CI checks every one
+  with `lute check-project --deny-warnings`.
 - [`docs/examples/haven/`](docs/examples/haven) — a whole small project: scenes, quests, lore
   entries, a shared world schema, and a component.
 - [`docs/examples/marina-s01ep02.lute`](docs/examples/marina-s01ep02.lute) — linear episode faithful
@@ -116,7 +120,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.28.1"
+luteVersion: "0.29.0"
 profile: date-minigame
 extra:
   arc: main
@@ -219,12 +223,9 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.28.1.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.29.0.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
-  [`0.28.0`](docs/proposals/scenario-dsl/0.28.0.md). Recent tips: `0.25.0`
-  exclusion, shared spends and graph edges (relation `excludes:`, `share` keys, bundle
-  `<beat after=…>`, `[subquest]` / `[start]` anchors, `accept="external"`, `changedOn:`,
-  `{{x:ordinalWord}}`), `0.25.1` a performance patch, `0.26.0` scale and many authors
+  [`0.29.0`](docs/proposals/scenario-dsl/0.29.0.md). Recent tips: `0.26.0` scale and many authors
   (state declared in several documents must agree, kinds assembled with `add:`,
   `defaults.uses` globs, component `@@who:` / param defaults / own result slots, directive
   `when=`, `target="kind:<kind>"` beats, rule-body `count(…)`), `0.27.0` one runtime,
@@ -250,13 +251,20 @@ history):
   turn; and new advisories flag other languages' markup (`W-TEXT-SINGLE-BRACE`,
   `W-TEXT-COMMENT-LIKE`, `W-TEXT-BRACKET-LABEL`), relations and seasons left implicit
   (`W-RELATION-TIER-IMPLICIT`, `W-SEASON-UNGATED`) and shared menu ids
-  (`W-BRANCH-ID-SHARED`). `0.28.1` is a bug-fix patch with no language change: sharper,
+  (`W-BRANCH-ID-SHARED`); `0.28.1` a bug-fix patch with no language change: sharper,
   single-cause diagnostics, and `lute play`, `lute lore` and `lute trace` answers put
-  right. Being draft means the grammar may still break before 1.0; each
-  breaking change ships a `lute fix` migration, a pin where the rewrite is mechanical, or
-  an error naming the new spelling.
-- **IR: 0.28.1.** The compiled artifact is specified by
-  [`schemas/lute-ir-0.28.schema.json`](schemas/lute-ir-0.28.schema.json) and the
+  right; and `0.29.0` one identifier rule, intent you can state, games as examples: every
+  name an author writes — ids, `share` keys, seasons, relations, defs, kinds and members,
+  component params, what a plugin declares — is a letter, then letters, digits or `_`, and a
+  `-` is an error at the name naming the camelCase spelling; `lute check-project` prints
+  causes first; `W-CHAPTER-STALL` is only for a `chapters:` chain;
+  `lute new scene --occasion` writes the `on:` it was asked for; `terminal:` gains the long
+  form `{ when, persists: true }` for an ending that outlives runs on purpose; and the
+  fourteen dogfood games ship as checked examples. Being draft means the grammar may still
+  break before 1.0; each breaking change ships a `lute fix` migration, a pin where the
+  rewrite is mechanical, or an error naming the new spelling.
+- **IR: 0.29.0.** The compiled artifact is specified by
+  [`schemas/lute-ir-0.29.schema.json`](schemas/lute-ir-0.29.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only
   (since `0.13.0`): fields are append-only within a major line, so a minor move costs a
@@ -267,7 +275,8 @@ history):
   `state[]` entries, `authored` on seam conditions, the placeholder formats
   `cardinalWord`, `capitalize`, `start` and `indefinite`, and the relation tier
   `season:<name>`. A `spentBy` beat's `once` is its period, not `none`. `0.28.1` moves no
-  shape: artifacts differ only in the version strings.
+  shape. `0.29.0` is additive: the optional `terminalPersists` on the artifact and index,
+  `true` when every `terminal:` declaration says `persists: true`.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver, reference
   runtime, LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (including `lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-trace`, `lute-lint`,

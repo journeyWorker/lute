@@ -183,26 +183,17 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.28.0` is a language AND IR release: every condition slot and YAML
-    /// surface checks the same way (typed comparisons, unknown keys refused,
-    /// reserved names refused where declared, flag values checked), the
-    /// manifest's `sequence:` becomes `chapters:`, quest-layer attributes are
-    /// renamed (`follows=`, `outcome=`, `visibleWhen=`), `spentBy` latches,
-    /// `occasion.target` can be written, and the clock, seasons, occasions,
-    /// hubs and labels fill their gaps (`clock.day` / `clock.slot` /
-    /// `clock.ended`, `raiseAtStart:`, season-tier relations, `outsideRun:`,
-    /// a hub `<return>`, label forms and number words). The IR renames
-    /// `ObjectiveEntry.when` → `visibleWhen`, `RewardEntry.on` → `outcome`
-    /// and a quest's `prereqEdges` `after` → `follows`, and gains the optional
-    /// `outsideRun`, `HubCmd.return`, `clock.raiseAtStart`, `labelForms` and
-    /// the placeholder formats `cardinalWord` / `capitalize` / `start` /
-    /// `indefinite`, so the current schema is
-    /// `schemas/lute-ir-0.28.schema.json`. `0.28.1` is a bug-fix patch on
-    /// the same line: no language change and no IR shape change, so the
-    /// schema keeps its `0.28` name and `$id`.
+    /// `0.29.0` is a language AND IR release: one identifier rule (every
+    /// name an author writes is a letter, then letters, digits or `_`; a `-`
+    /// is an error at the name naming the camelCase spelling), causes-first
+    /// `check-project` output, `W-CHAPTER-STALL` specific to `chapters:`,
+    /// `lute new scene --occasion` writing `on:`, and the `terminal:` long
+    /// form `{ when, persists }`. The IR gains the optional
+    /// `terminalPersists` on the artifact and `project.index.json`, so the
+    /// current schema is `schemas/lute-ir-0.29.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_28_1() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.28.1");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.28.1");
+    fn language_ir_and_toolchain_are_aligned_at_0_29_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.29.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.29.0");
     }
 }

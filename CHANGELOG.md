@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.28.1`, the grammar and semantics the checker
+- **Language** — currently `0.29.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.28.1`) and gated on by consuming engines.
+  artifact (currently `0.29.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,7 +36,28 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.29.0] - 2026-09-28
+
+**One identifier rule, intent you can state, games as examples.**
+
+A minor release that settles what 0.28 left open the way that leaves the
+author one rule to remember. Every name an author writes — scene, beat, entry,
+quest, objective, branch, hub, choice and mark ids, document id segments,
+`share` keys, seasons, relations, defs, kinds and members, component params,
+and what a plugin declares — is one identifier: a letter, then letters, digits
+or `_`; a `-` is an error at the name naming the camelCase spelling, where
+0.28 refused it only where CEL reads the name. A warning that can describe an
+intended design has a spelling that states the intent — there is still no
+generic suppression — and `terminal:` gains the long form
+`{ when, persists: true }` for an ending that outlives runs on purpose.
+`lute check-project` prints causes first, `W-CHAPTER-STALL` stays specific to
+`chapters:`, and `lute new scene --occasion` writes the `on:` it was asked
+for. The fourteen dogfood games ship as warning-free examples under
+`docs/examples/games/`, each with a README, and CI checks them. The language
+and the IR both earn the move (the IR adds the optional `terminalPersists`);
+see
+[`docs/proposals/scenario-dsl/0.29.0.md`](docs/proposals/scenario-dsl/0.29.0.md)
+and [`docs/versioning.md`](docs/versioning.md).
 
 ### Added
 
@@ -51,10 +72,12 @@ table.
 
 ### Compatibility
 
-- Additive: `terminal:` long form; IR `terminalPersists` (omitted when false) in `schemas/lute-ir-0.28.schema.json`; `schemas/lute.schema.json` accepts both `terminal:` forms.
+- Additive: `terminal:` long form; IR `terminalPersists` (omitted when false) in `schemas/lute-ir-0.29.schema.json`; `schemas/lute.schema.json` accepts both `terminal:` forms.
 - A name with `-` that 0.28 accepted (`share=` keys, document ids, branch/hub/choice/mark ids, enum and entity members, plugin occasions/events/enums) is now an error; rename it to the camelCase spelling the message gives. The scaffolded and example vocabularies are renamed: `action` members `fade-in-up`, `fade-in-slow`, `slide-in-left`, `walk-in`, `pose-turn`, `pose-lean`, `fade-out`, `fade-out-down`, `fade-out-slow` are now `fadeInUp`, `fadeInSlow`, `slideInLeft`, `walkIn`, `poseTurn`, `poseLean`, `fadeOut`, `fadeOutDown`, `fadeOutSlow`, and `musicAction`'s `fade-out` is `fadeOut` — an engine keyed on the old strings maps the new ones.
 - `check-project` output order changes (causes first); `--json` `project_diagnostics` follows the same order.
 - `lute new scene --occasion` on a chained occasion writes `on:`.
+- **Restamp `luteVersion:`.** A document or `defaults:` stamped with an older version draws `W-LUTE-VERSION-STALE`, which names the stamp to write (`luteVersion: "0.29.0"`); bump the stamp, or `--deny-warnings` fails the project.
+- **Schema file renamed; the IR is additive.** The version strings move to `0.29.0` and `schemas/lute-ir-0.28.schema.json` is renamed to [`schemas/lute-ir-0.29.schema.json`](schemas/lute-ir-0.29.schema.json) (`$id` updated). The one new field, `terminalPersists` on the artifact and `project.index.json`, is optional and appears only when every `terminal:` declaration says `persists: true`. Engines gate on MAJOR, so nothing widens.
 
 ## [0.28.1] - 2026-09-27
 
