@@ -49,7 +49,7 @@ defs:
 
 ## The Hostess with a Name
 
-::auto{character="marina" anchor="center" action="fade-in-up"}
+::auto{character="marina" anchor="center" action="fadeInUp"}
 ::camera{focus="marina" zoom="1.1" duration="0.5"} /* NEW: settle on her as she turns. */
 
 @narrator: A hostess walked over with a menu pressed to her chest. Her face caught.
@@ -149,11 +149,11 @@ defs:
 
 ## Filed as a Mishap
 
-::music{action="fade-out"}
+::music{action="fadeOut"}
 
 @narrator: She led me to the booth. I sat. She handed me a menu and skipped, very lightly, back toward the kitchen. The mouse-shaped smudge was still on the carpet three booths away, plainly visible to anyone walking past.
 
-::auto{character="kenshi" anchor="left" action="fade-in-slow"}
+::auto{character="kenshi" anchor="left" action="fadeInSlow"}
 
 @kenshi{code="0010" emotion="neutral" variant="0"}: Welcome, sir.
 @kenshi{code="0020" emotion="content" variant="0"}: ...A stain has appeared, three booths down. Marina-san. See to it before the dinner rush, please.
@@ -182,11 +182,11 @@ defs:
 @narrator: The part of me that catalogues life events was already cataloguing.
 
 /*
-  An authored EXIT (dsl 0.9.0 D-D): `fade-out` is in this project's declared
+  An authored EXIT (dsl 0.9.0 D-D): `fadeOut` is in this project's declared
   `action` `exits:` list, so the compiler marks the sprite record `exit: true`
   and drops her from the stage — it reads the declared list rather than
   inferring an exit from the member's name.
 */
-::auto{character="marina" action="fade-out"}
+::auto{character="marina" action="fadeOut"}
 
 ::music{action="stop"}

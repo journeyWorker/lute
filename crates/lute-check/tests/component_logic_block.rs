@@ -172,7 +172,7 @@ fn standalone_component_rejects_logic_blocks() {
 fn standalone_component_admits_presentational_forms() {
     let admitted = [
         "@narrator: a line is presentational",
-        "::auto{character=\"marina\" action=\"fade-in-up\"}",
+        "::auto{character=\"marina\" action=\"fadeInUp\"}",
     ];
     for body in admitted {
         let codes = standalone_codes(body);

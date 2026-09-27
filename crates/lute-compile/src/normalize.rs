@@ -1333,7 +1333,7 @@ mod tests {
     fn use_expands_component_inline_with_bound_params_and_sentinels() {
         // Real fixture: docs/examples/components/greet.component.lute declares
         // `component: greet`, `params: { who: string }`, body =
-        // `::auto{character=@who action="fade-in-up"}` + a narrator line.
+        // `::auto{character=@who action="fadeInUp"}` + a narrator line.
         let base = Path::new("../../docs/examples/components");
         let scene = std::fs::read_to_string(base.join("scene.lute")).unwrap();
         let mut doc = parse_clean(&scene);

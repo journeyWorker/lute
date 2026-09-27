@@ -14,17 +14,17 @@ enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
   mood: [peaceful, tense, romantic, sad, upbeat]
   volume: [silent, down, normal, up, full]
-  musicAction: [start, change, stop, resume, fade-out]
+  musicAction: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
   # Long form (dsl 0.9.0 D-D): a bare list is shorthand for `{ members: [...] }`,
   # but the two slots carrying compiler-relevant member semantics must spell
   # them out. `anchor` MUST declare the member used when the attr is absent;
   # `action` MUST declare which members exit their character (the compiler reads
-  # `exits:` instead of inferring from a `fade-out*` name prefix).
+  # `exits:` instead of inferring from a `fadeOut*` name prefix).
   anchor:
     members: [left, center, right]
     default: center
   action:
-    members: [fade-in-up, fade-in-slow, slide-in-left, walk-in, idle, wave, sway, lean,
-              pose-turn, fade-out, fade-out-down, fade-out-slow, hide]
-    exits: [fade-out, fade-out-down, fade-out-slow, hide]
+    members: [fadeInUp, fadeInSlow, slideInLeft, walkIn, idle, wave, sway, lean,
+              poseTurn, fadeOut, fadeOutDown, fadeOutSlow, hide]
+    exits: [fadeOut, fadeOutDown, fadeOutSlow, hide]

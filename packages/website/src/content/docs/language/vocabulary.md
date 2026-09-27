@@ -58,11 +58,11 @@ enums:
     members: [left, center, right]
     default: center
   action:
-    members: [fade-in-up, sway, lean, idle, fade-out, hide]
-    exits: [fade-out, hide]
+    members: [fadeInUp, sway, lean, idle, fadeOut, hide]
+    exits: [fadeOut, hide]
   mood: [peaceful, tense, romantic, sad, upbeat]
   volume: [silent, down, normal, up, full]
-  musicAction: [start, change, stop, resume, fade-out]
+  musicAction: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
 ```
 
@@ -145,7 +145,7 @@ Two slots have members the compiler *branches on*, and it will not guess which.
   without an explicit anchor. It is injected as a `sprite` record with
   `provenance.by: "auto-anchor-on-show"`.
 
-Both used to be hardcoded: exits were detected by name (`fade-out*` / `exit*` / `hide`) in two
+Both used to be hardcoded: exits were detected by name (`fadeOut*` / `exit*` / `hide`) in two
 hand-synced copies, and the default anchor was a `DEFAULT_ANCHOR = "center"` constant in the checker.
 Omission is now an error rather than a fallback, because a silent fallback to a name prefix is
 exactly the hidden coupling `0.9.0` removes. The language owns the knowledge that these two slots
@@ -181,7 +181,7 @@ lute doctor — demo
   ✓ lute.project.yaml: found at demo/lute.project.yaml
   ✓ content documents: 1 `.lute` file(s) under demo
   • provider snapshots: no providers/ directory (core-only project)
-  • vocabulary slots declared: emotion, action (exits: fade-out/hide), anchor (default: center), mood, volume, musicAction, vfxType
+  • vocabulary slots declared: emotion, action (exits: fadeOut/hide), anchor (default: center), mood, volume, musicAction, vfxType
   • VS Code extension: not detectable from the CLI
 ```
 

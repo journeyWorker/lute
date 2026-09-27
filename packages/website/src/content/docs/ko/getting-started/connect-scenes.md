@@ -135,6 +135,11 @@ priority: 20
 직접 쓰세요. `lute play`는 파생된 `after:`를 이유에 밝힙니다: `after: visited("pryceWakes") is not
 satisfied (written by `chapters:` in lute.project.yaml)`.
 
+멈추는 것은 사슬뿐입니다. `chapters:` 밖의 장면이 재생되지 않을 수도 있는 장면을 자기 `after:`로
+가리켜도 `W-CHAPTER-STALL`은 나오지 않습니다: 직접 쓴 `after:`는 그 자체가 "그 장면을 기다린다"는
+진술이기 때문입니다. 그러니 사슬이 기다리지 말아야 할 관문 있는 장면은 사슬에서 빼고 자기 `on:`과
+`after:`를 주세요.
+
 한 번의 발생에서 자격 있는 비트를 모두 보여 주는 `select: sequence` 계기에서는 사슬이 `on:`과
 `priority:`만 씁니다: 목록의 장면들이 그 한 번의 발생 안에서 목록 순서대로 이어서 재생됩니다. 그 밖의
 계기에서는 발생 한 번에 목록의 장면 하나가 재생됩니다. 대상*에게* 발생하는 계기라면 목록의 모든 장면이

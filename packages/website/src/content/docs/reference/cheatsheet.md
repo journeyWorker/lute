@@ -176,7 +176,7 @@ state:                                   # scalar only: number | bool | string |
   app.rating:   { type: { enum: [teen, adult] }, default: teen }
 enums:                                   # content vocabulary: you declare every member
   emotion: [neutral, happy, worried]
-  action:  { members: [fade-in-up, fade-out-down], exits: [fade-out-down] }
+  action:  { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor:  { members: [left, center, right], default: center }
   weekday: { members: [mon, tue], labels: { mon: Monday, tue: Tuesday } }   # labels: 0.24.0
 entities:
@@ -291,11 +291,11 @@ id: diner.night
 pov: fixer
 enums:
   emotion: [neutral, happy]
-  action: { members: [fade-in-up, fade-out-down], exits: [fade-out-down] }
+  action: { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor: { members: [left, center, right], default: center }
   mood: [peaceful]
   volume: [down, normal]
-  musicAction: [start, fade-out]
+  musicAction: [start, fadeOut]
   vfxType: [whiteOut]
 state:
   run.affection: { type: number, default: 0 }
@@ -305,7 +305,7 @@ state:
 
 ::bg{location="diner" time="night"}
 ::music{action="start" mood="peaceful" volume="down"}
-::auto{character="mira" anchor="center" action="fade-in-up"}
+::auto{character="mira" anchor="center" action="fadeInUp"}
 ::camera{focus="mira" zoom="1.2" duration="0.5" wait="true"}
 @narrator: The diner hums.
 @mira{code="0010" emotion="happy"}: You're back, {{userName}}! Warmth: {{run.affection}}.
@@ -318,7 +318,7 @@ state:
 ::sfx{sound="door bell"}
 ::vfx{type="whiteOut"}
 ::clear
-::music{action="fade-out"}
+::music{action="fadeOut"}
 ::end{reason="closing"}
 ```
 
@@ -640,8 +640,13 @@ An unset value is not the string `'unset'` (`E-UNSET-LITERAL`); test it with
 write `quest.q.state == 'unset'`, because `isSet(quest.q.state)` is always true
 (`W-QUEST-STATE-ISSET`). Since 0.26.0 a string a guard compares with an enum path, `occasion.target`
 or a quest's `state` / `failedBy` (`==`, `!=`, or an `in [...]` element) must be one of its members:
-`run.rank == 'silvr'` is `E-WHEN-LITERAL-DOMAIN`, with a did-you-mean, as `is="silvr"` is. Path
-segments, def names, and param names cannot contain `-`.
+`run.rank == 'silvr'` is `E-WHEN-LITERAL-DOMAIN`, with a did-you-mean, as `is="silvr"` is.
+
+0.29.0: every name you write is an **identifier** — a letter, then letters, digits or `_` — and a
+dotted id joins identifiers with `.`: scene, beat, entry, quest, objective, branch, hub, choice and
+mark ids, document id segments, `share` keys, seasons, relations, defs, enum and entity kinds and
+their members, component params, and the occasions and events a plugin declares. A `-` is an error
+at the name, under that slot's code, naming the camelCase spelling (`lamp-duty` → `lampDuty`).
 
 Where CEL goes: `<match on>`, `<when test>`, `when=` on a line or choice, `::set` right-hand sides
 and `when=`, `when=` on any other directive that takes it (0.26.0), `::next when`, beat `when:`, entry `when=`, quest `start` / `fail`, objective `done` /
@@ -731,7 +736,7 @@ state:
 
 A bundle beat takes `id`, `on`, `target`, `title`, `when`, `priority`, `once`, `also`, and since
 0.25.0 `after` and `share`, and its body is a scene body (lines, branches, hubs, match, directives).
-The document needs `id:`, the beat `id` is an identifier without `-`, and the beat's canonical id is
+The document needs `id:`, the beat `id` is an identifier, and the beat's canonical id is
 `<document id>.<beat id>` (`cafe.talks.miraOrder`): the id that `lute play`, `presented:`,
 `visited('cafe.talks.miraOrder')`, and `lute trace --beat` use. It behaves like a scene beat: `once`
 defaults to `run`, and presentation spends it. Since 0.24.0 a scene or quest may name it as a
@@ -910,6 +915,10 @@ when: "clock.weekday < 5"
   `!terminal`, and once it holds play ends `── end: terminal — …` (`--json` `"end": "terminal"`);
   a later `occasion:` / `advance:` step is `E-OCCASION-GATE` until a `newRun`. An `occasion:` step
   may carry `engine:` writes, applied before the raise.
+- 0.29.0: an ending that outlives runs on purpose (a roguelike's permanent ending) writes the long
+  form `terminal: { when: "user.crowned", persists: true }`: `W-TERMINAL-PERSISTENT` is silent,
+  `lute play` says the game is over for good instead of offering `newRun`, and the IR carries
+  `terminalPersists: true`. `persists: true` over run state only is `E-META-VALUE`.
 
 Shipped alongside, none of which needs a clock: enum labels, integer `%`, a guarded `::set`, and
 the `:ordinal` hint.
@@ -1645,16 +1654,16 @@ With a `::bg`:
 kind: scene
 id: dock.night
 enums:
-  action: { members: [fade-in-up, fade-out-down], exits: [fade-out-down] }
+  action: { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor: { members: [left, center, right], default: center }
 ---
 
 ## Dock
 
-::auto{character="mira" action="fade-in-up"}
+::auto{character="mira" action="fadeInUp"}
 @mira: Over here.
 ::bg{location="street" time="night"}
-::auto{character="mira" action="fade-in-up"}
+::auto{character="mira" action="fadeInUp"}
 @mira: Keep walking.
 ```
 

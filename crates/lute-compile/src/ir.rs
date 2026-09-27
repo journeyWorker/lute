@@ -89,6 +89,11 @@ pub struct Artifact {
     /// holds the engine raises no occasion. Omitted without one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<CelPair>,
+    /// Every `terminal:` declaration says `persists: true`: the ending
+    /// outlives runs on purpose — a new run does not reopen the game.
+    /// Omitted when false.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub terminal_persists: bool,
     /// dsl 0.27.0 §5: the project's declared seasons, name-sorted — each
     /// season's `live` condition after `@def` expansion. An engine opens a
     /// season when `live` goes false→true: `season.<name>.*` back to the

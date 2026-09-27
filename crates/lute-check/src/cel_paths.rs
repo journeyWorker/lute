@@ -383,44 +383,15 @@ pub(crate) fn state_path_has_hyphen(path: &str) -> bool {
     path.split('.').skip(1).any(|seg| seg.contains('-'))
 }
 
-/// The one rule for a quest id and an objective id (`what` names which): each
-/// is ONE `CelIdent` segment of the reserved `quest.<id>.state` /
-/// `quest.<id>.objectives.<oid>.done` paths (`[A-Za-z_][A-Za-z0-9_]*`).
-/// `None` when `id` is one; else why not, as an `E-PATH-IDENT` message.
-/// A `.` would split the id into more path segments, so no read of the
-/// quest's paths could ever name it.
+/// The one identifier rule for a quest id and an objective id (`what` names
+/// which): each is ONE segment of the reserved `quest.<id>.state` /
+/// `quest.<id>.objectives.<oid>.done` paths. `None` when `id` is one; else
+/// why not, as an `E-PATH-IDENT` message.
 pub(crate) fn quest_id_fault(what: &str, id: &str) -> Option<String> {
-    if id.is_empty() || crate::check::is_cel_ident(id) {
+    if id.is_empty() {
         return None;
     }
-    let suggestion = one_name(id);
-    Some(if id.contains('.') {
-        format!(
-            "{what} id `{id}` has a `.`; the id must be one name, so `quest.{id}.state` would \
-             be read as more path segments and never name it — write `{suggestion}`"
-        )
-    } else if id.contains('-') {
-        format!("{what} id `{id}` has a `-`; CEL-facing names forbid `-` — write `{suggestion}`")
-    } else {
-        format!("{what} id `{id}` is not a name (`[A-Za-z_][A-Za-z0-9_]*`)")
-    })
-}
-
-/// `id` rejoined as one name: split at `.`/`-`, each later part
-/// capitalised (`isolation.hush` → `isolationHush`, `file-walter` →
-/// `fileWalter`).
-pub(crate) fn one_name(id: &str) -> String {
-    id.split(['.', '-'])
-        .enumerate()
-        .map(|(i, seg)| {
-            let mut cs = seg.chars();
-            match cs.next() {
-                Some(c) if i > 0 => c.to_ascii_uppercase().to_string() + cs.as_str(),
-                Some(c) => c.to_string() + cs.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect()
+    lute_manifest::ident::ident_fault(&format!("{what} id"), id)
 }
 
 /// Collect every maximal state-path use in `expr` (recursing into all

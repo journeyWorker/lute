@@ -118,13 +118,12 @@ fn a_malformed_seasons_block_is_a_season_decl_error() {
         ("seasons: [harvest]\n", "maps each season name"),
         (
             "seasons:\n  2x: { live: \"run.open\" }\n",
-            "season name `2x` is not a name",
+            "season name `2x` is not an identifier",
         ),
         (
             "seasons:\n  lantern-fest: { live: \"run.open\" }\n",
-            "season name `lantern-fest` is not a name: it is written in `season.<name>.*` \
-             paths and `once: season:<name>`, so it is letters, digits and `_`, starting with \
-             a letter — write `lanternFest`",
+            "season name `lantern-fest` is not an identifier: a letter, then letters, digits \
+             or `_` — write `lanternFest`",
         ),
         (
             "seasons:\n  harvest: { live: \"\" }\n",

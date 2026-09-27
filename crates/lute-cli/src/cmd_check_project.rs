@@ -153,6 +153,22 @@ pub(crate) fn run_check_project(
         }
     }
 
+    // Causes print first, in the order a fix must follow: the manifest, then
+    // plugins, then schemas (each group in path order), then the documents
+    // (path order, per file), then the project-wide rows about documents and
+    // mocks. A consequence reported in another file was already dropped
+    // (`reconcile_collected`); this orders what remains.
+    project_diags.sort_by_cached_key(|(path, _)| {
+        let rank = cause_rank(path);
+        let within = if rank < CauseRank::Document {
+            path.clone()
+        } else {
+            PathBuf::new()
+        };
+        (rank, within)
+    });
+    let lead = project_diags.partition_point(|(path, _)| cause_rank(path) < CauseRank::Document);
+
     // §5 verdict: a promoted (denied) diagnostic — in a per-file result OR the
     // project-wide set — fails an otherwise-clean project.
     // A plugin error the walk checked past (printed on the `lute:` channel)
@@ -215,33 +231,17 @@ pub(crate) fn run_check_project(
         if file_results.is_empty() {
             println!("lute: no .lute files found under {}", dir.display());
         }
+        let (causes, rest) = project_diags.split_at(lead);
+        for (path, d) in causes {
+            print_project_row(path, d, policy);
+        }
         for (path, result) in &file_results {
             print_human(path, result, policy);
         }
-        if !project_diags.is_empty() {
+        if !rest.is_empty() {
             println!("project-wide diagnostics:");
-            for (path, d) in &project_diags {
-                let denied = policy.denied(d);
-                if d.span.line == 0 && d.span.column == 0 {
-                    // A right file with no right line (D-Z for manifests, D-AB
-                    // for mocks): print no position rather than claiming `0:0`.
-                    println!("{}", manifests::spanless_line(path, d, denied));
-                    continue;
-                }
-                let marker = if denied { " [denied]" } else { "" };
-                println!(
-                    "{}:{}:{}: {} [{}]{marker} {}",
-                    path.display(),
-                    d.span.line,
-                    d.span.column,
-                    if denied {
-                        "error"
-                    } else {
-                        severity_str(d.severity)
-                    },
-                    d.code,
-                    d.text(),
-                );
+            for (path, d) in rest {
+                print_project_row(path, d, policy);
             }
         }
         let project_error_count = project_diags
@@ -273,6 +273,76 @@ pub(crate) fn run_check_project(
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// Where a project-wide row's file sits in the order causes are fixed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum CauseRank {
+    Manifest,
+    Plugin,
+    Schema,
+    Document,
+}
+
+/// The manifest is `lute.project.yaml`; a plugin file lies in a directory
+/// holding a `plugin.yaml`; a schema is any other YAML file except a mock
+/// (`mocks/*.yaml`); everything else — documents and mocks — is a
+/// document-level row.
+fn cause_rank(path: &Path) -> CauseRank {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    if name == "lute.project.yaml" {
+        return CauseRank::Manifest;
+    }
+    if name == "plugin.yaml"
+        || path
+            .ancestors()
+            .skip(1)
+            .any(|dir| dir.join("plugin.yaml").is_file())
+    {
+        return CauseRank::Plugin;
+    }
+    let yaml = matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("yaml" | "yml")
+    );
+    let mock = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|n| n.to_str())
+        == Some("mocks");
+    if yaml && !mock {
+        CauseRank::Schema
+    } else {
+        CauseRank::Document
+    }
+}
+
+/// One project-wide row, human form.
+fn print_project_row(path: &Path, d: &Diagnostic, policy: &DenyPolicy) {
+    let denied = policy.denied(d);
+    if d.span.line == 0 && d.span.column == 0 {
+        // A right file with no right line (D-Z for manifests, D-AB for
+        // mocks): print no position rather than claiming `0:0`.
+        println!("{}", manifests::spanless_line(path, d, denied));
+        return;
+    }
+    let marker = if denied { " [denied]" } else { "" };
+    println!(
+        "{}:{}:{}: {} [{}]{marker} {}",
+        path.display(),
+        d.span.line,
+        d.span.column,
+        if denied {
+            "error"
+        } else {
+            severity_str(d.severity)
+        },
+        d.code,
+        d.text(),
+    );
 }
 
 /// LH N18: a stale `luteVersion` a document inherits from its manifest's

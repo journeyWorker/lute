@@ -491,6 +491,15 @@ fn load_package(
                 merge_named(&mut out.bridge, sites, f.bridge, "bridge", key, at, src, e)
             }),
             "defs" => read_kind::<DefsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                for d in &f.defs {
+                    let at = field_value_at(src.text, "name", &d.name, 0);
+                    check_ident("def", &d.name, at, src, e);
+                    for param in &d.params {
+                        let what = format!("def `{}` param", d.name);
+                        let at = field_value_at(src.text, "name", &param.name, 0);
+                        check_ident(&what, &param.name, at, src, e);
+                    }
+                }
                 let key = |d: &DefDecl| d.name.clone();
                 merge_named(
                     &mut out.defs,
@@ -504,6 +513,17 @@ fn load_package(
                 )
             }),
             "enums" => read_kind::<EnumsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let mut reported = std::collections::BTreeSet::new();
+                for (name, decl) in &f.enums {
+                    let at = key_offset(src.text, &["enums", name]);
+                    check_ident("enum", name, at, src, e);
+                    for member in decl.members() {
+                        if !crate::ident::is_ident(member) && reported.insert(member.as_str()) {
+                            let at = at.and_then(|from| word_offset(src.text, from, member));
+                            check_ident("enum member", member, at, src, e);
+                        }
+                    }
+                }
                 let items = f.enums.into_iter().map(|(k, v)| (k, v.into_domain()));
                 merge_keyed(&mut out.enums, sites, items, "enum", keyed("enums"), src, e)
             }),
@@ -540,6 +560,10 @@ fn load_package(
                 )
             }),
             "events" => read_kind::<EventsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                for ev in &f.events {
+                    let at = field_value_at(src.text, "name", &ev.name, 0);
+                    check_ident("event", &ev.name, at, src, e);
+                }
                 let key = |ev: &EventDecl| ev.name.clone();
                 merge_named(
                     &mut out.events,
@@ -591,6 +615,10 @@ fn load_package(
                 )
             }),
             "occasions" => read_kind::<OccasionsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                for name in f.occasions.keys() {
+                    let at = key_offset(src.text, &["occasions", name]);
+                    check_ident("occasion", name, at, src, e);
+                }
                 check_occasion_members(&f.occasions, src.file, src.text, e);
                 check_gate_types(src.text, src.file, e);
                 let decls: Vec<OccasionDecl> = f
@@ -740,6 +768,43 @@ fn check_asset_segment_types(kinds: &[AssetKindDecl], file: &str, errs: &mut Vec
             }
         }
     }
+}
+
+/// The one identifier rule for a name a plugin declares — an occasion, an
+/// event, an enum and its members, a def and its params: a name that is not
+/// an identifier is refused at `offset` (its declaration in `src`).
+fn check_ident(
+    what: &str,
+    name: &str,
+    offset: Option<usize>,
+    src: &Source,
+    errs: &mut Vec<LoadError>,
+) {
+    if let Some(msg) = crate::ident::ident_fault(what, name) {
+        errs.push(LoadError::Parse {
+            file: src.file.display().to_string(),
+            at: offset.map(|o| crate::yaml_text::line_col(src.text, o)),
+            msg,
+        });
+    }
+}
+
+/// Byte offset of the first whole-word occurrence of `word` in `text` at or
+/// after `from` (a word ends at anything but a letter, digit, `_`, `-`).
+fn word_offset(text: &str, from: usize, word: &str) -> Option<usize> {
+    let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+    let mut at = from;
+    while let Some(i) = text.get(at..)?.find(word) {
+        let start = at + i;
+        let end = start + word.len();
+        let before = text[..start].chars().next_back().is_some_and(is_word);
+        let after = text[end..].chars().next().is_some_and(is_word);
+        if !before && !after {
+            return Some(start);
+        }
+        at = end;
+    }
+    None
 }
 
 /// An occasion target domain's `members:` list (the member subset) must name

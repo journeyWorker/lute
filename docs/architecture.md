@@ -156,9 +156,9 @@ names stay.
 | Directive | Attrs |
 |---|---|
 | `::bg` | `location`, `time`, `assetId` |
-| `::music` | `action` = `start\|change\|stop\|resume\|fade-out`, `mood`, `volume` = `silent\|down\|normal\|up\|full`, `assetId`, `track` |
+| `::music` | `action` = `start\|change\|stop\|resume\|fadeOut`, `mood`, `volume` = `silent\|down\|normal\|up\|full`, `assetId`, `track` |
 | `::sfx` | `sound` (description), `assetId`, `name` |
-| `::auto` | `character`, `anchor` = `left\|center\|right`, `action` (named action-id, e.g. `fade-in-up` / `fade-out-down` / `pose-*`) — **character entrance/exit/pose lives here** |
+| `::auto` | `character`, `anchor` = `left\|center\|right`, `action` (named action-id, e.g. `fadeInUp` / `fadeOutDown` / `pose*`) — **character entrance/exit/pose lives here** |
 | `::vfx` | `type` (e.g. `blackOut`), `label`, `transition` |
 | `::cut` | `assetId` (`CUT.*`), `action` = `show\|hide`, `full?` |
 | `::video` | `assetId` (`VID.*`), `action` = `show\|hide`, `wait?` |
@@ -167,8 +167,8 @@ names stay.
 > Mistakes this table corrects (recorded so they aren't repeated): there is no `::scene`
 > (it's `::bg`); music is not `play`/`to` (it's `action`/`mood`/`volume`-enum); sfx carries
 > `sound`+`assetId` separately (not a single `asset`); character staging is `::auto`+action-id
-> (not a `::sprite`/`::char` with `enter`/`pose`). Music fade-out is `action="fade-out"`,
-> character exit is `::auto{action="fade-out-down"}` — both already exist.
+> (not a `::sprite`/`::char` with `enter`/`pose`). A music fade-out is `action="fadeOut"`,
+> character exit is `::auto{action="fadeOutDown"}` — both already exist.
 
 ## New additions (this is the entire delta)
 
@@ -204,7 +204,7 @@ non-blocking so dialogue rides over it; a focus-then-speak beat sets `wait="true
 ```
 ::sfx{sound="문이 노크 없이 벌컥" assetId="PLACEHOLDER_door_slam"}
 ::camera{shake="0.3" duration="0.2"}                          /* no wait → next runs concurrently */
-::auto{character="elena" anchor="center" action="fade-in-up"}
+::auto{character="elena" anchor="center" action="fadeInUp"}
 @elena{code="0010" emotion="delighted" variant="1" action="sway"}: 매니저. 안녕…
 
 ::camera{focus="elena" zoom="@closeUp" duration="0.5" wait="true"}  /* holds → the line waits for the pan */
@@ -241,8 +241,8 @@ whole block blocks following content until it completes.
     ::camera{zoom="1.3" duration="0.4"}        /* omitted at → after prev clip → 1.2 */
   </track>
   <track subject="elena">
-    ::auto{character="elena" action="walk-in" at="0.4"}
-    ::auto{character="elena" action="pose-turn" at="1.6"}
+    ::auto{character="elena" action="walkIn" at="0.4"}
+    ::auto{character="elena" action="poseTurn" at="1.6"}
   </track>
   <track channel="music"> ::music{action="change" mood="tense" at="0.8"} </track>
   <track channel="vfx">   ::vfx{type="whiteOut" transition="flash" at="1.6"} </track>
@@ -271,10 +271,10 @@ Locked rules:
 
   ```
   0.0  camera  focus door   dur 1.2
-  0.4  elena   walk-in
+  0.4  elena   walkIn
   0.8  music   change tense
   1.2  camera  zoom 1.3      dur 0.4
-  1.6  elena   pose-turn  ·  vfx whiteOut
+  1.6  elena   poseTurn  ·  vfx whiteOut
   2.4  barrier
   ```
 

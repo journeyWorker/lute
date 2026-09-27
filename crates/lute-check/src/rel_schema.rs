@@ -466,13 +466,13 @@ pub fn validate_rel_decls(
             // and a beat's `once:` spell it; the season's existence is
             // checked with the seasons (`crate::season::check_relation_tiers`).
             const TIERS: [&str; 5] = ["scene", "run", "user", "app", "quest"];
-            let season = lute_manifest::season::season_ref(tier)
-                .is_some_and(lute_manifest::season::is_season_name);
+            let season =
+                lute_manifest::season::season_ref(tier).is_some_and(lute_manifest::ident::is_ident);
             if !TIERS.contains(&tier.as_str()) && !season {
                 // A state-path spelling (`season.lanterns`, `run.x`) names
                 // the tier it starts with.
                 let hint = match tier.split_once('.') {
-                    Some(("season", s)) if lute_manifest::season::is_season_name(s) => {
+                    Some(("season", s)) if lute_manifest::ident::is_ident(s) => {
                         format!(" — did you mean `season:{s}`?")
                     }
                     Some((ns, _)) if TIERS.contains(&ns) => format!(" — did you mean `{ns}`?"),

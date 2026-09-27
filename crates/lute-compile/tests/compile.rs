@@ -41,7 +41,7 @@ defs:
 ## Shot 1.
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
-::auto{character="marina" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
 @marina{code="0010" emotion="surprised"}: Oh!
 
 <branch id="number">
@@ -423,7 +423,7 @@ state:
 ## Shot 1.
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
-::auto{character="marina" action="fade-in-up"}
+::auto{character="marina" action="fadeInUp"}
 @marina{code="0010"}: Hi.
 
 <branch id="couch">
@@ -1063,7 +1063,7 @@ fn hub_choice_use_expands_component_records_with_source_stamp() {
     let mut table = std::collections::BTreeMap::new();
     let (comp_body, comp_diags) = lute_syntax::parse(
         "---\ncomponent: greet\n---\n\n## Scene 1.\n\n\
-         ::auto{character=\"marina\" action=\"fade-in-up\"}\n\
+         ::auto{character=\"marina\" action=\"fadeInUp\"}\n\
          @narrator: A familiar face steps into the light.\n",
     );
     assert!(
@@ -1231,7 +1231,7 @@ episode: 1
 
 ## Shot 1.
 
-::auto{character="fixer" anchor="center" action="fade-in-up"}
+::auto{character="fixer" anchor="center" action="fadeInUp"}
 @fixer{vo}: A voiceover aside.
 @fixer{os}: Behind the door.
 @fixer: Back on stage.

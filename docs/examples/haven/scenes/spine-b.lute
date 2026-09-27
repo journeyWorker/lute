@@ -62,7 +62,7 @@ after: 'visited("haven.s01ep06")'
   </track>
   <track channel="vfx">
     ::vfx{type="shed" label="module five" at="0.5" duration="0.5"}
-    ::vfx{type="pressure-drop" transition="cut" at="1.0"}
+    ::vfx{type="pressureDrop" transition="cut" at="1.0"}
   </track>
   <track subject="ottavio" property="pos">
     ::auto{character="ottavio" anchor="port" action="brace" at="0.6"}

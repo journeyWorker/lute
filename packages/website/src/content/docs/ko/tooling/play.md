@@ -768,6 +768,26 @@ steps:
 다음 발생은 멈춥니다:
 `` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
 
+모든 런을 넘어 남도록 의도한 결말은 스키마에서 그렇다고 적습니다:
+`terminal: { when: "user.crowned", persists: true }`([스키마](/state/schemas/#an-ending-that-outlives-runs-persists-true)).
+그러면 `check-project`는 경고하지 않고, `lute play`는 새 런을 권하는 대신 게임이 영영 끝났다고 말합니다:
+게임을 끝낸 스텝, 그 뒤의 `newRun: true`, 이후의 발생이 모두 그렇게 말하며 어느 것도 `newRun`을 권하지
+않습니다:
+
+```
+── step 1 · knock ──────────────
+  ✓ crown [scene, priority 0]
+  → crown
+  set user.crowned = true
+@narrator: The crown is yours.
+  note: the game is over for good — `terminal: user.crowned` holds and persists (`persists: true`), so the engine raises no occasion from here, in this run or any later one (`occasion:` / `advance:` steps are refused; a new run does not reopen it)
+── step 2 · new run ──────────────
+  note: the game is over for good — the new run does not reopen it: `terminal: user.crowned` holds and persists (`persists: true`), so the engine raises no occasion
+── step 3 · visit ──────────────
+  (not raised: the game is over)
+── halted: s.play.yaml:4:5: step 3: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`visit` included); the ending persists (`persists: true`), so the game is over for good and no new run reopens it — drop the step, or, if the engine raises `visit` outside a run too (a title screen, a gallery), declare it `outsideRun: true` ──────────────
+```
+
 `terminal:`은 계기가 발생할 때 판정되므로, 그것을 성립시키는 발생은 끝까지 진행됩니다: 게임을 끝내는 쓰기가
 있는 비트는 마지막 줄까지 재생되고, `select: sequence` 발생의 나머지 비트와 그 발생이 정산한
 `questComplete` / `questFailed` 핸들러가 뒤따릅니다. 그래서 에필로그는 `terminal:`을 성립시키는 쓰기 뒤나,
@@ -779,7 +799,7 @@ steps:
 |---|---|---|
 | 콘텐츠의 `::end` | 그것이 실행되는 제시(퀘스트 핸들러에서는 그 퀘스트 문서의 진행) | 예, 다음 스텝으로 |
 | 스크립트의 `- end: true` | 그 스텝에서 플레이스루; 이후 스텝은 건너뜀 | 아니요 — `end: complete` |
-| 스키마의 `terminal:` | 게임: 새 런이 거짓으로 만들 때까지 엔진은 계기를 발생시키지 않음(`outsideRun` 제외) | 그것을 초기화하는 `newRun` 뒤에만 — `end: terminal` |
+| 스키마의 `terminal:` | 게임: 새 런이 거짓으로 만들 때까지 엔진은 계기를 발생시키지 않음(`outsideRun` 제외). `persists: true`면 영영 | 그것을 초기화하는 `newRun` 뒤에만 — `end: terminal`. `persists: true`면 이어지지 않음 |
 | 시계의 `last:` / `days:` | 시계: `clock.ended`가 참이 되고, 마지막 위치를 넘는 `advance:`는 플레이를 멈춤(`E-CLOCK-END`) | 예, 시계를 옮기지 않는 스텝으로; 거기서 게임을 끝내려면 `terminal: "clock.ended"` |
 | `expect: { end: … }` | 없음: 워크가 어떻게 끝났는지 단언(`complete`, `terminal`, `incomplete`, `error`) | — |
 

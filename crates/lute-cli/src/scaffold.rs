@@ -72,14 +72,14 @@ enums:
     members: [left, center, right]
     default: center
   action:
-    members: [fade-in-up, sway, lean, idle, fade-out, hide]
-    exits: [fade-out, hide]
+    members: [fadeInUp, sway, lean, idle, fadeOut, hide]
+    exits: [fadeOut, hide]
   # The four remaining slots, typed by the staging directives (`::music`,
   # `::vfx`, `::auto`). Declared up front so reaching for one is an edit to
   # THIS list rather than an `E-DOMAIN-UNKNOWN`.
   mood: [peaceful, tense, romantic, sad, upbeat]
   volume: [silent, down, normal, up, full]
-  musicAction: [start, change, stop, resume, fade-out]
+  musicAction: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
 "
     .to_string()
@@ -1177,18 +1177,12 @@ fn created(path: &Path, hint: &str) -> ExitCode {
 /// declared occasion vocabulary (shape-only, dsl 0.21.0 §2) any occasion is
 /// accepted. A targeted occasion needs `--target`: a scene without one
 /// answers every target, which a new scene almost never means (T3-27).
-/// `Ok` carries the occasion's `select:` (`None` with no declared vocabulary).
-fn validate_beat(
-    path: &Path,
-    root: &Path,
-    on: &str,
-    target: Option<&str>,
-) -> Result<Option<lute_manifest::schema::OccasionSelect>, String> {
+fn validate_beat(path: &Path, root: &Path, on: &str, target: Option<&str>) -> Result<(), String> {
     let built = crate::build_input(path, None, Some(root), None)
         .ok_or_else(|| format!("cannot read back `{}`", path.display()))?;
     let occasions = &built.input.snapshot.occasions;
     if occasions.is_empty() {
-        return Ok(None);
+        return Ok(());
     }
     let Some(decl) = occasions.get(on) else {
         let declared: Vec<&str> = occasions.keys().map(String::as_str).collect();
@@ -1211,7 +1205,7 @@ fn validate_beat(
                  play for every one — pass `--target {example}`, the target this scene answers"
             ))
         }
-        None => Ok(Some(decl.select)),
+        None => Ok(()),
         Some(t) if !decl.target.takes_target() => Err(format!(
             "occasion `{on}` is not raised for a target — drop `--target {t}`"
         )),
@@ -1219,7 +1213,6 @@ fn validate_beat(
             let (doc, _) = lute_syntax::parse(&built.input.text);
             let (folded, _, _) = lute_check::fold_env(&doc, &built.input);
             lute_check::occasion_target_ok(decl, t, &folded.env.rel_vocab.kinds)
-                .map(|()| Some(decl.select))
         }
     }
 }
@@ -1368,10 +1361,9 @@ fn beat_ladder(root: &Path, on: &str, target: Option<&str>) -> BeatLadder {
 /// the occasion and target are validated against the project — a targeted
 /// occasion needs `--target` — and the file is removed again when they do
 /// not resolve (exit `2`). Without `--occasion` it is a linear scene opening
-/// on a `::bg`. dsl 0.28.0 §4: `--occasion` the occasion of a chain of the
-/// project's `chapters:` writes no `on:`/`priority:` — the chain derives
-/// them once the id is listed — and says to list it, in the words of that
-/// occasion's `select:` (a `select: sequence` chain derives no `after:`).
+/// on a `::bg`. `--occasion` always writes `on:`; when the occasion carries a
+/// chain of the project's `chapters:`, it also says how to make the scene a
+/// chapter instead (list it in the chain, drop `on:`).
 fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&str>) -> ExitCode {
     let path = id_path(&dest.root.join("scenes"), name, "scene");
     let id = to_id(name, "scene");
@@ -1391,12 +1383,6 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
     let target_line = target.map_or_else(String::new, |t| format!("target: {t}\n"));
     let raised_for = target.map_or_else(String::new, |t| format!(" for `{t}`"));
     let (front, body) = match on {
-        Some(_) if chapter.is_some() => (
-            target_line.clone(),
-            format!(
-                "## {title}\n\n@narrator: What happens in this chapter. Replace this with your own lines.\n"
-            ),
-        ),
         Some(on) => {
             let mut front = format!(
                 "# A beat: presented when the engine raises `{on}`. Add\n\
@@ -1422,54 +1408,29 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
         ),
     };
     let depth = 1 + name.matches('/').count();
-    let render = |comment: &str| format!("{head}{comment}{front}{}---\n\n{body}", dest.uses(depth));
-    if let Err(code) = create(&path, &render("")) {
+    let content = format!("{head}{front}{}---\n\n{body}", dest.uses(depth));
+    if let Err(code) = create(&path, &content) {
         return code;
     }
-    let select = match on.map(|on| validate_beat(&path, &dest.root, on, target)) {
-        Some(Err(reason)) => {
-            let _ = fs::remove_file(&path);
-            eprintln!(
-                "lute new: {}; nothing was written",
-                lute_core_span::plain_message(&reason)
-            );
-            return ExitCode::from(2);
-        }
-        Some(Ok(select)) => select,
-        None => None,
-    };
-    if let Some(on) = chapter {
-        let derives = if select == Some(lute_manifest::schema::OccasionSelect::Sequence) {
-            format!(
-                "`on: {on}` and a `priority:` that places it within the one raise\n\
-                 # that plays the whole chain (a `select: sequence` chain derives no `after:`)"
-            )
-        } else {
-            format!("`on: {on}`, its `after:` and its `priority:`")
-        };
-        let comment = format!(
-            "# A chapter: add `{id}` to the `scenes:` of the chain on `{on}` in\n\
-             # lute.project.yaml's `chapters:`, where it goes in the story; the chain\n\
-             # then gives it {derives}.\n"
+    if let Some(Err(reason)) = on.map(|on| validate_beat(&path, &dest.root, on, target)) {
+        let _ = fs::remove_file(&path);
+        eprintln!(
+            "lute new: {}; nothing was written",
+            lute_core_span::plain_message(&reason)
         );
-        if let Err(e) = fs::write(&path, render(&comment)) {
-            let e = lute_manifest::io_reason(&e);
-            eprintln!("lute new: cannot write `{}`: {e}", path.display());
-            return ExitCode::from(2);
-        }
-        return created(
-            &path,
-            &format!(
-                "add `{id}` to the chain on `{on}` (`chapters:` in lute.project.yaml), then check \
-                 it with: lute check-project {}",
-                dest.root.display()
-            ),
-        );
+        return ExitCode::from(2);
     }
-    created(
+    let code = created(
         &path,
         &format!("check it with: lute check {}", path.display()),
-    )
+    );
+    if let Some(on) = chapter {
+        println!(
+            "  note: `{on}` carries a `chapters:` chain; to make `{id}` a chapter instead, add it \
+             to that chain's `scenes:` in lute.project.yaml and drop its `on:`"
+        );
+    }
+    code
 }
 
 /// `lute new quest <name> [--start]`.

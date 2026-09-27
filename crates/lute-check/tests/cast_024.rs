@@ -186,17 +186,20 @@ fn an_occasion_gate_and_not_terminal_imply_presence() {
     let absent = |terminal: Option<&str>| {
         let mut inp = input(&src, snap.clone());
         if let Some(t) = terminal {
-            inp.imports.terminal.push((
-                PathBuf::from("/p/world.schema.yaml"),
-                t.to_string(),
-                Span {
-                    byte_start: 0,
-                    byte_end: 0,
-                    line: 1,
-                    column: 1,
-                    utf16_range: (0, 0),
-                },
-            ));
+            inp.imports
+                .terminal
+                .push(lute_check::schema_import::ImportedTerminal {
+                    file: PathBuf::from("/p/world.schema.yaml"),
+                    when: t.to_string(),
+                    span: Span {
+                        byte_start: 0,
+                        byte_end: 0,
+                        line: 1,
+                        column: 1,
+                        utf16_range: (0, 0),
+                    },
+                    persists: lute_check::gates::Persists::No,
+                });
         }
         let ds = check(&inp).diagnostics;
         assert_clean_vocab(&ds);

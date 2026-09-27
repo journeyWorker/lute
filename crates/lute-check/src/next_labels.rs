@@ -88,7 +88,12 @@ impl Collector {
         self.pos += 1;
     }
 
-    fn record_label(&mut self, id: &str, span: Span) {
+    fn record_label(&mut self, id: &str, span: Span, attrs: &[Attr]) {
+        if let Some(message) = lute_manifest::ident::ident_fault("mark id", id) {
+            let at = attr_span(attrs, "id").unwrap_or(span);
+            self.dups
+                .push(diag(crate::cel_paths::E_PATH_IDENT, message, at));
+        }
         if self.labels.contains_key(id) {
             self.dups.push(diag(
                 E_MARK_DUP,
@@ -126,7 +131,7 @@ impl Collector {
             match node {
                 Node::Directive(d) if d.tag == lute_manifest::core::MARK_DIRECTIVE => {
                     match attr_str(&d.attrs, "id") {
-                        Some(id) => self.record_label(id, d.span),
+                        Some(id) => self.record_label(id, d.span, &d.attrs),
                         None => self.tick(),
                     }
                 }
@@ -134,7 +139,7 @@ impl Collector {
                     self.record_next(d);
                 }
                 Node::Line(l) => match attr_str(&l.attrs, "id") {
-                    Some(id) => self.record_label(id, l.span),
+                    Some(id) => self.record_label(id, l.span, &l.attrs),
                     None => self.tick(),
                 },
                 Node::Directive(_)

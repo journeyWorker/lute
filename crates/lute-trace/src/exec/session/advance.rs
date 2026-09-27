@@ -303,7 +303,6 @@ pub fn run_advance(
     // dsl 0.27.0 §4: once the game is over the clock does not move on — the
     // refused step still says where the clock stands (HW27-08).
     if let Ok(true) = crate::exec::seam::terminal_holds(p, w) {
-        let t = p.index.terminal.as_ref().map_or("", |t| t.raw.as_str());
         let at = clock.describe(from);
         return (
             body(
@@ -317,7 +316,7 @@ pub fn run_advance(
                 Vec::new(),
             ),
             Vec::new(),
-            Some(crate::exec::seam::advance_after_terminal(n, t)),
+            Some(crate::exec::seam::advance_after_terminal(n, p)),
         );
     }
     // dsl 0.27.0 §4 (T2-5): a finite clock stops at its last position. An

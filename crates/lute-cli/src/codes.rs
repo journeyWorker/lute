@@ -780,8 +780,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-META-ID",
-        summary: "A document's `id:` frontmatter value is empty or contains characters outside `[A-Za-z0-9_.-]+`.",
-        spec: &[],
+        summary: "A document's `id:` frontmatter value is not a dotted id: identifiers (a letter, then letters, digits or `_`) joined by `.`.",
+        spec: &["dsl 0.29.0 §1"],
     },
     Code {
         code: "E-META-MISSING",
@@ -800,8 +800,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-META-VALUE",
-        summary: "A frontmatter value has the wrong shape — a malformed `extra:` mapping or key, a non-identifier `series:`, a malformed `cast:`/`enums:`/`terminal:` entry, or a bad `effects:` flag.",
-        spec: &["dsl 0.15.0 §3", "dsl 0.19.0 §2.1", "dsl 0.23.0 §7"],
+        summary: "A frontmatter value has the wrong shape — a malformed `extra:` mapping or key, a non-identifier `series:`, a malformed `cast:`/`enums:`/`terminal:` entry (in `terminal:`'s long form, a key other than `when`/`persists` or a `persists` that is not `true`/`false`), `persists: true` on a `terminal:` that reads only run state (its ending cannot outlive the run), or a bad `effects:` flag.",
+        spec: &["dsl 0.15.0 §3", "dsl 0.19.0 §2.1", "dsl 0.23.0 §7", "dsl 0.29.0 §5"],
     },
     Code {
         code: "E-MISSING-ATTR",
@@ -875,8 +875,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PATH-IDENT",
-        summary: "A dotted state path has a segment after its leading tier that contains a hyphen, which is not a valid identifier character there.",
-        spec: &["dsl §8.4"],
+        summary: "A name that must be an identifier (a letter, then letters, digits or `_`) is not one: a state path segment; a quest, objective, entry, branch, hub, choice or mark id; a def or def param; a relation, enum or entity kind; an enum or entity member.",
+        spec: &["dsl 0.29.0 §1", "dsl §8.4"],
     },
     Code {
         code: "E-PERMISSION-BRIDGE",
@@ -1525,8 +1525,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-CHAPTER-STALL",
-        summary: "A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, or a window of the clock that closes: a `when` no raise of the chain's occasion meets (a `dayStart` chain whose scene needs the day the run starts, unless the clock declares `raiseAtStart: true` because the engine raises it there), or one that no later raise meets once the scene before it has played late (a slot of the last day of a clock that ends) — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A clock condition that a later raise still meets only delays the chain, and a condition over other `owner: engine` state is the engine's to make true; neither is reported. If the scene may be skipped, let the next one follow the scene before it (`after: visited(\"<previous>\")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true, or let its `when` hold at a later raise.",
-        spec: &["dsl 0.28.0 §4"],
+        summary: "A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, or a window of the clock that closes: a `when` no raise of the chain's occasion meets (a `dayStart` chain whose scene needs the day the run starts, unless the clock declares `raiseAtStart: true` because the engine raises it there), or one that no later raise meets once the scene before it has played late (a slot of the last day of a clock that ends) — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A clock condition that a later raise still meets only delays the chain, and a condition over other `owner: engine` state is the engine's to make true; neither is reported. Only a chain stalls: a hand-written `after:` on a scene outside `chapters:` is itself the statement \"wait for that scene\" and never warns. If the scene may be skipped, let the next one follow the scene before it (`after: visited(\"<previous>\")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true, or let its `when` hold at a later raise.",
+        spec: &["dsl 0.28.0 §4", "dsl 0.29.0 §3"],
     },
     Code {
         code: "W-CODE-AFTER-END",
@@ -1710,8 +1710,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-TERMINAL-PERSISTENT",
-        summary: "The schema's `terminal:` reads state a new run keeps (`visited(…)`, `user.*`, `app.*`, `entry.<id>.everRead`, a user-tier quest or relation), so once it holds no new run can play on.",
-        spec: &["dsl 0.28.0 §2"],
+        summary: "The schema's `terminal:` reads state a new run keeps (`visited(…)`, `user.*`, `app.*`, `entry.<id>.everRead`, a user-tier quest or relation), so once it holds no new run can play on. An ending that outlives runs on purpose (a roguelike's permanent ending) says so with `terminal: { when: \"<condition>\", persists: true }`, which silences the warning.",
+        spec: &["dsl 0.28.0 §2", "dsl 0.29.0 §5"],
     },
     Code {
         code: "W-TEXT-BRACKET-LABEL",

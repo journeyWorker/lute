@@ -163,6 +163,8 @@ pub struct Retract {
 #[derive(Clone, Debug)]
 pub struct Branch {
     pub id: String,
+    /// Span of the `id=` value (the open tag's start when none is written).
+    pub id_span: Span,
     pub attrs: Vec<Attr>,
     pub choices: Vec<Choice>,
     pub span: Span,
@@ -171,6 +173,8 @@ pub struct Branch {
 #[derive(Clone, Debug)]
 pub struct Choice {
     pub id: String,
+    /// Span of the `id=` value (the open tag's start when none is written).
+    pub id_span: Span,
     pub label: String,
     /// Span of the `label=` value (the `<choice` open tag's start when no
     /// label is written), where a finding about the label text anchors.

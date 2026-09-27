@@ -21,9 +21,7 @@ use lute_syntax::ast::{Arm, Assert, CelKind, Document, Node, Quest};
 use lute_syntax::datalog::FactPattern;
 
 use crate::check::CheckResult;
-use crate::meta::{
-    canonical_episode_key, is_valid_scene_id_raw, meta_key_span, resolve_doc_kind, DocKind,
-};
+use crate::meta::{canonical_episode_key, meta_key_span, resolve_doc_kind, DocKind};
 use crate::prereq::{atoms, parse_prereq, Atom, PrereqFormula};
 
 /// dsl §2.3/§4.1, dsl 0.15.0 §2/§6 (D-B), dsl 0.19.0 §2.1: two documents
@@ -80,7 +78,7 @@ fn scene_identity(doc: &Document) -> Option<SceneIdentity> {
     };
     let key = |k: &str| serde_yaml::Value::String(k.to_string());
     if let Some(raw) = map.get(key("id")).and_then(|v| v.as_str()) {
-        return is_valid_scene_id_raw(raw).then(|| SceneIdentity {
+        return lute_manifest::ident::is_dotted_ident(raw).then(|| SceneIdentity {
             key: raw.to_string(),
             anchor: "id",
         });
@@ -149,7 +147,7 @@ pub fn bundle_id(doc: &Document) -> Option<String> {
     };
     map.get(serde_yaml::Value::String("id".to_string()))?
         .as_str()
-        .filter(|raw| is_valid_scene_id_raw(raw))
+        .filter(|raw| lute_manifest::ident::is_dotted_ident(raw))
         .map(str::to_string)
 }
 
@@ -170,7 +168,7 @@ pub fn bundle_beat_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec
         };
         let mut seen = BTreeSet::new();
         for beat in &doc.beats {
-            if !crate::lore::is_entry_ident(&beat.id) || !seen.insert(beat.id.as_str()) {
+            if !lute_manifest::ident::is_ident(&beat.id) || !seen.insert(beat.id.as_str()) {
                 continue;
             }
             by_key
@@ -1516,7 +1514,7 @@ fn accept_sources<'a>(
                 for beat in doc
                     .beats
                     .iter()
-                    .filter(|b| crate::lore::is_entry_ident(&b.id))
+                    .filter(|b| lute_manifest::ident::is_ident(&b.id))
                 {
                     let source = NodeId::Beat(crate::bundles::bundle_beat_key(&doc_id, &beat.id));
                     if nodes.contains_key(&source) {

@@ -102,7 +102,7 @@ after: 'visited("haven.s01ep07") || visited("haven.s01ep08")'
 @narrator{code="0380"}: You did not say anything. The fan behind the wall did not change its note, and the arithmetic went on being right.
 @vesna{code="0390" emotion="hollowed"}: All right.
 @vesna{code="0400" emotion="frayed"}: All right. Then we go up and we watch it happen, because somebody aboard ought to be looking when it does.
-::auto{character="vesna" action="turn-away"}
+::auto{character="vesna" action="turnAway"}
 </choice>
 </branch>
 

@@ -97,7 +97,7 @@ pub struct Domain {
     /// ([`crate::validate::SLOT_REQUIRES_DEFAULT`]), rejected elsewhere.
     pub default: Option<String>,
     /// dsl 0.9.0 D-D: the members that end a character's presence on stage.
-    /// Declared, never inferred — this replaced the `fade-out*`/`exit*`/`hide`
+    /// Declared, never inferred — this replaced the `fadeOut*`/`exit*`/`hide`
     /// prefix heuristic that `lute-check::inject` and `lute-compile::lower`
     /// each carried their own copy of. Required for the `action` slot
     /// ([`crate::validate::SLOT_REQUIRES_EXITS`]), rejected elsewhere.

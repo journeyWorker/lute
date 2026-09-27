@@ -6,7 +6,7 @@ expression: json
   "kind": "scene",
   "lute": "0.28.1",
   "irVersion": "0.28.1",
-  "capabilityVersion": "3bf6ddec02b884dfa2c3d51ff76f0ae38d1af42fe3756539e625c5981d4b5ff4",
+  "capabilityVersion": "8f491b82147b612f6b90a1b688399e1f9ae9d232a251271d92be8bf20b8e1daa",
   "meta": {
     "id": "marina.s01ep01",
     "character": "marina",
@@ -137,7 +137,7 @@ expression: json
       "kind": "sprite",
       "addr": "001-0400",
       "character": "marina",
-      "action": "fade-in-up"
+      "action": "fadeInUp"
     },
     {
       "kind": "sprite",
@@ -195,7 +195,7 @@ expression: json
       "addr": "002-0100",
       "character": "marina",
       "anchor": "left",
-      "action": "slide-in-left",
+      "action": "slideInLeft",
       "at": 0.0,
       "timeline": 1
     },
@@ -203,7 +203,7 @@ expression: json
       "kind": "sprite",
       "addr": "002-0200",
       "character": "marina",
-      "action": "fade-in-up",
+      "action": "fadeInUp",
       "at": 0.0,
       "timeline": 1
     },

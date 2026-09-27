@@ -223,7 +223,7 @@ fn empty_arm_is_a_bare_labeled_jump_and_last_block_converges_past_end() {
 #[test]
 fn component_sentinels_stamp_source_and_emit_nothing() {
     let src = r#"::__component-begin{component="greet"}
-::auto{character="marina" anchor="center" action="fade-in-up"}
+::auto{character="marina" anchor="center" action="fadeInUp"}
 ::__component-end
 @narrator: after."#;
     let (recs, _) = flatten(src);

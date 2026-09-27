@@ -259,8 +259,8 @@ enums:
     members: [left, center, right]
     default: center
   action:
-    members: [sway, fade-out, hide]
-    exits: [fade-out, hide]
+    members: [sway, fadeOut, hide]
+    exits: [fadeOut, hide]
 `;
 
   test("declaration doc: array form and long form coexist in one `enums:` block", () => {

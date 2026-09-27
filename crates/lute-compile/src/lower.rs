@@ -932,12 +932,12 @@ mod tests {
         let v = lower_first("::video{assetId=\"MOVIE.x\" action=\"show\"}");
         assert_eq!(v["kind"], "video");
         assert_eq!(v["wait"], true);
-        let v = lower_first("::auto{character=\"marina\" anchor=\"center\" action=\"fade-in-up\"}");
+        let v = lower_first("::auto{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}");
         assert_eq!(v["kind"], "sprite");
         assert_eq!(v["character"], "marina");
         assert_eq!(v["anchor"], "center");
         assert!(v.get("exit").is_none());
-        let v = lower_first("::auto{character=\"marina\" action=\"fade-out-down\"}");
+        let v = lower_first("::auto{character=\"marina\" action=\"fadeOutDown\"}");
         assert_eq!(v["exit"], true);
     }
 

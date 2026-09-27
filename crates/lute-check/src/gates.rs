@@ -5,9 +5,10 @@
 //!   `occasion.target`, the member the occasion is raised for). A beat
 //!   answering the occasion can only be presented while the gate holds, so
 //!   the checker judges the beat's `when` together with it.
-//! - **Terminal state.** A schema MAY declare `terminal: "<condition>"`:
-//!   once it holds the engine raises no occasion, so every beat is judged
-//!   under `!terminal`.
+//! - **Terminal state.** A schema MAY declare `terminal: "<condition>"` (or
+//!   `terminal: { when: "<condition>", persists: true }`, an ending that
+//!   outlives runs on purpose): once it holds the engine raises no
+//!   occasion, so every beat is judged under `!terminal`.
 //!
 //! This module turns a beat (its occasion, target and `when`) into the
 //! conditions the reachability passes decide — one per member when
@@ -50,6 +51,172 @@ pub fn combine_terminal<'a>(parts: impl IntoIterator<Item = &'a str>) -> Option<
                 .collect::<Vec<_>>()
                 .join(" || "),
         ),
+    }
+}
+
+/// A schema's `terminal:` — the short form `"<condition>"` or the long form
+/// `{ when: "<condition>", persists: true }`. Every reader of the condition
+/// reads [`TerminalDecl::when`]; nothing else parses the key.
+#[derive(Clone, Debug)]
+pub struct TerminalDecl {
+    /// The condition, a `Condition` slot whose span is its value.
+    pub when: lute_syntax::ast::CelSlot,
+    /// Whether the ending outlives runs on purpose.
+    pub persists: Persists,
+}
+
+/// A `terminal:`'s `persists`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Persists {
+    /// The short form, or `persists: false`.
+    No,
+    /// `persists: true`, at the span of its value.
+    Yes(Span),
+    /// The long form has a fault (an unknown key, a `persists` that is not
+    /// `true`/`false`), already reported: whether the ending may outlive
+    /// runs is not judged.
+    Faulty,
+}
+
+impl Persists {
+    /// `persists: true`.
+    pub fn is_yes(self) -> bool {
+        matches!(self, Persists::Yes(_))
+    }
+}
+
+const TERMINAL_KEYS: [&str; 2] = ["when", "persists"];
+
+const TERMINAL_EXAMPLE: &str = "`terminal: \"@dead\"`, or `terminal: { when: \"@dead\", \
+                                persists: true }` for an ending that outlives runs";
+
+/// Parse a schema's `terminal:` value `v`: the declaration (when it names a
+/// condition) and an `E-META-VALUE` per fault — a value that is no
+/// condition string or mapping, a long-form key other than `when` /
+/// `persists` (with the key it likely meant), a `when` that is no
+/// condition string, a `persists` that is not `true` / `false`.
+pub(crate) fn parse_terminal(
+    v: &serde_yaml::Value,
+    meta: &lute_syntax::ast::Meta,
+) -> (Option<TerminalDecl>, Vec<Diagnostic>) {
+    let shown = |v: &serde_yaml::Value| {
+        serde_yaml::to_string(v)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let slot = |raw: &str, span: Span| {
+        lute_syntax::ast::CelSlot::raw(lute_syntax::ast::CelKind::Condition, raw.to_string(), span)
+    };
+    let mut diags = Vec::new();
+    let mut fault = |message: String, span: Span| diags.push(meta_value(message, span));
+    let key_at = || crate::meta::meta_key_span(meta, "terminal");
+    let m = match v {
+        serde_yaml::Value::String(s) if !s.trim().is_empty() => {
+            let when = slot(s, crate::beats::top_value_span(meta, "terminal"));
+            return (
+                Some(TerminalDecl {
+                    when,
+                    persists: Persists::No,
+                }),
+                diags,
+            );
+        }
+        serde_yaml::Value::Mapping(m) => m,
+        serde_yaml::Value::String(_) | serde_yaml::Value::Null => {
+            fault(
+                format!(
+                    "`terminal:` names no condition — write the condition under which the game \
+                     is over, e.g. {TERMINAL_EXAMPLE}"
+                ),
+                key_at(),
+            );
+            return (None, diags);
+        }
+        other => {
+            fault(
+                format!(
+                    "`terminal: {}` is not a condition — write a CEL condition string naming \
+                     when the game is over, e.g. {TERMINAL_EXAMPLE}",
+                    shown(other)
+                ),
+                key_at(),
+            );
+            return (None, diags);
+        }
+    };
+    let mut faulty = false;
+    for key in m.keys() {
+        let name = key.as_str().map_or_else(|| shown(key), str::to_string);
+        if TERMINAL_KEYS.contains(&name.as_str()) {
+            continue;
+        }
+        faulty = true;
+        fault(
+            format!(
+                "`terminal:` takes only `when` and `persists`, not `{name}`{}",
+                lute_manifest::suggest::did_you_mean(&name, TERMINAL_KEYS)
+            ),
+            crate::meta::meta_path_span(meta, &["terminal", &name]),
+        );
+    }
+    let persists = match m.get("persists") {
+        _ if faulty => Persists::Faulty,
+        None | Some(serde_yaml::Value::Bool(false)) => Persists::No,
+        Some(serde_yaml::Value::Bool(true)) => Persists::Yes(crate::beats::nested_value_span(
+            meta,
+            &["terminal", "persists"],
+        )),
+        Some(other) => {
+            fault(
+                format!(
+                    "`terminal:`'s `persists: {}` is not `true` or `false` — `persists: true` \
+                     says the ending outlives runs on purpose",
+                    shown(other)
+                ),
+                crate::beats::nested_value_span(meta, &["terminal", "persists"]),
+            );
+            Persists::Faulty
+        }
+    };
+    let when = match m.get("when") {
+        Some(serde_yaml::Value::String(s)) if !s.trim().is_empty() => s,
+        None | Some(serde_yaml::Value::Null) | Some(serde_yaml::Value::String(_)) => {
+            fault(
+                "`terminal:` names no condition — write `when: \"<condition>\"`, the condition \
+                 under which the game is over"
+                    .to_string(),
+                key_at(),
+            );
+            return (None, diags);
+        }
+        Some(other) => {
+            let s = shown(other);
+            fault(
+                format!("`terminal:`'s `when: {s}` is not a condition string — quote it: `when: \"{s}\"`"),
+                crate::beats::nested_value_span(meta, &["terminal", "when"]),
+            );
+            return (None, diags);
+        }
+    };
+    let when = slot(
+        when,
+        crate::beats::nested_value_span(meta, &["terminal", "when"]),
+    );
+    (Some(TerminalDecl { when, persists }), diags)
+}
+
+fn meta_value(message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: "E-META-VALUE".to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
@@ -417,26 +584,24 @@ pub(crate) fn check_seam_texts(
         }));
     }
     if let Some(own) = &folded.typed.terminal {
-        let found = outside_occasion(&own.raw, own.span).map_or_else(
+        let (raw, span) = (&own.when.raw, own.when.span);
+        let found = outside_occasion(raw, span).map_or_else(
             || {
-                let mut found = check_condition(&own.raw, own.span, ctx);
-                found.extend(foreign_literals(&own.raw, folded, Some(&own.raw), own.span));
+                let mut found = check_condition(raw, span, ctx);
+                found.extend(foreign_literals(raw, folded, Some(raw), span));
                 found
             },
             |d| vec![d],
         );
-        out.extend(
-            found
-                .into_iter()
-                .map(|d| terminal_diag(&own.raw, d, own.span)),
-        );
-        out.extend(terminal_persistent(&own.raw, doc, folded, own.span));
+        out.extend(found.into_iter().map(|d| terminal_diag(raw, d, span)));
+        out.extend(terminal_persistent(raw, own.persists, doc, folded, span));
     }
-    for (file, raw, span) in &imports.terminal {
+    for t in &imports.terminal {
         let origin = crate::rel_schema::DeclOrigin {
-            file: file.clone(),
-            span: *span,
+            file: t.file.clone(),
+            span: t.span,
         };
+        let raw = &t.when;
         let found = outside_occasion(raw, doc.meta.span).map_or_else(
             || {
                 let mut found = check_condition(raw, doc.meta.span, ctx);
@@ -448,8 +613,17 @@ pub(crate) fn check_seam_texts(
         out.extend(found.into_iter().map(|d| {
             crate::rel_schema::at_origin(terminal_diag(raw, d, doc.meta.span), Some(&origin))
         }));
+        // A refused `persists: true` is reported at its value there.
+        let (persists, at) = match t.persists {
+            Persists::Yes(at) => (Persists::Yes(doc.meta.span), at),
+            p => (p, t.span),
+        };
+        let origin = crate::rel_schema::DeclOrigin {
+            file: t.file.clone(),
+            span: at,
+        };
         out.extend(
-            terminal_persistent(raw, doc, folded, doc.meta.span)
+            terminal_persistent(raw, persists, doc, folded, doc.meta.span)
                 .map(|d| crate::rel_schema::at_origin(d, Some(&origin))),
         );
     }
@@ -460,11 +634,16 @@ pub(crate) fn check_seam_texts(
 /// it holds, it holds in every later run, so no new run can play on.
 pub const W_TERMINAL_PERSISTENT: &str = "W-TERMINAL-PERSISTENT";
 
-/// [`W_TERMINAL_PERSISTENT`] for terminal condition `raw` (its `@def`s
-/// expanded), at `at`: the quests this document declares and the relations
-/// it sees decide which of their reads a new run keeps.
+/// Terminal condition `raw` (its `@def`s expanded) against what a new run
+/// keeps — the quests this document declares and the relations it sees
+/// decide which of their reads survive. Without `persists`, a read a new
+/// run keeps is [`W_TERMINAL_PERSISTENT`] at `at`. With `persists: true`
+/// the warning is silent: the ending outlives runs on purpose — unless
+/// every read is provably run state, when it cannot persist
+/// (`E-META-VALUE` at `persists`). A faulty long form is not judged.
 fn terminal_persistent(
     raw: &str,
+    persists: Persists,
     doc: &lute_syntax::ast::Document,
     folded: &crate::check::FoldedEnv,
     at: Span,
@@ -490,6 +669,30 @@ fn terminal_persistent(
             .get(name)
             .map(|r| matches!(r.tier.as_deref(), Some("user" | "app")))
     };
+    if persists == Persists::Faulty {
+        return None;
+    }
+    if let Persists::Yes(persists) = persists {
+        // A quest or relation this document cannot see may be kept: only a
+        // condition every read of which is provably run state is refused.
+        let maybe_kept = persistent_reads(
+            &expanded,
+            &|id| Some(quest_kept(id).unwrap_or(true)),
+            &|name| Some(relation_kept(name).unwrap_or(true)),
+        );
+        return maybe_kept.is_empty().then(|| {
+            meta_value(
+                format!(
+                    "`terminal: {}` reads only state a new run forgets (`run.*`, the clock, \
+                     run-tier quests and relations), so its ending cannot outlive the run — drop \
+                     `persists: true`, or end the game on state a new run keeps (`user.*`, \
+                     `visited(…)`, a user-tier quest or relation)",
+                    raw.trim()
+                ),
+                persists,
+            )
+        });
+    }
     let reads = persistent_reads(&expanded, &quest_kept, &relation_kept);
     let first = reads.first()?;
     Some(Diagnostic {
@@ -497,8 +700,9 @@ fn terminal_persistent(
         severity: Severity::Warning,
         message: format!(
             "`terminal:` reads `{first}`, which a new run keeps — once it holds, no new run can \
-             play on; end the game on run state (`run.*`, a run-tier quest or relation), or \
-             declare what a new run should forget as run-tier"
+             play on; end the game on run state (`run.*`, a run-tier quest or relation), declare \
+             what a new run should forget as run-tier, or, when the ending outlives runs on \
+             purpose, say so: `terminal: {{ when: \"…\", persists: true }}`"
         ),
         span: at,
         layer: Layer::Cel,

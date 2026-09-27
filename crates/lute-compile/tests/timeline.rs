@@ -114,7 +114,7 @@ fn stage_changing_clip_threads_the_reducer_and_carries_post_barrier_state() {
     // marina is on stage; a ::bg clip INSIDE the timeline is a scene change:
     // the auto-hide injects as a timeline-stamped record, and the walker's
     // post-barrier state carries the new bg forward.
-    let body = r#"::auto{character="marina" anchor="center" action="fade-in-up"}
+    let body = r#"::auto{character="marina" anchor="center" action="fadeInUp"}
 <timeline>
   <track channel="scene">
     ::bg{location="street" time="night"}
@@ -177,7 +177,7 @@ fn timeline_auto_clip_preloads_post_timeline_emotion() {
     // stays stamped as part of the timeline.
     let body = r#"<timeline>
   <track channel="stage">
-    ::auto{character="marina" action="fade-in-up"}
+    ::auto{character="marina" action="fadeInUp"}
   </track>
 </timeline>
 @marina{emotion="surprised"}: Oh!"#;

@@ -2920,3 +2920,51 @@ fn check_project_warns_on_a_branch_id_two_documents_share() {
         "{text}"
     );
 }
+
+/// Causes print first, in the order a fix must follow: the manifest's rows,
+/// then the schemas', then each document in path order, then the rows about
+/// documents the project as a whole finds.
+#[test]
+fn check_project_prints_causes_before_documents() {
+    let dir = temp_dir("cause-order");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  \
+         luteVersion: \"0.20.0\"\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.mood: { type: { enum: [calm, very-calm] }, default: calm }\n",
+    );
+    write(
+        &dir,
+        "scenes/b.lute",
+        "---\nkind: quest\nid: b\n---\n<quest id=\"waits\" title=\"Waits\" tier=\"run\">\n  \
+         <objective id=\"o\" title=\"O\" done=\"run.mood == 'calm'\"/>\n</quest>\n",
+    );
+    write(
+        &dir,
+        "scenes/a.lute",
+        "---\nkind: scene\nid: a\n---\n## A\n<branch id=\"pick-one\" prompt=\"?\">\n  \
+         <choice id=\"x\" label=\"X\">\n    @n: x\n  </choice>\n</branch>\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let at = |needle: &str| {
+        stdout
+            .find(needle)
+            .unwrap_or_else(|| panic!("`{needle}` missing from:\n{stdout}"))
+    };
+    let order = [
+        at("lute.project.yaml:6:3: warning [W-LUTE-VERSION-STALE]"),
+        at("world.schema.yaml:2:3: error [E-PATH-IDENT] enum member `very-calm`"),
+        at("a.lute:6:13: error [E-PATH-IDENT] branch id `pick-one`"),
+        at("failed: "),
+        at("b.lute (0 warning(s))"),
+        at("project-wide diagnostics:"),
+        at("b.lute:5:12: warning [W-QUEST-NEVER-ACCEPTED]"),
+    ];
+    assert!(order.windows(2).all(|w| w[0] < w[1]), "{order:?}\n{stdout}");
+}

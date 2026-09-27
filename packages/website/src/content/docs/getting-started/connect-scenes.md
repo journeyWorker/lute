@@ -140,6 +140,11 @@ before it, or, for the first chapter, take it out of the chain and give it its o
 play` names a derived `after:` in its reasons: `after: visited("pryceWakes") is not satisfied
 (written by `chapters:` in lute.project.yaml)`.
 
+Only a chain stalls. A scene outside `chapters:` whose own `after:` names a scene that may never
+play draws no `W-CHAPTER-STALL`: a hand-written `after:` is itself the statement "wait for that
+scene". So a gated scene the chain should not wait on comes out of the chain with its own `on:` and
+`after:`.
+
 On an occasion declared `select: sequence`, which presents every eligible beat in one raise, the
 chain writes only `on:` and `priority:`: the listed scenes play one after another in that raise,
 in list order. On any other occasion one listed scene plays per raise. On an occasion raised *for*

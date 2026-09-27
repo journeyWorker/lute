@@ -287,9 +287,9 @@ pub struct TypedMeta {
     pub clock: Option<lute_manifest::clock::ClockDecl>,
     /// dsl 0.27.0 §4 (T2-4): a schema document's `terminal:` — the
     /// condition under which the game is over and the engine raises no
-    /// occasion. Legal only on `MetaKind::Schema`; a `Condition` slot whose
-    /// span is the frontmatter value (see [`crate::gates`]).
-    pub terminal: Option<lute_syntax::ast::CelSlot>,
+    /// occasion, and whether that ending outlives runs on purpose. Legal
+    /// only on `MetaKind::Schema`; parsed by [`crate::gates::parse_terminal`].
+    pub terminal: Option<crate::gates::TerminalDecl>,
     /// dsl 0.27.0 §5: a schema document's `seasons:` (name -> `{ live }`).
     pub seasons: crate::season::Seasons,
 }
@@ -742,18 +742,6 @@ pub fn canonical_scene_key(meta: &TypedMeta) -> Option<String> {
     ))
 }
 
-/// dsl 0.15.0 §2: the authored `id:` charset gate — non-empty and matching
-/// `[A-Za-z0-9_.-]+`. The set is a superset of every string
-/// [`canonical_episode_id`]'s derived fallback can produce (`.` admits
-/// namespacing like `haven.s01ep01`), so a document migrated from the
-/// derived join keeps the same canonical key when it moves to authored `id:`.
-pub(crate) fn is_valid_scene_id_raw(raw: &str) -> bool {
-    !raw.is_empty()
-        && raw
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
-}
-
 /// dsl 0.15.0 §3: lift one authored `extra:` YAML value into the JSON-ready
 /// `extra_block` on `TypedMeta`. The value MUST be a mapping with string keys
 /// whose values are either scalars (string/int/float/bool) or FLAT sequences
@@ -1143,30 +1131,24 @@ pub fn parse_meta_kind_with_defaults(
     typed.lute_version = get_str(map, "luteVersion");
     typed.after = get_str(map, "after");
 
-    // dsl 0.15.0 §2 / dsl 0.19.0 §2.1: authored document id — a scene's
-    // canonical scene key, a quest or lore document's bundle name. Non-empty
-    // and matching `[A-Za-z0-9_.-]+` — anything else is `E-META-ID` and the
-    // value stays unlifted (a rejected id must never fall through as a valid
-    // key). A `Schema`/`Component` id: was already rejected as
+    // dsl 0.15.0 §2 / dsl 0.19.0 §2.1 / dsl 0.29.0 §1: authored document id —
+    // a scene's canonical scene key, a quest or lore document's bundle name:
+    // identifiers joined by `.`. Anything else is `E-META-ID` and the value
+    // stays unlifted (a rejected id must never fall through as a valid key).
+    // A `Schema`/`Component` id: was already rejected as
     // `E-META-UNKNOWN-KEY` above and is not lifted.
     if kind_keys(kind).contains(&"id") {
         if let Some(raw) = get_str(map, "id") {
-            if is_valid_scene_id_raw(&raw) {
-                typed.id = Some(raw);
+            let what = if kind == MetaKind::Scene {
+                "scene `id:`"
             } else {
-                let message = if kind == MetaKind::Scene {
-                    format!(
-                        "scene `id:` `{raw}` is not a valid canonical scene key; the value must \
-                         be non-empty and match `[A-Za-z0-9_.-]+` (dsl 0.15.0 §2)"
-                    )
-                } else {
-                    format!(
-                        "document `id:` `{raw}` is not a valid document id; the value must be \
-                         non-empty and match `[A-Za-z0-9_.-]+`, the scene `id:` shape (dsl \
-                         0.19.0 §2.1)"
-                    )
-                };
-                diags.push(err_at("E-META-ID", message, meta_key_span(meta, "id")));
+                "document `id:`"
+            };
+            match lute_manifest::ident::dotted_ident_fault(what, &raw) {
+                None => typed.id = Some(raw),
+                Some(message) => {
+                    diags.push(err_at("E-META-ID", message, meta_key_span(meta, "id")))
+                }
             }
         }
     }
@@ -1178,17 +1160,19 @@ pub fn parse_meta_kind_with_defaults(
     // resolves into a malformed series.
     if kind == MetaKind::Lore {
         if let Some(value) = map.get(yaml_key("series")) {
-            match value.as_str().filter(|s| crate::lore::is_entry_ident(s)) {
-                Some(series) => typed.series = Some(series.to_string()),
-                None => diags.push(err_at(
+            match value.as_str() {
+                Some(series) if lute_manifest::ident::is_ident(series) => {
+                    typed.series = Some(series.to_string())
+                }
+                found => diags.push(err_at(
                     "E-META-VALUE",
-                    format!(
-                        "`series:` must be an identifier (`[A-Za-z][A-Za-z0-9_-]*`), got {}; \
-                         it names the series this document's entries form (dsl 0.19.0 §2.1)",
-                        value
-                            .as_str()
-                            .map_or_else(|| "a non-string value".to_string(), |s| format!("`{s}`"))
-                    ),
+                    match found {
+                        Some(series) => lute_manifest::ident::ident_fault("`series:`", series)
+                            .unwrap_or_default(),
+                        None => "`series:` must be an identifier, got a non-string value; it \
+                                 names the series this document's entries form"
+                            .to_string(),
+                    },
                     meta_key_span(meta, "series"),
                 )),
             }
@@ -1327,30 +1311,11 @@ pub fn parse_meta_kind_with_defaults(
             typed.clock = clock;
             diags.extend(clock_diags);
         }
-        // dsl 0.27.0 §4: `terminal: "<condition>"`.
+        // `terminal: "<condition>"` or `{ when: "<condition>", persists: true }`.
         if let Some(v) = map.get(yaml_key("terminal")) {
-            match v.as_str().filter(|s| !s.trim().is_empty()) {
-                Some(raw) => {
-                    typed.terminal = Some(lute_syntax::ast::CelSlot::raw(
-                        lute_syntax::ast::CelKind::Condition,
-                        raw.to_string(),
-                        crate::beats::top_value_span(meta, "terminal"),
-                    ))
-                }
-                None => diags.push(Diagnostic {
-                    code: "E-META-VALUE".to_string(),
-                    severity: Severity::Error,
-                    message: "`terminal:` must be a CEL condition string naming when the game \
-                              is over, e.g. `terminal: \"@dead\"` (dsl 0.27.0 §4)"
-                        .to_string(),
-                    span: meta_key_span(meta, "terminal"),
-                    layer: Layer::Content,
-                    fixits: Vec::new(),
-                    provenance: None,
-                    covered: Vec::new(),
-                    related: Vec::new(),
-                }),
-            }
+            let (terminal, terminal_diags) = crate::gates::parse_terminal(v, meta);
+            typed.terminal = terminal;
+            diags.extend(terminal_diags);
         }
         // dsl 0.27.0 §5: `seasons: { <name>: { live: "<condition>" } }`.
         if let Some(v) = map.get(yaml_key("seasons")) {
@@ -1483,45 +1448,34 @@ pub fn parse_meta_kind_with_defaults(
         )),
     }
 
-    // §8.4 identifier alignment: relation names, entity-kind names, `enums:`
-    // names, and declared member ids are CEL-facing identifiers — no `-`
-    // (E-PATH-IDENT). Directive/attr/asset ids are `Ident` and keep
-    // permitting `-`; only these relational-vocabulary positions are
-    // CEL-facing (T5).
-    let path_ident_diag = |name: &str| -> Option<Diagnostic> {
-        if name.contains('-') {
-            Some(err_at(
-                E_PATH_IDENT,
-                format!(
-                    "`{name}` has a `-`; relation/entity-kind/enum names and entity ids \
-                     are CEL-facing (dsl §8.4)"
-                ),
-                meta_key_span(meta, name),
-            ))
-        } else {
-            None
+    // One identifier rule: relation names, entity-kind names, `enums:`
+    // names, and every enum and entity member are identifiers
+    // (E-PATH-IDENT), named at the offending key.
+    // A name written twice (a member also listed under `exits:`, or in two
+    // enums) is reported once, at its first occurrence.
+    let mut reported = BTreeSet::new();
+    let mut ident_diag = |what: &str, name: &str| {
+        if let Some(message) = lute_manifest::ident::ident_fault(what, name) {
+            if reported.insert(name.to_string()) {
+                diags.push(err_at(E_PATH_IDENT, message, meta_key_span(meta, name)));
+            }
         }
     };
     for (name, decl) in &typed.rel_kinds.kinds {
-        if let Some(d) = path_ident_diag(name) {
-            diags.push(d);
-        }
+        ident_diag("entity kind", name);
         if let lute_manifest::relations::KindShape::Members(members) = &decl.shape {
             for member in members {
-                if let Some(d) = path_ident_diag(member) {
-                    diags.push(d);
-                }
+                ident_diag("entity member", member);
             }
         }
     }
     for name in typed.rel_relations.relations.keys() {
-        if let Some(d) = path_ident_diag(name) {
-            diags.push(d);
-        }
+        ident_diag("relation", name);
     }
-    for name in project_enums.keys() {
-        if let Some(d) = path_ident_diag(name) {
-            diags.push(d);
+    for (name, domain) in &project_enums {
+        ident_diag("enum", name);
+        for member in &domain.members {
+            ident_diag("enum member", member);
         }
     }
 
@@ -1563,30 +1517,19 @@ pub fn parse_meta_kind_with_defaults(
             )),
         }
     }
-    // §8.4 identifier alignment: a `defs` name and each of its parameter names
-    // are CEL-facing identifiers — no `-` (E-PATH-IDENT). Directive/attr/asset
-    // ids are `Ident` and keep permitting `-`; only these def positions are
-    // CEL-facing. Imported-schema defs are checked when their own doc is parsed
-    // (`MetaKind::Schema`), so both inline and imported defs are covered.
+    // One identifier rule: a `defs` name and each of its parameter names are
+    // identifiers (E-PATH-IDENT). Imported-schema defs are checked when their
+    // own doc is parsed (`MetaKind::Schema`), so both inline and imported
+    // defs are covered.
     for (name, def) in &typed.defs {
-        if name.contains('-') {
-            diags.push(err_at(
-                E_PATH_IDENT,
-                format!("def name `{name}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"),
-                meta_key_span(meta, name),
-            ));
+        if let Some(message) = lute_manifest::ident::ident_fault("def", name) {
+            diags.push(err_at(E_PATH_IDENT, message, meta_key_span(meta, name)));
         }
         if let Some(params) = def.get("params").and_then(|p| p.as_mapping()) {
             for pname in params.keys().filter_map(|k| k.as_str()) {
-                if pname.contains('-') {
-                    diags.push(err_at(
-                        E_PATH_IDENT,
-                        format!(
-                            "def `{name}` parameter `{pname}` has a `-`; CEL-facing names \
-                             forbid `-` (dsl §8.4)"
-                        ),
-                        meta_key_span(meta, pname),
-                    ));
+                let what = format!("def `{name}` param");
+                if let Some(message) = lute_manifest::ident::ident_fault(&what, pname) {
+                    diags.push(err_at(E_PATH_IDENT, message, meta_key_span(meta, pname)));
                 }
             }
         }
@@ -1594,6 +1537,16 @@ pub fn parse_meta_kind_with_defaults(
     typed.components = get_ref_list(map, "components");
     typed.component = get_str(map, "component");
     let (params, speakers, defaults, params_malformed) = get_params(map, "params");
+    // One identifier rule: a component (and so beat-template) param name.
+    for p in &params {
+        if let Some(message) = lute_manifest::ident::ident_fault("component param", &p.name) {
+            diags.push(err_at(
+                "E-COMPONENT-PARSE",
+                message,
+                meta_path_span(meta, &["params", &p.name]),
+            ));
+        }
+    }
     typed.params = params;
     typed.speaker_params = speakers;
     typed.param_defaults = defaults;
@@ -1683,10 +1636,8 @@ pub fn parse_meta_kind_with_defaults(
                     if state_path_has_hyphen(path) {
                         diags.push(err_at(
                             E_PATH_IDENT,
-                            format!(
-                                "state path `{path}` has a `-` in a segment; CEL-facing \
-                                 names forbid `-` (dsl §8.4)"
-                            ),
+                            lute_manifest::ident::dotted_ident_fault("state path", path)
+                                .unwrap_or_default(),
                             meta_key_span(meta, path),
                         ));
                     }
@@ -1756,6 +1707,19 @@ pub fn parse_meta_kind_with_defaults(
                             ));
                         }
                         Ok(raw) => {
+                            if let Type::Enum(members) = &raw.ty {
+                                for member in members {
+                                    if let Some(message) =
+                                        lute_manifest::ident::ident_fault("enum member", member)
+                                    {
+                                        diags.push(err_at(
+                                            E_PATH_IDENT,
+                                            message,
+                                            meta_key_span(meta, path),
+                                        ));
+                                    }
+                                }
+                            }
                             let decl = StateDecl {
                                 ty: raw.ty,
                                 default: None,

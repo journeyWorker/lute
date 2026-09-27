@@ -66,7 +66,7 @@ fn a_bundle_with_a_scene_body_checks_clean() {
 fn beat_shape_faults_are_beat_attr() {
     for (open, needle) in [
         ("<beat on=\"talk\">", "no `id`"),
-        ("<beat id=\"a-b\" on=\"talk\">", "without `-`"),
+        ("<beat id=\"a-b\" on=\"talk\">", "write `aB`"),
         ("<beat id=\"a\">", "names no occasion"),
         (
             "<beat id=\"a\" on=\"talk\" priority=\"high\">",

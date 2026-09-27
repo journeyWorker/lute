@@ -204,6 +204,53 @@ fn new_scene_on_writes_a_beat_that_respects_defaults() {
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
 }
 
+/// `lute new scene --occasion O` writes `on: O` even when `O` carries a
+/// `chapters:` chain, and says how to make the scene a chapter instead.
+#[test]
+fn new_scene_on_a_chained_occasion_writes_on_and_names_the_chain() {
+    let proj = init_beats("new-on-chain");
+    let manifest = proj.join("lute.project.yaml");
+    let mut text_of = std::fs::read_to_string(&manifest).unwrap();
+    text_of.push_str("chapters:\n  - on: townVisit\n    scenes: [town.welcome]\n");
+    std::fs::write(&manifest, text_of).unwrap();
+    let p = proj.to_str().unwrap();
+    let out = lute(&[
+        "new",
+        "scene",
+        "extra",
+        "--occasion",
+        "townVisit",
+        "--dir",
+        p,
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    assert!(scene(&proj, "extra.lute").contains("\non: townVisit\n"));
+    assert!(
+        text(&out).contains(
+            "`townVisit` carries a `chapters:` chain; to make `extra` a chapter instead, add it \
+             to that chain's `scenes:` in lute.project.yaml and drop its `on:`"
+        ),
+        "{}",
+        text(&out)
+    );
+    // No chain on the occasion: no note.
+    let out = lute(&[
+        "new",
+        "scene",
+        "chat",
+        "--occasion",
+        "talk",
+        "--target",
+        "npc.mara",
+        "--dir",
+        p,
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    assert!(!text(&out).contains("chapters:"), "{}", text(&out));
+    let check = lute(&["check-project", p]);
+    assert_eq!(check.status.code(), Some(0), "{}", text(&check));
+}
+
 /// `lute new scene --occasion` writes a `priority:` below every beat already
 /// on the occasion, but above a fallback that answers every time (the
 /// template's `Mara, any other time`), so stubs scaffolded one after another

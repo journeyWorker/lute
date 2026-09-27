@@ -153,12 +153,19 @@ fn non_string_id_is_entry_attr_once() {
 
 #[test]
 fn malformed_target_is_entry_attr() {
-    for bad in ["item..key", "9item.key", "item.", "item.rusty key"] {
+    for bad in [
+        "item..key",
+        "9item.key",
+        "item.",
+        "item.rusty key",
+        "place.lab-b2",
+        "item.9",
+    ] {
         let (src, ds) = entry_attr_diags(&format!("<entry id=\"e\" target=\"{bad}\">"));
         assert_eq!(ds.len(), 1, "{bad}: {ds:?}");
         assert_eq!(anchored(&src, &ds[0]), bad);
     }
-    for good in ["npc", "item.rusty_key", "place.lab-b2", "item.9"] {
+    for good in ["npc", "item.rusty_key", "place.labB2"] {
         let (_, ds) = entry_attr_diags(&format!("<entry id=\"e\" target=\"{good}\">"));
         assert!(ds.is_empty(), "{good}: {ds:?}");
     }
@@ -676,7 +683,7 @@ fn lore_and_quest_document_id_shape() {
     assert!(
         bad[0]
             .message
-            .starts_with("document `id:` `haven main` is not a valid document id"),
+            .starts_with("document `id:` `haven main` is not a dotted id"),
         "{}",
         bad[0].message
     );

@@ -54,12 +54,12 @@ after: 'visited("haven.s01ep03")'
 <choice id="deflect" label="Tell her the schedule was already running">
 @vesna{code="0140" emotion="clipped"}: It was. That isn't what I asked.
 @vesna{code="0150" emotion="hollowed"}: Keep it, then. Everyone aboard is carrying something.
-::auto{character="vesna" action="turn-away"}
+::auto{character="vesna" action="turnAway"}
 </choice>
 <choice id="saidNothing" label="Say nothing">
 ::camera{focus="vesna" zoom="1.15" duration="1.4" wait="true"}
 @vesna{code="0160" emotion="hollowed"}: That's an answer too.
-::auto{character="vesna" action="turn-away"}
+::auto{character="vesna" action="turnAway"}
 </choice>
 </branch>
 

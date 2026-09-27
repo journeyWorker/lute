@@ -199,8 +199,27 @@
       }
     },
     "terminal": {
-      "type": "string",
-      "description": "dsl 0.27.0 §4 (T2-4): a CEL condition naming when the game is over (`\"run.fate == 'taken'\"`). Once it holds the engine raises no occasion: the checker judges every beat under its negation, and `lute play` ends with `end: terminal` and refuses a later `occasion:` / `advance:` step (`E-OCCASION-GATE`). Several schemas' declarations are joined by `||`. A schema key only — not a manifest key."
+      "description": "dsl 0.27.0 §4 (T2-4): a CEL condition naming when the game is over (`\"run.fate == 'taken'\"`). Once it holds the engine raises no occasion: the checker judges every beat under its negation, and `lute play` ends with `end: terminal` and refuses a later `occasion:` / `advance:` step (`E-OCCASION-GATE`). Several schemas' declarations are joined by `||`. dsl 0.29.0: the long form `{ when: \"<condition>\", persists: true }` says the ending outlives runs on purpose (a roguelike's permanent ending) — `W-TERMINAL-PERSISTENT` is silent and `lute play` says the game is over for good. A schema key only — not a manifest key.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "properties": {
+            "when": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The CEL condition under which the game is over."
+            },
+            "persists": {
+              "type": "boolean",
+              "default": false,
+              "description": "`true`: the ending outlives runs on purpose — a new run does not reopen the game. It must read state a new run keeps (`user.*`, `visited(…)`, a user-tier quest or relation); a condition over run state only is `E-META-VALUE`."
+            }
+          },
+          "required": ["when"],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "definitions": {

@@ -136,7 +136,7 @@ These are the diagnostics a model-driven loop actually trips, grouped by what to
 
 ```console
 $ lute context docs/examples/property-tracks.lute --project docs/examples --json
-{ …, "enums": {}, "projectEnums": { "action": ["fade-in-up", …, "hide"], "anchor": ["left", "center", "right"],
+{ …, "enums": {}, "projectEnums": { "action": ["fadeInUp", …, "hide"], "anchor": ["left", "center", "right"],
   "emotion": ["neutral", "surprised", "delighted", "shy", "content", "angry", "sad"], … } }
 ```
 

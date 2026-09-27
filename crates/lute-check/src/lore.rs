@@ -15,6 +15,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::ident::is_ident;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{AttrValue, Entry, Meta};
 
@@ -80,31 +81,16 @@ pub fn parse_entry_order(raw: &str) -> Option<u32> {
     raw.parse().ok()
 }
 
-/// `Ident ::= [A-Za-z] [A-Za-z0-9_-]*` (dsl 0.1.0 §4.4) — the `id`,
-/// `category`, and `series` shape.
-pub fn is_entry_ident(s: &str) -> bool {
-    let mut bytes = s.bytes();
-    matches!(bytes.next(), Some(b) if b.is_ascii_alphabetic())
-        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-}
-
-/// `target ::= Ident ("." Segment)*`, `Segment ::= [A-Za-z0-9_-]+` (dsl
-/// 0.19.0 §3) — shape-only, never checked against a vocabulary.
+/// `target ::= Ident ("." Ident)*` — shape-only, never checked against a
+/// vocabulary.
 pub fn is_entry_target(s: &str) -> bool {
-    let mut segs = s.split('.');
-    segs.next().is_some_and(is_entry_ident)
-        && segs.all(|seg| {
-            !seg.is_empty()
-                && seg
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-        })
+    lute_manifest::ident::is_dotted_ident(s)
 }
 
 /// dsl 0.26.0 §5: `kind:<Ident>` — a beat or entry that answers its occasion
 /// for every member of an entity kind. The kind name, when `s` is one.
 pub fn kind_target(s: &str) -> Option<&str> {
-    s.strip_prefix("kind:").filter(|k| is_entry_ident(k))
+    s.strip_prefix("kind:").filter(|k| is_ident(k))
 }
 
 /// A beat's (scene, bundle beat, entry beat) `target`: a dotted id or a
@@ -138,7 +124,7 @@ impl<'a> EntrySeries<'a> {
     /// order — `E-ENTRY-SERIES-ORDER` groups by. `None` when either is absent
     /// or malformed (that entry's own `E-ENTRY-ATTR`).
     pub fn position(&self) -> Option<(&'a str, u32)> {
-        let series = self.series.filter(|s| is_entry_ident(s))?;
+        let series = self.series.filter(|s| is_ident(s))?;
         Some((series, self.order?))
     }
 }
@@ -184,7 +170,7 @@ pub fn document_series(meta: &Meta) -> Option<String> {
     let map: serde_yaml::Mapping = serde_yaml::from_str(&meta.raw_yaml).ok()?;
     map.get(serde_yaml::Value::String("series".to_string()))?
         .as_str()
-        .filter(|s| is_entry_ident(s))
+        .filter(|s| is_ident(s))
         .map(str::to_string)
 }
 
@@ -236,7 +222,7 @@ pub fn check_entries(
                     entry.id_span,
                 ));
             }
-            if is_entry_ident(id) {
+            if is_ident(id) {
                 record.decls.push((entry_read_path(id), entry_read_decl()));
             }
         }
@@ -547,27 +533,15 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
                 entry.id_span,
             ));
         }
-    } else if !is_entry_ident(id) {
-        diags.push(attr_diag(
-            format!(
-                "`<entry id=\"{id}\">`: `id` must be one name — a letter, then letters, digits \
-                 or `_` — since it is read as `entry.<id>.read` (dsl 0.19.0 §3)"
-            ),
-            entry.id_span,
-        ));
-    } else if id.contains('-') {
-        // §8.4 CelIdent alignment, exactly as a quest id: the entry id is a
-        // CEL-facing segment of `entry.<id>.read`. The decl still folds so a
-        // read does not cascade to `E-UNDECLARED`.
-        diags.push(diag(
-            E_PATH_IDENT,
-            Severity::Error,
-            format!(
-                "entry id `{id}` has a `-`; CEL-facing names forbid `-` — write `{}`",
-                crate::cel_paths::one_name(id)
-            ),
-            entry.id_span,
-        ));
+    } else if let Some(fault) = lute_manifest::ident::ident_fault("entry id", id) {
+        // A `-` keeps the CEL-path code it has always had: the id is a
+        // segment of `entry.<id>.read`.
+        let code = if id.contains('-') {
+            E_PATH_IDENT
+        } else {
+            E_ENTRY_ATTR
+        };
+        diags.push(diag(code, Severity::Error, fault, entry.id_span));
     }
     if let Some((target, span)) = &entry.target {
         if kind_target(target).is_some() && entry.on.is_none() {
@@ -586,14 +560,8 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
         }
     }
     if let Some((v, span)) = &entry.category {
-        if !is_entry_ident(v) {
-            diags.push(attr_diag(
-                format!(
-                    "`<entry>` `category=\"{v}\"` must be an identifier \
-                     (`[A-Za-z][A-Za-z0-9_-]*`, dsl 0.19.0 §3)"
-                ),
-                *span,
-            ));
+        if let Some(fault) = lute_manifest::ident::ident_fault("`<entry>` `category`", v) {
+            diags.push(attr_diag(fault, *span));
         }
     }
     if let Some(doc_series) = doc_series {
@@ -612,14 +580,8 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
         return;
     }
     if let Some((v, span)) = &entry.series {
-        if !is_entry_ident(v) {
-            diags.push(attr_diag(
-                format!(
-                    "`<entry>` `series=\"{v}\"` must be an identifier \
-                     (`[A-Za-z][A-Za-z0-9_-]*`, dsl 0.19.0 §3)"
-                ),
-                *span,
-            ));
+        if let Some(fault) = lute_manifest::ident::ident_fault("`<entry>` `series`", v) {
+            diags.push(attr_diag(fault, *span));
         }
     }
     if let Some((raw, span)) = &entry.order {

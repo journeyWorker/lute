@@ -166,6 +166,7 @@ fn branch(id: &str, choice_ids: &[&str]) -> Branch {
         .iter()
         .map(|c| Choice {
             id: (*c).to_string(),
+            id_span: span(),
             label: String::new(),
             label_span: span(),
             when: None,
@@ -176,6 +177,7 @@ fn branch(id: &str, choice_ids: &[&str]) -> Branch {
         .collect();
     Branch {
         id: id.to_string(),
+        id_span: span(),
         attrs: Vec::new(),
         choices,
         span: span(),
@@ -565,6 +567,7 @@ fn duplicate_choice_ids_flag_e_choice_dup() {
     };
     let choice = |id: &str| Choice {
         id: id.into(),
+        id_span: sp,
         label: id.into(),
         label_span: sp,
         when: None,
@@ -574,6 +577,7 @@ fn duplicate_choice_ids_flag_e_choice_dup() {
     };
     let branch = Branch {
         id: "number".into(),
+        id_span: sp,
         attrs: Vec::new(),
         choices: vec![choice("blunt"), choice("soft"), choice("blunt")],
         span: sp,
@@ -596,6 +600,7 @@ fn duplicate_choice_ids_flag_e_choice_dup() {
     // Unique ids stay clean.
     let ok = Branch {
         id: "other".into(),
+        id_span: sp,
         attrs: Vec::new(),
         choices: vec![choice("a"), choice("b")],
         span: sp,
@@ -642,6 +647,7 @@ fn guarded_branch(id: &str, choices: &[(&str, Option<&str>)]) -> Branch {
         .iter()
         .map(|(cid, guard)| Choice {
             id: (*cid).to_string(),
+            id_span: span(),
             label: String::new(),
             label_span: span(),
             when: guard.map(|g| CelSlot::raw(CelKind::Condition, g.into(), span())),
@@ -652,6 +658,7 @@ fn guarded_branch(id: &str, choices: &[(&str, Option<&str>)]) -> Branch {
         .collect();
     Branch {
         id: id.to_string(),
+        id_span: span(),
         attrs: Vec::new(),
         choices,
         span: span(),
@@ -876,9 +883,11 @@ fn line_code_collision_is_trimmed_and_descends_into_arms() {
     // descends into nested bodies (mirroring tag.rs).
     let branch = Branch {
         id: "b".into(),
+        id_span: span(),
         attrs: Vec::new(),
         choices: vec![Choice {
             id: "a".into(),
+            id_span: span(),
             label: String::new(),
             label_span: span(),
             when: None,

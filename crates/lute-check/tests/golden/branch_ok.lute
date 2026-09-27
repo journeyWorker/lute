@@ -12,7 +12,7 @@ state:
 
 ## Shot 1.
 
-::auto{character="marina" anchor="left" action="fade-in-up"}
+::auto{character="marina" anchor="left" action="fadeInUp"}
 
 @narrator: I reached for my phone.
 

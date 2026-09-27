@@ -378,6 +378,55 @@ fn a_clock_only_condition_does_not_stall_a_chain() {
     assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
 }
 
+/// Only a chain stalls: the same scenes, gated the same way, ordered by a
+/// hand-written `after:` outside `chapters:` never warn — the `after:` is
+/// itself the statement "wait for that scene".
+#[test]
+fn a_hand_written_after_outside_a_chain_never_stalls() {
+    let dir = temp_dir("handafter");
+    let schema = "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+                  run.leg: { type: number, default: 0 }\n\
+                  clock:\n  day: run.day\n  days: 7\n";
+    let occasions = "occasions:\n  dayStart: { select: first, description: a new day }\n";
+    project(
+        &dir,
+        occasions,
+        schema,
+        "chapters:\n  - on: dayStart\n    scenes: [mon, tue, wed]\n",
+    );
+    write(&dir, "scenes/mon.lute", &scene("mon", ""));
+    write(
+        &dir,
+        "scenes/tue.lute",
+        &scene("tue", "when: \"run.leg == 2\"\n"),
+    );
+    write(&dir, "scenes/wed.lute", &scene("wed", ""));
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(0), "{out}");
+    assert_eq!(out.matches("[W-CHAPTER-STALL]").count(), 1, "{out}");
+
+    // Out of the chain: each scene answers `dayStart` and waits on the one
+    // before by its own `after:`.
+    project(&dir, occasions, schema, "");
+    write(&dir, "scenes/mon.lute", &scene("mon", "on: dayStart\n"));
+    write(
+        &dir,
+        "scenes/tue.lute",
+        &scene(
+            "tue",
+            "on: dayStart\nafter: visited(\"mon\")\nwhen: \"run.leg == 2\"\n",
+        ),
+    );
+    write(
+        &dir,
+        "scenes/wed.lute",
+        &scene("wed", "on: dayStart\nafter: visited(\"tue\")\n"),
+    );
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(0), "{out}");
+    assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
+}
+
 /// A clock window that closes stalls a chain: on a clock that ends, a slot
 /// the scene before may already have passed; on an occasion the clock
 /// raises, a day it never raises it on. A window a later raise still meets

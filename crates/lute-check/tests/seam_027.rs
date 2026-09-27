@@ -30,17 +30,20 @@ fn input(text: &str, gates: &[(&str, bool, &str)], terminal: Option<&str>) -> Ch
     }
     let mut imports = SchemaImports::default();
     if let Some(t) = terminal {
-        imports.terminal.push((
-            std::path::PathBuf::from("/p/world.schema.yaml"),
-            t.to_string(),
-            lute_core_span::Span {
-                byte_start: 0,
-                byte_end: 0,
-                line: 1,
-                column: 1,
-                utf16_range: (0, 0),
-            },
-        ));
+        imports
+            .terminal
+            .push(lute_check::schema_import::ImportedTerminal {
+                file: std::path::PathBuf::from("/p/world.schema.yaml"),
+                when: t.to_string(),
+                span: lute_core_span::Span {
+                    byte_start: 0,
+                    byte_end: 0,
+                    line: 1,
+                    column: 1,
+                    utf16_range: (0, 0),
+                },
+                persists: lute_check::gates::Persists::No,
+            });
     }
     CheckInput {
         text: text.to_string(),

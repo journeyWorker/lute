@@ -467,6 +467,7 @@ fn envelope_serializes_with_state_entries() {
         clock: None,
         gates: Vec::new(),
         terminal: None,
+        terminal_persists: false,
         seasons: Vec::new(),
         outside_run: Vec::new(),
     };

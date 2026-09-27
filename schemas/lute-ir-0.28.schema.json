@@ -122,6 +122,10 @@
       "$ref": "#/$defs/celPair",
       "description": "dsl 0.27.0 §4 (T2-4): the project's `terminal:` condition (declared by a schema; several joined by `||`), `@def`-expanded. Once it holds the game is over: the engine raises no occasion and the clock does not advance until a new run. Omitted without one; serialized after `gates`."
     },
+    "terminalPersists": {
+      "const": true,
+      "description": "dsl 0.29.0: every `terminal:` declaration is the long form with `persists: true` — the ending outlives runs on purpose, so a new run does not reopen the game. Omitted when false; serialized after `terminal`."
+    },
     "seasons": {
       "type": "array",
       "items": {

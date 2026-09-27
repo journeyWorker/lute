@@ -11,7 +11,7 @@ enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
   mood: [bright, peaceful, tense, romantic, upbeat]
   volume: [silent, down, normal, up, full]
-  musicAction: [start, change, stop, resume, fade-out]
+  musicAction: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
   # Long form (dsl 0.9.0 D-D): the two slots whose members carry semantics the
   # compiler reads — `anchor`'s absent-attr member and `action`'s exiting
@@ -21,6 +21,6 @@ enums:
     members: [left, center, right]
     default: center
   action:
-    members: [fade-in-up, fade-in-slow, slide-in-left, walk-in, idle, wave, sway, lean,
-              pose-turn, fade-out, fade-out-down, fade-out-slow, hide]
-    exits: [fade-out, fade-out-down, fade-out-slow, hide]
+    members: [fadeInUp, fadeInSlow, slideInLeft, walkIn, idle, wave, sway, lean,
+              poseTurn, fadeOut, fadeOutDown, fadeOutSlow, hide]
+    exits: [fadeOut, fadeOutDown, fadeOutSlow, hide]

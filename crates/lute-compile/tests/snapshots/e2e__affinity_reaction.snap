@@ -40,18 +40,18 @@ expression: json
     {
       "name": "action",
       "members": [
-        "fade-in-up",
-        "fade-in-slow",
-        "slide-in-left",
-        "walk-in",
+        "fadeInUp",
+        "fadeInSlow",
+        "slideInLeft",
+        "walkIn",
         "idle",
         "wave",
         "sway",
         "lean",
-        "pose-turn",
-        "fade-out",
-        "fade-out-down",
-        "fade-out-slow",
+        "poseTurn",
+        "fadeOut",
+        "fadeOutDown",
+        "fadeOutSlow",
         "hide"
       ]
     },
@@ -92,7 +92,7 @@ expression: json
         "change",
         "stop",
         "resume",
-        "fade-out"
+        "fadeOut"
       ]
     },
     {

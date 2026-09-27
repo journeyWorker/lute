@@ -47,18 +47,18 @@ expression: json
     {
       "name": "action",
       "members": [
-        "fade-in-up",
-        "fade-in-slow",
-        "slide-in-left",
-        "walk-in",
+        "fadeInUp",
+        "fadeInSlow",
+        "slideInLeft",
+        "walkIn",
         "idle",
         "wave",
         "sway",
         "lean",
-        "pose-turn",
-        "fade-out",
-        "fade-out-down",
-        "fade-out-slow",
+        "poseTurn",
+        "fadeOut",
+        "fadeOutDown",
+        "fadeOutSlow",
         "hide"
       ]
     },
@@ -99,7 +99,7 @@ expression: json
         "change",
         "stop",
         "resume",
-        "fade-out"
+        "fadeOut"
       ]
     },
     {
@@ -178,7 +178,7 @@ expression: json
       "addr": "002-0100",
       "character": "marina",
       "anchor": "center",
-      "action": "fade-in-up"
+      "action": "fadeInUp"
     },
     {
       "kind": "sprite",
@@ -663,7 +663,7 @@ expression: json
     {
       "kind": "music",
       "addr": "005-0100",
-      "action": "fade-out"
+      "action": "fadeOut"
     },
     {
       "kind": "line",
@@ -678,7 +678,7 @@ expression: json
       "addr": "005-0300",
       "character": "kenshi",
       "anchor": "left",
-      "action": "fade-in-slow"
+      "action": "fadeInSlow"
     },
     {
       "kind": "sprite",
@@ -828,7 +828,7 @@ expression: json
       "kind": "sprite",
       "addr": "005-1800",
       "character": "marina",
-      "action": "fade-out",
+      "action": "fadeOut",
       "exit": true
     },
     {

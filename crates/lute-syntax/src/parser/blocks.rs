@@ -260,7 +260,8 @@ impl Parser<'_> {
     pub(super) fn parse_branch(&mut self) -> Branch {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
-        let id = take_str(&mut attrs, "id").unwrap_or_default();
+        let (id, id_span) = take_str_spanned(&mut attrs, "id")
+            .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.start_o)));
         let mut choices = Vec::new();
         let mut last_end = open.end_o;
         loop {
@@ -311,6 +312,7 @@ impl Parser<'_> {
         let end_o = self.consume_close("branch", &open, last_end);
         Branch {
             id,
+            id_span,
             attrs,
             choices,
             span: self.span_o(open.start_o, end_o),
@@ -731,13 +733,15 @@ impl Parser<'_> {
     fn parse_choice(&mut self) -> Choice {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
-        let id = take_str(&mut attrs, "id").unwrap_or_default();
+        let (id, id_span) = take_str_spanned(&mut attrs, "id")
+            .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.start_o)));
         let (label, label_span) = take_str_spanned(&mut attrs, "label")
             .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.start_o)));
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let (body, end_o) = self.parse_block_body("choice", &open);
         Choice {
             id,
+            id_span,
             label,
             label_span,
             when,

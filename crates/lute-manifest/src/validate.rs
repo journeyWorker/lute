@@ -512,7 +512,7 @@ fn yaml_kind(v: &serde_yaml::Value) -> &'static str {
 /// semantics. The core owns the SLOT (it knows `action` needs to say which
 /// members exit); the project owns the MEMBERS. A declaration of one of these
 /// names without its semantics key is an error, never a fallback — a silent
-/// fallback to a `fade-out*` prefix rule is the hidden coupling 0.9.0 removes.
+/// fallback to a `fadeOut*` prefix rule is the hidden coupling 0.9.0 removes.
 pub const SLOT_REQUIRES_EXITS: &[&str] = &["action"];
 /// dsl 0.9.0 D-D: slots that must declare the member used when absent.
 pub const SLOT_REQUIRES_DEFAULT: &[&str] = &["anchor"];

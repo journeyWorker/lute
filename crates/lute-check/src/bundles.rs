@@ -17,7 +17,8 @@ use lute_manifest::schema::OccasionDecl;
 use lute_syntax::ast::{AttrValue, BundleBeat};
 
 use crate::beats::{parse_beat_priority, BeatOnce, E_BEAT_ATTR};
-use crate::lore::{is_beat_target, is_entry_ident};
+use crate::lore::is_beat_target;
+use lute_manifest::ident::is_ident;
 
 /// `<beat>`'s permitted attribute keys (dsl 0.23.0 §4). The parser extracts
 /// each into a typed field, so a permitted key reaches the residual list only
@@ -66,14 +67,17 @@ pub fn bundle_beat_also(beat: &BundleBeat) -> bool {
 /// closure, the document `id:` the canonical ids hang off, and each beat's
 /// occasion against the resolved vocabulary (`E-OCCASION-UNKNOWN`, the
 /// untargeted-occasion `target` rule) exactly as a scene beat's. `doc_id` is
-/// the document's authored `id:`. Id uniqueness is [`check_beat_ids`]'.
+/// the document's authored `id:`; `id_written` says the document writes one
+/// (a rejected id is its own `E-META-ID`, never also "missing"). Id
+/// uniqueness is [`check_beat_ids`]'.
 pub fn check_bundle_beats(
     doc_id: Option<&str>,
+    id_written: bool,
     beats: &[BundleBeat],
     occasions: &BTreeMap<String, OccasionDecl>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    if let (None, Some(first)) = (doc_id, beats.first()) {
+    if let (None, false, Some(first)) = (doc_id, id_written, beats.first()) {
         diags.push(beat_attr(
             "a lore document that bundles `<beat>`s needs a document `id:` — each beat's \
              canonical id is `<document id>.<beat id>` (the key `visited()` and the project \
@@ -84,7 +88,7 @@ pub fn check_bundle_beats(
     }
     for beat in beats {
         check_shape(beat, &mut diags);
-        let Some((on, on_span)) = beat.on.as_ref().filter(|(on, _)| is_entry_ident(on)) else {
+        let Some((on, on_span)) = beat.on.as_ref().filter(|(on, _)| is_ident(on)) else {
             continue;
         };
         let target = beat
@@ -139,7 +143,7 @@ pub fn check_beat_ids(
                 .filter(|_| doc_id.is_some() && !beats.is_empty())
                 .map(|e| (false, e.id.as_str(), e.id_span)),
         )
-        .filter(|(_, id, _)| is_entry_ident(id))
+        .filter(|(_, id, _)| is_ident(id))
         .collect();
     decls.sort_by_key(|(_, _, span)| span.byte_start);
     let mut first: BTreeMap<&str, (bool, Span)> = BTreeMap::new();
@@ -225,15 +229,8 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
                 beat.id_span,
             ));
         }
-    } else if !is_entry_ident(id) || id.contains('-') {
-        diags.push(beat_attr(
-            format!(
-                "`<beat id=\"{id}\">`: `id` must be an identifier without `-` \
-                 (`[A-Za-z][A-Za-z0-9_]*`) — it is a segment of the canonical id \
-                 `<document id>.{id}` that `visited()` reads (dsl 0.23.0 §4)"
-            ),
-            beat.id_span,
-        ));
+    } else if let Some(fault) = lute_manifest::ident::ident_fault("`<beat>` id", id) {
+        diags.push(beat_attr(fault, beat.id_span));
     }
     if beat.on.is_none()
         && !residual.contains("on")
@@ -272,7 +269,7 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
     // dsl 0.25.0 §2: a shared spend needs a spend to share.
     if let Some((key, span)) = &beat.share {
         let once = beat.once.as_ref().map(|(o, _)| o.as_str());
-        if !is_entry_ident(key) {
+        if !is_ident(key) {
             diags.extend(value_faults("share", key, *span));
         } else if beat.spent_by.is_some() {
             diags.push(beat_attr(crate::beats::share_with_spent_by(key), *span));
@@ -291,10 +288,7 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
 /// 0.27.0 §6) share. Keys without a shape of their own yield nothing.
 pub(crate) fn value_faults(key: &str, raw: &str, span: Span) -> Vec<Diagnostic> {
     let message = match key {
-        "on" if !is_entry_ident(raw) => format!(
-            "`<beat>` `on=\"{raw}\"` must name an occasion — an identifier \
-             (`[A-Za-z][A-Za-z0-9_-]*`) (dsl 0.23.0 §4)"
-        ),
+        "on" if !is_ident(raw) => crate::beats::occasion_malformed("`<beat>`", raw),
         "target" if !is_beat_target(raw) => crate::beats::malformed_target("`<beat>`", raw, true),
         "priority" if parse_beat_priority(raw).is_none() => {
             format!("`<beat>` `priority=\"{raw}\"` must be an integer (dsl 0.23.0 §4)")
@@ -303,7 +297,7 @@ pub(crate) fn value_faults(key: &str, raw: &str, span: Span) -> Vec<Diagnostic> 
             "`<beat>` `once=\"{raw}\"` must be {} (dsl 0.23.0 §4, 0.24.0 §1, 0.27.0 §5)",
             crate::beats::ONCE_VALUES
         ),
-        "share" if !is_entry_ident(raw) => crate::beats::share_malformed("`<beat>`", raw),
+        "share" if !is_ident(raw) => crate::beats::share_malformed("`<beat>`", raw),
         // dsl 0.25.0 §3: `after=` under the scene `after:` grammar
         // (`E-CONN-PROFILE`); an exact empty value declares no prerequisite.
         "after" if !raw.is_empty() => return crate::prereq::parse_prereq(raw, span).1,

@@ -133,6 +133,13 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
 }
 
 impl EnumDecl {
+    /// The declared members, in order.
+    pub fn members(&self) -> &[String] {
+        match self {
+            EnumDecl::Members(members) | EnumDecl::Long { members, .. } => members,
+        }
+    }
+
     /// Project into the shared [`crate::snapshot::Domain`] shape.
     pub fn into_domain(self) -> crate::snapshot::Domain {
         match self {

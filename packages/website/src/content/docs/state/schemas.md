@@ -145,14 +145,14 @@ Only a schema document declares `terminal:`, never `lute.project.yaml`. `default
 makes one schema project-wide, so a manifest key would be a second place to look for the same
 thing. Several schemas may each declare one; the project's condition is their `||`, and the game
 is over when any of them holds. The frontmatter JSON schema (`schemas/lute.schema.json`) accepts
-the key.
+the key in both forms: the condition string, or the long form `{ when, persists }` below.
 
 The checker reads the condition like any other:
 
 - Its text is checked as a condition slot. An error in it is prefixed `` `terminal: …`: ``, and an
   error in an imported schema's `terminal:` is reported at that schema's line.
-- A value that is not a string, or is empty, is `E-META-VALUE`: `terminal:` must be a CEL condition
-  string naming when the game is over.
+- A value that is not a string or a `{ when, persists }` mapping, or names no condition, is
+  `E-META-VALUE`: `terminal:` must name when the game is over.
 - Every beat is judged under `!terminal`, since no occasion is raised once it holds. A beat whose
   `when` is provably false while the game is not yet over, one that needs `run.fate == 'taken'`,
   is `E-BEAT-UNREACHABLE`. The same seam gates occasions one at a time, through an occasion's
@@ -163,7 +163,9 @@ note that the game is over, and a playthrough that ends there reports `end: term
 (`"end": "terminal"` at the root of `--json`). A later `occasion:` or `advance:` step is
 `E-OCCASION-GATE` (exit 1). A `newRun: true` step starts a new run, and play goes on only when the
 new run makes the condition false: a `terminal:` over run state is reset by it, one that reads what
-a new run keeps (`user.*`, `visited(…)`) is not, and `check-project` warns `W-TERMINAL-PERSISTENT`.
+a new run keeps (`user.*`, `visited(…)`) is not, and `check-project` warns `W-TERMINAL-PERSISTENT`
+unless the long form says `persists: true`. With `persists: true` the notes and the refusal say the
+game is over for good and never suggest `newRun`.
 
 The condition is judged when an occasion is raised, so the raise that makes it hold plays out: the
 beat whose write ends the game finishes, the rest of a `select: sequence` raise plays, and the
@@ -174,7 +176,29 @@ meaning of "end".
 
 The compiled artifact and `project.index.json` carry the condition at the top level as
 `terminal: { raw, expr }`, after `@def` expansion and joined with `||` when several schemas
-declare one, so an engine stops raising occasions from the same source the checker read.
+declare one, so an engine stops raising occasions from the same source the checker read. Beside
+it, `terminalPersists: true` marks an ending that persists (omitted otherwise): an engine that
+offers a new run after the game is over does not offer one then.
+
+#### An ending that outlives runs: `persists: true`
+
+A new run normally reopens the game: a `terminal:` over run state is reset by it. An ending meant
+to outlive every run, such as a roguelike's permanent ending, reads state a new run keeps, and says
+so with the long form:
+
+```yaml
+state:
+  user.crowned: { type: bool, default: false }
+terminal: { when: "user.crowned", persists: true }
+```
+
+`when` is the condition, exactly as the short form writes it; `persists` is `true` or `false`
+(default `false`, the same as the short form). The long form takes no other key: a slip such as
+`persist:` is `E-META-VALUE` and names the key it meant. `persists: true` states the design, so
+`W-TERMINAL-PERSISTENT` stays silent, and `lute play` says the game is over for good instead of
+offering a new run. On a condition that reads only state a new run forgets (`run.*`, the clock,
+run-tier quests and relations) `persists: true` is `E-META-VALUE`: that ending cannot outlive the
+run. With several schemas, the project's ending persists only when every declaration says so.
 
 ### Defs nothing uses
 
