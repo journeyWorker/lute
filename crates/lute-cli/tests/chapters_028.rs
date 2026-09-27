@@ -370,6 +370,22 @@ fn a_clock_window_that_closes_stalls_a_chain() {
     );
     // The stall says it once: not also as a beat the clock never raises.
     assert!(!out.contains("W-BEAT-UNRAISED"), "{out}");
+    assert!(
+        out.contains("declare `raiseAtStart: true` on the clock if the engine raises `dayStart`"),
+        "{out}"
+    );
+
+    // Declaring that the engine raises it where the run starts closes it.
+    project(
+        &dir,
+        "occasions:\n  dayStart: { select: first }\n",
+        "state:\n  run.day: { type: number, default: 1, owner: engine }\n\
+         clock:\n  day: run.day\n  raise: { dayStart: dayStart }\n  days: 7\n  raiseAtStart: true\n",
+        "chapters:\n  - on: dayStart\n    scenes: [mon, tue]\n",
+    );
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(0), "{out}");
+    assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
 }
 
 /// Listing a bundle beat or a lore entry says which it is and what to do

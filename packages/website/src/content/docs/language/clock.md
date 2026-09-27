@@ -42,6 +42,7 @@ clock:
 | `slot` | optional; an enum state path declared `owner: engine`, inline (`{ enum: [...] }`) or a named domain (`{ domain: slot }`). `slot` and `slots` come together or not at all |
 | `slots` | with `slot`; the slot enum's members, each exactly once, in the order a day runs through them. The enum's own member order does not matter; this list is the clock's order |
 | `raise` | optional; the occasion the engine raises after every advance of the clock, where it stops, so beats can answer "a new slot has started". Or a map naming an occasion for each moment, each key optional: `{ slot, dayStart, dayEnd }` (see [Moving time](#moving-time)) |
+| `raiseAtStart` | optional (dsl 0.28.0), default `false`; `true` says the engine raises the `slot` occasion and `dayStart` itself where a run starts, where no advance stops (see [Where the run starts](#where-the-run-starts)) |
 | `week` | optional; `length` (required inside `week`, at least 1), `first` (the weekday index of day 1, 0-based, default `0`), and `labels` (one display text per weekday, in weekday order) |
 | `last` / `days` | optional (dsl 0.27.0); where the clock ends. `last: { day: 1, slot: h05 }` names the last position (`slot` omitted: that day's last slot; a clock without slots gives `day` alone), and `days: N` is short for `last: { day: N }`. Declare one of the two. See [A clock that ends](#a-clock-that-ends) |
 
@@ -319,6 +320,25 @@ Each midnight is a stop of its own. The clock moves there, the quests settle, th
 raised, so a `dayEnd` beat still reads the old day. Writing the clock paths directly, as an
 `engine:` step in `lute play` does, raises none of the three.
 
+### Where the run starts
+
+A run starts at a position no advance stopped at, so by these rules the clock raises nothing there:
+not the `slot` occasion, and not the `dayStart` of the day the run starts on. Many engines raise
+them anyway when a run starts, so the first morning's scene plays. Say so on the clock:
+
+```yaml
+clock:
+  # day, slot, slots, raise as above
+  raiseAtStart: true
+```
+
+With `raiseAtStart: true` the run's first position counts as raised for the `slot` occasion and
+for `dayStart`; `dayEnd` is unchanged. The checker and `lute calendar` follow it. `lute play` does
+not raise anything by itself at the start: a script still plays the first raise with an
+`occasion:` step. Without the key, a beat whose `when` holds only where the run starts is
+`W-BEAT-UNRAISED`, which names the key if your engine raises it there, and an `occasion:` step
+raising the `slot` occasion or `dayStart` at the start carries a note saying the same.
+
 [`lute play`](/tooling/play/) stands in for that engine with an `advance:` step:
 
 - `advance: slot` moves to the next slot, wrapping from the last slot into the next day;
@@ -407,7 +427,8 @@ clock            slotStart (sequence)
 An occasion raised once a day should be read once a day, not in every slot row. The calendar
 follows the clock's raise map: a cell where no advance would raise the occasion reads `not raised`
 — `dayStart` anywhere but a day's first slot, and never on the day the run starts; `dayEnd`
-anywhere but a day's last slot; the `slot` occasion at the position the run starts at. A beat
+anywhere but a day's last slot; the `slot` occasion at the position the run starts at. With
+`raiseAtStart: true`, the `slot` occasion and `dayStart` are raised at that position. A beat
 only such cells would take is listed as never eligible. `--occasion dayEnd@clock.day` evaluates
 `dayEnd` once per day, at the day's last slot where the clock raises it (`@run.day`, the clock's
 own path, works too), and leaves the other rows blank; `,clock.slot=afternoon` reads it where an
@@ -540,10 +561,11 @@ Two spellings look close and are not the same:
   dawn and a `questComplete` handler fires there. Use it only when that is what you want.
 
 `terminal: "clock.ended"` ends the game when the clock does. The `dayStart` of the day the run starts
-on is never raised: an advance raises `dayStart` on each day it *enters*, and the run starts inside
-day 1. Put a first-morning beat on the occasion your play starts with instead.
-`lute calendar --axis clock` shows day 1's `dayStart` cells as `not raised`, and a beat only day
-1's `dayStart` would take as never eligible.
+on is not raised by the clock: an advance raises `dayStart` on each day it *enters*, and the run
+starts inside day 1. If your engine raises it when a run starts, declare `raiseAtStart: true` (see
+[Where the run starts](#where-the-run-starts)); otherwise put a first-morning beat on the occasion
+your play starts with. Without the key, `lute calendar --axis clock` shows day 1's `dayStart` cells
+as `not raised`, and a beat only day 1's `dayStart` would take as never eligible.
 
 ## Shipped alongside
 

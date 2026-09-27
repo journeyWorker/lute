@@ -1041,6 +1041,14 @@ expect:
 
 `--json`에서는 스텝의 `notes`에 담깁니다.
 
+실행이 시작되는 위치에서는 어떤 advance도 멈춘 적이 없으므로, 시계는 거기서 `slot` 계기도 `dayStart`도
+발생시키지 않습니다. 그 위치에서 둘 중 하나를 발생시키는 `occasion:` 스텝은 엔진만 발생시킬 수 있는 것을
+재생하는 것이며, 노트로 그렇게 알립니다: `` note: `dayStart` is the clock's `raise: { dayStart: dayStart }`,
+which the clock does not raise at day 1 (Mon) morning, where the run starts — if the engine raises
+it when a run starts, declare `raiseAtStart: true` on the clock ``. 시계가 `raiseAtStart: true`를 선언하면
+그 스텝은 엔진 자신의 발생을 대신하는 것이므로 노트가 붙지 않습니다. 플레이는 여전히 시작 위치에서
+스스로 아무것도 발생시키지 않습니다.
+
 `--json`에서 자정의 멈춤 하나하나는 advance의 `days` 항목이 되며 순서대로입니다: `at`(위치), `occasion`,
 `writes`(시계를 그곳으로 옮긴 이동), `settled`(그 이동 뒤의 정착), 그리고 발생한 계기 자신의 필드 —
 `select`, `candidates`, `winner`, `presented`, `then`, `quests`(발생 뒤의 전이). advance 자신의 `writes`와

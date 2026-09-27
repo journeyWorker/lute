@@ -737,6 +737,14 @@ The clock raises `dayEnd` and `dayStart` itself, so an `occasion:` step that rai
 
 `--json` carries it in the step's `notes`.
 
+Where the run starts no advance has stopped, so the clock raises neither its `slot` occasion nor
+`dayStart` there. An `occasion:` step raising one of them at that position plays what only the
+engine may raise, and says so: `` note: `dayStart` is the clock's `raise: { dayStart: dayStart }`,
+which the clock does not raise at day 1 (Mon) morning, where the run starts — if the engine raises
+it when a run starts, declare `raiseAtStart: true` on the clock ``. With `raiseAtStart: true` the
+step stands for the engine's own raise and carries no note; play still raises nothing by itself
+at the start.
+
 In `--json` each midnight stop is one entry of the advance's `days`, in order: `at` (the position), `occasion`, `writes` (the move that brought the clock there), `settled` (the settle after that move), and the raised occasion's own fields — `select`, `candidates`, `winner`, `presented`, `then`, and `quests` (the transitions after its raise). The advance's own `writes` and `quests` are then the last move, to where it stops. Step 3's second stop:
 
 ```json

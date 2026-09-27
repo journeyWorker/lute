@@ -207,6 +207,7 @@ clock:                                   # optional (0.24.0), one per project: s
   slot: run.slot                         # optional, with slots: (owner: engine); omit both for a clock of whole days
   slots: [morning, afternoon, night]     # exactly the slot enum's members, in order
   raise: { slot: slotStart, dayEnd: dusk }   # optional: one occasion (= slot:), or any of slot / dayStart / dayEnd
+  raiseAtStart: true                     # optional (0.28.0): the engine raises slot / dayStart where the run starts
   week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }   # optional
   last: { day: 1, slot: night }          # optional (0.27.0): where the clock ends; or days: 1
 cast:                                    # optional (0.23.0): once declared, any other speaker is E-CAST-UNKNOWN
@@ -897,7 +898,10 @@ when: "clock.weekday < 5"
   step checks it with `expect: { clock: { ended: true } }`. An `advance:` that passes slots without
   raising the slot occasion notes them (`note: passed day 1 (Mon) afternoon, night without raising
   …`), and `lute calendar --axis clock` reads `not raised` where the clock would not raise an
-  occasion.
+  occasion. No advance stops where the run starts, so the clock raises neither the `slot` occasion
+  nor `dayStart` there; `raiseAtStart: true` says the engine does, and the checker and calendar
+  count it raised there. Without it, a beat only that position takes is `W-BEAT-UNRAISED`, which
+  names the key.
 - 0.27.0: an occasion may declare `raisedWhen: "holds(canEnter(occasion.target))"` (plugin
   `occasions/*.yaml`): its beats are judged under the gate (`E-BEAT-UNREACHABLE` names it), `lute
   beats` marks a target whose gate never holds, `lute play` refuses a step raising it while the

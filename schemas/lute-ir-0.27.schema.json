@@ -3153,6 +3153,11 @@
           ],
           "description": "the occasions the engine raises as the clock advances, verbatim as declared. Absent when not declared."
         },
+        "raiseAtStart": {
+          "type": "boolean",
+          "const": true,
+          "description": "dsl 0.28.0: the engine raises the clock's slot occasion (the string form, or the map's `slot`) and the map's `dayStart` itself at the run's first position, where no advance stops. Omitted when `false` (the default): nothing is raised where the run starts, and `dayStart` is never raised on its day."
+        },
         "week": {
           "type": "object",
           "properties": {

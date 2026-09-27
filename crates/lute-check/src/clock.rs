@@ -80,10 +80,10 @@ pub fn parse_clock(
             vec![clock_diag(
                 format!(
                     "`clock:` must be `{{ day: <number path>, slot: <enum path>, slots: [..], \
-                     raise: <occasion> | {{ slot, dayStart, dayEnd }}, week: {{ length, first, \
-                     labels }}, last: {{ day, slot }} | days: <n> }}` — `slot`/`slots` \
-                     (together), `raise`, `week` and `last`/`days` optional (dsl 0.24.0 §1, \
-                     0.27.0 §4): {e}"
+                     raise: <occasion> | {{ slot, dayStart, dayEnd }}, raiseAtStart: <bool>, \
+                     week: {{ length, first, labels }}, last: {{ day, slot }} | days: <n> }}` — \
+                     `slot`/`slots` (together), `raise`, `raiseAtStart`, `week` and `last`/`days` \
+                     optional (dsl 0.24.0 §1, 0.27.0 §4, 0.28.0): {e}"
                 ),
                 clock_span,
             )],
@@ -96,7 +96,16 @@ pub fn parse_clock(
 const CLOCK_KEYS: [(&str, &[&str]); 4] = [
     (
         "",
-        &["day", "slot", "slots", "raise", "week", "last", "days"],
+        &[
+            "day",
+            "slot",
+            "slots",
+            "raise",
+            "raiseAtStart",
+            "week",
+            "last",
+            "days",
+        ],
     ),
     ("last", &["day", "slot"]),
     ("week", &["length", "first", "labels"]),
@@ -205,6 +214,18 @@ fn key_problems(value: &serde_yaml::Value) -> Vec<(String, String)> {
                 format!("`{dotted}: {shown}` must be a whole number, e.g. {example}"),
             ));
         }
+    }
+    if let Some(v) = clock.get("raiseAtStart").filter(|v| !v.is_bool()) {
+        let shown = match v {
+            serde_yaml::Value::String(s) => format!("\"{s}\""),
+            other => {
+                serde_yaml::to_string(other).map_or_else(|_| "?".into(), |s| s.trim().to_string())
+            }
+        };
+        out.push((
+            "raiseAtStart".to_string(),
+            format!("`raiseAtStart: {shown}` must be `true` or `false`"),
+        ));
     }
     out
 }

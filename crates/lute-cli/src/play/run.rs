@@ -86,6 +86,9 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
         };
     }
     let (start, halt) = s.settle();
+    // Where the run started: an `advance:` never stops there, so the clock
+    // raises nothing there ([`clock_raised_note`]). A `newRun` moves it.
+    let mut run_start = s.clock_at();
     let mut steps = Vec::new();
     // HW27-10: a refused step (`E-OCCASION-GATE`, a `pick:` that is not
     // eligible, …) is located at the step as written — its play, or the
@@ -203,11 +206,15 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                     ))
                 })
             });
-            let mut notes: Vec<String> = clock_raised_note(&s, &step.action, &plan[i + 1..])
-                .into_iter()
-                .chain(closed_raise_notes(&body))
-                .chain(passed_raise_note(&s, &body))
-                .collect();
+            if matches!(step.action, Action::NewRun(_)) {
+                run_start = s.clock_at();
+            }
+            let mut notes: Vec<String> =
+                clock_raised_note(&s, &step.action, &plan[i + 1..], run_start)
+                    .into_iter()
+                    .chain(closed_raise_notes(&body))
+                    .chain(passed_raise_note(&s, &body))
+                    .collect();
             // dsl 0.27.0 §4: the step that ended the game says so; a new run
             // that did not reopen it says so too.
             if halt.is_none() && s.terminal() {
@@ -648,12 +655,44 @@ fn menus_presented(r: &StepRecord, into: &mut Used) {
 /// such an `advance:` comes — some `later` step, before a `newRun` / `end`,
 /// moves the clock (from where it stands now, each advance from where the
 /// one before it left it) across a midnight while raising that moment.
-fn clock_raised_note(s: &Session<'_>, action: &Action, later: &[Step]) -> Option<String> {
+/// Where the run started (`run_start`) the clock raises neither its slot
+/// occasion nor `dayStart`: a step raising one there plays what only the
+/// engine may raise, noted unless the clock declares `raiseAtStart: true`.
+fn clock_raised_note(
+    s: &Session<'_>,
+    action: &Action,
+    later: &[Step],
+    run_start: Option<lute_manifest::clock::ClockAt>,
+) -> Option<String> {
     let Action::Occasion { occasion, .. } = action else {
         return None;
     };
     let clock = s.project().index.clock.as_ref()?;
     let moments = clock.raise.as_ref()?.moments();
+    if let Some(start) = run_start.filter(|st| s.clock_at() == Some(*st)) {
+        let declared = if moments.slot.as_ref() == Some(occasion) {
+            match clock.raise.as_ref()? {
+                lute_manifest::clock::ClockRaise::Slot(_) => format!("raise: {occasion}"),
+                lute_manifest::clock::ClockRaise::Moments(_) => {
+                    format!("raise: {{ slot: {occasion} }}")
+                }
+            }
+        } else if moments.day_start.as_ref() == Some(occasion) {
+            format!("raise: {{ dayStart: {occasion} }}")
+        } else {
+            String::new()
+        };
+        if !declared.is_empty() {
+            return (!clock.raise_at_start).then(|| {
+                format!(
+                    "`{occasion}` is the clock's `{declared}`, which the clock does not raise at \
+                     {}, where the run starts — if the engine raises it when a run starts, \
+                     declare `raiseAtStart: true` on the clock",
+                    clock.describe(start)
+                )
+            });
+        }
+    }
     let (moment, when) = if moments.day_end.as_ref() == Some(occasion) {
         (
             "dayEnd",
