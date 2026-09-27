@@ -1,6 +1,6 @@
 {
   "name": "@lute-lang/lute-core-linux-x64",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "lute CLI binary for linux x64 (glibc)",
   "license": "MIT",
   "type": "module",

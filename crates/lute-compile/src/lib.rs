@@ -355,7 +355,12 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// `none`. Documents that use none of it compile byte-identically apart from
 /// the version strings. `schemas/lute-ir-0.27.schema.json` is renamed to
 /// `schemas/lute-ir-0.28.schema.json` per the release-line rule.
-pub const LUTE_IR_VERSION: &str = "0.28.0";
+///
+/// IR `0.28.1` is a patch on the `0.28` line with NO shape or content
+/// change (a toolchain bug-fix release): the schema keeps its
+/// `schemas/lute-ir-0.28.schema.json` name and `$id`, and documents compile
+/// byte-identically apart from the version strings.
+pub const LUTE_IR_VERSION: &str = "0.28.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1598,15 +1603,12 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.28.0 axis alignment (docs/versioning.md): a minor release. The
-        // language earns the move (one rule per slot, `chapters:`, renamed
-        // quest attributes, latching `spentBy`, `occasion.target` writes, clock
-        // and season reads, hub `<return>`, label forms) and so does the IR
-        // (renamed `visibleWhen` / `outcome` / `follows`, additive
-        // `outsideRun`, `return`, `raiseAtStart`, `labelForms`, new placeholder
-        // formats) — both move independently of the toolchain pin.
-        assert_eq!(super::LUTE_IR_VERSION, "0.28.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.28.0");
+        // 0.28.1 axis alignment (docs/versioning.md): a bug-fix patch on the
+        // 0.28 line. The toolchain earns the move; the language and the IR
+        // are content no-ops (the schema keeps its 0.28 name) — both still
+        // move independently of the toolchain pin.
+        assert_eq!(super::LUTE_IR_VERSION, "0.28.1");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.28.1");
     }
 
     #[test]
@@ -1615,8 +1617,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.28.0");
-        assert_eq!(v["irVersion"], "0.28.0");
+        assert_eq!(v["lute"], "0.28.1");
+        assert_eq!(v["irVersion"], "0.28.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

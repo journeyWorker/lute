@@ -197,10 +197,12 @@ mod lute_version_tests {
     /// `outsideRun`, `HubCmd.return`, `clock.raiseAtStart`, `labelForms` and
     /// the placeholder formats `cardinalWord` / `capitalize` / `start` /
     /// `indefinite`, so the current schema is
-    /// `schemas/lute-ir-0.28.schema.json`.
+    /// `schemas/lute-ir-0.28.schema.json`. `0.28.1` is a bug-fix patch on
+    /// the same line: no language change and no IR shape change, so the
+    /// schema keeps its `0.28` name and `$id`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_28_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.28.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.28.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_28_1() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.28.1");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.28.1");
     }
 }

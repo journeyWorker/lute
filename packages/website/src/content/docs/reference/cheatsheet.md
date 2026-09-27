@@ -1,6 +1,6 @@
 ---
 title: Cheatsheet
-description: "One page to keep open while writing Lute 0.28.0 (with its clock, quest structure, parties, bridge answers, exclusive relations, shared spends, quest graph edges, kinds assembled with add:, kind targets, directive when=, component defaults and @@who, rule counts, engine gates and terminal states, finite clocks, weeks, seasons, rearm and a latching spentBy, beat templates, chapters, labels, label forms and plurals, hub return blocks, and follows= / outcome= / visibleWhen=): every construct with a minimal checked snippet (project layout, frontmatter, lines, choices, match, state, CEL, beats, clock, quests, lore, components, timelines), the CLI at a glance, the diagnostics authors hit most, and the gotchas."
+description: "One page to keep open while writing Lute 0.28.1 (with its clock, quest structure, parties, bridge answers, exclusive relations, shared spends, quest graph edges, kinds assembled with add:, kind targets, directive when=, component defaults and @@who, rule counts, engine gates and terminal states, finite clocks, weeks, seasons, rearm and a latching spentBy, beat templates, chapters, labels, label forms and plurals, hub return blocks, and follows= / outcome= / visibleWhen=): every construct with a minimal checked snippet (project layout, frontmatter, lines, choices, match, state, CEL, beats, clock, quests, lore, components, timelines), the CLI at a glance, the diagnostics authors hit most, and the gotchas."
 ---
 
 Every construct on one page, as snippets you can copy. Each `lute` block below is compile-checked in CI
@@ -126,7 +126,7 @@ identity:                               # both values below are the defaults
   lineId: "{prefix}.{speaker}_{code}"
   voiceKey: "{prefix}.{speaker}-{code}" # the 0.21 default was {speaker}-{code}: pin it to keep old keys
 defaults:                               # frontmatter every document inherits
-  luteVersion: "0.28.0"
+  luteVersion: "0.28.1"
   uses:                                 # resolved against THIS file's directory
     - world.schema.yaml
     - schema/areas/*.schema.yaml        # 0.26.0: a glob, expanded in path order; matching nothing is fine

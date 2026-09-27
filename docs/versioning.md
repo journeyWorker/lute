@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.28.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.28.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.28.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.28.1` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.28.1` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.28.1` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -817,6 +817,23 @@ strings. `lute.core` moves — `::camera` takes `moveX` / `moveY` — so
 an engine reading the renamed fields reads them under their new names. The
 tree-sitter grammar admits a hub's `<return>` block and treats
 `visibleWhen` values as CEL.
+
+**`0.28.1` aligns all three axes at `0.28.1`, a patch on the `0.28` line; the
+toolchain earns it, and the language and the IR are content no-ops (the
+`0.10.1` shape).** A bug-fix release from what the sixth dogfood round left
+behind: a mistake the checker reported as several diagnostics is one naming
+its cause (a `-` in a state path or id, a misspelt `done=` or `teir:`, a
+refused `::set`, Yarn's `$oil`, a choice named `true`), a rule guard
+comparing a variable with an enum-typed path holds for the shared members as
+a beat's `when` already did, a gated line a finite clock can never reach says
+why, and `lute play`, `lute lore`, `lute beats` and `lute trace --occasion`
+answer as the language says. The language adds no syntax and no static
+semantics. The IR shape does not move, so
+[`schemas/lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)
+keeps its name and `$id` (the `0.21.1` / `0.23.1` / `0.25.1` precedent), and
+artifacts differ only in the version strings; `capabilityVersion` does not
+move. Engines gate on MAJOR, so nothing widens, and the tree-sitter grammar is
+unchanged.
 
 ## Which bump when
 
