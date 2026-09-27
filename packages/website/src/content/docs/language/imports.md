@@ -102,7 +102,7 @@ resolve against the manifest's directory:
 
 ```yaml
 defaults:
-  luteVersion: "0.26.0"
+  luteVersion: "0.27.0"
   uses:
     - schema/world.schema.yaml
     - schema/items.schema.yaml

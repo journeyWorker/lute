@@ -183,22 +183,22 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.26.0` is a language AND IR release: state declared in several
-    /// documents must agree (`E-STATE-DECL-CONFLICT`), a schema may `add:`
-    /// members to a kind another declares, `defaults.uses` takes globs, a
-    /// directive attribute may be typed by an entity kind and a reward kind's
-    /// `target:` is checked (`E-REWARD-TARGET`), components gain `@@who:`,
-    /// param `default:`s and their own result slots, directives take
-    /// `when=`, a beat may `target="kind:<kind>"`, and a rule body may count
-    /// a lower stratum (`E-RULE-AGGREGATE-CYCLE`). The IR gains the optional
-    /// `targetKind` on beats, entries and index rows, the `occasionTarget`
-    /// placeholder kind and the rule-body `count` literal (a directive's
-    /// `when=` lowers to a one-arm match and a param `default:` to its value,
-    /// so neither adds a field), so the current schema is
-    /// `schemas/lute-ir-0.26.schema.json`.
+    /// `0.27.0` is a language AND IR release: the engine seam
+    /// (`raisedWhen:` gates, `terminal:`, a finite clock, directive
+    /// `asserts:` / `retracts:` effects), members bound by occasions
+    /// (`occasion.target` as a ground term, `for="kind:<kind>"`, occasion
+    /// `payload:`), cadence (`once: week`, quest `rearm=`, `seasons:`,
+    /// `spentBy:`), beat templates, the manifest's `sequence:`, kind
+    /// `labels:` and the `plural` hint, and plain-language diagnostics. The
+    /// IR gains the optional `gates`, `terminal`, `seasons`, `clock.last` /
+    /// `clock.days`, `forKind`, `spentBy`, `QuestCmd.rearm`, the `once` values
+    /// `week` / `season:<name>`, plugin `asserts` / `retracts`, `labels` on
+    /// `entities[]` / `state[]` and the placeholder format `plural` with its
+    /// `forms`, so the current
+    /// schema is `schemas/lute-ir-0.27.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_26_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.26.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.26.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_27_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.27.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.27.0");
     }
 }

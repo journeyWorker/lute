@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.26.0`, the grammar and semantics the checker
+- **Language** — currently `0.27.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.26.0`) and gated on by consuming engines.
+  artifact (currently `0.27.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -37,6 +37,28 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.27.0] - 2026-09-27
+
+**One runtime, seasons, templates.**
+
+A large minor release from a fifth dogfood round. `lute play`, `lute run`,
+`lute trace`, `lute test` and the playground execute the compiled IR on one
+walker, and a differential test holds every example, conformance fixture and
+test fixture to one transcript under both drivers. Occasions bind members
+(`occasion.target` as a ground term, `for="kind:<kind>"`, occasion
+`payload:`); the engine seam gains `raisedWhen:` gates, a `terminal:` state, a
+finite clock and directive `asserts` / `retracts`; cadence gains `once: week`,
+quest `rearm=`, `seasons:` and `spentBy:`; components become beat templates,
+the manifest's `sequence:` chains scenes into chapters, and kinds carry
+display `labels:` beside the `plural` hint. The checker says no where it used
+to stay silent (`E-SET-SHAPE`, member-checked `{ domain: K }` paths,
+`E-ATTR-QUOTE`, `W-QUEST-TIER-IMPLICIT`), and diagnostics speak plain
+language, their spec sections moved to `--json` `spec` and
+`lute --explain <CODE>`. The language and the IR both earn the move (the IR
+additively); see
+[`docs/proposals/scenario-dsl/0.27.0.md`](docs/proposals/scenario-dsl/0.27.0.md)
+and [`docs/versioning.md`](docs/versioning.md).
 
 ### Added
 
@@ -696,6 +718,105 @@ table.
 - `lute calendar`: `run.aff[run.route]` no longer refuses a route axis with values outside the family (`hotaru`, `alone`): at such a value the tied axis sets nothing, one cell stands for all its values, and a note says so; only an axis naming no member at all is refused. A misspelt indexing axis gets a did-you-mean and the axis list no longer names the bad axis itself (OT-F-12).
 - `lute scenario reach --endings`: exits 1 when an ending is unreachable; a never-holds row cites the error inside its `when` (`caused by E-WHEN-LITERAL-DOMAIN at …`, JSON `causes`); bare `--endings` in a game with no `::end` points at `--endings=<occasion>`; `--format` is accepted after the sub-view (OT-F-13).
 - `lute test --coverage`: an untested beat is no longer listed a second time under "no play presents" (that list now holds only the beats a test traces but no play presents), and a file traced from `tests/` is spelled one way (`./scenes/a.lute`, not `./tests/../scenes/a.lute`) (OT-F-14).
+
+### Compatibility
+
+- **`::set` without an assignment operator is `E-SET-SHAPE`.**
+  `::set{ run.clues - 1 }` used to check clean and compile to
+  `run.clues = 1`; it is now an error naming `=` / `+=` / `-=` / `*=` and the
+  write you likely meant. A param as a dotted segment (`run.aff.@who`) is the
+  same error, pointing at `run.aff[@who]`.
+- **`{ domain: K }` / `{ entity: K }` paths are member-checked.** A literal
+  that meets such a path outside K — in `::set` (`E-SET-TYPE`), `==` / `!=` /
+  `in` and `<when is>` (`E-WHEN-LITERAL-DOMAIN`), or `into=` (`E-INTO-VALUE`)
+  — is an error, and a `<match>` over the path must cover K
+  (`E-NONEXHAUSTIVE` names the missing members), as for an inline
+  `{ enum: […] }` path. The same member check meets play and save seeds,
+  `engine:` writes, test `state:` seeds and `expect.state` values.
+- **`<match on="@def">` over a fact query is `E-MATCH-RELATION-SUBJECT`.** A
+  def expanding to `holds(…)` / `count(…)` used to check clean and
+  exhaustive as a match subject. Test the query where it goes instead: a
+  `when=` guard on the line, choice or `::set`, or an arm's `<when test>` in a
+  `<match>` with no `on` (`<when test="@badgeCount >= 1">`).
+- **Curly-quoted attribute values are `E-ATTR-QUOTE`.** `label=“Open”` (or
+  `‘…’`, or a straight value closed by `”`) is one error at the quote; retype
+  it as `"`. Each word used to be its own `E-UNKNOWN-ATTR`.
+- **`W-QUEST-TIER-IMPLICIT` can appear in a clean project.** A `<quest>`
+  with no `tier=` (and no `defaults.questTier`) whose conditions read only
+  run state warns; write `tier="run"` / `tier="user"` or set
+  `defaults.questTier`. With `--deny-warnings` it fails the project. The
+  other new advisories — `W-SEQUENCE-ORDER`, `W-SEQUENCE-STALL`,
+  `W-LABEL-CAST-SHADOWED`, `W-DEADLINE-NEVER` — fire only on 0.27 syntax.
+- **`lute test` gates on the project's verdict.** A document is judged under
+  `--project`, else the nearest `lute.project.yaml`, as `lute trace
+  --project` and `lute play` do; a document outside a project keeps the
+  standalone check. A test refused standalone may now run, and one the
+  project refuses now fails.
+- **`lute test` judges `raisedWhen` and `terminal:`.** `eligible: true` on a
+  beat the engine would not raise under the test's mocks — its occasion's
+  gate is false, or `terminal:` holds — used to pass and now misses, naming
+  the gate and its false reads (`--json` adds `notRaised`).
+- **Transcript needles judge their attribute blocks and are validated.** A
+  needle written `@sol{emotion="sad"}: …` matches only a line carrying those
+  attributes, so a `transcriptLacks` needle with a block now holds when the
+  words are said another way (it failed in 0.26), and one naming something
+  no line shows (`emotoin=`, a value outside its domain, an unknown
+  `@speaker`) is refused before anything plays.
+- **Play and test scripts are validated before they run.** Every `choose:`
+  (top level, an `include:`'s, a step's) naming an unknown branch, hub or
+  option, an `expect` naming a beat no project beat has or a clock position
+  the clock does not have, a `facts:` / `notFacts:` atom with an undeclared
+  relation, wrong arity or non-member argument, and an out-of-domain state
+  value are usage errors in `lute play` (exit 2) and invalid tests in
+  `lute test`, located at their line; they used to be misses or to hold
+  vacuously.
+- **`lute trace`, `compile`, `compile-stream` and `context` apply the
+  nearest `lute.project.yaml`** to a single file, as `lute check` does (and
+  say so on stderr); `--project` still wins. Output for a file inside a
+  project now reflects its plugins, schemas and defaults.
+- **One runtime.** `lute trace` / `lute test` execute the compiled IR on the
+  walker `lute run` and `lute play` use, so behaviour the runtimes disagreed
+  on has one answer: a plugin directive's declared effects apply in trace,
+  exclusivity is checked after every write, an unanswered bridge result is
+  unknown everywhere, quests settle in one order, and trace's final state
+  lists every declared path with its default. A test that passed on the old
+  trace walker's answer may now fail.
+- **Diagnostics JSON: plain `message`, new `spec`.** Every message drops its
+  `(dsl … §…)` citations; the cited sections move to an optional `spec`
+  array in `--json` (and the wasm build). Tooling that parsed citations out
+  of `message` should read `spec`, or `lute --explain <CODE>`.
+- **`lute test --coverage --json`: `coverage.untested` changed shape.** It
+  is a list of `{file, id, kind}` units at beat granularity (was document
+  paths), beside the new `coverage.notPresentedByPlay`.
+- **`lute play` transcripts change.** A directive's declared effects print
+  as their own `set` / `assert` / `retract` lines (`set run.sanity = 9
+  (effect of ::fright)`), and five or more `when: false` candidates at one
+  raise fold into one count line (`✗ 8 beats — when: false: a, b, c, …`;
+  `--quiet` leaves them out, `--json` still lists every candidate). Scripts
+  and tools that diff transcripts see the new lines.
+- **Restamp `luteVersion:`.** A document or `defaults:` stamped with an
+  older version draws `W-LUTE-VERSION-STALE`, which names the stamp to
+  write (`luteVersion: "0.27.0"`); bump the stamp, or `--deny-warnings`
+  fails the project.
+- **Schema file renamed; additive IR.** The version strings move to `0.27.0`
+  and `schemas/lute-ir-0.26.schema.json` is renamed to
+  [`schemas/lute-ir-0.27.schema.json`](schemas/lute-ir-0.27.schema.json)
+  (`$id` updated). Every new field is optional and appears only when the
+  source uses the feature: `gates`, `terminal` and `seasons` on the artifact
+  and `project.index.json`, `clock.last` / `clock.days`, `forKind` and
+  `spentBy` on `BeatIr` / `EntryCmd` / `BeatCmd` / index beat rows, the
+  `once` values `"week"` / `"season:<name>"`, `QuestCmd.rearm` and the quest
+  tier `"season:<name>"`, a `plugin` record's resolved `asserts` /
+  `retracts`, `labels` on `entities[]` and `state[]` entries, and the
+  placeholder format `"plural"` with its `forms`. A beat template,
+  `sequence:` and `occasion.target` as a ground term lower to plain beats
+  and conditions, so none adds a field. A `<match>` arm's `test` now carries
+  the whole arm condition as CEL (an `is` arm over a subject with no portable
+  `expr` used to lower to an empty or partial `test`). `lute.core` does not
+  move, so neither does `capabilityVersion`. Engines gate on MAJOR, so
+  nothing widens; the tree-sitter grammar admits a self-closing template use
+  and treats `rearm` / `spentBy` values as CEL.
+
 ## [0.26.0] - 2026-09-26
 
 **Scale and many authors.**

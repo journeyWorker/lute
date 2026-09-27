@@ -4,5 +4,5 @@ profiles:
   g:
     plugins: { p: true }
 defaults:
-  luteVersion: "0.26.0"
+  luteVersion: "0.27.0"
   uses: [world.schema.yaml]
