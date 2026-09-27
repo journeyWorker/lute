@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.28.0`, the grammar and semantics the checker
+- **Language** — currently `0.28.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.28.0`) and gated on by consuming engines.
+  artifact (currently `0.28.1`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,7 +36,15 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.28.1] - 2026-09-27
+
+**Leftovers from the sixth dogfood round.**
+
+A bug-fix patch on the `0.28` line: no language change and no IR shape change.
+Diagnostics name one cause where they named several, and `lute play`,
+`lute lore` and `lute trace` answers are put right; artifacts differ only in
+the version strings. See [`docs/versioning.md`](docs/versioning.md) for what
+each axis earned.
 
 ### Fixed
 

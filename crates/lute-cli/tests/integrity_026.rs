@@ -72,7 +72,7 @@ fn project(tag: &str, exports: &[(&str, &str, &str)], defaults: &str) -> PathBuf
         &dir,
         "lute.project.yaml",
         &format!(
-            "pluginsDir: plugins/\ndefaultProfile: base\nprofiles:\n  base: {{ plugins: {{ p: true }} }}\ndefaults:\n  luteVersion: \"0.28.0\"\n{defaults}"
+            "pluginsDir: plugins/\ndefaultProfile: base\nprofiles:\n  base: {{ plugins: {{ p: true }} }}\ndefaults:\n  luteVersion: \"0.28.1\"\n{defaults}"
         ),
     );
     dir
@@ -925,7 +925,7 @@ fn demo(tag: &str, files: &[(&str, &str)], uses: &str) -> PathBuf {
         &dir,
         "lute.project.yaml",
         &format!(
-            "pluginsDir: plugins/\ndefaultProfile: base\nprofiles:\n  base: {{ plugins: {{ demo: true }} }}\ndefaults:\n  luteVersion: \"0.28.0\"\n  uses: [{uses}]\n"
+            "pluginsDir: plugins/\ndefaultProfile: base\nprofiles:\n  base: {{ plugins: {{ demo: true }} }}\ndefaults:\n  luteVersion: \"0.28.1\"\n  uses: [{uses}]\n"
         ),
     );
     for (rel, body) in files {

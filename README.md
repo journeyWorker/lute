@@ -116,7 +116,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.28.0"
+luteVersion: "0.28.1"
 profile: date-minigame
 extra:
   arc: main
@@ -219,7 +219,7 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.28.0.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.28.1.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
   [`0.28.0`](docs/proposals/scenario-dsl/0.28.0.md). Recent tips: `0.25.0`
   exclusion, shared spends and graph edges (relation `excludes:`, `share` keys, bundle
@@ -250,10 +250,12 @@ history):
   turn; and new advisories flag other languages' markup (`W-TEXT-SINGLE-BRACE`,
   `W-TEXT-COMMENT-LIKE`, `W-TEXT-BRACKET-LABEL`), relations and seasons left implicit
   (`W-RELATION-TIER-IMPLICIT`, `W-SEASON-UNGATED`) and shared menu ids
-  (`W-BRANCH-ID-SHARED`). Being draft means the grammar may still break before 1.0; each
+  (`W-BRANCH-ID-SHARED`). `0.28.1` is a bug-fix patch with no language change: sharper,
+  single-cause diagnostics, and `lute play`, `lute lore` and `lute trace` answers put
+  right. Being draft means the grammar may still break before 1.0; each
   breaking change ships a `lute fix` migration, a pin where the rewrite is mechanical, or
   an error naming the new spelling.
-- **IR: 0.28.0.** The compiled artifact is specified by
+- **IR: 0.28.1.** The compiled artifact is specified by
   [`schemas/lute-ir-0.28.schema.json`](schemas/lute-ir-0.28.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only
@@ -264,7 +266,8 @@ history):
   a hub's `return` segment, `clock.raiseAtStart`, `labelForms` on `entities[]` and
   `state[]` entries, `authored` on seam conditions, the placeholder formats
   `cardinalWord`, `capitalize`, `start` and `indefinite`, and the relation tier
-  `season:<name>`. A `spentBy` beat's `once` is its period, not `none`.
+  `season:<name>`. A `spentBy` beat's `once` is its period, not `none`. `0.28.1` moves no
+  shape: artifacts differ only in the version strings.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver, reference
   runtime, LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (including `lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-trace`, `lute-lint`,
