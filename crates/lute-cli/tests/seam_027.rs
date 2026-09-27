@@ -442,6 +442,42 @@ fn the_game_over_ends_the_play_in_the_terminal_state() {
     assert_eq!(v["end"], "complete", "{}", text(&out));
 }
 
+/// A scene's `::end` says the play goes on — except in the step that ended
+/// the game, where the game-over note follows it instead (ledger INK-13).
+#[test]
+fn an_end_in_the_step_that_ends_the_game_does_not_say_the_play_goes_on() {
+    let dir = open_ward("end-note");
+    write(
+        &dir,
+        "scenes/lobby.lute",
+        "---\nkind: scene\nid: lobby\non: enter\ntarget: room.lobby\nonce: false\n---\n\n\
+         ## lobby\n\n@narrator: The lobby is cold.\n::end\n",
+    );
+    write(
+        &dir,
+        "scenes/taken.lute",
+        "---\nkind: scene\nid: taken\non: knock\nonce: false\n---\n\n## Taken\n\n\
+         ::set{run.fate = \"taken\"}\n@narrator: Something takes you.\n::end\n",
+    );
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: enter\n    target: room.lobby\n  - occasion: knock\n",
+        false,
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert_eq!(
+        t.matches("::end        (this presentation ends; the play goes on)\n")
+            .count(),
+        1,
+        "{t}"
+    );
+    assert!(
+        t.contains("::end        (this presentation ends)\n  note: the game is over"),
+        "{t}"
+    );
+}
+
 /// `expect.end` tells the two apart: a play that reached `terminal:` fails
 /// `end: complete` and passes `end: terminal`, and one that did not fails
 /// `end: terminal` — `exit:` used to pass both as `complete`.

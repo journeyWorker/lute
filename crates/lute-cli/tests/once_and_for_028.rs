@@ -120,6 +120,22 @@ fn a_kind_target_on_an_untargeted_occasion_points_at_for_and_is_one_report() {
         "{t}"
     );
 
+    // An entry, whose `target=` is otherwise metadata there, says it too.
+    let t = check(
+        "target-kind-entry",
+        &[(
+            "lore/g.lute",
+            &lore("<entry id=\"e\" on=\"evening\" target=\"kind:hero\">\n  @narrator: Hi.\n</entry>\n"),
+        )],
+    );
+    assert!(
+        t.contains(
+            "to present this entry once for each member of `hero`, write `for=\"kind:hero\"` \
+             instead of `target`"
+        ),
+        "{t}"
+    );
+
     // On a `select: first` occasion `for` would be refused too: say why.
     let t = check(
         "target-kind-first",

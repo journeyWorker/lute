@@ -213,7 +213,15 @@ pub fn run_play(
         }
         format!("{}\n", serde_json::to_string_pretty(&v).unwrap_or_default())
     } else {
-        let mut text = render_human(&project, &play, View { ir, quiet });
+        let mut text = render_human(
+            &project,
+            &play,
+            View {
+                ir,
+                quiet,
+                ended_game: false,
+            },
+        );
         if let Some((h, _)) = &explained {
             text.push_str(h);
             if !h.ends_with('\n') {

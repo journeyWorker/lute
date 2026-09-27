@@ -84,16 +84,48 @@ fn check_reward_target(
     let at = r.target_span.unwrap_or(r.span);
     if let Some(entity) = contract.entity.as_deref() {
         let message = match env.kinds.get(entity).map(|d| &d.shape) {
-            None => format!(
+            None if env.kinds.is_empty() => format!(
                 "`<reward kind=\"{kind}\">`'s target contract names entity kind `{entity}`, which \
                  this document does not declare — import the schema that declares it through \
                  `uses:` (dsl 0.26.0 §2.5)"
             ),
-            Some(KindShape::Members(ms)) if !ms.iter().any(|m| m == target) => format!(
-                "`{target}` is not a member of entity kind `{entity}`, which `<reward \
-                 kind=\"{kind}\">` targets (dsl 0.26.0 §2.5){}",
-                crate::rel_schema::member_hint(target, ms)
-            ),
+            // The document reads schemas; none of them has the kind.
+            None => {
+                let fix = match lute_manifest::suggest::nearest(
+                    entity,
+                    env.kinds.keys().map(String::as_str),
+                    2,
+                ) {
+                    Some(near) => format!(
+                        "did you mean `{near}`? Fix the reward kind's `target: {{ entity: … }}` \
+                         in its plugin, or declare `{entity}` under `entities:` in a schema the \
+                         document `uses:`"
+                    ),
+                    None => format!(
+                        "declare `{entity}` under `entities:` in a schema the document `uses:`, \
+                         or fix the reward kind's `target: {{ entity: … }}` in its plugin"
+                    ),
+                };
+                format!(
+                    "`<reward kind=\"{kind}\">`'s target contract names entity kind `{entity}`, \
+                     which neither this document nor a schema it `uses:` declares — {fix} (dsl \
+                     0.26.0 §2.5)"
+                )
+            }
+            Some(KindShape::Members(ms)) if !ms.iter().any(|m| m == target) => {
+                // `keepsake.skyStone`: the member, written with a prefix.
+                let hint = match target.rsplit_once('.') {
+                    Some((head, bare)) if ms.iter().any(|m| m == bare) => format!(
+                        " — write `target=\"{bare}\"`: a reward's target names the member \
+                         alone, without `{head}.`"
+                    ),
+                    _ => crate::rel_schema::member_hint(target, ms),
+                };
+                format!(
+                    "`{target}` is not a member of entity kind `{entity}`, which `<reward \
+                     kind=\"{kind}\">` targets (dsl 0.26.0 §2.5){hint}"
+                )
+            }
             Some(_) => return None,
         };
         return Some(diag(E_REWARD_TARGET, Severity::Error, message, at));

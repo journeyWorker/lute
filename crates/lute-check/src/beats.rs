@@ -205,24 +205,46 @@ pub(crate) fn lift_scene_beat(
         // repeat it.
         None if get("occasion").or_else(|| get("event")).is_some() => return None,
         None => {
-            for key in &BEAT_KEYS[1..] {
-                if get(key).is_some() {
-                    let fix = match crate::chapters::unapplied(meta) {
-                        Some(u) => crate::chapters::unapplied_note(u).to_string(),
-                        None => format!(
-                            "add `on: <occasion>` or list the scene in a chain of the \
-                             project's `chapters:`, or remove `{key}:` for a scene your engine \
-                             starts itself"
-                        ),
-                    };
-                    push(
-                        format!(
-                            "`{key}:` without `on:`; `{key}` belongs to a beat, and a scene \
-                             becomes a beat by naming the occasion it answers — {fix}"
-                        ),
-                        top_key_span(meta, key),
-                    );
-                }
+            let mut keys: Vec<&str> = BEAT_KEYS[1..]
+                .iter()
+                .copied()
+                .filter(|key| get(key).is_some())
+                .collect();
+            keys.sort_by_key(|key| top_key_span(meta, key).byte_start);
+            // A scene an unapplied chain (or the retired `sequence:`) lists
+            // has one cause for all its keys: said once, at the first.
+            if let (Some(u), [first, ..]) = (crate::chapters::unapplied(meta), keys.as_slice()) {
+                let (written, belong) = match keys.as_slice() {
+                    [one] => (format!("`{one}:`"), format!("`{one}` belongs")),
+                    many => {
+                        let named: Vec<String> = many.iter().map(|k| format!("`{k}:`")).collect();
+                        let (last, init) = named.split_last().expect("two or more keys");
+                        (
+                            format!("{} and {last}", init.join(", ")),
+                            "they belong".to_string(),
+                        )
+                    }
+                };
+                push(
+                    format!(
+                        "{written} without `on:`; {belong} to a beat, and a scene becomes a beat \
+                         by naming the occasion it answers — {}",
+                        crate::chapters::unapplied_note(u)
+                    ),
+                    top_key_span(meta, first),
+                );
+                return None;
+            }
+            for key in keys {
+                push(
+                    format!(
+                        "`{key}:` without `on:`; `{key}` belongs to a beat, and a scene becomes a \
+                         beat by naming the occasion it answers — add `on: <occasion>` or list \
+                         the scene in a chain of the project's `chapters:`, or remove `{key}:` \
+                         for a scene your engine starts itself"
+                    ),
+                    top_key_span(meta, key),
+                );
             }
             return None;
         }
@@ -1011,6 +1033,20 @@ pub(crate) fn check_beat_target_domains(
         };
         let verdict = match kind_target(target) {
             Some(_) if restricts && !decl.target.takes_target() => return,
+            // An entry's `kind:` target on a `select: sequence` occasion
+            // raised for no target meant `for=`, as a scene's does
+            // ([`check_occasion`]).
+            Some(kind)
+                if !decl.target.takes_target()
+                    && decl.select == lute_manifest::schema::OccasionSelect::Sequence =>
+            {
+                Err(format!(
+                    "occasion `{on}` is not raised for a target (declared without `target: \
+                     true`), so `target=\"{target}\"` cannot answer it for each member; to \
+                     present this entry once for each member of `{kind}`, write \
+                     `for=\"kind:{kind}\"` instead of `target`"
+                ))
+            }
             Some(kind) => kind_target_members(decl, kind, kinds).map(drop),
             None => occasion_target_ok(decl, target, kinds),
         };
@@ -1305,6 +1341,9 @@ pub struct ProjectBeat<'a> {
     /// kind and members — the beat is presented once per member.
     pub for_kind: Option<(&'a str, Option<(String, Vec<String>)>)>,
     pub priority: i64,
+    /// dsl 0.28.0 §4: a scene's `priority` the manifest's `chapters:`
+    /// derived from its place in the chain, not one it wrote.
+    pub priority_derived: bool,
     /// A scene's policy; an entry's authored `once` ([`BeatOnce::None`] when
     /// absent — an entry without `once` is repeatable).
     pub once: BeatOnce,
@@ -1548,6 +1587,7 @@ pub fn project_beats<'a>(
                     beat.target.is_some(),
                 ),
                 priority: beat.priority,
+                priority_derived: crate::chapters::derived(&doc.meta, "priority"),
                 once: beat.once.clone(),
                 once_authored: beat.once_authored,
                 also: beat.also,
@@ -1625,6 +1665,7 @@ pub fn project_beats<'a>(
                         entry.target.is_some(),
                     ),
                     priority,
+                    priority_derived: false,
                     once_authored: entry.once.is_some() || entry.spent_by.is_some(),
                     also: false,
                     after: None,
@@ -1690,6 +1731,7 @@ pub fn project_beats<'a>(
                             beat.target.is_some(),
                         ),
                         priority: crate::bundles::bundle_beat_priority(beat),
+                        priority_derived: false,
                         once: crate::bundles::bundle_beat_once(beat),
                         once_authored: beat.once.is_some() || beat.spent_by.is_some(),
                         also: crate::bundles::bundle_beat_also(beat),
@@ -1789,6 +1831,8 @@ struct Beat<'a> {
     /// dsl 0.26.0 §5: [`ProjectBeat::kind_targets`].
     kind_targets: Option<Vec<String>>,
     priority: i64,
+    /// [`ProjectBeat::priority_derived`].
+    priority_derived: bool,
     once: BeatOnce,
     /// dsl 0.23.0 §3: presented beside the winner, never instead of it.
     also: bool,
@@ -2062,6 +2106,7 @@ pub fn check_project_beats(
                 target: pb.target,
                 kind_targets: pb.kind_targets,
                 priority: pb.priority,
+                priority_derived: pb.priority_derived,
                 once: pb.once.clone(),
                 also: pb.also,
                 always: pb.after.is_none() && holds && pb.spent_by.is_none(),
@@ -2313,10 +2358,34 @@ fn tie_warnings(beats: &[Beat<'_>], ties: &[(usize, usize)]) -> Vec<(PathBuf, Di
             };
             reasons.insert(0, reason);
         }
-        let fix = if members.len() == 2 {
-            "give one a different `priority`"
-        } else {
-            "give them different priorities"
+        // dsl 0.28.0 §4 (T3-18): a priority `chapters:` derived is not in
+        // the scene's file — say where it comes from, and fix the others.
+        let (mut derived, mut written): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
+        for b in members.iter().map(|&m| &beats[m]) {
+            if b.priority_derived {
+                derived.push(&b.name);
+            } else {
+                written.push(&b.name);
+            }
+        }
+        let provenance = match derived.as_slice() {
+            [] => String::new(),
+            [one] => format!(
+                " ({one}'s is written by `chapters:` in lute.project.yaml, from its place in its \
+                 chain)"
+            ),
+            many => format!(
+                " (the priority of {} is written by `chapters:` in lute.project.yaml, from their \
+                 places in their chains)",
+                and_list(many)
+            ),
+        };
+        let fix = match (derived.as_slice(), written.as_slice()) {
+            ([], _) if members.len() == 2 => "give one a different `priority`".to_string(),
+            ([], _) => "give them different priorities".to_string(),
+            (_, []) => "write a `priority:` of its own in one of the scenes".to_string(),
+            (_, [one]) => format!("give {one} a different `priority`"),
+            (_, many) => format!("give {} different priorities", and_list(many)),
         };
         out.push((
             first.path.clone(),
@@ -2324,10 +2393,10 @@ fn tie_warnings(beats: &[Beat<'_>], ties: &[(usize, usize)]) -> Vec<(PathBuf, Di
                 W_BEAT_PRIORITY_TIE,
                 Severity::Warning,
                 format!(
-                    "{} share priority {} on occasion `{}`{target} and can be eligible at once, \
-                     so file order picks the winner (today {}, and renaming or moving a file \
-                     changes it) — {fix}, or make their `when`s exclusive; they are not \
-                     provably exclusive because {} (dsl 0.22.0 §13)",
+                    "{} share priority {}{provenance} on occasion `{}`{target} and can be \
+                     eligible at once, so file order picks the winner (today {}, and renaming or \
+                     moving a file changes it) — {fix}, or make their `when`s exclusive; they \
+                     are not provably exclusive because {} (dsl 0.22.0 §13)",
                     and_list(&names),
                     first.priority,
                     first.on,

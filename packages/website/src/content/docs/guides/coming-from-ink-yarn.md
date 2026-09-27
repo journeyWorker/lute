@@ -45,7 +45,7 @@ a scene, which is what lets it prove that none of them dead-ends.
 | — | node group (`when:` headers) | several scenes answering one occasion, each with its own `when:`; the eligible one with the highest `priority:` plays ([Beats](/language/beats/)) |
 | — | `when: once`, `when: always` | the `once:` key: `once: run` (the default), `once: user`, `once: false` |
 | `# tag` | `#tag` | no free-form line tags ([below](#comments-and-tags)) |
-| — | `#line:…`, a localisation line id | a content line's `id=`: `@narrator{id="lampSmell"}: …` (compiled as its `lineId`) |
+| — | `#line:…`, a localisation line id | a content line's `code=`: `@narrator{code="0010"}: …`, which `lute tag` fills in; the compiled `lineId` is built from it ([Dialogue & cast](/language/dialogue-and-cast/)) |
 
 ## A knot, ported
 
@@ -276,7 +276,7 @@ terminal: "run.fate == 'drowned'"
 ```
 @narrator: The rail is wet. The light is very far away.
   set run.fate = "drowned"
-::end        (this presentation ends; the play goes on)
+::end        (this presentation ends)
   note: the game is over — `terminal: run.fate == 'drowned'` holds, so the engine raises no occasion from here (`occasion:` / `advance:` steps are refused; `newRun: true` starts a new run)
 ── end: terminal — `terminal: run.fate == 'drowned'` holds ──────────────
 ```
@@ -361,9 +361,8 @@ $ lute check cond.lute
 cond.lute:5:7: error [E-CEL-PROFILE] `once` is not a condition: how often a beat plays is its own key, `once` — `once: run` (once per run, the default), `once: user` (once ever) or `once: false` (every time); on a `<beat>` or `<entry>` it is `once="run"` — drop this `when`
 cond.lute:12:17: error [E-CEL-TYPE] `visited('gallery') > 2`: `>` compares numbers, and `visited('gallery')` is a bool — `visited('gallery')` is a bool, whether the scene was ever presented, not how often; count visits in a `number` path you `::set` (for example `::set{run.visits += 1}`)
 cond.lute:13:17: error [E-CEL-PROFILE] `$oil`: a state path takes no `$` (`$` alone is the `<match>` subject) — write the path with its tier — did you mean `run.oil`?
-cond.lute:13:17: error [E-DOLLAR-OUTSIDE-MATCH] `$` (match subject) is only valid inside a `<match>` block
 cond.lute:14:17: error [E-CEL-TYPE] `run.oil == true` compares a number with a bool, so it is never true
-failed: cond.lute (5 error(s), 0 warning(s))
+failed: cond.lute (4 error(s), 0 warning(s))
 ```
 
 The first-visit test from Ink, ported onto the hub's record, is caught too: inside the choice's own

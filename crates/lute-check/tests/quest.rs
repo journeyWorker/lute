@@ -110,6 +110,18 @@ fn objective_missing_done_errors() {
     );
 }
 
+/// A misspelt `done=` is one report: the unknown attribute naming `done`,
+/// not also "has no `done`".
+#[test]
+fn objective_misspelt_done_is_one_error() {
+    for key in ["complete", "doen"] {
+        let cs = codes(&format!(
+            "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" {key}=\"true\"/>\n</quest>\n"
+        ));
+        assert_eq!(cs, ["E-UNKNOWN-ATTR"], "{key}: {cs:?}");
+    }
+}
+
 #[test]
 fn quest_state_readable_in_match() {
     // quest.q.state is an implicitly-declared enum; a match over it covering unset is clean.

@@ -44,7 +44,8 @@ Ink와 Yarn Spinner는 흐름(flow)입니다: 텍스트가 위에서 아래로 �
 | `INCLUDE` | 여러 `.yarn` 파일 | 프로젝트: `lute.project.yaml` 아래의 모든 `.lute` 파일. 공유 상태는 `uses:`로 가져오는 스키마에 |
 | — | 노드 그룹(`when:` 헤더) | 한 계기에 응답하는 여러 장면, 각자 자기 `when:`. 자격 있는 장면 중 `priority:`가 가장 높은 것이 재생됩니다([Beats](/language/beats/)) |
 | — | `when: once`, `when: always` | `once:` 키: `once: run`(기본값), `once: user`, `once: false` |
-| `# tag` | `#tag`, `#line:…` | 자유 형식 줄 태그는 없습니다([아래](#주석과-태그)) |
+| `# tag` | `#tag` | 자유 형식 줄 태그는 없습니다([아래](#주석과-태그)) |
+| — | 현지화 줄 id `#line:…` | 콘텐츠 줄의 `code=`: `@narrator{code="0010"}: …`. `lute tag`가 채워 넣고, 컴파일된 `lineId`는 이것으로 만들어집니다([Dialogue & cast](/language/dialogue-and-cast/)) |
 
 ## knot 하나를 옮기기
 
@@ -128,6 +129,7 @@ state:
 - **`+`는 평범한 선택지, `*`는 `once`입니다.** `once` 선택지는 한 번 고르면 메뉴에서 빠집니다.
 - **처음 들어올 때의 텍스트**는 `<hub>` 앞의 줄이며 한 번만 재생됩니다. 돌아올 때마다의 텍스트는
   `<return>` 블록입니다: `exit`이 아닌 선택지가 끝날 때마다, 메뉴가 다시 나오기 전에 실행됩니다.
+  마지막 `once` 선택지가 메뉴를 비울 때도, 허브가 닫히기 직전에 실행됩니다.
 - **방문 횟수** `{ledger: - 1 … - 2 … - else …}`는 선택지가 직접 세는 숫자와 그것을 읽는 `<match>`입니다.
   허브도 고른 것을 `scene.visited.lamp.ledger`로 기록하지만, 그 값은 참/거짓뿐이고 선택지 자신의 줄
   안에서는 이미 참입니다: 고른 것은 그 줄들이 실행되기 전에 기록됩니다.
@@ -237,7 +239,8 @@ Ink의 `{cond: -> a | -> b}`는 같은 계기에 응답하는 장면 두 개이�
 
 장면 안에서 `::next{to="…"}`는 아래쪽의 `::mark{id="…"}`(또는 줄의 `id=`)로 앞으로 뜁니다. 뒤로는 결코
 뛰지 않습니다: 플레이어가 돌아오는 메뉴는 `<hub>`이고, 다시 재생되는 장면은 자기 계기에 다시 응답합니다.
-제목은 점프 대상이 아니며, 선택지의 `label=`도 아닙니다. `label=`은 버튼 텍스트일 뿐입니다.
+제목은 점프 대상이 아니며, 선택지 id(Ink의 이름 붙은 선택지 `* (inside)`)도 아닙니다. 선택지 id는 고른
+것의 이름이지 텍스트 안의 자리가 아닙니다.
 
 `visited('<scene id>')`는 장면이 한 번이라도 제시되었는지 묻습니다. 횟수가 아니라 참/거짓이고, 세이브
 전체에 걸칩니다: 새 런이 시작되어도 참으로 남습니다.
@@ -272,7 +275,7 @@ terminal: "run.fate == 'drowned'"
 ```
 @narrator: The rail is wet. The light is very far away.
   set run.fate = "drowned"
-::end        (this presentation ends; the play goes on)
+::end        (this presentation ends)
   note: the game is over — `terminal: run.fate == 'drowned'` holds, so the engine raises no occasion from here (`occasion:` / `advance:` steps are refused; `newRun: true` starts a new run)
 ── end: terminal — `terminal: run.fate == 'drowned'` holds ──────────────
 ```
@@ -354,9 +357,8 @@ $ lute check cond.lute
 cond.lute:5:7: error [E-CEL-PROFILE] `once` is not a condition: how often a beat plays is its own key, `once` — `once: run` (once per run, the default), `once: user` (once ever) or `once: false` (every time); on a `<beat>` or `<entry>` it is `once="run"` — drop this `when`
 cond.lute:12:17: error [E-CEL-TYPE] `visited('gallery') > 2`: `>` compares numbers, and `visited('gallery')` is a bool — `visited('gallery')` is a bool, whether the scene was ever presented, not how often; count visits in a `number` path you `::set` (for example `::set{run.visits += 1}`)
 cond.lute:13:17: error [E-CEL-PROFILE] `$oil`: a state path takes no `$` (`$` alone is the `<match>` subject) — write the path with its tier — did you mean `run.oil`?
-cond.lute:13:17: error [E-DOLLAR-OUTSIDE-MATCH] `$` (match subject) is only valid inside a `<match>` block
 cond.lute:14:17: error [E-CEL-TYPE] `run.oil == true` compares a number with a bool, so it is never true
-failed: cond.lute (5 error(s), 0 warning(s))
+failed: cond.lute (4 error(s), 0 warning(s))
 ```
 
 Ink의 첫 방문 검사를 허브의 기록으로 옮긴 경우도 잡힙니다: 선택지 자신의 줄 안에서는 기록이 이미 참이므로,

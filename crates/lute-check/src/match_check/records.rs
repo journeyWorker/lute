@@ -444,6 +444,13 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
         // as a structural gap (lute-cel `fill.rs`: no `E-CEL-PARSE`; the
         // check-pass `check_cel_slot` is a no-op on a `None` ast), so no
         // further suppression is needed here.
+        // A misspelt `done=` (`complete=`, `doen=`) is already an
+        // `E-UNKNOWN-ATTR` that names `done`: one cause, one report.
+        let done_misspelt = o.attrs.iter().any(|a| {
+            let keys = crate::logic_attrs::OBJECTIVE_ATTRS;
+            !keys.contains(&a.key.as_str())
+                && lute_manifest::suggest::nearest(&a.key, keys.iter().copied(), 2) == Some("done")
+        });
         match (&o.quest, o.done.raw.trim().is_empty()) {
             (Some(_), false) => diags.push(diag(
                 E_OBJECTIVE_QUEST_DONE,
@@ -457,7 +464,7 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
                 ),
                 o.quest_span,
             )),
-            (None, true) => diags.push(diag(
+            (None, true) if !done_misspelt => diags.push(diag(
                 "E-OBJECTIVE-MISSING-DONE",
                 Severity::Error,
                 format!(

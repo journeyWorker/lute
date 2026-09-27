@@ -216,10 +216,23 @@ pub fn yaml_fault(text: &str, e: &serde_yaml::Error) -> YamlFault {
         if let Some(at) = second_occurrence(text, line_start, key) {
             offset = at;
         }
-        Some(format!(
-            "`{key}:` is written twice in one mapping — keep one of them, or rename the second \
-             to the key you meant"
-        ))
+        // The mapping the key sits in, as the library names it (`clock:
+        // duplicate entry …`): a known near twin gets named.
+        let parent = problem
+            .split("duplicate entry")
+            .next()
+            .map(|p| p.trim().trim_end_matches(':'))
+            .and_then(|p| p.rsplit('.').next());
+        Some(match (parent, key) {
+            (Some("clock"), "day") => "`day:` is written twice in `clock:` — `day:` names the \
+                                       state path of the day, and the number of days the clock \
+                                       runs is `days:`"
+                .to_string(),
+            _ => format!(
+                "`{key}:` is written twice in one mapping — keep one of them, or rename the \
+                 second to the key you meant"
+            ),
+        })
     } else {
         None
     };
@@ -573,8 +586,13 @@ mod tests {
             ),
             (
                 "clock:\n  day: run.day\n  slots: [a]\n  day: 1\n",
-                "`day:` is written twice",
+                "the number of days the clock runs is `days:`",
                 (4, 3),
+            ),
+            (
+                "entities:\n  room: { add: [a] }\n  room: { add: [b] }\n",
+                "`room:` is written twice in one mapping",
+                (3, 3),
             ),
         ] {
             let e = serde_yaml::from_str::<serde_yaml::Value>(text).unwrap_err();

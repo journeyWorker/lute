@@ -15,6 +15,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use lute_check::ident_from_name;
 use lute_manifest::project::MetaDefaults;
 
 /// One scaffolded file: a path RELATIVE to the target directory and its
@@ -970,49 +971,15 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Turn a document name into a valid identifier for an id / state path
-/// segment (dsl §9.4 forbids `-` in a path segment): the name is split on
-/// every run of characters that cannot sit in one, every letter keeps the
-/// case it was typed in except that each word after the first starts
-/// upper-case and the identifier starts lower-case (`harborNight` stays
-/// `harborNight`, `The Epilogue` becomes `theEpilogue`), then a leading
-/// digit is prefixed with `q`. Empty input degrades to `fallback`.
-/// Documented so `lute new`'s naming rule is discoverable.
-fn to_ident(name: &str, fallback: &str) -> String {
-    let mut out = String::new();
-    let mut new_word = false;
-    for ch in name.chars() {
-        if ch.is_ascii_alphanumeric() {
-            if out.is_empty() {
-                out.push(ch.to_ascii_lowercase());
-            } else if new_word {
-                out.push(ch.to_ascii_uppercase());
-            } else {
-                out.push(ch);
-            }
-            new_word = false;
-        } else {
-            new_word = !out.is_empty();
-        }
-    }
-    if out.is_empty() {
-        return fallback.to_string();
-    }
-    if out.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-        out.insert(0, 'q');
-    }
-    out
-}
-
 /// A `lute new` document id from its name: every `/`- or `.`-separated
-/// segment through [`to_ident`], joined by `.` — so a dotted name keeps its
+/// segment through [`ident_from_name`], joined by `.` — so a dotted name keeps its
 /// dots (`isolde.night` → `isolde.night`, `talk/mara-first` →
 /// `talk.maraFirst`), matching the dotted `<group>.<name>` ids the templates
 /// and docs use, while `-` (forbidden in a segment, dsl §9.4) still camels.
 fn to_id(name: &str, fallback: &str) -> String {
     let segs: Vec<String> = name
         .split(['/', '.'])
-        .map(|seg| to_ident(seg, fallback))
+        .map(|seg| ident_from_name(seg, fallback))
         .collect();
     segs.join(".")
 }
@@ -1027,7 +994,7 @@ fn id_path(folder: &Path, name: &str, fallback: &str) -> PathBuf {
     let last = parts.pop().unwrap_or(name);
     let mut path = folder.to_path_buf();
     for dir in parts {
-        path.push(to_ident(dir, fallback));
+        path.push(ident_from_name(dir, fallback));
     }
     path.push(format!("{}.lute", to_id(last, fallback)));
     path
@@ -1516,13 +1483,13 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
 /// no `start`, so the quest stays inactive until content runs
 /// `::accept{quest="<ident>"}`, the shape quest-heavy games start from;
 /// `--start` scaffolds the auto-starting `start="true"` form instead. The
-/// quest id is [`to_ident`] of the name (a single identifier, as
+/// quest id is [`ident_from_name`] of the name (a single identifier, as
 /// `quest.<id>.state` needs); the document id (dsl 0.19.0 §2.1) is
 /// [`to_id`] of the name, as typed — no prefix — and the file is named
 /// after it ([`id_path`]).
 fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
     let path = id_path(&dest.root.join("quests"), name, "quest");
-    let ident = to_ident(name, "quest");
+    let ident = ident_from_name(name, "quest");
     let title = title_case(name);
     let (lifecycle, start_attr) = if start {
         (
@@ -1631,14 +1598,14 @@ fn refuse_taken_id(dest: &Destination, id: &str) -> Result<(), ExitCode> {
 
 /// `lute new lore <name>` (dsl 0.19.0 §2).
 ///
-/// One `<entry>` whose id is [`to_ident`] of the name, attached to
+/// One `<entry>` whose id is [`ident_from_name`] of the name, attached to
 /// `item.<ident>` as a `note`, with one content line; headed like `lute new
 /// scene` (the same `uses:`, round-5 FS-F11). Entries live under `lore/`,
 /// mirroring `quests/`, in a file named after the document id — [`to_id`]
 /// of the name as typed, no prefix, like `lute new quest`'s.
 fn new_lore(name: &str, dest: &Destination) -> ExitCode {
     let path = id_path(&dest.root.join("lore"), name, "entry");
-    let ident = to_ident(name, "entry");
+    let ident = ident_from_name(name, "entry");
     let title = title_case(name);
     let doc_id = to_id(name, "entry");
     if !path.exists() {

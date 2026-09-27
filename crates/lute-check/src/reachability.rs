@@ -1340,12 +1340,15 @@ fn walk_reach(
                         let suppress_arm_dead = analysis.owns_dead_guard();
                         if !suppress_arm_dead {
                             if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
-                                diags.push(diag(
-                                    E_ARM_DEAD,
-                                    Severity::Error,
-                                    "this gated line can never be shown: its `when` guard is provably false (dsl 0.4 §7.2, §5.2)".to_string(),
-                                    when.span,
-                                ));
+                                let mut message = "this gated line can never be shown: its \
+                                                   `when` guard is provably false (dsl 0.4 \
+                                                   §7.2, §5.2)"
+                                    .to_string();
+                                if let Some(why) = crate::clock::false_reason(&when.raw, defs, ctx)
+                                {
+                                    message.push_str(&format!(" — {why}"));
+                                }
+                                diags.push(diag(E_ARM_DEAD, Severity::Error, message, when.span));
                             } else if let Some(pick) =
                                 Pick::deciding_false(rx.picks, &when.raw, defs, ctx)
                             {

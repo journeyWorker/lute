@@ -656,12 +656,17 @@ impl Walker<'_> {
         let judge = |s: &lute_syntax::ast::Set| {
             let mut ds = check_set(s, &ctx.env.state, ctx);
             // dsl 0.10.0 §3: the RHS half `set_op` explicitly does not do
-            // (`set_op.rs:27-29`).
-            ds.extend(crate::set_type::check_set_type(
-                s,
-                self.arena,
-                &ctx.env.state,
-            ));
+            // (`set_op.rs:27-29`). A target the write policy refuses is
+            // reported once, by `check_set`: its value's type is moot.
+            if crate::set_op::classify_write(&s.path, &ctx.env.state)
+                == crate::set_op::WriteOwner::Content
+            {
+                ds.extend(crate::set_type::check_set_type(
+                    s,
+                    self.arena,
+                    &ctx.env.state,
+                ));
+            }
             ds
         };
         let target = match crate::target_writes::indexed_family(&s.path) {

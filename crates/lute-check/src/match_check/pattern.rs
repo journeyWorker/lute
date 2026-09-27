@@ -247,7 +247,13 @@ pub(crate) fn literal_is_foreign(lit: &IsLiteral, dom: &DomainInfo) -> bool {
             first > last
         }
         (IsLiteral::Range(_), domain) => !matches!(domain, Domain::Number),
-        (IsLiteral::Bool(b), Domain::Finite(vals)) => !vals.contains(&DomainValue::Bool(*b)),
+        // A member spelled `true`/`false` (a choice id or enum member) is
+        // already refused by `E-RESERVED-NAME`, which owns the root: the
+        // literal naming it is not a second fault.
+        (IsLiteral::Bool(b), Domain::Finite(vals)) => {
+            !vals.contains(&DomainValue::Bool(*b))
+                && !vals.contains(&DomainValue::Str(b.to_string()))
+        }
         (IsLiteral::Str(s), Domain::Finite(vals)) => !vals
             .iter()
             .any(|v| matches!(v, DomainValue::Str(x) if x == s)),

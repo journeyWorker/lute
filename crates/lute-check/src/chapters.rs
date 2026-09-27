@@ -167,7 +167,9 @@ pub fn apply_chapters(
     if !raw.is_empty() && !raw.ends_with('\n') {
         raw.push('\n');
     }
-    if !chain.applied {
+    // A chain on an occasion nothing declares is refused at the manifest
+    // (`E-CHAPTERS`), as a malformed one is: apply neither.
+    if !chain.applied || (!occasions.is_empty() && !occasions.contains_key(&chain.on)) {
         raw.push_str(if chain.retired {
             RETIRED_MARKER
         } else {

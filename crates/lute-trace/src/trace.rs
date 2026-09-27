@@ -343,6 +343,38 @@ fn trace_pipeline(
     // Keyed by entry id; the scene or `--beat` beat under "".
     let mut raised: BTreeMap<String, String> = BTreeMap::new();
     let mut binding_ons: BTreeSet<String> = BTreeSet::new();
+    // A raise for a target outside its occasion's domain is one the engine
+    // never makes. A bare member (`gift@ren` for `npc.ren`) stands for the
+    // prefixed target.
+    let kinds = &folded.env.rel_vocab.kinds;
+    let outside: Vec<Diagnostic> = mocks
+        .occasions
+        .iter()
+        .filter_map(|raw| {
+            let (on, Some(target)) = crate::split_occasion(raw) else {
+                return None;
+            };
+            let decl = input.snapshot.occasions.get(on)?;
+            let why = lute_check::beats::occasion_target_ok(decl, target, kinds).err()?;
+            if !target.contains('.')
+                && lute_check::gates::domain_members(decl, kinds)
+                    .is_some_and(|ms| ms.iter().any(|m| m == target))
+            {
+                return None;
+            }
+            Some(logic_diag(
+                mock::E_TRACE_MOCK_TYPE,
+                format!("the raise `{raw}` is never made: {why}"),
+                mock::synthetic_span(),
+            ))
+        })
+        .collect();
+    if !outside.is_empty() {
+        return (
+            empty_report(&input.uri, &mocks),
+            TraceExit::Refused(outside),
+        );
+    }
     if !mocks
         .state
         .iter()
@@ -351,7 +383,10 @@ fn trace_pipeline(
         fn text(v: &Option<(String, Span)>) -> Option<&str> {
             v.as_ref().map(|(s, _)| s.as_str())
         }
-        let units: Vec<(String, String, &str, (usize, usize))> = match present {
+        // (key, unit as messages name it, its `on`, its fixed `target`, its
+        // extent)
+        type Unit<'u> = (String, String, &'u str, Option<&'u str>, (usize, usize));
+        let units: Vec<Unit<'_>> = match present {
             Presentation::Document => folded
                 .typed
                 .beat
@@ -361,6 +396,7 @@ fn trace_pipeline(
                         String::new(),
                         "the scene".to_string(),
                         b.on.as_str(),
+                        b.target.as_deref(),
                         (0, usize::MAX),
                     )
                 })
@@ -374,6 +410,7 @@ fn trace_pipeline(
                         String::new(),
                         format!("the beat `{}`", b.id),
                         text(&b.on)?,
+                        text(&b.target),
                         s,
                     ))
                 })
@@ -388,15 +425,50 @@ fn trace_pipeline(
                         e.id.clone(),
                         format!("the entry `{}`", e.id),
                         text(&e.on)?,
+                        text(&e.target),
                         s,
                     ))
                 })
                 .collect(),
         };
         let mut refused: Vec<Diagnostic> = Vec::new();
-        for (key, unit, on, (start, end)) in units {
+        for (key, unit, on, target, (start, end)) in units {
             // Only a unit that runs for members opens a scope.
             let Some(members) = scopes.members_at(start, end) else {
+                // A unit answering one fixed target is presented only when
+                // its occasion is raised for that target.
+                let decl = input
+                    .snapshot
+                    .occasions
+                    .get(on)
+                    .filter(|d| d.target.takes_target());
+                if let (Some(fixed), Some(decl)) = (target, decl) {
+                    let raises: Vec<(&String, &str)> = mocks
+                        .occasions
+                        .iter()
+                        .filter_map(|r| match crate::split_occasion(r) {
+                            (name, Some(t)) if name == on => Some((r, t)),
+                            _ => None,
+                        })
+                        .collect();
+                    let bare = lute_check::gates::target_member(decl, fixed);
+                    if let (false, Some((raw, other))) = (
+                        raises
+                            .iter()
+                            .any(|(_, t)| *t == fixed || bare.as_deref() == Some(*t)),
+                        raises.first(),
+                    ) {
+                        refused.push(logic_diag(
+                            mock::E_TRACE_MOCK_TYPE,
+                            format!(
+                                "the raise `{raw}` is for `{other}`, but {unit} answers `{on}` \
+                                 only for `{fixed}`, so it would not be presented — raise \
+                                 `{on}@{fixed}`"
+                            ),
+                            mock::synthetic_span(),
+                        ));
+                    }
+                }
                 continue;
             };
             match raised_member(&mocks, &input.snapshot.occasions, &unit, on, members) {
@@ -828,13 +900,22 @@ fn raised_member(
     if members.contains(&member) {
         return Ok(Some(member));
     }
+    // `departure@npc.maud` on an occasion raised for no target: the member
+    // is written with a prefix the occasion does not draw.
+    let untargeted = occasions.get(on).is_some_and(|d| !d.target.takes_target());
+    let hint = match member.rsplit_once('.') {
+        Some((_, bare)) if untargeted && members.iter().any(|m| m == bare) => format!(
+            " — write `{on}@{bare}`: `{on}` is raised for no target of its own, so the raise \
+             names the member alone"
+        ),
+        _ => lute_manifest::suggest::did_you_mean(&member, members.iter().map(String::as_str)),
+    };
     Err(logic_diag(
         mock::E_TRACE_MOCK_TYPE,
         format!(
             "the raise `{raise}` binds `occasion.target` to `{member}`, which is not a member \
-             {unit} runs for ({}){}",
+             {unit} runs for ({}){hint}",
             members.join(", "),
-            lute_manifest::suggest::did_you_mean(&member, members.iter().map(String::as_str))
         ),
         mock::synthetic_span(),
     ))

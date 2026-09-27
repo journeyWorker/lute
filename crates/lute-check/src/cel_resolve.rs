@@ -84,7 +84,12 @@ pub fn check_cel_slot(
         let span = map_span(slot, r.span);
         if r.is_dollar {
             // `$` (the match subject) is legal only inside a `<match>` (dsl §8.2).
-            if !ctx.in_match {
+            // A `$name` (Yarn's variable sigil) in a parsed slot is the CEL
+            // profile's `$oil` error (pass 2), which names the path; it is
+            // not also a stray subject.
+            let sigil = slot.raw[r.span.byte_end..]
+                .starts_with(|c: char| c.is_ascii_alphabetic() || c == '_');
+            if !ctx.in_match && !(sigil && slot.ast.is_some()) {
                 diags.push(diag(
                     "E-DOLLAR-OUTSIDE-MATCH",
                     "`$` (match subject) is only valid inside a `<match>` block".to_string(),
@@ -266,6 +271,16 @@ pub fn check_cel_slot(
 /// [`check_cel_slot`]'s passes over the parsed slot `expr`: state-path
 /// reads, the CEL profile, fact queries, narrative time, `%` operands.
 fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+    // A state path written with a `-` in a name parses as a subtraction;
+    // report that once, not the three findings the subtraction trips. When
+    // the path is declared (a quest id `lamp-duty` checked with the
+    // project), its declaration already carries the `E-PATH-IDENT`.
+    if let Some((glued, message)) = hyphenated_path(expr, &slot.raw) {
+        if !ctx.env.state.decls.contains_key(&glued) {
+            diags.push(diag(crate::cel_paths::E_PATH_IDENT, message, slot.span));
+        }
+        return;
+    }
     for use_ in collect_path_uses(expr) {
         check_state_path(&use_.path, slot, ctx, diags);
     }
@@ -326,6 +341,61 @@ fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec
                 diags,
             );
         }
+    }
+}
+
+/// `quest.lamp-duty.state` parses as `quest.lamp - duty.state`. A
+/// subtraction whose left operand is a state path and whose right operands
+/// are bare non-root names, written with no space around the `-`, is a
+/// hyphenated path: it, and a message naming the camelCase spelling.
+fn hyphenated_path(expr: &Expr, raw: &str) -> Option<(String, String)> {
+    use cel_parser::ast::operators::SUBSTRACT;
+    /// The operands of a left-nested `a - b - c` chain, each a dotted path.
+    fn operands(expr: &Expr) -> Option<Vec<String>> {
+        match expr {
+            Expr::Call(c)
+                if c.func_name == SUBSTRACT && c.target.is_none() && c.args.len() == 2 =>
+            {
+                let mut out = operands(&c.args[0].expr)?;
+                out.push(crate::cel_paths::select_path(&c.args[1].expr)?);
+                Some(out)
+            }
+            _ => crate::cel_paths::select_path(expr).map(|p| vec![p]),
+        }
+    }
+    let root_of = |p: &str| p.split('.').next().unwrap_or_default().to_string();
+    if let Some(parts) = operands(expr).filter(|ps| ps.len() > 1) {
+        let glued = parts.join("-");
+        if parts[0].contains('.')
+            && crate::cel_paths::STATE_ROOTS.contains(&root_of(&parts[0]).as_str())
+            && parts[1..]
+                .iter()
+                .all(|p| !is_profile_ident_root(&root_of(p)))
+            && raw.contains(&glued)
+        {
+            let fixed: Vec<String> = glued.split('.').map(crate::cel_paths::one_name).collect();
+            let message = format!(
+                "`{glued}` has a `-` in a name, so it reads as `{}`; a name in a state path \
+                 cannot contain `-` — write `{}`",
+                parts.join(" - "),
+                fixed.join(".")
+            );
+            return Some((glued, message));
+        }
+    }
+    match expr {
+        Expr::Call(c) => c
+            .target
+            .iter()
+            .map(|t| &t.expr)
+            .chain(c.args.iter().map(|a| &a.expr))
+            .find_map(|e| hyphenated_path(e, raw)),
+        Expr::Select(sel) => hyphenated_path(&sel.operand.expr, raw),
+        Expr::List(list) => list
+            .elements
+            .iter()
+            .find_map(|e| hyphenated_path(&e.expr, raw)),
+        _ => None,
     }
 }
 
@@ -488,6 +558,7 @@ pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
                 cel,
                 vocab,
                 &ctx.env.state,
+                &ctx.env.domains,
                 rule.span,
             ) {
                 Ok(cel) => cel,
@@ -2219,6 +2290,40 @@ mod tests {
                 .any(|x| x.message.contains("`2.5` is not an integer")),
             "{d:?}"
         );
+    }
+
+    #[test]
+    fn hyphenated_path_is_one_path_ident_error() {
+        let env = env_with_state("run.day", Type::Number);
+        let ctx = mk_ctx(&env);
+        let check = |raw: &str| {
+            let slot = cel_slot_condition(raw);
+            check_cel_slot(&slot, &arena_for(&slot), &ctx, None)
+        };
+        let d = check("quest.lamp-duty.state == 'active'");
+        assert_eq!(d.len(), 1, "{d:?}");
+        assert_eq!(d[0].code, crate::cel_paths::E_PATH_IDENT);
+        assert!(
+            d[0].message.contains("write `quest.lampDuty.state`"),
+            "{}",
+            d[0].message
+        );
+        let d = check("run.day > 0 && run.lamp-duty-log.count > 1");
+        assert_eq!(d.len(), 1, "{d:?}");
+        assert!(
+            d[0].message.contains("`run.lampDutyLog.count`"),
+            "{}",
+            d[0].message
+        );
+        // A real subtraction stays one.
+        for ok in [
+            "run.day-1 > 0",
+            "run.day-run.day == 0",
+            "run.day - run.day == 0",
+        ] {
+            let d = check(ok);
+            assert!(d.is_empty(), "`{ok}`: {d:?}");
+        }
     }
 
     #[test]

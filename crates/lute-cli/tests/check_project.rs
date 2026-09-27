@@ -856,6 +856,50 @@ fn a_dotted_quest_id_is_reported_once_at_its_declaration() {
     );
 }
 
+/// A quest id with a `-` is the same: its read `quest.lamp-duty.state`
+/// parses as a subtraction. Across the project the declaration's
+/// `E-PATH-IDENT` is the one report; checked alone, the read is one
+/// `E-PATH-IDENT` naming the path, not the subtraction's findings.
+#[test]
+fn a_hyphenated_quest_id_is_reported_once_at_its_declaration() {
+    let dir = temp_dir("hyphen-quest-reads");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(
+        &dir,
+        "q.lute",
+        "---\nkind: quest\nid: wing\nstate:\n  run.n: { type: number, default: 0 }\n---\n\
+         <quest id=\"lamp-duty\" title=\"Lamps\" start=\"run.n >= 1\" tier=\"run\">\n  \
+         <objective id=\"lit\" title=\"Lit\" done=\"run.n >= 2\"/>\n</quest>\n",
+    );
+    write(
+        &dir,
+        "a.lute",
+        "---\nkind: scene\ncharacter: s\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         @narrator{when=\"quest.lamp-duty.state == 'active'\"}: Lit.\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let errors: Vec<&str> = stdout.lines().filter(|l| l.contains(": error [")).collect();
+    assert_eq!(errors.len(), 1, "{stdout}");
+    assert!(
+        errors[0].contains("q.lute") && errors[0].contains("E-PATH-IDENT"),
+        "{stdout}"
+    );
+    let alone = run(&["check", dir.join("a.lute").to_str().unwrap()]);
+    let alone = String::from_utf8_lossy(&alone.stdout);
+    let errors: Vec<&str> = alone.lines().filter(|l| l.contains(": error [")).collect();
+    assert_eq!(errors.len(), 1, "{alone}");
+    assert!(
+        errors[0].contains("[E-PATH-IDENT] `quest.lamp-duty.state` has a `-`")
+            && errors[0].contains("write `quest.lampDuty.state`"),
+        "{alone}"
+    );
+}
+
 #[test]
 fn envelope_tainted_node_leaves_maybe_unset_untouched() {
     // `after` references an UNRESOLVABLE `visited()` target -- the node is

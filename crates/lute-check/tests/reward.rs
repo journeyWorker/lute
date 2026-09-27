@@ -251,6 +251,35 @@ fn entity_target_contract_checks_membership_with_a_did_you_mean() {
     assert!(bad[0].1.contains("did you mean `goodRod`"), "{bad:?}");
 }
 
+/// A member written with its kind's prefix is pointed at the bare member,
+/// and a contract naming a kind the document's schemas lack says the kind
+/// is missing (with a did-you-mean), not that the schema is unimported.
+#[test]
+fn entity_target_says_what_to_write_for_a_prefix_or_a_missing_kind() {
+    let prefixed = reward_target_diags(
+        "<reward kind=\"ITEM\" target=\"bagItem.potion\"/>\n",
+        entity_contract("bagItem", false),
+        ProviderSet::default(),
+    );
+    assert_eq!(prefixed.len(), 1, "{prefixed:?}");
+    assert!(
+        prefixed[0].1.contains("write `target=\"potion\"`"),
+        "{prefixed:?}"
+    );
+
+    let missing = reward_target_diags(
+        "<reward kind=\"ITEM\" target=\"potion\"/>\n",
+        entity_contract("bagItems", false),
+        ProviderSet::default(),
+    );
+    assert_eq!(missing.len(), 1, "{missing:?}");
+    assert!(
+        missing[0].1.contains("which neither this document nor a schema it `uses:` declares — did you mean `bagItem`?"),
+        "{missing:?}"
+    );
+    assert!(!missing[0].1.contains("import the schema"), "{missing:?}");
+}
+
 #[test]
 fn an_open_entity_kind_accepts_any_target() {
     let d = reward_target_diags(

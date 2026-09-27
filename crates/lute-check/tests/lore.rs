@@ -215,9 +215,11 @@ fn unknown_entry_attr_is_unknown_attr() {
 #[test]
 fn hyphenated_entry_id_is_path_ident() {
     // A valid `Ident`, but `entry.<id>.read` is CEL-facing — the quest-id rule.
-    let cs = codes(&lore("<entry id=\"torn-note\">\n@n: hi\n</entry>\n"));
-    assert!(cs.contains(&"E-PATH-IDENT".to_string()), "{cs:?}");
-    assert!(!cs.contains(&"E-ENTRY-ATTR".to_string()), "{cs:?}");
+    let ds = diags(&lore("<entry id=\"torn-note\">\n@n: hi\n</entry>\n"));
+    let ident = with_code(&ds, "E-PATH-IDENT");
+    assert_eq!(ident.len(), 1, "{ds:?}");
+    assert!(ident[0].message.contains("write `tornNote`"), "{ds:?}");
+    assert!(with_code(&ds, "E-ENTRY-ATTR").is_empty(), "{ds:?}");
 }
 
 // --- identity ----------------------------------------------------------------

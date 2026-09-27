@@ -551,7 +551,7 @@ a `newRun`. The objective still completes the moment its `done` holds, at any ho
 A play step checks the moment with `expect: { clock: { ended: true } }` (a clock that never ends
 has no `ended` to check, and saying so is a usage error).
 
-Two spellings look close and are not the same:
+Three spellings look close and are not the same:
 
 - `by="clock.index >= 6"` names the last position, and the last position is not the end: the
   advance that *reaches* `h05` fails the objective, one slot before the clock ends. Use it for "by
@@ -559,6 +559,9 @@ Two spellings look close and are not the same:
 - `on="dawn" until="true"` also fails at dawn, but `on=` moves the whole objective to that raise:
   its `done` is judged only at dawn too, so a player who escapes at `h01` stays `active` until
   dawn and a `questComplete` handler fires there. Use it only when that is what you want.
+- `by="run.hour == 'h03'"` is a moment, not a deadline: it holds only while the clock stands at
+  `h03`. An objective that becomes live at `h04` or later never sees it hold, so it never fails.
+  `by="clock.index >= 4"` holds from `h03` on, and fails such an objective as soon as it is live.
 
 `terminal: "clock.ended"` ends the game when the clock does. The `dayStart` of the day the run starts
 on is not raised by the clock: an advance raises `dayStart` on each day it *enters*, and the run

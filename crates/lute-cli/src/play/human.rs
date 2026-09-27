@@ -56,6 +56,9 @@ pub(super) struct DocCmds<'a> {
     /// `--quiet` (ML-F8): a declared effect that only restates the bridge
     /// answer printed on its call's line is left out.
     quiet: bool,
+    /// The step this record runs in ended the game (`terminal:` first holds
+    /// after it): an `::end` there is the last of the play.
+    ended_game: bool,
 }
 
 impl<'a> DocCmds<'a> {
@@ -78,6 +81,7 @@ impl<'a> DocCmds<'a> {
             authored: p.authored.get(document),
             ir,
             quiet: false,
+            ended_game: false,
         }
     }
 
@@ -287,10 +291,15 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
         },
         "barrier" => "  barrier (no real clock simulated)".to_string(),
         // 0.23.1: `::end` ends the presentation (or quest advance) it ran
-        // in; the playthrough goes on with the next step.
+        // in; the playthrough goes on with the next step — unless the step
+        // ended the game, which the step's note says next.
         "end" => {
             let text = authored().unwrap_or_else(|| lowered("end", orig));
-            format!("{text}        (this presentation ends; the play goes on)")
+            if cmds.ended_game {
+                format!("{text}        (this presentation ends)")
+            } else {
+                format!("{text}        (this presentation ends; the play goes on)")
+            }
         }
         "beat" if !cmds.ir => return None,
         "plugin" => {
@@ -478,6 +487,7 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
 fn render_records(out: &mut String, p: &ExecProject, view: View, document: &str, records: &[Json]) {
     let cmds = DocCmds {
         quiet: view.quiet,
+        ended_game: view.ended_game,
         ..DocCmds::new(p, document, view.ir)
     };
     for line in records.iter().filter_map(|rec| render_record(rec, &cmds)) {
@@ -560,6 +570,8 @@ fn render_write(rec: &Json) -> String {
 pub(crate) struct View {
     pub ir: bool,
     pub quiet: bool,
+    /// Set per step: the step ended the game (`terminal:` first holds).
+    pub ended_game: bool,
 }
 
 pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> String {
@@ -571,6 +583,10 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
         }
     }
     for s in &play.steps {
+        let view = View {
+            ended_game: s.ended_game,
+            ..view
+        };
         let mut head = format!("── step {}", s.n);
         if let Some(label) = &s.label {
             head.push_str(&format!(" ({label})"));

@@ -132,8 +132,21 @@ fn const_term(c: &str) -> FactTerm {
 
 fn attr_term(name: &str, decl: &DirectiveDecl, attrs: &[Attr]) -> FactTerm {
     if let Some(a) = attrs.iter().find(|a| a.key == name) {
-        return crate::component_effects::fact_arg_constant(&a.value)
-            .unwrap_or_else(|_| FactTerm::Param(name.to_string()));
+        return crate::component_effects::fact_arg_constant(&a.value).unwrap_or_else(|_| {
+            // `::gift{from=@who}` in a component body: the fact's argument
+            // is the component's param `who`, which each `::use` binds — not
+            // the directive's own attr name.
+            let param = match &a.value {
+                lute_syntax::ast::AttrValue::Ref(slot) => slot
+                    .raw
+                    .trim()
+                    .strip_prefix('@')
+                    .filter(|p| is_ident(p))
+                    .map(str::to_string),
+                _ => None,
+            };
+            FactTerm::Param(param.unwrap_or_else(|| name.to_string()))
+        });
     }
     match decl
         .attrs

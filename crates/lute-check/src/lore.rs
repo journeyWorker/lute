@@ -562,7 +562,10 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
         diags.push(diag(
             E_PATH_IDENT,
             Severity::Error,
-            format!("entry id `{id}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"),
+            format!(
+                "entry id `{id}` has a `-`; CEL-facing names forbid `-` — write `{}`",
+                crate::cel_paths::one_name(id)
+            ),
             entry.id_span,
         ));
     }

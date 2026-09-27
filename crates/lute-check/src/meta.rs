@@ -1042,13 +1042,29 @@ pub fn parse_meta_kind_with_defaults(
             .collect();
         if missing.len() == REQUIRED_KEYS.len() {
             // No identity at all (an empty file, a first scene): teach `id:`,
-            // not the legacy triple.
-            diags.push(err(
-                "E-META-MISSING",
-                "a scene needs an `id:`, its key in the project — write `id: opening` in the \
-                 frontmatter (dsl 0.15.0 §2/§4)"
-                    .to_string(),
-            ));
+            // not the legacy triple. A `title:` (Yarn's node header, an Ink
+            // knot name) is only the displayed name: point at it and offer
+            // the id it spells.
+            let title = map
+                .get(yaml_key("title"))
+                .and_then(serde_yaml::Value::as_str)
+                .map(|t| ident_from_name(t, "opening"));
+            diags.push(match title {
+                Some(id) => err_at(
+                    "E-META-MISSING",
+                    format!(
+                        "a scene needs an `id:`, its key in the project — `title:` is only the \
+                         name shown for it; write `id: {id}` beside it (dsl 0.15.0 §2/§4)"
+                    ),
+                    meta_key_span(meta, "title"),
+                ),
+                None => err(
+                    "E-META-MISSING",
+                    "a scene needs an `id:`, its key in the project — write `id: opening` in \
+                     the frontmatter (dsl 0.15.0 §2/§4)"
+                        .to_string(),
+                ),
+            });
         } else {
             for missing in missing {
                 diags.push(err(
@@ -2058,6 +2074,41 @@ fn scalar_span(meta: &Meta, raw: &str) -> Span {
         .find(|written| meta.raw_yaml.contains(*written))
         .unwrap_or(raw);
     meta_key_span(meta, written)
+}
+
+/// Turn a display name into a valid identifier for an id / state path
+/// segment (a path segment takes no `-`): the name is split on every run of
+/// characters that cannot sit in one, every letter keeps the case it was
+/// typed in except that each word after the first starts upper-case and the
+/// identifier starts lower-case (`harborNight` stays `harborNight`, `The
+/// Epilogue` becomes `theEpilogue`, `Lamp_Room` becomes `lampRoom`), then a
+/// leading digit is prefixed with `q`. Empty input degrades to `fallback`.
+/// `lute new` names its documents this way, and a scene with a `title:` but
+/// no `id:` is offered the id its title spells.
+pub fn ident_from_name(name: &str, fallback: &str) -> String {
+    let mut out = String::new();
+    let mut new_word = false;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if out.is_empty() {
+                out.push(ch.to_ascii_lowercase());
+            } else if new_word {
+                out.push(ch.to_ascii_uppercase());
+            } else {
+                out.push(ch);
+            }
+            new_word = false;
+        } else {
+            new_word = !out.is_empty();
+        }
+    }
+    if out.is_empty() {
+        return fallback.to_string();
+    }
+    if out.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        out.insert(0, 'q');
+    }
+    out
 }
 
 pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {

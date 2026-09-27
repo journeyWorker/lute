@@ -579,6 +579,16 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
     let effects = lute_check::directive_facts::root_table(group.iter().map(|(_, _, f)| f));
     let components = components(group);
     let mut record = |nodes: &[Node], label: String| {
+        let used: Vec<(String, Pattern)> = component_asserts(nodes, &components, &effects)
+            .into_iter()
+            .map(|(component, p)| {
+                let pattern = Pattern {
+                    rel: p.relation.clone(),
+                    args: fact_args(&p),
+                };
+                (component, pattern)
+            })
+            .collect();
         let mut sites = Vec::new();
         lute_check::connectivity::collect_asserted(nodes, &effects, &mut sites);
         for p in sites {
@@ -587,14 +597,14 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
                     rel: p.relation.clone(),
                     args: fact_args(&p),
                 };
-                out.push((label.clone(), pattern));
+                // A component's write at its use is named once, as the
+                // component's (a `<beat use>` template's included).
+                if !used.iter().any(|(_, u)| *u == pattern) {
+                    out.push((label.clone(), pattern));
+                }
             }
         }
-        for (component, p) in component_asserts(nodes, &components, &effects) {
-            let pattern = Pattern {
-                rel: p.relation.clone(),
-                args: fact_args(&p),
-            };
+        for (component, pattern) in used {
             out.push((format!("component `{component}` via {label}"), pattern));
         }
     };

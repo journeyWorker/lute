@@ -38,6 +38,67 @@ table.
 
 ## [Unreleased]
 
+### Fixed
+
+- A state path written with a `-` in a name (`quest.lamp-duty.state`) is one
+  `E-PATH-IDENT` naming the path, how CEL reads it (`quest.lamp - duty.state`)
+  and the camelCase spelling, instead of `E-CEL-PROFILE`, `E-CEL-TYPE` and
+  `E-UNDECLARED` about the subtraction it parses as. In `check-project`, a
+  read of a quest or entry id with a `-` is not reported beside the id's own
+  `E-PATH-IDENT`, as for an id with a `.`, so the cause is the one report.
+- A rule guard comparing a rule variable with a path typed by an enum that
+  lists some of the variable's kind's members (`onRoute(S) :- suitor(S),
+  cel("run.route == S")` with `route: [none, alone, ren, …]`) is accepted and
+  holds for the shared members, as the same comparison in a beat's `when`
+  does; only a kind or enum sharing no member is `E-FACT-DOMAIN`.
+- A `chapters:` chain on an occasion no plugin declares is not applied, as a
+  malformed chain is not: `lute beats` no longer lists its scenes under the
+  misspelt occasion.
+- A gated line whose `when` a clock that ends can never reach
+  (`when="run.hour == 'h05'"`, `when="clock.index == 9"`) says why in its
+  `E-ARM-DEAD`, as a `<match>` arm and a beat's `when` already did.
+- A misspelt `done=` on an `<objective>` (`complete=`, `doen=`) is one
+  `E-UNKNOWN-ATTR` naming `done`, without an `E-OBJECTIVE-MISSING-DONE` beside
+  it; a relation's misspelt `teir:` is one `E-RELATION-DOMAIN` naming `tier`,
+  without a `W-RELATION-TIER-IMPLICIT` beside it.
+- An entry id with a `-` (`file-walter`) names the one-word spelling
+  (`fileWalter`), as a quest id does.
+- `day:` written twice in a schema's `clock:` says the day count is `days:`.
+- A `::set` the engine refuses (`::set{scene.choices.door = true}`) is one
+  report, the refusal, without an `E-SET-TYPE` about its value beside it.
+- Yarn's `$oil` in a condition is one `E-CEL-PROFILE` naming the path, without
+  an `E-DOLLAR-OUTSIDE-MATCH` at the same column.
+- A choice or member named `true`/`false` is refused once, where it is named;
+  the `is="true"` that meant it is not also `E-WHEN-LITERAL-DOMAIN`.
+- A scene with a `title:` and no `id:` (an Ink knot or Yarn node name) is told
+  the id its title spells (`title: Lamp_Room` → `id: lampRoom`), at the
+  `title:` line.
+- In `lute play`, an `::end` in the step that ends the game prints
+  `(this presentation ends)` without `the play goes on`, since the game-over
+  note follows it.
+- The Ink/Yarn guide maps Yarn's `#line:` id to a content line's `code=` (it
+  said `id=`, which is a jump target), and the Korean guide carries the
+  0.28.0 corrections: a choice id is not a jump target, and `<return>` runs
+  when the last `once` choice empties the hub, which the Choices & hubs page
+  now says too.
+- `W-BEAT-PRIORITY-TIE` with a scene whose priority `chapters:` derived says
+  so, and asks for a different `priority` on the scene that wrote its own.
+- `<reward target="keepsake.skyStone">` says to write the bare member
+  (`target="skyStone"`); a reward kind whose `target: { entity: … }` names a
+  kind the document's schemas lack says the kind is missing (with a
+  did-you-mean), not to import a schema that is already imported.
+- `<entry target="kind:K">` on a `select: sequence` occasion raised for no
+  target says to write `for="kind:K"`, as a `<beat>` does.
+- A scene the retired `sequence:` (or a rejected chain) lists gets one
+  `E-BEAT-ATTR` naming all its beat keys, not one per key.
+- `lute lore` lists the facts a `<beat use>` template's directive call
+  asserts (`gave(maud, kettleLid)` from `::gift{from=@who …}`), and `lute lore`
+  / `lute scenario knowledge` name such a producer once, as the component at
+  its use.
+- `lute trace --occasion O@T` refuses a target outside `O`'s domain, and one
+  other than a fixed-target beat answers; `departure@npc.maud` for a `for=`
+  entry on an untargeted occasion says to write `departure@maud`.
+
 ## [0.28.0] - 2026-09-27
 
 **One rule per slot, one name per idea.**
