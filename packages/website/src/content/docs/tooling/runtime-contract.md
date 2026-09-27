@@ -10,7 +10,7 @@ behavior lives on the far side of the artifact, in the **engine**. This page is
 the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)
 and the machine-checkable shape is
-[`schemas/lute-ir-0.28.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.28.schema.json)
+[`schemas/lute-ir-0.29.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.29.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -72,6 +72,7 @@ Every artifact opens with a fixed envelope (the `Artifact` struct in
 | `seasons` | the project's declared seasons, `{name, live: {raw, expr}}`, name-sorted (omitted without seasons; dsl 0.27.0). |
 | `gates` | every occasion's `raisedWhen` gate, `{occasion, raisedWhen: {raw, expr}}`, occasion-sorted (omitted when none; dsl 0.27.0). |
 | `terminal` | the project's `terminal:` condition, `{raw, expr}` (omitted without one; dsl 0.27.0). |
+| `terminalPersists` | `true` when every `terminal:` declaration says `persists: true`: the ending outlives runs (omitted when false; dsl 0.29.0). |
 
 One artifact is produced per document. A project's engine **unions** the
 `relations` / `rules` / `seedFacts` / `entities` / `enums` / `prereqEdges`
@@ -107,6 +108,21 @@ Gate on `irVersion` by **MAJOR only** (since `0.13.0`):
   older engine.
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
+
+### What IR 0.29.0 changed
+
+**One optional field; nothing renamed.** There is no new command `kind` and no field is renamed,
+retyped or removed, so under the MAJOR-only gate an engine that loads 0.28 artifacts loads 0.29
+ones unchanged (dsl 0.29.0 §5):
+
+- **`terminalPersists: true`** on the artifact and `project.index.json`, serialized after
+  `terminal`, when every `terminal:` declaration is the long form with `persists: true`. The
+  ending outlives runs on purpose (a roguelike's permanent ending): once `terminal` holds, raise
+  no occasion in this run or any later one — a new run does not reopen the game (a condition that
+  may persist reads state a new run keeps, so it still holds). Omitted when false.
+
+The schema file renames per release line: `lute-ir-0.28.schema.json` is now
+`lute-ir-0.29.schema.json`.
 
 ### What IR 0.28.0 changed
 

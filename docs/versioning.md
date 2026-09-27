@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.28.1` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.28.1` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.28.1` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.29.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.29.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.29.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.29.schema.json`](../schemas/lute-ir-0.29.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)
+published as [`schemas/lute-ir-0.29.schema.json`](../schemas/lute-ir-0.29.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -810,7 +810,7 @@ tier `season:<name>`; an `occasion.target` write keeps `F[occasion.target]`
 / `occasion.target` for the engine to bind, and a `spentBy` beat's `once` is
 its period (`run` unless written), not `none`. The schema file renames per
 release line (`lute-ir-0.27.schema.json` →
-[`lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)).
+`lute-ir-0.28.schema.json`, since renamed).
 Artifacts that use none of it compile byte-identically apart from the version
 strings. `lute.core` moves — `::camera` takes `moveX` / `moveY` — so
 `capabilityVersion` moves with it. Engines gate on MAJOR, so nothing widens;
@@ -828,12 +828,45 @@ comparing a variable with an enum-typed path holds for the shared members as
 a beat's `when` already did, a gated line a finite clock can never reach says
 why, and `lute play`, `lute lore`, `lute beats` and `lute trace --occasion`
 answer as the language says. The language adds no syntax and no static
-semantics. The IR shape does not move, so
-[`schemas/lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)
-keeps its name and `$id` (the `0.21.1` / `0.23.1` / `0.25.1` precedent), and
-artifacts differ only in the version strings; `capabilityVersion` does not
-move. Engines gate on MAJOR, so nothing widens, and the tree-sitter grammar is
-unchanged.
+semantics. The IR shape does not move, so `schemas/lute-ir-0.28.schema.json`
+(since renamed) kept its name and `$id` (the `0.21.1` / `0.23.1` / `0.25.1`
+precedent), and artifacts differ only in the version strings;
+`capabilityVersion` does not move. Engines gate on MAJOR, so nothing widens,
+and the tree-sitter grammar is unchanged.
+
+**`0.29.0` aligns all three axes at `0.29.0`; the language and the IR both
+earn the move.** One identifier rule, intent you can state, games as
+examples ([`proposals/scenario-dsl/0.29.0.md`](proposals/scenario-dsl/0.29.0.md)).
+Every name an author writes — scene, beat, entry, quest, objective, branch,
+hub, choice and mark ids, document id segments, `share` keys, seasons,
+relations, defs and def params, enum and entity kinds and members, component
+params, and the occasions, events, enums and defs a plugin declares — is one
+identifier: a letter, then letters, digits or `_`, a dotted id joining them
+with `.`. A `-` or any other character is an error at the name under that
+slot's existing code (`E-META-ID`, `E-BEAT-ATTR`, `E-ENTRY-ATTR`,
+`E-PATH-IDENT`, `E-SEASON-DECL`, `E-COMPONENT-PARSE`, `E-PLUGIN-PARSE`),
+naming the camelCase spelling; 0.28 refused it only where CEL reads the name.
+A warning that can describe an intended design has a spelling that states
+the intent, and there is still no generic suppression: `terminal:` gains the
+long form `{ when: "<condition>", persists: true }` for an ending that
+outlives runs on purpose, which silences `W-TERMINAL-PERSISTENT` and makes
+`lute play` say the game is over for good (`persists: true` over run state
+only is `E-META-VALUE`). `W-CHAPTER-STALL` stays specific to `chapters:` — a
+hand-written `after:` never warns. `lute check-project` prints causes first
+(`lute.project.yaml`, plugins, schemas, documents in path order, then the
+project-wide rows), and `lute new scene --occasion O` always writes `on: O`.
+The fourteen dogfood games ship under
+[`examples/games/`](examples/games/), each with a README, and CI holds them
+to `check-project --deny-warnings`. The IR is additive: the optional
+`terminalPersists` on the artifact and `project.index.json`, `true` when every
+`terminal:` declaration says `persists: true`. The schema file renames per
+release line (`lute-ir-0.28.schema.json` →
+[`lute-ir-0.29.schema.json`](../schemas/lute-ir-0.29.schema.json)).
+Artifacts that use none of it compile byte-identically apart from the version
+strings; `lute.core` does not move, so neither does `capabilityVersion` (the
+renamed `action` / `musicAction` members are the scaffolded and example
+vocabularies', which a project declares). Engines gate on MAJOR, so nothing
+widens, and the tree-sitter grammar is unchanged.
 
 ## Which bump when
 

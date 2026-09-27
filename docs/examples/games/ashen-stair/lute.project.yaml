@@ -8,7 +8,7 @@ profiles:
   game:
     plugins: { game.occasions: true }
 defaults:
-  luteVersion: "0.28.1"
+  luteVersion: "0.29.0"
   contentLang: en-US
   pov: wren
   uses: [world.schema.yaml, vocabulary.schema.yaml]

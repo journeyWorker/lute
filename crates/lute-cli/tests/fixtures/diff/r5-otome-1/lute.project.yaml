@@ -3,7 +3,7 @@ profiles:
   game:
     plugins: {}
 defaults:
-  luteVersion: "0.28.1"
+  luteVersion: "0.29.0"
   uses: [world.schema.yaml]
   components:
     - components/aaa.component.lute

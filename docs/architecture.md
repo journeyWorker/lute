@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.28.0.md`](proposals/scenario-dsl/0.28.0.md). The
+> [`proposals/scenario-dsl/0.29.0.md`](proposals/scenario-dsl/0.29.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -50,7 +50,9 @@ target is the flat command-record format the engine consumes.
 > (typed comparisons, unknown keys and reserved names refused where they are written), each
 > idea has one name (`follows=`, `outcome=`, `visibleWhen=`, `expect.options`, `expect.end`,
 > a *mark* for a `::next` target), `spentBy` latches, `occasion.target` can be written, and a
-> hub may carry a `<return>` block.
+> hub may carry a `<return>` block. Since 0.29.0 every name an author writes follows one
+> identifier rule (a letter, then letters, digits or `_`), `lute check-project` prints causes
+> first, and a `terminal:` may say its ending persists across runs (`{ when, persists: true }`).
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -781,6 +783,17 @@ above, never a rule-body dependency):
   decides clock-reading guards at every position the clock can stand (`W-BEAT-UNRAISED`,
   `W-CHAPTER-STALL`), `check/literal_text.rs` owns the `W-TEXT-*` markup advisories, and the
   parser's `foreign.rs` names the Lute form of an Ink or Yarn line.
+- **One identifier rule, intent you can state (dsl 0.29.0).** `lute_manifest::ident` owns
+  the identifier predicate (`is_ident`, `is_dotted_ident`) and the one wording every slot
+  reports a bad name with (`ident_fault` naming the `camel_case` spelling), so scene, beat,
+  entry, quest, objective, branch, hub, choice and mark ids, `share` keys, seasons,
+  relations, defs, kinds, members, component params and plugin exports all refuse a `-` the
+  same way under their own codes. `gates.rs` reads `terminal:`'s long form
+  (`{ when, persists }`, keys closed) and `check/fold.rs` folds `terminal_persists`, which
+  silences `W-TERMINAL-PERSISTENT`, reaches the IR as `terminalPersists` and tells
+  `lute play` the game is over for good. `lute-cli`'s `cmd_check_project.rs` ranks
+  project-wide rows by cause (`CauseRank`: manifest, plugins, schemas, documents in path
+  order, then project-wide rows) before printing.
 
 ### Narrative time (spec §6, D11)
 
