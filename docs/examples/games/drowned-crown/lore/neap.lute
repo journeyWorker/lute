@@ -1,0 +1,17 @@
+---
+kind: lore
+id: neap
+title: The neap tide
+---
+
+/* Two dives in every six the tide runs low. Tavi notices first. */
+
+<entry id="neapTavi" on="talk" target="npc.tavi" category="bark" title="Low water" priority="25" once="season:neap" when="@neapLive">
+  @tavi{emotion="delighted"}: Neap tide! The upper halls are dry as my bread. Bring me anything that isn't nailed down.
+  @tavi{when="isSet(prev.season.neap.salvage)"}: Last neap you brought up {{prev.season.neap.salvage:plural(one thing|# things)}}. Beat it.
+</entry>
+
+<beat id="haul" on="runEnd" also once="false" when="@neapLive && @surfaced">
+  @narrator: Ilo's net comes up heavy: {{occasion.payload.pearls:plural(one pearl|# pearls)}}, and a bell with no clapper.
+  ::salvage{what="a drowned bell"}
+</beat>

@@ -1,0 +1,24 @@
+---
+kind: scene
+id: room.records
+title: Records
+on: enter
+target: room.records
+priority: 10
+---
+
+## Records
+
+::bg{location="records" time="night"}
+@narrator: Filing cabinets to the ceiling. Every drawer has been pulled out and put back in the wrong cabinet, as if someone had been looking for one name for forty years.
+@narrator: On the table, open under a green-shaded lamp that has no bulb: the admissions ledger. Three pages have been torn out.
+@nell{mono}: Admissions, 1961 to 1979. Name, bed, date. Discharged, never.
+<match on="@lateNight">
+  <when is="true">
+    @narrator: The last line on the open page is wet. ARDEN, T. Bed 13. The ink is today's.
+    ::fright{amount=2}
+  </when>
+  <otherwise>
+    @narrator: The last line on the open page is blank, ruled, and waiting.
+  </otherwise>
+</match>

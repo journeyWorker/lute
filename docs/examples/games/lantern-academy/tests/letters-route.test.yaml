@@ -1,0 +1,6 @@
+# The suitor you floated the lantern with writes no note: they are on the jetty.
+file: ../lore/letters.lute
+beat: note
+state: { occasion.target: ren, run.day: 8, run.slot: evening, run.route: ren, run.aff.ren: 9 }
+expect:
+  eligible: { note: false }

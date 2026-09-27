@@ -1,0 +1,126 @@
+---
+kind: lore
+id: mid.silvercrest
+title: Silvercrest (the Mind Gym, the Game Corner, Helix Tower, the department store)
+---
+
+// The Midlands' big city. Kai passes through ahead of the player. The
+// department store has its sale at weekends (@weekend); the Mart is the
+// store's ground floor.
+
+<beat id="arrive" on="enterTown" target="town.silvercrest" title="Silvercrest" priority="10" once="run">
+  ::bg{location="silvercrest" time="day"}
+  ::music{action="change" mood="upbeat" volume="normal"}
+  @narrator: Silvercrest. Glass towers, tram bells, a square the size of Pebbleton, and in the middle of it all Helix Tower, eleven floors of silver and one of cloud.
+  @narrator: On one side of the square, the Game Corner's lights blink even at noon. On the other, the Mind Gym sits with its doors shut and a sign on them in black Eclipse lettering.
+  ::auto{character="rival" anchor="right" action="enter"}
+  @rival{emotion="smug"}: Oh, it's you. I already checked out the Game Corner. Slot machines are rigged, the poster at the back is crooked, and there's a grunt guarding it for no reason. Figure it out yourself.
+  @rival: The gym's shut, too. Some Eclipse nonsense. I'm going to Wardenmere. Try to keep up.
+  ::auto{character="rival" action="exit"}
+</beat>
+
+<entry id="midSilvercrestMorning" on="enterTown" target="town.silvercrest" category="bark" once="day" when="@isMorning">
+  @narrator: Morning trams rattle round the square, full of Helix Corp staff in grey suits, all reading the same newspaper.
+</entry>
+
+<entry id="midSilvercrestDay" on="enterTown" target="town.silvercrest" category="bark" once="day" when="run.slot == 'day'">
+  @narrator: Silvercrest at midday: shoppers, pigeons, a busker, and the Game Corner's jingle leaking out every time the door opens.
+</entry>
+
+<entry id="midSilvercrestNight" on="enterTown" target="town.silvercrest" category="bark" once="day" when="@isNight">
+  @narrator: At night the Game Corner is the brightest thing in Silvercrest. Helix Tower is dark except for one window at the very top.
+</entry>
+
+<entry id="midSilvercrestWeekend" on="enterTown" target="town.silvercrest" category="bark" priority="5" once="day" when="@weekend">
+  @narrator: Banners hang from every lamppost: THE BIG WEEKEND SALE! SILVERCREST DEPARTMENT STORE, OPEN LATE! There is a queue round the block.
+</entry>
+
+// ── services ──────────────────────────────────────────────────────────────
+
+<beat id="center" on="heal" target="town.silvercrest" title="Monster Center" once="false">
+  ::use{component="nurse" town="silvercrest"}
+</beat>
+
+<beat id="mart" on="shop" target="town.silvercrest" title="Department store" once="false" when="!@weekend">
+  ::use{component="shop" stock="silvercrestStock"}
+</beat>
+
+<beat id="martSale" on="shop" target="town.silvercrest" title="Department store (weekend sale)" once="false" when="@weekend">
+  @clerk: Welcome to the Big Weekend Sale! Everything on the ground floor is twenty percent off, and the evolution stones are on the fifth!
+  ::use{component="shop" stock="silvercrestSaleStock"}
+</beat>
+
+<beat id="deptStore" on="enterPlace" target="place.silvercrestDeptStore" title="Silvercrest Department Store" once="false" when="!@weekend">
+  ::bg{location="silvercrest-dept-store" time="day"}
+  @narrator: Five floors of everything. The lift plays a tune. The rooftop has a vending machine that nobody has ever seen empty.
+</beat>
+
+<beat id="deptStoreSale" on="enterPlace" target="place.silvercrestDeptStore" title="Silvercrest Department Store (weekend sale)" once="false" when="@weekend">
+  ::bg{location="silvercrest-dept-store" time="day"}
+  ::music{action="change" mood="festive" volume="up"}
+  @narrator: The store is heaving. Ottilie at the door is handing out coupons as fast as she can, and the queue for the lift goes up the stairs.
+  @silvercrestGreeter: Welcome, welcome! Big Weekend Sale! Evolution stones on five, Potions on two, and please, please don't all take the lift at once!
+</beat>
+
+// ── the Game Corner, once Eclipse is gone ─────────────────────────────────
+
+<entry id="midCornerCasinoAfter" on="enterPlace" target="place.gameCorner" category="bark" when="run.lair.cornerHideout == 'cleared'">
+  @narrator: The Game Corner rattles and rings. The poster at the back hangs straight now, and behind it there is only wall.
+</entry>
+
+<entry id="midGameCornerClerk" on="talk" target="npc.gameCornerClerk" category="bark">
+  @gameCornerClerk: Prize counter! Coins for prizes, no refunds, no questions. Especially no questions about the basement.
+</entry>
+
+<entry id="midGameCornerClerkAfter" on="talk" target="npc.gameCornerClerk" category="bark" priority="5" when="run.lair.cornerHideout == 'cleared'">
+  @gameCornerClerk: Business is better since those fellows left. People win now. Management's furious.
+</entry>
+
+<entry id="midGamblerHint" on="talk" target="npc.silvercrestGambler" category="bark" when="run.lair.cornerHideout != 'cleared'">
+  @silvercrestGambler: Forty years at these machines, and I'll tell you what I've learned: the grunt by the poster never plays. He just leans. What's so interesting about a poster?
+</entry>
+
+<entry id="midGamblerAfter" on="talk" target="npc.silvercrestGambler" category="bark" when="run.lair.cornerHideout == 'cleared'">
+  @silvercrestGambler: The machine on the end paid out three times this week. I think it's broken. I think I love it.
+</entry>
+
+<entry id="midGamblerNight" on="talk" target="npc.silvercrestGambler" category="bark" priority="5" once="day" when="@isNight">
+  @silvercrestGambler: Night's when the real players come in. I'm a real player. I've been here since this morning.
+</entry>
+
+// ── the square ────────────────────────────────────────────────────────────
+
+<entry id="midBuskerDay" on="talk" target="npc.silvercrestBusker" category="bark" when="!@isNight">
+  @silvercrestBusker: This one's called "The Giant on Route 12". It's very slow. It's mostly snoring. People throw coins to make it stop, which counts.
+</entry>
+
+<entry id="midBuskerNight" on="talk" target="npc.silvercrestBusker" category="bark" when="@isNight">
+  @silvercrestBusker: Night set. Just me and the Game Corner jingle. I've learned to play along with it. It's in C. Everything in Silvercrest is in C.
+</entry>
+
+<entry id="midBuskerFreed" on="talk" target="npc.silvercrestBusker" category="bark" priority="5" once="run" when="run.lair.helixHQ == 'cleared'">
+  @silvercrestBusker: I wrote a new one. "The Kid Who Freed the Tower". It's fast. You can dance to it. Nobody does, but you could.
+</entry>
+
+<entry id="midGreeterWeekday" on="talk" target="npc.silvercrestGreeter" category="bark" when="!@weekend">
+  @silvercrestGreeter: Welcome to the Silvercrest Department Store! Come back at the weekend for the Big Sale. Everybody does. It's terrifying.
+</entry>
+
+<entry id="midGreeterWeekend" on="talk" target="npc.silvercrestGreeter" category="bark" when="@weekend">
+  @silvercrestGreeter: Coupon? Coupon! Take two! Take a handful! I have to get rid of all of them by closing!
+</entry>
+
+<entry id="midReceptionistBefore" on="talk" target="npc.silvercrestReceptionist" category="bark" when="run.lair.helixHQ != 'cleared'">
+  @silvercrestReceptionist: Helix Corp is... closed for restructuring. Please don't ask me about the badge.
+</entry>
+
+<entry id="midReceptionistAfter" on="talk" target="npc.silvercrestReceptionist" category="bark" when="run.lair.helixHQ == 'cleared'">
+  @silvercrestReceptionist: Helix Corp is open again. The eleventh floor has a view of the whole region. On a clear day you can see the Summit Plateau. On a very clear day, Kai.
+</entry>
+
+// ── gates ────────────────────────────────────────────────────────────────
+
+<entry id="midGateMindGymDoor" on="obstacle" target="gate.mindGymDoor" category="bark" when="!holds(canPass(mindGymDoor))">
+  @narrator: The Mind Gym's doors are chained. A notice in Eclipse lettering: CLOSED BY ORDER OF THE DIRECTOR. HELIX TOWER THANKS YOU FOR YOUR PATIENCE.
+  @narrator: Through the glass, Sabine is sitting cross-legged on a warp tile, perfectly still. She opens one eye, looks at you, and closes it again.
+</entry>

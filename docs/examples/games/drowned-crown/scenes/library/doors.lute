@@ -1,0 +1,16 @@
+---
+kind: scene
+id: library.doors
+title: The open doors
+pov: ilo
+# The sluice is solved: the bronze doors stand open on every dive after.
+on: sluice
+priority: 10
+once: false
+when: "holds(solved(sluice))"
+---
+
+## Stacks
+
+::bg{location="library" time="night"}
+@narrator: The bronze doors stand open. Beyond them, shelves climb into the dark, and every book is swollen shut.

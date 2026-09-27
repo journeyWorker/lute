@@ -1,0 +1,4 @@
+# The gate scene needs the director's card.
+file: ../scenes/endings/gate.lute
+expect:
+  eligible: false

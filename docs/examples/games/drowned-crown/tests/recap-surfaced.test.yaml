@@ -1,0 +1,5 @@
+file: ../scenes/run/recap.lute
+state: { prev.run.outcome: surfaced, prev.run.depth: 4 }
+expect:
+  transcriptContains: ["The sea let me go.", "still shows 40 fathoms, where the needle stuck", "Deeper than yesterday."]
+  end: complete

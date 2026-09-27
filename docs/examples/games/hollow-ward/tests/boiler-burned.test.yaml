@@ -1,0 +1,7 @@
+# III first: the gauge glass goes.
+file: ../scenes/puzzles/boiler.lute
+beat: levers
+choose: { order: three }
+expect:
+  state: { run.fate: burned, run.power: false, user.deaths: 1 }
+  notFacts: [canEnter(surgery)]

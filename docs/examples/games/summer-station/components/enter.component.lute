@@ -1,0 +1,10 @@
+---
+component: enter
+params:
+  who: speaker
+  side: { type: { enum: [left, center, right] }, default: center }
+---
+
+## Enter
+
+::auto{character=@who anchor=@side action="fadeInUp"}

@@ -1,0 +1,6 @@
+# One empty bed in the Orla: the count reads as a word, not a number.
+file: ../lore/casebook.lute
+entry: pageBerths
+facts: ["empty(cab5, tunnel)"]
+expect:
+  transcriptContains: ["Beds made and empty in the Orla: one."]

@@ -1,0 +1,7 @@
+# Wiring Varn about the conductor gets a clean sheet, and nothing on the doctor.
+file: ../lore/timetable.lute
+beat: wireVarn
+state: { run.hour: h06, run.wired: varn }
+expect:
+  notFacts: ["means(solt)"]
+  transcriptContains: ["It is from the Varn police.", "TWENTY TWO YEARS CLEAN SHEET"]

@@ -1,0 +1,6 @@
+file: ../scenes/birthday.lute
+state: { occasion.target: ines }
+facts: [birthdayToday(ines)]
+expect:
+  transcriptContains: ["The harbor sings for little Ines."]
+  state: { user.bond.ines: 1 }

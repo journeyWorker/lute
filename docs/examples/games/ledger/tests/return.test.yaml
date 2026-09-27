@@ -1,0 +1,8 @@
+# The hub's <return> never runs before the first menu, nor after the `exit` choice (Ink: dusk leaves the lamp room).
+file: ../scenes/keeper.lute
+visited: [arrival]
+choose: { lamp: [dusk] }
+expect:
+  transcriptContains: ['@narrator: The lamp room smells of cold brass.', '@narrator: The sun goes under.']
+  transcriptLacks: ['@narrator: The lamp room again. The dark is closer.']
+  end: complete

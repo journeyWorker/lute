@@ -1,0 +1,22 @@
+---
+kind: quest
+id: harbor.quests
+---
+
+<quest id="weeklyCatch" title="This week's catch" start="@monday" rearm="@monday">
+  <objective id="land" title="Land five fish this week" done="run.weekFish >= 5"/>
+  <on event="questComplete">
+    @harbormaster: Five fish! The market thanks you.
+  </on>
+</quest>
+
+<quest id="lanternDrive" title="Light up the harbor" tier="season:lanterns" start="@festivalLive">
+  <objective id="hang" title="Hang two lanterns" done="season.lanterns.hung >= 2"/>
+  <on event="questComplete">
+    @mara: The harbor glows.
+  </on>
+</quest>
+
+<quest id="bigOne" title="Land the marlin" start="visited('firstNets')">
+  <objective id="marlin" title="Land a marlin before the last week" done="holds(caught(marlin))" by="run.day > 7"/>
+</quest>

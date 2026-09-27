@@ -1,0 +1,10 @@
+# Shared opening: leave Ostwick, camp the first night, reach Harrow's Ford.
+# Spliced into a play with `- include: steps/to-the-ford.yaml` (dsl 0.24 §1).
+steps:
+  - occasion: travel
+    label: leaving Ostwick
+    expect: { winner: road.departure, quests: { emberRoad: active, openBridge: active, hostages: unset }, clock: { day: 1 } }
+  - label: camp, then on to Harrow's Ford
+    advance: day
+    engine: { state: { run.leg: 2 } }
+    expect: { winner: road.ford, presented: [camp.fire, road.ford], clock: { day: 2 } }

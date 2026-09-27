@@ -1,0 +1,7 @@
+# The three tablets read in order; each page opens the next.
+file: ../../lore/isles/tablets.lute
+entries: [islesTablet1, islesTablet2, islesTablet3]
+expect:
+  transcriptContains:
+    - "@narrator: \"The first fire is the mountain's. Keep it and the ships come home.\""
+    - "@narrator: \"The third fire is the sea's. When the three fires meet, the door remembers.\""

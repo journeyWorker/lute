@@ -1,0 +1,50 @@
+---
+kind: quest
+id: lamplight.case
+title: Lines of inquiry
+---
+
+<quest id="lamplightCase" title="Death on the Lamplight" tier="run" start="visited('lamplight.discovery')">
+  <reward kind="CASE" amount="1"/>
+  <objective id="hour" title="Fix the hour of death" quest="timeOfDeath"/>
+  <objective id="reason" title="Find who wanted him dead" quest="whoWanted"/>
+  <objective id="tunnel" title="Account for everyone in the tunnel" quest="whereWere"/>
+  <objective id="name" title="Name the killer at Ossery" quest="accusation"/>
+  <on event="questComplete">
+    @narrator{code="0010"}: The Lamplight Express turns round at Ossery and runs south again at noon, one passenger short and one doctor shorter.
+  </on>
+  <on event="questFailed">
+    @narrator{code="0020"}: The case file goes into a drawer in Ossery marked "misadventure". The drawer does not stay shut for long.
+  </on>
+</quest>
+
+<quest id="timeOfDeath" title="When did he die?" tier="run">
+  <objective id="watch" title="Read the dead man's watch" done="visited('examine.watch')"/>
+  <objective id="heard" title="Find who last heard him alive" done="holds(alive(hask, _))"/>
+  <objective id="fixed" title="Fix the hour" done="@timeFixed">
+    @inspector{code="0010" mono}: The Orla tunnel. Four minutes of dark, and a watch set to lie about it.
+  </objective>
+</quest>
+
+<quest id="whoWanted" title="Who wanted him dead?" tier="run">
+  <objective id="ledger" title="Read Hask's ledger to the last page" done="entry.ledger3.everRead"/>
+  <objective id="cufflink" title="Ask Mirela Dace about the cufflink" done="entry.mirelaCufflink.everRead" optional/>
+</quest>
+
+<quest id="whereWere" title="Where was everyone in the tunnel?" tier="run">
+  <objective id="crane" title="Hear Crane's account" done="holds(claims(crane, _, tunnel))"/>
+  <objective id="mirela" title="Hear Mirela Dace's account" done="holds(claims(mirela, _, tunnel))"/>
+  <objective id="lise" title="Hear Lise Varo's account" done="holds(claims(lise, _, tunnel))"/>
+  <objective id="solt" title="Hear Dr. Solt's account" done="holds(claims(solt, _, tunnel))"/>
+</quest>
+
+<quest id="accusation" title="Name a name at Ossery" tier="run">
+  <objective id="named" title="Accuse the killer, and make it stick" done="@solved && holds(prime(solt))" on="accuse" until="run.accused != 'nobody'"/>
+</quest>
+
+<quest id="lisesLetter" title="Lise's letter">
+  <objective id="find" title="Find her letter among Hask's things" done="holds(found(letter))"/>
+  <on event="questComplete">
+    @inspector{code="0010" mono}: Sixty crowns and a plea for time, in a good round hand. It has nothing to do with the tunnel. It goes back to her at Ossery.
+  </on>
+</quest>

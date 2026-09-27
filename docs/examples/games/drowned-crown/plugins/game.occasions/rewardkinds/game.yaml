@@ -1,0 +1,3 @@
+rewardKinds:
+  PEARLS:   { credits: user.pearls }
+  KEEPSAKE: {}

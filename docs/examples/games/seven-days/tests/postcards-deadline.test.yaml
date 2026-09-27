@@ -1,0 +1,7 @@
+# Two postcards by Saturday afternoon is not three: the last post has gone by
+# Saturday night, and the quest fails there.
+file: ../quests/postcards.lute
+state: { run.day: 6, run.slot: night, run.postcards: 2 }
+visited: [post.mira.meet]
+expect:
+  quests: { postcards: failed }

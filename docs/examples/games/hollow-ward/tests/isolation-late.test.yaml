@@ -1,0 +1,8 @@
+# Arriving after three: June's deadline has already passed, so the wing
+# quest fails the moment it starts.
+file: ../quests/isolation.lute
+visited: [room.isolation]
+state: { run.hour: h04 }
+expect:
+  quests: { hushWing: failed }
+  transcriptContains: ["@june{os}: It's three. You said you'd come before three."]

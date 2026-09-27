@@ -1,0 +1,13 @@
+# Caught by the ankle with Tobias along: he takes Tobias instead, back to drawer 13.
+file: ../lore/orderly.lute
+beat: meet
+state: { occasion.target: records, run.stalker: records }
+facts: [following(tobias), solved(freezer)]
+choose: { react: run }
+bridges: { evade: [ { outcome: hurt } ] }
+expect:
+  facts: [taken(tobias)]
+  notFacts: [following(tobias), solved(freezer)]
+  transcriptContains: ["@nell: Toby? TOBY!"]
+  transcriptLacks: ["Is he gone? Nell, is he gone?"]
+  end: complete

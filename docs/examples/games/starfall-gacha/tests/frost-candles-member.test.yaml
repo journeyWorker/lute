@@ -1,0 +1,8 @@
+# One hero's candle on the first reset of the vigil: owned, bond rank 2.
+file: ../lore/resets.lute
+beat: frostCandles
+state: { user.day: 43, occasion.target: aria, user.bond.aria: 300 }
+facts: ["owned(aria)"]
+expect:
+  eligible: true
+  transcriptContains: ["@narrator: Aria turns up at the door with a candle, already lit. \"For the vigil,\" they say."]

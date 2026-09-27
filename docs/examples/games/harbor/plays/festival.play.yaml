@@ -1,0 +1,26 @@
+steps:
+  - label: festival switched on
+    engine:
+      state: { user.festivalOn: true }
+  - occasion: hubVisit
+    expect: { winner: lantern.hang }
+  - occasion: hubVisit
+    expect: { winner: hub.idle }
+  - occasion: lanternNight
+    pick: talks.lanternWish
+  - occasion: lanternNight
+    pick: talks.lanternWatch
+    expect: { facts: [wishedOn(mara)] }
+  - label: festival off
+    engine:
+      state: { user.festivalOn: false }
+  - label: festival on again
+    engine:
+      state: { user.festivalOn: true }
+    expect: { notFacts: [wishedOn(mara)] }
+  - occasion: hubVisit
+    expect: { winner: lantern.hang }
+expect:
+  quests: { lanternDrive: complete }
+  state: { season.lanterns.hung: 2, season.lanterns.wishes: 0, prev.season.lanterns.wishes: 1 }
+  transcriptContains: ["Last festival the harbor hung 2 lanterns.", "@mara: I saw your lantern. Thank you."]

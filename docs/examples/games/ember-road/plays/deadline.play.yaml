@@ -1,0 +1,34 @@
+# The fourth night: the party pulls back from the chain and never returns.
+# The main quest's `bridge` objective has a `by=` deadline the engine's night
+# counter trips.
+#   lute play . --script plays/deadline.play.yaml
+visited: [road.departure, road.ford]
+quests: { emberRoad: active }
+state:
+  run.leg: 3
+  run.night: 3
+  quest.emberRoad.objectives.ford.done: true
+choose:
+  chain: [why, withdraw]
+steps:
+  - occasion: travel
+    expect: { winner: bridge.arrival, quests: { parley: active } }
+  - occasion: talk
+    target: npc.maelis
+    expect: { winner: bridge.talks.maelisWaiting }
+  - label: camp; the fourth night falls
+    advance: day
+    expect:
+      quests: { emberRoad: failed, openBridge: failed, parley: failed }
+      state: { quest.emberRoad.failedBy: by, quest.openBridge.failedBy: cascade, quest.parley.failedBy: cascade }
+  - occasion: chapterEnd
+expect:
+  end: complete
+  quests: { emberRoad: failed }
+  state: { run.bridge: held, run.gold: 60 }
+  transcriptLacks: ["@narrator: Maelis never got her proof."]
+  transcriptContains:
+    - "@maelis: Till the fourth night, Warden. I can count too."
+    - "@narrator: The third night, within sight of the Tollbridge."
+    - "@narrator: The fourth night came and the chain did not."
+    - "@narrator: The Ember Road keeps the wagons."

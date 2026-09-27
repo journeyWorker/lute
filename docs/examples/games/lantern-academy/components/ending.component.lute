@@ -1,0 +1,17 @@
+---
+component: ending
+effects: true
+params:
+  who: speaker
+  kind: { type: { entity: outcome } }
+  title: string
+---
+
+## Record
+
+// One place that closes a route's term: the ending, the term count, and the
+// save's memory of which ending this route has reached.
+::set{run.ending = @kind}
+::set{user.terms += 1}
+::assert{cleared(@who, @kind)}
+@narrator: ~ {{@title}} ~

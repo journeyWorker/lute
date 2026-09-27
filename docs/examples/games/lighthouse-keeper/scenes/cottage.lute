@@ -1,0 +1,16 @@
+---
+kind: scene
+id: place.cottage
+title: The Keepers' Cottage
+on: explore
+target: place.cottage
+priority: 10
+---
+
+## The Cottage
+
+::bg{location="skerry_cottage" time="day"}
+@narrator: Two bunks, one stove, one table. Elias Voss's bunk is made with naval corners. The other has not been slept in for a week.
+@narrator: On the table: a supper tin, lid off.
+@narrator: Pinned over the stove, a photograph of a girl in an assistant keeper's cap, and on the back in pencil: "A. — first night on the light."
+@inspector{mono,when="holds(implicates(supper_tin, ada))"}: Ada Pell was supposed to be ashore, sick. Her supper tin was not.

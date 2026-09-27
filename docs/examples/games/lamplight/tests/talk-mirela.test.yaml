@@ -1,0 +1,6 @@
+# Mirela's second answer only follows her first.
+file: ../lore/talk.lute
+entries: [mirelaTunnel, mirelaMatch]
+expect:
+  transcriptContains: ["being sung at", "Spectacles — the flame caught them."]
+  end: complete

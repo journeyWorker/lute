@@ -1,0 +1,16 @@
+# Engine-applied directives. The engine owns what Wren carries up the Stair
+# (the reserved wields/1 relation); content asks for a change with ::arm and
+# the engine applies the declared fact effects.
+directives:
+  - name: arm
+    attrs:
+      - { name: weapon, required: true, type: { entity: weapon } }
+    effects:
+      retracts: ["wields(_)"]
+      asserts: ["wields(@weapon)"]
+  - name: gift
+    attrs:
+      - { name: from, required: true, type: { entity: npc } }
+      - { name: item, required: true, type: { entity: keepsake } }
+    effects:
+      asserts: ["gave(@from, @item)"]

@@ -1,0 +1,49 @@
+# Harbor Days — a two-week live event on a small fishing harbor.
+state:
+  run.day:        { type: number, default: 1, owner: engine }
+  run.slot:       { type: { enum: [dawn, noon, dusk] }, default: dawn, owner: engine }
+  run.coins:      { type: number, default: 0 }
+  run.weekFish:   { type: number, default: 0, owner: engine }
+  run.storm:      { type: { domain: weather }, default: calm }
+  user.festivalOn: { type: bool, default: false, owner: engine }
+  user.bond:      { type: number, default: 0, per: villager }
+  user.days:      { type: number, default: 0 }
+  season.lanterns.hung:   { type: number, default: 0 }
+  season.lanterns.wishes: { type: number, default: 0 }
+
+enums:
+  weather: [calm, squall, wrecked]
+
+entities:
+  villager: { members: [mara, tomas, ines], labels: { mara: old Mara, tomas: Tomas the skipper, ines: little Ines } }
+  fish:     { members: [cod, eel, marlin], labels: { cod: cod, eel: eel, marlin: marlin } }
+  boat:     { members: [gull, heron] }
+
+relations:
+  caught:        { args: [fish], tier: run }
+  birthdayToday: { args: [villager], tier: run, reserved: true }
+  canSail:       { args: [boat], tier: run }
+  wishedOn:      { args: [villager], tier: season:lanterns }
+
+defs:
+  festivalLive: "user.festivalOn"
+  monday:       "clock.weekday == 0"
+
+seasons:
+  lanterns: "@festivalLive"
+
+terminal: "run.storm == 'wrecked' || clock.ended"
+
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [dawn, noon, dusk]
+  raise: { slot: tide, dayEnd: nightfall }
+  week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }
+  last: { day: 14 }
+
+cast:
+  mara:  { name: Mara }
+  tomas: { name: Tomas }
+  ines:  { name: Ines }
+  harbormaster: { name: Harbormaster }

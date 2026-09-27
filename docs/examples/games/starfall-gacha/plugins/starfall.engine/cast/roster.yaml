@@ -1,0 +1,13 @@
+# The heroes. `present:` is not used: a hero speaks in their own bond story
+# and summon lines whether or not the player owns them (the pull is how they
+# arrive).
+cast:
+  aria:   { name: Aria,   emotions: [neutral, happy, sad, shy, surprised] }
+  bram:   { name: Bram,   emotions: [neutral, happy, angry, sad] }
+  cyra:   { name: Cyra,   emotions: [neutral, sleepy, happy, sad] }
+  dax:    { name: Dax,    emotions: [neutral, smug, surprised, sad] }
+  elin:   { name: Elin,   emotions: [neutral, shy, happy, surprised] }
+  fen:    { name: Fen,    emotions: [neutral, shy, happy] }
+  gale:   { name: Gale,   emotions: [neutral, happy, smug, sad] }
+  vesper: { name: Vesper, emotions: [neutral, smug, sad, angry] }
+  nyx:    { name: Nyx,    emotions: [neutral, sad, happy, shy] }

@@ -1,0 +1,15 @@
+---
+kind: scene
+id: stair.veteranEcho
+title: Footprints in the ash
+on: runStart
+priority: 10
+once: run
+when: '@veteran'
+---
+
+## Footprints
+
+::bg{location="stair" time="night"}
+@narrator{code="0010"}: There are footprints in the ash on the lower steps. Wren's own, from every climb before. They all go up. None come down.
+@wren{code="0010" mono}: I'm my own crowd now.

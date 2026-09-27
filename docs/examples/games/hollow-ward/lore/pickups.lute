@@ -1,0 +1,41 @@
+---
+kind: lore
+id: pickups
+title: What goes in the bag
+---
+
+<entry id="gotLantern" on="pickup" target="item.lantern" category="item" once="run">
+  @narrator: Toby's paraffin lantern, the one he bought for the channel because "torches look fake on camera." Half full. It throws a warm, shaking circle.
+</entry>
+
+<entry id="gotRecordsKey" on="pickup" target="item.recordsKey" category="item" once="run">
+  @narrator: A long brass key on a card tag: RECORDS. RETURN TO SISTER.
+</entry>
+
+<entry id="gotMorgueKey" on="pickup" target="item.morgueKey" category="item" once="run">
+  @narrator: MORTUARY. The key is so cold it sticks to your fingers for a moment.
+</entry>
+
+<entry id="gotSedative" on="pickup" target="item.sedative" category="item" once="run">
+  @narrator: The syringe, capped, full. FOR A.C. ONLY, in green ink. The dose is enormous.
+</entry>
+
+<entry id="gotBrassKey" on="pickup" target="item.brassKey" category="item" once="run">
+  @narrator: The brass key from the tub. DIRECTOR on one side. On the other, scratched with a pin: SORRY.
+</entry>
+
+<entry id="gotKeycard" on="pickup" target="item.keycard" category="item" once="run">
+  @narrator: White plastic, a photo of a man with a kind face and cold eyes. DR. R. HALE. GATE.
+</entry>
+
+<entry id="gotMatches" on="pickup" target="item.matches" category="item" once="run">
+  @narrator: Altar matches, long as pencils. The box rattles: plenty.
+</entry>
+
+<entry id="gotLedger" on="pickup" target="item.ledger" category="item" once="run">
+  @narrator: The admissions ledger. It is far heavier than a book should be, as if every name in it had weight.
+</entry>
+
+<entry id="gotMusicBox" on="pickup" target="item.musicBox" category="item" once="run">
+  @narrator: You close the lid. The tune stops. Somewhere in the building, somebody keeps humming it.
+</entry>

@@ -1,0 +1,8 @@
+# The inspector pockets a piece of evidence. The engine keeps the bag; the
+# fact is the directive's declared effect (dsl 0.27.0 §4), not an ::assert.
+directives:
+  - name: pocket
+    attrs:
+      - { name: item, required: true, type: { entity: evidence } }
+    effects:
+      asserts: ["carrying(@item)"]

@@ -1,0 +1,29 @@
+# Mika's lantern ending: keep his secret, watch every practice, a perfect
+# walking race, and tell him who he is at the finish line.
+choose:
+  firstLook: mika
+  clash: stayOut
+  injury: keep
+  lantern: mika
+  mikaAsk: more
+bridges:
+  exam: [ { grade: pass, score: 55 } ]
+  date: [ { mood: perfect, hearts: 5 } ]
+steps:
+  - include: steps/term-start.steps.yaml
+  - include: steps/day-track.steps.yaml
+  - include: steps/day-track.steps.yaml
+  - include: steps/day-track.steps.yaml
+  - include: steps/day-track.steps.yaml
+  - include: steps/day-track.steps.yaml
+  - include: steps/finale.steps.yaml
+  - occasion: gift
+    target: npc.mika
+    payload: { hearts: 4 }
+  - include: steps/week2.steps.yaml
+expect:
+  end: complete
+  state: { run.route: mika, run.ending: good, run.aff.mika: 12, user.terms: 1 }
+  facts: ["cleared(mika, good)", "cgSeen(cgMikaFinish)", "cgSeen(cgMikaEnd)"]
+  notFacts: ["locked(ren)", "locked(kai)", "locked(mika)", "locked(soren)"]
+  transcriptContains: ["We tied. That means we both win", "services to morale", "~ Mika — the lantern ending ~"]

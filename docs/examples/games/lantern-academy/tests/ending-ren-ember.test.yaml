@@ -1,0 +1,11 @@
+# At 6, one short: the lantern ending is not eligible, the ember ending plays.
+file: ../lore/endings/ren.lute
+beat: ember
+visited: [ren.confession]
+state: { run.route: ren, run.aff.ren: 6 }
+expect:
+  eligible: { lantern: false, ember: true }
+  state: { run.ending: bittersweet, user.terms: 1 }
+  facts: ["cleared(ren, bittersweet)"]
+  notFacts: ["cgSeen(cgRenEnd)"]
+  end: complete

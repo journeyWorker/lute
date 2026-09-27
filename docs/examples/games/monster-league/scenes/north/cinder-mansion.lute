@@ -1,0 +1,36 @@
+---
+kind: scene
+id: north.cinderMansion
+title: The burned mansion
+on: enterPlace
+target: place.cinderMansion
+---
+
+// CONTRACT BEAT (seeded by the lead; owned by north): hands over volcanoKey
+// (cinderGymDoor gate). Every route through the branch ends at the key.
+
+## The hall
+
+::bg{location="cinder-mansion" time="night"}
+::music{action="change" mood="eerie" volume="down"}
+@narrator: The mansion burned years ago. The stairs are gone, the portraits are black squares, and the floor creaks as if it is thinking about giving way.
+@narrator: Two doors are still standing: a library to the left, and to the right a door with a laboratory warning sign half melted off it.
+
+<branch id="northMansionDoor" prompt="Which door?">
+  <choice id="library" label="The library">
+    @narrator: Charred shelves. One book survived, because it was locked in an iron box: a field journal, its cover stamped with a flame.
+    @narrator: "Day 4. The miners say the bird in the crater is real. They moved the road for it."
+    @narrator: "Day 19. We have made something. It is stronger than the island. It is stronger than us."
+  </choice>
+  <choice id="lab" label="The laboratory">
+    @narrator: Glass everywhere. A tank the size of a room, cracked from top to bottom. Whatever was in it left from the inside.
+    @narrator: Pinned to the wall, a photo of a young man with enormous eyebrows and a white lab coat, grinning. Someone has written on it: IGNATIUS, ASSISTANT. DO NOT LET HIM NEAR THE BURNERS.
+  </choice>
+</branch>
+
+## The study
+
+@narrator: At the back of the house, a study the fire somehow missed. A journal lies open on the desk.
+@narrator: "The creature we made is stronger than the island. We must seal the lab. I will lock the gym and hide the key where only a brave trainer would look." Underneath, on a chain, a key shaped like a flame.
+::use{component="obtain" item="volcanoKey"}
+@narrator: Somewhere above, a floorboard creaks. It is probably the house. It is probably only the house.

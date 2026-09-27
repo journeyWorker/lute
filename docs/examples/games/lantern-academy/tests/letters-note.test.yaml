@@ -1,0 +1,9 @@
+# (0.27) A `for="kind:suitor"` beat is tested for one member at a time:
+# Kai, warm but not your route, leaves a note on day 8.
+file: ../lore/letters.lute
+beat: note
+state: { occasion.target: kai, run.day: 8, run.slot: evening, run.route: ren, run.aff.kai: 3 }
+expect:
+  eligible: { note: true }
+  transcriptContains: ["@kai{vo emotion=\"smirk\"}: The piano's got five notes now. Don't make it weird."]
+  end: complete

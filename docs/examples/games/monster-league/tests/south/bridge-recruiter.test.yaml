@@ -1,0 +1,12 @@
+# The man at the end of the bridge only shows himself once all five bridge
+# trainers are down; he hands over a nugget before the pitch.
+file: ../../lore/south/route4.lute
+beat: r4GruntRecruiter
+facts: [defeated(r4YoungsterPip), defeated(r4LassEvie), defeated(r4CamperShane), defeated(r4LassMei), defeated(r4BugCatcherCal)]
+bridges: { battle: [ { won: true } ] }
+expect:
+  eligible: true
+  end: complete
+  facts: [defeated(r4GruntRecruiter)]
+  state: { run.money: 3480 }
+  transcriptContains: ["@grunt: Congratulations! You beat all five!", "@r4GruntRecruiter: Arrgh! You could have been a star!"]

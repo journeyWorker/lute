@@ -1,0 +1,96 @@
+# Lantern Academy — the world contract.
+#
+# One run is one ten-day term. The ENGINE owns the clock; content owns
+# affection, the route, the ending, and the locks it sets. user.* and the
+# user-tier relations are the save's memory across terms (NG+).
+state:
+  run.day:  { type: number, default: 1, owner: engine }
+  run.slot: { type: { domain: slot }, default: morning, owner: engine }
+
+  # Affection per love interest, this term: run.aff.ren, run.aff.mika, ...
+  run.aff: { type: number, default: 0, per: suitor }
+  # Whose lantern you floated at the festival (day 6). `none` until then.
+  run.route:  { type: { domain: route }, default: none }
+  # Which ending the term reached (set on day 10). NG+ reads prev.run.ending.
+  run.ending: { type: { domain: ending }, default: none }
+  # The midterm grade (day 4). No default: unset until the exam is sat.
+  run.exam: { type: { domain: grade } }
+  # Paper lanterns folded for the festival (the festivalPrep quest).
+  run.lanterns: { type: number, default: 0 }
+  # Evenings spent studying with Soren before the exam.
+  run.study: { type: number, default: 0 }
+
+  # The last day someone lit the dorm window's lanterns (the lampDuty quest).
+  run.lampDay: { type: number, default: 0 }
+
+  # How many terms this save has finished (the ending component counts them).
+  user.terms: { type: number, default: 0 }
+
+# Day 1 is a Monday. The engine raises slotStart wherever an advance stops,
+# and once where a term starts (day 1 morning: the ferry arrival).
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [morning, afterSchool, evening]
+  raise: slotStart
+  raiseAtStart: true
+  week:
+    length: 7
+    first: 0
+    labels: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+  # The term is ten days: the closing ceremony is day 10, and nothing comes after.
+  days: 10
+
+enums:
+  slot:
+    members: [morning, afterSchool, evening]
+    labels: { morning: morning, afterSchool: after school, evening: evening }
+  route:
+    members: [none, alone, ren, mika, soren, kai, hotaru]
+    labels: { none: nobody, alone: no one, ren: Ren, mika: Mika, soren: Soren, kai: Kai, hotaru: Hotaru }
+  ending:
+    members: [none, good, bittersweet, solo, keeper]
+    labels: { none: no ending, good: the lantern ending, bittersweet: the ember ending, solo: the lone ending, keeper: the keeper's ending }
+  grade: [fail, pass, top]
+
+entities:
+  person:  { members: [nana, coach, headmistress] }
+  # anyone the date minigame can take you out with
+  datable: { subsetOf: person, members: [hotaru] }
+  # the four love interests
+  suitor:  { subsetOf: datable, members: [ren, mika, soren, kai] }
+  place:
+    members: [council, track, library, musicRoom, roof, lakeshore, dorm]
+    # what {{occasion.target}} reads in a visit beat for every place
+    labels: { council: the council room, track: the track, library: the library, musicRoom: the old music room, roof: the roof, lakeshore: the lakeshore, dorm: the dormitory }
+  # the gallery: one CG per key moment
+  cg:
+    members: [cgFestival, cgRenStars, cgMikaFinish, cgSorenLetter, cgKaiDuet,
+              cgRenEnd, cgMikaEnd, cgSorenEnd, cgKaiEnd, cgKeeperEnd]
+  outcome: { members: [good, bittersweet] }
+
+relations:
+  # A route closed this term by something you did (or failed to do).
+  locked:    { args: [suitor], tier: run }
+  # A route you can still take at the festival.
+  routeOpen: { args: [suitor], derive: true }
+  # The route this term is on. Never a locked one: a play halts if both hold.
+  onRoute:   { args: [suitor], derive: true, excludes: [locked] }
+  # An ending this save has seen, ever.
+  cleared:   { args: [suitor, outcome], tier: user }
+  # A CG this save has unlocked, ever.
+  cgSeen:    { args: [cg], tier: user }
+
+rules:
+  - "routeOpen(S) :- suitor(S), not locked(S), cel(\"run.aff[S] >= 3\")"
+  - "onRoute(ren) :- cel(\"run.route == 'ren'\")"
+  - "onRoute(mika) :- cel(\"run.route == 'mika'\")"
+  - "onRoute(soren) :- cel(\"run.route == 'soren'\")"
+  - "onRoute(kai) :- cel(\"run.route == 'kai'\")"
+
+defs:
+  # NG+: at least one term is behind this save.
+  ngPlus: "user.terms >= 1"
+  festivalNight: "run.day == 6 && run.slot == 'evening'"
+  # The good-ending bar for a route's affection.
+  devoted: { type: bool, params: { s: number }, cel: "s >= 7" }

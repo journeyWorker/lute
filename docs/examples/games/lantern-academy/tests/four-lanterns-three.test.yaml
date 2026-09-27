@@ -1,0 +1,7 @@
+# Two endings of one route count once: three routes are not four.
+file: ../quests/memory.lute
+facts: ["cleared(ren, good)", "cleared(ren, bittersweet)", "cleared(mika, good)", "cleared(kai, good)"]
+expect:
+  quests: { fourLanterns: active }
+  transcriptLacks: ["Four lanterns."]
+  end: complete

@@ -1,0 +1,18 @@
+---
+kind: scene
+id: boss.archivist
+title: The Archivist
+pov: ilo
+on: bossDefeated
+target: foe.archivist
+once: user
+priority: 10
+---
+
+## Reading room
+
+::bg{location="library" time="night"}
+@archivist{emotion="grim"}: You are not in my catalogue. Everything that comes down here is in my catalogue.
+@ilo: Then write me in.
+@archivist: I have. Under "drowned". The ink is still wet.
+@narrator: The Archivist folds in on itself like a closing book, and the shelves go still.

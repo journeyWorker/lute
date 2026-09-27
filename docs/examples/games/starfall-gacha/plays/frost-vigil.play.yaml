@@ -1,0 +1,71 @@
+# Week 7 (days 43-49): Chapter 4 and the Frostlight Vigil open on the same
+# Monday. A veteran who finished Chapter 3 and owns the three SSRs, close to
+# Cyra (bond rank 2).
+state: { user.day: 42, user.bond.cyra: 320, user.bond.aria: 90, user.loginStreak: 3 }
+facts: ["owned(aria)", "owned(cyra)", "owned(vesper)"]
+quests: { chapter1: complete, chapter2: complete, chapter3: complete }
+presented: { user: [main.prologue, main.c1s1, main.c1s8, main.c2s1, main.c2s8, main.c3s1, main.c3s8, resets.chapterThree] }
+steps:
+  - advance: day
+    expect:
+      clock: { day: 43, weekday: Mon }
+      presented: [resets.eventLastCall, resets.dailyNotice, resets.weeklyNotice, resets.frostOpens, resets.frostNag, "resets.frostCandles for cyra"]
+      quests: { frostMissions: active, chapter4: active }
+  - occasion: login
+    expect: { presented: [login.standardCard, login.frostCard] }
+  - occasion: codexOpen
+    target: topic.lanternSea
+    expect: { winner: codex.lanternSeaPage, facts: ["learned(lanternSea)"] }
+  - occasion: stageClear
+    target: stage.c4s1
+    choose: { c4s1Boat: row }
+    expect: { winner: main.c4s1 }
+  - occasion: stageClear
+    target: stage.c4s2
+    choose: { c4s2Watch: cyra }
+    expect: { winner: main.c4s2, facts: ["rowedWith(cyra)"] }
+  - occasion: eventStage
+    target: estage.f1
+    expect: { winner: frost.f1 }
+  - occasion: eventStage
+    target: estage.f2
+    choose: { f2Wish: vesper }
+    expect: { winner: frost.f2, state: { season.frost.vigils: 1 }, facts: ["vigilWish(vesper)"] }
+  - occasion: codexOpen
+    target: topic.frostKing
+    expect: { winner: codex.frostKingPage }
+  - occasion: summon
+    target: hero.nyx
+    payload: { copies: 1, streak: 41, banner: frost }
+    expect: { presented: [bonds.nyx.nyxIntro, bonds.nyx.nyxRateUp] }
+  - engine: { state: { season.frost.tokens: 320 } }
+    occasion: shopVisit
+    target: shop.frostShop
+    choose: { frostStall: [candle, leave] }
+    bridges: { purchase: [ { bought: true, remaining: 290 } ] }
+    expect: { winner: shop.pimFrost, quests: { frostMissions: complete } }
+  - advance: day
+    label: the first night on the ice
+    expect: { clock: { day: 44 }, state: { season.frost.vigils: 2 }, presented: [resets.frostVigilNight, resets.dailyNotice, resets.frostNag] }
+  - advance: day
+    label: "the third night, Pim stops nagging"
+    expect: { clock: { day: 45 }, state: { season.frost.vigils: 3 }, presented: [resets.frostVigilNight, resets.dailyNotice] }
+  - occasion: stageClear
+    target: stage.c4s3
+    expect: { winner: main.c4s3, quests: { chapter4: complete } }
+  - advance: { to: { weekday: Sun } }
+    expect: { clock: { day: 49 } }
+  - occasion: login
+    expect: { presented: [login.standardCard, login.frostCard, login.frostLastDay] }
+  - advance: day
+    label: the ice goes out
+    expect: { clock: { day: 50 }, presented: [resets.frostVigilNight, resets.dailyNotice, resets.weeklyNotice] }
+expect:
+  quests: { chapter4: complete, frostMissions: complete }
+  transcriptContains:
+    - "@nyx: Vesper's candle is down there too. The one you lit at the vigil. She pretends she doesn't know."
+    - "@nyx: You kept the whole vigil. Every candle out there is a little bit yours."
+    - "@lumi: The Frost King's lantern. The codex said he'd drowned it himself."
+    - "@narrator: Cyra turns up at the door with a candle, already lit. \"For the vigil,\" they say."
+  transcriptLacks:
+    - "Last night on the ice."

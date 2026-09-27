@@ -1,0 +1,8 @@
+# Both parts before Friday night: the quest completes and stays complete even
+# once the clock passes the deadline (fail only moves an active quest).
+file: ../quests/festival.lute
+state: { run.day: 5, run.slot: afternoon, run.lantern.frame: true, run.lantern.paper: true }
+accepts: [festivalLantern]
+expect:
+  quests: { festivalLantern: complete }
+  transcriptLacks: ["for the first time in forty years"]

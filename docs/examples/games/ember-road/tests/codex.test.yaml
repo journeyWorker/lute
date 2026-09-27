@@ -1,0 +1,10 @@
+# The journal's Marrow page reads the ford's opinion of the Warden.
+file: ../lore/codex.lute
+entries: [codexMarrow, codexCompany]
+visited: [road.ford]
+facts: ["knows(ledger)"]
+state: { run.rep.marrow: -3 }
+expect:
+  eligible: { codexMarrow: true }
+  transcriptContains: ["They spit twice for the Warden.", "One of those histories is in your pack now"]
+  transcriptLacks: ["They call the Warden a friend of the ford"]

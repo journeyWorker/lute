@@ -1,0 +1,65 @@
+---
+kind: lore
+id: north.route16
+title: Route 16 — the League Road
+---
+
+// Route 16 runs west from Verdant City to the Victory Road gate. Elite
+// hopefuls train here; the gate guard turns away anyone short of eight badges.
+
+<beat id="enter" on="enterRoute" target="route.r16" title="Route 16" priority="10">
+  ::bg{location="route-16" time="day"}
+  ::music{action="change" mood="tense" volume="normal"}
+  @narrator: The road out of Verdant City is wide and paved, lined with banners of past Champions. Every trainer on it looks like they have somewhere to be.
+  @narrator: A stone marker: ROUTE 16 — THE LEAGUE ROAD. VICTORY ROAD GATE AHEAD. EIGHT BADGES, NO EXCEPTIONS.
+</beat>
+
+<entry id="northR16Day" on="enterRoute" target="route.r16" category="bark" once="day" when="!@isNight">
+  @narrator: Cooltrainers run drills on the verge. Somebody is shouting type matchups at a Hornrake.
+</entry>
+
+<entry id="northR16Night" on="enterRoute" target="route.r16" category="bark" once="day" when="@isNight">
+  @narrator: At night the Champions' banners snap in the wind and the gate at the end of the road is lit like a lighthouse.
+</entry>
+
+// ── trainers ────────────────────────────────────────────────────────────────
+
+<beat use="trainerBattle" id="r16CooltrainerAnya" who="r16CooltrainerAnya" intro="You're heading for the League? So am I. Only one of us is ready." win="You're ready. I need another month." lose="Come back when your team is balanced." prize="2800"/>
+
+<entry id="northR16CooltrainerAnyaAfter" on="talk" target="npc.r16CooltrainerAnya" category="bark" when="holds(defeated(r16CooltrainerAnya))">
+  @r16CooltrainerAnya: Frostine of the Elite Four uses ice. Pack something that burns.
+</entry>
+
+<beat use="trainerBattle" id="r16CooltrainerBram" who="r16CooltrainerBram" intro="I've failed Victory Road three times. Beating you will make it four... wait, that's not how that works." win="Four. It's four." lose="Maybe this is my year!" prize="2800"/>
+
+<entry id="northR16CooltrainerBramAfter" on="talk" target="npc.r16CooltrainerBram" category="bark" when="holds(defeated(r16CooltrainerBram))">
+  @r16CooltrainerBram: The boulders in Victory Road need Strength. The first time I went in I just pushed. With my hands.
+</entry>
+
+<beat use="trainerBattle" id="r16HikerGus" who="r16HikerGus" intro="Hahaha! I've climbed every mountain in Verdane! Now I climb over challengers!" win="Hahaha! Tumbled right down!" lose="Hahaha! To the top!" prize="2000"/>
+
+<entry id="northR16HikerGusAfter" on="talk" target="npc.r16HikerGus" category="bark" when="holds(defeated(r16HikerGus))">
+  @r16HikerGus: There's a crater near the top of Victory Road that's always hot. I cooked an egg on the floor once. Hahaha!
+</entry>
+
+<beat use="trainerBattle" id="r16BlackBeltKen" who="r16BlackBeltKen" intro="Hwaa! I trained at the Verdant Dojo! Face my fists!" win="Hwaa... my fists are tired." lose="The Dojo's way is the strong way!" prize="2200"/>
+
+<entry id="northR16BlackBeltKenAfter" on="talk" target="npc.r16BlackBeltKen" category="bark" when="holds(defeated(r16BlackBeltKen))">
+  @r16BlackBeltKen: Master Hollis takes one challenger a day. Go early. He naps after lunch.
+</entry>
+
+<beat use="trainerBattle" id="r16BeautyLis" who="r16BeautyLis" intro="I'm only here to watch the Champion hopefuls. And to crush them, a little." win="You'd look good on a banner." lose="Next hopeful, please!" prize="2400"/>
+
+<entry id="northR16BeautyLisAfter" on="talk" target="npc.r16BeautyLis" category="bark" when="holds(defeated(r16BeautyLis))">
+  @r16BeautyLis: A boy in a red jacket ran past an hour ago shouting that he'd be Champion by dinner. Friend of yours?
+</entry>
+
+// ── Old Harl, a Champion from long ago ──────────────────────────────────────
+
+<entry id="northHarlBark" on="talk" target="npc.r16Veteran" category="bark">
+  @r16Veteran: My banner's the faded one, third from the gate. Forty years ago. I walked Victory Road with a Hornrake and a sandwich.
+</entry>
+
+<entry id="northHarlChampion" on="talk" target="npc.r16Veteran" category="bark" priority="5" when="@champion">
+  @r16Veteran: They'll hang your banner at the end of the road now. Go and look at it. Everybody pretends they don't, and everybody does.
+</entry>

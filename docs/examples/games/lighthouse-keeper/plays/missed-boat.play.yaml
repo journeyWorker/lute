@@ -1,0 +1,22 @@
+# The inspector reads, walks, and never writes. The relief boat leaves on day 4
+# without a report, the Board writes its own, and the game is over (terminal:).
+choose:
+  firstQuestion: askAda
+steps:
+  - occasion: arrive
+  - advance: day
+    expect: { winner: rock.secondMorning }
+  - advance: day
+    expect: { winner: rock.thirdMorning, quests: { reconstruction: active } }
+  # The inquiry fails in the day-4 settle, so the file is closed before the
+  # morning boat would be raised: the last raise of the step is nightfall.
+  - label: the relief boat sails
+    advance: day
+    expect: { presented: [rock.nightfall], clock: { weekday: Sunday, day: 4 }, quests: { reconstruction: failed, keeperInquiry: failed } }
+expect:
+  end: terminal
+  state: { run.verdictFate: undecided }
+  transcriptContains:
+    - "@chair: No reconstruction reached the Board before the relief boat sailed."
+    - "The Board finds the reconstruction unsafe and returns an open verdict."
+  transcriptLacks: ["The Board does not accept"]

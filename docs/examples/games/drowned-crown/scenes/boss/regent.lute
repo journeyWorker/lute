@@ -1,0 +1,20 @@
+---
+kind: scene
+id: boss.regent
+title: The Tide Regent
+pov: ilo
+# The first time the Regent falls. Later kills get a bark (lore/guardians.lute).
+on: bossDefeated
+target: foe.regent
+once: user
+priority: 10
+---
+
+## Throne
+
+::bg{location="throne" time="night"}
+::music{action="stop"}
+@regent: Little heir. Little drowned heir. You think the crown is a prize.
+@ilo: I think it's mine.
+@regent: It was mine. It was my father's. It will be yours, and it will drown you slower than the sea did.
+@narrator: The Regent's body unwinds into current, and the current goes still.

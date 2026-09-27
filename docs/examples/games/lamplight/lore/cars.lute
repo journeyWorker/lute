@@ -1,0 +1,9 @@
+---
+kind: lore
+id: cars
+title: Walking the train
+---
+
+<beat id="walkThrough" on="enterCar" target="kind:place" title="Walking through" once="false" priority="-10">
+  @narrator{code="0010"}: You walk through {{occasion.target}}. Faces turn to the window as you pass.
+</beat>

@@ -1,0 +1,10 @@
+# A wrong code rings the alarm, costs a little nerve and keeps the door shut.
+file: ../scenes/puzzles/pharmacy-pad.lute
+bridges: { keypad: [ { entered: 1234 } ] }
+# lute test applies ::fright's effects.writes (the plugin declares its write to run.sanity).
+expect:
+  notFacts: [solved(pharmacyPad), canEnter(pharmacy)]
+  state: { run.sanity: 9 }
+  transcriptContains: ["@nell: No, no, no..."]
+  transcriptLacks: ["The plaque in the lobby"]
+  end: complete

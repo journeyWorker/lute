@@ -1,0 +1,13 @@
+---
+kind: scene
+id: ending.found
+title: The Magpie's Nest
+on: chapter
+after: 'visited("garden")'
+when: run.accused == "magpie"
+---
+
+## The Sundial
+
+@narrator: In the magpie's nest: a thimble, two buttons, and the Hollin spoon.
+@aunt_mabel: Pippa! You clever, clever girl. More tea?

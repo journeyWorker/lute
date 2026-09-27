@@ -1,0 +1,13 @@
+---
+kind: scene
+id: ending.dark
+title: Timber on Rock
+on: chapter
+after: 'visited("keeper")'
+when: "!(run.oil >= 3 && run.knowsName)"
+---
+
+## Timber on Rock
+
+@narrator: The wick sputters. Somewhere below, timber meets rock.
+::end{reason="dark"}

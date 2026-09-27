@@ -1,0 +1,17 @@
+---
+kind: scene
+id: room.lobby
+title: The Lobby
+on: enter
+target: room.lobby
+priority: 10
+---
+
+## Lobby
+
+::bg{location="lobby" time="night"}
+@narrator: Terrazzo floor, a map of the ward under cracked perspex, a wheelchair facing the wall like a child in disgrace.
+@narrator: On the reception counter by the door, somebody has left a paraffin lantern. The glass is still warm.
+@nell{mono}: Toby's. He always overpacks.
+@narrator: A brass plaque by the stairs catches the lantern's reflection.
+@narrator: Corridors run off in every direction: reception, the chapel, the children's ward, the hydrotherapy suite. Signs for the pharmacy, the records room and the morgue point down corridors with their doors shut.

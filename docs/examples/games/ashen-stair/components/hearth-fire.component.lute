@@ -1,0 +1,19 @@
+---
+component: hearthFire
+params:
+  flare: { enum: [low, high] }
+---
+
+## The fire
+
+<match on="@flare">
+  <when is="high">
+    ::vfx{type="emberBurst"}
+    ::sfx{sound="fire roar"}
+    @narrator{code="0010"}: The Hearth fire leaps up the flue as if something had fed it.
+  </when>
+  <when is="low">
+    ::sfx{sound="fire crackle"}
+    @narrator{code="0020"}: The Hearth fire settles, low and patient.
+  </when>
+</match>

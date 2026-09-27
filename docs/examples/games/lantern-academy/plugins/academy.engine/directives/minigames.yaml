@@ -1,0 +1,35 @@
+# ::date{with="ren" spot="roof" resultKey="date"} — a blocking bridge: the
+# engine runs the date minigame and writes scene.date.<resultKey>.* before the
+# next line. ::exam{subject="history" resultKey="midterm"} likewise.
+directives:
+  - name: date
+    layer: bridge
+    attrs:
+      - { name: with,      required: true, type: { entity: datable } }
+      - { name: spot,      required: true, type: { entity: place } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.date } } }
+      - { name: sync,      type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [date, { fromAttr: { name: resultKey, slotType: localId } }], shape: dateResult }
+    effects:
+      writes:
+        - { scope: scene, path: [date, { fromAttr: { name: resultKey } }, mood],   value: { fromBridgeResult: mood } }
+        - { scope: scene, path: [date, { fromAttr: { name: resultKey } }, hearts], value: { fromBridgeResult: hearts } }
+    bridge: { service: dating, operation: date }
+  - name: exam
+    layer: bridge
+    attrs:
+      - { name: subject,   required: true, type: { enum: [history, literature, astronomy] } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.exam } } }
+      - { name: sync,      type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [exam, { fromAttr: { name: resultKey, slotType: localId } }], shape: examResult }
+    effects:
+      writes:
+        - { scope: scene, path: [exam, { fromAttr: { name: resultKey } }, grade], value: { fromBridgeResult: grade } }
+        - { scope: scene, path: [exam, { fromAttr: { name: resultKey } }, score], value: { fromBridgeResult: score } }
+    bridge: { service: school, operation: exam }

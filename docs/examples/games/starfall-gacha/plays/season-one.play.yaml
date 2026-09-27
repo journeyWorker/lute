@@ -1,0 +1,27 @@
+# Season one of the live service: six weeks of the content calendar, from
+# launch through the Harvest Moon Festival, the Chapter 3 release, Starfall
+# Night, a quiet week, and the Harvest Moon rerun. One steps file per week.
+# Each festival is a season (schema/calendar.schema.yaml): no newRun.
+steps:
+  - include: steps/week1-launch.steps.yaml
+  - include: steps/week2-harvest.steps.yaml
+  - include: steps/week3-chapter3.steps.yaml
+  - include: steps/week4-starfall.steps.yaml
+  - include: steps/week5-quiet.steps.yaml
+  - include: steps/week6-rerun.steps.yaml
+expect:
+  quests: { chapter1: complete, chapter2: complete, chapter3: complete, harvestMissions: complete, starfallMissions: failed, towerWeekly: active, streakSeven: active }
+  state: { user.day: 36, user.gems: 1650, season.harvest.tokens: 420, prev.season.harvest.tokens: 450 }
+  transcriptContains:
+    - "@pim: Harvest card! One moon cake per stamp. Don't eat the stamp."
+    - "@pim: Last night of the festival! Tokens don't keep, friend. Spend 'em or dream about 'em."
+    - "@pim: It's the rerun! Missed Cyra last time? Now's your chance. I'll be at my stall."
+    - "@pim: Last moon you walked off with 450 tokens. Big spender. Let's see if you top it."
+    - "@pim: And those comet missions you let slip? Gone with the comets. Not this time, eh?"
+    - "@pim: Back for the encore? The moon cakes are the same. The moon's a little older."
+    - "@narrator: Your heroes hang back. They've come this far for the stars. Maybe not yet for you."
+    - "@pim: Comets have all fallen, friend. Missions are closed."
+    - "@lumi: Ten floors! The tower's getting nervous. See you next week, same stairs."
+    - "@pim: Ah, a returning customer. You'll want the lantern costume you missed. Or the one you didn't."
+  transcriptLacks:
+    - "Someone who is sworn to you steps up at your shoulder"

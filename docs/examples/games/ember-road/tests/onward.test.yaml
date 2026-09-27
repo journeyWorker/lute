@@ -1,0 +1,6 @@
+# The travel fallback between set pieces.
+file: ../scenes/road/onward.lute
+state: { run.leg: 2 }
+expect:
+  transcriptContains: ["the milestones start to carry the black sun"]
+  end: complete

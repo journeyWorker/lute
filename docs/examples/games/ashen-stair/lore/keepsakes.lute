@@ -1,0 +1,21 @@
+---
+kind: lore
+id: keepsakes
+title: What the Hearth gives her to keep
+components: [../components/keepsake.component.lute]
+---
+
+/* One beat per NPC, all from the `keepsake` template: talk to them once
+   their bond is high enough and they give Wren something to carry. */
+
+<beat use="keepsake" id="maud" who="maud" item="kettleLid" need="4">
+  @maud{code="0010" emotion="fond"}: Lid off my first kettle. The kettle's long gone. The lid wouldn't go with it.
+</beat>
+
+<beat use="keepsake" id="oskar" who="oskar" item="anvilSpark" need="4">
+  @oskar{code="0010" emotion="wry"}: First spark off the warm forge. Caught it in a jar. Don't open it indoors.
+</beat>
+
+<beat use="keepsake" id="sable" who="sable" item="cisternGlass" need="3">
+  @sable{code="0010" emotion="guarded"}: Water from the cistern. It remembers being rain. Maybe it'll remind you.
+</beat>

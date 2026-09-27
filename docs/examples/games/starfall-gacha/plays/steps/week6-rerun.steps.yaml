@@ -1,0 +1,31 @@
+# Week 6 (days 36-42): the Harvest Moon rerun. Nothing in the content changed
+# but one more window on the calendar def. The veteran who read the story in
+# week 2 gets the encore; the missions run again because the harvest season
+# reopens; Starfall's failed missions are still on record.
+steps:
+  - advance: day
+    engine: { state: { user.daysAway: 0, user.loginStreak: 2, user.loginTotal: 31 } }
+    expect:
+      clock: { day: 36, weekday: Mon }
+      presented: [resets.dailyNotice, resets.weeklyNotice, resets.harvestOpens]
+      quests: { harvestMissions: active, starfallMissions: failed }
+  - occasion: login
+    expect: { presented: [login.standardCard, login.harvestCard] }
+  - occasion: eventStage
+    target: estage.h1
+    label: story already read in the original run
+    expect: { winner: none }
+  - occasion: eventStage
+    target: estage.h3
+    expect: { winner: harvest.encore, state: { quest.harvestMissions.objectives.moonrise.done: true } }
+  - engine: { state: { season.harvest.tokens: 420 } }
+    expect: { quests: { harvestMissions: complete } }
+  - occasion: summon
+    target: hero.cyra
+    label: seventh Cyra
+    payload: { copies: 7, streak: 20, banner: harvest }
+    expect: { presented: [summons.maxedOut, bonds.cyra.cyraRateUp] }
+  - occasion: shopVisit
+    target: shop.harvestShop
+    choose: { harvestStall: [leave] }
+    expect: { winner: shop.pimHarvest }

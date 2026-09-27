@@ -1,0 +1,12 @@
+# Failing the midterm sends you to the annex: Soren's route locks.
+file: ../scenes/common/exam.lute
+visited: [common.injury]
+state: { run.day: 4, run.slot: morning }
+quests: { studyGroup: unset }
+bridges: { exam: [ { grade: fail, score: 30 } ] }
+expect:
+  state: { run.exam: fail }
+  facts: ["locked(soren)"]
+  transcriptContains: ["The library is not the annex."]
+  transcriptLacks: ["drawn a small lantern next to it"]
+  end: complete

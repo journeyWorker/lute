@@ -1,0 +1,42 @@
+---
+kind: scene
+id: pier.theo.reed
+title: Green reed, not brown
+on: placeVisit
+target: place.pier
+after: 'visited("pier.theo.meet")'
+when: 'holds(present(theo, pier)) && !run.lantern.frame'
+priority: 15
+---
+
+## The reed beds behind the pier
+
+::bg{location="reed_beds" time="morning"}
+::auto{character="theo" anchor="center" action="fadeInUp"}
+::set{run.seen.theo = run.day}
+@theo{emotion="happy"}: Qualified hands came back.
+@narrator: He has a bundle of green reed already cut and tied with fishing line, as if he knew.
+@theo: Soak it tonight. Bend it tomorrow. If you bend it dry, it cracks, and then you cry, and then Pell laughs at you.
+::set{run.lantern.frame = true}
+::set{run.aff.theo += 1}
+
+<match on="run.day">
+  <when is="..2">
+    @theo{emotion="shy"}: Hey. Wednesday night, low tide, the water off the lighthouse does a thing. Glows. It only happens a few nights a summer.
+    @theo{emotion="shy"}: I go every year. By myself, usually.
+    <branch id="lighthouseAsk" prompt="Theo is suddenly very interested in his knife.">
+      <choice id="yes" label="“Wednesday night. I'll be there.”">
+        ::accept{quest="theoLighthouse"}
+        @theo{emotion="happy"}: Bring a jumper. It's cold at the top.
+      </choice>
+      <choice id="no" label="“I'll probably be gluing things.”">
+        @theo{emotion="sad"}: Right. Yeah. Lanterns.
+      </choice>
+    </branch>
+  </when>
+  <otherwise>
+    @theo: Festival's close. Don't let the frame get rained on.
+  </otherwise>
+</match>
+
+::auto{character="theo" action="fadeOut"}

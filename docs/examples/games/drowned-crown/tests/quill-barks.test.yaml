@@ -1,0 +1,7 @@
+# Quill's memory comes back one bark at a time.
+file: ../lore/quill.lute
+entries: [quillFirst, quillName]
+state: { user.runs: 2 }
+expect:
+  transcriptContains: ["You can see me.", "My name was Quill."]
+  state: { user.bond.quill: 2 }

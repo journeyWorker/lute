@@ -1,0 +1,49 @@
+# Bond stories across the roster, gated by engine-owned bond points through
+# one rule table (schema/roster.schema.yaml).
+state: { user.day: 20 }
+steps:
+  - engine: { state: { user.bond.bram: 100, user.bond.elin: 320, user.bond.fen: 650, user.bond.gale: 99 } }
+  - occasion: bondStory
+    target: hero.bram
+    expect: { winner: bonds.bram.bramR1 }
+  - occasion: bondStory
+    target: hero.gale
+    label: one point short
+    expect: { winner: home.bondNotYet }
+  # Elin has r2 points but must read r1 first (after:)
+  - occasion: bondStory
+    target: hero.elin
+    expect: { winner: bonds.elin.elinR1 }
+  - occasion: bondStory
+    target: hero.elin
+    choose: { elinR2Answer: okay }
+    expect: { winner: bonds.elin.elinR2 }
+  - occasion: bondStory
+    target: hero.elin
+    expect: { winner: home.bondNotYet }
+  # Fen has every rank: three taps, three stories, in order
+  - occasion: bondStory
+    target: hero.fen
+    expect: { winner: bonds.fen.fenR1 }
+  - occasion: bondStory
+    target: hero.fen
+    expect: { winner: bonds.fen.fenR2 }
+  - occasion: bondStory
+    target: hero.fen
+    expect: { winner: bonds.fen.fenR3 }
+  - engine: { state: { user.bond.bram: 310 } }
+  - occasion: bondStory
+    target: hero.bram
+    choose: { bramR2Gift: lopsided }
+    expect: { winner: bonds.bram.bramR2, facts: ["bondRank(bram, r2)"], notFacts: ["bondRank(bram, r3)"] }
+  # Fen's birthday is day 20 of the moon, but she is not owned: no cake
+  - advance: day
+    expect: { clock: { day: 21 }, presented: [resets.dailyNotice, resets.weeklyNotice, resets.chapterThree] }
+expect:
+  transcriptContains:
+    - "@bram: It's CHARACTER. Stars aren't round, they're... honest."
+    - "@fen: Two archers now. Not the last."
+    - "@narrator: The crest on Fen's card glows a little brighter."
+    - "@narrator: Gale smiles, but doesn't say anything else yet. Spend more time together."
+  transcriptLacks:
+    - "Birthday. Mine."

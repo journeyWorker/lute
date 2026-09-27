@@ -1,0 +1,8 @@
+# Ink `-> ending_lit` from dusk: both conditions true
+file: ../scenes/ending/lit.lute
+visited: [keeper]
+state: { run.oil: 3, run.knowsName: true }
+expect:
+  eligible: { ending.lit: true }
+  transcriptContains: ["@narrator: The lamp catches. Out on the water the ship turns."]
+  end: complete

@@ -1,0 +1,8 @@
+# The save's long quest completes once each route has any ending, in any
+# order, across terms (cleared is user-tier), and Hotaru speaks.
+file: ../quests/memory.lute
+facts: ["cleared(ren, bittersweet)", "cleared(mika, good)", "cleared(soren, good)", "cleared(kai, bittersweet)"]
+expect:
+  quests: { fourLanterns: complete }
+  transcriptContains: ["Four lanterns. You carried every one of them back to me."]
+  end: complete

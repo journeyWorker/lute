@@ -1,0 +1,27 @@
+# Lantern Academy — an otome set over one ten-day autumn term at a boarding
+# school on a lake, where the students keep the lanterns lit.
+#
+# Four love interests (Ren, Mika, Soren, Kai), a common route that ends at the
+# Lantern Festival, one character route per term, two endings per route, and a
+# fifth, true route (Hotaru, the lantern keeper) that opens only once every
+# route has been cleared in earlier terms (user-tier memory; NG+ reads the last
+# term through prev.run.*).
+#
+# The `academy` profile activates the engine pack in plugins/academy.engine:
+# the occasions the engine raises, the clock's slotStart, the date and exam
+# minigames (bridges), the CG unlock call, and the cast.
+pluginsDir: plugins/
+defaultProfile: academy
+profiles:
+  academy:
+    plugins: { academy.engine: true }
+defaults:
+  luteVersion: "0.28.1"
+  uses: [world.schema.yaml, vocabulary.schema.yaml]
+  # every quest is a term quest unless it says tier="user"
+  questTier: run
+  components:
+    - components/cg.component.lute
+    - components/ending.component.lute
+    - components/hangout-beat.component.lute
+    - components/shut-beat.component.lute

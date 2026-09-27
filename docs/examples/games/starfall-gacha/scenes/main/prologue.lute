@@ -1,0 +1,28 @@
+---
+kind: scene
+id: main.prologue
+title: "Prologue: The Last Star"
+on: newGame
+once: user
+---
+
+## The dark
+
+@narrator: There used to be ten thousand stars. The Hollow King ate them, one by one, until only a handful were left.
+@lumi{emotion="surprised"}: Oh! You're awake! You're the Wishkeeper, right? Please say you're the Wishkeeper.
+<branch id="prologueName" prompt="A small star is hovering an inch from your nose.">
+  <choice id="yes" label="I'm the Wishkeeper.">
+    @lumi{emotion="happy"}: I knew it! I'm Lumi. I'm a star. A small one. I'm your guide!
+  </choice>
+  <choice id="who" label="Who's asking?">
+    @lumi{emotion="smug"}: The last free star in the sky, that's who. Lumi. Pleased to meet you. You're the Wishkeeper.
+  </choice>
+</branch>
+
+## The well
+
+@lumi: This is the Wishing Well. Throw in a wish, and a hero who fell with the stars climbs out.
+@lumi: Your first one's free. Go on!
+::openBanner{banner="standard"}
+::set{user.tutorialDone = true}
+@lumi{emotion="happy"}: When you're ready, the road to the Hollow Keep starts at the first stage.

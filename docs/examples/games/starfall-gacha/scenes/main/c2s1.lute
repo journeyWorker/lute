@@ -1,0 +1,14 @@
+---
+kind: scene
+id: main.c2s1
+title: "2-1: The Forge Town"
+target: stage.c2s1
+once: user
+---
+
+## Cold forges
+
+@narrator: Every forge in town is cold. Every one but the last.
+@bram{emotion="happy"}: CUSTOMERS! Finally! Sit! Sharpen! Doris hasn't had a visitor in a month!
+@aria: Why is your forge the only one burning?
+@bram{emotion="sad"}: Because I don't let it go out. Not for a second. Not since the dark came.

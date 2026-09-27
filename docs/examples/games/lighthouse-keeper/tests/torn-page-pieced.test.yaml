@@ -1,0 +1,12 @@
+# Ada's scraps, laid in the right order: the keeper's August report comes back,
+# and with the Board's refusal and the broken rail it makes the loss preventable.
+file: ../lore/torn-page.lute
+beat: pieceThePage
+facts:
+  - "carrying(torn_page)"
+  - "refusedRepair(gallery_rail)"
+  - "damaged(gallery_rail)"
+choose: { firstScrap: aug }
+expect:
+  facts: ["pieced(torn_page)", "reported(gallery_rail)", "preventable(gallery_rail)"]
+  end: complete

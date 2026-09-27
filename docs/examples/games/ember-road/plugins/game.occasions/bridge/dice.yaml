@@ -1,0 +1,8 @@
+# The engine's dice: a skill check rolled against a DC.
+bridgeCapabilities:
+  - service: dice
+    operation: check
+    replay: recorded
+    result:
+      - { name: passed, type: bool }
+      - { name: margin, type: number }

@@ -1,0 +1,10 @@
+# the same pull of an owned SSR: no welcome, and a lucky streak
+file: ../lore/summons.lute
+beat: goldLight
+state: { occasion.target: cyra, occasion.payload.streak: 3 }
+facts: ["owned(cyra)"]
+expect:
+  transcriptContains:
+    - "@lumi: That fast? Don't tell the others. They'll get ideas."
+  transcriptLacks: ["A new star for the roster!"]
+  end: complete

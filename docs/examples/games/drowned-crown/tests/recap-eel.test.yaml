@@ -1,0 +1,7 @@
+# The dive after an eel death: the recap names the killer and reads the gauge.
+file: ../scenes/run/recap.lute
+state: { prev.run.outcome: died, prev.run.killedBy: eel, prev.run.depth: 2 }
+expect:
+  transcriptContains: ["Last time the eel.", "still shows 20 fathoms, where the needle stuck", "Another line that ends in a cross."]
+  transcriptLacks: ["Deeper than yesterday."]
+  end: complete

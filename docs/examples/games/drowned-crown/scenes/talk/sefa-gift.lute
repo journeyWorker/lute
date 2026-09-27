@@ -1,0 +1,18 @@
+---
+kind: scene
+id: sefa.gift
+title: Sefa's compass
+pov: ilo
+on: talk
+target: npc.sefa
+once: user
+priority: 45
+when: "holds(trusts(sefa))"
+---
+
+## Chart table
+
+@sefa{emotion="shy"}: Take this. It was my grandmother's. It doesn't point north. It points up.
+@ilo: Up?
+@sefa: For when you're down there and you can't tell any more. Bring it back. Bring yourself back.
+::use{component="keepsake" who="sefa" item="compass"}

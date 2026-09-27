@@ -1,0 +1,20 @@
+# The moments the Lantern Academy engine raises.
+occasions:
+  # the title screen, before a term starts (and between terms)
+  title:     { select: first, description: "The title screen is shown (before a term, and after one ends)" }
+  # the gallery menu on the title screen: the player picks an unlocked CG
+  gallery:   { select: all, description: "The CG gallery: every unlocked picture, the player picks one" }
+  # a new term (a new run): day 1, Monday morning, before the first slotStart
+  newTerm:   { select: sequence, description: "A new term starts (a new run; run.* already reset, prev.run.* holds the last term)" }
+  # the clock (world.schema.yaml clock.raise)
+  slotStart: { select: sequence, description: "A new slot starts where an advance stops (run.day / run.slot already set)" }
+  # after school the player walks somewhere on the map
+  # (0.27) the map only opens after school, so the engine raises visit only then
+  visit:     { select: first, target: { prefix: place, entity: place }, raisedWhen: "run.slot == 'afterSchool'", description: "After school the player spends the hour somewhere (place.<place>)" }
+  # the player taps someone on the map
+  talk:      { select: first, target: { prefix: npc, entity: person }, description: "The player talks to someone (npc.<person>)" }
+  # (0.27) the player hands someone the lantern they folded; the wrapping
+  # minigame scores it 0..5 hearts, which the answering beat reads
+  gift:      { select: first, target: { prefix: npc, entity: person }, payload: { hearts: number }, description: "The player gives someone a folded lantern (npc.<person>); payload.hearts is how well the wrapping went" }
+  # day 10: the closing ceremony; judge the quests first so the ending reads them
+  termEnd:   { select: first, judge: before, description: "The closing ceremony on day 10: the term's ending" }

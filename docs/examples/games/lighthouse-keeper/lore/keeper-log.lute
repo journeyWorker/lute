@@ -1,0 +1,28 @@
+---
+kind: lore
+id: skerry.keeperLog
+title: Skerry Rock light, keeper's log
+series: keeperLog
+---
+
+<entry id="keeperLog1" on="examine" target="item.logbook" category="note" title="14 October, afternoon" priority="30" once="run">
+  @elias: 14th Oct. 4 p.m. Glass falling fast. Wind SW, backing. Lit at 5.10, dusk.
+  @elias: A. Pell still ashore, Mrs Hale sends word she is poorly. No supper tin today. I shall manage.
+  ::assert{placedBy(logbook, elias, lantern, dusk)}
+</entry>
+
+<entry id="keeperLog2" on="examine" target="item.logbook" category="note" title="14 October, night" priority="20" once="run" when="entry.keeperLog1.read">
+  @elias: 11.40 p.m. Clockwork seized. Turning the lens by hand. Salt on the glass so thick the beam is nothing.
+  @elias: Going out on the gallery to wipe it. God keep the ships off the Teeth tonight.
+  ::assert{placedBy(logbook, elias, gallery, midnight)}
+</entry>
+
+<entry id="keeperLog3" on="examine" target="item.logbook" category="note" title="15 October, small hours" priority="10" once="run" when="entry.keeperLog2.read">
+  @narrator: The next entry is in a different hand: rounder, pressed hard enough to tear the paper.
+  @ada{vo}: 2.10. Light relit. He is not on the gallery. The rail is gone on the seaward side. I have looked everywhere. A.P.
+  ::assert{placedBy(logbook, ada, lantern, midnight)}
+</entry>
+
+<entry id="keeperLogStub" on="examine" target="item.logbook" category="note" title="A torn stub" when="entry.keeperLog3.read">
+  @narrator: After the last entry, a page has been torn out. Only the stub is left, and the word "tell".
+</entry>

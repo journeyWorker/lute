@@ -1,0 +1,58 @@
+# World contract: the account, the season, the clock, the vocabulary.
+state:
+  # --- the server calendar (engine) -------------------------------------
+  # day 1 is launch day, a Monday. The engine moves it at the daily reset
+  # (04:00 server time); content never writes it.
+  user.day:         { type: number, default: 1, owner: engine }
+  # --- the account (engine) ---------------------------------------------
+  user.loginStreak: { type: number, default: 1, owner: engine }   # consecutive days, this login included
+  user.loginTotal:  { type: number, default: 1, owner: engine }   # distinct days logged in, ever
+  user.daysAway:    { type: number, default: 0, owner: engine }   # days since the previous login
+  user.gems:        { type: number, default: 0, owner: engine }
+  user.playerRank:  { type: number, default: 1, owner: engine }
+  user.towerFloors: { type: number, default: 0, owner: engine }   # Hollow Tower floors cleared this week (the engine zeroes it at the weekly reset)
+  # --- the festival seasons (schema/calendar.schema.yaml seasons:) -------
+  # reset each time the festival's window opens; prev.season.<name>.* keeps
+  # what the last window ended with.
+  season.harvest.tokens:  { type: number, default: 0, owner: engine }   # moon tokens (the harvest stall's currency)
+  season.harvest.pulls:   { type: number, default: 0, owner: engine }   # pulls on the Harvest Moon banner
+  season.starfall.tokens: { type: number, default: 0, owner: engine }   # comet tokens
+  season.frost.tokens:    { type: number, default: 0, owner: engine }   # frost candles
+  season.frost.pulls:     { type: number, default: 0, owner: engine }   # pulls on the Frostlight banner
+  season.frost.vigils:    { type: number, default: 0 }                  # content: vigil nights kept this window
+  # --- content-owned ----------------------------------------------------
+  user.tutorialDone:  { type: bool, default: false }
+  user.greetedEvents: { type: number, default: 0 }
+
+enums:
+  banner:
+    members: [standard, harvest, starfall, frost]
+    labels: { standard: Wishing Well, harvest: Harvest Moon, starfall: Starfall Night, frost: Frostlight Vigil }
+  emotion: [neutral, happy, sad, angry, shy, smug, sleepy, surprised]
+
+entities:
+  stage:    { members: [c1s1, c1s8, c2s1, c2s8, c3s1, c3s8, c4s1, c4s2, c4s3] }
+  estage:   { members: [h1, h2, h3, s1, s2, f1, f2] }
+  shop:     { members: [harvestShop, starShop, frostShop, gemShop] }
+  shopItem: { members: [moonCake, lanternCostume, harvestSigil, starGlass, cometRibbon, frostCandle, snowGlobe, gemBundle] }
+  rank:     { members: [r1, r2, r3], labels: { r1: First Light, r2: Twin Stars, r3: Sworn } }
+  # codex pages (the Archive tab); labels are the page titles
+  topic:
+    members: [lanternSea, frostKing, nyxOath, vigil]
+    labels: { lanternSea: The Lantern Sea, frostKing: The Frost King, nyxOath: Nyx's Oath, vigil: The Frostlight Vigil }
+
+relations:
+  # the codex: a page read teaches the topic for good (the account keeps it)
+  learned:   { args: [topic], tier: user }
+  # the wish the player made at the Frostlight Vigil (kept by the account)
+  vigilWish: { args: [hero], tier: user }
+  # who kept watch at the bow in 4-2
+  rowedWith: { args: [hero], tier: user }
+
+clock:
+  day: user.day
+  # every server day starts with dailyReset (04:00) and ends with dayClose,
+  # whether or not the player is online: an advance over three days raises
+  # three of each.
+  raise: { dayStart: dailyReset, dayEnd: dayClose }
+  week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }

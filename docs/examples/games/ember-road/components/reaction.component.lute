@@ -1,0 +1,31 @@
+---
+component: reaction
+effects: true
+params:
+  who: speaker
+  feel: { enum: [approves, disapproves, adores, despises] }
+---
+
+## Reaction
+
+/* The BG/DA approval toast AND the approval change it reports, in one place
+   (dsl 0.24 §4): the size of the change follows the feeling. `who` must be a
+   companion — it picks the member of `run.approval[@who]`. */
+<match on="@feel">
+  <when is="approves">
+    ::set{run.approval[@who] += 1}
+    @narrator: {{@who}} approves.
+  </when>
+  <when is="disapproves">
+    ::set{run.approval[@who] -= 1}
+    @narrator: {{@who}} disapproves.
+  </when>
+  <when is="adores">
+    ::set{run.approval[@who] += 2}
+    @narrator: {{@who}} greatly approves.
+  </when>
+  <when is="despises">
+    ::set{run.approval[@who] -= 3}
+    @narrator: {{@who}} greatly disapproves.
+  </when>
+</match>

@@ -1,0 +1,12 @@
+bridgeCapabilities:
+  - service: keypad
+    operation: enter
+    replay: recorded
+    result:
+      - { name: entered, type: number }   # the digits typed, as a number
+  - service: chase
+    operation: evade
+    replay: recorded
+    result:
+      # lost: he loses the trail; hurt: he catches a limb and lets go; taken: game over
+      - { name: outcome, type: { enum: [lost, hurt, taken] } }

@@ -1,0 +1,15 @@
+---
+kind: scene
+id: lantern.hang
+title: Hang a lantern
+on: hubVisit
+once: season:lanterns
+when: "@festivalLive"
+priority: 20
+---
+
+## Lanterns
+
+@mara: Here, hang this one on the mast.
+::hangLantern{n=2}
+@narrator{when="isSet(prev.season.lanterns.hung)"}: Last festival the harbor hung {{prev.season.lanterns.hung}} lanterns.

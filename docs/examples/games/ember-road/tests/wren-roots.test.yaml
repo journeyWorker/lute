@@ -1,0 +1,9 @@
+# Wren's quest opens by itself once she is warm to the Warden, and closes on the far bank.
+file: ../quests/companions.lute
+facts: ["recruited(wren)", "knows(token)"]
+state: { run.approval.wren: 2, run.bridge: parleyed }
+occasions: [chapterEnd]
+expect:
+  quests: { wrenRoots: complete, isoldeOath: unset }
+  state: { user.xp: 100 }
+  end: complete

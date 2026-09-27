@@ -1,0 +1,6 @@
+# Friday night arrives with only a frame: the lantern quest fails at the deadline.
+file: ../quests/festival.lute
+state: { run.day: 5, run.slot: night, run.lantern.frame: true }
+accepts: [festivalLantern]
+expect:
+  quests: { festivalLantern: failed }

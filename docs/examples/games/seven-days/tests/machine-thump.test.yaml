@@ -1,0 +1,10 @@
+# The franking machine is retried until it is fixed (spentBy); thumping it
+# fixes nothing, and the reed answer needs a frame.
+file: ../lore/post.lute
+beat: machine
+state: { run.day: 2, run.slot: morning }
+visited: [post.mira.meet]
+choose: { machineFix: thump }
+expect:
+  options: { machineFix: [thump] }
+  state: { run.machineFixed: false }

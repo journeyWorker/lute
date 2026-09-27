@@ -1,0 +1,45 @@
+# Route D — the strongbox, after all: rescue the twins with Isolde's word and a
+# good roll, hear Maelis out, then pay her with the Company's silver anyway.
+# The engine rolls the [Persuasion] check; the play answers it (dsl 0.24 §5).
+# Paying supersedes the parley Maelis offered: the epilogue says so.
+#   lute play . --script plays/persuade.play.yaml
+choose:
+  orders: swear
+  plea: help
+  tunnel: talk
+  chain: [why, strongbox]
+steps:
+  - include: steps/to-the-ford.yaml
+  - occasion: explore
+    target: place.mill
+    expect: { winner: millPassage, facts: [knows(passage)] }
+  - occasion: explore
+    target: place.tunnel
+    label: "[Persuasion] the guards"
+    bridges: { check: [ { passed: true } ] }
+    expect:
+      winner: road.tunnel
+      quests: { hostages: complete }
+      state: { run.hostagesFreed: true, run.approval.isolde: 4, run.rep.dusk: 0 }
+  - label: camp, then on to the Tollbridge
+    advance: day
+    engine: { state: { run.leg: 3 } }
+    expect:
+      winner: bridge.arrival
+      quests: { parley: failed, openBridge: complete }
+      state: { run.bridge: paid, quest.parley.failedBy: superseded, quest.toll.failedBy: unset, run.approval.corvin: 2 }
+  - engine: { state: { run.leg: 4 } }
+  - occasion: chapterEnd
+    expect: { winner: road.crossing }
+expect:
+  end: complete
+  quests: { emberRoad: complete, openBridge: complete, hostages: complete, parley: failed, toll: unset }
+  state: { run.bridge: paid, run.rep.company: -1, run.approval.isolde: 5 }
+  facts: [hostile(company), wronged(company)]
+  transcriptContains:
+    - "@narrator: The boy looks at the older guard."
+    - "@narrator: Isolde Vane approves."
+    - "@narrator: Corvin greatly approves."
+    - "@brannoc: The Company will hear what you did with its money."
+    - "@narrator: Maelis never got her proof. Coldwater stays off the map."
+  transcriptLacks: ["@narrator: The boy's crossbow goes off."]

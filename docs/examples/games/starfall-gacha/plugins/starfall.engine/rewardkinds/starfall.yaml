@@ -1,0 +1,7 @@
+rewardKinds:
+  GEMS:  { credits: user.gems }
+  MOONTOKEN:  { credits: season.harvest.tokens }
+  COMETTOKEN: { credits: season.starfall.tokens }
+  FROSTCANDLE: { credits: season.frost.tokens }
+  ITEM:  { target: { entity: shopItem, required: true } }
+  HERO:  { target: { entity: hero, required: true } }

@@ -1,0 +1,19 @@
+# A correct report, judged at the inquest, completes the reconstruction and
+# with it the whole inquiry (its other objectives already done in this save).
+file: ../quests/inquiry.lute
+state:
+  run.verdictFate: fell
+  run.verdictOnRock: ada
+  run.verdictLiar: maren
+entriesRead: { run: [keeperLog3] }
+facts:
+  - "damaged(gallery_rail)"
+  - "sawAt(hollis, tobias, village, midnight)"
+  - "sawAt(maren, ada, village, midnight)"
+  - "sawAt(tobias, elias, landing, dawn)"
+occasions: [inquest]
+expect:
+  quests: { reconstruction: complete, keeperInquiry: complete }
+  state: { user.casesClosed: 1 }
+  transcriptContains: ["The Board closes the file on Skerry Rock. Somebody else will keep the light now."]
+  end: complete

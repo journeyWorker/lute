@@ -1,0 +1,21 @@
+---
+kind: scene
+id: parlour
+title: The Parlour
+---
+
+## The Parlour
+
+@narrator: Six cups, six saucers, five spoons.
+@aunt_mabel: The Hollin spoon is gone. My grandmother's spoon!
+@vicar: Perhaps it simply wandered off, Mabel.
+
+<branch id="firstLook" prompt="Where do you look first?">
+  <choice id="sugarBowl" label="Look in the sugar bowl">
+    @pippa: Nothing but lumps.
+  </choice>
+  <choice id="vicarPocket" label="Glance at the vicar's pocket" into="run.sawPocket">
+    @pippa{mono}: Something bulges. Probably a hymn book.
+    ::set{ run.cluesFound += 1 }
+  </choice>
+</branch>

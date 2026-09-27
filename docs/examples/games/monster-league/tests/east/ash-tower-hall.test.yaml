@@ -1,0 +1,5 @@
+# The first look inside Ash Tower, without the lens: the lair is found.
+file: ../../scenes/east/ash-tower-hall.lute
+expect:
+  state: { run.lair.towerSiege: found }
+  transcriptContains: ["EYES THAT SEE THE DEAD ARE SOLD IN SILVERCREST"]

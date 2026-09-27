@@ -1,0 +1,8 @@
+# The implicit appointment: meeting Ines starts the quest; it is missed once
+# Wednesday afternoon is over.
+file: ../quests/festival.lute
+state: { run.day: 3, run.slot: night }
+visited: [library.ines.meet]
+occasions: [slotEnd]
+expect:
+  quests: { inesWednesday: failed }

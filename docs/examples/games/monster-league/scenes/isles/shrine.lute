@@ -1,0 +1,20 @@
+---
+kind: scene
+id: isles.shrine
+title: The Sunfall Shrine
+on: enterPlace
+target: place.sunfallShrine
+when: "holds(canPass(islesShrineDoor))"
+---
+
+// AREA isles: the three beacons light the shrine door; Admin Nyx is waiting
+// inside (isles.shrineNyx). The sealed door is an entry in
+// lore/isles/sunport.lute.
+
+## The door
+
+::bg{location="sunfall-shrine" time="night"}
+::music{action="change" mood="eerie" volume="down"}
+@narrator: Three shafts of light fall through three slots in the ceiling and meet on the shrine door. It opens without a sound.
+@narrator{when="entry.islesTablet3.read"}: The third tablet was right: "When the three fires meet, the door remembers."
+@duskAdminNyx{emotion="smug"}: So the Champion does errands now. Thank you for lighting my way in.

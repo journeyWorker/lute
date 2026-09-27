@@ -1,0 +1,30 @@
+# The whole case file closes: every line of inquiry, then the right name at Ossery.
+# Only evidence is supplied; the rules conclude deathIn(tunnel) and prime(solt).
+# (0.28: was tests/case-solved.test.yaml; see case-silence.play.yaml.)
+visited: [lamplight.discovery, examine.watch]
+entriesRead: { user: [ledger3] }
+facts:
+  - "alive(hask, late)"
+  - "unanswered(cab7, tunnel)"
+  - "motive(solt)"
+  - "means(solt)"
+  - "claims(crane, brakevan, tunnel)"
+  - "claims(mirela, dining, tunnel)"
+  - "claims(lise, dining, tunnel)"
+  - "claims(solt, cab5, tunnel)"
+steps:
+  - advance: { to: h06 }
+  - occasion: accuse
+    choose: { accuse: solt }
+    expect: { winner: lamplight.accusation }
+expect:
+  end: terminal
+  quests:
+    lamplightCase: complete
+    timeOfDeath: complete
+    whoWanted: complete
+    whereWere: complete
+    accusation: complete
+    lisesLetter: unset
+  state: { user.casesClosed: 1 }
+  transcriptContains: ["one doctor shorter"]

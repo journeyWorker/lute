@@ -1,0 +1,156 @@
+# The intended solve, in one night: follow the watch into the red herring, let
+# the lamp knock fix the hour, break Solt's alibi, and accuse with proof.
+# Run by `lute test`: every expectation below is a regression check.
+choose:
+  letter: promise
+  press: hard
+  accuse: solt
+  look: [table, steward, leave]
+  wire: [later, board]
+steps:
+  - occasion: caseOpen
+    expect: { winner: lamplight.discovery, notOffered: [lamplight.again] }
+  - occasion: examine
+    target: obj.watch
+    expect: { winner: examine.watch }
+  - occasion: examine
+    target: obj.teacup
+  - occasion: examine
+    target: obj.cufflink
+  - occasion: talk
+    target: npc.porter
+    pick: porterDoor
+  - label: the watch points at the singer
+    occasion: review
+    pick: pageDoor
+    expect: { offered: [pageWatch, pageCufflink], notOffered: [pageTime, pageCrane, pageWatchLies] }
+  - label: three o'clock
+    advance: slot
+    expect: { presented: [timetable.three], clock: { slot: h03 } }
+  - occasion: talk
+    target: npc.lise
+    pick: talk.liseDoor
+  - occasion: talk
+    target: npc.crane
+    pick: craneTea
+  - label: an interview line, once heard, leaves the menu
+    occasion: talk
+    target: npc.crane
+    pick: craneTunnel
+    expect: { notOffered: [craneTea, craneLamps] }
+  - occasion: talk
+    target: npc.crane
+    pick: craneLamps
+  - label: the lamp knock fixes the hour
+    occasion: review
+    pick: pageTime
+    expect: { offered: [pageWatchLies, pageCrane], notOffered: [pageSoltLied] }
+  - occasion: review
+    pick: pageCrane
+  - label: Harl junction
+    advance: slot
+    expect: { presented: [timetable.harl], quests: { telegram: active } }
+  - label: the first visit to the telegraph office decides nothing
+    occasion: enterCar
+    target: place.harl
+    expect: { winner: harl.platform }
+  - label: the telegraph office is still open to her
+    occasion: enterCar
+    target: place.harl
+    expect: { winner: harl.platform, quests: { telegram: active } }
+  - label: once the wire is sent, Harl is just a platform
+    occasion: enterCar
+    target: place.harl
+    expect: { winner: cars.walkThrough }
+  - label: five o'clock, Crane counts heads
+    advance: slot
+    expect:
+      presented:
+        - "timetable.rollCall for mirela"
+        - "timetable.rollCall for lise"
+        - "timetable.rollCall for crane"
+        - "timetable.rollCall for solt"
+        - "timetable.rollBerth for solt"
+  - label: the second look at the watch takes over
+    occasion: examine
+    target: obj.watch
+    expect: { winner: examine.watchAgain }
+  - label: the dining-car hub asks where to look
+    occasion: enterCar
+    target: place.dining
+    expect: { options: { look: [piano, table, steward, leave] } }
+  - label: the porter alibis Crane
+    occasion: talk
+    target: npc.porter
+    pick: porterTunnel
+    expect: { notOffered: [porterDoor] }
+  - occasion: talk
+    target: npc.mirela
+    pick: mirelaTunnel
+  - occasion: talk
+    target: npc.mirela
+    pick: mirelaMatch
+  - occasion: talk
+    target: npc.mirela
+    pick: mirelaCufflink
+  - occasion: talk
+    target: npc.lise
+    pick: liseTunnel
+    expect: { notOffered: [talk.liseDoor] }
+  - occasion: talk
+    target: npc.solt
+    pick: soltTime
+    expect: { notOffered: [talk.soltConfront] }
+  - label: the empty berth
+    occasion: talk
+    target: npc.solt
+    pick: talk.soltConfront
+  - occasion: examine
+    target: obj.medkit
+    expect: { winner: examine.medkit }
+  - occasion: examine
+    target: obj.ledger
+    expect: { winner: ledger1 }
+  - occasion: examine
+    target: obj.ledger
+    expect: { winner: ledger2, notOffered: [ledger1] }
+  - occasion: examine
+    target: obj.ledger
+    expect: { winner: ledger3 }
+  - label: Crane is accounted for, the passkey page is gone
+    occasion: review
+    pick: pageAlibis
+    expect: { notOffered: [pageCrane] }
+  - occasion: review
+    pick: pageShape
+  - label: one left
+    occasion: review
+    pick: pageSolt
+    expect: { offered: [pageOneLeft] }
+  - label: Ossery, and the Board's answer
+    advance: slot
+    expect: { presented: [timetable.ossery, timetable.wireBoard], quests: { telegram: complete } }
+  - occasion: accuse
+    expect: { winner: lamplight.accusation }
+expect:
+  end: terminal
+  quests:
+    lamplightCase: complete
+    timeOfDeath: complete
+    whoWanted: complete
+    whereWere: complete
+    accusation: complete
+    lisesLetter: complete
+    telegram: complete
+  state: { user.casesClosed: 1, run.accused: solt, run.soltRattled: true }
+  facts: ["deathIn(tunnel)", "falseClue(watch)", "placed(lise)", "lied(solt)", "prime(solt)"]
+  notFacts: ["opportunity(crane)", "opportunity(lise)", "opportunity(mirela)", "alibi(solt, tunnel)"]
+  transcriptContains:
+    - "for a moment the sleeper car is only noise."
+    - "Did I sleep through the tunnel, or only through the dark?"
+    - "That is more than he ever did."
+    - "Nobody can yet place 4 suspects away from compartment 7 in the tunnel."
+    - "It goes back to her at Ossery."
+    - "held a pillow over a sleeping man"
+    - "one doctor shorter"
+  transcriptLacks: ["{{@", "misadventure", "Do get some sleep"]

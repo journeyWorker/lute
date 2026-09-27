@@ -1,0 +1,34 @@
+---
+kind: scene
+id: pier.theo.meet
+title: The boy with the reed knife
+on: placeVisit
+target: place.pier
+when: 'holds(present(theo, pier))'
+priority: 20
+---
+
+## The pier, early
+
+::bg{location="pier" time="morning"}
+::music{action="start" mood="peaceful" volume="down"}
+@narrator: The tide is out. Boats lie on their sides in the mud like tired dogs.
+::auto{character="theo" anchor="right" action="slideInRight"}
+::set{run.seen.theo = run.day}
+@theo{emotion="neutral" as="Boy with the nets"}: You're standing on my nets.
+@sol: Sorry! I'm — Pell's. Her nephew. I'm supposed to find reed?
+@theo{emotion="surprised" as="Boy with the nets"}: Pell's making a lantern this year? I thought her hands…
+@theo{emotion="shy" as="Boy with the nets"}: Sorry. That's not mine to say. I'm Theo. Maddox. My dad had the Kittiwake.
+
+<branch id="theoFirst" prompt="Theo keeps coiling rope, not looking at you.">
+  <choice id="honest" label="“She asked me to make it for her.”">
+    ::set{run.aff.theo += 1}
+    @theo{emotion="happy"}: Then you'll want the green reed, not the brown. Brown snaps when it's wet.
+  </choice>
+  <choice id="joke" label="“I'm the hands now. Very qualified hands.”">
+    @theo{emotion="teasing"}: Qualified. Sure. Come back tomorrow when the reed's dried, qualified hands.
+  </choice>
+</branch>
+
+::auto{character="theo" action="slideOut"}
+@sol{mono}: He smells like diesel and cut grass. I don't know why I noticed that.

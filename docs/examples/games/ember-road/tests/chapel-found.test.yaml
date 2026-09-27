@@ -1,0 +1,8 @@
+file: ../lore/coldwater.lute
+beat: chapel
+visited: [bridge.arrival, coldwater.ruins]
+state: { run.leg: 3 }
+bridges: { check: [ { passed: true } ] }
+expect:
+  facts: [knows(roll)]
+  transcriptContains: ["Inside, a roll of names."]

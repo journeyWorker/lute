@@ -1,0 +1,61 @@
+# Engine calls content makes.
+directives:
+  # ::keypad{pad="pharmacyPad" resultKey="pad"} — a blocking bridge: the
+  # engine shows the keypad and answers with the number the player typed.
+  - name: keypad
+    layer: bridge
+    attrs:
+      - { name: pad,       required: true, type: { entity: fixture } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.keypad } } }
+      - { name: sync,      type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [keypad, { fromAttr: { name: resultKey, slotType: localId } }], shape: keypadResult }
+    effects:
+      writes:
+        - { scope: scene, path: [keypad, { fromAttr: { name: resultKey } }, entered], value: { fromBridgeResult: entered } }
+    bridge: { service: keypad, operation: enter }
+  # ::evade{tactic="hide" resultKey="chase"} — the chase minigame. The engine
+  # plays it out and answers with how it ended.
+  - name: evade
+    layer: bridge
+    attrs:
+      - { name: tactic,    required: true, type: { enum: [hide, run, freeze, lantern] } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.evade } } }
+      - { name: sync,      type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [evade, { fromAttr: { name: resultKey, slotType: localId } }], shape: evadeResult }
+    effects:
+      writes:
+        - { scope: scene, path: [evade, { fromAttr: { name: resultKey } }, outcome], value: { fromBridgeResult: outcome } }
+    bridge: { service: chase, operation: evade }
+  # the engine hands the player an item: holding(<item>), then it raises
+  # pickup@item.<item>
+  - name: give
+    attrs:
+      - { name: item, required: true, type: { entity: item } }
+    effects:
+      asserts: ["holding(@item)"]
+  # the engine takes an item out of the bag (used up)
+  - name: consume
+    attrs:
+      - { name: item, required: true, type: { entity: item } }
+    effects:
+      retracts: ["holding(@item)"]
+  # the sanity meter is the engine's; this is the engine's own write to it.
+  # 0.27: `by: { fromAttr }` — one directive, ::fright (1) or ::fright{amount=2}
+  # (this used to be two directives, ::fright and ::dread, because an effect
+  # could only move a path by a literal)
+  - name: fright
+    attrs:
+      - { name: amount, type: number, default: 1 }
+    effects:
+      writes:
+        - { scope: run, path: [sanity], value: { op: decrement, by: { fromAttr: amount } } }
+  # fire-and-forget: a noise; the engine sends the Orderly toward the room
+  - name: lure
+    attrs:
+      - { name: room, required: true, type: { entity: room } }

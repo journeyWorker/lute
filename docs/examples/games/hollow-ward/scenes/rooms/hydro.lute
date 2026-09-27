@@ -1,0 +1,16 @@
+---
+kind: scene
+id: room.hydro
+title: Hydrotherapy
+on: enter
+target: room.hydro
+priority: 10
+---
+
+## Hydrotherapy
+
+::bg{location="hydro" time="night"}
+@narrator: White tile to the ceiling. Three deep tubs with canvas lids buckled across them, the buckles on the outside.
+@narrator: The middle tub is full to the brim with black water. Something small and bright lies on the bottom: a brass key, turning very slowly in no current at all.
+@narrator: On the wall, a manifold of valves: one blue, one red, and a chain with a porcelain handle marked DRAIN.
+@nell{mono}: Hot, cold and let go. They kept people in those for days.

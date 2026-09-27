@@ -1,0 +1,38 @@
+---
+kind: lore
+id: timetable
+title: The corridor clock
+components: [../components/wire.component.lute]
+---
+
+<beat id="three" on="hourStrikes" title="Three o'clock" when="run.hour == 'h03'">
+  @narrator{code="0010"}: The corridor clock strikes three. Somewhere forward, the fireman is singing to the boiler.
+</beat>
+
+<beat id="harl" on="hourStrikes" title="Harl junction" when="run.hour == 'h04'">
+  ::sfx{sound="brakes, short"}
+  @narrator{code="0010"}: At four the Lamplight slows into Harl junction: one lamp, one platform, one telegraph office with its shutter up. Crane calls a twenty-minute stop.
+  @inspector{code="0010" mono}: Twenty minutes, and a wire that can reach anywhere before Ossery. One wire.
+</beat>
+
+<beat id="rollCall" on="hourStrikes" for="kind:suspect" title="Crane counts heads" when="run.hour == 'h05' && holds(opportunity(occasion.target))">
+  @crane{code="0010"}: {{occasion.target}}, present. Nobody can say where, in the tunnel.
+</beat>
+
+<beat id="rollBerth" on="hourStrikes" for="kind:suspect" title="An empty berth" when="run.hour == 'h05' && holds(outOfBerth(occasion.target, tunnel))">
+  @inspector{code="0010" mono}: {{occasion.target}}'s own bed was made and empty in the Orla. A sleeper who was not asleep.
+</beat>
+
+<beat id="ossery" on="hourStrikes" title="Ossery" when="run.hour == 'h06'" priority="10">
+  ::bg{location="ossery_platform" time="dawn"}
+  @narrator{code="0010"}: The corridor clock strikes six. Brakes, a long grey platform, a clock tower with the lamps still lit: Ossery.
+</beat>
+
+<beat use="wire" id="wireBoard" to="board" sender="the Medical Board">
+  @narrator{code="0020"}: MEDICAL BOARD OSSERY TO INSPECTOR WREN STOP E SOLT SIGNED FOR TWO OUNCES TINCT OPII KESSEL INFIRMARY SEPTEMBER STOP NEVER RETURNED STOP
+  ::assert{means(solt)}
+</beat>
+
+<beat use="wire" id="wireVarn" to="varn" sender="the Varn police">
+  @narrator{code="0030"}: VARN CONSTABULARY TO INSPECTOR WREN STOP T CRANE TWENTY TWO YEARS CLEAN SHEET STOP A HASK KNOWN TO US STOP NO FRIENDS STOP
+</beat>

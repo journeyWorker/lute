@@ -1,0 +1,8 @@
+# Asking Brannoc about the Duskbound costs Company standing and wins Isolde.
+file: ../scenes/road/departure.lute
+choose: { orders: dusk }
+expect:
+  options: { orders: [swear, price, dusk] }
+  state: { run.rep.company: 0, run.approval.isolde: 1, run.approval.corvin: 0 }
+  transcriptContains: ["@isolde: A fair question. Notice he didn't answer it.", "@narrator: Isolde Vane approves."]
+  end: complete

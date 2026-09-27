@@ -1,0 +1,20 @@
+---
+kind: lore
+id: lore.keepsakes
+title: The sea-chest
+---
+
+/* The sea-chest at the stern: Ilo takes one keepsake down per dive. The engine
+   applies the keepsake's effect; these entries are what he remembers of each. */
+
+<entry id="keepCompass" on="keepsakes" target="item.compass" category="keepsake" title="Sefa's compass" priority="10" when="holds(gifted(sefa, compass))">
+  @sefa{vo}: It points up. For when you can't tell any more.
+</entry>
+
+<entry id="keepLantern" on="keepsakes" target="item.lantern" category="keepsake" title="Father's lantern" priority="10" when="holds(gifted(brann, lantern))">
+  @brann{vo}: He'd want it lit.
+</entry>
+
+<entry id="keepShell" on="keepsakes" target="item.shell" category="keepsake" title="Quill's shell" priority="10" when="holds(gifted(quill, shell))">
+  @quill{vo}: Hold it to your ear. That's not the sea. That's me.
+</entry>

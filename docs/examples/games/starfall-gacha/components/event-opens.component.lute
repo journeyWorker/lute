@@ -1,0 +1,19 @@
+---
+component: eventOpens
+# A festival's opening announcement: once per window of its season, on the
+# first daily reset the window is live, and it opens the festival's banner.
+params:
+  season: string
+  live: string
+  banner: { type: { domain: banner } }
+beat:
+  on: dailyReset
+  once: "season:@season"
+  priority: "10"
+  when: "@live"
+---
+
+## Opening
+
+::body
+::openBanner{banner=@banner}

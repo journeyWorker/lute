@@ -1,0 +1,29 @@
+---
+kind: lore
+id: north.gates
+title: North gate barks
+---
+
+// The north's own wording for its five gates, at priority 0 over the
+// spine's fallbacks (-10). Each answers only while the gate is shut.
+
+<entry id="northBlockSeaRoute" on="obstacle" target="gate.seaRoute" category="bark" when="!holds(canPass(seaRoute))">
+  @narrator: The Strait runs north, cold and fast. A fisherman mending a net on the jetty shakes his head. "Nobody swims that without a monster that knows Surf. And Kessler's badge, so it'll listen to you."
+</entry>
+
+<entry id="northBlockCinderGymDoor" on="obstacle" target="gate.cinderGymDoor" category="bark" when="!holds(canPass(cinderGymDoor))">
+  @narrator: The Blaze Gym's doors are chained shut. A note in big red letters is nailed to them: GONE LOOKING FOR MY KEY. IT'S IN THE MANSION. PROBABLY. — IGNATIUS
+</entry>
+
+<entry id="northBlockEarthGymDoor" on="obstacle" target="gate.earthGymDoor" category="bark" when="!holds(canPass(earthGymDoor))">
+  @narrator: The Earth Gym has no handle on the outside. A brass plate reads: CHALLENGERS WITH SEVEN BADGES WILL BE ADMITTED. You have {{@badgeCount}}.
+  @grunt: Beat it, kid. The Director doesn't see just anybody.
+</entry>
+
+<entry id="northBlockVictoryRoadGate" on="obstacle" target="gate.victoryRoadGate" category="bark" when="!holds(canPass(victoryRoadGate))">
+  @gatekeeper: Halt. Victory Road is for trainers with all eight badges. Count them for me. {{@badgeCount}}? Then turn around, and come back when it's eight.
+</entry>
+
+<entry id="northBlockVictoryRoadBoulders" on="obstacle" target="gate.victoryRoadBoulders" category="bark" when="!holds(canPass(victoryRoadBoulders))">
+  @narrator: A wall of boulders the size of houses fills the tunnel. There are scrape marks on the floor where someone has moved them before, with a monster that knew Strength and a badge from Fern.
+</entry>

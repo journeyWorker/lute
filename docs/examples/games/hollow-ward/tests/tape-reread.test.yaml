@@ -1,0 +1,8 @@
+# Toby's tape is an entry now: ::fright costs one point on the first listen,
+# and a second listen in the same run changes nothing.
+file: ../lore/notes.lute
+entry: tape
+entriesRead: { run: [tape] }
+expect:
+  state: { run.sanity: 10 }
+  transcriptContains: ["@tobias{vo}: He's humming. Why does he know that song? Mum used to..."]

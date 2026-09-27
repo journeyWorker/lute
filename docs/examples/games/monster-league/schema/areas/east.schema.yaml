@@ -1,0 +1,89 @@
+# OWNED BY AREA east: area-private state, enums, relations, defs.
+# Every name declared here starts with the area: run.eastX, user.eastX,
+# enum/kind/relation/def eastX. Other areas never read it; anything another
+# area needs goes into the world contract (ask the lead).
+state: {}
+
+# the area's people, trainers and places (the kinds are the lead's, in
+# schema/roster.schema.yaml; a trainer is a person already)
+entities:
+  person:
+    add:
+      # east trainers: the Meridian
+      # east trainers: Spark Gym
+      # east trainers: Route 5
+      # east trainers: Lantern Tunnel
+      # east trainers: Route 6
+      # east trainers: Bloom Gym
+      # east trainers: Route 7
+      # east trainers: Route 8
+      # east trainers: Ash Tower
+      # east trainers: the power plant
+      # east named NPCs (cast/east.yaml)
+      - meridianSteward
+      - portvoltHarbormaster
+      - portvoltFisher
+      - portvoltVendor
+      - portvoltGymGuide
+      - portvoltKeeper
+      - portvoltKid
+      - ashgroveLanternMaker
+      - ashgroveCaretaker
+      - ashgroveGravekeeper
+      - ashgroveMourner
+      - bloomfieldFlorist
+      - bloomfieldPerfumer
+      - bloomfieldBeekeeper
+      - bloomfieldGranny
+      - bloomfieldGymGuide
+      # east signposts (talk targets; read by the narrator)
+      - r5Sign
+      - r6Sign
+      - r7Sign
+      - r8Sign
+  trainer:
+    add:
+      - meridianSailorBram
+      - meridianGentlemanHale
+      - meridianLassPip
+      - meridianSailorOona
+      - meridianFisherTeo
+      - meridianBeautyCeline
+      - sparkGymEngineerWatts
+      - sparkGymSailorFlint
+      - sparkGymRockerJolt
+      - r5BugCatcherMilo
+      - r5LassDaisy
+      - r5HikerGrant
+      - r5CamperReed
+      - r5PicnickerJune
+      - lanternTunnelHikerOrrin
+      - lanternTunnelCollectorVik
+      - lanternTunnelHikerBess
+      - r6BeautyIris
+      - r6JugglerNico
+      - r6BirdKeeperWren
+      - r6PicnickerTess
+      - r6GamblerLou
+      - bloomGymLassRose
+      - bloomGymBeautyLily
+      - bloomGymPicnickerIvy
+      - r7BikerRex
+      - r7CueBallKnox
+      - r7SuperNerdOtto
+      - r7BlackbeltKen
+      - r8FishermanGus
+      - r8EngineerVolk
+      - r8SwimmerCora
+      - r8BurglarNix
+      - ashTowerMediumAgatha
+      - ashTowerMediumHester
+      - ashTowerMediumLorna
+      - ashTowerGruntMoss
+      - ashTowerGruntSlate
+      - ashTowerAdminCorvid
+      - powerPlantEngineerTamsin
+  place:
+    add:
+      - ashTowerHall  # the ground floors, below the ashTowerStairs gate
+      - powerPlant  # the abandoned plant on Route 8 (thunderwing)

@@ -1,0 +1,4 @@
+# Raised alongside the same-named occasions, so quests can listen with <on event>.
+events:
+  - name: runEnd
+  - name: bossDefeated

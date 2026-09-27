@@ -1,0 +1,6 @@
+# quillDeath waits for the name: on the third dive, without quillName read, it is not eligible.
+file: ../lore/quill.lute
+entry: quillDeath
+state: { user.runs: 3 }
+expect:
+  eligible: false

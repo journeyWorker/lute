@@ -1,0 +1,20 @@
+directives:
+  - name: haul
+    attrs:
+      - { name: fish, required: true, type: { entity: fish } }
+    effects:
+      asserts: ["caught(@fish)"]
+  - name: sell
+    attrs:
+      - { name: fish, required: true, type: { entity: fish } }
+      - { name: price, type: number, default: 1 }
+    effects:
+      retracts: ["caught(@fish)"]
+      writes:
+        - { scope: run, path: [coins], value: { op: increment, by: { fromAttr: price } } }
+  - name: hangLantern
+    attrs:
+      - { name: n, type: number, default: 1 }
+    effects:
+      writes:
+        - { scope: season, path: [lanterns, hung], value: { op: increment, by: { fromAttr: n } } }

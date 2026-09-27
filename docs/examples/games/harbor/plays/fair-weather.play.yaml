@@ -1,0 +1,11 @@
+# No squall: the two-week event runs to its last dusk, and the next advance ends the clock and the game.
+steps:
+  - advance: { to: { weekday: Sun, slot: dusk } }
+  - advance: { to: { weekday: Sun, slot: dusk } }
+    expect: { clock: { day: 14, slot: dusk, ended: false } }
+  - advance: slot
+    expect: { clock: { day: 14, slot: dusk, ended: true } }
+expect:
+  end: terminal
+  state: { run.storm: calm }
+  transcriptLacks: ["@narrator: The squall breaks the moorings."]

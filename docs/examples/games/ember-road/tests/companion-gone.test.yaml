@@ -1,0 +1,9 @@
+# Wren has walked out: talking to her finds only the empty bedroll (a kind
+# beat, asked about the member it was raised for).
+file: ../lore/camp-talks.lute
+beat: companionGone
+state: { occasion.target: wren }
+facts: [recruited(wren), departed(wren)]
+expect:
+  eligible: { companionGone: true }
+  transcriptContains: ["@narrator: Wren's bedroll is gone from the wagon. So is Wren."]

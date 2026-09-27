@@ -1,0 +1,10 @@
+# Hallen Ridge — a summer week at a mountain weather station.
+pluginsDir: plugins/
+defaultProfile: game
+profiles:
+  game:
+    plugins: { game.occasions: true }
+defaults:
+  luteVersion: "0.28.1"
+  uses: [world.schema.yaml, vocabulary.schema.yaml]
+  components: [components/enter.component.lute, components/reading.component.lute, components/ines-at.component.lute]

@@ -1,0 +1,6 @@
+# A string component param renders per call site (FINDINGS F9, fixed in 0.21.1/0.23.0).
+file: ../scenes/morning-card.lute
+state: { run.day: 3 }
+expect:
+  transcriptContains: ["Outside: still, the bay flat as a plate."]
+  transcriptLacks: ["{{@weather}}"]

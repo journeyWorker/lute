@@ -1,0 +1,33 @@
+---
+kind: scene
+id: lamplight.again
+title: The knock, again
+pov: inspector
+on: caseOpen
+after: 'visited("lamplight.accusation")'
+priority: 10
+components: [../components/lamps-out.component.lute]
+---
+
+## Sleeper car, 2:31
+
+::bg{location="sleeper_corridor" time="night"}
+::music{action="start" mood="tense" volume="down"}
+@narrator{code="0010"}: At 2:31 somebody knocks on compartment 3 as though the door owes them money.
+@inspector{code="0010" mono}: I know this knock.
+::use{component="lampsOut" depth="brief" where="the sleeper car" memory="The tunnel. Again."}
+@narrator{code="0020"}: Your casebook is on the pillow beside you, open, full of your own handwriting. The ink on the last page is still wet.
+<match on="prev.run.accused">
+  <when is="solt">
+    @inspector{code="0040" mono}: Last time I named the doctor and could not hold him. Not a name, then. A case.
+  </when>
+  <when is="lise | mirela | crane">
+    @inspector{code="0050" mono}: Last time I named the wrong one, and the doctor stepped down onto the platform with his bag.
+  </when>
+  <otherwise>
+    @inspector{code="0060" mono}: Last time I said nothing at all. It bought nobody anything.
+  </otherwise>
+</match>
+@porter{code="0010" emotion="surprised"}: Inspector Wren? It's Mr. Hask in seven. He won't wake.
+@inspector{code="0020"}: I know, Emil. Keep everyone in the dining car. And nobody touches the doctor's bag.
+@inspector{code="0030" mono}: Ossery at six. Again. This time I name the right one.

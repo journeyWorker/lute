@@ -1,0 +1,10 @@
+# someone at bond rank 3: the finale notices (count over a derived relation)
+file: ../scenes/main/c3s8.lute
+visited: [main.c3s1]
+state: { user.day: 16, user.bond.fen: 600 }
+choose: { c3s8Choice: strike }
+expect:
+  eligible: true
+  transcriptContains: ["@narrator: Someone who is sworn to you steps up at your shoulder, without being asked."]
+  transcriptLacks: ["Your heroes hang back."]
+  end: complete

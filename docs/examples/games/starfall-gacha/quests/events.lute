@@ -1,0 +1,49 @@
+---
+kind: quest
+id: eventQuests
+---
+
+/* Event missions belong to their festival's season: the rerun opening the
+   harvest season returns harvestMissions to unset, and its start activates
+   it again in the same settle. Starfall's outcome survives the harvest rerun. */
+
+<quest id="harvestMissions" title="Harvest Moon missions" tier="season:harvest" start="@harvestLive">
+  <reward kind="GEMS" amount="200"/>
+  <reward kind="ITEM" target="harvestSigil" amount="1"/>
+  <objective id="moonrise" title="Clear Harvest Moon 3" on="eventStage" target="estage.h3" done="true" by="!@harvestLive"/>
+  <objective id="tokens" title="Collect 400 moon tokens" done="season.harvest.tokens >= 400" by="!@harvestLive"/>
+  <objective id="wish" title="Wish 10 times on the Harvest Moon banner" done="season.harvest.pulls >= 10" optional/>
+  <on event="questComplete">
+    @pim{emotion="happy"}: Every mission done! Here's a sigil. Pinned it myself. Slightly crooked.
+  </on>
+  <on event="questFailed">
+    @pim: The moon's set on those missions, friend. There's always the next festival.
+  </on>
+</quest>
+
+<quest id="starfallMissions" title="Starfall Night missions" tier="season:starfall" start="@starfallLive">
+  <reward kind="GEMS" amount="200"/>
+  <reward kind="ITEM" target="cometRibbon" amount="1"/>
+  <objective id="lantern" title="Clear Starfall Night 2" on="eventStage" target="estage.s2" done="true" by="!@starfallLive"/>
+  <objective id="tokens" title="Collect 300 comet tokens" done="season.starfall.tokens >= 300" by="!@starfallLive"/>
+  <on event="questComplete">
+    @vesper{emotion="smug"}: You did all the missions. Show-off. ...Here. A ribbon. It was on sale.
+  </on>
+  <on event="questFailed">
+    @pim: Comets have all fallen, friend. Missions are closed.
+  </on>
+</quest>
+
+<quest id="frostMissions" title="Frostlight Vigil missions" tier="season:frost" start="@frostLive">
+  <reward kind="GEMS" amount="200"/>
+  <reward kind="ITEM" target="snowGlobe" amount="1"/>
+  <objective id="vigil" title="Clear Frostlight Vigil 2" on="eventStage" target="estage.f2" done="true" by="!@frostLive"/>
+  <objective id="candles" title="Collect 300 frost candles" done="season.frost.tokens >= 300" by="!@frostLive"/>
+  <objective id="nights" title="Keep three vigil nights" done="season.frost.vigils >= 3" optional/>
+  <on event="questComplete">
+    @nyx{emotion="happy"}: You kept the whole vigil. Here. A snow globe. There's a tiny sea inside. Don't shake it too hard, they hate that.
+  </on>
+  <on event="questFailed">
+    @pim: The ice is breaking up, friend. Vigil's over. The candles'll keep till next winter.
+  </on>
+</quest>

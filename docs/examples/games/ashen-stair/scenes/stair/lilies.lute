@@ -1,0 +1,15 @@
+---
+kind: scene
+id: end.lilies
+title: Lilies in her pack
+on: runEnd
+priority: 30
+also: true
+once: false
+when: 'user.ashfallOn && occasion.payload.lilies >= 1'
+---
+
+## Grey petals
+
+@narrator{code="0010"}: Whatever else the Stair took, it left her {{occasion.payload.lilies:plural(one ash-lily|# ash-lilies)}}, pressed flat in her pack.
+::set{season.ashfall.lilies += occasion.payload.lilies}

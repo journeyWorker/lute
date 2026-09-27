@@ -1,0 +1,10 @@
+# With the ledger and the matches, the names go up the flue.
+file: ../scenes/puzzles/boiler.lute
+beat: furnace
+facts: [holding(ledger), holding(matches)]
+choose: { burn: burn }
+expect:
+  facts: [burned(ledger)]
+  notFacts: [holding(ledger)]
+  transcriptContains: ["@child: Thank you, nurse."]
+  end: complete

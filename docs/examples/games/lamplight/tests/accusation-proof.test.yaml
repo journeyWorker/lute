@@ -1,0 +1,17 @@
+# The full case laid out as evidence only. The deduction itself — deathIn(tunnel),
+# opportunity(solt), prime(solt) — comes from the schema's rules and seeds.
+file: ../scenes/accusation.lute
+state: { run.hour: h06 }   # the engine raises `accuse` only at Ossery, six o'clock
+facts:
+  - "alive(hask, late)"
+  - "unanswered(cab7, tunnel)"
+  - "motive(solt)"
+  - "means(solt)"
+choose: { accuse: solt }
+expect:
+  transcriptContains:
+    - "held a pillow over a sleeping man"
+    - "The cork is still damp. And I have his ledger"
+  transcriptLacks: ["Do get some sleep"]
+  state: { run.accused: solt }
+  end: terminal

@@ -1,0 +1,53 @@
+---
+kind: lore
+id: talks
+components: [../components/villager-chat.component.lute]
+---
+
+<beat use="villagerChat" id="maraOne" who="mara">
+  @mara: The sea was kinder when I was young.
+</beat>
+
+<beat use="villagerChat" id="maraTwo" who="mara" need="1" prev="talks.maraOne">
+  @mara: You helped with the lanterns. Thank you.
+</beat>
+
+<beat use="villagerChat" id="tomasOne" who="tomas"/>
+
+<beat id="anyNod" on="talk" target="kind:villager" once="false" priority="-5">
+  @narrator: {{occasion.target:start}} nods at you.
+</beat>
+
+<beat id="landedFish" on="landed" target="kind:fish" once="false" when="occasion.payload.weight >= 1">
+  @narrator: You land a {{occasion.payload.weight}}-kilo {{occasion.target}}.
+  <match on="occasion.target">
+    <when is="cod">
+      ::haul{fish="cod"}
+    </when>
+    <when is="eel">
+      ::haul{fish="eel"}
+    </when>
+    <when is="marlin">
+      ::haul{fish="marlin"}
+    </when>
+  </match>
+</beat>
+
+<entry id="tideBark" on="tide" once="day" when="run.slot == 'dawn'">
+  @narrator: The tide turns at dawn.
+</entry>
+
+<beat id="launchGull" on="launch" target="boat.gull" once="run" spentBy="holds(caught(marlin))">
+  @harbormaster: The Gull is yours for the day. Bring back a marlin.
+</beat>
+
+<beat id="lanternWish" on="lanternNight" title="Make a wish" once="season:lanterns">
+  @narrator: You send a paper lantern up and wish on Mara's nets.
+  ::set{season.lanterns.wishes += 1}
+  ::assert{wishedOn(mara)}
+</beat>
+
+<beat id="lanternWatch" on="lanternNight" title="Just watch" once="false">
+  @narrator: The sky fills with small lights.
+  @mara{when="holds(wishedOn(mara))"}: I saw your lantern. Thank you.
+</beat>

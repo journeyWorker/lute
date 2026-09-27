@@ -1,0 +1,5 @@
+file: ../lore/camp-talks.lute
+beat: watch
+state: { occasion.target: corvin, run.approval.corvin: 2 }
+expect:
+  eligible: { watch: false }

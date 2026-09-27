@@ -1,0 +1,134 @@
+---
+kind: lore
+id: north.cinderisle
+title: Cinder Isle
+state:
+  scene.quizScore: { type: number, default: 0 }
+---
+
+// Cinder Isle: a volcano with a town on its shoulder. The Blaze Gym (locked
+// with the Volcano Key from the burned mansion), the inn, the volcano lab.
+
+// ── arriving ────────────────────────────────────────────────────────────────
+
+<beat id="arrive" on="enterTown" target="town.cinderisle" title="Cinder Isle" priority="10">
+  ::bg{location="cinder-isle" time="day"}
+  ::music{action="change" mood="upbeat" volume="normal"}
+  @narrator: Cinder Isle is black sand, white steam and red roofs. The volcano above the town grumbles like a sleeping dog.
+  @narrator: On the hill stands the Blaze Gym, its doors chained. Past it, the shell of a burned mansion leans against the sky.
+</beat>
+
+<entry id="northCinderMorning" on="enterTown" target="town.cinderisle" category="bark" once="day" when="@isMorning">
+  @narrator: Morning mist mixes with the steam vents. Somebody is boiling eggs in a hot spring by the dock.
+</entry>
+
+<entry id="northCinderDay" on="enterTown" target="town.cinderisle" category="bark" once="day" when="run.slot == 'day'">
+  @narrator: The sand is too hot to stand on. Everyone on Cinder Isle walks on the boardwalks.
+</entry>
+
+<entry id="northCinderNight" on="enterTown" target="town.cinderisle" category="bark" once="day" when="@isNight">
+  @narrator: At night the volcano's rim glows, and the whole town is lit the color of embers.
+</entry>
+
+// ── services ────────────────────────────────────────────────────────────────
+
+<beat id="center" on="heal" target="town.cinderisle" title="Monster Center" once="false">
+  ::use{component="nurse" town="cinderisle"}
+</beat>
+
+<beat id="mart" on="shop" target="town.cinderisle" title="Mart" once="false">
+  ::use{component="shop" stock="cinderisleStock"}
+</beat>
+
+// ── Innkeeper Sol ───────────────────────────────────────────────────────────
+
+<entry id="northSolBark" on="talk" target="npc.cinderInnkeeper" category="bark">
+  @cinderInnkeeper: Welcome to the Caldera Inn. The baths are volcano-heated. The rooms are also volcano-heated, which is less popular.
+</entry>
+
+<entry id="northSolMorning" on="talk" target="npc.cinderInnkeeper" category="bark" priority="5" when="@isMorning">
+  @cinderInnkeeper: Breakfast is spring-boiled eggs. Lunch is spring-boiled eggs. You see where this is going.
+</entry>
+
+<entry id="northSolNight" on="talk" target="npc.cinderInnkeeper" category="bark" priority="5" when="@isNight">
+  @cinderInnkeeper: Don't mind the rumbling at night. It's the volcano, not the plumbing. Probably.
+</entry>
+
+// ── Dr. Ashby, the volcanologist ────────────────────────────────────────────
+
+<entry id="northAshbyBark" on="talk" target="npc.cinderVolcanologist" category="bark">
+  @cinderVolcanologist{emotion="worried"}: The seismographs have been twitching since someone started poking around the old mansion lab. I don't like it.
+</entry>
+
+<entry id="northAshbyKey" on="talk" target="npc.cinderVolcanologist" category="bark" priority="5" when="holds(hasItem(volcanoKey))">
+  @cinderVolcanologist{emotion="surprised"}: You found the Volcano Key in that ruin? Ignatius swore it melted in the fire. Hah. That old showman.
+</entry>
+
+<entry id="northAshbyBadge" on="talk" target="npc.cinderVolcanologist" category="bark" priority="6" when="holds(hasBadge(blaze))">
+  @cinderVolcanologist: The readings calmed down the day you beat Ignatius. I'm writing that up as coincidence. Officially.
+</entry>
+
+// ── the Gym Guide ───────────────────────────────────────────────────────────
+
+<entry id="northCinderGuideLocked" on="talk" target="npc.cinderGymGuide" category="bark" when="!holds(canPass(cinderGymDoor))">
+  @cinderGymGuide: Yo! Champ in the making! Bad news: Ignatius locked the gym and threw the key into the old mansion. He says only a trainer brave enough to fetch it deserves a battle.
+</entry>
+
+<entry id="northCinderGuideOpen" on="talk" target="npc.cinderGymGuide" category="bark" priority="1" when="holds(canPass(cinderGymDoor)) && !holds(defeated(ignatius))">
+  @cinderGymGuide: You got the key! Okay, listen: Ignatius uses fire, fire and more fire. Water beats it, rock beats it, and the quiz machines inside beat everybody. Study!
+</entry>
+
+<entry id="northCinderGuideWon" on="talk" target="npc.cinderGymGuide" category="bark" priority="2" when="holds(defeated(ignatius))">
+  @cinderGymGuide: The Blaze Badge! You're scorching! One gym left, in Verdant City. Nobody I know has ever seen that leader's face.
+</entry>
+
+// ── Granny Ember and her quiz ───────────────────────────────────────────────
+// Once a day: three questions; all three right earns a Rare Candy.
+
+<beat id="grannyQuiz" on="talk" target="npc.cinderGranny" title="Granny Ember's quiz" once="day" priority="10">
+  ::auto{character="cinderGranny" anchor="center" action="enter"}
+  @cinderGranny{emotion="laughing"}: A young trainer! Sit, sit. Ignatius learned his quizzes from me, you know. Three questions. Get them all and Granny has a treat.
+  <branch id="northQuizOne" prompt="Which type puts out a fire?">
+    <choice id="water" label="Water">
+      ::set{scene.quizScore += 1}
+      @cinderGranny: Of course. Even a bucket knows that.
+    </choice>
+    <choice id="grass" label="Grass">
+      @cinderGranny: Grass? Dear, grass is what fire eats for breakfast.
+    </choice>
+  </branch>
+  <branch id="northQuizTwo" prompt="What does the Volcano Key open?">
+    <choice id="gym" label="The Blaze Gym">
+      ::set{scene.quizScore += 1}
+      @cinderGranny: Right. Silly boy, locking his own gym.
+    </choice>
+    <choice id="volcano" label="The volcano">
+      @cinderGranny: Hah! Nobody opens the volcano. The volcano opens itself.
+    </choice>
+  </branch>
+  <branch id="northQuizThree" prompt="How many badges before Victory Road lets you in?">
+    <choice id="seven" label="Seven">
+      @cinderGranny: Seven gets you into the Earth Gym. Victory Road wants more.
+    </choice>
+    <choice id="eight" label="Eight">
+      ::set{scene.quizScore += 1}
+      @cinderGranny: Eight. All of them. No shortcuts in Verdane.
+    </choice>
+  </branch>
+  <match on="scene.quizScore">
+    <when is="3..">
+      @cinderGranny{emotion="happy"}: Three out of three! Here, a sweet for your strongest one.
+      ::give{item="rareCandy"}
+    </when>
+    <when is="1..2">
+      @cinderGranny: {{scene.quizScore}} out of three. Come back tomorrow, Granny will ask again.
+    </when>
+    <otherwise>
+      @cinderGranny: Not a single one! Oh, you remind me of Ignatius at your age.
+    </otherwise>
+  </match>
+</beat>
+
+<entry id="northGrannyBark" on="talk" target="npc.cinderGranny" category="bark">
+  @cinderGranny: One quiz a day, dear. Granny's brain needs a nap in between.
+</entry>

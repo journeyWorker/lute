@@ -1,0 +1,11 @@
+---
+kind: scene
+id: firstNets
+title: First nets
+---
+
+## Nets
+
+@tomas: Grab an end. Pull when I say.
+::haul{fish="cod"}
+@tomas: A cod! Not bad for a first try.

@@ -1,0 +1,30 @@
+---
+kind: lore
+id: term
+title: The first morning of a term
+---
+
+// newTerm is raised once per run, before the day-1 slotStart. NG+ reads the
+// term that just ended through prev.run.*.
+
+<beat id="opening" on="newTerm" title="A new term">
+  @headmistress: Welcome to Lantern Academy. Ten days to the end of term. Keep your lanterns lit and your curfews kept.
+</beat>
+
+<beat id="recap" on="newTerm" title="Last term, remembered" priority="10" when="isSet(prev.run.route)">
+  @you{mono}: I have floated a lantern here before. Last term it was with {{prev.run.route}}. It ended with {{prev.run.ending}}.
+  <match on="prev.run.ending">
+    <when is="good">
+      @you{mono}: It was a good ending. Why does it feel like I'm allowed another?
+    </when>
+    <when is="bittersweet">
+      @you{mono}: I let it go out. Not this time.
+    </when>
+    <when is="keeper">
+      @you{mono}: Somebody I will never meet again, and will never stop remembering.
+    </when>
+    <otherwise>
+      @you{mono}: I was on my own. The lake kept my secret.
+    </otherwise>
+  </match>
+</beat>

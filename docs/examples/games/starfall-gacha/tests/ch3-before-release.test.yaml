@@ -1,0 +1,5 @@
+file: ../scenes/main/c3s1.lute
+visited: [main.c2s8]
+state: { user.day: 14 }
+expect:
+  eligible: false

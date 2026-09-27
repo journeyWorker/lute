@@ -1,0 +1,30 @@
+---
+kind: lore
+id: storm
+title: Storm watch
+---
+
+// Every storm is a season of its own (`seasons: storm` in the schema): the
+// chores below come back with each storm, and so does the batten-down quest.
+
+<beat id="mast" on="visit" target="place.roof" title="The anemometer mast" priority="30" once="season:storm" when="run.weather == 'storm'">
+  ::bg{location="roof" time="night"}
+  ::sfx{sound="a steel cable singing in the wind"}
+  @narrator: The hatch nearly takes your fingers. On your knees, one arm round the guard rail, you get two turns of rope round the anemometer mast before the rain finds your collar.
+  ::set{season.storm.mast = true}
+  @narrator{when="isSet(prev.season.storm.mast)"}: You tie the same bowline you tied last storm. Your hands remember before you do.
+</beat>
+
+<beat id="shutters" on="visit" target="place.kitchen" title="The kitchen shutters" priority="30" once="season:storm" when="run.weather == 'storm'">
+  ::bg{location="kitchen" time="night"}
+  ::use{component="enter" who="ines"}
+  @ines{emotion="stern"}: Shutters. The east one first — it's the one that lies about being latched.
+  @narrator: You wrestle the east shutter closed and drop the bar. The kitchen goes dark and suddenly very quiet.
+  ::set{season.storm.shutters = true}
+</beat>
+
+// The first place you walk into in a storm is where the water gets in.
+// One beat for every place; `{{occasion.target}}` renders the place's label.
+<beat id="leak" on="visit" target="kind:place" title="Where the water gets in" also once="season:storm" when="run.weather == 'storm' && occasion.target != 'village'">
+  @narrator: Water is coming in under the door of {{occasion.target}}. You put down the towel Ines keeps for exactly this.
+</beat>

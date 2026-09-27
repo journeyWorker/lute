@@ -1,0 +1,39 @@
+---
+kind: lore
+id: ledger
+title: The torn ledger and the men who kept it
+series: wardLedger
+---
+
+<entry id="ledgerPage1" on="read" target="note.ledgerPage1" category="page" title="Ledger, page one">
+  @narrator: A torn page, numbered 1 in the top corner. A column of names, all struck through, and one bed number circled so hard the pen went through: 2.
+</entry>
+
+<entry id="ledgerPage2" on="read" target="note.ledgerPage2" category="page" title="Ledger, page two">
+  @narrator: Page 2, soft with damp. Under the last name, a circled bed: 7. Someone has written beside it, AND STILL HE COMES.
+</entry>
+
+<entry id="ledgerPage3" on="read" target="note.ledgerPage3" category="page" title="Ledger, page three">
+  @narrator: Page 3. Only one entry, and a bed number circled: 5. At the foot of the page: THE GATE REMEMBERS THEM IN ORDER.
+  <match on="entry.ledgerPage1.read">
+    <when is="true">
+      @nell{mono}: Two. Seven. And five. Page by page.
+    </when>
+    <otherwise>
+      @nell{mono}: In order. Then there are other pages.
+    </otherwise>
+  </match>
+</entry>
+
+<entry id="orderlyFile" on="read" target="note.orderlyFile" category="file" title="Staff file: A. Crane">
+  @narrator: CRANE, Albert. Orderly, 1961 to 1979. Married. Reliable. Never late for the three o'clock round.
+  @narrator: 1968: course of electroconvulsive therapy at his own request. Since treatment, marked photophobia. Will not abide a lamp in his face.
+  @narrator: 1979: missing after the fire in the east stair. Not found. The round continues to be walked.
+  @nell{mono}: Will not abide a lamp. Toby's lantern.
+</entry>
+
+<entry id="diary" on="read" target="note.diary" category="file" title="Dr. Hale's diary">
+  @hale{vo}: 3rd November, 1979. The Board closes us Friday. They ask where the patients will go. The patients will not go. They are admitted. It is written.
+  @hale{vo}: As long as the ledger stands, they are ours. As long as the bell calls the round at three, Crane walks it. I have tried to stop the bell. I cannot stop the bell.
+  @hale{vo}: Burn the ledger, ring him down at three, and let them sleep. I am too much of a coward, and too much of a doctor.
+</entry>

@@ -1,0 +1,8 @@
+file: ../lore/post.lute
+beat: machine
+state: { run.day: 2, run.slot: afternoon, run.lantern.frame: true }
+visited: [post.mira.meet]
+choose: { machineFix: reed }
+expect:
+  state: { run.machineFixed: true }
+  transcriptContains: ["Since EASTER."]

@@ -1,0 +1,15 @@
+---
+kind: scene
+id: last.rail
+title: The last dive
+pov: ilo
+---
+
+## Rail
+
+::bg{location="rail" time="dawn"}
+::music{action="start" mood="tense" volume="normal"}
+@brann{emotion="grim"}: You're not coming back up this time. I can see it on you.
+@ilo: I'm coming back. Just not the same.
+@sefa{emotion="sad"}: Take the chart. You won't need it. Take it anyway.
+@narrator: Ilo goes over the side without counting his breaths.

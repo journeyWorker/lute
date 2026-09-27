@@ -1,0 +1,46 @@
+# Term 1 of a new save, on Ren's route, to his lantern ending.
+#   lute play . --script plays/ren-lantern.play.yaml
+# Siding with Ren at the hearing locks Kai's route; every afternoon in the
+# council room; a perfect date on the roof; asking him to stay.
+choose:
+  firstLook: ren
+  clash: sideRen
+  injury: urge
+  lantern: ren
+  renAsk: stay
+bridges:
+  exam: [ { grade: pass, score: 71 } ]
+  date: [ { mood: perfect, hearts: 5 } ]
+steps:
+  - include: steps/term-start.steps.yaml
+  - include: steps/day-council.steps.yaml
+  - include: steps/day-council.steps.yaml
+  - include: steps/day-council.steps.yaml
+  - include: steps/day-council.steps.yaml
+  - include: steps/day-council.steps.yaml
+  - include: steps/finale.steps.yaml
+  - occasion: gift
+    target: npc.ren
+    payload: { hearts: 5 }
+  - include: steps/week2.steps.yaml
+  - occasion: title
+    expect: { winner: title.returning }
+  - occasion: gallery
+    pick: galRenEnd
+    expect: { offered: [galFestival, galRenStars, galRenEnd] }
+expect:
+  end: complete
+  state: { run.route: ren, run.ending: good, run.aff.ren: 12, user.terms: 1, run.lanterns: 5 }
+  quests: { festivalPrep: complete, fourLanterns: active, lampDuty: complete }
+  facts: ["locked(kai)", "cleared(ren, good)", "cgSeen(cgRenEnd)", "cgSeen(cgRenStars)"]
+  notFacts: ["routeOpen(kai)", "cleared(ren, bittersweet)"]
+  transcriptContains:
+    - "@ren{emotion=\"fond\"}: Sign here. Once is enough, this time."
+    - "~ Ren — the lantern ending ~"
+    - "Three! That's three!"
+    # day 8 (0.27): plural hint, a kind-target gift with a payload, a rearmed weekly quest
+    - "@nana{emotion=\"worried\"}: The wind took the window, too. All 5 lanterns, gone into the lake."
+    - "@narrator: Ren Aoki turns the lantern over in both hands. 5 hearts in the fold, and every one of them showing."
+    - "@ren{emotion=\"flustered\"}: This is... very straight folding."
+    - "Look at that. A lit window, and I didn't even have to nag."
+  transcriptLacks: ["Four lanterns. You carried every one"]

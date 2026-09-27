@@ -1,0 +1,17 @@
+---
+kind: quest
+id: findSpoon
+title: Find the Hollin Spoon
+---
+
+<quest id="findSpoon" title="Find the Hollin Spoon" start="true" tier="run" fail="run.accused in ['cook', 'vicar', 'mabel']">
+  <objective id="clues" title="Find two clues" done="run.cluesFound >= 2"/>
+  <objective id="cake" title="Try the seed cake" done="run.tastedCake" optional/>
+  <objective id="name" title="Name the real thief before evening" done="run.accused == 'magpie'" by="run.slot == 'evening'"/>
+  <on event="questComplete">
+    @narrator: The case of the Hollin spoon is closed.
+  </on>
+  <on event="questFailed">
+    @narrator: Somewhere, a spoon stays lost.
+  </on>
+</quest>

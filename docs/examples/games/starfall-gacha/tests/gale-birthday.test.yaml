@@ -1,0 +1,9 @@
+# day 52 is day 24 of the second moon: Gale's birthday comes round again
+file: ../lore/bonds/gale.lute
+beat: galeBirthday
+state: { user.day: 52 }
+facts: ["owned(gale)"]
+expect:
+  eligible: true
+  transcriptContains: ["@gale: My birthday! I've written myself a ballad. Forty verses. Get comfortable."]
+  end: complete

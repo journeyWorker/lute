@@ -1,0 +1,12 @@
+---
+kind: scene
+id: last.throne
+title: The empty throne
+pov: ilo
+---
+
+## Throne
+
+::bg{location="throne" time="night"}
+@narrator: The throne room is quiet. No current, no choir, no Regent. The crown waits where it always waited.
+@quill{when="entry.quillFirst.everRead"}: Go on. I held the rope for the last one. I'll hold it for you.

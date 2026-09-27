@@ -1,0 +1,70 @@
+# Week 2 (days 8-14): the Harvest Moon Festival. The harvest season opens by
+# itself when @harvestLive turns true on day 8.
+steps:
+  - advance: day
+    engine: { state: { user.loginStreak: 8, user.loginTotal: 8 } }
+    expect:
+      clock: { day: 8, weekday: Mon }
+      presented: [resets.dailyNotice, resets.weeklyNotice, resets.harvestOpens]
+      quests: { harvestMissions: active, towerWeekly: active }
+  - occasion: login
+    expect: { presented: [login.standardCard, login.harvestCard] }
+  - occasion: eventStage
+    target: estage.h1
+    expect: { winner: harvest.h1 }
+  - occasion: eventStage
+    target: estage.h2
+    choose: { h2Wake: gentle }
+    expect: { winner: harvest.h2 }
+  - occasion: eventStage
+    target: estage.h3
+    expect: { winner: harvest.h3, state: { quest.harvestMissions.objectives.moonrise.done: true } }
+  # the limited banner: Cyra on the 45th pull
+  - engine: { state: { season.harvest.pulls: 45 } }
+  - occasion: summon
+    target: hero.cyra
+    payload: { copies: 1, streak: 45, banner: harvest }
+    expect: { presented: [bonds.cyra.cyraIntro, bonds.cyra.cyraRateUp] }
+  - engine: { facts: ["owned(cyra)"], state: { season.harvest.pulls: 57 } }
+  - occasion: summon
+    target: hero.cyra
+    payload: { copies: 2, streak: 12, banner: harvest }
+    expect: { presented: [bonds.cyra.cyraDupe, bonds.cyra.cyraRateUp] }
+  - occasion: homeTap
+    target: hero.cyra
+    expect: { winner: bonds.cyra.cyraTap }
+  - occasion: homeTap
+    target: hero.aria
+    label: a new day, so Aria's own line comes first
+    expect: { winner: bonds.aria.ariaTap }
+  - occasion: homeTap
+    target: hero.aria
+    expect: { winner: home.festivalTap }
+  # the week's tower climb (engine)
+  - engine: { state: { user.towerFloors: 10 } }
+    expect: { quests: { towerWeekly: complete } }
+  # tokens from event stages (engine), then the shop: a cake, then the costume is too dear
+  - engine: { state: { season.harvest.tokens: 450 } }
+    expect: { quests: { harvestMissions: complete } }
+  - occasion: shopVisit
+    target: shop.harvestShop
+    choose: { harvestStall: [cake, costume, leave] }
+    bridges: { purchase: [ { bought: true, remaining: 400 }, { bought: false, remaining: 400 } ] }
+    expect: { winner: shop.pimHarvest, options: { harvestStall: [cake, costume, leave] } }
+  # day 10: Cyra's birthday, and she's owned now (day 9's reset on the way)
+  - advance: { to: { weekday: Wed } }
+    engine: { state: { user.loginStreak: 10, user.loginTotal: 10 } }
+    expect: { presented: [resets.dailyNotice, resets.dailyNotice, "resets.birthday for cyra", bonds.cyra.cyraBirthday] }
+  # the festival's last day: last call at the day's close
+  - advance: { to: { weekday: Sun } }
+    engine: { state: { user.loginStreak: 14, user.loginTotal: 14 } }
+    expect: { clock: { day: 14 } }
+  # the engine zeroes the tower count as the week ends. On the advance itself
+  # the write would land after day 15's midnight settle, where the rearmed
+  # quest would complete again on last week's floors.
+  - engine: { state: { user.towerFloors: 0 } }
+  - advance: day
+    label: last night of the festival
+    engine: { state: { user.loginStreak: 15, user.loginTotal: 15 } }
+    # presented lists every raise of the step: day 14's dayClose, then day 15's dailyReset
+    expect: { presented: [resets.eventLastCall, resets.dailyNotice, resets.weeklyNotice, resets.chapterThree] }

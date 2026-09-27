@@ -1,0 +1,85 @@
+---
+kind: quest
+id: quests.emberRoad
+title: The Ember Road
+---
+
+/* The main quest. The Tollbridge opens one way or another: `openBridge` is a
+   `complete="any"` subquest whose alternatives are two accept-driven subquests
+   (taken up in dialogue) and two plain objectives (pay, or win the battle).
+   The first alternative to land supersedes the others (dsl 0.24 §2). */
+<quest id="emberRoad" title="The Ember Road" start="visited('road.departure')" fail="@lostBattle">
+  <reward kind="GOLD" amount="150"/>
+  <reward kind="XP" amount="300"/>
+  <reward kind="GOLD" amount="20" outcome="failed"/>
+  <objective id="ford" title="Reach Harrow's Ford" done="visited('road.ford')"/>
+  <objective id="rescue" title="Free the miller's children" quest="hostages" optional/>
+  <objective id="bridge" title="Open the Tollbridge before the fourth night" quest="openBridge" by="run.night >= 4"/>
+  <objective id="cross" title="Bring the wagons to the far bank" on="chapterEnd" done="@bridgeOpen"/>
+  <on event="battleEnd">
+    @narrator: The Tollbridge is quiet again. The Company will want a count of the dead.
+  </on>
+  <on event="questFailed">
+    @narrator: The Ember Road keeps the wagons. The Company will keep your name.
+  </on>
+</quest>
+
+/* Rescue. Taken up from Oda at the ford; it joins the journal only then. */
+<quest id="hostages" title="The Miller's Children" activate="accept">
+  <reward kind="GOLD" amount="30"/>
+  <objective id="find" title="Learn where the Duskbound hold the twins" done="holds(knows(passage))"/>
+  <objective id="free" title="Bring the twins home before they are moved on" done="run.hostagesFreed" by="run.night >= 3"/>
+  <on event="questComplete">
+    ::set{run.rep.marrow += 2}
+    @narrator: Oda does not thank you. She holds both children so hard they complain, and that is thanks enough.
+  </on>
+  <on event="questFailed">
+    ::set{run.rep.marrow -= 2}
+    @narrator: By the third night the tunnel under the mill is empty, and nobody at the ford will say where the twins were taken.
+  </on>
+</quest>
+
+/* The ways across. Any one opens the bridge; the rest become moot. */
+<quest id="openBridge" title="Open the Tollbridge" complete="any">
+  <objective id="words" title="Talk Maelis off the bridge" quest="parley"/>
+  <objective id="silver" title="Buy passage with someone else's silver" quest="toll"/>
+  <objective id="strongbox" title="Pay the toll with the Company's strongbox" done="run.bridge == 'paid'"/>
+  <objective id="steel" title="Take the bridge by force" done="@wonBattle"/>
+</quest>
+
+/* Persuade. Taken up at the bridge, when Maelis is heard out. */
+<quest id="parley" title="Words at the Bridge" activate="accept">
+  <reward kind="XP" amount="150"/>
+  <objective id="grievance" title="Hear Maelis out" done="run.maelisGrievance"/>
+  <objective id="proof" title="Find proof of what the Company burned" done="@hasProof" visibleWhen="run.maelisGrievance"/>
+  <objective id="terms" title="Bring Maelis the proof" on="talk" target="npc.maelis" done="run.bridge == 'parleyed'"/>
+  <on event="questComplete">
+    ::set{run.rep.dusk += 3}
+    ::set{run.rep.company -= 2}
+    ::retract{wronged(dusk)}
+    ::assert{sidedWith(dusk)}
+    ::retract{sidedWith(company)}
+    ::assert{wronged(company)}
+    @narrator{when="holds(knows(ledger))"}: The ledger is in Maelis's hands now. Somewhere in Ostwick a Company clerk will have a very bad month.
+    @narrator{when="!holds(knows(ledger))"}: The Coldwater roll is in Maelis's hands now. The Company kept no count of Coldwater. Coldwater did.
+  </on>
+  <on event="questFailed">
+    @narrator: Whatever Maelis wanted to say, nobody is listening now.
+  </on>
+</quest>
+
+/* Betray. Corvin's offer at camp: sell Maelis the deserters hiding at the ford.
+   Refusing Maelis's bargain fails it. */
+<quest id="toll" title="Silver for the Toll" activate="accept" fail="run.tollRefused">
+  <reward kind="GOLD" amount="60"/>
+  <objective id="deal" title="Sell Maelis the deserters' hiding place" on="talk" target="npc.maelis" done="run.bridge == 'sold'"/>
+  <on event="questComplete">
+    ::assert{wronged(marrow)}
+    ::set{run.rep.marrow -= 4}
+    ::set{run.rep.dusk += 1}
+    @narrator: The bridge chain drops. Behind you, at the ford, a door is being kicked in.
+  </on>
+  <on event="questFailed">
+    @corvin{when="holds(inParty(corvin))"}: Shame. It was a good plan. Terrible, but good.
+  </on>
+</quest>

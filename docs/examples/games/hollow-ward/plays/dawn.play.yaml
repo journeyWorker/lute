@@ -1,0 +1,35 @@
+# Too slow: the wrong year on the pharmacy pad, a morgue that stays shut, one
+# bad turn at the valves, and then the hours simply go. The move past five
+# raises dawn, and both deadlines fail.
+#
+#   lute play . --script plays/dawn.play.yaml
+steps:
+  - include: steps/opening.steps.yaml
+  - occasion: examine
+    target: fixture.pharmacyPad
+    bridges: { keypad: [ { entered: 1974 } ] }
+    expect: { notFacts: [solved(pharmacyPad)] }
+  - occasion: lockedDoor
+    target: room.morgue
+    expect: { winner: doorMorgue }
+  - occasion: enter
+    target: room.hydro
+  - occasion: examine
+    target: fixture.hydroValves
+    label: one bad turn, out just in time
+    choose: { first: blue, second: blue, third: drain }
+    expect: { state: { run.fate: alive, run.sanity: 7 } }
+  - advance: { to: h05 }
+    label: the hours go
+    expect: { clock: { slot: h05 }, quests: { beforeDawn: active } }
+  - advance: slot
+    label: first light
+    expect:
+      state: { run.fate: lost, user.deaths: 1 }
+      quests: { beforeDawn: failed, findTobias: failed }
+expect:
+  transcriptContains:
+    - "@nell: Last hour. Whatever I'm doing, I'm doing it now."
+    - "@maud: There you are, dear. We were starting to worry."
+    - "The ward keeps its night. It has kept it for forty years; it can keep yours."
+  transcriptLacks: ["Eleven. The first hour."]

@@ -1,0 +1,7 @@
+# Ink: VAR oil = 1 / VAR knows_name = false
+state:
+  run.oil:       { type: number, default: 1 }
+  run.knowsName: { type: bool, default: false }
+  run.fate:      { type: { enum: [open, drowned] }, default: open }
+# Ink `-> END` (the story is over) is a schema `terminal:`; `::end` only ends the scene (Ink `-> DONE`).
+terminal: "run.fate == 'drowned'"

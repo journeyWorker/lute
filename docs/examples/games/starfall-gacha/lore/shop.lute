@@ -1,0 +1,94 @@
+---
+kind: lore
+id: shop
+title: Event shops
+---
+
+/* Pim runs the event stall. The engine owns tokens and stock; ::purchase
+   is a blocking bridge that answers bought / remaining. */
+
+<beat id="pimHarvest" on="shopVisit" target="shop.harvestShop" once="false" when="@harvestShopOpen">
+  @pim{emotion="happy" when="@harvestLive"}: Welcome to the Harvest stall! The festival runs {{@harvestDaysLeft:plural(# more day|# more days)}} after today. You've got {{season.harvest.tokens:plural(# token|# tokens)}}.
+  @pim{when="!@harvestLive"}: Festival's over, but the stall stays up a few days for stragglers. {{season.harvest.tokens:plural(# token|# tokens)}} left. Use 'em.
+  @pim{emotion="smug" when="@harvestRerun && visited('harvest.h3')"}: Ah, a returning customer. You'll want the lantern costume you missed. Or the one you didn't.
+  <hub id="harvestStall" prompt="What'll it be?">
+    <choice id="cake" label="Moon cake (50 tokens)">
+      ::purchase{item="moonCake" resultKey="buy"}
+      <match on="scene.shop.buy.bought">
+        <when is="true">
+          @pim{emotion="happy"}: One moon cake! Eat it under the moon or it's just a cake. {{scene.shop.buy.remaining}} tokens left.
+        </when>
+        <otherwise>
+          @pim: Short on tokens, friend. Clear a few more stages and come back.
+        </otherwise>
+      </match>
+    </choice>
+    <choice id="costume" label="Lantern costume (800 tokens)" once>
+      ::purchase{item="lanternCostume" resultKey="buy"}
+      <match on="scene.shop.buy.bought">
+        <when is="true">
+          @pim{emotion="smug"}: The lantern costume! You'll glow. Literally. Mind the curtains.
+        </when>
+        <otherwise>
+          @pim: That's the top shelf. Eight hundred tokens. I can wait. The festival can't.
+        </otherwise>
+      </match>
+    </choice>
+    <choice id="leave" label="Just looking." exit>
+      @pim: Come back when your pockets jingle.
+    </choice>
+  </hub>
+</beat>
+
+<beat id="pimStarfall" on="shopVisit" target="shop.starShop" once="false" when="@starfallShopOpen">
+  @pim{emotion="happy" when="@starfallLive"}: Comets, glass, ribbons! Starfall runs {{@starfallDaysLeft:plural(# more night|# more nights)}} after tonight.
+  @pim{when="!@starfallLive"}: The comets have landed, but I've still got stock. {{season.starfall.tokens:plural(# token|# tokens)}}, friend.
+  <hub id="starStall" prompt="Pick a comet, any comet.">
+    <choice id="glass" label="Star glass (120 tokens)">
+      ::purchase{item="starGlass" resultKey="buy"}
+      @pim{emotion="happy" when="scene.shop.buy.bought"}: Star glass! Look through it and every star's a little closer.
+      @pim{when="!scene.shop.buy.bought"}: Not enough tokens. Stars aren't cheap. Well. These ones aren't.
+    </choice>
+    <choice id="leave" label="Leave." exit>
+      @pim: Wish well!
+    </choice>
+  </hub>
+</beat>
+
+<beat id="pimClosed" on="shopVisit" target="shop.harvestShop" once="false" priority="-1">
+  @pim: Stall's packed up, friend. The moon'll be round again. It always is.
+</beat>
+
+<beat id="pimStarClosed" on="shopVisit" target="shop.starShop" once="false" priority="-1">
+  @pim: No comets tonight. Check the calendar. Pim always comes back.
+</beat>
+
+<beat id="gemShop" on="shopVisit" target="shop.gemShop" once="false">
+  @lumi{emotion="smug"}: The gem shop. I'm contractually obliged to say "great value." Great value!
+  ::purchase{item="gemBundle" resultKey="gems"}
+  @lumi{emotion="happy" when="scene.shop.gems.bought"}: Thank you for supporting the stars!
+</beat>
+
+<beat id="pimFrost" on="shopVisit" target="shop.frostShop" once="false" when="@frostShopOpen">
+  @pim{emotion="happy" when="@frostLive"}: Candles, globes, mittens! The vigil runs {{@frostDaysLeft:plural(# more night|# more nights)}} after tonight.
+  @pim{when="!@frostLive"}: Ice is out, but I kept a crate back. {{season.frost.tokens:plural(# candle|# candles)}} to spend.
+  <hub id="frostStall" prompt="Warm your hands and pick something.">
+    <choice id="candle" label="Frost candle (30 candles)">
+      ::purchase{item="frostCandle" resultKey="buy"}
+      @pim{emotion="happy" when="scene.shop.buy.bought"}: A candle for a candle. Very circular. I love it.
+      @pim{when="!scene.shop.buy.bought"}: Not enough candles to buy a candle. The irony's free.
+    </choice>
+    <choice id="globe" label="Snow globe (500 candles)" once>
+      ::purchase{item="snowGlobe" resultKey="buy"}
+      @pim{emotion="smug" when="scene.shop.buy.bought"}: The globe! Tiny sea, tiny ice, tiny Nyx. Don't shake her.
+      @pim{when="!scene.shop.buy.bought"}: Five hundred for the globe, friend. It's hand-frozen.
+    </choice>
+    <choice id="leave" label="Leave." exit>
+      @pim: Stay warm!
+    </choice>
+  </hub>
+</beat>
+
+<beat id="pimFrostClosed" on="shopVisit" target="shop.frostShop" once="false" priority="-1">
+  @pim: Stall's frozen shut, friend. Literally. Come back next winter.
+</beat>

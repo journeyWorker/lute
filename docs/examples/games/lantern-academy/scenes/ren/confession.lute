@@ -1,0 +1,28 @@
+---
+kind: scene
+id: ren.confession
+title: Ren — the empty register
+on: slotStart
+when: "run.route == 'ren' && run.day == 9 && run.slot == 'evening'"
+priority: 10
+after: 'visited("ren.date")'
+---
+
+## The council room, lamps out
+
+::bg{location="council" time="night"}
+::auto{character="ren" anchor="center" action="fadeInUp"}
+@ren{emotion="sad"}: I'm leaving the council at the end of term. My father wants me on the mainland. He has a register of his own.
+@ren{emotion="fond" when="holds(cleared(ren, bittersweet))"}: I have the strangest feeling I told you this once before, and you let me go. Don't let me go.
+@ren{emotion="flustered" when="isSet(prev.run.route) && prev.run.route == 'ren'"}: Why do you look like you already know what I'm about to say?
+
+<branch id="renAsk" prompt="Ren has never asked anyone for anything.">
+  <choice id="stay" label="Ask him to choose the island, for himself">
+    @ren{emotion="happy"}: For myself. I don't think anyone has ever said that sentence to me.
+    ::set{run.aff.ren += 1}
+  </choice>
+  <choice id="obey" label="Tell him a father's word is a father's word">
+    @ren{emotion="stern"}: Of course. You're right. You're always — right.
+    ::set{run.aff.ren -= 1}
+  </choice>
+</branch>

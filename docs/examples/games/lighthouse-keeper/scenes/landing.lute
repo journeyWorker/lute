@@ -1,0 +1,16 @@
+---
+kind: scene
+id: place.landing
+title: The Landing
+on: explore
+target: place.landing
+priority: 10
+---
+
+## The Landing
+
+::bg{location="skerry_landing" time="day"}
+@narrator: The iron steps go down into green water. Weed hangs from the chain like wet hair.
+@narrator: Something dark is jammed in the chain above the tide line. A coat.
+@narrator: On the lowest step, fresh scrapes in the weed: a small boat tied up here, and not long ago.
+@inspector{mono}: The Guillemot came ashore on the north side, in pieces. Whoever tied up here came in something that still floats.

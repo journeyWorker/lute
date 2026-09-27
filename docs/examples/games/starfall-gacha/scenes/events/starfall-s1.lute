@@ -1,0 +1,16 @@
+---
+kind: scene
+id: starfall.s1
+title: "Starfall Night 1: The Comet Market"
+on: eventStage
+target: estage.s1
+once: user
+when: "@starfallLive"
+---
+
+## Comets for sale
+
+@pim{emotion="happy"}: Comets! Fresh-fallen, still warm! One token each, two for a wish!
+@narrator: A knight in black armour is standing at the edge of the market, very still, watching the comets like they owe her money.
+@lumi{emotion="surprised"}: Wishkeeper. That's Vesper. The Hollow King's lantern-bearer.
+@vesper{emotion="smug"}: Former. I'm between kings. Buy me a comet and I'll explain.

@@ -1,0 +1,20 @@
+# Day 6 to day 8 morning, the same for every route: the festival (day 6
+# evening), the date (day 7 after school; Hotaru's is day 7 evening, beside
+# Nana's Sunday report), and the morning after the storm (day 8). The play then
+# gives its gift (day 8 after school, a targeted `gift` raise with a payload)
+# and includes steps/week2.steps.yaml.
+steps:
+  - label: festival night
+    advance: { to: evening }
+    expect: { clock: { day: 6, slot: evening } }
+  - label: the date
+    advance: { to: afterSchool }
+    expect: { clock: { day: 7, slot: afterSchool } }
+  - label: the date, evening
+    advance: { to: evening }
+  - label: after the storm
+    advance: slot
+    expect: { clock: { day: 8, slot: morning } }
+  - label: the gift
+    advance: slot
+    expect: { clock: { day: 8, slot: afterSchool } }

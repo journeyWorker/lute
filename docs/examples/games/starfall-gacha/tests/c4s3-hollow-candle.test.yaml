@@ -1,0 +1,8 @@
+# The player lit the vigil candle for the Hollow King (no vigilWish fact).
+file: ../scenes/main/c4s3.lute
+state: { user.day: 43 }
+visited: [main.c4s2]
+quests: { frostMissions: complete }
+expect:
+  transcriptContains: ["@nyx: You lit your vigil candle for him. Look, it's still going."]
+  transcriptLacks: ["The one at the bow"]

@@ -1,0 +1,120 @@
+# Lamplight world. Progress is what the inspector KNOWS: almost everything the
+# player learns is a fact; the scalar state is only what the engine and the
+# denouement need.
+
+state:
+  # `silence` is the inspector declining to name anyone at Ossery; `nobody`
+  # means the question has not been put yet.
+  run.accused:     { type: { enum: [nobody, silence, mirela, lise, crane, solt] }, default: nobody }
+  run.soltRattled: { type: bool, default: false }
+  user.casesClosed: { type: number, default: 0 }   # credited by the CASE reward kind
+  # Which office the inspector wired from Harl junction (the 4 o'clock stop).
+  run.wired: { type: { enum: [none, board, varn] }, default: none }
+  # The corridor clock. The engine moves it; one night, from the knock to Ossery.
+  run.night: { type: number, default: 1, owner: engine }
+  run.hour:  { type: { enum: [h02, h03, h04, h05, h06] }, default: h02, owner: engine }
+
+clock:
+  day: run.night
+  slot: run.hour
+  slots: [h02, h03, h04, h05, h06]
+  raise: { slot: hourStrikes }
+  last: { day: 1, slot: h06 }     # six o'clock: Ossery
+
+# The night is over once a name has been said at Ossery (the loop starts a new run).
+terminal: "run.accused != 'nobody'"
+
+entities:
+  person: { members: [hask, mirela, lise, crane, solt, porter] }
+  place:
+    members: [dining, corridor, cab5, cab7, brakevan, harl]
+    labels:
+      dining: the dining car
+      corridor: the sleeper corridor
+      cab5: compartment 5
+      cab7: compartment 7
+      brakevan: the brake van
+      harl: Harl junction
+  # Three stretches of the night. `early` is about 1:15, `late` about 1:55,
+  # `tunnel` is the four dark minutes in the Orla tunnel (2:05 - 2:09).
+  slot:   { members: [early, late, tunnel] }
+  clue:
+    members: [watch, teacup, cufflink, ledger, medkit, letter]
+    labels: { watch: the watch, teacup: the teacup, cufflink: the cufflink, ledger: the ledger, medkit: the doctor's bag, letter: the letter }
+  # The four passengers the case is about: a sub-kind, so a beat can speak of each in turn.
+  suspect: { subsetOf: person, members: [mirela, lise, crane, solt] }
+
+relations:
+  # --- the case map: seeded, never changes -------------------------------
+  away:       { args: [place], tier: run }          # somewhere you could not have reached compartment 7 from unseen
+  berth:      { args: [person, place], tier: run }  # whose compartment is whose
+  next:       { args: [slot, slot], tier: run }     # slot order
+
+  # --- what the inspector has found and been told -------------------------
+  # User tier: the night repeats (the Lamplight loops at Ossery), and what the
+  # inspector learned survives the loop the way a ship's log would.
+  found:      { args: [clue], tier: user }
+  claims:     { args: [person, place, slot], tier: user }   # a suspect's own account
+  seen:       { args: [person, place, slot], tier: user }   # corroborated by a witness
+  alive:      { args: [person, slot], tier: user }          # the victim was heard alive
+  unanswered: { args: [place, slot], tier: user }           # nobody answered a knock at the end of a slot
+  empty:      { args: [place, slot], tier: user }           # a compartment was seen empty
+  watchReads: { args: [slot], tier: user }                  # the stopped watch shows
+  motive:     { args: [person], tier: user }
+  means:      { args: [person], tier: user }
+
+  # --- what the inspector can deduce --------------------------------------
+  deathIn:     { args: [slot], derive: true }
+  falseClue:   { args: [clue], derive: true }
+  placed:      { args: [person], derive: true }   # at the door when the watch stopped (the naive read)
+  alibi:       { args: [person, slot], derive: true }
+  opportunity: { args: [person], derive: true }
+  lied:        { args: [person], derive: true }
+  prime:       { args: [person], derive: true }
+  outOfBerth:  { args: [person, slot], derive: true }  # their own compartment was seen empty
+
+facts:
+  - "away(dining)"
+  # The corridor is NOT an alibi: it runs past compartment 7 (see FINDINGS F24).
+  - "away(cab5)"
+  - "away(brakevan)"
+  - "berth(hask, cab7)"
+  - "berth(solt, cab5)"
+  - "next(early, late)"
+  - "next(late, tunnel)"
+
+rules:
+  # Hask was heard alive in one stretch and nobody answered his door at the end
+  # of the next: he died in that next stretch.
+  - "deathIn(S) :- alive(hask, S0), next(S0, S), unanswered(cab7, S)"
+  # A stopped watch that disagrees with the time of death was set by hand.
+  - "falseClue(watch) :- watchReads(S), deathIn(D), S != D"
+  # The naive read: whoever stood at the door when the watch stopped.
+  - "placed(P) :- suspect(P), seen(P, cab7, S), watchReads(S)"
+  # Somebody else saw you somewhere other than compartment 7.
+  - "alibi(P, S) :- seen(P, L, S), away(L)"
+  # A suspect with no alibi for the time of death had the chance.
+  - "opportunity(P) :- suspect(P), deathIn(S), not alibi(P, S)"
+  # Claiming to be somewhere that was seen empty at that time is a lie.
+  - "lied(P) :- claims(P, L, S), empty(L, S)"
+  # Motive, means, and the chance: the whole case.
+  - "prime(P) :- opportunity(P), motive(P), means(P)"
+  # A passenger whose own compartment stood empty was not in bed.
+  - "outOfBerth(P, S) :- berth(P, L), empty(L, S)"
+
+defs:
+  timeFixed: "holds(deathIn(tunnel))"
+  solved: "run.accused == 'solt'"
+  unaccounted: "count(opportunity(_))"
+  emptyBerths: "count(outOfBerth(_, tunnel))"
+
+# Who may speak. `@narrator` needs no entry; anyone else is checked (E-CAST-UNKNOWN).
+cast:
+  inspector: { name: Inspector Wren }
+  porter:    { name: Emil }
+  crane:     { name: Tobiah Crane }
+  solt:      { name: Dr. Emmerich Solt }
+  lise:      { name: Lise Varo }
+  mirela:    { name: Mirela Dace }
+  hask:      { name: Aurel Hask }
+  steward:   { name: The steward }

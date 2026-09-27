@@ -1,0 +1,49 @@
+---
+kind: lore
+id: examine
+title: What the inspector looks at
+---
+
+<beat id="watch" on="examine" target="obj.watch" title="The pocket watch">
+  @narrator{code="0010"}: Hask's watch hangs from his waistcoat on a short gold chain. The crystal is starred with a crack, as if it struck the edge of the berth.
+  @narrator{code="0020"}: The hands stand at a quarter past one.
+  ::evidence{clue="watch"}
+  ::assert{watchReads(early)}
+  @inspector{code="0010" mono}: A dead man's watch stops when he does. That is the story it wants me to believe, anyway.
+  @inspector{code="0020" mono}: A quarter past one. Crane said Solt said the same. Everybody agrees very quickly tonight.
+</beat>
+
+<beat id="watchAgain" on="examine" target="obj.watch" title="The pocket watch, again" when="holds(falseClue(watch))" priority="10">
+  @narrator{code="0010"}: You turn the watch over. The crown is pulled out to the setting position, and the crack in the crystal has no dent behind it. Glass cracked by a fall bends the case. This case is untouched.
+  @inspector{code="0010" mono}: He was alive at five to two, ringing for tea. Somebody wound these hands back to a quarter past one and cracked the glass with a thumbnail.
+  @inspector{code="0020" mono}: Nobody sets a clock back to protect themselves. They set it back to hang somebody else. Who stood at that door at a quarter past one?
+</beat>
+
+<beat id="teacup" on="examine" target="obj.teacup" title="The teacup">
+  @narrator{code="0010"}: Railway china, the crest of the Varn and Northern line worn down to a smudge. The tea is cold and a little under half drunk.
+  @narrator{code="0020"}: You wet a fingertip and touch it to your tongue. Bitter, under the sugar. Bitter and faintly of cloves.
+  ::evidence{clue="teacup"}
+  @inspector{code="0010" mono}: Laudanum. Enough to make a man sleep through a knock, not enough to kill him. Somebody wanted him quiet, and then wanted him dead.
+  @inspector{code="0020" mono}: The tea came at five to two. Whoever dosed it knew he would ring for it.
+</beat>
+
+<beat id="cufflink" on="examine" target="obj.cufflink" title="The cufflink">
+  @narrator{code="0010"}: Wedged between the berth and the heating pipe: a gold cufflink, oval, engraved with two letters in a florid hand. M. D.
+  ::evidence{clue="cufflink"}
+  @inspector{code="0010" mono}: Mirela Dace, the niece. She told the porter she hadn't spoken to her uncle in three years.
+  @inspector{code="0020" mono}: A cufflink, though. A woman who travels with her own cufflinks, or a man's cufflink that a woman's initials were put on.
+</beat>
+
+<beat id="medkit" on="examine" target="obj.medkit" title="The doctor's bag" when="holds(lied(solt))">
+  ::bg{location="compartment_5" time="night"}
+  @narrator{code="0010"}: Solt's bag sits on the rack, black calf, clasp polished by years of a thumb. Inside, in felt loops: forceps, a stethoscope, a row of brown bottles.
+  @narrator{code="0020"}: TINCT. OPII. The bottle is a third empty and the cork is still damp.
+  ::evidence{clue="medkit"}
+  ::assert{means(solt)}
+  @inspector{code="0010" mono}: A doctor carries laudanum the way a conductor carries a punch. It proves nothing by itself.
+  @inspector{code="0020" mono}: But the cork is still damp, and he told me he slept like a stone.
+</beat>
+
+<beat id="nothingMore" on="examine" target="kind:clue" title="Again" once="false" priority="-10">
+  @inspector{code="0010" mono}: Nothing more from {{occasion.target}}. I have had everything out of it that it will give me tonight.
+</beat>

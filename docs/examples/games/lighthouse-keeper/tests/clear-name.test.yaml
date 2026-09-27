@@ -1,0 +1,13 @@
+# The red herring, cleared: Hollis's alibi plus the chafed rope.
+file: ../quests/tobias.lute
+accepts: [clearName]
+entriesRead: { run: [mooringRope] }
+facts:
+  - "implicates(guillemot, tobias)"
+  - "sawAt(hollis, tobias, village, midnight)"
+expect:
+  quests: { clearName: complete }
+  facts: ["cleared(tobias)"]
+  notFacts: ["suspect(tobias)"]
+  transcriptContains: ["It will be in the report."]
+  end: complete

@@ -1,0 +1,28 @@
+---
+kind: scene
+id: mid.mindGym
+title: Mind Gym
+on: challenge
+target: arena.mindGym
+once: false
+when: "!holds(defeated(sabine))"
+---
+
+// CONTRACT BEAT (owned by mid): asserts hasBadge(mind). The engine keeps the
+// gym shut until canPass(mindGymDoor) (Helix Tower freed). Sabine's three
+// trainers answer trainerSpotted in lore/mid/mind-gym-trainers.lute.
+
+## The warp tiles
+
+::bg{location="mind-gym" time="day"}
+::music{action="change" mood="eerie" volume="down"}
+@narrator: The Mind Gym is a maze of warp tiles. Step on one and the room turns inside out. Step on the right one and you are standing in front of Sabine.
+@narrator{when="holds(defeated(mindGymPsychicOren)) && holds(defeated(mindGymMediumSelke)) && holds(defeated(mindGymPsychicTamsin))"}: Her three students watch from the edges of the room. None of them look surprised to see you. They have all lost to you already.
+
+## Sabine
+
+::auto{character="sabine" anchor="center" action="enter"}
+@sabine{emotion="neutral"}: The door was sealed for eleven days. I spent them meditating. Mostly on how rude the Director's people were.
+::use{component="gymLeader" who="sabine" badge="mind" intro="I had a vision of your arrival. I have had psychic powers since I was a child. I dislike fighting, but if you wish, I will show you my powers!" win="I'm shocked, but a loss is a loss. I admit I didn't work hard enough to win. You earned the Mind Badge." lose="I saw that ending, too. I did not enjoy it any more the second time." prize="4300"}
+@sabine{when="@wonFight" emotion="surprised"}: I saw many futures for this battle. In most of them I won. You have a way of choosing the others.
+@sabine{when="!@wonFight"}: Meditate on it. The warp tiles will still be here. So will I.

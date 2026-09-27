@@ -1,0 +1,8 @@
+# The missable event: accepted on Tuesday, the clock reaches Thursday, the
+# lighthouse scene was never presented -> the quest fails.
+file: ../quests/festival.lute
+state: { run.day: 4 }
+accepts: [theoLighthouse]
+expect:
+  quests: { theoLighthouse: failed }
+  transcriptContains: ["nobody was there to see it but Theo"]

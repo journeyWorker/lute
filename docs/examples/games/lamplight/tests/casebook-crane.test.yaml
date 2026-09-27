@@ -1,0 +1,10 @@
+# Once the hour is fixed and nobody is placed anywhere, the passkey page counts
+# every suspect as still unaccounted for: {{@unaccounted}} is a derived count.
+file: ../lore/casebook.lute
+entry: pageCrane
+facts:
+  - "alive(hask, late)"
+  - "unanswered(cab7, tunnel)"
+expect:
+  transcriptContains: ["Nobody can yet place 4 suspects away"]
+  end: complete

@@ -1,0 +1,121 @@
+---
+kind: lore
+id: east.portvolt
+title: Portvolt, the harbor town
+---
+
+// Portvolt: the Meridian's home port, Lt. Volta's Spark Gym (behind the
+// portvoltTree gate), the lighthouse, and the Wednesday market
+// (scenes/east/portvolt-market.lute). The first visit is east.portvoltArrival.
+
+// ── services ─────────────────────────────────────────────────────────────
+
+<beat id="center" on="heal" target="town.portvolt" title="Monster Center" once="false">
+  ::use{component="nurse" town="portvolt"}
+</beat>
+
+<beat id="mart" on="shop" target="town.portvolt" title="Mart" once="false">
+  ::use{component="shop" stock="portvoltStock"}
+</beat>
+
+// ── walking in, after the first visit (once a day per slot) ────────────────
+
+<entry id="eastPortvoltMorning" on="enterTown" target="town.portvolt" category="ambient" priority="5" once="day" when="@isMorning">
+  @narrator: Gulls over the harbor, and the smell of the fish auction. The Meridian's horn sounds twice across the water.
+</entry>
+
+<entry id="eastPortvoltDay" on="enterTown" target="town.portvolt" category="ambient" priority="5" once="day" when="run.slot == 'day'">
+  @narrator: The docks are loud with cranes and crates. Somewhere a sailor is losing an argument with a pelipper.
+</entry>
+
+<entry id="eastPortvoltNight" on="enterTown" target="town.portvolt" category="ambient" priority="5" once="day" when="@isNight">
+  @narrator: The lighthouse sweeps the harbor. Every few sweeps the streetlamps flicker, all together, as if something far away had blinked.
+</entry>
+
+// ── Harbormaster Quill ───────────────────────────────────────────────────
+
+<entry id="eastQuillBark" on="talk" target="npc.portvoltHarbormaster" category="bark">
+  @portvoltHarbormaster: Ships in, ships out. The Meridian sails for Tidewell on Mondays and back on Thursdays. Don't miss it; the captain won't wait.
+</entry>
+
+<entry id="eastQuillMorning" on="talk" target="npc.portvoltHarbormaster" category="bark" priority="10" when="@isMorning">
+  @portvoltHarbormaster: Early! Good. The fog burns off by nine. Until then, watch your step on the pier: the tentacool don't.
+</entry>
+
+<entry id="eastQuillNight" on="talk" target="npc.portvoltHarbormaster" category="bark" priority="10" when="@isNight">
+  @portvoltHarbormaster: Harbor's closed. If you're looking for trouble, the bikers are up on Route 7. If you're looking for sleep, the Center has beds.
+</entry>
+
+<entry id="eastQuillSpark" on="talk" target="npc.portvoltHarbormaster" category="bark" priority="20" once="run" when="holds(hasBadge(spark))">
+  @portvoltHarbormaster: You beat the Lieutenant? He'll be insufferable for a week. He's insufferable when he wins, too, mind.
+</entry>
+
+// ── Old Ned, the fisherman: the Good Rod ─────────────────────────────────
+
+<beat id="nedRod" on="talk" target="npc.portvoltFisher" title="The Good Rod" priority="10">
+  @portvoltFisher: You look like a trainer who's never caught anything worth a photograph. No offence.
+  @portvoltFisher: Here. My second-best rod. My best one's for me. The fish off Portvolt pier are bigger than you'd think.
+  ::give{item="goodRod"}
+  @narrator: {{userName}} received the Good Rod!
+</beat>
+
+<entry id="eastNedBark" on="talk" target="npc.portvoltFisher" category="bark" when="visited('east.portvolt.nedRod')">
+  @portvoltFisher: Cast off the end of the pier at night. The big ones come up to look at the lighthouse.
+</entry>
+
+// ── Marta, the market woman ──────────────────────────────────────────────
+
+<entry id="eastMartaBark" on="talk" target="npc.portvoltVendor" category="bark">
+  @portvoltVendor: Market's Wednesdays, love. Every stall from here to the lighthouse. Today I'm just mending nets.
+</entry>
+
+<entry id="eastMartaMarketDay" on="talk" target="npc.portvoltVendor" category="bark" priority="10" when="clock.weekday == 2">
+  @portvoltVendor: It's market day! Go on, spend something. My stall's the one with the striped awning and no customers.
+</entry>
+
+// ── the Spark Gym guide ──────────────────────────────────────────────────
+
+<entry id="eastPortvoltGuideBefore" on="talk" target="npc.portvoltGymGuide" category="bark" when="!holds(defeated(volta))">
+  @portvoltGymGuide: Yo, challenger! Lt. Volta's gym runs on electricity. Ground types don't feel a thing. Rock types don't like it much either. Water types? Don't bring water types.
+</entry>
+
+<entry id="eastPortvoltGuideAfter" on="talk" target="npc.portvoltGymGuide" category="bark" when="holds(defeated(volta))">
+  @portvoltGymGuide: You beat the Lieutenant! The Spark Badge lets you use Fly outside battle, once someone teaches you. I hear Fern in Bloomfield does.
+</entry>
+
+// ── Keeper Sol, at the lighthouse ────────────────────────────────────────
+
+<entry id="eastSolBark" on="talk" target="npc.portvoltKeeper" category="bark">
+  @portvoltKeeper: Forty years I've kept this light. Ships see it from Tidewell on a clear night. Ships and other things.
+</entry>
+
+<entry id="eastSolMorning" on="talk" target="npc.portvoltKeeper" category="bark" priority="10" when="@isMorning">
+  @portvoltKeeper: Morning. I'm going to bed. The light doesn't need me in daylight, and I don't need it.
+</entry>
+
+// At night Sol tells you about the storm bird and asks you to find it
+// (quests/east/side-quests.lute, eastThunderwing).
+<beat id="solStormBird" on="talk" target="npc.portvoltKeeper" title="The storm bird" priority="20" when="@isNight">
+  @portvoltKeeper: See the flicker down the coast? That's the old power plant, and nobody's paid its bill in ten years.
+  @portvoltKeeper: Something lives in there. On stormy nights I see it from the gallery: a bird made of lightning, sitting on the chimney like it owns the sky.
+  @portvoltKeeper: I'm too old to go and look. You're not. If you ever get close, tell me what it is.
+  ::accept{quest="eastThunderwing"}
+</beat>
+
+<entry id="eastSolThunderwing" on="talk" target="npc.portvoltKeeper" category="bark" priority="30" when="holds(caught(thunderwing))">
+  @portvoltKeeper: Thunderwing. So that's its name. Forty years I've watched for it, and you walk up and put it in your pocket. Good. It'll be safer with you than on that chimney.
+</entry>
+
+// ── Tobin and his voltmouse ──────────────────────────────────────────────
+
+<entry id="eastTobinBark" on="talk" target="npc.portvoltKid" category="bark">
+  @portvoltKid: My voltmouse gives me a shock every time I pat it. Mum says that means it loves me. I think Mum's making that up.
+</entry>
+
+<entry id="eastTobinNight" on="talk" target="npc.portvoltKid" category="bark" priority="10" when="@isNight">
+  @portvoltKid: I'm not supposed to be out. But my voltmouse glows in the dark, so technically I'm not in the dark.
+</entry>
+
+<entry id="eastTobinVoltmouse" on="talk" target="npc.portvoltKid" category="bark" priority="20" when="holds(caught(voltmouse)) && !@isNight">
+  @portvoltKid: You've got a voltmouse too? Do they shock you? Do you like it? I don't like it. I love it.
+</entry>

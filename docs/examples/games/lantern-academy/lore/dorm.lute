@@ -1,0 +1,52 @@
+---
+kind: lore
+id: dorm
+title: Evenings with Nana
+---
+
+// Nana is the status screen: every evening before the festival she says,
+// in her own words, who is warming to you and whose door you have shut.
+
+<beat id="evening" on="slotStart" title="Lights out" once="day" when="run.slot == 'evening' && run.day <= 5">
+  ::bg{location="dorm" time="night"}
+  @nana{emotion="teasing"}: Report. Who's thinking about you right now? I have sources.
+  @nana{when="run.aff.ren >= 3 && !holds(locked(ren))"}: Ren re-alphabetised the council files twice today. He only does that when he's flustered.
+  @nana{when="run.aff.mika >= 3 && !holds(locked(mika))"}: Mika ran an extra lap past our window. Past. Our. Window.
+  @nana{when="run.aff.soren >= 3 && !holds(locked(soren))"}: Soren renewed a book he'd already renewed. Twice. That's a cry for help.
+  @nana{when="run.aff.kai >= 3 && !holds(locked(kai))"}: That piano played five notes tonight instead of four. Just saying.
+  @nana{emotion="worried" when="holds(locked(ren))"}: Ren crossed your name out of something. With a ruler.
+  @nana{emotion="worried" when="holds(locked(mika))"}: Mika's on the bench, and he isn't talking to you. Or the bench.
+  @nana{emotion="worried" when="holds(locked(soren))"}: Remedial study, huh. The library's going to be very quiet without you.
+  @nana{emotion="worried" when="holds(locked(kai))"}: Kai said a word about you I won't repeat. It rhymed with nothing.
+  @nana{emotion="happy" when="count(locked(_)) == 0"}: Nobody hates you yet. Honestly, a record for a transfer.
+  <match on="run.lanterns">
+    <when is="0">
+      @nana{emotion="worried"}: Also, we have zero lanterns for the window. Zero. We need three.
+    </when>
+    <when is="1">
+      @nana{emotion="worried"}: Also, one lantern for the window. One. We need three. Fold faster.
+    </when>
+    <when is="2">
+      @nana{emotion="worried"}: Two lanterns for the window. One more and we're not the dark window.
+    </when>
+    <otherwise>
+      @nana{emotion="happy"}: And the window's got {{run.lanterns}} lanterns. We are officially not the dark window.
+    </otherwise>
+  </match>
+</beat>
+
+// (0.27) The chore behind the lampDuty quest: the dorm answers a visit with it
+// while the duty is open. (0.28) `spentBy` latches now, so the beat is gated
+// with `when=` instead: it plays while the duty is active and comes back when
+// Monday rearms the quest.
+<beat id="lamps" on="visit" target="place.dorm" title="Light the window" when="quest.lampDuty.state == 'active'">
+  ::bg{location="dorm" time="evening"}
+  @nana{emotion="teasing"}: Matches are in the drawer with the biscuits. Don't eat the matches.
+  ::set{run.lampDay = run.day}
+  @narrator: One by one the lanterns in the window come up gold.
+</beat>
+
+// (0.27) Sunday evening, once a week: Nana reads the week back.
+<beat id="sunday" on="slotStart" title="Sunday night" once="week" when="clock.weekdayLabel == 'Sunday' && run.slot == 'evening'">
+  @nana{emotion="teasing"}: Sunday. Laundry, homework, and a full report on your love life. In that order. Reverse order.
+</beat>

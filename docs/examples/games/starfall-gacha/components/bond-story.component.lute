@@ -1,0 +1,25 @@
+---
+component: bondStory
+# A bond story: the hero's Bond tab, Story button, once per account, gated
+# by the roster's bond-rank rule table. Each rank waits on the one before
+# (prev, a canonical beat id; empty for r1). The story's own body plays at
+# ::body, then the seal: the vow in the hero's voice and the rank reward.
+params:
+  who: speaker
+  rank: { type: { entity: rank } }
+  prev: { type: string, default: "" }
+  vow: string
+beat:
+  on: bondStory
+  target: "hero.@who"
+  once: user
+  after: "@prev"
+  when: "holds(bondRank(@who, @rank))"
+---
+
+## Bond story
+
+::body
+@@who: {{@vow}}
+::bondReward{hero=@who rank=@rank}
+@narrator: The crest on {{@who}}'s card glows a little brighter. Bond rank: {{@rank}}.

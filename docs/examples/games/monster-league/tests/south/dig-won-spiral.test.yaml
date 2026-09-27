@@ -1,0 +1,14 @@
+# Beating the Digmaster clears the lair and lets the player carry the spiral
+# fossil out.
+file: ../../scenes/south/moonstone-dig.lute
+state: { run.lair.quarryDig: found }
+visited: [south.moonstoneCave]
+facts: [defeated(moonstoneGruntSable), defeated(moonstoneGruntFlint), defeated(moonstoneGruntMarl)]
+bridges: { battle: [ { won: true } ] }
+choose: { southDigFossil: spiral }
+expect:
+  end: complete
+  state: { run.lair.quarryDig: cleared, run.southFossil: spiral, run.money: 3600 }
+  facts: [defeated(gruntDig)]
+  options: { southDigFossil: [dome, spiral] }
+  transcriptContains: ["The fossil pit is quiet. The dig is cleared.", "The spiral fits in your two hands exactly"]

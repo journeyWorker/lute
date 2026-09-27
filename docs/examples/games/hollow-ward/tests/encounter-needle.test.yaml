@@ -1,0 +1,11 @@
+# The syringe marked FOR A.C. ONLY puts him down without a chase.
+file: ../lore/orderly.lute
+beat: meet
+state: { occasion.target: hydro, run.stalker: hydro }
+facts: [holding(sedative), holding(lantern)]
+choose: { react: needle }
+expect:
+  options: { react: [hide, run, freeze, needle] }
+  state: { run.chases: 1, run.fate: alive }
+  transcriptContains: ["@orderly: Thank you, Sister. I'm ever so tired."]
+  end: complete

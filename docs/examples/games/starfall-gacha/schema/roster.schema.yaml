@@ -1,0 +1,34 @@
+# The roster. One place for every hero: rarity sub-kinds, bond points, bond
+# ranks, birthdays, banner features. Adding a hero = one member here, one cast
+# entry, one lore/bonds/<hero>.lute.
+state:
+  # bond points, earned in battle and by gifts (engine)
+  user.bond: { type: number, default: 0, per: hero, owner: engine }
+  # birthday: the day of the 28-day moon (1..28) the hero was born on.
+  # Content-owned constants; nothing writes them.
+  user.birthday:
+    type: number
+    per: hero
+    default: { aria: 3, bram: 6, cyra: 10, dax: 13, elin: 17, fen: 20, gale: 24, vesper: 27, nyx: 16 }
+
+entities:
+  # each hero is listed once, in its rarity; hero is their union
+  hero:    { members: [] }
+  ssr:     { subsetOf: hero, members: [aria, cyra, vesper, nyx] }
+  sr:      { subsetOf: hero, members: [bram, dax, elin, fen, gale] }
+  limited: { subsetOf: ssr, members: [cyra, vesper, nyx] }
+
+relations:
+  owned:         { args: [hero], tier: user, reserved: true, changedOn: [summon] }   # the engine asserts it after a pull resolves
+  bondRank:      { args: [hero, rank], derive: true }
+  birthdayToday: { args: [hero], derive: true }
+  celebrate:     { args: [hero], derive: true }
+
+rules:
+  # bond ranks, one threshold table for the whole roster
+  - "bondRank(H, r1) :- hero(H), cel(\"user.bond[H] >= 100\")"
+  - "bondRank(H, r2) :- hero(H), cel(\"user.bond[H] >= 300\")"
+  - "bondRank(H, r3) :- hero(H), cel(\"user.bond[H] >= 600\")"
+  # the moon is 28 days; day 28 is written 0
+  - "birthdayToday(H) :- hero(H), cel(\"user.day % 28 == user.birthday[H] % 28\")"
+  - "celebrate(H) :- birthdayToday(H), owned(H)"

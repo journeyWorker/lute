@@ -1,0 +1,33 @@
+---
+kind: lore
+id: skerry.tornPage
+title: The torn page
+---
+
+<beat id="pieceThePage" on="examine" target="item.torn_page" title="The burnt scraps" spentBy="holds(pieced(torn_page))" when="holds(carrying(torn_page))">
+  @narrator: Seven scraps of the log's paper, browned at the edges. Ada tried to burn them and lost her nerve.
+  <branch id="firstScrap" prompt="Which scrap begins the entry?">
+    <choice id="aug" label="The one dated in August">
+      @narrator: "Aug. 30th." The next scrap joins it along the tear, and the next. The page comes back in the keeper's hand.
+      ::assert{pieced(torn_page)}
+      ::assert{reported(gallery_rail)}
+    </choice>
+    <choice id="tell" label="The one with the word &quot;tell&quot;">
+      @narrator: The tear does not match anything. You sweep the scraps back into the envelope.
+    </choice>
+    <choice id="stain" label="The one with the oil stain">
+      @narrator: A corner, no words on it. It fits nowhere yet.
+    </choice>
+  </branch>
+</beat>
+
+<entry id="tornPageRead" on="examine" target="item.torn_page" category="note" title="30 August" when="holds(pieced(torn_page))">
+  @elias: Aug. 30th. Seaward rail rotten at both bolts. Wrote to the Board for a new one. Wrote again.
+  @elias: If they will not pay, somebody tell them what it costs. Their answer is behind A.'s photograph.
+</entry>
+
+<entry id="boardLetter" on="examine" target="item.requisition" category="item" title="The Board's letter" once="run" when="holds(pieced(torn_page))">
+  @narrator: Behind the photograph over the stove, folded small: a letter on the Board's paper, dated 3rd September.
+  @narrator: "The Board regrets that no funds can be allotted for the renewal of the gallery rail at Skerry Rock in the present year."
+  ::assert{refusedRepair(gallery_rail)}
+</entry>

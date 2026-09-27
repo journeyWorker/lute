@@ -1,0 +1,9 @@
+# the roster-wide birthday banner (for="kind:hero"), for one member
+file: ../lore/resets.lute
+beat: birthday
+state: { occasion.target: gale, user.day: 52 }
+facts: ["owned(gale)"]
+expect:
+  eligible: true
+  transcriptContains: ["@lumi: It's Gale's birthday! A gift is in your mailbox. It's from all of us!"]
+  end: complete

@@ -1,0 +1,12 @@
+# Moments the engine raises. Lute only says which beat answers each one.
+# Targets are checked against the world's entity kinds: `npc.<person>`,
+# `obj.<clue>`, `place.<place>`.
+occasions:
+  caseOpen: { select: first, description: The game starts - the porter knocks at the inspector's door }
+  # The train stands at Harl junction only through the four o'clock hour.
+  enterCar: { select: first, target: { prefix: place, entity: place }, raisedWhen: "occasion.target != 'harl' || run.hour == 'h04'", description: "The player walks into a car or compartment, or onto the Harl platform" }
+  examine:  { select: first, target: { prefix: obj, entity: clue }, description: The player inspects an object in the scene }
+  talk:     { select: all, target: { prefix: npc, entity: person }, description: Interview menu - every open line of questioning for this passenger }
+  review:   { select: all, description: The inspector opens the casebook and picks a page }
+  hourStrikes: { select: sequence, description: The corridor clock strikes the hour }
+  accuse:   { select: first, raisedWhen: "run.hour == 'h06'", description: The train pulls into Ossery at six and the inspector must name a name }

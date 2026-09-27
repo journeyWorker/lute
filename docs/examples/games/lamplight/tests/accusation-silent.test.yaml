@@ -1,0 +1,8 @@
+# Saying nothing is recorded as `silence`, which the accusation's deadline counts as an answer.
+file: ../scenes/accusation.lute
+state: { run.hour: h06 }   # the engine raises `accuse` only at Ossery, six o'clock
+choose: { accuse: silent }
+expect:
+  state: { run.accused: silence }
+  transcriptContains: ["tips his hat to you", "Nothing said, and nothing to show for it."]
+  end: terminal

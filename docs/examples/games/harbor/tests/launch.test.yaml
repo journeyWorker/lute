@@ -1,0 +1,5 @@
+file: ../lore/talks.lute
+beat: launchGull
+facts: [caught(marlin), canSail(gull)]
+expect:
+  eligible: { launchGull: { false: spentBy } }

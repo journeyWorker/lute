@@ -1,0 +1,6 @@
+# Before Ossery nothing is judged: no name has been said, so the accusation stays open.
+file: ../quests/case.lute
+visited: [lamplight.discovery]
+expect:
+  quests: { lamplightCase: active, accusation: active, timeOfDeath: active }
+  end: complete

@@ -1,0 +1,10 @@
+# Losing at the top of Ash Tower: the siege is found, not cleared; no flute;
+# Elder Rook calls after you.
+file: ../../scenes/east/ash-tower.lute
+facts: [hasItem(spectralLens)]
+bridges: { battle: [ { won: false } ] }
+expect:
+  state: { run.lair.towerSiege: found }
+  notFacts: [hasItem(wakingFlute), defeated(gruntTower), canPass(sleepingGiant)]
+  transcriptContains: ["@elderRook: Go, child! Come back when you are stronger. I have waited three days; I can wait three more."]
+  transcriptLacks: ["received the Waking Flute"]

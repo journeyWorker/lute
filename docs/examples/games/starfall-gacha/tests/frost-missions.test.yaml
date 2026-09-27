@@ -1,0 +1,9 @@
+# Vigil 2 cleared with 300 candles in hand: the missions complete (the
+# three-nights objective is optional).
+file: ../quests/events.lute
+state: { user.day: 45, season.frost.tokens: 300 }
+occasions: ["eventStage@estage.f2"]
+expect:
+  quests: { frostMissions: complete }
+  state: { user.gems: 200 }
+  transcriptContains: ["@nyx: You kept the whole vigil. Here. A snow globe. There's a tiny sea inside. Don't shake it too hard, they hate that."]

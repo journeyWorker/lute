@@ -1,0 +1,10 @@
+# Soren's first afternoon offers the study group before the exam.
+file: ../lore/hangouts.lute
+beat: library
+state: { run.day: 2, run.slot: afterSchool }
+quests: { studyGroup: unset }
+expect:
+  eligible: { library: true, annex: false }
+  accepts: [studyGroup]
+  state: { run.aff.soren: 1, run.lanterns: 1, run.study: 0 }
+  end: complete

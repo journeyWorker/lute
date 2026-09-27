@@ -1,0 +1,43 @@
+# Week 4 (days 22-28): Starfall Night. Vesper on the limited banner.
+steps:
+  - advance: { to: { weekday: Mon } }
+    engine: { state: { user.loginStreak: 22, user.loginTotal: 22 } }
+    expect:
+      clock: { day: 22 }
+      presented: [resets.dailyNotice, resets.dailyNotice, resets.dailyNotice, resets.dailyNotice, resets.weeklyNotice, resets.starfallOpens]
+      quests: { harvestMissions: complete, starfallMissions: active }
+  - occasion: login
+    expect: { presented: [login.standardCard, login.starfallCard] }
+  - occasion: eventStage
+    target: estage.s1
+    expect: { winner: starfall.s1 }
+  - occasion: eventStage
+    target: estage.s2
+    choose: { s2Answer: thank }
+    expect: { winner: starfall.s2, state: { quest.starfallMissions.objectives.lantern.done: true } }
+  - occasion: summon
+    target: hero.vesper
+    payload: { copies: 1, streak: 80, banner: starfall }
+    expect: { presented: [bonds.vesper.vesperIntro, bonds.vesper.vesperRateUp] }
+  - engine: { facts: ["owned(vesper)"] }
+  - occasion: summon
+    target: hero.vesper
+    payload: { copies: 2, streak: 3, banner: starfall }
+    label: Vesper has no duplicate line of her own
+    expect: { presented: [summons.limitedGlow, bonds.vesper.vesperRateUp] }
+  - occasion: homeTap
+    target: hero.vesper
+    expect: { winner: bonds.vesper.vesperTap }
+  - engine: { state: { season.starfall.tokens: 180 } }
+  - occasion: shopVisit
+    target: shop.starShop
+    choose: { starStall: [glass, leave] }
+    bridges: { purchase: [ { bought: true, remaining: 60 } ] }
+    expect: { winner: shop.pimStarfall }
+  # day 27: Vesper's birthday
+  - advance: { to: { weekday: Sat } }
+    engine: { state: { user.loginStreak: 27, user.loginTotal: 27 } }
+    expect: { presented: [resets.dailyNotice, resets.dailyNotice, resets.dailyNotice, resets.dailyNotice, resets.dailyNotice, "resets.birthday for vesper", bonds.vesper.vesperBirthday] }
+  - advance: day
+    engine: { state: { user.loginStreak: 28, user.loginTotal: 28 } }
+    expect: { clock: { day: 28, weekday: Sun } }

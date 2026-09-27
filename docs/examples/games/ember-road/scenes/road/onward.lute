@@ -1,0 +1,21 @@
+---
+kind: scene
+id: road.onward
+title: The road goes on
+on: travel
+once: false
+---
+
+## On the Road
+
+<match on="run.leg">
+  <when is="..1">
+    @narrator: Ostwick's walls drop behind the hills. The road is good here. The Company built it well.
+  </when>
+  <when is="2">
+    @narrator: The river runs beside the road, brown and fast, and the milestones start to carry the black sun.
+  </when>
+  <otherwise>
+    @narrator: The Tollbridge chain is visible from every rise now, a black line across the morning.
+  </otherwise>
+</match>

@@ -1,0 +1,14 @@
+# day 16: the festival ended on day 14; the stall stays up until day 17
+file: ../lore/shop.lute
+beat: pimHarvest
+state: { user.day: 16, season.harvest.tokens: 30 }
+choose: { harvestStall: [cake, leave] }
+bridges: { purchase: [ { bought: false, remaining: 30 } ] }
+expect:
+  eligible: true
+  options: { harvestStall: [cake, costume, leave] }
+  transcriptContains:
+    - "@pim: Festival's over, but the stall stays up a few days for stragglers. 30 tokens left. Use 'em."
+    - "@pim: Short on tokens, friend. Clear a few more stages and come back."
+  transcriptLacks: ["Welcome to the Harvest stall!"]
+  end: complete

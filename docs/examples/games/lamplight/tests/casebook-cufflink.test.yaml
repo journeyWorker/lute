@@ -1,0 +1,10 @@
+# The cufflink page remembers Mirela's answer across the loop (everRead), even
+# when she has not been asked again tonight.
+file: ../lore/casebook.lute
+entry: pageCufflink
+facts: ["found(cufflink)"]
+entriesRead: { user: [mirelaCufflink] }
+expect:
+  transcriptContains: ["Her father's."]
+  transcriptLacks: ["Ask her."]
+  end: complete

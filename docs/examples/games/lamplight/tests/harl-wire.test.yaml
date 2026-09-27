@@ -1,0 +1,8 @@
+# At Harl, at four, the inspector wires the Medical Board.
+file: ../scenes/harl.lute
+state: { run.hour: h04 }
+choose: { wire: board }
+expect:
+  state: { run.wired: board }
+  transcriptContains: ["Whatever you hold on an Emmerich Solt."]
+  end: complete

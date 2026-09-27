@@ -1,0 +1,10 @@
+cast:
+  you:          { name: You }
+  nana:         { name: Nana, emotions: [neutral, happy, teasing, worried, sad] }
+  ren:          { name: Ren Aoki, emotions: [neutral, stern, flustered, happy, sad, fond] }
+  mika:         { name: Mika Sato, emotions: [neutral, happy, laughing, hurt, sad, fond] }
+  soren:        { name: Soren Voss, emotions: [neutral, shy, happy, sad, fond, surprised] }
+  kai:          { name: Kai Hollow, emotions: [neutral, smirk, angry, sad, happy, fond] }
+  hotaru:       { name: Hotaru, emotions: [neutral, smiling, sad, fond] }
+  coach:        { name: Coach Dunmore }
+  headmistress: { name: Headmistress Ashgrove }

@@ -1,0 +1,4 @@
+rewardKinds:
+  GOLD: { credits: run.gold }
+  XP:   { credits: user.xp }
+  ITEM: {}

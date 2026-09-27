@@ -1,0 +1,8 @@
+# The first morning of a term: the engine raises newTerm, then the day-1
+# morning slotStart (the clock starts there, so no advance raises it).
+steps:
+  - label: a new term
+    occasion: newTerm
+  - label: day 1 · morning
+    occasion: slotStart
+    expect: { clock: { day: 1, slot: morning } }

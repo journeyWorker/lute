@@ -1,0 +1,92 @@
+---
+kind: lore
+id: oskar
+title: Oskar, at the anvil
+---
+
+/* Everything Oskar says when Wren talks to him, top of the ladder first. */
+
+<beat id="first" on="talk" target="npc.oskar" title="Oskar at the cold forge" priority="90" once="user">
+  ::bg{location="forge" time="night"}
+  @narrator{code="0010"}: The forge in the corner is cold. The man beside it keeps hitting the anvil anyway, with nothing on it.
+  @oskar{code="0010" emotion="grim"}: Don't mind the noise. Hands forget if you let them.
+  @wren{code="0010"}: Why is it cold?
+  @oskar{code="0020"}: Because the thing that lit it is at the top of those stairs, and it isn't coming down.
+  ::set{user.bond.oskar += 1}
+</beat>
+
+<beat id="afterForge" on="talk" target="npc.oskar" title="A warm forge" priority="70" once="user" when="quest.coldForge.state == 'complete'">
+  ::bg{location="forge" time="night"}
+  ::sfx{sound="forge roar"}
+  @narrator{code="0010"}: The forge breathes. Oskar stands too close to it, the way people stand near a fire after a long winter.
+  @oskar{code="0010" emotion="fond"}: I kept hitting that anvil for forty years so my hands wouldn't forget. Turns out it was the rest of me that forgot.
+  @wren{code="0010"}: Forgot what?
+  @oskar{code="0020"}: That I liked this. Go on, get out of my light. I've got work.
+</beat>
+
+<beat id="hammerRack" on="talk" target="npc.oskar" title="The hammer on the rack" priority="65" when="user.hammerReforged && !holds(wields(hammer))">
+  ::bg{location="forge" time="night"}
+  @oskar{code="0010"}: It's on the rack. It's always on the rack for you. Take it or don't.
+  <branch id="rack" prompt="The reforged hammer hangs by the forge.">
+    <choice id="take" label="Take the hammer">
+      ::arm{weapon="hammer"}
+      @oskar{code="0020" emotion="fond"}: Mind the door on four. It remembers this hammer.
+    </choice>
+    <choice id="leave" label="Keep the old blade">
+      @oskar{code="0030" emotion="wry"}: Suit yourself. It'll keep.
+    </choice>
+  </branch>
+</beat>
+
+<beat id="hammerhead" on="talk" target="npc.oskar" title="The hammerhead comes home" priority="60" once="user" when="quest.coldForge.state == 'active' && quest.coldForge.objectives.hammerhead.done">
+  ::bg{location="forge" time="night"}
+  @narrator{code="0010"}: Wren sets the Gatekeeper's maul-head on the anvil. It is too heavy for the anvil, and the anvil does not care.
+  @oskar{code="0010" emotion="stricken"}: That's — aye. That's my mark on the cheek. I'd know it blind.
+  @oskar{code="0020"}: I can make it a hammer again. It'll take embers. It'll take a lot of embers.
+  <branch id="reforge" prompt="The cold forge waits.">
+    <choice id="pay" label="Feed the forge (30 embers)" when="user.embers >= 30">
+      ::set{user.embers -= 30}
+      ::set{user.hammerReforged = true}
+      ::set{user.bond.oskar += 2}
+      ::sfx{sound="forge roar"}
+      @narrator{code="0020"}: The forge catches for the first time in living memory. Oskar laughs, and it sounds like it hurts.
+      @oskar{code="0030" emotion="fond"}: Take it up with you. Let the door feel what it's like.
+    </choice>
+    <choice id="later" label="I don't have the embers yet.">
+      @oskar{code="0040" emotion="wry"}: It's waited this long. It'll wait on the anvil where I can look at it.
+    </choice>
+  </branch>
+</beat>
+
+<beat id="coldForgeOffer" on="talk" target="npc.oskar" title="Oskar asks for the hammerhead" priority="50" spentBy="quest.coldForge.state != 'unset'" when="user.runs >= 1 && user.bond.oskar >= 1">
+  @oskar{code="0010"}: You've been up there now. You'll have seen the Gatekeeper — the brute with the maul.
+  @oskar{code="0020" emotion="grim"}: That maul's head was mine. Forged it for a man who thought he could hold the door. The Stair kept him, and the door kept the hammer.
+  <branch id="ask" prompt="Oskar stops hitting the anvil.">
+    <choice id="accept" label="I'll bring it back.">
+      ::accept{quest="coldForge"}
+      ::set{user.bond.oskar += 1}
+      @oskar{code="0030" emotion="fond"}: Hah. Everyone says that. Say it again after it's split your skull.
+    </choice>
+    <choice id="notYet" label="Not yet.">
+      @oskar{code="0040"}: Aye. Nobody's ready the first time. Ask me again when you're tired of being unready.
+    </choice>
+  </branch>
+</beat>
+
+<entry id="oskarBarkGate" on="talk" target="npc.oskar" category="bark" priority="20" once="user" when="holds(everSlew(gatekeeper))">
+  @oskar{code="0010" emotion="grim"}: You put the Gatekeeper down. Good. He was a friend of mine, once. Put him down again next time.
+</entry>
+
+<entry id="oskarBarkForge" on="talk" target="npc.oskar" category="bark" priority="15" when="user.hammerReforged">
+  @oskar{code="0010" emotion="fond"}: Listen to that. A forge ought to sound like that. Forty years I forgot.
+</entry>
+
+<beat id="smallTalk" on="talk" target="npc.oskar" title="Oskar, idly" priority="5" once="false" when="user.bond.oskar >= 2">
+  @oskar{code="0010"}: You hold a blade like it owes you money. Loosen the grip. Let it want to come back to you.
+  @wren{code="0010"}: Is that smithing advice or climbing advice?
+  @oskar{code="0020" emotion="wry"}: Down here there's only the one kind.
+</beat>
+
+<entry id="oskarBarkAnvil" on="talk" target="npc.oskar" category="bark">
+  @oskar{code="0010"}: Mind the sparks. There aren't any. Mind them anyway.
+</entry>

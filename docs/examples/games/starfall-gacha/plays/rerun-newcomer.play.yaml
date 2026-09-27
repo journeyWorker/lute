@@ -1,0 +1,33 @@
+# A player who joined after the original Harvest Moon: the rerun gives them
+# the whole story, then the encore on the next clear of stage 3.
+state: { user.day: 35 }
+steps:
+  - advance: day
+    expect: { clock: { day: 36 }, presented: [resets.dailyNotice, resets.weeklyNotice, resets.harvestOpens, resets.chapterThree], quests: { harvestMissions: active } }
+  - occasion: eventStage
+    target: estage.h1
+    expect: { winner: harvest.h1 }
+  - occasion: eventStage
+    target: estage.h2
+    choose: { h2Wake: pim }
+    expect: { winner: harvest.h2 }
+  - occasion: eventStage
+    target: estage.h3
+    expect: { winner: harvest.h3, notOffered: [harvest.encore] }
+  - occasion: eventStage
+    target: estage.h3
+    label: stage 3 again
+    expect: { winner: harvest.encore }
+  - engine: { state: { season.harvest.tokens: 120 } }
+  - occasion: shopVisit
+    target: shop.harvestShop
+    choose: { harvestStall: [cake, leave] }
+    bridges: { purchase: [ { bought: true, remaining: 70 } ] }
+  # the rerun ends with the token mission unfinished
+  - advance: { to: { weekday: Mon } }
+    expect: { clock: { day: 43 }, quests: { harvestMissions: failed } }
+expect:
+  transcriptContains:
+    - "@pim: RISE AND SHINE, PRIESTESS! PAYING CUSTOMERS!"
+    - "@cyra: You came back. The moon remembers you. So do I, vaguely. I was asleep for part of it."
+    - "@pim: One moon cake! Eat it under the moon or it's just a cake. 70 tokens left."

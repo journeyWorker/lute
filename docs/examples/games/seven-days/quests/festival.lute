@@ -1,0 +1,30 @@
+---
+kind: quest
+id: quests.festival
+title: The week's promises
+---
+
+<quest id="festivalLantern" title="A lantern for the Walk" tier="run">
+  <objective id="frame" title="Bend a reed frame (Theo cuts reed at the pier, mornings)" done="run.lantern.frame" by="@friAfternoonOver">
+    @narrator: The frame holds its shape when you let go. That is most of a lantern.
+  </objective>
+  <objective id="paper" title="Find paper that will not drown (ask at the library)" done="run.lantern.paper" by="@friAfternoonOver">
+    @narrator: The paper is thin as an onion skin and tougher than it looks.
+  </objective>
+  <objective id="wish" title="Write a wish on the lantern" done="isSet(run.lantern.wish)" optional/>
+</quest>
+
+<quest id="theoLighthouse" title="Wednesday night at the lighthouse" tier="run">
+  <objective id="go" title="Meet Theo at the lighthouse on Wednesday night" done="visited('theo.lighthouse')" by="@wedNightOver"/>
+  <on event="questComplete">
+    ::set{run.aff.theo += 1}
+  </on>
+  <on event="questFailed">
+    @narrator: Somewhere out past the breakwater, the water glowed for an hour, and nobody was there to see it but Theo.
+  </on>
+</quest>
+
+<quest id="inesWednesday" title="Library, Wednesday afternoon" start="visited('library.ines.meet')" tier="run">
+  <objective id="kept" title="Be at the library on Wednesday afternoon for the paper delivery" done="visited('library.ines.wednesday')" by="@wedAfternoonOver"/>
+  <objective id="noticed" title="(Journal) Ines noticed you came" on="slotEnd" done="run.aff.ines >= 3" optional/>
+</quest>

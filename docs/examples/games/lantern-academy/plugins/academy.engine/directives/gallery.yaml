@@ -1,0 +1,7 @@
+# ::unlockCg{cg="cgRenStars"} — fire-and-forget: the engine shows the CG full
+# screen and files it in the save's gallery. Content keeps its own user-tier
+# record (cgSeen) through components/cg.component.lute.
+directives:
+  - name: unlockCg
+    attrs:
+      - { name: cg, required: true, type: { entity: cg } }

@@ -1,0 +1,9 @@
+# The Frost King's page opens once the Lantern Sea page taught the sea, and
+# teaches the king for good.
+file: ../lore/codex.lute
+entry: frostKingPage
+facts: ["learned(lanternSea)"]
+expect:
+  eligible: true
+  facts: ["learned(frostKing)"]
+  transcriptContains: ["@narrator: Before he was hollow he was the Frost King, and his first wish was for winter to stay. It did. He drowned the lantern himself."]

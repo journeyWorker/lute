@@ -1,0 +1,8 @@
+steps:
+  - label: two birthdays
+    engine: { facts: [birthdayToday(mara), birthdayToday(ines)] }
+  - occasion: morning
+    expect: { presented: [birthday.song, birthday.song] }
+expect:
+  state: { user.bond.mara: 1, user.bond.ines: 1, user.bond.tomas: 0 }
+  transcriptContains: ["The harbor sings for old Mara.", "The harbor sings for little Ines."]

@@ -1,0 +1,35 @@
+---
+kind: scene
+id: mika.date
+title: Mika — the dawn lap
+on: slotStart
+when: "run.route == 'mika' && run.day == 7 && run.slot == 'afterSchool'"
+priority: 10
+after: 'visited("common.festival")'
+---
+
+## The track
+
+::bg{location="track" time="dusk"}
+::music{action="start" mood="romantic" volume="normal"}
+::auto{character="mika" anchor="center" action="fadeInUp"}
+@mika{emotion="laughing"}: Doctor says walk, don't run. So we're walking. Fastest walk on the island, though. Keep up.
+@mika{emotion="fond"}: I did the relay. I lost the relay. And then I floated a lantern with you, so honestly? Good Saturday.
+
+::date{with="mika" spot="track" resultKey="lap"}
+
+<match on="scene.date.lap.mood">
+  <when is="perfect">
+    @mika{emotion="happy"}: Finish line! We tied. That means we both win, that's the rule, I made it up.
+    ::use{component="cg" id="cgMikaFinish"}
+    ::set{run.aff.mika += 2}
+  </when>
+  <when is="sweet">
+    @mika{emotion="laughing"}: You walk like you're late for something. Stay late with me instead.
+    ::set{run.aff.mika += 1}
+  </when>
+  <otherwise>
+    @mika{emotion="sad"}: Sorry. I keep looking at the track like it owes me something. Let's head back.
+  </otherwise>
+</match>
+@narrator{when="scene.date.lap.hearts >= 5"}: He holds your hand on the last bend, the one he usually sprints.

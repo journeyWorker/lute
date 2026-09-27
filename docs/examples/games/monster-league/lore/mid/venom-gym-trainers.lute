@@ -1,0 +1,40 @@
+---
+kind: lore
+id: mid.venomGymTrainers
+title: The Venom Gym's jugglers, tamers and guide (Wardenmere)
+---
+
+// Kessler's four trainers stand among the invisible walls; the guide waits by
+// the door.
+
+<beat use="trainerBattle" id="venomGymJugglerKaspar" who="venomGymJugglerKaspar" intro="You walked into the first wall! Everyone does. Now walk into a battle!" win="You're good at walls AND battles. Unfair." lose="Mind the wall on the way out." prize="800"/>
+
+<entry id="midVenomGymJugglerKasparAfter" on="talk" target="npc.venomGymJugglerKaspar" category="bark" when="holds(defeated(venomGymJugglerKaspar))">
+  @venomGymJugglerKaspar: Watch the floor tiles. The walls stand on the dark ones. Don't tell Kessler. He thinks it's a mystery.
+</entry>
+
+<beat use="trainerBattle" id="venomGymTamerOdile" who="venomGymTamerOdile" intro="My Hoodra doesn't bite. It squeezes. Shall we test that?" win="Hoodra, let go of the challenger. Let go. Good." lose="Squeeze, then release. That's taming." prize="880"/>
+
+<entry id="midVenomGymTamerOdileAfter" on="talk" target="npc.venomGymTamerOdile" category="bark" when="holds(defeated(venomGymTamerOdile))">
+  @venomGymTamerOdile: Kessler trains poison because poison never gives up. It just waits. He's very good at waiting. He's been waiting for a worthy challenger for years.
+</entry>
+
+<beat use="trainerBattle" id="venomGymJugglerNell" who="venomGymJugglerNell" intro="Two smogballs, one challenger, and a very small room!" win="I dropped the smogballs. Everyone out, quickly!" lose="Catch!" prize="800"/>
+
+<entry id="midVenomGymJugglerNellAfter" on="talk" target="npc.venomGymJugglerNell" category="bark" when="holds(defeated(venomGymJugglerNell))">
+  @venomGymJugglerNell: My cousin Fitz juggles out on Route 12. He says he's the artist of the family. He can't even find the walls.
+</entry>
+
+<beat use="trainerBattle" id="venomGymTamerBastien" who="venomGymTamerBastien" intro="The last wall before Kessler is me. I'm the only wall you can see." win="A wall that falls over. Not my best work." lose="Solid as ever." prize="920"/>
+
+<entry id="midVenomGymTamerBastienAfter" on="talk" target="npc.venomGymTamerBastien" category="bark" when="holds(defeated(venomGymTamerBastien))">
+  @venomGymTamerBastien: Kessler laughs before every battle. The louder he laughs, the more nervous he is. You'll hear.
+</entry>
+
+<entry id="midVenomGymGuide" on="talk" target="npc.venomGymGuide" category="bark" when="!holds(hasBadge(venom))">
+  @venomGymGuide: Yo, champ in the making! Kessler's gym is full of invisible walls, and his poison types wear you down slowly. Stock up on Antidotes, and keep your psychic types handy.
+</entry>
+
+<entry id="midVenomGymGuideDone" on="talk" target="npc.venomGymGuide" category="bark" when="holds(hasBadge(venom))">
+  @venomGymGuide: The Venom Badge! Now all you need to cross the water is a Surf disc. The Wildmoor rest house has one, if you can find it among the ranger's teacups.
+</entry>

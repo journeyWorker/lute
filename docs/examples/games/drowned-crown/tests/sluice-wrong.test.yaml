@@ -1,0 +1,8 @@
+# A wrong wheel floods the corridor; the gate stays shut, and the puzzle comes back.
+file: ../scenes/library/sluice.lute
+state: { run.depth: 3 }
+choose: { valveOrder: crownFirst }
+expect:
+  state: { run.valves: 1 }
+  notFacts: ["solved(sluice)"]
+  end: complete

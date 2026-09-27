@@ -1,0 +1,14 @@
+---
+kind: scene
+id: hub.deck
+title: The deck
+pov: ilo
+# The fallback: whatever happened, the ship is still here.
+on: hubVisit
+once: false
+---
+
+## Deck
+
+::bg{location="deck" time="day"}
+@narrator: Rope creaks. Tavi's pot bubbles. Far below, the palace waits with its doors open.

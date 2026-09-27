@@ -1,0 +1,74 @@
+---
+kind: lore
+id: mid.eclipse
+title: Team Eclipse in the Midlands (Game Corner hideout, Helix Tower)
+---
+
+// The grunts of the two mid lairs after their battles (the battles are in
+// scenes/mid/game-corner.lute and scenes/mid/helix-tower.lute), the two
+// grunts on Silvercrest square while Eclipse holds Helix Tower, and the
+// tower's doors while Eclipse is still busy at Ash Tower (east).
+
+// ── Helix Tower before the siege of Ash Tower is lifted ───────────────────
+
+<beat id="helixSealed" on="enterPlace" target="place.helixTower" title="Helix Tower (sealed)" once="false" when="run.lair.towerSiege != 'cleared'">
+  ::bg{location="silvercrest" time="day"}
+  @narrator: Helix Corp's revolving doors have been chained together. Behind the glass, the lobby is dark, and a grunt is asleep on the reception desk.
+  @helixGruntSquareA: Closed! Private function! The Director's busy in Ashgrove, and nobody goes up till he's back. Shoo!
+</beat>
+
+// ── Silvercrest square while Eclipse holds the tower ──────────────────────
+
+<beat use="trainerBattle" id="helixGruntSquareA" when="run.lair.helixHQ != 'cleared'" who="helixGruntSquareA" intro="This square is Eclipse property now! Pay the toll! The toll is losing!" win="The toll's been... waived. Just this once." lose="Toll paid. Thank you for choosing Eclipse." prize="700"/>
+
+<entry id="midHelixGruntSquareAAfter" on="talk" target="npc.helixGruntSquareA" category="bark" when="holds(defeated(helixGruntSquareA)) && run.lair.helixHQ != 'cleared'">
+  @helixGruntSquareA: I only joined for the coat. It's a really good coat. Warm. Lots of pockets.
+</entry>
+
+<entry id="midHelixGruntSquareAGone" on="talk" target="npc.helixGruntSquareA" category="bark" when="run.lair.helixHQ == 'cleared'">
+  @narrator: Where the grunt stood, someone has left an Eclipse coat folded neatly on a bench. It really does have a lot of pockets.
+</entry>
+
+<beat use="trainerBattle" id="helixGruntSquareB" when="run.lair.helixHQ != 'cleared'" who="helixGruntSquareB" intro="Nobody gets near the tower! Admin Maelis's orders, and she writes everything down!" win="She's going to write this down. She writes everything down." lose="I'll put in a good word. A written one." prize="700"/>
+
+<entry id="midHelixGruntSquareBAfter" on="talk" target="npc.helixGruntSquareB" category="bark" when="holds(defeated(helixGruntSquareB)) && run.lair.helixHQ != 'cleared'">
+  @helixGruntSquareB: The Director says the sleeping giant on Route 12 is going to power the whole region. I say it's going to be grumpy.
+</entry>
+
+// ── after the battles in the lairs ────────────────────────────────────────
+
+<entry id="midCornerGruntDoorAfter" on="talk" target="npc.cornerGruntDoor" category="bark" when="holds(defeated(cornerGruntDoor)) && run.lair.cornerHideout != 'cleared'">
+  @cornerGruntDoor: I'm guarding the stairs. Don't use the stairs. I mean it this time.
+</entry>
+
+<entry id="midCornerGruntVaultAfter" on="talk" target="npc.cornerGruntVault" category="bark" when="holds(defeated(cornerGruntVault)) && run.lair.cornerHideout != 'cleared'">
+  @cornerGruntVault: Seven hundred and eleven. Seven hundred and... no. Start again.
+</entry>
+
+<entry id="midCornerScientistLoyAfter" on="talk" target="npc.cornerScientistLoy" category="bark" when="holds(defeated(cornerScientistLoy)) && run.lair.cornerHideout != 'cleared'">
+  @cornerScientistLoy: The lens sees what lives between here and there. Ghosts, mostly. The Director wanted it for Ash Tower. Something up there doesn't like to be looked at.
+</entry>
+
+<entry id="midGruntCornerAfter" on="talk" target="npc.gruntCorner" category="bark" when="holds(defeated(gruntCorner))">
+  @gruntCorner: Silvercrest was only ever a stop on the way. Maelis has the tower, and the Director has the rest. Run along to Ash Tower with your little lens.
+</entry>
+
+<entry id="midHelixGruntLobbyAfter" on="talk" target="npc.helixGruntLobby" category="bark" when="holds(defeated(helixGruntLobby)) && run.lair.helixHQ != 'cleared'">
+  @helixGruntLobby: You're signed in now. Visitor badge. Don't lose it, there's a fine.
+</entry>
+
+<entry id="midHelixGruntF3After" on="talk" target="npc.helixGruntF3" category="bark" when="holds(defeated(helixGruntF3)) && run.lair.helixHQ != 'cleared'">
+  @helixGruntF3: I've started filing, just to look busy. I've filed the stapler.
+</entry>
+
+<entry id="midHelixScientistOrrinAfter" on="talk" target="npc.helixScientistOrrin" category="bark" when="holds(defeated(helixScientistOrrin)) && run.lair.helixHQ != 'cleared'">
+  @helixScientistOrrin: Subject S sleeps on Route 12. Wake it with the right note and it would power a city for a century. Wake it with the wrong note and... well. We never got the flute.
+</entry>
+
+<entry id="midHelixGruntF10After" on="talk" target="npc.helixGruntF10" category="bark" when="holds(defeated(helixGruntF10)) && run.lair.helixHQ != 'cleared'">
+  @helixGruntF10: Your friend with the hair came through earlier. He kept saying "I'm not with them". Nobody asked.
+</entry>
+
+<entry id="midGruntHelixAfter" on="talk" target="npc.gruntHelix" category="bark" when="holds(defeated(gruntHelix))">
+  @gruntHelix: I have written down your name. The Director reads everything I write. He is in Verdant City, child, and he is very patient.
+</entry>

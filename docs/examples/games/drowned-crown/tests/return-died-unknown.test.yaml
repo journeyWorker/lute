@@ -1,0 +1,6 @@
+# Died, but the engine did not say what killed him: the unset arm speaks.
+file: ../scenes/hub/return-died.lute
+state: { run.outcome: died, user.deaths: 3 }
+expect:
+  transcriptContains: ["Nobody can say what took him this time.", "That's the third time I've pulled a corpse"]
+  end: complete

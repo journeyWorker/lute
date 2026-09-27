@@ -1,0 +1,162 @@
+# One save, five terms (NG+). Each term takes a different route; the save
+# remembers every ending (cleared, user tier), counts terms (user.terms), and
+# reads the term just ended through prev.run.*. After the fourth route the
+# keeper's route opens at the festival, and term 5 reaches the true ending.
+#   lute play . --script plays/five-terms.play.yaml
+#
+# Each term states its own choices and minigame results beside its includes
+# (0.27 `include:` with `repeat:` / `choose:` / `bridges:`): the arrival's
+# firstLook on term-start, the hearing (day 2), Mika's ankle (day 3) and the
+# midterm (day 4) on the days, the lantern, the date and the confession on the
+# finale (the lantern and the date) and on week2 (the confession).
+steps:
+  - occasion: title
+    expect: { winner: title.fresh }
+
+  # ── term 1: Ren ──────────────────────────────────────────────
+  - include: steps/term-start.steps.yaml
+    choose: { firstLook: ren }
+  - include: steps/day-council.steps.yaml
+    repeat: 5
+    choose: { clash: sideRen, injury: urge }
+    bridges: { exam: [ { grade: pass, score: 71 } ] }
+  - include: steps/finale.steps.yaml
+    choose: { lantern: ren }
+    bridges: { date: [ { mood: perfect, hearts: 5 } ] }
+  - occasion: gift
+    target: npc.ren
+    payload: { hearts: 4 }
+  - include: steps/week2.steps.yaml
+    choose: { renAsk: stay }
+  - label: term 1 is over
+    occasion: title
+    expect:
+      winner: title.returning
+      state: { run.ending: good, user.terms: 1 }
+      facts: ["cleared(ren, good)", "locked(kai)"]
+
+  # ── term 2: Mika ─────────────────────────────────────────────
+  - label: term 2
+    newRun: true
+    expect:
+      state: { prev.run.route: ren, prev.run.ending: good, run.route: none, run.aff.ren: 0 }
+      notFacts: ["locked(kai)"]
+      facts: ["cleared(ren, good)"]
+  - include: steps/term-start.steps.yaml
+    choose: { firstLook: mika }
+  - include: steps/day-track.steps.yaml
+    choose: { clash: stayOut }
+  - include: steps/day-roof.steps.yaml
+    repeat: 4
+    choose: { injury: keep }
+    bridges: { exam: [ { grade: pass, score: 64 } ] }
+  - include: steps/finale.steps.yaml
+    choose: { lantern: mika }
+    bridges: { date: [ { mood: awkward, hearts: 1 } ] }
+  - occasion: gift
+    target: npc.mika
+    payload: { hearts: 1 }
+  - include: steps/week2.steps.yaml
+    choose: { mikaAsk: heal }
+  - label: term 2 is over
+    occasion: title
+    expect:
+      winner: title.returning
+      quests: { festivalPrep: failed }
+      state: { run.ending: bittersweet, run.aff.mika: 3, user.terms: 2 }
+      facts: ["cleared(mika, bittersweet)"]
+
+  # ── term 3: Soren ────────────────────────────────────────────
+  - label: term 3
+    newRun: true
+    expect: { state: { prev.run.route: mika, prev.run.ending: bittersweet } }
+  - include: steps/term-start.steps.yaml
+    choose: { firstLook: soren }
+  - include: steps/day-library.steps.yaml
+    repeat: 5
+    choose: { clash: stayOut, injury: urge }
+    bridges: { exam: [ { grade: top,  score: 97 } ] }
+  - include: steps/finale.steps.yaml
+    choose: { lantern: soren }
+    bridges: { date: [ { mood: sweet,   hearts: 3 } ] }
+  - occasion: gift
+    target: npc.soren
+    payload: { hearts: 3 }
+  - include: steps/week2.steps.yaml
+    choose: { sorenAsk: write }
+  - label: term 3 is over
+    occasion: title
+    expect:
+      winner: title.returning
+      quests: { studyGroup: complete, fourLanterns: active }
+      state: { run.exam: top, run.ending: good, user.terms: 3 }
+      facts: ["cleared(soren, good)"]
+
+  # ── term 4: Kai ──────────────────────────────────────────────
+  - label: term 4
+    newRun: true
+  - include: steps/term-start.steps.yaml
+    choose: { firstLook: kai }
+  - include: steps/day-musicRoom.steps.yaml
+    repeat: 5
+    choose: { clash: sideKai, injury: urge }
+    bridges: { exam: [ { grade: fail, score: 31 } ] }
+  - include: steps/finale.steps.yaml
+    choose: { lantern: kai }
+    bridges: { date: [ { mood: perfect, hearts: 5 } ] }
+  - occasion: gift
+    target: npc.kai
+    payload: { hearts: 5 }
+  - include: steps/week2.steps.yaml
+    choose: { kaiAsk: hum }
+  - label: term 4 is over — every route cleared
+    occasion: title
+    expect:
+      winner: title.keeperWaits
+      quests: { fourLanterns: complete }
+      state: { run.ending: good, user.terms: 4 }
+      facts: ["cleared(kai, good)", "locked(ren)", "locked(soren)"]
+
+  # ── term 5: the keeper ───────────────────────────────────────
+  - label: term 5
+    newRun: true
+  - include: steps/term-start.steps.yaml
+    choose: { firstLook: mika }
+  - include: steps/day-track.steps.yaml
+    repeat: 3
+    choose: { clash: stayOut, injury: keep }
+    bridges: { exam: [ { grade: pass, score: 80 } ] }
+  - include: steps/day-roof.steps.yaml
+    repeat: 2
+  - include: steps/finale.steps.yaml
+    choose: { lantern: hotaru }
+    bridges: { date: [ { mood: sweet,   hearts: 4 } ] }
+  - occasion: gift
+    target: npc.hotaru
+    payload: { hearts: 2 }
+  - include: steps/week2.steps.yaml
+  - label: term 5 is over
+    occasion: title
+    expect: { winner: title.freed, state: { run.route: hotaru, run.ending: keeper, user.terms: 5 } }
+  - occasion: gallery
+    pick: galKeeperEnd
+    expect:
+      offered: [galFestival, galRenStars, galRenEnd, galSorenEnd, galKaiDuet, galKaiEnd, galKeeperEnd]
+      notOffered: [galMikaFinish, galMikaEnd, galSorenLetter]
+expect:
+  end: complete
+  quests: { fourLanterns: complete }
+  state: { user.terms: 5, prev.run.route: kai, prev.run.ending: good }
+  facts: ["cleared(ren, good)", "cleared(mika, bittersweet)", "cleared(soren, good)", "cleared(kai, good)", "cgSeen(cgKeeperEnd)"]
+  notFacts: ["cleared(mika, good)"]
+  transcriptContains:
+    - "@you{mono}: I have floated a lantern here before. Last term it was with Ren. It ended with the lantern ending."
+    - "Last term it was with Mika. It ended with the ember ending."
+    - "@hotaru{vo}: Welcome back. Try to remember more of it this time."
+    - "The festival's tonight and we've got two sad lanterns and a paper crane."
+    - "You'll be fine. Better than fine."
+    - "Four lanterns. You carried every one of them back to me."
+    - "Hello. I'm new. I think I'm new. Have we met?"
+    - "Next term. The one without a lantern."
+    # the place kind's labels: (0.27) render {{occasion.target}} in hangouts.nobody
+    - "@narrator: You spend the hour at the roof. Nobody comes."

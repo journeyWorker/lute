@@ -1,0 +1,7 @@
+# By day the bridge is empty: Lou's battle is not eligible.
+file: ../../lore/east/trainers-routes.lute
+beat: r6GamblerLou
+state: { run.slot: day }
+bridges: { battle: [ { won: true } ] }
+expect:
+  eligible: false

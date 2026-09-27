@@ -1,0 +1,22 @@
+# Route E — the whole caravan burns: steel drawn at the chain, the battle lost,
+# and the battle system reports every wagon gone. `terminal:` holds, so the
+# chapter is over where it stands: no camp, no far bank.
+#   lute play . --script plays/ashes.play.yaml
+presented: { run: [road.departure, road.ford, bridge.arrival] }
+quests: { emberRoad: active }
+state:
+  run.leg: 3
+  run.night: 3
+  run.bridge: stormed
+  quest.emberRoad.objectives.ford.done: true
+steps:
+  - label: the battle system fights the Tollbridge, and loses everything
+    engine:
+      state: { run.battle.outcome: lost }
+      facts: [fell(corvin), fell(isolde)]
+  - occasion: battleEnd
+    payload: { wagonsLost: 11 }
+    expect: { presented: [bridge.defeat, bridge.fallen], state: { run.wagons: 0 } }
+expect:
+  end: terminal
+  quests: { emberRoad: failed }

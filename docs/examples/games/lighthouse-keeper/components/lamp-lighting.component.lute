@@ -1,0 +1,21 @@
+---
+component: lampLighting
+params:
+  # Whoever keeps the light now. The glass follows the host's weather unless a
+  # ::use says otherwise (dsl 0.26.0 §3.3: a default is a literal or a host @def).
+  keeper: { type: string, default: "The inspector" }
+  glass: { type: { enum: [steady, guttering] }, default: "@glassTonight" }
+---
+
+## Lighting the Lamp
+
+::sfx{sound="brass_crank"}
+@narrator: {{@keeper}} climbs the hundred and eleven steps, trims the wick, and sets the clockwork turning.
+<match on="@glass">
+  <when is="steady">
+    @narrator: The beam walks out across the water, steady as a heartbeat. Five seconds dark, one second bright.
+  </when>
+  <when is="guttering">
+    @narrator: The wind finds every seam in the lantern. The flame leans and gutters, and the beam stutters over the Teeth.
+  </when>
+</match>

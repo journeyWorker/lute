@@ -1,0 +1,48 @@
+---
+kind: lore
+id: bonds.bram
+title: Bram, the Anvil (SR)
+---
+
+<beat id="bramIntro" on="summon" target="hero.bram" once="user" priority="10">
+  @bram{emotion="happy"}: HA! Summoned! Nobody's summoned me since the war. Where's the forge?
+  @bram: This is Doris. Doris is a hammer. Say hello to Doris.
+</beat>
+
+<beat id="bramDupe" on="summon" target="hero.bram" once="false" priority="3" when="holds(owned(bram)) && occasion.payload.copies <= 6">
+  @bram{emotion="happy"}: Another me! Good. One of us can nap while the other hammers.
+</beat>
+
+<beat id="bramTap" on="homeTap" target="hero.bram" once="day">
+  @bram: Doris says your sword's gone dull. Doris is rarely wrong.
+</beat>
+
+<beat id="bramBirthday" on="dailyReset" once="day" when="holds(celebrate(bram))">
+  @bram{emotion="happy"}: A cake! With candles! Stand back, I'll light them with the forge.
+  @lumi{emotion="surprised"}: Please do not light them with the forge.
+</beat>
+
+<beat use="bondStory" id="bramR1" who="bram" rank="r1" vow="Doris likes you. That's rare. Don't waste it.">
+  @bram: You want to know about Doris. Everyone does, eventually.
+  @bram{emotion="sad"}: My father made her. Last thing he made before the Hollow King took the light out of his eyes.
+  @bram: So I keep her loud. Every strike, so he can hear it wherever he is.
+</beat>
+
+<beat use="bondStory" id="bramR2" who="bram" rank="r2" prev="bonds.bram.bramR1" vow="Whatever breaks, bring it to me. Even if it's you.">
+  @bram: I made you something. Don't laugh.
+  @narrator: It is a small iron star, a little lopsided, still warm.
+  <branch id="bramR2Gift" prompt="Bram waits, very red.">
+    <choice id="wear" label="Wear it at once.">
+      @bram{emotion="happy"}: HA! It suits you! Doris, it suits them!
+    </choice>
+    <choice id="lopsided" label="It's lopsided.">
+      @bram{emotion="angry"}: It's CHARACTER. Stars aren't round, they're... honest.
+    </choice>
+  </branch>
+</beat>
+
+<beat use="bondStory" id="bramR3" who="bram" rank="r3" prev="bonds.bram.bramR2" vow="Bram of the Anvil. Your blade, your shield, your very loud friend.">
+  @bram: I heard him today. My father. In the ring of the anvil.
+  @bram{emotion="sad"}: Probably just the metal. Probably.
+  @bram{emotion="happy"}: Doesn't matter. I'm keeping it loud. You're keeping me company.
+</beat>

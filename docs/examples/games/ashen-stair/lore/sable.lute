@@ -1,0 +1,59 @@
+---
+kind: lore
+id: sable
+title: Sable, by the water
+---
+
+/* Everything Sable says when Wren talks to her, top of the ladder first. */
+
+<beat id="first" on="talk" target="npc.sable" title="The quiet one by the water" priority="90" once="user">
+  ::bg{location="cistern" time="night"}
+  @narrator{code="0010"}: A woman sits at the edge of the cistern. Wren can see the far wall through her shoulder.
+  @sable{code="0010" emotion="guarded"}: You're the new one. You still have a shadow. Enjoy it.
+  @wren{code="0010"}: Are you — dead?
+  @sable{code="0020" emotion="wry"}: Down here that's a matter of opinion. Mine changes.
+  ::set{user.bond.sable += 1}
+</beat>
+
+<beat id="feather" on="talk" target="npc.sable" title="Sable lends the feather" priority="55" when="quest.sableLost.state == 'active' && !run.carriesFeather">
+  @sable{code="0010"}: Take it this time. Don't argue. If you fall it'll find its way back to me; it always does.
+  ::set{run.carriesFeather = true}
+  @narrator{code="0010"}: The feather weighs nothing. Somehow it is the heaviest thing Wren has ever carried up a staircase.
+</beat>
+
+<beat id="name" on="talk" target="npc.sable" title="Sable says her name" priority="50" once="user" when="user.runs >= 2 && user.bond.sable >= 1">
+  @sable{code="0010"}: You keep coming back. I used to. Before I stopped having a body to come back in.
+  @sable{code="0020" emotion="fond"}: Sable. That was it. Say it once so it's said.
+  <branch id="sayIt" prompt="Sable is waiting.">
+    <choice id="say" label="Sable.">
+      ::set{user.knowsSableName = true}
+      ::set{user.bond.sable += 1}
+      @sable{code="0030" emotion="stricken"}: ...Thank you. Forty years is a long time to go unsaid.
+    </choice>
+    <choice id="silent" label="Say nothing.">
+      ::set{user.knowsSableName = true}
+      @sable{code="0040" emotion="guarded"}: Fair. Names are heavy. You'll carry it anyway, now.
+    </choice>
+  </branch>
+  @sable{code="0050"}: I left something at the top. A feather — grey, from a bird that doesn't live anywhere any more. If you ever get out, take it with you. It wanted to see the sky.
+</beat>
+
+<entry id="sableBarkNamed" on="talk" target="npc.sable" category="bark" priority="12" when="user.knowsSableName">
+  @sable{code="0010" emotion="fond"}: You say my name like it's a normal word. I like that.
+</entry>
+
+<entry id="sableBarkGate" on="talk" target="npc.sable" category="bark" priority="10" when="holds(saw(sable, gatekeeperFall)) && !holds(saw(sable, wardenFall))">
+  @sable{code="0010" emotion="wry"}: I heard the Gatekeeper hit the floor from down here. The whole Stair rang like a bell.
+</entry>
+
+<entry id="sableBarkRuns2" on="talk" target="npc.sable" category="bark" priority="6" once="user" when="user.runs == 2">
+  @sable{code="0010"}: Still here? Still you? Good. Hold on to the second one.
+</entry>
+
+<entry id="sableBarkRuns1" on="talk" target="npc.sable" category="bark" priority="5" once="user" when="user.runs == 1">
+  @sable{code="0010" emotion="guarded"}: You came back. They mostly do, the first few times.
+</entry>
+
+<entry id="sableBarkWater" on="talk" target="npc.sable" category="bark">
+  @sable{code="0010"}: The water here is older than the Stair. It remembers being rain.
+</entry>

@@ -1,0 +1,24 @@
+---
+kind: scene
+id: bridge.victory
+title: The near arch, after
+on: battleEnd
+when: "@wonBattle"
+priority: 10
+after: 'visited("bridge.arrival")'
+---
+
+## The Near Arch
+
+::bg{location="tollbridge" time="dusk"}
+::music{action="change" mood="sad" volume="down"}
+@narrator: The chain is down because someone cut it. Crossbows lie along the parapet like dropped cutlery. The gorge takes the smoke and gives back nothing.
+@narrator{when="holds(fell(maelis))"}: Maelis of Coldwater lies across the chain she guarded. Somebody has closed her eyes. Nobody will say who.
+@narrator{when="!holds(fell(maelis))"}: Maelis is not among the dead. Her people say she went over the parapet on a rope when the chain fell, and that she will be back.
+@corvin{when="holds(inParty(corvin))"}: Well. That's one way to pay a toll.
+@isolde{when="holds(inParty(isolde)) && holds(fell(maelis))"}: I knew her brother. Now I have known them both.
+@wren{when="@wrenWithUs"}: The river's loud tonight. It's angry. It has a right to be.
+@narrator{when="occasion.payload.wagonsLost >= 1"}: The Company's count comes to {{occasion.payload.wagonsLost:plural(one wagon|#word wagons)}} fewer than it was this morning.
+::set{run.wagons -= occasion.payload.wagonsLost}
+::set{run.rep.dusk -= 2}
+::set{run.rep.company += 1}

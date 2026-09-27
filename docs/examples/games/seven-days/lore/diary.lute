@@ -1,0 +1,30 @@
+---
+kind: lore
+id: diary
+title: Sol's diary
+---
+
+/* The day is over (`dayEnd`, raised by the clock at the night slot before
+   midnight). A heading, then one line for each person Sol saw today
+   (`for="kind:person"`, 0.27), in member order. */
+
+<beat id="day" on="dayEnd" title="Diary" priority="10" once="day">
+  @sol{mono}: {{clock.weekdayLabel}}. {{run.postcards:plural(# postcard|# postcards)}} home so far.
+</beat>
+
+<beat id="person" on="dayEnd" for="kind:person" once="false" title="Diary: who I saw" when="run.seen[occasion.target] == run.day">
+  <match on="occasion.target">
+    <when is="ines">
+      @sol{mono}: Ines. {{run.aff.ines:plural(# kind word|# kind words)}}, if I'm counting, which I'm not.
+    </when>
+    <when is="theo">
+      @sol{mono}: Theo. Smelled of diesel again.
+    </when>
+    <when is="pell">
+      @sol{mono}: Aunt Pell, all day, obviously.
+    </when>
+    <when is="mira">
+      @sol{mono}: Mira at the post office. The machine is still haunted.
+    </when>
+  </match>
+</beat>

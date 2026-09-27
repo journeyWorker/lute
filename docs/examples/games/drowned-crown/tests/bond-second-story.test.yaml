@@ -1,0 +1,6 @@
+# Brann's second story waits for the first, whatever his bond.
+file: ../lore/bonds.lute
+beat: brann2
+state: { user.bond.brann: 6 }
+expect:
+  eligible: { bonds.brann2: false }

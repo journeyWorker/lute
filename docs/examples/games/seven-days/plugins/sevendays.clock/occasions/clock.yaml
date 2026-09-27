@@ -1,0 +1,21 @@
+occasions:
+  dayStart:
+    select: first
+    description: The engine rolled the calendar past midnight, or opened a run at Monday morning (the schema's clock raises it, before slotStart; raiseAtStart).
+  slotStart:
+    select: first
+    description: The clock stopped at a new slot (morning / afternoon / night); raised by the schema's clock after every advance, and where a run starts.
+  dayEnd:
+    select: sequence
+    description: The day is over, before midnight (the clock raises it at the night slot). Sol's diary, one line per person seen today.
+  placeVisit:
+    select: first
+    target: { prefix: place, entity: place }
+    description: The player walked to a place on the town map (place.library, place.pier, ...).
+  slotEnd:
+    select: first
+    description: The slot is over; the engine is about to advance the clock.
+  noticeBoard:
+    select: all
+    target: { prefix: place, entity: place, members: [square] }
+    description: The player reads the notice board (there is one, at the square); every eligible notice is offered.

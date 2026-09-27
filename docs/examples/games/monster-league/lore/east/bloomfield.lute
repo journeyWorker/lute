@@ -1,0 +1,105 @@
+---
+kind: lore
+id: east.bloomfield
+title: Bloomfield, the garden town
+---
+
+// Bloomfield: the Bloom Gym, the perfumery, Poppy's gardens (eastGardens).
+// The first visit is east.bloomfieldArrival.
+
+// ── services ─────────────────────────────────────────────────────────────
+
+<beat id="center" on="heal" target="town.bloomfield" title="Monster Center" once="false">
+  ::use{component="nurse" town="bloomfield"}
+</beat>
+
+<beat id="mart" on="shop" target="town.bloomfield" title="Mart" once="false">
+  ::use{component="shop" stock="bloomfieldStock"}
+</beat>
+
+// ── walking in, after the first visit ───────────────────────────────────
+
+<entry id="eastBloomfieldMorning" on="enterTown" target="town.bloomfield" category="ambient" priority="5" once="day" when="@isMorning && clock.weekday != 6">
+  @narrator: Dew on every petal. The sprinklers come on all over town at once, and so does the complaining.
+</entry>
+
+<entry id="eastBloomfieldSunday" on="enterTown" target="town.bloomfield" category="ambient" priority="8" once="day" when="@isMorning && clock.weekday == 6">
+  @narrator: Sunday morning. In the square, a bed of pale blue flowers that were closed all week has opened. People stand around it in their slippers, not talking.
+</entry>
+
+<entry id="eastBloomfieldDay" on="enterTown" target="town.bloomfield" category="ambient" priority="5" once="day" when="run.slot == 'day'">
+  @narrator: Bloomfield in the afternoon: bees, tourists, and the perfumery's door propped open so the whole street smells of it.
+</entry>
+
+<entry id="eastBloomfieldNight" on="enterTown" target="town.bloomfield" category="ambient" priority="5" once="day" when="@isNight">
+  @narrator: At night the flowers close and the town smells of cut grass and warm stone. The greenhouse on the hill glows faintly green.
+</entry>
+
+// ── Poppy the florist: eastGardens ───────────────────────────────────────
+
+<beat id="poppyGardens" on="talk" target="npc.bloomfieldFlorist" title="Poppy's gardens" priority="10">
+  @bloomfieldFlorist: Oh, a trainer with a bag! Is there room in it? For seeds? Marta at the Portvolt market has been waiting a month for my seeds.
+  @bloomfieldFlorist: And if you pass Tom's hives, he's got troubles of his own. Bloomfield runs on bees and favours.
+  ::accept{quest="eastGardens"}
+  ::accept{quest="eastGardensSeeds"}
+  @narrator: {{userName}} tucked Poppy's seed packets into the bag.
+</beat>
+
+<entry id="eastPoppyBark" on="talk" target="npc.bloomfieldFlorist" category="bark">
+  @bloomfieldFlorist: Everything grows here if you talk to it. Some of it talks back. That's the grass monsters. Ignore them, they're gossips.
+</entry>
+
+<entry id="eastPoppyDone" on="talk" target="npc.bloomfieldFlorist" category="bark" priority="20" when="quest.eastGardens.state == 'complete'">
+  @bloomfieldFlorist: Marta sent me a postcard. It says "SOLD OUT". Just that. I'm framing it.
+</entry>
+
+// ── Beekeeper Tom: eastGardensBees ───────────────────────────────────────
+
+<beat id="tomBees" on="talk" target="npc.bloomfieldBeekeeper" title="The hive" priority="10" when="quest.eastGardens.state == 'active'">
+  @bloomfieldBeekeeper: Poppy sent you? Bless her. My hive's queen flew off toward Route 5 and never came back. The workers just mope.
+  @bloomfieldBeekeeper: A waspire would do it. Big, bossy, yellow and black. Catch one and show her to them, and the hive will settle.
+  ::accept{quest="eastGardensBees"}
+</beat>
+
+<entry id="eastTomBark" on="talk" target="npc.bloomfieldBeekeeper" category="bark">
+  @bloomfieldBeekeeper: Mind the hives. They don't sting if you're calm. Are you calm? You don't look calm.
+</entry>
+
+<entry id="eastTomMorning" on="talk" target="npc.bloomfieldBeekeeper" category="bark" priority="5" when="@isMorning">
+  @bloomfieldBeekeeper: Honey's best in the morning, before the bees wake up and start arguing about it.
+</entry>
+
+// ── Anise the perfumer ───────────────────────────────────────────────────
+
+<entry id="eastAniseBark" on="talk" target="npc.bloomfieldPerfumer" category="bark">
+  @bloomfieldPerfumer: My scents are made from Bloomfield's own flowers and a secret. The secret is more flowers.
+</entry>
+
+<entry id="eastAniseNight" on="talk" target="npc.bloomfieldPerfumer" category="bark" priority="10" when="@isNight">
+  @bloomfieldPerfumer: We're closed, darling. Even perfume needs to sleep. Especially perfume. You should smell it at dawn.
+</entry>
+
+// ── Granny Sorrel ────────────────────────────────────────────────────────
+
+<entry id="eastSorrelBark" on="talk" target="npc.bloomfieldGranny" category="bark">
+  @bloomfieldGranny: Fern was a sleepy child too. Slept through her own birthday party. Twice.
+</entry>
+
+<beat id="sorrelTea" on="talk" target="npc.bloomfieldGranny" title="Morning tea" priority="5" once="day" when="@isMorning">
+  @bloomfieldGranny: Come in, come in, the kettle's on. The kettle is always on. That's the secret of a long life.
+  ::give{item="freshWater"}
+</beat>
+
+<entry id="eastSorrelSunday" on="talk" target="npc.bloomfieldGranny" category="bark" priority="10" when="clock.weekday == 6">
+  @bloomfieldGranny: Seen the Sunday flowers? My husband planted those. They only open one day a week. He was the same.
+</entry>
+
+// ── the Bloom Gym guide ──────────────────────────────────────────────────
+
+<entry id="eastBloomGuideBefore" on="talk" target="npc.bloomfieldGymGuide" category="bark" when="!holds(defeated(fern))">
+  @bloomfieldGymGuide: Fern's grass monsters put you to sleep, then drink your health. Bring something that doesn't sleep. Or something on fire.
+</entry>
+
+<entry id="eastBloomGuideAfter" on="talk" target="npc.bloomfieldGymGuide" category="bark" when="holds(defeated(fern))">
+  @bloomfieldGymGuide: Two badges in Eastmarch! With Fly you can go home any time. Your mum would like that, I bet.
+</entry>

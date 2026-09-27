@@ -1,0 +1,117 @@
+# The whole inquiry, played the way a careful inspector would:
+#   lute play . --script plays/true-account.play.yaml
+choose:
+  firstQuestion: askBoat
+  lanternLook: [clockwork, door, done]
+  hollisQ: [night, elias, done]
+  marenPress: tin
+  tobiasAsk: help
+  adaPress: page
+  fate: fell
+  onRock: ada
+  liar: maren
+  firstScrap: [tell, aug]
+  cause: neglect
+steps:
+  # ---------------- day 1 (Thursday): the rock ----------------
+  - occasion: arrive
+    label: the relief boat
+    expect: { winner: rock.arrival, facts: ["implicates(guillemot, tobias)"] }
+  - occasion: explore
+    target: place.lantern
+    expect: { winner: place.lanternRoom }
+  - occasion: examine
+    target: item.logbook
+    expect: { winner: keeperLog1 }
+  - occasion: examine
+    target: item.logbook
+    expect: { winner: keeperLog2 }
+  - occasion: examine
+    target: item.logbook
+    expect: { winner: keeperLog3, facts: ["onRock(ada, midnight)"] }
+  - occasion: examine
+    target: item.logbook
+    expect: { winner: keeperLogStub }
+  - occasion: explore
+    target: place.gallery
+    expect: { winner: place.gallery }
+  - occasion: examine
+    target: item.gallery_rail
+  - occasion: explore
+    target: place.landing
+  - occasion: examine
+    target: item.oilskin
+  - occasion: explore
+    target: place.cottage
+  - occasion: examine
+    target: item.supper_tin
+    expect: { facts: ["suspect(ada)", "suspect(tobias)"] }
+  - occasion: interview
+    pick: witnesses.hollis
+    expect: { offered: [witnesses.hollis], notOffered: [witnesses.maren, witnesses.tobias, witnesses.ada], facts: ["cleared(tobias)"], notFacts: ["suspect(tobias)"] }
+  # nightfall closes the day (the clock's dayEnd raise), then the morning boat
+  - label: fog overnight; the engine schedules Maren and Tobias
+    advance: day
+    engine:
+      state: { run.weather: fog }
+      facts: ["present(maren, village)", "present(tobias, village)"]
+    expect: { winner: rock.secondMorning, clock: { weekday: Friday, day: 2 }, presented: [rock.nightfall, places.thoughtsSuspect for ada, rock.secondMorning] }
+  # ---------------- day 2 (Friday): the village ----------------
+  - occasion: explore
+    target: place.village
+    expect: { winner: place.village }
+  - occasion: interview
+    pick: witnesses.maren
+    # Maren's alibi for Ada is dead on arrival: the log page already puts Ada in the lantern
+    expect: { facts: ["liar(maren)", "contradicts(maren, ada, midnight)"], notFacts: ["alibied(ada)"] }
+  - occasion: interview
+    pick: witnesses.tobias
+    expect: { quests: { clearName: active }, facts: ["misidentified(tobias, elias, dawn)", "fell(elias)"], notFacts: ["seenAfter(elias)", "liar(tobias)"] }
+  - occasion: examine
+    target: item.mooring_rope
+    expect: { quests: { clearName: complete } }
+  - occasion: interview
+    pick: witnesses.marenConfronted
+  - label: the weather clears; the engine schedules Ada
+    advance: day
+    engine:
+      state: { run.weather: clear }
+      facts: ["present(ada, village)"]
+    expect: { winner: rock.thirdMorning, clock: { weekday: Saturday, day: 3 }, presented: [rock.nightfall, places.thoughtsFigure, places.thoughtsSuspect for ada, rock.thirdMorning] }
+  # ---------------- day 3 (Saturday): the report ----------------
+  - occasion: interview
+    pick: witnesses.ada
+    expect: { quests: { tornPage: active }, facts: ["carrying(torn_page)"] }
+  # ---------------- the torn page (0.27 chapter) ----------------
+  - label: the scraps do not join the first time
+    occasion: examine
+    target: item.torn_page
+    expect: { winner: skerry.tornPage.pieceThePage, notFacts: ["pieced(torn_page)"] }
+  - label: the page comes back
+    occasion: examine
+    target: item.torn_page
+    expect: { winner: skerry.tornPage.pieceThePage, facts: ["reported(gallery_rail)"] }
+  - occasion: examine
+    target: item.torn_page
+    expect: { winner: tornPageRead }
+  - occasion: examine
+    target: item.requisition
+    expect: { winner: boardLetter, facts: ["preventable(gallery_rail)"] }
+  - occasion: report
+    expect:
+      winner: rock.report
+      options: { fate: [fell, murdered, drowned], onRock: [ada, nobody], liar: [maren, tobias, nobody], cause: [neglect, misadventure] }
+      state: { run.verdictFate: fell, run.verdictOnRock: ada, run.verdictLiar: maren, run.verdictCause: neglect }
+  - occasion: inquest
+    expect: { presented: [board.hearing, board.rail, board.close], quests: { tornPage: complete } }
+expect:
+  end: terminal
+  quests: { keeperInquiry: complete, reconstruction: complete, clearName: complete, tornPage: complete }
+  state: { user.casesClosed: 1 }
+  facts: ["fell(elias)", "onRock(ada, midnight)", "liar(maren)", "cleared(tobias)"]
+  notFacts: ["suspect(tobias)", "alibied(ada)", "seenAfter(elias)"]
+  transcriptContains:
+    - "The Board accepts the inspector's reconstruction in full."
+    - "The inspector finds that Voss fell from the lantern gallery while clearing salt from the glass, the seaward rail having failed."
+  transcriptLacks:
+    - "The Board finds the reconstruction unsafe and returns an open verdict."

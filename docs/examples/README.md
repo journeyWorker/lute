@@ -18,3 +18,11 @@
 - Examples that use plugin directives resolve their plugins via the nearest `lute.project.yaml`.
 - [`connect-scenes/`](connect-scenes/) is the project the website's *Connect scenes into a story* page builds: scenes chained with one shape-only occasion (`on: chapter`), `after:`, descending `priority:` and `when:` endings, played by `plays/*.play.yaml` and pinned by `tests/`. [`episodes/`](episodes/) is the two-scene project of *Write your first scene*.
 - Worked-example spot picks: [`quest-grove.lute`](quest-grove.lute) (a lone quest with authored `fail=` and derived completion), [`quest-subquest.lute`](quest-subquest.lute) (a parent that names required + optional children via `<objective quest="…"/>`, spec: [`docs/superpowers/specs/2026-08-31-lute-subquest-design.md`](../superpowers/specs/2026-08-31-lute-subquest-design.md)), and [`capability-permissions/`](capability-permissions/) (absent versus explicit-empty permission fields, an authored reward accepted normally but denied by a trusted host profile, and a forbidden streamed write rejected before IR emission).
+
+## Games
+
+[`games/`](games/) holds fourteen complete games written against Lute 0.21–0.28 as dogfood
+projects — mysteries, a roguelike, a gacha, live-ops, a visual novel, an Ink port and more. Each is
+its own project (`games/<slug>/lute.project.yaml`) with a README naming the features it exercises,
+and CI checks each with `lute check-project --deny-warnings` and runs its tests and plays. Start at
+the [index](games/README.md).

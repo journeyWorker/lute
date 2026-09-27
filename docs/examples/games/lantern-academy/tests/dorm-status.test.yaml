@@ -1,0 +1,13 @@
+# Nana reads the room: warm routes, locked routes, and the lantern count.
+file: ../lore/dorm.lute
+beat: evening
+state: { run.day: 3, run.slot: evening, run.aff.ren: 4, run.aff.kai: 4, run.lanterns: 2 }
+facts: ["locked(kai)", "locked(mika)"]
+expect:
+  transcriptContains:
+    - "Ren re-alphabetised the council files twice today."
+    - "Mika's on the bench, and he isn't talking to you."
+    - "Kai said a word about you I won't repeat."
+    - "Two lanterns for the window."
+  transcriptLacks: ["That piano played five notes tonight", "Nobody hates you yet."]
+  end: complete

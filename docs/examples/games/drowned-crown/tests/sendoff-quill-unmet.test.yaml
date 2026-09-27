@@ -1,0 +1,6 @@
+# Quill's bond can be high before Ilo has met him at the figurehead; then he keeps quiet.
+file: ../lore/sendoff.lute
+beat: word
+state: { occasion.target: quill, user.bond.quill: 5 }
+expect:
+  eligible: { sendoff.word: false }

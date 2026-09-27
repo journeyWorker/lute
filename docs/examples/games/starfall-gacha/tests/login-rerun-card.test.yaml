@@ -1,0 +1,9 @@
+file: ../lore/login.lute
+beat: login.harvestCard
+state: { user.day: 38 }
+expect:
+  eligible: true
+  transcriptContains:
+    - "@pim: Harvest card! One moon cake per stamp. Don't eat the stamp."
+    - "@pim: Back for the encore? The moon cakes are the same. The moon's a little older."
+  end: complete

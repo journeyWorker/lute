@@ -1,0 +1,9 @@
+# Lamplight — a death aboard the night train from Varn to Ossery.
+pluginsDir: plugins/
+defaultProfile: lamplight
+profiles:
+  lamplight:
+    plugins: { lamplight.occasions: true }
+defaults:
+  luteVersion: "0.28.1"
+  uses: [world.schema.yaml, vocabulary.schema.yaml]

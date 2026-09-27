@@ -1,0 +1,58 @@
+---
+kind: scene
+id: shop.morning
+title: Breakfast at the shop
+on: dayStart
+once: false
+components: [../components/day-card.component.lute]
+---
+
+## Breakfast
+
+<match on="run.day">
+  <when is="1">
+    ::use{component="dayCard" day=@today weather="grey, gulls arguing on the roof"}
+  </when>
+  <when is="2">
+    ::use{component="dayCard" day=@today weather="windy; the shop sign squeaks on its hinge"}
+  </when>
+  <when is="3">
+    ::use{component="dayCard" day=@today weather="still, the bay flat as a plate"}
+  </when>
+  <when is="4">
+    ::use{component="dayCard" day=@today weather="rain, the kind that means it"}
+  </when>
+  <when is="5">
+    ::use{component="dayCard" day=@today weather="clear all the way to the lighthouse"}
+  </when>
+  <when is="6">
+    ::use{component="dayCard" day=@today weather="hot already, and it is not yet eight"}
+  </when>
+  <when is="7">
+    ::use{component="dayCard" day=@today weather="overcast; the bus timetable flaps in the shelter"}
+  </when>
+</match>
+
+::auto{character="pell" anchor="left" action="fadeInUp"}
+::set{run.seen.pell = run.day}
+<match on="run.day">
+  <when is="..2">
+    @pell: Toast's on the side. The frame won't make itself.
+  </when>
+  <when is="3">
+    @pell{emotion="teasing"}: Wednesday. Library delivery day, if anyone's keeping track.
+  </when>
+  <when is="4">
+    @pell: One more day. Don't panic. Panic later.
+  </when>
+  <when is="5">
+    @pell{emotion="happy"}: Walk's at dusk. Wear the blue shirt, not that thing.
+  </when>
+  <when is="6">
+    @pell: Market's on. Take a basket, bring back peaches, keep the change.
+  </when>
+  <otherwise>
+    @pell{emotion="sad"}: Last day. Pack tonight and I'll pretend not to watch.
+  </otherwise>
+</match>
+::auto{character="pell" action="fadeOut"}

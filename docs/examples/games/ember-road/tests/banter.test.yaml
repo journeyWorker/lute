@@ -1,0 +1,6 @@
+# Isolde and Corvin bicker about the crate until the ledger is found.
+file: ../lore/banter.lute
+entries: [banterCrate, banterQuiet]
+expect:
+  eligible: { banterCrate: true }
+  transcriptContains: ["Twelve crates in the ninth wagon, Vane."]

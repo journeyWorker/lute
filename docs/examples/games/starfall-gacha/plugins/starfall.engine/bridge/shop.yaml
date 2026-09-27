@@ -1,0 +1,7 @@
+bridgeCapabilities:
+  - service: shop
+    operation: purchase
+    replay: recorded
+    result:
+      - { name: bought,    type: bool }     # false: not enough tokens, or sold out
+      - { name: remaining, type: number }   # tokens left after the purchase

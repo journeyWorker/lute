@@ -1,0 +1,47 @@
+---
+kind: scene
+id: road.departure
+title: The Ostwick gate
+on: travel
+when: "run.leg == 1"
+priority: 10
+components: [../../components/reaction.component.lute]
+---
+
+## The Ostwick Gate
+
+::bg{location="ostwick_gate" time="dawn"}
+::music{action="start" mood="upbeat" volume="down"}
+@narrator: Eleven wagons, forty mules, and a strongbox nobody is supposed to know about. East of the gate the Ember Road opens like a wound that never closed.
+::auto{character="brannoc" anchor="center" action="fadeInUp"}
+@brannoc: Warden. The Company has paid for three things: the cargo, the road, and you. Get all eleven wagons over the Tollbridge before the fourth night.
+@brannoc: Harrow's Ford is a day out. Past the ford it's Dusk country.
+::auto{character="isolde" anchor="left" action="fadeInUp"}
+@isolde: The Duskbound are deserters and hungry farmers, Captain. Not demons.
+@brannoc: Hungry farmers with crossbows, Vane.
+::auto{character="corvin" anchor="right" action="fadeInUp"}
+@corvin: And a toll, I hear. Everyone on this road has a toll. Some of us are only more honest about it.
+
+<branch id="orders" prompt="Brannoc waits for your answer.">
+  <choice id="swear" label="\"The wagons cross. You have my word.\"">
+    @brannoc: Your word. Good. The Company collects on those.
+    ::set{run.rep.company += 1}
+    ::use{component="reaction" who="isolde" feel="approves"}
+  </choice>
+  <choice id="price" label="For what you pay, the wagons get there. The mules are a maybe.">
+    @brannoc: Funny. Get the mules there too.
+    ::use{component="reaction" who="corvin" feel="approves"}
+  </choice>
+  <choice id="dusk" label="What did the Company do to the Duskbound?">
+    @brannoc{emotion="angry"}: Nothing they didn't earn. Mind your road, Warden.
+    ::set{run.rep.company -= 1}
+    ::use{component="reaction" who="isolde" feel="approves"}
+    @isolde: A fair question. Notice he didn't answer it.
+  </choice>
+</branch>
+
+::auto{character="brannoc" action="fadeOut"}
+@corvin: Eleven wagons. You know what's in the twelfth crate of the ninth wagon?
+@isolde: Corvin.
+@corvin: I'm only saying the Company counts to eleven and packs twelve.
+@narrator: The gate grinds open. The Ember Road takes you in.

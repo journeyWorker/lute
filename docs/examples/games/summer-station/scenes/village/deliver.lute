@@ -1,0 +1,18 @@
+---
+kind: scene
+id: village.deliver
+title: The notice board
+on: visit
+target: place.village
+priority: 30
+when: "run.slot == 'afternoon' && run.forecastWritten && !run.forecastDelivered && quest.forecast.state == 'active' && !holds(pathShut(village))"
+---
+
+## The village hall
+
+::bg{location="village_hall" time="afternoon"}
+::use{component="enter" who="elder"}
+@elder{emotion="stern"}: The intern. With paper. Let's see it.
+@narrator: Maren reads it twice, holding it at arm's length, then close, as if the weather might be in the small print.
+@elder{emotion="happy"}: Clear. Clear! Then we hang them. All of them.
+::set{run.forecastDelivered = true}

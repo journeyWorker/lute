@@ -1,0 +1,6 @@
+# Thursday (day 4): the pool is still.
+file: ../../lore/north/frost-caverns.lute
+beat: fridaySwimmer
+state: { run.day: 4 }
+expect:
+  eligible: false

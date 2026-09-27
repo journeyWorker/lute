@@ -1,0 +1,6 @@
+# Evening comes and nobody is named: the deadline fails the quest.
+file: ../quests/spoon.lute
+state: { run.slot: evening }
+expect:
+  quests: { findSpoon: failed }
+  transcriptContains: ["@narrator: Somewhere, a spoon stays lost."]

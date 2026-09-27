@@ -1,0 +1,7 @@
+file: ../scenes/garden.lute
+visited: [kitchen]
+state: { run.cluesFound: 2 }
+choose: { accuse: accuseMagpie }
+expect:
+  transcriptContains: ["@pippa: It was never a person at all."]
+  state: { run.accused: magpie }

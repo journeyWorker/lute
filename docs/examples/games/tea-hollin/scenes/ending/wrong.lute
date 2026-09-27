@@ -1,0 +1,14 @@
+---
+kind: scene
+id: ending.wrong
+title: Cold Tea
+on: chapter
+after: 'visited("garden")'
+when: run.accused != "magpie"
+---
+
+## The Parlour Again
+
+@aunt_mabel: Well. I suppose we shall never know.
+@narrator{when="run.slot == 'evening'"}: The {{run.slot}} tea has gone cold in the pot.
+@narrator: On the sundial, the magpie tilts its head, and something silver winks.

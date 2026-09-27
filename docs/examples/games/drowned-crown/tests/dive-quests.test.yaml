@@ -1,0 +1,13 @@
+# Ilo drowns on a bounty dive: the Regent hunt fails at once (by), and the
+# bounty lapses when runEnd is raised (until). Quill, met already, says so.
+file: ../quests/dive.lute
+accepts: [eelBounty]
+state: { run.outcome: died, entry.quillFirst.everRead: true }
+facts: ["slew(eel)"]
+occasions: [runEnd]
+expect:
+  quests: { regentHunt: failed, eelBounty: failed }
+  state: { quest.regentHunt.failedBy: by, quest.eelBounty.failedBy: until }
+  transcriptContains: ["Not this time. The throne keeps."]
+  transcriptLacks: ["Eel steaks!"]
+  end: complete

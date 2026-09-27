@@ -1,0 +1,13 @@
+---
+kind: scene
+id: board.rail
+title: The Rail
+when: "@filed && run.verdictCause == 'neglect'"
+after: 'visited("rock.report")'
+---
+
+## The Hearing Room
+
+@chair: The inspector further finds that the seaward rail was reported unsafe by the keeper himself, on the thirtieth of August.
+@chair: And he has put before us a letter on this Board's own paper, refusing the money to mend it.
+@chair: The Board will consider its own conduct in private session.

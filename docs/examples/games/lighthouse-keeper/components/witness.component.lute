@@ -1,0 +1,17 @@
+---
+component: witness
+# A beat template (dsl 0.27.0 §6): every islander's interview answers
+# `interview`, and only while the engine has them somewhere today.
+params:
+  who: speaker
+  only: { type: string, default: "" }
+beat:
+  on: interview
+  when: "holds(present(@who, _)) && (@only)"
+---
+
+## Interview
+
+::auto{character=@who anchor="right" action="fadeInUp"}
+::body
+::auto{character=@who action="fadeOut"}

@@ -1,0 +1,5 @@
+# Past four the train has left Harl: the engine never raises the platform.
+file: ../scenes/harl.lute
+state: { run.hour: h05 }
+expect:
+  eligible: { harl.platform: false }

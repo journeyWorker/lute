@@ -1,0 +1,39 @@
+---
+kind: lore
+id: tavi
+title: Tavi's galley
+---
+
+<beat id="bounty" on="talk" target="npc.tavi" title="Tavi's bounty" priority="30" when="!holds(felled(eel)) && quest.eelBounty.state != 'active'">
+  @tavi: That eel in the long hall. Kill it and drag a piece home and I'll pay you in pearls. And in dinner.
+  <branch id="bountyAnswer" prompt="Tavi sharpens a knife meaningfully.">
+    <choice id="take" label="Take the bounty">
+      @ilo: One eel. Coming up.
+      ::accept{quest="eelBounty" at="nextRun"}
+    </choice>
+    <choice id="pass" label="Not this dive">
+      @tavi: Your loss. It's very good eel.
+    </choice>
+  </branch>
+</beat>
+
+<beat id="meal" on="talk" target="npc.tavi" title="Something hot" priority="20">
+  @tavi: Sit. Eat. You're blue round the edges.
+  ::set{run.sharedMeal = true}
+  <match on="user.deaths">
+    <when is="0">
+      @tavi: Nobody's died on my food yet. Don't be first.
+    </when>
+    <otherwise>
+      @tavi{emotion="wry"}: I've fed a dead man {{user.deaths:plural(once|# times)}} now. I should charge double.
+    </otherwise>
+  </match>
+</beat>
+
+<entry id="taviRich" on="talk" target="npc.tavi" category="bark" priority="5" when="user.pearls >= 20">
+  @tavi{emotion="delighted"}: Look at you, jingling. Buy the crew a round sometime.
+</entry>
+
+<entry id="taviBark" on="talk" target="npc.tavi" category="bark">
+  @tavi: Pot's on. It's always on.
+</entry>

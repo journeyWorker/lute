@@ -1,0 +1,3 @@
+# A closed case is the one reward the inspector keeps.
+rewardKinds:
+  CASE: { credits: user.casesClosed }

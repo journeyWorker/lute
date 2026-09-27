@@ -1,0 +1,46 @@
+choose: { help: yes }
+steps:
+  - occasion: chapter
+    expect: { winner: arrival }
+  - occasion: chapter
+    expect: { winner: firstNets }
+  - occasion: chapter
+    expect: { winner: harborMeet }
+  - occasion: hubVisit
+    expect: { winner: hub.idle }
+  - occasion: talk
+    target: npc.mara
+    expect: { winner: talks.maraOne }
+  - occasion: talk
+    target: npc.mara
+    expect: { winner: talks.maraTwo }
+  - occasion: talk
+    target: npc.ines
+    expect: { winner: talks.anyNod }
+  - occasion: landed
+    target: fish.cod
+    payload: { weight: 3 }
+    expect: { winner: talks.landedFish }
+  - occasion: launch
+    target: boat.gull
+    expect: { winner: talks.launchGull }
+  - occasion: landed
+    target: fish.marlin
+    payload: { weight: 40 }
+  - occasion: launch
+    target: boat.gull
+    expect: { winner: none }
+  - advance: slot
+    expect: { winner: market.weekly, notFacts: [caught(marlin)] }
+  - label: marlin sold, the Gull's offer stays spent
+    occasion: launch
+    target: boat.gull
+    expect: { winner: none }
+  - advance: { to: { weekday: Mon, slot: noon } }
+expect:
+  end: complete
+  facts: [caught(cod), canSail(gull)]
+  notFacts: [caught(marlin)]
+  state: { run.coins: 5 }
+  transcriptContains: ["@narrator: Little Ines nods at you.", "@mara: The sea was kinder when I was young."]
+  quests: { bigOne: complete }

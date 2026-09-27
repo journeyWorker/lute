@@ -1,0 +1,41 @@
+---
+kind: lore
+id: coldwater
+title: Coldwater
+components: [../components/reaction.component.lute]
+---
+
+/* Coldwater, an hour off the road from the Tollbridge (`explore` raises it
+   only on that leg). The first visit is the village; the chapel search is a
+   roll the party may fail and come back to until the parish roll is found
+   (`spentBy`, dsl 0.27 §5). */
+
+<beat id="ruins" on="explore" target="place.coldwater" title="Coldwater" priority="20" after="visited('bridge.arrival')">
+  @narrator: An hour off the road, where the Company map shows empty hill: chimneys without houses, a chapel without a roof, and twelve years of grass that has not quite managed to cover the lanes.
+  <match on="run.maelisGrievance">
+    <when is="true">
+      @narrator: Maelis said Coldwater. You had not thought she meant a place you could walk to.
+    </when>
+    <otherwise>
+      @narrator: Nobody at the bridge told you its name. The milestone at the lane end did: COLDWATER, and under it, painted later, a black sun.
+    </otherwise>
+  </match>
+  @isolde{when="holds(inParty(isolde))"}: I know this lane. I rode down it, once. Faster than this.
+  ::use{component="reaction" who="isolde" feel="approves" when="holds(inParty(isolde))"}
+  @wren{when="@wrenWithUs"}: No river. That's why it burned so well.
+  @corvin{when="holds(inParty(corvin))"}: If there was anything worth taking, the Company took it. If there wasn't, they burned it. That's their whole ledger.
+</beat>
+
+<beat id="chapel" on="explore" target="place.coldwater" title="The chapel ash" priority="10" after="visited('coldwater.ruins')" spentBy="holds(knows(roll))">
+  @narrator: The chapel floor is a crust of ash over flagstones. If Coldwater kept a parish roll, it kept it here.
+  ::check{skill="insight" dc="11" resultKey="ash" sync="true"}
+  <match on="scene.check.ash.passed">
+    <when is="true">
+      @narrator: Under the altar stone, a tin box sealed with wax gone grey. Inside, a roll of names. Two hundred and six. Someone kept counting after the fire.
+      ::pickup{item="roll"}
+    </when>
+    <when is="false">
+      @narrator: Ash, and more ash. Whatever is here, you will not find it digging blind. Not today.
+    </when>
+  </match>
+</beat>

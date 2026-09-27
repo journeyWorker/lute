@@ -1,0 +1,6 @@
+file: ../lore/talks.lute
+beat: landedFish
+state: { occasion.target: eel, occasion.payload.weight: 2 }
+expect:
+  transcriptContains: ["You land a 2-kilo eel."]
+  facts: [caught(eel)]

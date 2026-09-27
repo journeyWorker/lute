@@ -1,0 +1,59 @@
+---
+kind: scene
+id: bridge.arrival
+title: The Tollbridge
+on: travel
+when: "run.leg == 3"
+priority: 10
+after: 'visited("road.ford")'
+components: [../../components/reaction.component.lute]
+---
+
+## The Chain
+
+::bg{location="tollbridge" time="day"}
+::music{action="change" mood="tense" volume="up"}
+@narrator: The Tollbridge is older than the Company, older than Ostwick: five stone arches over a gorge, and a chain across the near end as thick as a man's leg. Twenty crossbows on the parapet. One woman on the chain.
+::auto{character="maelis" anchor="center" action="fadeInUp"}
+@maelis: Company wagons. Eleven. You're a day early, Warden. I'd almost be flattered.
+@maelis: The toll is simple. The strongbox in the ninth wagon, or the wagons stay on this side of the gorge until the crows have them.
+@isolde{when="holds(inParty(isolde))"}: Maelis of Coldwater. I knew your brother.
+@maelis{when="holds(inParty(isolde))"}: Then you know how he died, Vane. You were wearing the same colours as the men who did it.
+
+<hub id="chain" prompt="Maelis waits on the chain.">
+  <choice id="why" label="Why the Company? Why this road?" once>
+    @maelis: Because the Company built it. Through Coldwater, through Pell's Reach, through Harrow Top. Farms don't move for roads, Warden. So the Company moved them. With torches.
+    @maelis: Bring me proof that anyone in Ostwick knows what was done here, and you can have your bridge.
+    ::set{run.maelisGrievance = true}
+    ::accept{quest="parley"}
+    ::use{component="reaction" who="isolde" feel="approves"}
+  </choice>
+  <choice id="twins" label="You took children from the ford." once when="quest.hostages.state != 'unset'">
+    @maelis: I took a miller's leverage. The ford hid three of my deserters and a sack of my silver. The children are fed. Which is more than the Company ever managed for mine.
+    @wren{when="@wrenWithUs"}: They're nine.
+    @maelis: So was my brother, once.
+  </choice>
+  <choice id="strongbox" label="Hand over the Company's strongbox." exit>
+    @corvin{when="holds(inParty(corvin))"}: Oh, I like this version of you.
+    ::use{component="reaction" who="corvin" feel="adores"}
+    ::set{run.rep.company -= 3}
+    ::set{run.rep.dusk += 1}
+    ::retract{sidedWith(company)}
+    ::assert{wronged(company)}
+    ::set{run.bridge = "paid"}
+    @maelis: Well. A Warden who can count. Drop the chain.
+  </choice>
+  <choice id="steel" label="Draw steel." exit>
+    ::set{run.bridge = "stormed"}
+    ::use{component="reaction" who="isolde" feel="disapproves"}
+    @maelis: There it is. The Company's answer to everything.
+    ::encounter{id="tollbridge" foes="duskbound"}
+    ::end{reason="battle"}
+  </choice>
+  <choice id="withdraw" label="Pull back and make camp." exit>
+    @maelis: Take your time, Warden. Till the fourth night. Then the crows get a vote.
+  </choice>
+</hub>
+
+::auto{character="maelis" action="fadeOut"}
+@narrator: The chain hangs across the road like a sentence nobody has finished.

@@ -1,0 +1,26 @@
+---
+component: postcard
+effects: true
+params:
+  to: { domain: recipient }
+  rank: { type: number, default: 10 }
+beat:
+  on: placeVisit
+  target: place.post
+  title: "A postcard"
+  priority: "@rank"
+  once: day
+  share: postcardDay
+  after: "visited('post.mira.meet')"
+  when: "holds(present(mira, post)) && run.machineFixed && !holds(sentTo(@to))"
+---
+
+## A postcard
+
+@narrator: Mira slides the rack round. Gulls, the lighthouse, the lighthouse again with a gull on it.
+@sol{mono}: One for {{@to}}.
+::body
+::set{run.postcards += 1}
+::assert{sentTo(@to)}
+::set{run.seen.mira = run.day}
+@mira: {{@to}}. Lovely. It'll go with the afternoon van.

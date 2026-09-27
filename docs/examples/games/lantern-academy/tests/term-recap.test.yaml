@@ -1,0 +1,8 @@
+# NG+: the first morning of a term remembers the last one through prev.run.*.
+file: ../lore/term.lute
+beat: recap
+state: { prev.run.route: kai, prev.run.ending: bittersweet }
+expect:
+  eligible: { recap: true }
+  transcriptContains: ["Last term it was with Kai. It ended with the ember ending.", "I let it go out. Not this time."]
+  end: complete

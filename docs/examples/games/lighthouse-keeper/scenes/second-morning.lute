@@ -1,0 +1,26 @@
+---
+kind: scene
+id: rock.secondMorning
+title: The Second Morning
+on: arrive
+when: "run.day == 2"
+priority: 10
+after: 'visited("rock.arrival")'
+---
+
+## The Lantern at First Light
+
+::bg{location="skerry_lantern" time="morning"}
+<match on="run.weather">
+  <when is="gale">
+    @narrator: The gale has not blown itself out. Spray rattles on the lantern glass a hundred feet up.
+  </when>
+  <when is="fog">
+    @narrator: Fog in the night. The rock is an island on an island, and the foghorn has been groaning since four.
+  </when>
+  <when is="clear">
+    @narrator: The sea has gone flat and innocent, as if it never did anything to anyone.
+  </when>
+</match>
+@inspector{mono}: {{clock.weekdayLabel}}. One more day before the Board wants my report. Hollis will bring whoever is willing to talk.
+@inspector{mono,when="holds(liar(maren))"}: And Maren Hale has some explaining to do.

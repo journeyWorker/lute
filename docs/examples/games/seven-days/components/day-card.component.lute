@@ -1,0 +1,29 @@
+---
+component: dayCard
+params:
+  day: { enum: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday] }
+  weather: string
+---
+
+## Day card
+
+::bg{location="lantern_shop_window" time="morning"}
+::vfx{type="dawn"}
+<match on="@day">
+  <when is="Wednesday">
+    @narrator: {{@day}}. Low tide after dark.
+  </when>
+  <when is="Friday">
+    @narrator: {{@day}}. The Lantern Walk.
+  </when>
+  <when is="Saturday">
+    @narrator: {{@day}}. Market day.
+  </when>
+  <when is="Sunday">
+    @narrator: {{@day}}. The last bus leaves at six.
+  </when>
+  <otherwise>
+    @narrator: {{@day}}.
+  </otherwise>
+</match>
+@narrator: Outside: {{@weather}}.

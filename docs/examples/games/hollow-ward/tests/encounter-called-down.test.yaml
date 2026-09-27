@@ -1,0 +1,7 @@
+# Once the bell has rung at three, he walks past: the chase beat never plays.
+file: ../lore/orderly.lute
+beat: calledDown
+state: { occasion.target: lobby, run.stalker: lobby, run.bellRung: true }
+expect:
+  eligible: { calledDown: true }
+  transcriptContains: ["@orderly: Round's called. Everybody down."]

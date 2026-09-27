@@ -1,0 +1,33 @@
+---
+kind: quest
+id: skerry.inquiry
+title: The Skerry Rock inquiry
+---
+
+<quest id="keeperInquiry" title="What happened to Elias Voss?" start="true" tier="run">
+  <objective id="readLog" title="Read the keeper's log to the last entry" done="entry.keeperLog3.read"/>
+  <objective id="searchRock" title="Search the lantern gallery" done="holds(damaged(gallery_rail))"/>
+  <objective id="hearWitnesses" title="Take three statements" done="countDistinct(sawAt(W, _, _, _), W) >= 3"/>
+  <objective id="reconstruct" title="File the reconstruction with the Board" quest="reconstruction"/>
+  <on event="questComplete">
+    ::set{user.casesClosed += 1}
+    @narrator: The Board closes the file on Skerry Rock. Somebody else will keep the light now.
+  </on>
+  <on event="questFailed">
+    @narrator: The Board closes the file on Skerry Rock without you. The islanders will go on telling their own version.
+  </on>
+</quest>
+
+<quest id="reconstruction" title="Reconstruct the night of the fourteenth" tier="run">
+  <objective id="fate" title="Say what became of Elias Voss" on="inquest" done="run.verdictFate == 'fell'" until="run.verdictFate != 'undecided'"/>
+  <objective id="whoWasThere" title="Say who was on the rock" on="inquest" done="run.verdictOnRock == 'ada'" until="run.verdictOnRock != 'undecided'"/>
+  <objective id="whoLied" title="Say whose statement was false" on="inquest" done="run.verdictLiar == 'maren'" until="run.verdictLiar != 'undecided'"/>
+  <objective id="beforeBoat" title="Before the relief boat leaves" done="@filed" by="run.day > 3"/>
+  <on event="questFailed" when="quest.reconstruction.failedBy == 'by'">
+    // The boat sailed without a report (`by`). A report the Board rejects at the
+    // hearing (`until`) is told by the hearing's closing scene, board.close:
+    // `inquest` judges before its beats (judge: before), so that scene reads the verdict.
+    @chair: No reconstruction reached the Board before the relief boat sailed.
+    @chair: The Board finds the reconstruction unsafe and returns an open verdict.
+  </on>
+</quest>

@@ -1,0 +1,31 @@
+# Death by the Orderly within the hour, then the loop: the next night the
+# gravel remembers her shoes.
+#
+#   lute play . --script plays/taken.play.yaml
+steps:
+  - include: steps/opening.steps.yaml
+  - occasion: enter
+    target: room.childrensWard
+    choose: { answer: no }
+  - occasion: footsteps
+    target: room.childrensWard
+    engine: { state: { run.stalker: hydro } }
+  - occasion: encounter
+    engine: { state: { run.stalker: childrensWard } }
+    target: room.childrensWard
+    choose: { react: run }
+    bridges: { evade: [ { outcome: taken } ] }
+    expect:
+      winner: orderly.meet
+      state: { run.fate: taken, user.deaths: 1 }
+      quests: { beforeDawn: failed, findTobias: failed }
+  - newRun: true
+    label: the same night, again
+  - occasion: nightFalls
+    choose: { goIn: call }
+    expect: { presented: [arrival], quests: { beforeDawn: active, findTobias: active } }
+expect:
+  state: { run.fate: alive, user.deaths: 1, run.sanity: 10 }
+  transcriptContains:
+    - "@orderly: Lights out, love. Back to bed."
+    - "@nell: I have stood here before. I know I have. The gravel remembers my shoes."

@@ -398,17 +398,25 @@ pub(crate) struct PlayedBeat {
     pub(crate) halted: Option<&'static str>,
 }
 
-/// Run the play `script` over the project at `dir` in process and hand back
-/// every presentation it made, in order (an `advance:`'s midnight raises
-/// before its slot raise).
+/// Run the play at `script_path` over the project at `dir` in process and
+/// hand back every presentation it made, in order (an `advance:`'s midnight
+/// raises before its slot raise). A script without `steps:` is a save — what
+/// `lute calendar --script` starts every cell from, read the calendar's way —
+/// and presents nothing.
 #[cfg(test)]
-pub(crate) fn presentations_for_diff(dir: &Path, script: &Path) -> Result<Vec<PlayedBeat>, String> {
-    let Loaded {
-        script,
-        project,
-        plan,
-        world,
-    } = load(dir, script, false).map_err(|(_, msg)| msg)?;
+pub(crate) fn presentations_for_diff(
+    dir: &Path,
+    script_path: &Path,
+) -> Result<Vec<PlayedBeat>, String> {
+    let text = std::fs::read_to_string(script_path)
+        .map_err(|e| format!("cannot read play script: {}", lute_manifest::io_reason(&e)))?;
+    let script = parse_script_with(&text, script_path, false)?;
+    if script.steps.is_empty() {
+        return Ok(Vec::new());
+    }
+    let project = compile_play_project(dir, project::PLAY).map_err(|(_, msg)| msg)?;
+    let (plan, world) =
+        plan_script(&project, &script, script_path, false).map_err(|(_, msg)| msg)?;
     let play = execute(&script, &plan, Session::resume(&project, world));
     let halt = play.outcome.as_ref().err().map(PlayHalt::exit_label);
     let mut out: Vec<PlayedBeat> = Vec::new();

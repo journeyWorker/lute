@@ -1,0 +1,6 @@
+file: ../lore/brann.lute
+beat: brann.oath
+choose: { oathAnswer: swear }
+expect:
+  transcriptContains: ["Everyone swears that."]
+  state: { user.bond.brann: 1 }
