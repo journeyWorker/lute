@@ -237,6 +237,7 @@ pub fn check_var_guard(
     cel: &str,
     vocab: &RelVocab,
     state: &crate::meta::StateSchema,
+    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
     span: Span,
 ) -> Result<String, Vec<Diagnostic>> {
     let uses = var_uses(cel);
@@ -302,7 +303,18 @@ pub fn check_var_guard(
             ));
             continue;
         };
+        // The path's own members: a closed kind's, or an `enums:` domain's.
+        let path_members = closed_members(vocab, &kind).or_else(|| {
+            domains
+                .get(&kind)
+                .filter(|d| !d.open)
+                .map(|d| d.members.as_slice())
+        });
+        // An enum listing some of the kind's members (`route: [none, ren, …]`
+        // beside `suitor: [ren, …]`) compares equal for those members.
+        let overlaps = path_members.is_some_and(|pm| members.iter().any(|m| pm.contains(m)));
         if !kind.is_empty()
+            && !overlaps
             && !bound
                 .iter()
                 .any(|(_, k)| within(vocab, k, &kind) || within(vocab, &kind, k))
@@ -322,7 +334,12 @@ pub fn check_var_guard(
             ));
             continue;
         }
-        if let Some(m) = members.first() {
+        // Check the guard with a member the path can hold.
+        let shown = members
+            .iter()
+            .find(|m| path_members.is_none_or(|pm| pm.contains(m)))
+            .or(members.first());
+        if let Some(m) = shown {
             first_member.insert(v, m.clone());
         }
     }

@@ -97,7 +97,8 @@ fn two_chains_each_order_their_own_occasion() {
 }
 
 /// The old `sequence:` key is refused naming `chapters:`, and is not
-/// applied; the scenes it listed are not told to list themselves in it.
+/// applied; the scenes it listed are not told to list themselves in it, and
+/// each is told once, however many beat keys it writes.
 #[test]
 fn the_old_sequence_key_names_chapters_and_is_not_applied() {
     let dir = temp_dir("oldkey");
@@ -111,7 +112,7 @@ fn the_old_sequence_key_names_chapters_and_is_not_applied() {
     write(
         &dir,
         "scenes/c2.lute",
-        &scene("c2", "when: \"run.checkedPulse\"\n"),
+        &scene("c2", "once: user\nwhen: \"run.checkedPulse\"\n"),
     );
     let (code, out) = run(&dir, &["check-project", "."]);
     assert_eq!(code, Some(1), "{out}");
@@ -128,6 +129,53 @@ fn the_old_sequence_key_names_chapters_and_is_not_applied() {
     assert!(
         out.contains("lists this scene under `sequence:`, which is now `chapters:`"),
         "{out}"
+    );
+    assert_eq!(out.matches("[E-BEAT-ATTR]").count(), 1, "{out}");
+    assert!(
+        out.contains("scenes/c2.lute:5:1: error [E-BEAT-ATTR] `once:` and `when:` without `on:`"),
+        "{out}"
+    );
+}
+
+/// A tie with a priority `chapters:` derived says where that priority
+/// comes from, and asks to move the scene that wrote its own.
+#[test]
+fn a_tie_with_a_chain_priority_names_the_chain() {
+    let dir = temp_dir("tie");
+    project(
+        &dir,
+        CHAPTER,
+        "state:\n  run.leg: { type: number, default: 0 }\n",
+        "chapters:\n  - on: chapter\n    scenes: [c1, c2]\n",
+    );
+    write(&dir, "scenes/c1.lute", &scene("c1", "once: user\n"));
+    write(
+        &dir,
+        "scenes/c2.lute",
+        &scene("c2", "once: user\nwhen: \"run.leg >= 2\"\n"),
+    );
+    write(
+        &dir,
+        "scenes/side.lute",
+        &scene(
+            "side",
+            "on: chapter\npriority: 10\nonce: user\nwhen: \"run.leg >= 3\"\n",
+        ),
+    );
+    let (_, out) = run(&dir, &["check-project", "."]);
+    let tie = out
+        .lines()
+        .find(|l| l.contains("[W-BEAT-PRIORITY-TIE]"))
+        .unwrap_or_else(|| panic!("{out}"));
+    assert!(
+        tie.contains(
+            "share priority 10 (scene `c2`'s is written by `chapters:` in lute.project.yaml"
+        ),
+        "{tie}"
+    );
+    assert!(
+        tie.contains("give scene `side` a different `priority`"),
+        "{tie}"
     );
 }
 
@@ -245,6 +293,33 @@ fn a_rejected_chain_does_not_tell_its_scenes_to_join_it() {
         !out.contains("W-CHAPTER-STALL"),
         "a rejected chain has no stall: {out}"
     );
+}
+
+/// A chain on an occasion nothing declares is refused at the manifest and,
+/// like a malformed one, applied nowhere: `lute beats` does not list its
+/// scenes under the misspelt occasion.
+#[test]
+fn a_chain_on_an_undeclared_occasion_is_not_applied() {
+    let dir = temp_dir("undeclared");
+    project(
+        &dir,
+        CHAPTER,
+        PULSE,
+        "chapters:\n  - on: chaptre\n    scenes: [c1, c2]\n",
+    );
+    for id in ["c1", "c2"] {
+        write(&dir, &format!("scenes/{id}.lute"), &scene(id, ""));
+    }
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(1), "{out}");
+    assert!(
+        out.contains("[E-CHAPTERS]") && out.contains("did you mean `chapter`?"),
+        "{out}"
+    );
+    let (code, beats) = run(&dir, &["beats", "."]);
+    assert_eq!(code, Some(0), "{beats}");
+    assert!(!beats.contains("chaptre"), "{beats}");
+    assert!(!beats.contains("c1"), "{beats}");
 }
 
 /// `W-CHAPTER-STALL` fires only on a `when:` that can stay false for good.

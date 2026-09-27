@@ -136,7 +136,8 @@ The prompt compiles onto the hub record (`prompt` on `HubCmd`, omitted when unau
 
 Text written before the `<hub>` runs once. For text that runs each time the player comes back to
 the hub, put a `<return>` block inside it (dsl 0.28.0). It runs after each non-`exit` arm, before
-the options are shown again. It does not run before the first menu or after an `exit` arm:
+the options are shown again. It does not run before the first menu or after an `exit` arm. When a
+`once` pick empties the menu, it still runs, just before the hub closes:
 
 ```lute check
 ---

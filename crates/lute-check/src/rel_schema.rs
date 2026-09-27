@@ -497,7 +497,17 @@ pub fn validate_rel_decls(
                 ));
             }
         }
-        if decl.tier.is_none() && !decl.derive {
+        // A misspelt `teir:` is already an error that names `tier`: the
+        // warning would tell the author the relation has none.
+        let tier_misspelt = decl.malformed_fields.iter().any(|f| {
+            f == "tier"
+                || lute_manifest::suggest::nearest(
+                    f,
+                    lute_manifest::relations::RELATION_KEYS.iter().copied(),
+                    2,
+                ) == Some("tier")
+        });
+        if decl.tier.is_none() && !decl.derive && !tier_misspelt {
             let owner = if decl.reserved {
                 "at every new run the engine's facts in it are forgotten"
             } else {

@@ -268,9 +268,10 @@ fn test_and_trace_judge_a_kind_beat_by_the_mocked_member() {
 
 /// `lute trace --occasion O@<target>` binds `occasion.target` for a kind
 /// beat answering O, as the engine's raise does: its writes and text name
-/// the member. A target outside the beat's kind is refused; with no raise,
-/// a write or a `{{occasion.target}}` line halts incomplete instead of
-/// printing the marker raw or passing as an empty `match`.
+/// the member, prefixed or bare. A raise outside O's domain is refused, and
+/// so is one for another target than a fixed-target beat answers; with no
+/// raise, a write or a `{{occasion.target}}` line halts incomplete instead
+/// of printing the marker raw or passing as an empty `match`.
 #[test]
 fn trace_binds_the_member_a_raise_names() {
     let dir = temp_dir("raise-binds");
@@ -300,36 +301,43 @@ fn trace_binds_the_member_a_raise_names() {
         &dir,
         "lore/catch.lute",
         "---\nkind: lore\nid: catch\n---\n\n<beat id=\"land\" on=\"landed\" target=\"kind:fish\" once=\"false\">\n  \
-         @narrator: You land a {{occasion.target}}.\n  ::assert{caught(occasion.target)}\n</beat>\n",
+         @narrator: You land a {{occasion.target}}.\n  ::assert{caught(occasion.target)}\n</beat>\n\n\
+         <beat id=\"big\" on=\"landed\" target=\"fish.marlin\" priority=\"5\">\n  @narrator: A marlin!\n</beat>\n",
     );
-    let trace = |extra: &[&str]| {
-        let mut args = vec![
-            "trace",
-            "lore/catch.lute",
-            "--project",
-            ".",
-            "--beat",
-            "land",
-        ];
+    let trace = |beat: &str, extra: &[&str]| {
+        let mut args = vec!["trace", "lore/catch.lute", "--project", ".", "--beat", beat];
         args.extend_from_slice(extra);
         let out = run(&dir, &args);
         (out.status.code(), text(&out))
     };
 
-    let (code, t) = trace(&["--occasion", "landed@fish.cod"]);
+    let (code, t) = trace("land", &["--occasion", "landed@fish.cod"]);
     assert_eq!(code, Some(0), "{t}");
     assert!(t.contains("You land a cod."), "{t}");
     assert!(t.contains("caught(cod)"), "{t}");
     assert!(!t.contains("judged by no `<objective on>`"), "{t}");
+    let (code, t) = trace("land", &["--occasion", "landed@cod"]);
+    assert_eq!(code, Some(0), "{t}");
+    assert!(t.contains("caught(cod)"), "{t}");
 
-    let (code, t) = trace(&["--occasion", "landed@fish.tuna"]);
+    let (code, t) = trace("land", &["--occasion", "landed@fish.tuna"]);
     assert_eq!(code, Some(1), "{t}");
     assert!(
-        t.contains("not a member the beat `land` runs for (cod, marlin)"),
+        t.contains("the raise `landed@fish.tuna` is never made: target `fish.tuna` is outside"),
         "{t}"
     );
 
-    let (code, t) = trace(&[]);
+    let (code, t) = trace("big", &["--occasion", "landed@fish.cod"]);
+    assert_eq!(code, Some(1), "{t}");
+    assert!(
+        t.contains("the beat `big` answers `landed` only for `fish.marlin`"),
+        "{t}"
+    );
+    let (code, t) = trace("big", &["--occasion", "landed@marlin"]);
+    assert_eq!(code, Some(0), "{t}");
+    assert!(t.contains("A marlin!"), "{t}");
+
+    let (code, t) = trace("land", &[]);
     assert_eq!(code, Some(3), "{t}");
     assert!(!t.contains("{{occasion.target}}"), "{t}");
     assert!(!t.contains("match ``"), "{t}");

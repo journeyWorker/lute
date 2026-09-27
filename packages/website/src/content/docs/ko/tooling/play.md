@@ -2507,7 +2507,8 @@ explain safe(warden): holds
   숨김)은 빠집니다. 참조 플레이어가 실행할 수 없는 플러그인 디렉티브에는 `(plugin call, not invoked)`가
   붙고, `bridges:` 응답이 브리지 결과를 정한 호출에는 `(bridge answered: passed=true, margin=3)`이, 워크를
   멈춘 호출에는 `(bridge unanswered: passed, margin)`이 붙습니다. `::end`는 쓴 그대로 뒤에
-  `(this presentation ends; the play goes on)`이 붙습니다. 결정은
+  `(this presentation ends; the play goes on)`이 붙습니다. 게임을 끝낸 스텝에서는
+  `(this presentation ends)`만 붙고, 그 스텝의 note가 뒤따릅니다. 결정은
   `▷ choice <id>: … ← chosen: <id>`(또는 `▷ hub <id>: …`)이며, 메뉴에서 고른 선택지는 `[table]`,
   가드가 거짓인 선택지는 `piano✗`, 이미 고른 `once` 선택지는 `table(spent)`로 표시됩니다. 상태 쓰기는
   `set <path> = <value>`, 씬의 `::accept`는 `quest <id> accepted`(`at="nextRun"`이면

@@ -364,3 +364,58 @@ fn a_text_ternary_interpolation_is_told_to_split_into_lines() {
         ds[0].message
     );
 }
+
+/// A `::set` the write policy refuses is reported once, by the refusal —
+/// its value's type against the engine's record is moot (ledger INK-06).
+#[test]
+fn a_refused_write_is_one_report() {
+    let text = "---\nkind: scene\nid: d\n---\n## D\n<branch id=\"door\">\n\
+                <choice id=\"a\" label=\"A\">\n@narrator: A.\n</choice>\n\
+                <choice id=\"b\" label=\"B\">\n@narrator: B.\n</choice>\n</branch>\n\
+                ::set{scene.choices.door = true}\n";
+    assert_eq!(
+        codes(text, SchemaImports::default()),
+        ["E-QUEST-RESERVED-WRITE"]
+    );
+}
+
+/// Yarn's `$oil` is one report, naming the path — not also a stray match
+/// subject; a bare `$` outside a `<match>` still is one (ledger INK-16).
+#[test]
+fn a_yarn_variable_is_one_report() {
+    let text = "---\nkind: scene\nid: y\nstate:\n  run.oil: { type: number, default: 1 }\n---\n\
+                ## Y\n@narrator{when=\"$oil > 2\"}: Lots.\n@narrator{when=\"$ > 2\"}: Some.\n";
+    assert_eq!(
+        codes(text, SchemaImports::default()),
+        ["E-CEL-PROFILE", "E-DOLLAR-OUTSIDE-MATCH"]
+    );
+}
+
+/// A choice named `true` is refused where it is named; the `is="true"`
+/// that meant it is not reported again as foreign to a domain that lists
+/// it (ledger INK-19).
+#[test]
+fn a_literal_choice_name_is_reported_where_it_is_named() {
+    let text = "---\nkind: scene\nid: t\n---\n## T\n<branch id=\"b\">\n\
+                <choice id=\"true\" label=\"Yes\">\n@narrator: Y.\n</choice>\n\
+                <choice id=\"no\" label=\"No\">\n@narrator: N.\n</choice>\n</branch>\n\
+                <match on=\"scene.choices.b\">\n<when is=\"true\">\n@narrator: yes\n</when>\n\
+                <otherwise>\n@narrator: no\n</otherwise>\n</match>\n";
+    assert_eq!(codes(text, SchemaImports::default()), ["E-RESERVED-NAME"]);
+}
+
+/// A scene with a `title:` and no `id:` is told the id its title spells,
+/// at the title (ledger INK-17).
+#[test]
+fn a_titled_scene_without_an_id_is_offered_one() {
+    let text = "---\nkind: scene\ntitle: Lamp_Room\n---\n## T\n@narrator: Hi.\n";
+    let ds = lute_check::check(&input(text)).diagnostics;
+    assert_eq!(ds.len(), 1, "{ds:#?}");
+    assert_eq!(ds[0].code, "E-META-MISSING");
+    assert_eq!(ds[0].span.line, 3);
+    assert!(
+        ds[0].message.contains("write `id: lampRoom`"),
+        "{}",
+        ds[0].message
+    );
+}

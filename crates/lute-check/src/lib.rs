@@ -210,8 +210,8 @@ pub use match_check::{
     E_REWARD_ATTR, E_REWARD_KIND, E_WHEN_RANGE,
 };
 pub use meta::{
-    parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace, StateDecl,
-    StateSchema, TypedMeta, E_KIND_MISSING, E_STATE_COLLECTION, E_UNKNOWN_KIND,
+    ident_from_name, parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace,
+    StateDecl, StateSchema, TypedMeta, E_KIND_MISSING, E_STATE_COLLECTION, E_UNKNOWN_KIND,
 };
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
 pub use permissions::{

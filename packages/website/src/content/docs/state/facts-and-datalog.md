@@ -344,7 +344,11 @@ As with an indexed path, `S` must be bound by a positive body atom (`adjacent(R,
 `run.stalker == 'chapel'` with `raw` suffixed `[S = chapel]`. A kind beat asks the question of its
 own member with `holds(close(occasion.target))`. Two shapes are `E-CEL-PROFILE`: comparing the
 variable in any other way (`run.hp > S`), and comparing it with a path that is not typed by a kind
-(`run.hp == S`).
+(`run.hp == S`). The path may also be typed by an enum that lists some of the kind's members
+(`run.route: { type: { domain: route } }` with `route: [none, ren, mika]`, beside
+`suitor(S)` over `suitor: { members: [ren, mika, kai] }`): the comparison holds for the members
+both list, as the same comparison does in a beat's `when`. A path whose kind or enum shares no
+member with the variable's kind is `E-FACT-DOMAIN`, since the comparison can never hold.
 
 ## Derivation in trace, test, and play
 

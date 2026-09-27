@@ -305,6 +305,32 @@ fn a_rule_variable_compared_with_a_domain_path_is_instantiated() {
 }
 
 #[test]
+fn a_rule_variable_compared_with_an_enum_sharing_members_is_accepted() {
+    // `route` lists some of `room`'s members (and `none`): `run.route == S`
+    // holds for those, as the same comparison in a beat does.
+    let doc = |enums: &str| {
+        format!(
+            "---\nkind: lore\nid: lore.ward\ntitle: Ward\n\
+             entities:\n  room: {{ members: [lobby, morgue, chapel] }}\n\
+             enums:\n  route: [{enums}]\n\
+             relations:\n  here: {{ args: [room], derive: true }}\n\
+             rules:\n  - \"here(S) :- room(S), cel(\\\"run.route == S\\\")\"\n\
+             state:\n  run.route: {{ type: {{ domain: route }}, default: none }}\n---\n\
+             <beat id=\"b\" on=\"morning\" once=\"false\" when=\"holds(here(chapel))\">\n  @narrator: here\n</beat>\n"
+        )
+    };
+    let shared = errors(&doc("none, chapel"));
+    assert!(shared.is_empty(), "{shared:?}");
+    let disjoint = errors(&doc("none, alone"));
+    assert!(
+        disjoint
+            .iter()
+            .any(|(c, m)| c == "E-FACT-DOMAIN" && m.contains("can never hold")),
+        "{disjoint:?}"
+    );
+}
+
+#[test]
 fn a_rule_variable_is_grounded_per_member_for_the_evaluator() {
     let text = "---\nkind: lore\nid: lore.ward\ntitle: Ward\n\
                 entities:\n  room: { members: [lobby, morgue, chapel] }\n\

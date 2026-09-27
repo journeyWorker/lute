@@ -143,6 +143,15 @@ fn a_one_day_clock_narrows_its_slot_path_to_the_slots_it_reaches() {
                 &arms(&reached),
             ),
         ),
+        (
+            "scenes/gated.lute",
+            scene(
+                "gated",
+                "hourStrikes",
+                "once: false\npriority: 1\n",
+                "@narrator{when=\"run.hour == 'h05'\"}: Five.",
+            ),
+        ),
     ];
     let docs: Vec<(&str, &str)> = docs.iter().map(|(p, s)| (*p, s.as_str())).collect();
     let dir = project(
@@ -172,6 +181,12 @@ fn a_one_day_clock_narrows_its_slot_path_to_the_slots_it_reaches() {
         "{t}"
     );
     assert!(t.contains("its pattern `h05` never comes"), "{t}");
+    assert!(
+        t.contains(&format!(
+            "[E-ARM-DEAD] this gated line can never be shown: its `when` guard is provably false — {holds}"
+        )),
+        "{t}"
+    );
     assert!(
         !t.contains("short.lute:"),
         "a match over the reached slots is exhaustive: {t}"

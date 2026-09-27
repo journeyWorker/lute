@@ -453,11 +453,13 @@ fn a_directive_s_declared_writes_are_judged_at_the_call() {
 }
 
 /// T1-19: a stored relation with no `tier:` warns (it is run-tier and a new
-/// run clears it); a written tier or a derived relation does not.
+/// run clears it); a written tier or a derived relation does not, and
+/// neither does a misspelt `teir:` — its error already names `tier`.
 #[test]
 fn a_relation_without_a_tier_warns() {
     let rels = "relations:\n  owned: { args: [place], reserved: true }\n  \
                 seen: { args: [place], tier: user }\n  \
+                met: { args: [place], teir: user }\n  \
                 near: { args: [place], derive: true }\n\
                 rules:\n  - \"near(P) :- seen(P)\"\n";
     let ds = diagnostics(&beat("  @narrator: x\n"), world(rels), "");
@@ -469,6 +471,11 @@ fn a_relation_without_a_tier_warns() {
     assert!(
         tiers[0].message.contains("`owned`") && tiers[0].message.contains("tier: user"),
         "{tiers:?}"
+    );
+    assert!(
+        ds.iter()
+            .any(|d| d.message.contains("did you mean `tier`?")),
+        "{ds:?}"
     );
 }
 

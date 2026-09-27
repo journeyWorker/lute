@@ -393,18 +393,7 @@ pub(crate) fn quest_id_fault(what: &str, id: &str) -> Option<String> {
     if id.is_empty() || crate::check::is_cel_ident(id) {
         return None;
     }
-    let suggestion: String = id
-        .split(['.', '-'])
-        .enumerate()
-        .map(|(i, seg)| {
-            let mut cs = seg.chars();
-            match cs.next() {
-                Some(c) if i > 0 => c.to_ascii_uppercase().to_string() + cs.as_str(),
-                Some(c) => c.to_string() + cs.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect();
+    let suggestion = one_name(id);
     Some(if id.contains('.') {
         format!(
             "{what} id `{id}` has a `.`; the id must be one name, so `quest.{id}.state` would \
@@ -415,6 +404,23 @@ pub(crate) fn quest_id_fault(what: &str, id: &str) -> Option<String> {
     } else {
         format!("{what} id `{id}` is not a name (`[A-Za-z_][A-Za-z0-9_]*`)")
     })
+}
+
+/// `id` rejoined as one name: split at `.`/`-`, each later part
+/// capitalised (`isolation.hush` → `isolationHush`, `file-walter` →
+/// `fileWalter`).
+pub(crate) fn one_name(id: &str) -> String {
+    id.split(['.', '-'])
+        .enumerate()
+        .map(|(i, seg)| {
+            let mut cs = seg.chars();
+            match cs.next() {
+                Some(c) if i > 0 => c.to_ascii_uppercase().to_string() + cs.as_str(),
+                Some(c) => c.to_string() + cs.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 /// Collect every maximal state-path use in `expr` (recursing into all

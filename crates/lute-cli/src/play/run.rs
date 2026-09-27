@@ -37,6 +37,9 @@ pub(super) struct StepRecord {
     /// part of the step, not a step (or repetition) of its own: the step's
     /// `expect:` judges the raise, and the end count skips it.
     pub(super) before_raise: bool,
+    /// `terminal:` first holds after this step: the game ended in it, so an
+    /// `::end` it ran is not followed by more play.
+    pub(super) ended_game: bool,
 }
 
 /// The whole playthrough: the initial quest settle, then every step, and
@@ -130,6 +133,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                 notes: Vec::new(),
                 exclusive: Vec::new(),
                 before_raise: false,
+                ended_game: false,
             });
             let skipped: Vec<(usize, Option<String>)> = plan[i + 1..]
                 .iter()
@@ -181,6 +185,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                     notes: Vec::new(),
                     exclusive: Vec::new(),
                     before_raise: true,
+                    ended_game: false,
                 });
                 if let Some(h) = halt {
                     return finish(start, steps, h, s.world);
@@ -217,8 +222,9 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                     .collect();
             // dsl 0.27.0 §4: the step that ended the game says so; a new run
             // that did not reopen it says so too.
+            let ended_game = halt.is_none() && s.terminal() && !was_terminal;
             if halt.is_none() && s.terminal() {
-                if !was_terminal {
+                if ended_game {
                     notes.push(terminal_note(&s));
                 } else if matches!(body, StepBody::NewRun { .. }) {
                     notes.push(format!(
@@ -238,6 +244,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                 notes,
                 exclusive,
                 before_raise: false,
+                ended_game,
             });
             for o in &mut open {
                 menus_presented(steps.last().expect("just pushed"), &mut o.used);
