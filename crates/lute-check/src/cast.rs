@@ -828,6 +828,81 @@ pub fn fact_producers(
     out
 }
 
+/// One fact write of a project root: an `::assert` / `::retract`, or one
+/// fact a directive call's declared `effects.asserts` / `retracts` writes.
+pub(crate) struct FactWrite {
+    pub(crate) rel: String,
+    /// A constant argument, else `None` (`_`, a component param).
+    pub(crate) args: Vec<Option<String>>,
+    /// `true` for an assert.
+    pub(crate) up: bool,
+    /// How the author wrote it: `` `::retract{solved(drawer)}` ``, or
+    /// `` `::sell` (it retracts `caught(marlin)`) ``.
+    pub(crate) text: String,
+    pub(crate) path: std::path::PathBuf,
+    pub(crate) span: Span,
+}
+
+/// Every fact write of `docs` (one resolved root), asserts and retracts
+/// alike, in document order. A component document's own sites are left out
+/// as in [`fact_producers`]: its host documents carry them spliced.
+pub(crate) fn fact_writes(
+    docs: &[(std::path::PathBuf, Document)],
+    effects: &crate::directive_facts::EffectDirectives,
+) -> Vec<FactWrite> {
+    let mut out = Vec::new();
+    for (path, doc) in docs {
+        if crate::meta::infer_meta_kind_from_shape(&doc.meta, true)
+            == Some(crate::meta::MetaKind::Component)
+        {
+            continue;
+        }
+        for body in doc_bodies(doc) {
+            visit(body, &mut |node| {
+                let mut push = |p: &FactPattern, up: bool, text: String, span: Span| {
+                    if !p.relation.is_empty() {
+                        out.push(FactWrite {
+                            rel: p.relation.clone(),
+                            args: pattern_args(p),
+                            up,
+                            text,
+                            path: path.clone(),
+                            span,
+                        });
+                    }
+                };
+                let written = |verb: &str, p: &FactPattern| {
+                    format!("`::{verb}{{{}}}`", crate::directive_facts::pattern_text(p))
+                };
+                match node {
+                    Node::Assert(a) => {
+                        push(&a.pattern, true, written("assert", &a.pattern), a.span)
+                    }
+                    Node::Retract(r) => {
+                        push(&r.pattern, false, written("retract", &r.pattern), r.span)
+                    }
+                    Node::Directive(d) => {
+                        let Some(facts) = crate::directive_facts::lookup(effects, d) else {
+                            return;
+                        };
+                        for (p, up) in facts.writes() {
+                            let verb = if up { "asserts" } else { "retracts" };
+                            let text = format!(
+                                "`::{}` (it {verb} `{}`)",
+                                d.tag,
+                                crate::directive_facts::pattern_text(p)
+                            );
+                            push(p, up, text, d.span);
+                        }
+                    }
+                    _ => {}
+                }
+            });
+        }
+    }
+    out
+}
+
 /// A fact pattern's arguments: a constant, else `None`.
 fn pattern_args(pattern: &FactPattern) -> Vec<Option<String>> {
     pattern
@@ -1045,14 +1120,14 @@ fn read_paths(e: &Expr, out: &mut Vec<String>) -> bool {
 /// falsifies a `Neg` occurrence, one that can make it false a `Pos` one;
 /// `Both` (under `count`, a comparison, a ternary…) either way.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Pol {
+pub(crate) enum Pol {
     Pos,
     Neg,
     Both,
 }
 
 impl Pol {
-    fn flip(self) -> Self {
+    pub(crate) fn flip(self) -> Self {
         match self {
             Pol::Pos => Pol::Neg,
             Pol::Neg => Pol::Pos,
@@ -1063,19 +1138,19 @@ impl Pol {
 
 /// A fact atom a guard queries: relation, arguments (`None` for `_` or
 /// anything not a constant) and polarity.
-struct Atom {
-    rel: String,
-    args: Vec<Option<String>>,
-    pol: Pol,
+pub(crate) struct Atom {
+    pub(crate) rel: String,
+    pub(crate) args: Vec<Option<String>>,
+    pub(crate) pol: Pol,
 }
 
 /// What a write may do to the facts: atoms matching `rel(args)` (`None`
 /// matches anything) may become true (`up`) or false.
 #[derive(Clone, PartialEq)]
-struct Effect {
-    rel: String,
-    args: Vec<Option<String>>,
-    up: bool,
+pub(crate) struct Effect {
+    pub(crate) rel: String,
+    pub(crate) args: Vec<Option<String>>,
+    pub(crate) up: bool,
 }
 
 impl Effect {
@@ -1103,7 +1178,7 @@ const DNF_CAP: usize = 256;
 
 /// An atom call's arguments: a constant identifier, string or bool, else
 /// `None` (the `_` wildcard, a param, anything computed).
-fn atom_args(atom: &CallExpr) -> Vec<Option<String>> {
+pub(crate) fn atom_args(atom: &CallExpr) -> Vec<Option<String>> {
     atom.args
         .iter()
         .map(|a| match &a.expr {
@@ -1191,7 +1266,12 @@ fn bind(
 /// write's direction through a positive premise, against it through a
 /// negated one — to a fixpoint. A relation whose rules did not parse moves
 /// either way on any write.
-fn write_effects(vocab: &RelVocab, rel: &str, args: Vec<Option<String>>, up: bool) -> Vec<Effect> {
+pub(crate) fn write_effects(
+    vocab: &RelVocab,
+    rel: &str,
+    args: Vec<Option<String>>,
+    up: bool,
+) -> Vec<Effect> {
     let mut out = vec![Effect {
         rel: rel.to_string(),
         args,
@@ -2402,7 +2482,12 @@ impl Presence<'_> {
 
     /// `present`'s top-level conjuncts for `speaker` as written; `None` (the
     /// faults reported at `span`, single-file) when it is not a condition.
+    /// A cast entry for `narrator` is refused (`E-RESERVED-NAME`): narration
+    /// is no cast member, so its `present:` gates nothing.
     fn written_present(&mut self, speaker: &str, span: Span) -> Option<Vec<Expr>> {
+        if speaker == "narrator" {
+            return None;
+        }
         let member = self.folded.cast.get(speaker)?;
         let raw = member.present.clone()?;
         let mut faults = present_faults(speaker, &raw, span);

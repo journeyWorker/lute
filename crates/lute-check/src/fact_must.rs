@@ -446,7 +446,7 @@ impl<'a> Root<'a> {
                         if p.args.iter().any(|x| matches!(x.term, FactTerm::Param(_))) {
                             param_asserted.insert(p.relation.clone());
                         }
-                        if let Some(f) = GroundFact::from_pattern(p) {
+                        for f in vocab.asserted_facts(p) {
                             produced.entry(f.relation).or_default().insert(f.args);
                         }
                     };
@@ -1042,6 +1042,14 @@ impl<'a> Walk<'a> {
             return;
         };
         facts.retain(|g| !self.root.is_derived(&g.relation));
+        // An `occasion.target` write names one member of its domain, not
+        // known here: every instance may displace, none is guaranteed.
+        if crate::target_writes::has_target(pattern) {
+            for fact in self.root.vocab.asserted_facts(pattern) {
+                facts.retain(|g| !self.root.displaces(&fact, g));
+            }
+            return;
+        }
         let Some(fact) = GroundFact::from_pattern(pattern) else {
             return;
         };

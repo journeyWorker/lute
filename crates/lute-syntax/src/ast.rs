@@ -172,6 +172,9 @@ pub struct Branch {
 pub struct Choice {
     pub id: String,
     pub label: String,
+    /// Span of the `label=` value (the `<choice` open tag's start when no
+    /// label is written), where a finding about the label text anchors.
+    pub label_span: Span,
     pub when: Option<CelSlot>,
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
@@ -688,10 +691,11 @@ pub fn format_number(
 /// `capitalize` upper-cases the first letter; `start` is the declared
 /// sentence-start form `start` when there is one, else `capitalize`;
 /// `indefinite` is the declared form `indefinite` when there is one, else
-/// `an` before a text whose first letter is a vowel (`a e i o u`) and `a`
-/// before any other (`an ashwraith`, `a wagon`) — declare `indefinite:` for
-/// the words that rule gets wrong (`an hour`, `a unicorn`) or for a label
-/// that already carries an article. `None` for a number or unknown hint.
+/// the text itself when it already starts with an article (`the smugglers'
+/// cut`, `a lantern`, `an owl`), else `an` before a text whose first letter
+/// is a vowel (`a e i o u`) and `a` before any other (`an ashwraith`, `a
+/// wagon`) — declare `indefinite:` for the words that rule gets wrong (`an
+/// hour`, `a unicorn`). `None` for a number or unknown hint.
 pub fn format_text(
     format: &str,
     text: &str,
@@ -703,6 +707,14 @@ pub fn format_text(
         INTERP_FORMAT_START => Some(start.map_or_else(|| capitalize(text), str::to_string)),
         INTERP_FORMAT_INDEFINITE => Some(indefinite.map_or_else(
             || {
+                let first = text.split_whitespace().next().unwrap_or("");
+                if text.contains(char::is_whitespace)
+                    && ["the", "a", "an"]
+                        .iter()
+                        .any(|a| first.eq_ignore_ascii_case(a))
+                {
+                    return text.to_string();
+                }
                 let vowel = text
                     .chars()
                     .find(|c| c.is_alphanumeric())
@@ -1236,6 +1248,14 @@ mod tests {
         assert_eq!(
             format_text("indefinite", "hour", None, Some("an hour")).as_deref(),
             Some("an hour")
+        );
+        assert_eq!(
+            format_text("indefinite", "the smugglers' cut", None, None).as_deref(),
+            Some("the smugglers' cut")
+        );
+        assert_eq!(
+            format_text("indefinite", "theatre", None, None).as_deref(),
+            Some("a theatre")
         );
         assert_eq!(format_text("ordinal", "x", None, None), None);
     }

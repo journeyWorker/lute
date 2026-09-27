@@ -605,6 +605,7 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
     let files = match crate::find_lute_files(dir) {
         Ok(f) => f,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute lore: cannot walk {}: {e}", dir.display());
             return ExitCode::from(2);
         }
@@ -646,6 +647,7 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
         let (doc, errors) = match parsed {
             Ok(p) => p,
             Err(e) => {
+                let e = lute_manifest::io_reason(&e);
                 eprintln!("lute lore: cannot read {}: {e}", path.display());
                 return ExitCode::from(2);
             }

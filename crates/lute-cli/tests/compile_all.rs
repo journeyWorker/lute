@@ -282,7 +282,10 @@ fn all_without_project_is_a_usage_error() {
     let result = run(&["compile", "--all", "-o", out.to_str().unwrap()]);
     assert_eq!(result.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&result.stderr);
-    assert!(stderr.contains("--all requires --project"), "got: {stderr}");
+    assert!(
+        stderr.contains("--all requires the project directory"),
+        "got: {stderr}"
+    );
     assert!(
         stderr.contains("Usage: lute compile --all"),
         "got: {stderr}"

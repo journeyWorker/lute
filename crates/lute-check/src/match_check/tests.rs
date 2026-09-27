@@ -167,6 +167,7 @@ fn branch(id: &str, choice_ids: &[&str]) -> Branch {
         .map(|c| Choice {
             id: (*c).to_string(),
             label: String::new(),
+            label_span: span(),
             when: None,
             attrs: Vec::new(),
             body: Vec::new(),
@@ -565,6 +566,7 @@ fn duplicate_choice_ids_flag_e_choice_dup() {
     let choice = |id: &str| Choice {
         id: id.into(),
         label: id.into(),
+        label_span: sp,
         when: None,
         attrs: Vec::new(),
         body: Vec::new(),
@@ -641,6 +643,7 @@ fn guarded_branch(id: &str, choices: &[(&str, Option<&str>)]) -> Branch {
         .map(|(cid, guard)| Choice {
             id: (*cid).to_string(),
             label: String::new(),
+            label_span: span(),
             when: guard.map(|g| CelSlot::raw(CelKind::Condition, g.into(), span())),
             attrs: Vec::new(),
             body: Vec::new(),
@@ -877,6 +880,7 @@ fn line_code_collision_is_trimmed_and_descends_into_arms() {
         choices: vec![Choice {
             id: "a".into(),
             label: String::new(),
+            label_span: span(),
             when: None,
             attrs: Vec::new(),
             body: vec![code_line("marina", Some("0050"), 60)],

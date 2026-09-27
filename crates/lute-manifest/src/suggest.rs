@@ -120,7 +120,10 @@ pub fn nearest<'a>(
             return Some(c);
         }
     }
-    let max_dist = max_dist.min((needle.chars().count() / 3).max(1));
+    let len = needle.chars().count();
+    // Every edit spent means nothing of the needle is left (`c` → `a`, `셋`
+    // → `둘`): that is another word, not a typo of it.
+    let max_dist = max_dist.min((len / 3).max(1)).min(len.saturating_sub(1));
     let lower = needle.to_lowercase();
     candidates
         .into_iter()
@@ -135,6 +138,27 @@ pub fn nearest<'a>(
 pub fn did_you_mean<'a>(needle: &str, haystack: impl IntoIterator<Item = &'a str>) -> String {
     nearest(needle, haystack, 2)
         .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"))
+}
+
+/// The one candidate `needle` abbreviates — `Mon` for `Monday`, `morn` for
+/// `morning` — compared case-insensitively; `None` for a needle shorter than
+/// three characters or one that starts several candidates. For member
+/// literals, where a label is often written short; [`nearest`] first.
+pub fn abbreviated<'a>(
+    needle: &str,
+    haystack: impl IntoIterator<Item = &'a str>,
+) -> Option<&'a str> {
+    if needle.chars().count() < 3 {
+        return None;
+    }
+    let lower = needle.to_lowercase();
+    let mut starts = haystack
+        .into_iter()
+        .filter(|c| *c != needle && c.to_lowercase().starts_with(&lower));
+    match (starts.next(), starts.next()) {
+        (Some(c), None) => Some(c),
+        _ => None,
+    }
 }
 
 /// Case- and separator-insensitive form: `changed_on`, `changed-on` and
@@ -162,6 +186,15 @@ mod tests {
         assert_eq!(nearest("wehn", attrs, 2), Some("when"));
         assert_eq!(nearest("onc", attrs, 2), Some("once"));
         assert_eq!(nearest("episod", ["episode"], 2), Some("episode"));
+    }
+
+    // A one-character needle one edit from a one-character member shares
+    // nothing with it: no suggestion.
+    #[test]
+    fn a_single_character_is_no_typo_of_another() {
+        assert_eq!(nearest("c", ["a", "b"], 2), None);
+        assert_eq!(nearest("셋", ["하나", "둘"], 2), None);
+        assert_eq!(nearest("ab", ["ac", "zz"], 2), Some("ac"));
     }
 
     // Case and separators are not edits: `gold` names `GOLD`, `changed_on`

@@ -253,6 +253,64 @@ pub fn subject_text(subject: &str) -> String {
     }
 }
 
+/// The defs leading from `@name` to the first def (depth first, in written
+/// order) whose OWN body text satisfies `holds` — `[outer, inner]` when
+/// `@outer`'s body names `@inner` and only `@inner`'s body holds it. `None`
+/// when no def reached from `name` does.
+pub fn def_chain_where(
+    name: &str,
+    defs: &DefTable<'_>,
+    holds: &dyn Fn(&str) -> bool,
+) -> Option<Vec<String>> {
+    fn walk(
+        name: &str,
+        defs: &DefTable<'_>,
+        holds: &dyn Fn(&str) -> bool,
+        seen: &mut Vec<String>,
+    ) -> Option<Vec<String>> {
+        if seen.iter().any(|s| s == name) {
+            return None;
+        }
+        let body = defs.bodies.get(name)?;
+        if holds(body) {
+            return Some(vec![name.to_string()]);
+        }
+        seen.push(name.to_string());
+        scan_refs(body)
+            .iter()
+            .filter(|r| !r.is_dollar)
+            .find_map(|r| walk(&r.name, defs, holds, seen))
+            .map(|mut chain| {
+                chain.insert(0, name.to_string());
+                chain
+            })
+    }
+    walk(name, defs, holds, &mut Vec::new())
+}
+
+/// How a message names the def a chain from [`def_chain_where`] ends at:
+/// "`@a`" for a def used directly, "`@b` (used by `@a`)" for one reached
+/// through another.
+pub fn def_chain_label(chain: &[String]) -> String {
+    match chain {
+        [] => String::new(),
+        [only] => format!("`@{only}`"),
+        [first, between @ .., owner] => {
+            let through = between
+                .iter()
+                .map(|d| format!("`@{d}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let through = if through.is_empty() {
+                String::new()
+            } else {
+                format!(" through {through}")
+            };
+            format!("`@{owner}` (used by `@{first}`{through})")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;

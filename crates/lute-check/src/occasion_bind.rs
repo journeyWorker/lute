@@ -351,12 +351,12 @@ pub fn payload_decls(
         regions.push((0, usize::MAX, b.on.as_str()));
     }
     for e in &doc.entries {
-        if let Some((on, _)) = &e.on {
+        if let Some(on) = meant_occasion(&e.on, &e.attrs) {
             regions.push((e.span.byte_start, e.span.byte_end, on));
         }
     }
     for b in &doc.beats {
-        if let Some((on, _)) = &b.on {
+        if let Some(on) = meant_occasion(&b.on, &b.attrs) {
             regions.push((b.span.byte_start, b.span.byte_end, on));
         }
     }
@@ -453,6 +453,23 @@ pub fn payload_decls(
         }
     });
     (decls, diags)
+}
+
+/// The occasion an entry or bundle beat answers: its `on=`, else the value of
+/// the `occasion=` / `event=` it wrote instead — that attribute's error is
+/// the one report, so its payload reads are judged as the occasion's.
+fn meant_occasion<'a>(
+    on: &'a Option<(String, lute_core_span::Span)>,
+    attrs: &'a [lute_syntax::ast::Attr],
+) -> Option<&'a str> {
+    on.as_ref().map(|(on, _)| on.as_str()).or_else(|| {
+        attrs.iter().find_map(|a| match &a.value {
+            lute_syntax::ast::AttrValue::Str(v) if a.key == "occasion" || a.key == "event" => {
+                Some(v.as_str())
+            }
+            _ => None,
+        })
+    })
 }
 
 /// dsl 0.28.0 (T2-8): the parts of `nodes` a raise judges, with the

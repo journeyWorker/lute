@@ -193,6 +193,8 @@ impl ChooseSpans {
 pub enum YamlStep<'a> {
     Key(&'a str),
     Item(usize),
+    /// The value of the key the path names so far (last step only).
+    Value,
 }
 
 /// The span of the node `path` names in `text` — a final key's own scalar,
@@ -214,6 +216,7 @@ pub fn yaml_span(text: &str, path: &[YamlStep<'_>]) -> Option<Span> {
     let start = err.location()?.index();
     let end = match path.last() {
         Some(YamlStep::Key(k)) if text[start..].starts_with(k) => start + k.len(),
+        Some(YamlStep::Value) => start + scalar_len(&text[start..]),
         _ => start,
     };
     Some(Span::from_bytes(
@@ -243,10 +246,12 @@ impl<'de> serde::de::Visitor<'de> for YamlSeek<'_> {
         f.write_str("any YAML node")
     }
     fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        if self.at_target() {
+            return Err(serde::de::Error::custom(YAML_FOUND));
+        }
         let want = match self.0.split_first() {
             Some((YamlStep::Key(k), rest)) => Some((*k, rest)),
-            Some(_) => None,
-            None => return Err(serde::de::Error::custom(YAML_FOUND)),
+            _ => None,
         };
         while let Some(hit) =
             map.next_key_seed(YamlKey(want.map(|(k, rest)| (k, rest.is_empty()))))?
@@ -261,10 +266,12 @@ impl<'de> serde::de::Visitor<'de> for YamlSeek<'_> {
         Ok(())
     }
     fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+        if self.at_target() {
+            return Err(serde::de::Error::custom(YAML_FOUND));
+        }
         let want = match self.0.split_first() {
             Some((YamlStep::Item(i), rest)) => Some((*i, rest)),
-            Some(_) => None,
-            None => return Err(serde::de::Error::custom(YAML_FOUND)),
+            _ => None,
         };
         for n in 0.. {
             let more = match want {
@@ -301,12 +308,30 @@ impl<'de> serde::de::Visitor<'de> for YamlSeek<'_> {
 }
 
 impl YamlSeek<'_> {
+    /// The node handed to this step is the target: the path ends here, or
+    /// only its [`YamlStep::Value`] is left.
+    fn at_target(&self) -> bool {
+        matches!(self.0, [] | [YamlStep::Value])
+    }
+
     /// A scalar is the target when the path ends here, else a dead end.
     fn scalar<E: serde::de::Error>(&self) -> Result<(), E> {
-        if self.0.is_empty() {
+        if self.at_target() {
             Err(E::custom(YAML_FOUND))
         } else {
             Ok(())
+        }
+    }
+}
+
+/// The byte length of the scalar `rest` starts with: a quoted one through
+/// its closing quote, a plain one up to the flow or line end.
+fn scalar_len(rest: &str) -> usize {
+    match rest.chars().next() {
+        Some(q @ ('"' | '\'')) => rest[1..].find(q).map_or(rest.len(), |i| i + 2),
+        _ => {
+            let end = rest.find(['\n', ',', '}', ']', '#']).unwrap_or(rest.len());
+            rest[..end].trim_end().len()
         }
     }
 }
@@ -1185,18 +1210,30 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
             .as_ref()
             .filter(|_| lute_manifest::clock::is_clock_path(path))
         {
-            let seedable = match &clock.slot {
-                Some(slot) => format!("`{}` / `{slot}`", clock.day),
-                None => format!("`{}`", clock.day),
-            };
-            out.push(mock_diag(
-                E_TRACE_MOCK_UNDECLARED,
+            let message = if path == lute_manifest::clock::CLOCK_ENDED {
+                // No day or slot seed ends the clock: only an advance past
+                // its last position does, which a play script takes.
+                let last = clock
+                    .last_at()
+                    .map(|l| format!(" ({})", clock.describe(l)))
+                    .unwrap_or_default();
+                format!(
+                    "`--state {path}=…` seeds `{path}`, which turns true only when an `advance:` \
+                     ends the clock — no mock may set it, and no day or slot seed makes it true; \
+                     check the moment in a `lute play` script that advances past the clock's \
+                     last position{last}, with `expect: {{ clock: {{ ended: true }} }}`"
+                )
+            } else {
+                let seedable = match &clock.slot {
+                    Some(slot) => format!("`{}` / `{slot}`", clock.day),
+                    None => format!("`{}`", clock.day),
+                };
                 format!(
                     "`--state {path}=…` seeds a path the clock derives from its day and slot, \
                      which no mock may set — seed {seedable} instead"
-                ),
-                *at,
-            ));
+                )
+            };
+            out.push(mock_diag(E_TRACE_MOCK_UNDECLARED, message, *at));
             continue;
         }
         if crate::eval::is_reserved_quest_path(path) {

@@ -427,8 +427,10 @@ fn trace_marks_an_exiting_auto_as_an_exit() {
         text.contains("<auto exit>"),
         "the exit must be marked: {text}"
     );
+    // The entrance prints as authored, unmarked.
     assert!(
-        text.lines().any(|l| l.trim() == "<auto>"),
+        text.lines()
+            .any(|l| l.trim() == r#"::auto{character="vesna" anchor="port" action="brace"}"#),
         "the entrance must NOT be marked: {text}"
     );
 }
@@ -974,4 +976,68 @@ fn trace_shows_a_line_delivery_as_authored() {
     assert_eq!(lines[0]["delivery"], "mono", "{v}");
     assert_eq!(lines[1]["delivery"], "vo emotion=\"sad\"", "{v}");
     assert!(lines[2].get("delivery").is_none(), "{v}");
+}
+
+/// p28: a `<match>` a component expanded is covered at its own file, which
+/// the summary and `--json` spelled as the canonical path the import
+/// resolved (`/private/tmp/…/components/card.component.lute:9:1`). It reads
+/// relative to the current directory, the way the traced file does.
+#[test]
+fn trace_names_a_component_site_relative_to_the_current_directory() {
+    let dir = temp_dir("component-site");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::create_dir_all(dir.join("components")).unwrap();
+    std::fs::write(
+        dir.join("components/card.component.lute"),
+        "---\ncomponent: card\nparams:\n  day: { enum: [Mon, Tue] }\n---\n\n## Card\n\n\
+         <match on=\"@day\">\n  <when is=\"Mon\">\n    @n: Monday.\n  </when>\n  \
+         <otherwise>\n    @n: Later.\n  </otherwise>\n</match>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scenes/s.lute"),
+        "---\nkind: scene\nid: s\nstate:\n  run.day: { type: { enum: [Mon, Tue] }, default: Mon }\n\
+         defs:\n  today: { type: { enum: [Mon, Tue] }, cel: \"run.day\" }\n\
+         components: [../components/card.component.lute]\n---\n\n\
+         ## S\n\n::use{component=\"card\" day=@today}\n",
+    )
+    .unwrap();
+    let run = |json: bool| {
+        let mut cmd = Command::new(BIN);
+        cmd.current_dir(&dir).args(["trace", "scenes/s.lute"]);
+        if json {
+            cmd.arg("--json");
+        }
+        cmd.output().unwrap()
+    };
+
+    let out = run(false);
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let text = String::from_utf8_lossy(&out.stdout);
+    let summary = text.lines().last().unwrap_or_default();
+    assert!(
+        summary.contains("@components/card.component.lute:9:1 (card#1)"),
+        "{text}"
+    );
+
+    let out = run(true);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        v["coverage"]["arms"]
+            .get("components/card.component.lute:9:1 (card#1)")
+            .is_some(),
+        "{v}"
+    );
+    let files: Vec<&serde_json::Value> = v["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(v["decisions"].as_array().unwrap())
+        .filter_map(|d| d.get("component")?.get("file"))
+        .collect();
+    assert!(!files.is_empty(), "{v}");
+    assert!(
+        files.iter().all(|f| *f == "components/card.component.lute"),
+        "{v}"
+    );
 }

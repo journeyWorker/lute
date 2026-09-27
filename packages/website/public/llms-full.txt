@@ -841,7 +841,7 @@ file you give it:
 $ lute context episodes/diner.lute
 lute: note: using project episodes (nearest lute.project.yaml); pass --project to choose another
 capabilityVersion: ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319
-permissions: {"layers":[]} (authoring/compile-time restrictions; not runtime sandbox enforcement)
+permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (12):
   auto: character: string, anchor: domain:anchor, action: domain:action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location: string, time: string, assetId: string   [mutatesScene]
@@ -1115,8 +1115,10 @@ declares. Scenes you do not list, like the endings below, still write their keys
 
 A chapter that may not play, because its own `when:` reads state the story may never set, stalls
 the chain: the next listed scene waits on it through its `after:`, and `lute check-project` warns
-(`W-CHAPTER-STALL`). A `when:` that reads only the clock merely delays the chain, so it draws no
-warning. Either give the scene after the optional chapter its own `after:` naming the chapter
+(`W-CHAPTER-STALL`). A `when:` that reads only the clock merely delays the chain while a later
+raise of its occasion still meets it, so it draws no warning; one whose window closes does: a
+`dayStart` chapter for the day the run starts (the clock never raises `dayStart` then), or a slot
+on the last day of a clock that ends, which the chain may reach too late. Either give the scene after the optional chapter its own `after:` naming the chapter
 before it, or, for the first chapter, take it out of the chain and give it its own `on:`. `lute
 play` names a derived `after:` in its reasons: `after: visited("pryceWakes") is not satisfied
 (written by `chapters:` in lute.project.yaml)`.
@@ -2427,6 +2429,9 @@ state:
 - `test="$ == 'x'"` is `W-WHEN-TEST-LITERAL`, and `lute fix` rewrites it to `is="x"`.
 - `@who{when="G"}: …` is sugar for a one-arm match. For a fact query (`holds(…)`) this line form is
   the only form, because `<match on="holds(…)">` is `E-MATCH-RELATION-SUBJECT`.
+- A `<match>` with no `on` has no subject, so every arm is `test=`; an `is=` arm there is
+  `E-MATCH-NO-SUBJECT`. Add `on="…"`, or write the condition as `test=` (`<when is="run.lamps >= 3">`
+  is `<when test="run.lamps >= 3">`).
 - Every tag sits alone on one physical line. `<when …>text</when>` on one line is
   `E-TAG-INLINE-BODY`, and a tag wrapped across lines is `E-TAG-NOT-ONE-LINE`.
 
@@ -2713,7 +2718,7 @@ but draws no edge, so `lute scenario` lists that beat as unanchored with the `af
 | `once` | Scenes: `run` (the default), `user` (once ever), or `false` (repeatable). Entries: `once="run"` (until a new run resets `entry.<id>.read`) or `once="user"` (spent once `entry.<id>.everRead` is set); without it, or with `once="false"`, an entry repeats. With a declared clock (0.24.0), `once: day` / `once: slot` (entries `once="day"` / `"slot"`) spends it until the day or slot changes; without a clock that is `E-BEAT-ATTR`. 0.27.0: `week` (with the clock's `week:`) and `season:<name>`. An entry's writes apply on its first read in a run only (per member with `for=`), so an entry that can be read again in a run and writes — a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for` — is `W-ENTRY-WRITE-REREAD` (`::assert` is exempt): put a write meant to repeat in a `<beat once="false">`, whose `once` defaults to `run`, not to repeatable. |
 | `also` | 0.23.0, scenes (`also: true`) and bundle beats (`also`) on a `select: first` occasion: presented after the winner, or alone when no main beat is eligible, and never replaces it. On an entry, or on a `select: all` / `sequence` occasion, it is `E-BEAT-ATTR`. `W-BEAT-SHADOWED` and `W-BEAT-PRIORITY-TIE` ignore `also` beats. |
 | `share` | 0.25.0, scenes (`share:`), entries and bundle beats (`share=`): a project-wide key for one event told in several places. Presenting (an entry: reading) any beat of the key spends every beat of it for the `once` period (`lute play`: `` once: user — `share: miraThanks` already spent … by cafe.talks.thanksCounter ``). It needs a written `once` other than `false`, and every beat of a key declares the same `once`; otherwise `E-BEAT-ATTR`. `lute beats` shows `user, share miraThanks`. |
-| `spentBy` | 0.27.0, scenes (`spentBy:`), entries and bundle beats (`spentBy=`): a condition that spends the beat instead of a presentation (`spentBy: "holds(solved(valves))"`). 0.28.0: it latches — once it has held the beat stays spent for its `once` period (`run` unless written; `once: week` for a weekly reset), even if it turns false again; `lute play` reports ``spentBy: `run.solved` held — spent this run``. `once: false` or `share` beside it is `E-BEAT-ATTR`; one that holds at the start is `W-BEAT-SPENT-AT-START`. |
+| `spentBy` | 0.27.0, scenes (`spentBy:`), entries and bundle beats (`spentBy=`): a condition that spends the beat instead of a presentation (`spentBy: "holds(solved(valves))"`). 0.28.0: it latches — once it has held the beat stays spent for its `once` period (`run` unless written; `once: week` for a weekly reset), even if it turns false again; `lute play` reports ``spentBy: `run.solved` held — spent this run``. `once: false` or `share` beside it is `E-BEAT-ATTR`; one that holds at the start is `W-BEAT-SPENT-AT-START`; with no `once` written, one that can turn false again (a retracted fact, season state, a rearmed quest) is `W-SPENT-BY-REVERSIBLE`, naming `once: false` + `when: "!(…)"`, `once: season:<name>`, or `once: run` to keep the latch. |
 | `use` | 0.27.0, bundle beats (`use="bondStory"`): a beat template — a component whose `beat:` header supplies every key the `<beat>` does not write (`@param`s replaced by the arguments; an empty value is left out; a bare-id `after` is `visited("<id>")`). Its body runs first (a top-level `::body` places the beat's own body instead); the other attributes are its params (`E-COMPONENT-ARG`). `<beat use="trainer" id="r3Joey" who="joey"/>` is a one-line beat. Misuse is `E-TEMPLATE`. |
 | `for` | 0.27.0, scenes (`for: "kind:crew"`), entries and bundle beats (`for="kind:crew"`) on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, in member order, reading the member as `occasion.target` (`lute play`: `✓ cafe.birthday for toma`). 0.28.0: `once` (and `spentBy`) is spent per member. Beside `target`, or on a targeted or non-sequence occasion, it is `E-BEAT-ATTR`. |
 
@@ -3521,7 +3526,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-SEASON-DECL` | 0.27.0. A `seasons:` entry is malformed (not a map, no or empty `live`, unknown key, bad name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season. A write to `prev.season.*` is `E-QUEST-RESERVED-WRITE`, as for `prev.run.*`. |
 | `E-TEMPLATE` | 0.27.0. A beat template is misused: `<beat use>` names no imported component (did-you-mean) or one without a `beat:` header, the header has an unknown key (`id` included) or a `@name` that is no param, a plain-text header key gets an expression argument, or `::body` sits anywhere but the top level of a template. |
 | `E-CHAPTERS` | 0.28.0. `lute.project.yaml`'s `chapters:` is not a list of `{ on, scenes }` chains, lists a scene twice or puts two chains on one occasion, or still uses the retired `sequence:` key; or (`check-project`) a chain answers an occasion no plugin declares, lists an id no scene declares (did-you-mean), a scene whose own `on:` answers another occasion, or — on a targeted occasion — a scene without `target:`. Each scene of an applied chain otherwise gets `on:`, a descending `priority:` and (except on a `select: sequence` occasion) `after: visited("<previous>")` it does not write itself. |
-| `W-CHAPTER-STALL` | 0.28.0. A chained scene's own `when:` reads state that may never make it true, and the next scene's `after:` waits on it, so the chapters may stop there. A `when:` over the clock alone only delays and is not reported. |
+| `W-CHAPTER-STALL` | 0.28.0. A chained scene's own `when:` reads state that may never make it true, and the next scene's `after:` waits on it, so the chapters may stop there. A `when:` over the clock alone is reported only when its window closes (no later raise of the occasion meets it). |
 | `W-CHAPTER-ORDER` | 0.28.0. On a `select: sequence` occasion, a chained scene's own `priority:` plays it out of the listed order. |
 | `E-ENUM-LABEL-NOT-MEMBER` | 0.24.0. An enum's `labels:` names something that is not one of its members. |
 | `E-CEL-TYPE` | 0.24.0. `%` has a non-integer operand: `` `%` takes two integers: `2.5` is not an integer ``. |
@@ -4110,7 +4115,7 @@ declaration; the first one is used:
 
 <!-- lute-diagnostics unverified="byte-exact check-project output; the plugin loader prefixes the file position to a composed message, so no single format! literal holds it" -->
 ```
-lute: E-PLUGIN-DUP-ID: ./plugins/harbor.engine/cast/south.yaml:3:3: cast `keeper` is already declared at cast/north.yaml:2; this declaration is ignored — rename or remove one
+./plugins/harbor.engine/cast/south.yaml:3:3: error [E-PLUGIN-DUP-ID] cast `keeper` is already declared at cast/north.yaml:2; this declaration is ignored — rename or remove one
 ```
 
 ## Shared components
@@ -4401,7 +4406,7 @@ a scene, which is what lets it prove that none of them dead-ends.
 | `- gather` | the lines after the options | the lines after `</branch>`, which run whichever choice was taken |
 | `VAR oil = 1` | `<<declare $oil = 1>>` | `run.oil: { type: number, default: 1 }` under `state:`, in a schema or the frontmatter |
 | `CONST MAX = 5` | — | a def under `defs:`, read as `@MAX` |
-| `LIST mood = calm, stormy` | — | a path typed by an enum: `run.mood: { type: { enum: [calm, stormy] } }` |
+| `LIST mood = calm, stormy` | — | a path typed by an enum: `run.mood: { type: { enum: [calm, stormy] }, default: calm }` |
 | `~ oil = oil + 2` | `<<set $oil to $oil + 2>>` | `::set{run.oil += 2}` |
 | `{oil}` in text | `{$oil}` in text | `{{run.oil}}` |
 | `{oil > 0: text}` | `<<if $oil > 0>>` | a guarded line: `@narrator{when="run.oil > 0"}: text` |
@@ -4519,26 +4524,30 @@ trace: lamp.lute  (seeds: 0 paths, 0 facts; 5 selections)
     ::set  scene.ledgerReads = 1
   <match scene.ledgerReads>   -> arm 1 (is="1")
     @narrator  The last entry is three weeks old. "Oil low. Ship due."
+    -- return (hub lamp) --
     @narrator  The lamp room again. The dark is closer.
   <hub lamp>   eligible: ledger, stores, dusk   -> ledger
     ::set  scene.ledgerReads = 2
   <match scene.ledgerReads>   -> arm 2 (is="2")
     @narrator  You read it again. The handwriting shakes toward the end.
+    -- return (hub lamp) --
     @narrator  The lamp room again. The dark is closer.
   <hub lamp>   eligible: ledger, stores, dusk   -> stores
     @narrator  You find two more cans of oil.
     ::set  run.oil = 3
+    -- return (hub lamp) --
     @narrator  The lamp room again. The dark is closer.
   <hub lamp>   eligible: ledger, dusk   -> ledger
     ::set  scene.ledgerReads = 3
   <match scene.ledgerReads>   -> otherwise
     @narrator  The words have stopped changing.
+    -- return (hub lamp) --
     @narrator  The lamp room again. The dark is closer.
   <hub lamp>   eligible: ledger, dusk   -> dusk
   guard `run.oil >= 3`: taken
     @narrator  The lamp catches.
   guard `run.oil < 3`: skipped
-trace complete: 10 decisions; choices 5/3 (lamp), arms 1/3 (scene.ledgerReads @19:5), guard `run.oil >= 3` @36:5: taken, guard `run.oil < 3` @37:5: skipped
+trace complete: 10 decisions; choices 3/3 (lamp), arms 3/3 (scene.ledgerReads @19:5), guard `run.oil >= 3` @36:5: taken, guard `run.oil < 3` @37:5: skipped
 ```
 
 `stores` leaves the menu after one pick. [Choices & hubs](/language/choices-and-hubs/) has the
@@ -4680,7 +4689,7 @@ ink.lute:15:1: error [E-UNCLASSIFIED] unrecognized line: `* [Read the ledger]` i
 ink.lute:16:1: error [E-UNCLASSIFIED] unrecognized line: `+ [Wait for dark]` is an Ink choice; Lute choices are `<choice id="…" label="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice); Ink's sticky `+` is a plain `<hub>` choice
 ink.lute:17:1: error [E-UNCLASSIFIED] unrecognized line: `- gather` is an Ink gather; Lute has no gathers: after a `<branch>` or `<hub>` closes, the lines below it run whichever choice was taken, so write the gathered text there as an ordinary line (`@narrator: …`)
 ink.lute:18:1: error [E-UNCLASSIFIED] unrecognized line: `-> ledger` is an Ink divert; Lute has no diverts: `::next{to="ledger"}` jumps forward to a `::mark{id="ledger"}` later in this document, a `<hub>` repeats its choices until an `exit` choice, and another scene is reached through the occasion it answers (`on:` in its frontmatter)
-ink.lute:19:1: error [E-UNCLASSIFIED] unrecognized line: `-> END` is an Ink divert; a scene ends with `::end`
+ink.lute:19:1: error [E-UNCLASSIFIED] unrecognized line: `-> END` is an Ink divert; it ends the whole story, which in Lute is the schema's `terminal:` condition: a scene makes it hold with an ordinary `::set{…}` (`::end` is Ink's `-> DONE`: it ends only this scene)
 failed: ink.lute (10 error(s), 0 warning(s))
 ```
 
@@ -8825,9 +8834,11 @@ condition holds, and from then on it is spent:
 
 A scene writes it in frontmatter (`spentBy: "holds(solved(valves))"`), an entry and a bundle beat
 as an attribute (`spentBy="…"`). The condition may read anything a `when` may. It is a latch:
-once it has held — at any settle of the playthrough (after every presentation, engine write,
-clock move and new run) or when the beat is judged — the beat is spent, and a condition that turns
-false again does not bring it back. For a [kind beat](#kind-targets) or a
+once it has held — in the settled world after any settle of the playthrough (every presentation,
+engine write, clock move and new run), or when the beat is judged — the beat is spent, and a
+condition that turns false again does not bring it back. The latch looks only once a settle is
+done, so a `start="true"` quest is already `active` when it first reads it, never the `unset` it
+had a moment before. For a [kind beat](#kind-targets) or a
 [`for=` beat](#once-per-member-for) the condition is judged per member, `occasion.target` bound,
 and spends that member.
 
@@ -8838,8 +8849,18 @@ or `season:<name>` (until the season opens again). A weekly puzzle that resets w
 a beat that should answer only while something is false writes `when="!(…)"`. A
 [`share`](#one-event-several-places-share) key spends beats by presentation, so it cannot sit
 beside `spentBy` either. A `spentBy` that already holds at the start of play (every state path
-at its default, only the seed facts) is `W-BEAT-SPENT-AT-START`: the beat would be spent before
-it could play.
+at its default, only the seed facts, each quest `unset` until its `start` holds) is
+`W-BEAT-SPENT-AT-START`: the beat would be spent before it could play, and the message names
+the `when: "!(…)"` rewrite.
+
+A latch is not a condition judged afresh at each raise, and the two differ when the condition can
+turn false again after it has held. `check-project` warns **`W-SPENT-BY-REVERSIBLE`** on a
+`spentBy` beat with no `once` written whose condition reads a fact some `::retract` / `::assert`
+or a directive's declared effect can undo, a season's state, facts or quest (each reset when the
+season opens again), or a quest a `rearm` returns to `unset`. The message names the rewrite:
+`once: false` with `when: "!(…)"` for a beat that should come back whenever the condition is
+false again, `once: season:<name>` for a condition over one season, or `once: run` to keep the
+latch on purpose. Writing `once` states the period, so it silences the warning.
 
 `lute play`, `lute calendar`, and `lute test`'s `eligible:` report a spent beat as ineligible with
 the reason ``spentBy: `run.solved` holds`` while the condition holds and
@@ -11656,10 +11677,10 @@ Compile a document to its JSON command-record artifact (gated on a clean check a
 
 ```console
 $ lute compile --all
-error: --all requires --project <DIR> (the document set and capability snapshot both resolve per project)
+error: --all requires the project directory, `--all <DIR>` or `--project <DIR>` (the document set and capability snapshot both resolve per project)
 error: --all requires -o <DIR>, an output DIRECTORY (there is no single artifact to write to stdout)
 
-Usage: lute compile --all --project <DIR> -o <DIR>
+Usage: lute compile --all <DIR> -o <DIR>
 ```
 
 The index carries the document table plus the **union** of every artifact's `entities`, `enums`, `relations`, `seedFacts`, `rules`, and `prereqEdges` — the union [an engine must compute anyway](/tooling/runtime-contract/) before it can evaluate anything:
@@ -11802,6 +11823,8 @@ $ lute beats <dir> [--occasion <O>]… [--target <T>]… [--expand] [--json]
 Print every beat of the project as one ladder per occasion — and per target of a targeted occasion — in selection order (dsl 0.23.0): priority, beat and title, kind (`scene`, `entry`, `bundle`), `once` (`run`, `user`, `day`, `slot`, or `no` — a bundle beat's `once="day"` / `once="slot"` included — and `also`, and since dsl 0.25.0 a `share` key: `day, share solWarm`; `share` in `--json`), the `check-project` verdicts (`unreachable`, `shadowed`, `tied`, `once-run-user`), `after:` (a bundle beat's `after=` included), and `when` as the author wrote it — `@def` references included (dsl 0.24.0); `--expand` prints each `when` with its defs expanded, and `--json` carries both, `when` (expanded) and `whenAuthored`. `--occasion` and `--target` (both repeatable) filter the ladders; `--json` carries each verdict's full diagnostic. Read-only, and the project need not check clean. Exit **0** on success, **2** on I/O or an unknown `--occasion`. See [Story overviews](/tooling/overviews/#lute-beats).
 
 Since dsl 0.26.0: a fallback that an earlier, never-spent beat whose `when` it implies always beats shows `covered by <id>` in the verdict column (`coveredBy` in `--json`) — informational, not a diagnostic, so a lead can tell a fallback that still plays from one that no longer can; a [kind beat](/tooling/play/#kind-targets) is listed in the ladder of every member some beat names, and in a `kind:<kind>` ladder for the members no beat names on its own; and `--target` accepts any member of a targeted occasion's domain.
+
+Since dsl 0.28.0: a [kind beat](/tooling/play/#kind-targets) or a `for=` beat whose `when` never holds for some member — as written (`occasion.target != 'village'`), or because nothing produces the fact it needs for that member — says `never for <member>` in its verdict column: a kind beat on that member's ladder, a `for=` beat on its occasion's ladder (`neverFor` in `--json`). `check-project` reports nothing, because the beat still plays for the other members.
 
 ## calendar
 
@@ -12121,10 +12144,10 @@ expect:
   state: { run.accused: blake }          # path: literal assertions after the walk
   facts: ["points(blake)"]               # atoms that hold when the walk ends, after derivation
   notFacts: ["points(cass)"]             # atoms that do not hold then
-  end: complete                         # complete | incomplete
+  end: complete                         # complete | terminal | incomplete | error
 ```
 
-`file:` is required; every mock surface and every `expect:` key is optional. The mock surfaces also include `visited:` and `occasions:` (dsl 0.21.0), the save seeds `quests:` and `entriesRead:` (dsl 0.22.0), and `derive:`, exactly as in a [trace mock](#trace). `expect.transcriptContains` lists substrings that must appear in the transcript and `expect.transcriptLacks` substrings that must not. `expect.options` maps a `<branch>`/`<hub>` id to the exact set of options the walk offered there, order-insensitive and across all its presentations; a mismatch names both sets, and a branch the walk never presented fails as such. `expect.state` maps a state path to the literal it must hold after the walk — compared against the value the walk ends with, read the way trace reads it: the walk's last write (a [credited reward](/tooling/tracing/#rewards-and-objective-bodies) included), else the test's `state:` seed, else the declared `default:` — and `expect.exit` asserts the terminal verdict (`complete` or `incomplete`). `expect.facts` and `expect.notFacts` list ground atoms that must hold, or must not, when the walk ends — after derivation, so a rule's conclusion is asserted directly. A miss names both sides (`facts points(blake): expected holds, got does not hold`), and an atom whose derivation read undecided state is `unknown`, which satisfies neither list.
+`file:` is required; every mock surface and every `expect:` key is optional. The mock surfaces also include `visited:` and `occasions:` (dsl 0.21.0), the save seeds `quests:` and `entriesRead:` (dsl 0.22.0), and `derive:`, exactly as in a [trace mock](#trace). `expect.transcriptContains` lists substrings that must appear in the transcript and `expect.transcriptLacks` substrings that must not. `expect.options` maps a `<branch>`/`<hub>` id to the exact set of options the walk offered there, order-insensitive and across all its presentations; a mismatch names both sets, and a branch the walk never presented fails as such. `expect.state` maps a state path to the literal it must hold after the walk — compared against the value the walk ends with, read the way trace reads it: the walk's last write (a [credited reward](/tooling/tracing/#rewards-and-objective-bodies) included), else the test's `state:` seed, else the declared `default:` — and `expect.end` asserts how the walk ended (`complete`, `terminal` when the project's `terminal:` holds at its end, `incomplete`, or `error`). `expect.facts` and `expect.notFacts` list ground atoms that must hold, or must not, when the walk ends — after derivation, so a rule's conclusion is asserted directly. A miss names both sides (`facts points(blake): expected holds, got does not hold`), and an atom whose derivation read undecided state is `unknown`, which satisfies neither list.
 
 Since dsl 0.24.0 a test takes the mock's `bridges:` key too (see [Bridge answers](/tooling/tracing/#bridge-answers)), and three expectations read more: `expect.accepts: [quest ids]` asserts the quests the scene's `::accept`s took, as a set (`accepts: expected [toll], got [parley]`); `expect.options` of a `<hub>` is every choice eligible at any of its visits, unioned (it was always `[]`); and `transcriptContains` / `transcriptLacks` match only the content lines that played, each in the form `@speaker: text` — the form a play script matches, so `"@narrator: Always shown."` works in both, and a guarded line that never played no longer satisfies `transcriptContains`.
 
@@ -12771,7 +12794,7 @@ A schema may declare when the game is over: `terminal: "run.fate == 'taken'"` (d
 ── end: terminal — `terminal: run.fate == 'taken'` holds ──────────────
 ```
 
-In `--json` the root carries `"end": "terminal"` beside `"exit": "complete"`, and a top-level `expect: { end: terminal }` asserts it. A later `occasion:` step is `E-OCCASION-GATE` (exit 1: `` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on ``), and so is a later `advance:` — the clock does not move on either. An `engine:` step is still accepted: it is the engine's own write. An occasion declared [`outsideRun: true`](/plugins/manifests/) (a title screen, a gallery between runs) is raised anyway.
+In `--json` the root carries `"end": "terminal"` beside `"exit": "complete"`, and a top-level `expect: { end: terminal }` asserts it. A later `occasion:` step is `E-OCCASION-GATE` (exit 1: `` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on, or, if the engine raises `enter` outside a run too (a title screen, a gallery), declare it `outsideRun: true` ``), and so is a later `advance:` — the clock does not move on either. An `engine:` step is still accepted: it is the engine's own write. An occasion declared [`outsideRun: true`](/plugins/manifests/) (a title screen, a gallery between runs) is raised anyway.
 
 `newRun: true` starts a new run, and the play goes on only if the new run makes `terminal:` false. A `terminal:` over run state (`run.*`, a run-tier quest or relation) is reset by it. One that reads what a new run keeps (`user.*`, `visited(…)`) still holds, `check-project` warns `W-TERMINAL-PERSISTENT` at the schema, and the next raise halts: `` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
 
@@ -14798,7 +14821,7 @@ $ lute beats . --occasion daystart
 lute beats: `--occasion daystart` is not an occasion of this project (known: board, dayStart, placeVisit)
 ```
 
-`--json` emits `{ "roots": [ { "root", "ladders": [ { "occasion", "select", "target"? | "anyTarget"?, "beats": [ … ] } ] } ] }`. Each beat is `{ id, kind, document, priority, once, share?, target?, also?, after?, when?, whenAuthored?, title?, coveredBy?, verdicts }`, where `once` is `"run"`, `"user"`, `"day"`, `"slot"`, or `"none"`, `share` the beat's shared-spend key (dsl 0.25.0), `when` carries the expansion and `whenAuthored` the author's text (dsl 0.24.0), `coveredBy` the id of the beat that always beats it (dsl 0.26.0), and `verdicts` carries the full diagnostics, each `{ code, severity, message }`; a kind ladder's `target` is `"kind:<kind>"`:
+`--json` emits `{ "roots": [ { "root", "ladders": [ { "occasion", "select", "target"? | "anyTarget"?, "beats": [ … ] } ] } ] }`. Each beat is `{ id, kind, document, priority, once, share?, target?, also?, after?, when?, whenAuthored?, title?, coveredBy?, neverFor?, verdicts }`, where `once` is `"run"`, `"user"`, `"day"`, `"slot"`, or `"none"`, `share` the beat's shared-spend key (dsl 0.25.0), `when` carries the expansion and `whenAuthored` the author's text (dsl 0.24.0), `coveredBy` the id of the beat that always beats it (dsl 0.26.0), `neverFor` the ladder's targets a kind or `for=` beat's `when` never holds for (dsl 0.28.0), and `verdicts` carries the full diagnostics, each `{ code, severity, message }`; a kind ladder's `target` is `"kind:<kind>"`:
 
 ```json
 {
@@ -16154,7 +16177,7 @@ $ lute trace scene.lute \
 
 - `--state <path>=<literal>` — a scalar seed on a declared path.
 - `--fact "<rel>(<arg>…)"` — a ground fact, valid-now, over the declared vocabulary (a *supplied answer*, so it may name a `derive:`/`reserved:` relation).
-- `--choose <id>=<choiceId>[,<choiceId>…]` — a menu selection at a `<branch>`/`<hub>` id; a hub may force a whole ordered visit sequence via one flag's comma list.
+- `--choose <id>=<choiceId>[,<choiceId>…]` — a menu selection at a `<branch>`/`<hub>` id; a hub may force a whole ordered visit sequence via one flag's comma list. A hub whose list runs out before it exits halts the walk incomplete (exit 3) and names the list, as `lute play` does.
 - `--event <name>` — fire a capability/world event, in CLI order.
 - `--accept <questId>` — simulate accepting a `start`-less (accept-driven) quest. With a project, since dsl 0.26.0, it may name any quest of the project, not only one the traced document declares; an id no quest declares is `E-TRACE-ACCEPT`.
 
@@ -16298,14 +16321,14 @@ trace complete: 0 decisions
 
 A beat's own `after="…"` (dsl 0.25.0 §3) is shown the same way, over the mock's `visited:` and quest states, and never enforced: ``<beat keeper.greeting>   (not eligible: `after` prerequisite not satisfied)`` heads the walk when it does not hold.
 
-A beat or entry that targets a whole kind (`target="kind:trainer"`, dsl 0.26.0 §5; see [Kind targets](/tooling/play/#kind-targets)) reads the raised member as `occasion.target`. Seed it like any state path — `--state occasion.target=r16Gus`, or `state: { occasion.target: r16Gus }` in a mock or test — typed by the kind, so a non-member is `E-TRACE-MOCK-TYPE`. Where the text interpolates it, trace and test print the member the way `lute play` does: the kind's label for it, else its cast `name:` when the member is a cast id (`@narrator  Hiker Brom squares up.`), else the id. Without the seed the text keeps `{{occasion.target}}`. `--entry` also takes an entry's `<document id>.<entry id>` (`--entry lore.tomas.tomasOil`).
+A beat or entry that targets a whole kind (`target="kind:trainer"`, dsl 0.26.0 §5; see [Kind targets](/tooling/play/#kind-targets)) reads the raised member as `occasion.target`. Seed it like any state path — `--state occasion.target=r16Gus`, or `state: { occasion.target: r16Gus }` in a mock or test — typed by the kind, so a non-member is `E-TRACE-MOCK-TYPE`; or raise the beat's occasion for the member, `--occasion <occasion>@<target>` naming the member, which binds it as the engine does (a target outside the kind is `E-TRACE-MOCK-TYPE` too). Where the text interpolates it, trace and test print the member the way `lute play` does: the kind's label for it, else its cast `name:` when the member is a cast id (`@narrator  Hiker Brom squares up.`), else the id. Without either, the walk stops incomplete at the first line or write that needs the member, naming the seed. `--entry` also takes an entry's `<document id>.<entry id>` (`--entry lore.tomas.tomasOil`).
 
 A lore document needs `--entry` or `--beat`, and without either the usage error (exit **2**) lists both kinds of id. A `--beat` that names no beat of the document is `E-TRACE-BEAT` (exit **1**), listing the ones it declares:
 
 <!-- lute-diagnostics -->
 ```console
 $ lute trace lore/oskar.lute --project . --beat hnut
-lore/oskar.lute:0:0: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id `hnut`; this document declares: oskar.hunt, oskar.rumor
+lore/oskar.lute: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id `hnut`; this document declares: oskar.hunt, oskar.rumor
 ```
 
 `--beat` on a document with no `<beat>` — a scene, say — is `E-TRACE-BEAT` too. [`lute run --beat`](/tooling/cli/#run) presents the same beat from the compiled lore artifact.
@@ -17300,14 +17323,14 @@ An export name outside this list is a load error. Every export file is also read
 
 <!-- lute-diagnostics unverified="the loader's E-PLUGIN-KEY line (crates/lute-manifest export_error); no single format! literal pins it; copied verbatim from lute check --project output" -->
 ```
-lute: E-PLUGIN-KEY: ./plugins/demo.pack/occasions/o.yaml:3:12: `occasions.inbox` has no key `selct` — did you mean `select`? (its keys: select, target, description, judge, raisedWhen, payload, outsideRun)
+./plugins/demo.pack/occasions/o.yaml:3:12: error [E-PLUGIN-KEY] `occasions.inbox` has no key `selct` — did you mean `select`? (its keys: select, target, description, judge, raisedWhen, payload, outsideRun)
 ```
 
 A common way to get there is an unquoted description in a flow map. YAML ends an unquoted value at the first comma, so `{ select: all, description: Pick one, the player picks one }` leaves `the player picks one` as a key with no value. The error says so and spells the quoted form:
 
 <!-- lute-diagnostics unverified="serde's unknown-field text with the flow-map hint appended by crates/lute-manifest, wrapped in the loader's E-PLUGIN-PARSE line; copied verbatim from lute check --project output" -->
 ```
-lute: E-PLUGIN-KEY: ./plugins/demo.pack/occasions/o.yaml:3:48: `occasions.inbox` has no key `the player picks one` (its keys: select, target, description, judge, raisedWhen, payload, outsideRun); `the player picks one` has no value — in a flow map `{ … }` an unquoted value ends at the first comma, so the rest became a key; quote the description: `description: "Pick one, the player picks one"`
+./plugins/demo.pack/occasions/o.yaml:3:48: error [E-PLUGIN-KEY] `occasions.inbox` has no key `the player picks one` (its keys: select, target, description, judge, raisedWhen, payload, outsideRun); `the player picks one` has no value — in a flow map `{ … }` an unquoted value ends at the first comma, so the rest became a key; quote the description: `description: "Pick one, the player picks one"`
 ```
 
 A plugin whose `plugin.yaml` parsed but one of whose exports did not is not loaded at all. The follow-up error for a profile that activates it says the plugin **failed to load** and points back at the parse error. Before 0.24.0 it told the author to install a plugin that was already installed:
@@ -17646,7 +17669,7 @@ A `builtin` name must be one of the hooks the core registers for its own directi
 
 <!-- lute-diagnostics unverified="built in crates/lute-manifest/src/schema.rs from several format! pieces and wrapped in the loader's E-PLUGIN-PARSE line; copied verbatim from lute check --project output" -->
 ```
-lute: E-PLUGIN-PARSE: ./plugins/demo.pack/directives/d.yaml:6:5: directives[1]: `clearStag` is not a builtin lowering hook (did you mean `clearStage`?); the core registers autoStage, cameraTransform, clearStage, end, mark, next; omit `lower:` for the generic `kind: "plugin"` passthrough
+./plugins/demo.pack/directives/d.yaml:6:5: error [E-PLUGIN-PARSE] directives[1]: `clearStag` is not a builtin lowering hook (did you mean `clearStage`?); the core registers autoStage, cameraTransform, clearStage, end, mark, next; omit `lower:` for the generic `kind: "plugin"` passthrough
 ```
 
 The `record` form targets one of the eight **non-control-flow staging kinds** — `background`, `music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video` — binding each target field to a `fromAttr` reference or a literal:
@@ -18005,7 +18028,7 @@ capability proposals), see the [specification index](/spec/).
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
-| Frontmatter & profiles | 0.1.0 | 0.27.0 (a scene beat may write `for: "kind:<kind>"` on an untargeted `select: sequence` occasion and is presented once per member whose `when` holds; `spentBy:` spends a beat when its condition holds (`0.28.0`: a latch — once the condition has held, at any settle or when the beat is judged, per member for a kind or `for` beat, the beat stays spent for its `once` period, `run` unless written, even if the condition turns false; `once: false` or a `share` key beside it is `E-BEAT-ATTR`, and one that holds at the start of play is `W-BEAT-SPENT-AT-START`); `once: week` (with the clock's `week:`) and `once: season:<name>`; the manifest's `chapters:` (`0.28.0`, a list of `{ on, scenes }` chains, one per occasion) gives each listed scene `on:`, a descending `priority:` and — except on a `select: sequence` occasion — `after:`, unless it writes the key; on a targeted occasion every listed scene declares `target:` (`E-CHAPTERS`, `W-CHAPTER-ORDER`, `W-CHAPTER-STALL`); `0.26.0`: a scene beat may `target: "kind:<kind>"` — it answers every member of the kind and reads the raised member as `occasion.target`; the manifest's `defaults.uses` entries may be globs and `defaults.questTier` sets the default quest `tier=`; `0.25.0`: a scene beat may name a `share:` key beside a written `once`, spent together with every beat of the key; `0.24.0`: scene and bundle beats take `once: day` / `once: slot` when the project declares a clock — without one, `E-BEAT-ATTR`; `0.21.0`: a scene becomes a beat with the scene-only keys `on:` / `target:` / `when:` / `priority:` / `once:`; `when`, `target`, `priority`, or `once` without `on` is `E-BEAT-ATTR`) | [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
+| Frontmatter & profiles | 0.1.0 | 0.27.0 (a scene beat may write `for: "kind:<kind>"` on an untargeted `select: sequence` occasion and is presented once per member whose `when` holds; `spentBy:` spends a beat when its condition holds (`0.28.0`: a latch — once the condition has held, in the settled world after any settle or when the beat is judged, per member for a kind or `for` beat, the beat stays spent for its `once` period, `run` unless written, even if the condition turns false; `once: false` or a `share` key beside it is `E-BEAT-ATTR`, one that holds at the start of play is `W-BEAT-SPENT-AT-START`, and one with no `once` written that can turn false again is `W-SPENT-BY-REVERSIBLE`); `once: week` (with the clock's `week:`) and `once: season:<name>`; the manifest's `chapters:` (`0.28.0`, a list of `{ on, scenes }` chains, one per occasion) gives each listed scene `on:`, a descending `priority:` and — except on a `select: sequence` occasion — `after:`, unless it writes the key; on a targeted occasion every listed scene declares `target:` (`E-CHAPTERS`, `W-CHAPTER-ORDER`, `W-CHAPTER-STALL`); `0.26.0`: a scene beat may `target: "kind:<kind>"` — it answers every member of the kind and reads the raised member as `occasion.target`; the manifest's `defaults.uses` entries may be globs and `defaults.questTier` sets the default quest `tier=`; `0.25.0`: a scene beat may name a `share:` key beside a written `once`, spent together with every beat of the key; `0.24.0`: scene and bundle beats take `once: day` / `once: slot` when the project declares a clock — without one, `E-BEAT-ATTR`; `0.21.0`: a scene becomes a beat with the scene-only keys `on:` / `target:` / `when:` / `priority:` / `once:`; `when`, `target`, `priority`, or `once` without `on` is `E-BEAT-ATTR`) | [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | Content lines (`@speaker` dialogue) | 0.1.0 | 0.27.0 (`{{occasion.target}}` and a `{ domain: K }` / `{ entity: K }` path render the kind's `labels:` (`0.28.0`: the label wins over a cast `name:`; a speaker head keeps the cast name); `{{n:plural(lamp\|lamps)}}` picks a form by the number, `#` standing for it; curly quotes around an attribute value are one `E-ATTR-QUOTE`; `0.26.0`: a component line `@@who:` speaks as the cast member a `speaker` param names; two cast entries or speaker display names that are exactly equal are `W-DISPLAY-NAME-DUP` unless the entry is `sharedName: true`; `0.25.0`: a reserved relation's `changedOn:` names the occasions on which the engine changes it, and cast `assume: true` then no longer covers it in a unit presented on one of them, in that unit's after-descendants, or under a guard that needs a fact of it; the `{{x:ordinalWord}}` format hint — `lute play` renders `first` … `twentieth`, the engine localizes; `0.24.0`: a cast entry may declare `present:` — a line whose guards do not imply it is `W-CAST-ABSENT`, `assume: true` reads a negated engine-reserved fact as true — and `emotions:`, outside which `emotion=` is `E-BAD-ENUM`; the `{{x:ordinal}}` format hint, and `{{path}}` of an enum-typed path renders the member's display `labels:`; `0.23.0`: a declared cast — a plugin `cast` export or a schema document's `cast:` — makes a speaker outside it `E-CAST-UNKNOWN` with a did-you-mean; without a cast speakers stay shape-only; `0.5.1`: delivery-flag authoring-surface honesty) | [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
 | Core directives (the closed `lute.core` vocabulary) | 0.1.0 | 0.27.0 (`::set` without an assignment operator is `E-SET-SHAPE` naming the write meant (it used to compile as `= 1`), and a param as a dotted segment points at `run.aff[@who]`; `0.26.0`: `::use`, `::accept`, `::assert`, `::retract`, `::give` and plugin passthrough directives take `when="…"` with `::set`'s meaning, so `when` is reserved on directives — a plugin attribute named `when` is rejected at load and a core staging directive refuses `when=`; `0.24.0`: `::clear` — every character on stage exits, background and music stay — moves the `lute.core` stamp for every document; `::set{… when="…"}` writes only when its guard holds; `::auto{character}` / `::camera{focus}` are held to a declared cast; `0.9.0`: `::auto{action}` and `::music{mood}` retyped from free `string` to `{ domain: … }`, so both slots are checkable at last; the core's own member lists emptied) | [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Content vocabulary (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) | 0.1.0 (closed member lists shipped inside `lute.core`) | 0.9.0 (**the project owns the members** — the compiler declares slots and ships none; three declaration routes; the `exits:`/`default:` long form; using an undeclared slot is `E-DOMAIN-UNKNOWN`) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |

@@ -669,6 +669,10 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl §11.2](/spec/)
 
+### E-MATCH-NO-SUBJECT
+
+`on=`이 없는 `<match>`에 `<when is=…>` 분기가 있어서, 그 리터럴을 비교할 주어가 없습니다. `<match>`에 `on=`을 쓰거나, 분기를 `test=`로 쓰세요.
+
 ### E-MATCH-RELATION-SUBJECT
 
 `<match on>` 주어가 직접, 또는 확장되는 `@def`를 통해 `holds`/`count`/`validAt` 같은 사실 질의가 되었는데, match 주어로는 허용되지 않습니다.
@@ -1457,9 +1461,15 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-BEAT-SPENT-AT-START
 
-비트의 `spentBy`가 플레이 시작 시점(모든 상태 경로가 기본값이고 시드 팩트만 있는 때)에 이미 성립합니다. 흔히 `spentBy`를 "성립하는 동안 반복"으로 읽었거나, 예전 `when`의 뒤집힌 `!holds(…)`를 그대로 옮긴 경우입니다. `spentBy` 비트는 조건이 한 번 성립하면 소진된 채로 남으므로, 이 비트는 한 번도 제시되기 전에 소진됩니다.
+비트의 `spentBy`가 플레이 시작 시점(모든 상태 경로가 기본값이고 시드 팩트만 있으며, 각 퀘스트는 `start`가 성립할 때까지 `unset`인 때 — `start="true"` 퀘스트는 이미 `active`)에 이미 성립합니다. 흔히 `spentBy`를 "성립하는 동안 반복"으로 읽었거나, 예전 `when`의 뒤집힌 `!holds(…)`를 그대로 옮긴 경우입니다. `spentBy` 비트는 조건이 한 번 성립하면 소진된 채로 남으므로, 이 비트는 한 번도 제시되기 전에 소진됩니다. 메시지는 고쳐 쓸 형태를 알려 줍니다: 조건이 성립하지 않는 동안 재생할 비트라면 `when: "!(…)"`(반복하려면 `once: false`와 함께)로 씁니다.
 
 명세: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-BEAT-UNRAISED
+
+비트가 시계의 `raise:` 맵이 raise하는 계기에 응답하는데, 그 `when`은 시계가 그 계기를 raise하지 않는 곳에서만 참이 될 수 있습니다. 실행이 시작된 날을 위한 `dayStart` 비트나, 하루의 마지막 슬롯이 아닌 슬롯을 위한 `dayEnd` 비트가 그렇습니다. 또는 마지막 `dayEnd`에서만 참이 될 수 있는데, 시계를 끝내는 advance는 `clock.ended`가 참이 된 뒤에 그것을 raise하므로, `clock.ended`와 함께 참이 되는 `terminal:`이 이미 게임을 끝낸 뒤입니다. 그래서 그 비트는 재생되지 않습니다. 그것이 참이 되는 곳에서 raise되는 계기에 응답하게 하거나(첫날이라면 실행이 시작될 때의 계기), `when`을 바꾸세요. 마지막 `dayEnd`라면 시계가 끝나기 전에 raise하거나, 그 비트가 재생된 뒤에만 참이 되도록 `terminal:`을 쓰세요.
+
+명세: [dsl 0.28.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-BRANCH-ID-SHARED
 
@@ -1487,7 +1497,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-CHAPTER-STALL
 
-프로젝트 `chapters:`의 체인에 나열된 장면의 자체 `when:`이 영영 거짓으로 남을 수 있습니다(시계만이 아니라 이야기가 끝내 쓰지 않을 수도 있는 state를 읽습니다). 그리고 다음 장면의 `after:`(체인이 쓴 것이든 장면이 직접 쓴 것이든)가 그 장면을 기다리므로, 장이 거기서 멈출 수 있습니다. 시계만 읽는 조건은 체인을 늦출 뿐이라 보고하지 않습니다. 그 장면을 건너뛰어도 된다면 다음 장면이 그 앞 장면을 따르게 하세요(`after: visited("<앞 장면>")`; 건너뛸 수 있는 장면은 우선순위가 높아서 조건이 맞으면 여전히 먼저 재생됩니다). 반드시 재생되어야 한다면 이야기가 그 조건을 참으로 만들게 하세요.
+프로젝트 `chapters:`의 체인에 나열된 장면의 자체 `when:`이 영영 거짓으로 남을 수 있습니다. 이야기가 끝내 쓰지 않을 수도 있는 state를 읽거나, 닫히는 시계 창을 읽는 경우입니다. 체인의 계기가 raise되는 어느 순간에도 맞지 않는 `when`(실행이 시작된 날이 필요한 `dayStart` 체인의 장면)이나, 앞 장면이 늦게 재생된 뒤로는 이후 어떤 raise도 맞추지 못하는 `when`(끝나는 시계의 마지막 날의 슬롯)이 여기에 해당합니다. 그리고 다음 장면의 `after:`(체인이 쓴 것이든 장면이 직접 쓴 것이든)가 그 장면을 기다리므로, 장이 거기서 멈출 수 있습니다. 이후의 raise가 여전히 맞추는 시계 조건은 체인을 늦출 뿐이고, 다른 `owner: engine` state에 대한 조건은 엔진이 참으로 만들 몫이라 둘 다 보고하지 않습니다. 그 장면을 건너뛰어도 된다면 다음 장면이 그 앞 장면을 따르게 하세요(`after: visited("<앞 장면>")`; 건너뛸 수 있는 장면은 우선순위가 높아서 조건이 맞으면 여전히 먼저 재생됩니다). 반드시 재생되어야 한다면 이야기가 그 조건을 참으로 만들도록 하거나, 그 `when`이 이후의 raise에서도 참이 되게 하세요.
 
 명세: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
@@ -1655,7 +1665,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-RELATION-TIER-IMPLICIT
 
-저장되는(`derive: true`가 아닌) 관계에 `tier:`가 없어 실행 계층이 됩니다. 그 사실은 새 실행마다 지워지고, `reserved: true` 관계라면 엔진이 기록한 사실도 함께 지워집니다. 그대로 두려면 `tier: run`을 쓰고, 실행보다 오래 남길 사실이면 `user`, `app`, `season:<name>`을 씁니다.
+저장되는(`derive: true`가 아닌) 관계에 `tier:`가 없어 실행 계층이 됩니다. 그 사실은 새 실행마다 `facts:` 시드(있다면)에서 다시 시작하고, `reserved: true` 관계라면 엔진이 기록한 사실은 잊힙니다. 그대로 두려면 `tier: run`을 쓰고, 실행보다 오래 남길 사실이면 `user`, `app`, `season:<name>`을 씁니다.
 
 명세: [dsl 0.28.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
@@ -1676,6 +1686,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 `once: season:<name>`인 비트(또는 `start`가 있는 `tier="season:<name>"` 퀘스트)의 `when`(또는 `start`)이 그 시즌의 `live` 조건을 함의하지 않습니다. `once`는 비트가 얼마나 오래 소진된 상태로 남는지만 정하므로, 시즌이 한 번도 열리지 않았어도 비트가 재생됩니다. 시즌의 `live` 조건(또는 그것을 읽는 def)을 `when`에 더하세요.
 
 명세: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-SPENT-BY-REVERSIBLE
+
+비트의 `spentBy`가 한 번 성립한 뒤 다시 거짓이 될 수 있습니다. `::retract` / `::assert`나 지시어가 선언한 효과가 되돌릴 수 있는 팩트, 시즌의 상태·팩트·퀘스트(시즌이 열릴 때마다 초기화됨), 또는 `rearm`이 `unset`으로 되돌리는 퀘스트를 읽는 경우입니다. 그런데 `once`를 쓰지 않았으므로 비트는 그 런이 끝날 때까지 소진된 채로 남아, 계기가 올 때마다 조건을 새로 판정하는 것과 다르게 동작합니다. 메시지는 고쳐 쓸 형태를 알려 줍니다: 매번 새로 판정하려면 `once: false`와 `when: "!(…)"`, 시즌이라면 `once: season:<name>`, 일부러 소진 상태를 유지하려면 `once: run`을 씁니다(`once`를 쓰면 이 경고는 나오지 않습니다).
+
+명세: [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-STAGE-ABSENT
 
@@ -1703,13 +1719,19 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-TEXT-BRACKET-LABEL
 
-`<choice>` label이 Ink의 대괄호 숨김처럼 `[…]`로 감싸여 있습니다. Lute는 label을 적힌 그대로 보여 주므로 버튼에 대괄호가 나타납니다. 대괄호 없이 적으세요.
+`<choice>` label 전체가 Ink의 대괄호 숨김처럼 `[…]`로 감싸여 있습니다. Lute는 label을 적힌 그대로 보여 주므로 버튼에 대괄호가 나타납니다. 대괄호 없이 적으세요. 앞에 태그가 오고 텍스트가 이어지는 label(`[Persuasion] Step closer`)은 경고하지 않습니다.
 
 명세: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-TEXT-COMMENT-LIKE
 
 대사 텍스트나 선택지 label에 ` // …` 주석이 있거나 Ink `#tag`로 끝납니다. `: ` 뒤의 텍스트는 리터럴이라 플레이어에게 그대로 보입니다. 주석은 한 줄을 따로 쓰는 `// …`이고, Lute에는 줄 태그가 없습니다.
+
+명세: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-TEXT-GLUE
+
+대사 텍스트나 선택지 label에 Ink 글루 `<>`가 있습니다. Lute는 줄을 잇지 않고 `: ` 뒤의 텍스트는 리터럴이라 플레이어에게 `<>`가 보입니다. 문장 전체를 한 줄에 적으세요.
 
 명세: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
@@ -1721,7 +1743,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-TEXT-SINGLE-BRACE
 
-대사 텍스트나 선택지 label에 다른 언어의 마크업으로 읽히는 한 겹 중괄호가 있습니다. 상태 경로나 def(`{run.oil}`), Yarn `{$var}`, Ink 조건부 텍스트(`{cond: text}`)나 대안(`{~a|b}`)입니다. 한 겹 중괄호는 리터럴입니다. 보간은 `{{run.oil}}`이고, 조건부 텍스트는 guard를 단 줄이나 `<match>`로 씁니다.
+대사 텍스트나 선택지 label에 다른 언어의 마크업으로 읽히는 한 겹 중괄호가 있습니다. 상태 경로나 def(`{run.oil}`), Yarn `{$var}`나 `{0}` 자리표시자, Ink 조건부 텍스트(`{cond: text}`)나 대안(`{~a|b}`)입니다. 한 겹 중괄호는 언제나 리터럴이고 백슬래시로 이스케이프되지 않으므로(`\{run.oil\}`은 백슬래시까지 그대로 출하됨), 보여 줄 중괄호는 그대로 적습니다. 보간은 `{{run.oil}}`이고, 조건부 텍스트는 guard를 단 줄이나 `<match>`로 씁니다.
 
 명세: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 

@@ -311,8 +311,14 @@ fn print_scene_envelope(
     if let Some(reads) = scenario.reads_per_scene.get(key) {
         single.insert(key.to_string(), reads.clone());
     }
-    let diags =
-        envelope::check_envelope(&scenario.graph, &scenario.envs, &scenario.tainted, &single);
+    // Only the warning grade is printed here; engine ownership words errors.
+    let diags = envelope::check_envelope(
+        &scenario.graph,
+        &scenario.envs,
+        &scenario.tainted,
+        &single,
+        &BTreeSet::new(),
+    );
     outln!(
         out,
         "  Possible \\ Guaranteed -- warning-grade reads (set on SOME but not every declared \

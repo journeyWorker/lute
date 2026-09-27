@@ -33,6 +33,41 @@ pub fn diagnostic_order(a: &Diagnostic, b: &Diagnostic) -> std::cmp::Ordering {
         .then_with(|| a.code.cmp(&b.code))
 }
 
+/// Sort one file's diagnostics by [`diagnostic_order`], then print a
+/// consequence after the causes that follow it on its own line — an
+/// objective's `E-OBJECTIVE-UNSATISFIABLE` (at `<objective`) after the
+/// literal fault in its `done` that makes it so (tea-hollin TH28-4c).
+pub fn order_diagnostics(diags: &mut Vec<Diagnostic>) {
+    diags.sort_by(diagnostic_order);
+    let consequence = |d: &Diagnostic| {
+        d.severity == Severity::Error && CONSEQUENCE_CODES.contains(&d.code.as_str())
+    };
+    let cause = |d: &Diagnostic| d.severity == Severity::Error && !consequence(d);
+    let mut start = 0;
+    while start < diags.len() {
+        let line = diags[start].span.line;
+        let end = start
+            + diags[start..]
+                .iter()
+                .take_while(|d| d.span.line == line)
+                .count();
+        let group = &diags[start..end];
+        if let Some(last) = group.iter().rposition(cause) {
+            if group[..last].iter().any(consequence) {
+                let (moved, kept): (Vec<_>, Vec<_>) =
+                    group[..=last].iter().cloned().partition(|d| consequence(d));
+                let reordered: Vec<Diagnostic> = kept
+                    .into_iter()
+                    .chain(moved)
+                    .chain(group[last + 1..].iter().cloned())
+                    .collect();
+                diags.splice(start..end, reordered);
+            }
+        }
+        start = end;
+    }
+}
+
 /// Drop `E-MAYBE-UNSET` diagnostics whose span is a domain-exhaustive `<match>`
 /// subject (T4.6 x T4.4 carry-forward). A subject read that maybe-unset on entry
 /// is nonetheless safe when the match's arms cover every case (the join is an

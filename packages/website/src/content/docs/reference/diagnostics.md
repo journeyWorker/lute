@@ -670,6 +670,10 @@ A `<match>` contains more than one `<otherwise>` arm, though at most one is allo
 
 Spec: [dsl §11.2](/spec/)
 
+### E-MATCH-NO-SUBJECT
+
+A `<when is=…>` arm sits in a `<match>` with no `on=`, so its literal has no subject to be compared against; add `on=` to the `<match>`, or write the arm as `test=`.
+
 ### E-MATCH-RELATION-SUBJECT
 
 A `<match on>` subject, directly or via an `@def` it expands to, is a fact query (`holds`/`count`/`validAt`), which match subjects may not be.
@@ -1458,9 +1462,15 @@ Spec: [dsl 0.21.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-BEAT-SPENT-AT-START
 
-A beat's `spentBy` already holds at the start of play (every state path at its default, only the seed facts) — often `spentBy` read as "repeat while", or an inverted `!holds(…)` copied from an old `when` — so the beat is spent before it can play: a `spentBy` beat stays spent once its condition has held.
+A beat's `spentBy` already holds at the start of play (every state path at its default, only the seed facts, each quest `unset` until its `start` holds — a `start="true"` quest is already `active`) — often `spentBy` read as "repeat while", or an inverted `!holds(…)` copied from an old `when` — so the beat is spent before it can play: a `spentBy` beat stays spent once its condition has held. The message names the rewrite: `when: "!(…)"` (with `once: false` to repeat) for a beat that plays while the condition does not hold.
 
 Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-BEAT-UNRAISED
+
+A beat answers an occasion the clock's `raise:` map raises, and its `when` can hold only where the clock does not raise it — a `dayStart` beat for the day the run starts, a `dayEnd` beat for a slot other than the day's last — or only at the last `dayEnd`, which the advance that ends the clock raises after `clock.ended` turns true, when a `terminal:` that holds with `clock.ended` has already ended the game. So it never plays. Answer an occasion raised where it holds (for the first day, the one the run starts with), or change its `when`; for the last `dayEnd`, raise it before the clock ends or write `terminal:` so it holds only once the beat has played.
+
+Spec: [dsl 0.28.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-BRANCH-ID-SHARED
 
@@ -1488,7 +1498,7 @@ Spec: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-CHAPTER-STALL
 
-A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, not only the clock — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A condition over the clock alone only delays the chain and is not reported. If the scene may be skipped, let the next one follow the scene before it (`after: visited("<previous>")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true.
+A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, or a window of the clock that closes: a `when` no raise of the chain's occasion meets (a `dayStart` chain whose scene needs the day the run starts), or one that no later raise meets once the scene before it has played late (a slot of the last day of a clock that ends) — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A clock condition that a later raise still meets only delays the chain, and a condition over other `owner: engine` state is the engine's to make true; neither is reported. If the scene may be skipped, let the next one follow the scene before it (`after: visited("<previous>")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true, or let its `when` hold at a later raise.
 
 Spec: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
@@ -1656,7 +1666,7 @@ A quest with no `tier=` (so it defaults to user-tier, persisting across runs) re
 
 ### W-RELATION-TIER-IMPLICIT
 
-A stored (not `derive: true`) relation declares no `tier:`, so it is run-tier: its facts — the engine's too, on a `reserved: true` relation — are cleared at every new run. Write `tier: run` to keep that, or `user`, `app` or `season:<name>` for facts that outlive the run.
+A stored (not `derive: true`) relation declares no `tier:`, so it is run-tier: its facts start over at every new run, from its `facts:` seed if any (an engine-owned `reserved: true` relation's facts are forgotten). Write `tier: run` to keep that, or `user`, `app` or `season:<name>` for facts that outlive the run.
 
 Spec: [dsl 0.28.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
@@ -1677,6 +1687,12 @@ Spec: [dsl 0.23.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/prop
 A beat with `once: season:<name>` (or a `tier="season:<name>"` quest with a `start`) whose `when` (or `start`) does not imply the season's `live` condition: `once` only sets how long the beat stays spent, so it plays even while the season has never opened. Add the season's `live` condition (or a def that reads it) to the `when`.
 
 Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-SPENT-BY-REVERSIBLE
+
+A beat's `spentBy` can turn false again after it has held — it reads a fact some `::retract` / `::assert` or a directive's declared effect can undo, a season's state, facts or quest (reset each time the season opens), or a quest `rearm` returns to `unset` — but with no `once` written the beat stays spent for the rest of the run, unlike a condition judged afresh at each raise. The message names the rewrite: `once: false` with `when: "!(…)"` to judge it afresh, `once: season:<name>` for a season, or `once: run` to keep it spent on purpose (a written `once` silences the warning).
+
+Spec: [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-STAGE-ABSENT
 
@@ -1704,13 +1720,19 @@ Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-TEXT-BRACKET-LABEL
 
-A `<choice>` label is wrapped in `[…]`, Ink's bracket suppression. Lute shows a label exactly as written, so the brackets appear on the button; write the label without them.
+A `<choice>` label is wholly wrapped in `[…]`, Ink's bracket suppression. Lute shows a label exactly as written, so the brackets appear on the button; write the label without them. A leading tag followed by more text (`[Persuasion] Step closer`) is not warned.
 
 Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-TEXT-COMMENT-LIKE
 
 Line text or a choice label holds a ` // …` comment or ends in an Ink `#tag`. Text after `: ` is literal, so the player sees it; a comment is `// …` on a line of its own, and Lute has no line tags.
+
+Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-TEXT-GLUE
+
+Line text or a choice label holds Ink glue `<>`. Lute joins no lines and text after `: ` is literal, so the player sees `<>`; write the whole sentence on one line.
 
 Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
@@ -1722,7 +1744,7 @@ Spec: [dsl §7.6](/spec/)
 
 ### W-TEXT-SINGLE-BRACE
 
-Line text or a choice label holds a single-brace group that reads as another language's markup: a state path or def (`{run.oil}`), a Yarn `{$var}`, Ink conditional text (`{cond: text}`) or alternatives (`{~a|b}`). Single braces are literal; interpolation is `{{run.oil}}`, and conditional text is a guarded line or a `<match>`.
+Line text or a choice label holds a single-brace group that reads as another language's markup: a state path or def (`{run.oil}`), a Yarn `{$var}` or `{0}` placeholder, Ink conditional text (`{cond: text}`) or alternatives (`{~a|b}`). Single braces are always literal and a backslash does not escape them (`\{run.oil\}` ships its backslashes too), so braces meant to show are written as they are; interpolation is `{{run.oil}}`, and conditional text is a guarded line or a `<match>`.
 
 Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 

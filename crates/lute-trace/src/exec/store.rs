@@ -15,7 +15,9 @@
 //!   clock's `day` / `slot` (D14). Exclusivity after a write is the
 //!   Machine's (it records and refuses).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::rc::Rc;
 
 use cel_parser::ast::Expr;
 use lute_cel::CelArena;
@@ -479,15 +481,36 @@ fn is_entry_ever_read(path: &str) -> bool {
     )
 }
 
-/// Parse `raw` fresh (`None` for blank or unparsable text).
-pub(crate) fn parse(raw: &str) -> Option<Expr> {
+/// Parse `raw` (`None` for blank or unparsable text), once per thread: a
+/// play judges the same guards, `::set` values and rule-body `cel(…)`
+/// fragments at every raise and settle, and parsing them afresh each time
+/// was most of its run time. The memo holds at most [`PARSED_CAP`] texts.
+pub(crate) fn parse(raw: &str) -> Option<Rc<Expr>> {
+    thread_local! {
+        static PARSED: RefCell<HashMap<String, Option<Rc<Expr>>>> = RefCell::default();
+    }
     if raw.trim().is_empty() {
         return None;
     }
+    if let Some(hit) = PARSED.with_borrow(|m| m.get(raw).cloned()) {
+        return hit;
+    }
     let mut arena = CelArena::default();
-    let handle = lute_cel::parse_slot(&mut arena, raw, 0).ok()?;
-    arena.get(handle).map(|e| e.expr.clone())
+    let parsed = lute_cel::parse_slot(&mut arena, raw, 0)
+        .ok()
+        .and_then(|h| arena.get(h))
+        .map(|e| Rc::new(e.expr.clone()));
+    PARSED.with_borrow_mut(|m| {
+        if m.len() >= PARSED_CAP {
+            m.clear();
+        }
+        m.insert(raw.to_string(), parsed.clone());
+    });
+    parsed
 }
+
+/// How many parsed texts [`parse`] keeps per thread before starting over.
+const PARSED_CAP: usize = 4096;
 
 pub fn render_fact(rel: &str, args: &[String]) -> String {
     format!("{rel}({})", args.join(", "))

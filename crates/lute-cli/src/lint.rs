@@ -165,6 +165,7 @@ fn read_root_config(
             return Ok(None);
         }
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot read {}: {e}", path.display());
             return Err(ExitCode::from(2));
         }
@@ -242,6 +243,7 @@ fn build_lint_input(
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot read {}: {e}", file.display());
             return Err(ExitCode::from(2));
         }
@@ -273,6 +275,7 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
     let meta = match std::fs::metadata(path) {
         Ok(m) => m,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot read {}: {e}", path.display());
             return Err(ExitCode::from(2));
         }
@@ -293,6 +296,7 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
         m
     } else {
         let files = find_lute_files(path).map_err(|e| {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot walk {}: {e}", path.display());
             ExitCode::from(2)
         })?;

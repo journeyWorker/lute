@@ -180,6 +180,10 @@ pub(crate) fn push_literal_cmp_diags(
             // `E-CEL-TYPE`'s, reported by the slot's own type pass.
             LiteralCmpKind::TypeMismatch => continue,
         };
+        let message = match &hit.via {
+            Some(def) => format!("in {def}: {message}"),
+            None => message,
+        };
         let at = text
             .and_then(|t| quoted_literal_at(t, literal, cursor).map(|r| (t, r)))
             .map_or(span, |(t, (start, end))| {
@@ -508,10 +512,12 @@ pub(crate) fn check_reachability_in(
     let mut diags = Vec::new();
     let targets = crate::next_labels::next_targets(doc);
     // One body's walk under the `when` it runs behind (dsl 0.24.0), over
-    // `ctx` — its beat's own environment.
+    // `ctx` — its beat's own environment. `once`: a scene body, played at
+    // most once per scene play (a component body may be used many times).
     let walk_body = |bodies: &[&[Node]],
                      when: Option<&CelSlot>,
                      ctx: &DecideCtx<'_>,
+                     once: bool,
                      diags: &mut Vec<Diagnostic>| {
         let assumption = when.zip(env.snapshot).and_then(|(when, snapshot)| {
             Assumption::new(when, bodies, defs, env.def_types, ctx.schema, snapshot)
@@ -521,6 +527,7 @@ pub(crate) fn check_reachability_in(
             assume: assumption.as_ref(),
             targets: &targets,
             picks: &[],
+            once,
         };
         for body in bodies {
             walk_reach(body, defs, &rx, ctx, diags);
@@ -528,12 +535,13 @@ pub(crate) fn check_reachability_in(
     };
     // A scene's shots are one body: `scene.*`/`run.*` persist across shots.
     let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
-    walk_body(&shots, env.beat_when, base_ctx, &mut diags);
+    let scene_body = env.folded.is_some();
+    walk_body(&shots, env.beat_when, base_ctx, scene_body, &mut diags);
     for quest in &doc.quests {
         diags.extend(check_quest_reach(quest, defs, base_ctx));
         diags.extend(check_objective_contradiction(quest, defs, base_ctx));
         diags.extend(check_handler_after_completion(quest, defs));
-        walk_body(&[&quest.body], None, base_ctx, &mut diags);
+        walk_body(&[&quest.body], None, base_ctx, false, &mut diags);
     }
     // dsl 0.19.0 §4: an entry body is an ordinary node stream — its
     // `<match>` arms get the same dead-arm / dead-otherwise verdicts.
@@ -570,12 +578,18 @@ pub(crate) fn check_reachability_in(
                 ));
             }
         }
-        walk_body(&[&entry.body], entry.when.as_ref(), &ctx, &mut diags);
+        walk_body(&[&entry.body], entry.when.as_ref(), &ctx, false, &mut diags);
     }
     // dsl 0.23.0 §4: a bundle beat body is a scene body.
     for beat in &doc.beats {
         let ctx = env.ctx_at(base_ctx, beat.span);
-        walk_body(&[&beat.body], beat.when.as_ref(), &ctx, &mut diags);
+        walk_body(
+            &[&beat.body],
+            beat.when.as_ref(),
+            &ctx,
+            scene_body,
+            &mut diags,
+        );
     }
     diags
 }
@@ -625,6 +639,9 @@ struct Reach<'a> {
     assume: Option<&'a Assumption>,
     targets: &'a BTreeSet<String>,
     picks: &'a [Pick],
+    /// The body runs at most once per scene play: a scene's shots, outside
+    /// any hub or `<on>` handler ([`Pick::on_return`]).
+    once: bool,
 }
 
 /// A beat's / entry's `when` as an assumption over the body it guards (dsl
@@ -837,6 +854,8 @@ pub(crate) fn member_arm_verdicts(
         assume: Some(&assume),
         targets: &targets,
         picks: &[],
+        // A kind or `for=` beat's body: a scene body, as in the per-file walk.
+        once: true,
     };
     let mut diags = Vec::new();
     walk_reach(body, defs, &rx, &ctx, &mut diags);
@@ -853,8 +872,17 @@ pub(crate) fn member_arm_verdicts(
 pub(crate) struct Pick {
     path: String,
     value: DomainValue,
-    /// "the pick record" / "the visit record", for the message.
-    record: &'static str,
+    /// Why the record holds `value` here, for the message.
+    because: PickWhy,
+}
+
+/// Where a [`Pick`] holds and why.
+#[derive(Clone, Debug)]
+enum PickWhy {
+    /// In its option's own arm: "the pick record" / "the visit record".
+    Arm(&'static str),
+    /// In the hub's `<return>`: the reason after the dash.
+    Return(String),
 }
 
 impl Pick {
@@ -879,14 +907,90 @@ impl Pick {
         out.push(Pick {
             path: format!("scene.choices.{menu}"),
             value: DomainValue::Str(choice.id.clone()),
-            record: "the pick record",
+            because: PickWhy::Arm("the pick record"),
         });
         if hub {
             out.push(Pick {
                 path: format!("scene.visited.{menu}.{}", choice.id),
                 value: DomainValue::Bool(true),
-                record: "the visit record",
+                because: PickWhy::Arm("the visit record"),
             });
+        }
+        out
+    }
+
+    /// What hub `hub` (id `id`) records inside its `<return>` block, added to
+    /// `outer` (ledger LG28-17). `<return>` runs only after a non-`exit`
+    /// option, so with one such option its pick and visit records hold it.
+    /// `once`: this hub is entered at most once per scene play and no
+    /// `::next` can come back into it — then no `exit` option has been
+    /// visited yet, as taking one leaves the hub for good. Nothing when a
+    /// `::next` can jump into a non-`exit` arm or the block itself.
+    pub(crate) fn on_return(
+        outer: &[Pick],
+        id: &str,
+        hub: &lute_syntax::ast::Hub,
+        targets: &BTreeSet<String>,
+        once: bool,
+    ) -> Vec<Pick> {
+        let mut out = outer.to_vec();
+        // `None`: an `exit` value that is no flag (its own `E-FLAG-VALUE`).
+        let exit = |c: &Choice| {
+            c.attrs
+                .iter()
+                .find(|a| a.key == "exit")
+                .map_or(Some(false), |a| a.value.flag())
+        };
+        let jumpable = |body: &[Node]| {
+            body.iter()
+                .any(|n| crate::next_labels::holds_label(n, targets))
+        };
+        let stays: Vec<&Choice> = hub
+            .choices
+            .iter()
+            .filter(|c| exit(c) == Some(false))
+            .collect();
+        if id.is_empty()
+            || hub.choices.iter().any(|c| exit(c).is_none())
+            || hub.on_return.as_ref().is_some_and(|r| jumpable(&r.body))
+            || stays.iter().any(|c| jumpable(&c.body))
+        {
+            return out;
+        }
+        if let [only] = stays[..] {
+            if !only.id.is_empty() {
+                let because = PickWhy::Return(format!(
+                    "`{}` is its only option that is not `exit`, and `<return>` runs only after \
+                     one of those",
+                    only.id
+                ));
+                out.push(Pick {
+                    path: format!("scene.choices.{id}"),
+                    value: DomainValue::Str(only.id.clone()),
+                    because: because.clone(),
+                });
+                out.push(Pick {
+                    path: format!("scene.visited.{id}.{}", only.id),
+                    value: DomainValue::Bool(true),
+                    because,
+                });
+            }
+        }
+        if once && targets.is_empty() {
+            for gone in hub
+                .choices
+                .iter()
+                .filter(|c| exit(c) == Some(true) && !c.id.is_empty())
+            {
+                out.push(Pick {
+                    path: format!("scene.visited.{id}.{}", gone.id),
+                    value: DomainValue::Bool(false),
+                    because: PickWhy::Return(format!(
+                        "`{}` is an `exit` option, and `<return>` never runs after one",
+                        gone.id
+                    )),
+                });
+            }
         }
         out
     }
@@ -941,11 +1045,19 @@ impl Pick {
             DomainValue::Str(s) => format!("'{s}'"),
             DomainValue::Bool(b) => b.to_string(),
         };
-        format!(
-            "`{}` is `{value}` in its option's own arm — {} is set when the choice is picked, \
-             before its arm runs",
-            self.path, self.record
-        )
+        match &self.because {
+            PickWhy::Arm(record) => format!(
+                "`{}` is `{value}` in its option's own arm — {record} is set when the choice is \
+                 picked, before its arm runs",
+                self.path
+            ),
+            PickWhy::Return(why) => {
+                format!(
+                    "`{}` is `{value}` in the hub's `<return>` — {why}",
+                    self.path
+                )
+            }
+        }
     }
 }
 
@@ -1169,17 +1281,25 @@ fn walk_reach(
                         AttrValue::Str(s) => Some(s.as_str()),
                         _ => None,
                     });
+                // A hub's bodies run again on every visit.
                 for choice in &h.choices {
                     let picks = Pick::with(rx.picks, id.unwrap_or(""), choice, true, rx.targets);
                     let inner = Reach {
                         picks: &picks,
+                        once: false,
                         ..*rx
                     };
                     walk_reach(&choice.body, defs, &inner, ctx, diags);
                 }
                 // dsl 0.28.0 §5: the `<return>` body follows whichever option ran.
                 if let Some(r) = &h.on_return {
-                    walk_reach(&r.body, defs, rx, ctx, diags);
+                    let picks = Pick::on_return(rx.picks, id.unwrap_or(""), h, rx.targets, rx.once);
+                    let inner = Reach {
+                        picks: &picks,
+                        once: false,
+                        ..*rx
+                    };
+                    walk_reach(&r.body, defs, &inner, ctx, diags);
                 }
             }
             Node::On(o) => {
@@ -1193,7 +1313,9 @@ fn walk_reach(
                     let analysis = analyze_literal_comparisons(&when.raw, defs, ctx);
                     push_literal_cmp_diags(diags, &analysis.hits, Some(&when.raw), when.span);
                 }
-                walk_reach(&o.body, defs, rx, ctx, diags);
+                // A handler may run many times.
+                let inner = Reach { once: false, ..*rx };
+                walk_reach(&o.body, defs, &inner, ctx, diags);
             }
             Node::Objective(o) => {
                 diags.extend(check_objective_reach(o, defs, ctx));
@@ -2894,8 +3016,12 @@ fn foreign_comparison_message(subject: &str, literal: &str, members: &[String]) 
             " — did you mean `'{m}'`? `{subject}` holds the member alone, without the \
              `{prefix}.` prefix"
         ),
-        None => lute_manifest::suggest::nearest(literal, members.iter().map(String::as_str), 2)
-            .map_or_else(String::new, |near| format!(" — did you mean `'{near}'`?")),
+        None => {
+            let members = || members.iter().map(String::as_str);
+            lute_manifest::suggest::nearest(literal, members(), 2)
+                .or_else(|| lute_manifest::suggest::abbreviated(literal, members()))
+                .map_or_else(String::new, |near| format!(" — did you mean `'{near}'`?"))
+        }
     };
     format!(
         "`'{literal}'` is not a member of `{subject}`'s domain [{}]{hint} (dsl 0.4 §5.2)",

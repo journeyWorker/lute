@@ -228,6 +228,15 @@ fn main() -> ExitCode {
             project.as_deref(),
             permission_profile.as_deref(),
         ),
+        Command::Trace { retired_on, .. } if !retired_on.is_empty() => {
+            retired_on_flag("trace", &retired_on)
+        }
+        Command::Beats { retired_on, .. } if !retired_on.is_empty() => {
+            retired_on_flag("beats", &retired_on)
+        }
+        Command::Calendar { retired_on, .. } if !retired_on.is_empty() => {
+            retired_on_flag("calendar", &retired_on)
+        }
         Command::Trace {
             occasion, target, ..
         } if !target.is_empty() => {
@@ -251,6 +260,7 @@ fn main() -> ExitCode {
             accept,
             occasion,
             target: _,
+            retired_on: _,
             mock,
             json,
             providers,
@@ -294,7 +304,10 @@ fn main() -> ExitCode {
             Some(on) => {
                 eprintln!(
                     "lute new: `--on` is now `--occasion`, as in every other command — \
-                     `lute new {kind} {name} --occasion {on}`"
+                     `lute new {} {} --occasion {}`",
+                    shell_word(&kind),
+                    shell_word(&name),
+                    shell_word(&on)
                 );
                 ExitCode::from(2)
             }
@@ -384,6 +397,7 @@ fn main() -> ExitCode {
             target,
             json,
             expand,
+            retired_on: _,
         } => beats_cmd::run_beats(&dir, &occasion, &target, json, expand),
         Command::Calendar {
             dir,
@@ -396,6 +410,7 @@ fn main() -> ExitCode {
             where_,
             json,
             csv,
+            retired_on: _,
         } => play::calendar::run_calendar(
             &dir,
             &play::calendar::CalendarArgs {
@@ -411,6 +426,34 @@ fn main() -> ExitCode {
             },
         ),
         Command::Version { json } => run_version(json),
+    }
+}
+
+/// `lute <command> --on X`: the flag is `--occasion` everywhere since 0.28;
+/// name the right one rather than clap's `-- --on` tip.
+fn retired_on_flag(command: &str, on: &[String]) -> ExitCode {
+    let flags: Vec<String> = on
+        .iter()
+        .map(|o| format!("--occasion {}", shell_word(o)))
+        .collect();
+    eprintln!(
+        "lute {command}: there is no `--on`; an occasion is named with `--occasion`, as in \
+         every command — `{}`",
+        flags.join(" ")
+    );
+    ExitCode::from(2)
+}
+
+/// `word` as one shell argument: bare when it is plain, else single-quoted.
+fn shell_word(word: &str) -> String {
+    let plain = !word.is_empty()
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_./@:,=+".contains(c));
+    if plain {
+        word.to_string()
+    } else {
+        format!("'{}'", word.replace('\'', r"'\''"))
     }
 }
 

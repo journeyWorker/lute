@@ -173,7 +173,7 @@ pub fn lower_directive(
         // checker applies in `directives::check_directive` — so this only
         // lifts the genuinely cross-cutting ones.
         extra: stamp_extra(&dir.attrs, snapshot, |k| declares_attr(decl, k)),
-        authored: Some(authored_directive(dir)),
+        authored: Some(authored_directive(dir, decl)),
         ..Stamp::default()
     };
     Some(match dir.tag.as_str() {
@@ -400,13 +400,22 @@ pub fn lower_directive(
 
 /// The directive as written: `::tag{key="value" key=@ref flag}` in source
 /// attribute order (a component's arguments already substituted); the
-/// compiler's own `__`-prefixed bookkeeping attrs are not source.
-pub(crate) fn authored_directive(dir: &Directive) -> String {
+/// compiler's own `__`-prefixed bookkeeping attrs are not source. With the
+/// directive's declaration, a value its attribute types as a number or a
+/// bool reads bare (`n=2`), and so does an `occasion.target` argument — it
+/// names the member, not the string.
+pub(crate) fn authored_directive(dir: &Directive, decl: Option<&DirectiveDecl>) -> String {
     let attrs: Vec<String> = dir
         .attrs
         .iter()
         .filter(|a| !a.key.starts_with("__"))
         .map(|a| match &a.value {
+            AttrValue::Str(s)
+                if s == lute_check::beats::OCCASION_TARGET
+                    || (decl.is_some() && !attr_json(a, decl).is_string()) =>
+            {
+                format!("{}={s}", a.key)
+            }
             AttrValue::Str(s) => format!("{}=\"{}\"", a.key, s.replace('"', "\\\"")),
             AttrValue::Ref(slot) => format!("{}={}", a.key, slot.raw),
             AttrValue::BoolTrue => a.key.clone(),

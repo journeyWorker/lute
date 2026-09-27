@@ -973,22 +973,206 @@ pub fn decide(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<Decided> {
 /// intact (D3): the marked re-parse then resolves a param ref via its
 /// marker ident (R2) and anything else genuinely unresolved lands in R5.
 pub fn decide_slot(raw: &str, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Option<Decided> {
+    let mut arena = lute_cel::CelArena::default();
+    let handle = parse_expanded(raw, defs, &mut arena)?;
+    decide(&arena.get(handle)?.expr, ctx)
+}
+
+/// `raw` with its `@def`s expanded, parsed MARKED into `arena` — the
+/// [`decide_slot`] front half.
+fn parse_expanded(
+    raw: &str,
+    defs: &DefTable<'_>,
+    arena: &mut lute_cel::CelArena,
+) -> Option<lute_syntax::cel_ast::CelAstHandle> {
     let mut stack = Vec::new();
     let expanded = expand_cel(raw, defs, Some("$"), &mut stack).unwrap_or_else(|_| raw.to_string());
+    lute_cel::parse_slot_marked_refs(arena, &expanded)
+}
+
+/// Whether `cond` (its parts, joined by `&&`; none is `true`) implies
+/// `goal`, judged one `&&` conjunct of `goal` at a time after `@def`
+/// expansion. A conjunct is implied when `cond` has it as a conjunct of its
+/// own (the same expression, the same polarity — whatever operators it
+/// uses) or `cond && !conjunct` decides false. It is shown NOT implied when
+/// `cond && !conjunct` decides true, or stays undecided although a state
+/// satisfying it can be named: every literal of it is one [`decide`]
+/// models per path (so the per-path chain rule would have refuted it), or
+/// the conjunct reads nothing `cond` reads (so a state satisfying `cond`
+/// can still falsify it).
+///
+/// `Some(false)` when some conjunct is shown not implied, `Some(true)` when
+/// every one is implied, `None` otherwise — a conjunct over an operator the
+/// decider cannot model (`user.runs % 6 >= 4`) that `cond` also reads.
+pub(crate) fn implies_slot(
+    cond: &[&str],
+    goal: &str,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> Option<bool> {
+    let joined = if cond.is_empty() {
+        "true".to_string()
+    } else {
+        cond.iter()
+            .map(|p| format!("({p})"))
+            .collect::<Vec<_>>()
+            .join(" && ")
+    };
     let mut arena = lute_cel::CelArena::default();
-    let handle = lute_cel::parse_slot_marked_refs(&mut arena, &expanded)?;
-    let ided = arena.get(handle)?;
-    decide(&ided.expr, ctx)
+    let cond_handle = parse_expanded(&joined, defs, &mut arena)?;
+    let goal_handle = parse_expanded(goal, defs, &mut arena)?;
+    let cond = &arena.get(cond_handle)?.expr;
+    let goal = &arena.get(goal_handle)?.expr;
+    let mut own = Vec::new();
+    chain_literals(cond, true, Chain::And, &mut own);
+    let mut conjuncts = Vec::new();
+    chain_literals(goal, true, Chain::And, &mut conjuncts);
+    let mut cond_reads = Reads::default();
+    cond_reads.collect(cond);
+    let mut verdict = Some(true);
+    for (conjunct, positive) in conjuncts {
+        if own
+            .iter()
+            .any(|(e, p)| *p == positive && same_expr(e, conjunct))
+        {
+            continue;
+        }
+        let falsified = if positive {
+            ided_call(op::LOGICAL_NOT, vec![conjunct.clone()])
+        } else {
+            conjunct.clone()
+        };
+        let probe = ided_call(op::LOGICAL_AND, vec![cond.clone(), falsified]);
+        match decide(&probe, ctx) {
+            Some(Decided::Bool(false)) => continue,
+            Some(Decided::Bool(true)) => return Some(false),
+            Some(_) => verdict = None,
+            None => {
+                let mut literals = Vec::new();
+                chain_literals(&probe, true, Chain::And, &mut literals);
+                let modelled = literals
+                    .iter()
+                    .all(|(e, p)| literal_truth(e, *p, ctx).is_some() || decide(e, ctx).is_some());
+                let mut reads = Reads::default();
+                reads.collect(conjunct);
+                if modelled || reads.disjoint(&cond_reads) {
+                    return Some(false);
+                }
+                verdict = None;
+            }
+        }
+    }
+    verdict
+}
+
+/// A call node with placeholder ids — [`decide`] never reads ids.
+fn ided_call(name: &str, args: Vec<Expr>) -> Expr {
+    Expr::Call(CallExpr {
+        func_name: name.to_string(),
+        target: None,
+        args: args
+            .into_iter()
+            .map(|expr| IdedExpr { id: 0, expr })
+            .collect(),
+    })
+}
+
+/// The same expression, node ids aside. A map, struct or comprehension is
+/// never judged the same (it only makes a conjunct look unshared).
+fn same_expr(a: &Expr, b: &Expr) -> bool {
+    let all = |xs: &[IdedExpr], ys: &[IdedExpr]| {
+        xs.len() == ys.len() && xs.iter().zip(ys).all(|(x, y)| same_expr(&x.expr, &y.expr))
+    };
+    match (a, b) {
+        (Expr::Literal(x), Expr::Literal(y)) => x == y,
+        (Expr::Ident(x), Expr::Ident(y)) => x == y,
+        (Expr::Select(x), Expr::Select(y)) => {
+            x.field == y.field && x.test == y.test && same_expr(&x.operand.expr, &y.operand.expr)
+        }
+        (Expr::Call(x), Expr::Call(y)) => {
+            x.func_name == y.func_name
+                && match (&x.target, &y.target) {
+                    (None, None) => true,
+                    (Some(s), Some(t)) => same_expr(&s.expr, &t.expr),
+                    _ => false,
+                }
+                && all(&x.args, &y.args)
+        }
+        (Expr::List(x), Expr::List(y)) => all(&x.elements, &y.elements),
+        _ => false,
+    }
+}
+
+/// What an expression reads, for [`implies_slot`]'s independence test:
+/// its state paths and bare identifiers; any relational query reads the one
+/// fact store (rules may tie two facts), `visited` the one history, and a
+/// shape it cannot see into reads everything.
+#[derive(Default)]
+struct Reads {
+    keys: std::collections::BTreeSet<String>,
+    everything: bool,
+}
+
+impl Reads {
+    fn collect(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Literal(_) => {}
+            Expr::Ident(name) => {
+                self.keys.insert(name.clone());
+            }
+            Expr::Select(sel) => match state_path(expr) {
+                Some(path) => {
+                    self.keys.insert(path);
+                }
+                None => self.collect(&sel.operand.expr),
+            },
+            Expr::Call(c) if c.func_name.starts_with(lute_cel::REF_MARKER) => {
+                self.everything = true
+            }
+            Expr::Call(c) if crate::cel_resolve::is_profile_fact_query(c) => {
+                self.keys.insert("holds()".to_string());
+            }
+            Expr::Call(c) if c.func_name == crate::cel_resolve::VISITED_FN => {
+                self.keys.insert("visited()".to_string());
+            }
+            Expr::Call(c) => {
+                for e in c
+                    .target
+                    .iter()
+                    .map(|t| &t.expr)
+                    .chain(c.args.iter().map(|a| &a.expr))
+                {
+                    self.collect(e);
+                }
+            }
+            Expr::List(list) => {
+                for el in &list.elements {
+                    self.collect(&el.expr);
+                }
+            }
+            Expr::Map(_) | Expr::Struct(_) | Expr::Comprehension(_) | Expr::Unspecified => {
+                self.everything = true
+            }
+        }
+    }
+
+    fn disjoint(&self, other: &Reads) -> bool {
+        !self.everything && !other.everything && self.keys.is_disjoint(&other.keys)
+    }
 }
 
 /// One literal comparison a guard slot gets wrong. `subject` is a
 /// best-effort display name for the message (a dotted state path, `$`, or a
-/// bound component param's bare name); `id` is the comparison `Call` node's
-/// own arena id — used ONLY internally by [`analyze_literal_comparisons`]'s
-/// causality substitution, never read outside this file.
+/// bound component param's bare name); `via` names the `@def` whose body
+/// writes the literal when the slot's own text does not
+/// ([`crate::cel_expand::def_chain_label`]); `id` is the comparison `Call`
+/// node's own arena id — used ONLY internally by
+/// [`analyze_literal_comparisons`]'s causality substitution, never read
+/// outside this file.
 pub(crate) struct LiteralCmpHit {
     pub subject: String,
     pub kind: LiteralCmpKind,
+    pub via: Option<String>,
     id: u64,
 }
 
@@ -1171,6 +1355,7 @@ fn collect_literal_cmp(ided: &IdedExpr, ctx: &DecideCtx<'_>, out: &mut Vec<Liter
                         subject,
                         kind: LiteralCmpKind::UnsetSentinel { not_equals },
                         id: ided.id,
+                        via: None,
                     });
                 } else if let Some((subject, literal, members)) =
                     foreign_member_operand(a, b, ctx).or_else(|| foreign_member_operand(b, a, ctx))
@@ -1179,12 +1364,14 @@ fn collect_literal_cmp(ided: &IdedExpr, ctx: &DecideCtx<'_>, out: &mut Vec<Liter
                         subject,
                         kind: LiteralCmpKind::ForeignMember { literal, members },
                         id: ided.id,
+                        via: None,
                     });
                 } else if type_mismatch_operand(a, b, ctx) || type_mismatch_operand(b, a, ctx) {
                     out.push(LiteralCmpHit {
                         subject: subject_display(a).unwrap_or_default(),
                         kind: LiteralCmpKind::TypeMismatch,
                         id: ided.id,
+                        via: None,
                     });
                 }
             }
@@ -1198,12 +1385,14 @@ fn collect_literal_cmp(ided: &IdedExpr, ctx: &DecideCtx<'_>, out: &mut Vec<Liter
                                 subject,
                                 kind: LiteralCmpKind::ForeignMember { literal, members },
                                 id: ided.id,
+                                via: None,
                             });
                         } else if type_mismatch_operand(&c.args[0].expr, &el.expr, ctx) {
                             out.push(LiteralCmpHit {
                                 subject: subject_display(&c.args[0].expr).unwrap_or_default(),
                                 kind: LiteralCmpKind::TypeMismatch,
                                 id: ided.id,
+                                via: None,
                             });
                         }
                     }
@@ -1355,6 +1544,9 @@ pub(crate) fn analyze_literal_comparisons(
     if hits.is_empty() {
         return empty();
     }
+    for hit in &mut hits {
+        hit.via = literal_def(raw, hit, defs);
+    }
     let ids: Vec<u64> = hits.iter().map(|h| h.id).collect();
     let substituted = undecide_ids(ided, &ids);
     let load_bearing_for_false =
@@ -1363,6 +1555,29 @@ pub(crate) fn analyze_literal_comparisons(
         hits,
         load_bearing_for_false,
     }
+}
+
+/// The def a hit's literal is written in, as a message names it — `None`
+/// when the slot's own text writes it (it points at the literal there).
+fn literal_def(raw: &str, hit: &LiteralCmpHit, defs: &DefTable<'_>) -> Option<String> {
+    let literal = match &hit.kind {
+        LiteralCmpKind::UnsetSentinel { .. } => "unset",
+        LiteralCmpKind::ForeignMember { literal, .. } => literal.as_str(),
+        LiteralCmpKind::TypeMismatch => return None,
+    };
+    let writes = |text: &str| {
+        ['\'', '"']
+            .into_iter()
+            .any(|q| text.contains(&format!("{q}{literal}{q}")))
+    };
+    if writes(raw) {
+        return None;
+    }
+    lute_cel::scan_refs(raw)
+        .iter()
+        .filter(|r| !r.is_dollar)
+        .find_map(|r| crate::cel_expand::def_chain_where(&r.name, defs, &writes))
+        .map(|chain| crate::cel_expand::def_chain_label(&chain))
 }
 
 #[cfg(test)]

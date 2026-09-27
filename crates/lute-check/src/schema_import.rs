@@ -104,8 +104,12 @@ pub struct SchemaImports {
     pub terminal: Vec<(PathBuf, String, Span)>,
     /// dsl 0.27.0 §5: every `seasons:` an import-reachable schema declares,
     /// by file (canonical path order), with the positioned span of its
-    /// `seasons:` key there — where a problem with a `live:` is reported.
+    /// `seasons:` key there.
     pub seasons: Vec<(PathBuf, crate::season::Seasons, Span)>,
+    /// Where each season of [`Self::seasons`] writes its condition, by file
+    /// and season name: the positioned span of its `live:` key (of its name,
+    /// in the short form) — where a problem with the condition is reported.
+    pub season_lives: BTreeMap<PathBuf, BTreeMap<String, Span>>,
     /// dsl 0.27.0 §4: where the installed plugins declare what a document's
     /// check judges but cannot place — filled by the CLI, which knows the
     /// project's plugins directory; empty on every other surface (a fault
@@ -212,9 +216,9 @@ struct ParsedDoc {
     /// dsl 0.27.0 §4: this schema's `terminal:` raw condition and its
     /// value's positioned span in this file.
     terminal: Option<(String, Span)>,
-    /// dsl 0.27.0 §5: this schema's `seasons:` (when it declares any) and
-    /// its key's positioned span in this file.
-    seasons: Option<(crate::season::Seasons, Span)>,
+    /// dsl 0.27.0 §5: this schema's `seasons:` (when it declares any), its
+    /// key's positioned span in this file, and each season's `live:` key's.
+    seasons: Option<(crate::season::Seasons, Span, BTreeMap<String, Span>)>,
     /// dsl 0.24 T3-6: this doc's declarations' spans, positioned in its text.
     origins: crate::rel_schema::DeclOrigins,
     /// dsl 0.24 T3-6: heads of this doc's `rules:` entries that failed to parse.
@@ -437,11 +441,16 @@ pub fn resolve_imports(
             let key = crate::rel_schema::kind_key_origin(kind, path);
             doc.origins.kind_keys.get(&key).map(|o| o.span)
         };
+        let rel_key_at = |rel: &str, k: &str| {
+            let key = crate::rel_schema::kind_key_origin(rel, &[k]);
+            doc.origins.relation_keys.get(&key).map(|o| o.span)
+        };
         for d in crate::rel_schema::validate_rel_decls(
             &doc.rel_kinds,
             &doc.rel_relations,
             &span_of,
             &key_at,
+            &rel_key_at,
         ) {
             let origin = crate::rel_schema::DeclOrigin {
                 file: canon.clone(),
@@ -874,7 +883,15 @@ pub fn resolve_imports(
         .collect();
     let seasons: Vec<(PathBuf, crate::season::Seasons, Span)> = parsed
         .iter()
-        .filter_map(|(path, doc)| doc.seasons.clone().map(|(s, at)| (path.clone(), s, at)))
+        .filter_map(|(path, doc)| doc.seasons.clone().map(|(s, at, _)| (path.clone(), s, at)))
+        .collect();
+    let season_lives = parsed
+        .iter()
+        .filter_map(|(path, doc)| {
+            doc.seasons
+                .as_ref()
+                .map(|(_, _, lives)| (path.clone(), lives.clone()))
+        })
         .collect();
 
     // dsl 0.24 T3-6: each resolved name's home — the shallowest declaring
@@ -936,6 +953,7 @@ pub fn resolve_imports(
         clock,
         terminal,
         seasons,
+        season_lives,
         plugin_origins: Default::default(),
         rel: RelImports {
             kinds: rel_kinds,
@@ -1232,6 +1250,7 @@ fn read_and_parse(
     let text = match std::fs::read_to_string(canon) {
         Ok(t) => t,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             diags.push(uses_diag(
                 "E-USES-NOT-FOUND",
                 format!("cannot read schema import `{}`: {e}", canon.display()),
@@ -1297,9 +1316,14 @@ fn read_and_parse(
         let file = canon.display().to_string();
         let mut d = uses_diag(
             "E-USES-PARSE",
+            // The file's name, not its absolute path: the issues below
+            // name it where the author's paths are relative.
             format!(
-                "schema import `{}` has parse/frontmatter errors ({} issue(s))",
-                canon.display(),
+                "schema import `{}` has errors ({} issue(s))",
+                canon.file_name().map_or_else(
+                    || canon.display().to_string(),
+                    |n| n.to_string_lossy().into_owned()
+                ),
                 issue_diags.len()
             ),
             at,
@@ -1409,6 +1433,16 @@ fn read_and_parse(
                 })
                 .collect()
         },
+        relation_keys: tm
+            .rel_relations
+            .relations
+            .iter()
+            .filter(|(_, d)| d.tier.is_some())
+            .map(|(n, _)| {
+                let span = crate::meta::meta_path_span(&meta, &["relations", n.as_str(), "tier"]);
+                (crate::rel_schema::kind_key_origin(n, &["tier"]), here(span))
+            })
+            .collect(),
         enum_labels: tm
             .domains
             .iter()
@@ -1480,7 +1514,17 @@ fn read_and_parse(
     let cast = tm.cast;
     let clock = tm.clock.map(|c| (c, key("clock").span));
     let terminal = tm.terminal.map(|t| (t.raw, here(t.span).span));
-    let seasons = (!tm.seasons.is_empty()).then(|| (tm.seasons, key("seasons").span));
+    let seasons = (!tm.seasons.is_empty()).then(|| {
+        let lives = tm
+            .seasons
+            .keys()
+            .map(|n| {
+                let at = crate::meta::meta_path_span(&meta, &["seasons", n.as_str(), "live"]);
+                (n.clone(), here(at).span)
+            })
+            .collect();
+        (tm.seasons, key("seasons").span, lives)
+    });
     let uses = tm.uses;
     let extends = tm.extends;
     (

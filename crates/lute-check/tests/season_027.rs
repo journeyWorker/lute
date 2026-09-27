@@ -422,6 +422,70 @@ fn season_spent_entries_bundle_beats_and_season_tier_quests_need_the_gate() {
     assert!(warned(&ds, "W-SEASON-UNGATED").is_empty(), "{ds:#?}");
 }
 
+/// drowned-crown NEW-1: a `live` over an operator the decider cannot model
+/// (`%`) is still implied by a condition that has it as a conjunct — the
+/// def itself, repeated, or beside another conjunct — and a condition that
+/// reads none of its paths still warns; one that reads them otherwise is
+/// not judged either way.
+#[test]
+fn a_modulo_season_window_is_implied_by_its_own_conjunct() {
+    let schema = "state:\n  user.runs: { type: number, default: 0 }\n  \
+                  run.day: { type: number, default: 1, owner: engine }\n\
+                  clock:\n  day: run.day\n\
+                  defs:\n  neapLive: \"user.runs % 6 >= 4\"\n\
+                  seasons:\n  neap: { live: \"@neapLive\" }\n";
+    let imps = || imports(&[("w.schema.yaml", schema)]);
+    let entry = |when: &str| {
+        lore(&format!(
+            "<entry id=\"e\" on=\"chime\" once=\"season:neap\" when=\"{when}\">\n  \
+             @narrator: hi\n</entry>\n"
+        ))
+    };
+    for when in [
+        "@neapLive",
+        "@neapLive && @neapLive",
+        "run.day > 2 && @neapLive",
+        "user.runs % 6 >= 4",
+        "user.runs % 6 == 5",
+    ] {
+        let ds = diagnostics(&entry(when), imps());
+        assert!(
+            warned(&ds, "W-SEASON-UNGATED").is_empty(),
+            "{when}: {ds:#?}"
+        );
+    }
+    let ds = diagnostics(&entry("run.day > 2"), imps());
+    assert_eq!(warned(&ds, "W-SEASON-UNGATED").len(), 1, "{ds:#?}");
+    let quest = |start: &str| {
+        format!(
+            "---\nkind: quest\nid: q\n---\n\n<quest id=\"salvage\" title=\"Salvage\" \
+             tier=\"season:neap\" start=\"{start}\">\n  \
+             <objective id=\"one\" title=\"One\" done=\"run.day >= 2\"/>\n</quest>\n"
+        )
+    };
+    let ds = diagnostics(&quest("@neapLive"), imps());
+    assert!(warned(&ds, "W-SEASON-UNGATED").is_empty(), "{ds:#?}");
+    let ds = diagnostics(&quest("true"), imps());
+    assert_eq!(warned(&ds, "W-SEASON-UNGATED").len(), 1, "{ds:#?}");
+}
+
+/// A season whose name is refused (`E-RESERVED-NAME`) is that error's: a
+/// quest on it is not also told it is ungated.
+#[test]
+fn a_refused_season_name_is_not_judged_for_its_gate() {
+    let schema = format!("{STATE}seasons:\n  run: {{ live: \"run.open\" }}\n");
+    let text = "---\nkind: quest\nid: q\n---\n\n<quest id=\"hush\" title=\"Hush\" \
+                tier=\"season:run\" start=\"true\">\n  \
+                <objective id=\"one\" title=\"One\" done=\"run.day >= 2\"/>\n</quest>\n";
+    let imps = imports(&[("w.schema.yaml", &schema)]);
+    let import_diags = imps.diags.clone();
+    let ds = diagnostics(text, imps);
+    // The refusal is nested under the import's `E-USES-PARSE`.
+    let all = format!("{import_diags:?} {ds:?}");
+    assert!(all.contains("E-RESERVED-NAME"), "{all}");
+    assert!(warned(&ds, "W-SEASON-UNGATED").is_empty(), "{ds:#?}");
+}
+
 /// An illegal `once` / `tier` value that names a declared season — its bare
 /// name, its state-path spelling `season.<name>`, or a near miss — suggests
 /// `season:<name>`; a quest tier's wrong case suggests the legal tier.
@@ -474,7 +538,10 @@ fn an_illegal_once_or_tier_naming_a_declared_season_suggests_its_spelling() {
     let ds = diagnostics(&lore(QUIET), imps());
     let errs = with_code(&ds, "E-RELATION-DOMAIN");
     assert!(
-        !errs.is_empty() && errs.iter().all(|m| m.ends_with(meant)),
+        !errs.is_empty()
+            && errs
+                .iter()
+                .all(|m| m.contains("`tier: harvest` — did you mean `season:harvest`?")),
         "{ds:#?}"
     );
     // A value naming no declared season keeps the plain legal-value list.

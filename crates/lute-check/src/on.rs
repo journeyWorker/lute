@@ -54,13 +54,24 @@ pub fn check_on_event(on: &On, snapshot: &CapabilitySnapshot) -> Vec<Diagnostic>
         .copied()
         .chain(snapshot.events.keys().map(String::as_str))
         .collect();
-    let hint = lute_manifest::suggest::did_you_mean(&on.event, known.iter().copied());
     let listed: Vec<String> = known.iter().map(|e| format!("`{e}`")).collect();
+    // An occasion's raise fires only the world event of the same name, so a
+    // handler on an occasion alone never runs: say what makes it run.
+    let why = if snapshot.occasions.contains_key(&on.event) {
+        format!(
+            " — `{0}` is an occasion, and a raise of it runs a handler only through a world \
+             event of the same name: declare `{0}` in a plugin's `events:` export, or judge an \
+             objective on the raise with `<objective on=\"{0}\">`",
+            on.event
+        )
+    } else {
+        lute_manifest::suggest::did_you_mean(&on.event, known.iter().copied())
+    };
     vec![diag(
         E_UNKNOWN_EVENT,
         format!(
             "`<on event=\"{}\">` names no built-in lifecycle event or capability-declared \
-             world event{hint}; the events are {}",
+             world event{why}; the events are {}",
             on.event,
             listed.join(", ")
         ),

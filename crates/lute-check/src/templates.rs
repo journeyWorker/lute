@@ -231,6 +231,20 @@ impl TemplateKey {
     }
 }
 
+impl BeatTemplate {
+    /// The header's own `also: true` beside its own fixed `on:` naming an
+    /// occasion that is not `select: first` — judged once, at the `also`
+    /// key ([`crate::beats::also_fault`]).
+    fn also_fault(&self, occasions: &BTreeMap<String, OccasionDecl>) -> Option<Diagnostic> {
+        let also = self
+            .keys
+            .iter()
+            .find(|k| k.key == "also" && k.raw.trim() == "true")?;
+        let on = self.keys.iter().find(|k| k.key == "on" && k.fixed())?;
+        crate::beats::also_fault(on.raw.trim(), also.span, true, occasions, Layer::Logic)
+    }
+}
+
 /// dsl 0.27.0 §6: every header value the uses derive unchanged, judged once
 /// in the template component — at the header key, not at each use (a use
 /// drops a faulty value, see [`expand_beat_templates`]). A value with a
@@ -251,6 +265,13 @@ pub fn check_template_header(
         if CEL_KEYS.contains(&k.key.as_str()) {
             out.extend(dot_param_warnings(k));
         }
+    }
+    if let Some(mut d) = template.also_fault(occasions) {
+        d.message = format!(
+            "template header `beat.also` (every `<beat use=…>` derives it): {}",
+            d.message
+        );
+        out.push(d);
     }
     out
 }
@@ -877,6 +898,16 @@ fn component_attr(name: &str, at: Span) -> Attr {
     }
 }
 
+/// Whether `dir` is the `::use` a `<beat use=…>` expanded to
+/// ([`expand_beat_templates`]): its `component` attribute is
+/// [`component_attr`]'s, spanning the whole directive — an authored
+/// `::use{component=…}` spans more than its attribute.
+pub fn is_template_use(dir: &Directive) -> bool {
+    dir.attrs
+        .first()
+        .is_some_and(|a| a.key == "component" && a.span == dir.span)
+}
+
 /// Desugar every `<beat use="…">` of `doc` (dsl 0.27.0 §6; see the module
 /// doc). Runs once per beat (`TemplateUse::expanded`), so every surface may
 /// call it on the document it parsed; the diagnostics come with the first
@@ -998,7 +1029,12 @@ pub fn expand_beat_templates(
                 failed = true;
                 continue;
             }
-            if !k.faults(occasions, at).is_empty() {
+            // A header `also` its own fixed `on` refuses is reported once at
+            // the header; a use that writes its own `on` is judged as written.
+            let header_also = key == "also"
+                && !user_keys.contains("on")
+                && template.also_fault(occasions).is_some();
+            if header_also || !k.faults(occasions, at).is_empty() {
                 failed = true;
                 continue;
             }

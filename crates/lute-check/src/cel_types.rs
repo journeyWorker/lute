@@ -342,7 +342,17 @@ fn equality_hint(x: &Expr, tx: &Type, y: &Expr, name: &str, t: &Typing<'_>) -> O
         (Type::Number, Some(s)) => {
             if let Some(clock) = t.clock {
                 let labels = clock.week.as_ref().map(|w| w.labels.as_slice());
-                let index = labels.and_then(|ls| ls.iter().position(|l| l == s));
+                // The label the literal names — as declared (`'monday'` is
+                // `Monday`, `'Mon'` too), or as written when it names none.
+                let label = labels
+                    .and_then(|ls| {
+                        let ls = || ls.iter().map(String::as_str);
+                        ls().find(|l| *l == s)
+                            .or_else(|| lute_manifest::suggest::nearest(s, ls(), 2))
+                            .or_else(|| lute_manifest::suggest::abbreviated(s, ls()))
+                    })
+                    .unwrap_or(s);
+                let index = labels.and_then(|ls| ls.iter().position(|l| l == label));
                 let is_weekday = path.as_deref() == Some(lute_manifest::clock::CLOCK_WEEKDAY);
                 let is_day = path.as_deref() == Some(clock.day.as_str())
                     || path.as_deref() == Some(lute_manifest::clock::CLOCK_DAY);
@@ -358,7 +368,7 @@ fn equality_hint(x: &Expr, tx: &Type, y: &Expr, name: &str, t: &Typing<'_>) -> O
                     };
                     return Some(format!(
                         " — `{}` is {what}; the weekday's name is `clock.weekdayLabel`: write \
-                         `clock.weekdayLabel {sym} '{s}'`{or_number}",
+                         `clock.weekdayLabel {sym} '{label}'`{or_number}",
                         path.unwrap_or_default()
                     ));
                 }

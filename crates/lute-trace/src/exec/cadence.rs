@@ -26,6 +26,12 @@
 //! and reset there. The first observation is the baseline: a condition
 //! already true when the playthrough starts opens nothing.
 //!
+//! `spentBy` latches ([`observe_latches`]) are observed only where a settle
+//! reaches its fixpoint — never at its head or between its passes — so a
+//! latch sees settled worlds only: a `start="true"` quest is already
+//! `active` when the first latch looks at it, never its pre-activation
+//! `unset`.
+//!
 //! wasm-clean: no filesystem, process or threads.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -502,8 +508,7 @@ pub fn reset_quest(w: &mut World, id: &str, objectives: &[String]) -> Option<Str
 }
 
 /// Observe every season's `live` and every quest's `rearm` in `w` and apply
-/// the false→true transitions (see the module doc), then latch every
-/// `spentBy` beat whose condition holds ([`observe_latches`]). The
+/// the false→true transitions (see the module doc). The
 /// transcript records: `{kind: "season", season, state: "open" |
 /// "closed"}` (an opening also carries `prev`: the paths the last window's
 /// values moved to) and `{kind: "quest", quest, state: "unset", reset:
@@ -588,16 +593,17 @@ pub fn observe(p: &ExecProject, w: &mut World) -> Vec<QuestAdvance> {
             }
         }
     }
-    observe_latches(p, w);
     out
 }
 
-/// A `spentBy` beat is spent from the first settle its condition holds at
-/// (for a kind beat: per member, bound as `occasion.target`) until its
-/// `once` period ends — the condition turning false again does not bring
-/// it back. Its clock position is recorded for a `day` / `slot` / `week`
-/// period; an undecided condition latches nothing.
-fn observe_latches(p: &ExecProject, w: &mut World) {
+/// A `spentBy` beat is spent from the first settled world its condition
+/// holds in (for a kind beat: per member, bound as `occasion.target`) until
+/// its `once` period ends — the condition turning false again does not
+/// bring it back. Run once per settle, at its fixpoint (see the module
+/// doc): a world mid-settle (a quest its `start` is about to activate) is
+/// never latched on. Its clock position is recorded for a `day` / `slot` /
+/// `week` period; an undecided condition latches nothing.
+pub fn observe_latches(p: &ExecProject, w: &mut World) {
     if p.cadence.latches.is_empty() {
         return;
     }

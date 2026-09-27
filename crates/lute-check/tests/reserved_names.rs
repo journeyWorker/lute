@@ -37,15 +37,26 @@ fn a_state_root_cannot_name_a_def_or_an_entity_member() {
          entities:\n  item: { members: [lamp, clock] }\n",
         "",
     );
+    // The example is written for the refused name, not a fixed one.
     assert!(
-        ms.iter().any(|m| m.contains("`run` is a state root")
-            && m.contains("a def")
-            && m.contains("e.g. `isRun`")),
+        ms.iter().any(
+            |m| m.contains("`run` cannot name a def because it is a state root")
+                && m.contains("`@run` reads as a bare `run`")
+                && m.contains("e.g. `isRun`")
+                && !m.contains("clock")
+        ),
         "{ms:#?}"
     );
     assert!(
-        ms.iter()
-            .any(|m| m.contains("`clock`") && m.contains("entity kind `item`")),
+        ms.iter().any(
+            |m| m.contains("`clock` cannot name a member of entity kind `item`")
+                && m.contains("`holds(<relation>(clock))`")
+        ),
+        "{ms:#?}"
+    );
+    // One "so" per sentence: the clause and the refusal do not chain.
+    assert!(
+        ms.iter().all(|m| m.matches(", so ").count() <= 1),
         "{ms:#?}"
     );
 }
@@ -58,10 +69,10 @@ fn value_words_and_numbers_cannot_be_members() {
         "",
     );
     for needle in [
-        "`unset` is the no-value word",
-        "`1` is a number",
-        "`true` is a CEL literal",
-        "`_` is the wildcard",
+        "`unset` cannot name a member of `run.lock`'s enum because it is the no-value word",
+        "`1` cannot name a member of enum `landing` because it is a number",
+        "it is a CEL literal: a condition and `is=\"true\"` read `true` as the value",
+        "`_` cannot name a member of entity kind `crew` because it is the wildcard",
     ] {
         assert!(ms.iter().any(|m| m.contains(needle)), "{needle}: {ms:#?}");
     }
@@ -100,7 +111,27 @@ fn relations_refuse_after_calls_and_suggest_a_name() {
     );
     assert!(
         ms.iter()
-            .any(|m| m.contains("`completed`") && m.contains("`after:` call")),
+            .any(|m| m.contains("`completed` cannot name a relation")
+                && m.contains("`after=\"completed(…)\"` reads the quest call")),
+        "{ms:#?}"
+    );
+}
+
+#[test]
+fn a_season_or_quest_refusal_names_its_own_example() {
+    let ms = reserved(
+        "seasons:\n  week: { live: \"run.day > 0\" }\n  clock: { live: \"run.day > 0\" }\n",
+        "",
+    );
+    assert!(
+        ms.iter().any(|m| m.contains("`week` cannot name a season")
+            && m.contains("`once=\"season:week\"` would sit beside `once=\"week\"`")),
+        "{ms:#?}"
+    );
+    assert!(
+        ms.iter().any(|m| m.contains("`clock` cannot name a season")
+            && m.contains("`season.clock.…`")
+            && !m.contains("season:run")),
         "{ms:#?}"
     );
 }

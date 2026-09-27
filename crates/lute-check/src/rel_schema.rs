@@ -22,7 +22,7 @@ use lute_manifest::snapshot::Domain;
 use lute_syntax::ast::Meta;
 use lute_syntax::datalog::{FactArg, FactTerm};
 
-use crate::meta::{meta_key_span, namespace_of, FactDecl, RuleDecl, TypedMeta};
+use crate::meta::{meta_key_span, FactDecl, RuleDecl, TypedMeta};
 use crate::schema_import::{
     kind_shape_mismatch, missing_members, relation_sig_diff, SchemaImports,
 };
@@ -99,6 +99,9 @@ pub struct DeclOrigins {
     /// key the kind does not take — keyed [`kind_key_origin`], so a problem
     /// with one key is reported at that key.
     pub kind_keys: BTreeMap<String, DeclOrigin>,
+    /// Keys inside a relation — its `tier:` — keyed [`kind_key_origin`]
+    /// (relation name, key), so a bad value is reported at its key.
+    pub relation_keys: BTreeMap<String, DeclOrigin>,
     /// Each `labels:` key of an `enums:` domain, keyed [`member_origin_key`].
     pub enum_labels: BTreeMap<String, DeclOrigin>,
     /// Each member an imported `add:` brings, keyed [`member_origin_key`],
@@ -233,6 +236,12 @@ pub fn at_plugin_origin(d: Diagnostic, origin: Option<&DeclOrigin>) -> Diagnosti
     rehome(d, origin, "plugin file")
 }
 
+/// [`at_origin`] for a default the project manifest supplies (its
+/// `defaults.questTier`) — reported once, at the manifest's key.
+pub fn at_manifest_origin(d: Diagnostic, origin: Option<&DeclOrigin>) -> Diagnostic {
+    rehome(d, origin, "project manifest")
+}
+
 fn rehome(d: Diagnostic, origin: Option<&DeclOrigin>, what: &str) -> Diagnostic {
     let Some(origin) = origin else {
         return d;
@@ -312,8 +321,9 @@ pub const E_RELATION_DECL: &str = "E-RELATION-DECL";
 pub const E_RULE_EXCLUSIVE: &str = "E-RULE-EXCLUSIVE";
 
 /// dsl 0.28.0 §5: a stored (non-`derive`) relation declared without
-/// `tier:` — it is run-tier by default, so its facts are cleared at every new
-/// run, which an engine-owned (`reserved`) relation in particular rarely means.
+/// `tier:` — it is run-tier by default, so its facts start over at every new
+/// run (from its `facts:` seed, if any), which an engine-owned (`reserved`)
+/// relation in particular rarely means.
 pub const W_RELATION_TIER_IMPLICIT: &str = "W-RELATION-TIER-IMPLICIT";
 
 /// dsl 0.28.0 (T3-45): one name declared both as an `enums:` domain and an
@@ -362,12 +372,14 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 /// directly. `span_of` locates a declared name; `key_at(kind, path)` the key
 /// at `path` inside entity kind `kind` (`["labels", member]`, or a key of the
 /// kind itself), when it can be found — a problem with one key is reported
-/// there, not at the kind.
+/// there, not at the kind. `rel_key_at(relation, key)` likewise locates a key
+/// inside a relation (its `tier:`).
 pub fn validate_rel_decls(
     kinds: &ParsedKinds,
     rels: &ParsedRelations,
     span_of: &dyn Fn(&str) -> Span,
     key_at: &dyn Fn(&str, &[&str]) -> Option<Span>,
+    rel_key_at: &dyn Fn(&str, &str) -> Option<Span>,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for (name, decl) in &kinds.kinds {
@@ -453,20 +465,26 @@ pub fn validate_rel_decls(
             // dsl 0.28.0 §5 (T2-7): `season:<name>` too, as a quest's `tier=`
             // and a beat's `once:` spell it; the season's existence is
             // checked with the seasons (`crate::season::check_relation_tiers`).
+            const TIERS: [&str; 5] = ["scene", "run", "user", "app", "quest"];
             let season = lute_manifest::season::season_ref(tier)
                 .is_some_and(lute_manifest::season::is_season_name);
-            if namespace_of(tier).is_none() && !season {
+            if !TIERS.contains(&tier.as_str()) && !season {
+                // A state-path spelling (`season.lanterns`, `run.x`) names
+                // the tier it starts with.
+                let hint = match tier.split_once('.') {
+                    Some(("season", s)) if lute_manifest::season::is_season_name(s) => {
+                        format!(" — did you mean `season:{s}`?")
+                    }
+                    Some((ns, _)) if TIERS.contains(&ns) => format!(" — did you mean `{ns}`?"),
+                    _ => lute_manifest::suggest::did_you_mean(tier, TIERS),
+                };
                 out.push(diag(
                     E_RELATION_DOMAIN,
                     format!(
-                        "relation `{name}` has unknown `tier: {tier}`{} (expected one of scene, \
-                         run, user, app, quest, or season:<name>)",
-                        lute_manifest::suggest::did_you_mean(
-                            tier,
-                            ["scene", "run", "user", "app", "quest"]
-                        )
+                        "relation `{name}` has unknown `tier: {tier}`{hint} (expected one of \
+                         scene, run, user, app, quest, or season:<name>)",
                     ),
-                    span_of(name),
+                    rel_key_at(name, "tier").unwrap_or_else(|| span_of(name)),
                 ));
             }
             if decl.derive {
@@ -481,18 +499,19 @@ pub fn validate_rel_decls(
         }
         if decl.tier.is_none() && !decl.derive {
             let owner = if decl.reserved {
-                "the engine's facts in it are forgotten"
+                "at every new run the engine's facts in it are forgotten"
             } else {
-                "its facts are cleared"
+                "at every new run its facts start over from its `facts:` seed (if any), \
+                 forgetting what the run asserted or retracted"
             };
             out.push(Diagnostic {
                 severity: Severity::Warning,
                 ..diag(
                     W_RELATION_TIER_IMPLICIT,
                     format!(
-                        "relation `{name}` has no `tier:`, so it is run-tier: {owner} at every new \
-                         run; write `tier: run` to keep that, or `tier: user` (or \
-                         `season:<name>`) for facts that outlive the run"
+                        "relation `{name}` has no `tier:`, so it is run-tier: {owner}; write \
+                         `tier: run` to keep that, or `tier: user` (or `season:<name>`) for facts \
+                         that outlive the run"
                     ),
                     span_of(name),
                 )
@@ -788,6 +807,7 @@ pub fn build_rel_vocab(
         &typed.rel_relations,
         &span_of,
         &|kind, path| kind_key_span(meta, kind, path),
+        &|rel, key| Some(crate::meta::meta_path_span(meta, &["relations", rel, key])),
     ));
     diags.extend(check_member_dups(
         meta,

@@ -42,7 +42,7 @@ pub(crate) fn dispatch_compile(
         let Some(file) = file else {
             eprintln!(
                 "error: the following required arguments were not provided:\n  <FILE>\n\n\
-                 Usage: lute compile <FILE>\n       lute compile --all --project <DIR> -o <DIR>"
+                 Usage: lute compile <FILE>\n       lute compile --all <DIR> -o <DIR>"
             );
             return ExitCode::from(2);
         };
@@ -66,7 +66,7 @@ pub(crate) fn dispatch_compile(
     };
     let mut usage: Vec<String> = Vec::new();
     if project.is_none() {
-        usage.push("--all requires --project <DIR> (the document set and capability snapshot both resolve per project)".to_string());
+        usage.push("--all requires the project directory, `--all <DIR>` or `--project <DIR>` (the document set and capability snapshot both resolve per project)".to_string());
     }
     if out.is_none() {
         usage.push("--all requires -o <DIR>, an output DIRECTORY (there is no single artifact to write to stdout)".to_string());
@@ -82,7 +82,7 @@ pub(crate) fn dispatch_compile(
         for message in usage {
             eprintln!("error: {message}");
         }
-        eprintln!("\nUsage: lute compile --all --project <DIR> -o <DIR>");
+        eprintln!("\nUsage: lute compile --all <DIR> -o <DIR>");
         return ExitCode::from(2);
     }
     let bundle = match locales.map(load_locale_bundle).transpose() {
@@ -201,6 +201,7 @@ fn run_compile(
             match out {
                 Some(path) => {
                     if let Err(e) = std::fs::write(path, &s) {
+                        let e = lute_manifest::io_reason(&e);
                         eprintln!("lute: cannot write {}: {e}", path.display());
                         return ExitCode::from(2);
                     }
@@ -260,6 +261,7 @@ fn run_compile(
 /// of the round trip name the same defect the same way.
 fn load_locale_bundle(path: &Path) -> Result<lute_compile::locale::LocaleBundle, ExitCode> {
     let text = std::fs::read_to_string(path).map_err(|e| {
+        let e = lute_manifest::io_reason(&e);
         eprintln!("lute: cannot read {}: {e}", path.display());
         ExitCode::from(2)
     })?;

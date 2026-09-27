@@ -274,6 +274,11 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 None => format!("▷ {label}: {rendered}        ← INCOMPLETE (no decision)"),
             }
         }
+        // dsl 0.28.0 §5: the hub's `<return>` block runs; its lines follow.
+        "hubReturn" => format!("  -- return (hub {}) --", str_of(rec, "hub")),
+        // The per-member dispatch of a `::use{… who=occasion.target}`: the
+        // member's component output follows; no authored decision was made.
+        "match" if !cmds.ir && orig.is_some_and(is_injected) => return None,
         "match" => match orig.and_then(|m| guarded(m, cmds)) {
             // The guard held: what it guards follows as the output.
             Some(_) if str_of(rec, "result") == "arm 1" => return None,
@@ -448,7 +453,7 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 .map(|t| format!(" -> {t}"))
                 .unwrap_or_default();
             let on_failed = if rec.get("onFailed").and_then(Json::as_bool) == Some(true) {
-                " (on failed)"
+                " (outcome=\"failed\")"
             } else {
                 ""
             };
@@ -701,14 +706,16 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                 render_occasion_human(&mut out, p, view, &head, body)
             }
         }
-        for note in &s.notes {
-            out.push_str(&format!("  note: {note}\n"));
-        }
         for v in &s.exclusive {
             out.push_str(&format!("  ✗ exclusive: {v}\n"));
         }
         for q in &s.quests {
             render_records(&mut out, p, view, &q.document, &q.transcript);
+        }
+        // After the step's settle: a note such as "the game is over" may
+        // follow from the quest advance it made.
+        for note in &s.notes {
+            out.push_str(&format!("  note: {note}\n"));
         }
     }
     for (n, label) in &play.skipped {

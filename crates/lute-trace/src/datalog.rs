@@ -19,7 +19,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_cel::CelArena;
 use lute_check::RelVocab;
 use serde_json::Value as Json;
 
@@ -978,18 +977,14 @@ fn eval_rule_guard(
     unknown: &mut Vec<UnresolvedAtom>,
 ) -> Value {
     let substituted = substitute_vars(cel, binding);
-    let mut arena = CelArena::default();
-    let Ok(handle) = lute_cel::parse_slot(&mut arena, &substituted, 0) else {
-        return Value::Bool(false);
-    };
-    let Some(ided) = arena.get(handle) else {
+    let Some(expr) = crate::exec::store::parse(&substituted) else {
         return Value::Bool(false);
     };
     let vocab = RelVocab::default();
     let fs = FactStore::new(&vocab);
     let env = EvalEnv { state, facts: &fs };
     let mut atoms = Vec::new();
-    let v = eval(&ided.expr, &env, &mut atoms);
+    let v = eval(&expr, &env, &mut atoms);
     if !matches!(v, Value::Bool(_)) {
         for a in atoms {
             if !unknown.contains(&a) {

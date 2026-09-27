@@ -102,7 +102,7 @@ fn project(text: &str) -> Project {
     vocab.note_unreadable_documents(&docs);
     let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
-        .filter_map(|(_, a)| GroundFact::from_pattern(&a));
+        .flat_map(|(_, a)| vocab.asserted_facts(&a));
     let may = MaySet::build(&vocab, facts, &stable_seeds(&docs, &vocab));
     let foldeds: Vec<&FoldedEnv> = vec![&folded];
     let must = compute_must(&docs, &foldeds, &graph, &vocab, &may);

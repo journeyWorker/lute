@@ -120,6 +120,11 @@ fn the_old_sequence_key_names_chapters_and_is_not_applied() {
         "{out}"
     );
     assert!(!out.contains("list the scene"), "{out}");
+    // The rewrite is the author's own chain, not a template.
+    assert!(
+        out.contains("write `chapters: [{ on: chapter, scenes: [c1, c2] }]`"),
+        "{out}"
+    );
     assert!(
         out.contains("lists this scene under `sequence:`, which is now `chapters:`"),
         "{out}"
@@ -242,16 +247,18 @@ fn a_rejected_chain_does_not_tell_its_scenes_to_join_it() {
     );
 }
 
-/// `W-CHAPTER-STALL` fires only on a `when:` that can stay false for good:
-/// a condition over the clock alone only delays the chain, while one over a
-/// counter the content writes may never hold.
+/// `W-CHAPTER-STALL` fires only on a `when:` that can stay false for good.
+/// A clock window a later raise still meets only delays the chain; one over
+/// a counter the content writes may never hold, while one over another
+/// `owner: engine` path is the engine's to make true.
 #[test]
 fn a_clock_only_condition_does_not_stall_a_chain() {
     let dir = temp_dir("clock");
     project(
         &dir,
         "occasions:\n  dayStart: { select: first, description: a new day }\n",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  run.leg: { type: number, default: 0 }\n\
+        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  run.leg: { type: number, default: 0 }\n  \
+         run.stage: { type: number, default: 0, owner: engine }\n\
          clock:\n  day: run.day\n  days: 7\n",
         "chapters:\n  - on: dayStart\n    scenes: [mon, tue, wed]\n",
     );
@@ -268,7 +275,7 @@ fn a_clock_only_condition_does_not_stall_a_chain() {
     write(
         &dir,
         "scenes/wed.lute",
-        &scene("wed", "when: \"run.day == 3\"\n"),
+        &scene("wed", "when: \"run.day >= 3\"\n"),
     );
     let (code, out) = run(&dir, &["check-project", "."]);
     assert_eq!(code, Some(0), "{out}");
@@ -283,6 +290,86 @@ fn a_clock_only_condition_does_not_stall_a_chain() {
     assert_eq!(code, Some(0), "{out}");
     assert_eq!(out.matches("[W-CHAPTER-STALL]").count(), 1, "{out}");
     assert!(out.contains("(it reads `run.leg`"), "{out}");
+
+    // The engine advances `run.stage`: the story cannot make it true, and
+    // the chain waits for the engine.
+    write(
+        &dir,
+        "scenes/tue.lute",
+        &scene("tue", "when: \"run.stage == 2\"\n"),
+    );
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(0), "{out}");
+    assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
+}
+
+/// A clock window that closes stalls a chain: on a clock that ends, a slot
+/// the scene before may already have passed; on an occasion the clock
+/// raises, a day it never raises it on. A window a later raise still meets
+/// (`!= 'morning'`) does not.
+#[test]
+fn a_clock_window_that_closes_stalls_a_chain() {
+    let dir = temp_dir("window");
+    project(
+        &dir,
+        "occasions:\n  chapter: { select: first }\n",
+        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+         run.slot: { type: { enum: [morning, afternoon, evening] }, default: morning, owner: engine }\n\
+         clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, afternoon, evening]\n  days: 1\n",
+        "chapters:\n  - on: chapter\n    scenes: [parlour, kitchen, garden]\n",
+    );
+    write(&dir, "scenes/parlour.lute", &scene("parlour", ""));
+    write(
+        &dir,
+        "scenes/kitchen.lute",
+        &scene("kitchen", "when: \"run.slot == 'afternoon'\"\n"),
+    );
+    write(&dir, "scenes/garden.lute", &scene("garden", ""));
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(0), "{out}");
+    assert_eq!(out.matches("[W-CHAPTER-STALL]").count(), 1, "{out}");
+    assert!(
+        out.contains(
+            "if `parlour` plays at day 1 evening or later, no later raise of `chapter` meets it \
+             before the clock ends at day 1 evening"
+        ),
+        "{out}"
+    );
+
+    write(
+        &dir,
+        "scenes/kitchen.lute",
+        &scene("kitchen", "when: \"run.slot != 'morning'\"\n"),
+    );
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(0), "{out}");
+    assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
+
+    // The clock raises `dayStart` on each day an advance enters — never on
+    // the day the run starts.
+    let dir = temp_dir("daystart");
+    project(
+        &dir,
+        "occasions:\n  dayStart: { select: first }\n",
+        "state:\n  run.day: { type: number, default: 1, owner: engine }\n\
+         clock:\n  day: run.day\n  raise: { dayStart: dayStart }\n  days: 7\n",
+        "chapters:\n  - on: dayStart\n    scenes: [mon, tue]\n",
+    );
+    write(
+        &dir,
+        "scenes/mon.lute",
+        &scene("mon", "when: \"run.day == 1\"\n"),
+    );
+    write(&dir, "scenes/tue.lute", &scene("tue", ""));
+    let (code, out) = run(&dir, &["check-project", "."]);
+    assert_eq!(code, Some(0), "{out}");
+    assert_eq!(out.matches("[W-CHAPTER-STALL]").count(), 1, "{out}");
+    assert!(
+        out.contains("its `when` holds at no raise of `dayStart`"),
+        "{out}"
+    );
+    // The stall says it once: not also as a beat the clock never raises.
+    assert!(!out.contains("W-BEAT-UNRAISED"), "{out}");
 }
 
 /// Listing a bundle beat or a lore entry says which it is and what to do

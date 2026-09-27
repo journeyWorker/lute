@@ -391,3 +391,62 @@ fn lute_beats_gives_each_ladder_cell_its_own_verdict() {
     assert_eq!(shadowed_by("hero.cyra"), json!(["s.limitedGlow"]));
     assert_eq!(shadowed_by("hero.aria"), Json::Null);
 }
+
+/// dsl 0.28.0: a kind beat whose `when` never holds for one member — as
+/// written, or because no fact it needs is produced for that member — is
+/// marked `never for` on that member's ladder only; `check-project` calls it
+/// reachable (it plays for the others).
+#[test]
+fn lute_beats_marks_the_members_a_kind_beat_never_plays_for() {
+    let dir = gacha(
+        "never",
+        "<beat id=\"notBram\" on=\"summon\" target=\"kind:hero\" once=\"false\" \
+         when=\"occasion.target != 'bram'\">\n  @narrator: Not Bram.\n</beat>\n\n\
+         <beat id=\"fan\" on=\"summon\" target=\"kind:hero\" once=\"false\" priority=\"-1\" \
+         when=\"holds(fan(occasion.target))\">\n  @narrator: A fan.\n</beat>\n\n\
+         <beat id=\"bramA\" on=\"summon\" target=\"hero.bram\" once=\"false\" priority=\"-2\">\n  \
+         @narrator: Bram.\n</beat>\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  hero: { members: [aria, bram, cyra] }\n\
+         relations:\n  fan: { args: [hero], tier: run }\nfacts:\n  - fan(cyra)\n",
+    );
+    let d = dir.to_str().unwrap();
+    let t = text(&run(&["check-project", d]));
+    assert!(!t.contains("E-BEAT-UNREACHABLE"), "{t}");
+    let never_for = |target: &str| -> Vec<(String, Json)> {
+        let out = run(&["beats", d, "--target", target, "--json"]);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+        let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+        v["roots"][0]["ladders"][0]["beats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| {
+                let never = b.get("neverFor").cloned().unwrap_or(Json::Null);
+                (b["id"].as_str().unwrap().to_string(), never)
+            })
+            .collect()
+    };
+    assert_eq!(
+        never_for("hero.bram"),
+        [
+            ("s.notBram".to_string(), json!(["hero.bram"])),
+            ("s.fan".to_string(), json!(["hero.bram"])),
+            ("s.bramA".to_string(), Json::Null),
+        ]
+    );
+    assert_eq!(
+        never_for("hero.cyra"),
+        [
+            ("s.notBram".to_string(), Json::Null),
+            ("s.fan".to_string(), Json::Null),
+        ]
+    );
+    let t = text(&run(&["beats", d, "--target", "hero.aria"]));
+    let row = |id: &str| t.lines().find(|l| l.contains(id)).unwrap().to_string();
+    assert!(row("s.fan").contains("never for hero.aria"), "{t}");
+    assert!(!row("s.notBram").contains("never"), "{t}");
+}

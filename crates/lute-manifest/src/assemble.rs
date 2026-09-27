@@ -214,8 +214,9 @@ fn reserved_why(
     }
     core_owned.then(|| {
         format!(
-            "`{name}` is a core directive (`::{name}`), which content always reads as the \
-             core one, so it cannot name {what} — rename it"
+            "`{name}` cannot name {what} because it is a core directive, which content always reads \
+             as the core `::{name}` — rename it (e.g. `{}`)",
+            crate::reserved::instead(name, slot)
         )
     })
 }

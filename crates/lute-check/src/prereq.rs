@@ -181,6 +181,35 @@ fn out_of_profile_message(expr: &Expr) -> String {
                 ),
             }
         }
+        // A near miss (`complete('q1')`) is the prerequisite it misspells,
+        // not a condition to move to `when:`.
+        Expr::Call(c)
+            if c.target.is_none()
+                && lute_manifest::suggest::nearest(
+                    &c.func_name,
+                    ["visited", "completed", "active"],
+                    2,
+                )
+                .is_some() =>
+        {
+            let meant = lute_manifest::suggest::nearest(
+                &c.func_name,
+                ["visited", "completed", "active"],
+                2,
+            )
+            .unwrap_or_default();
+            let id = match c.args.as_slice() {
+                [a] => match &a.expr {
+                    Expr::Literal(Val::String(s)) => Some(s.to_string()),
+                    e => crate::cel_paths::select_path(e),
+                },
+                _ => None,
+            };
+            match id {
+                Some(id) => format!("`{shown}`: did you mean `{meant}(\"{id}\")`? {PROFILE}"),
+                None => format!("`{shown}`: did you mean `{meant}(…)`? {PROFILE}"),
+            }
+        }
         Expr::Ident(_) | Expr::Select(_) => match crate::cel_paths::select_path(expr) {
             Some(id) if !crate::cel_paths::is_state_path(&id) => format!(
                 "`{shown}` is a bare id; {PROFILE} — did you mean `visited(\"{id}\")` (a scene) \
@@ -259,6 +288,21 @@ mod tests {
         let (f, codes) = parse(r#"visited("elena.ep02") && (completed("q1") || completed("q2"))"#);
         assert!(codes.is_empty(), "unexpected diags: {codes:?}");
         assert!(f.is_some());
+    }
+
+    /// A misspelt prerequisite is named, not sent to `when:` (where it fails).
+    #[test]
+    fn a_near_miss_names_the_prerequisite() {
+        let (_f, diags) = parse_prereq("complete('q1')", test_span());
+        assert_eq!(diags.len(), 1);
+        assert!(
+            diags[0]
+                .message
+                .contains("did you mean `completed(\"q1\")`?"),
+            "{}",
+            diags[0].message
+        );
+        assert!(!diags[0].message.contains("when:"), "{}", diags[0].message);
     }
 
     #[test]

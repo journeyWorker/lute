@@ -321,7 +321,7 @@ fn a_duplicate_plugin_id_is_located_and_the_project_is_still_checked() {
     assert_eq!(out.status.code(), Some(1), "{s}");
     assert!(
         s.contains(
-            "lute: E-PLUGIN-DUP-ID: ./plugins/p/cast/b.yaml:3:3: cast `orla` is already \
+            "./plugins/p/cast/b.yaml:3:3: error [E-PLUGIN-DUP-ID] cast `orla` is already \
              declared at cast/a.yaml:2;"
         ),
         "{s}"

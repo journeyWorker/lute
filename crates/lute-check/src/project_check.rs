@@ -310,10 +310,25 @@ fn referenced_paths(
     out
 }
 
-/// ` — did you mean `x`?` over `known`, or nothing when none is close.
+/// ` — did you mean `x`?` over `known`, or nothing when none is close. An
+/// id with a `.` is refused where it is declared (`E-PATH-IDENT`), so it is
+/// never the spelling to read: when it is the close one, the hint says to
+/// rename it.
 fn did_you_mean<'a>(id: &str, known: impl Iterator<Item = &'a str>) -> String {
-    lute_manifest::suggest::nearest(id, known, 2)
-        .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"))
+    match lute_manifest::suggest::nearest(id, known, 2) {
+        Some(near) if near.contains('.') => format!(
+            " — `{near}` is close, but a `.` makes it no id: rename it (for example `{}`)",
+            near.split('.')
+                .enumerate()
+                .map(|(i, s)| match (i, s.chars().next()) {
+                    (0, _) | (_, None) => s.to_string(),
+                    (_, Some(f)) => f.to_uppercase().chain(s.chars().skip(1)).collect(),
+                })
+                .collect::<String>()
+        ),
+        Some(near) => format!(" — did you mean `{near}`?"),
+        None => String::new(),
+    }
 }
 
 fn unknown_quest_message(path: &str, id: &str, hint: &str, whole_project: bool) -> String {
@@ -1075,6 +1090,11 @@ pub fn check_doc_quest_rearm(doc: &Document, folded: &crate::check::FoldedEnv) -
     };
     for q in &doc.quests {
         let Some(rearm) = &q.rearm else { continue };
+        // A literal no member matches is the error that makes it constant;
+        // it is reported at the literal.
+        if crate::decide::analyze_literal_comparisons(&rearm.raw, &defs, &ctx).owns_dead_guard() {
+            continue;
+        }
         if let Some(Decided::Bool(b)) = decide_slot(&rearm.raw, &defs, &ctx) {
             let never = if b {
                 "is always true, so it never turns from false to true"

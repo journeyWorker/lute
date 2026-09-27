@@ -150,7 +150,7 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
 /// `exit` choice OR every choice is `once`. Returns the implicit recording decls:
 /// `scene.choices.<hubId>` (enum of choice ids ∪ `unset`, like a branch) plus a
 /// per-choice `scene.visited.<hubId>.<choiceId>: bool` (default `false`, §9.6).
-/// The `once`/`exit` flags stay as attrs on each choice ([`has_bool_attr`]).
+/// The `once`/`exit` flags stay as attrs on each choice.
 pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
     let id = attr_str(&hub.attrs, "id").unwrap_or("");
     let mut diags = Vec::new();
@@ -192,12 +192,19 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
     // E-HUB-NO-EXIT (§7.3.2, §11.1.3, D-C): a hub can terminate iff it has at
     // least one UNGUARDED (`when`-less) `exit` choice, OR every choice is `once`
     // (the eligible set provably empties → auto-exit). An empty hub is neither.
+    // A flag written with a value that is no flag (`exit="yes"`) is taken as
+    // meant: its `E-FLAG-VALUE` is the one report (tea-hollin TH28-4b).
+    let meant = |c: &lute_syntax::ast::Choice, key: &str| {
+        c.attrs
+            .iter()
+            .find(|a| a.key == key)
+            .is_some_and(|a| a.value.flag() != Some(false))
+    };
     let has_unguarded_exit = hub
         .choices
         .iter()
-        .any(|c| c.when.is_none() && has_bool_attr(&c.attrs, "exit"));
-    let all_once =
-        !hub.choices.is_empty() && hub.choices.iter().all(|c| has_bool_attr(&c.attrs, "once"));
+        .any(|c| c.when.is_none() && meant(c, "exit"));
+    let all_once = !hub.choices.is_empty() && hub.choices.iter().all(|c| meant(c, "once"));
     if !has_unguarded_exit && !all_once {
         // A choice named like the exit, missing only the flag: point at it.
         // One with an `exit=` value that is no flag has its own E-FLAG-VALUE.
@@ -516,16 +523,4 @@ fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
             AttrValue::Str(s) => Some(s.as_str()),
             _ => None,
         })
-}
-
-/// True when hub-choice flag `key` (`once`/`exit`, dsl §7.3.2) is on, read
-/// through the one flag reader [`AttrValue::flag`] (dsl 0.28.0 §1) the
-/// compiler's `attr_bool` also uses: `exit="true"` IS an exit, `once="false"`
-/// is not `once`. A non-flag value is off here and `E-FLAG-VALUE` elsewhere.
-fn has_bool_attr(attrs: &[Attr], key: &str) -> bool {
-    attrs
-        .iter()
-        .find(|a| a.key == key)
-        .and_then(|a| a.value.flag())
-        .unwrap_or(false)
 }

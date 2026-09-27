@@ -230,14 +230,21 @@ impl Backend {
             return;
         }
         // B3 (data-catalog foundation 0.3.0): a project declaration `.yaml`
-        // (under the project's `schema:`/`catalog:` dir) is a pure declaration
-        // map, not a `.lute` scene — it has no body for `check()` to walk. Claim
-        // it here and run the declaration-specific semantic pass instead; every
-        // other document (every `.lute`, and any `.yaml` NOT under those dirs)
-        // keeps today's `check()` walk below, unchanged.
+        // (under the project's `schema:`/`catalog:` dir, or `*.schema.yaml`)
+        // is a pure declaration map, not a `.lute` scene — it has no body for
+        // `check()` to walk. Claim it here and run the declaration-specific
+        // semantic pass instead. Any other `.yaml`/`.yml` (the manifest, a
+        // play script, a test) is no `.lute` document either (LF28-9: walking
+        // it flagged every line E-UNCLASSIFIED): it publishes only what other
+        // documents report in its file.
         if let Some(path) = uri_to_path(&uri) {
             if let Some(root) = claimed_declaration_yaml(&path) {
                 self.analyze_declaration(uri, snapshot, &path, &root).await;
+                return;
+            }
+            if is_yaml(&path) {
+                self.publish(uri, Some((Vec::new(), Some(snapshot.version))), Vec::new())
+                    .await;
                 return;
             }
         }
@@ -1165,27 +1172,38 @@ fn find_project_root(file_path: &Path) -> Option<PathBuf> {
 
 /// Whether `file_path` is a project declaration `.yaml`/`.yml` the LSP claims
 /// for semantic linting (data-catalog foundation B3): a YAML file under the
-/// discovered project's `schema/` or `catalog/` subdirectory. Returns the
-/// project root on a claim (the caller needs it again for baseline
-/// resolution), `None` otherwise — so `lute.project.yaml` itself (sits at the
-/// project root, not under either subdir) and any unrelated `.yaml` (CI
-/// configs, ...) are never claimed; `.lute` handling is untouched (this gate
-/// is checked ONLY when the extension is `.yaml`/`.yml`). Per the design
-/// notes' "simplest robust rule" guidance: prefer the two conventional
-/// declaration dirs over parsing every scene's `uses:`/`extends:` project-wide
-/// to find which files are import-reachable.
+/// discovered project's `schema/` or `catalog/` subdirectory, or one named
+/// `*.schema.yaml`/`*.schema.yml` anywhere in it (`world.schema.yaml`, the
+/// conventional `uses:` target). Returns the project root on a claim (the
+/// caller needs it again for baseline resolution), `None` otherwise — so
+/// `lute.project.yaml` itself, a play script or test, and any unrelated
+/// `.yaml` (CI configs, ...) are never claimed; `.lute` handling is untouched
+/// (this gate is checked ONLY when the extension is `.yaml`/`.yml`). Per the
+/// design notes' "simplest robust rule" guidance: prefer the conventional
+/// declaration dirs and name over parsing every scene's `uses:`/`extends:`
+/// project-wide to find which files are import-reachable.
 fn claimed_declaration_yaml(file_path: &Path) -> Option<PathBuf> {
-    let is_yaml = matches!(
-        file_path.extension().and_then(|e| e.to_str()),
-        Some("yaml") | Some("yml")
-    );
-    if !is_yaml {
+    if !is_yaml(file_path) {
         return None;
     }
     let root = find_project_root(file_path)?;
     let rel = file_path.strip_prefix(&root).ok()?;
     let first = rel.components().next()?;
-    matches!(first.as_os_str().to_str(), Some("schema") | Some("catalog")).then_some(root)
+    let in_dir = matches!(first.as_os_str().to_str(), Some("schema") | Some("catalog"));
+    let named = file_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.ends_with(".schema"));
+    (in_dir || named).then_some(root)
+}
+
+/// Whether `file_path` has a `.yaml`/`.yml` extension — a declaration, a
+/// manifest, a play script or a test, never a `.lute` document.
+fn is_yaml(file_path: &Path) -> bool {
+    matches!(
+        file_path.extension().and_then(|e| e.to_str()),
+        Some("yaml") | Some("yml")
+    )
 }
 
 /// Best-effort span of the mapping key `key` anywhere in whole-file YAML
@@ -1858,11 +1876,11 @@ mod tests {
     }
 
     /// B3 claim rule: only a `.yaml`/`.yml` under a discovered project's
-    /// `schema/` or `catalog/` subdirectory is claimed. `lute.project.yaml`
-    /// itself (project root, not under either dir), a `.lute` file (wrong
-    /// extension, even under `schema/`), and a `.yaml` with no project above
-    /// it must all resolve to `None` — B3 must not claim more than the
-    /// declaration dirs.
+    /// `schema/` or `catalog/` subdirectory, or named `*.schema.yaml`, is
+    /// claimed. `lute.project.yaml` itself, a play script, a `.lute` file
+    /// (wrong extension, even under `schema/`), and a `.yaml` with no project
+    /// above it must all resolve to `None` — B3 must not claim more than the
+    /// declarations.
     #[test]
     fn claimed_declaration_yaml_claims_schema_and_catalog_dirs_only() {
         use std::fs;
@@ -1897,6 +1915,16 @@ mod tests {
             claimed_declaration_yaml(&root.join("other/loose.yaml")),
             None,
             "a .yaml outside schema/catalog must NOT be claimed"
+        );
+        assert_eq!(
+            claimed_declaration_yaml(&root.join("world.schema.yaml")),
+            Some(root.clone()),
+            "a `*.schema.yaml` anywhere in the project must be claimed (LF28-9)"
+        );
+        assert_eq!(
+            claimed_declaration_yaml(&root.join("plays/p.play.yaml")),
+            None,
+            "a play script must NOT be claimed"
         );
         fs::remove_dir_all(&root).ok();
     }
@@ -2030,6 +2058,70 @@ mod tests {
             diags.is_empty(),
             "a clean declaration .yaml must publish no diagnostics, got {diags:?}"
         );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// LF28-9: a `.yaml` that is no declaration (a play script) is never
+    /// walked as a `.lute` document — that flagged E-KIND-MISSING and one
+    /// E-UNCLASSIFIED per line — and a root `world.schema.yaml` is analysed
+    /// as the declaration it is.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_yaml_is_never_walked_as_a_lute_document() {
+        use futures::StreamExt;
+        use std::fs;
+        use tower::{Service, ServiceExt};
+        use tower_lsp_server::jsonrpc::Request as RpcRequest;
+        use tower_lsp_server::LspService;
+
+        let root = std::env::temp_dir().join(format!("lute_lsp_yaml_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("plays")).unwrap();
+        fs::write(
+            root.join("lute.project.yaml"),
+            "defaultProfile: default\nprofiles:\n  default: {}\n",
+        )
+        .unwrap();
+        let files = [
+            ("plays/p.play.yaml", "steps:\n  - occasion: visit\n", None),
+            (
+                "world.schema.yaml",
+                "state:\n  run.trust: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.nope\" }\n",
+                Some("E-UNDECLARED"),
+            ),
+        ];
+        let (mut service, mut socket) = LspService::new(Backend::new);
+        let init = RpcRequest::build("initialize")
+            .params(serde_json::json!({ "capabilities": {} }))
+            .id(1)
+            .finish();
+        service.ready().await.unwrap().call(init).await.unwrap();
+        for (rel, text, want) in files {
+            let path = root.join(rel);
+            fs::write(&path, text).unwrap();
+            let open = RpcRequest::build("textDocument/didOpen")
+                .params(serde_json::json!({
+                    "textDocument": {
+                        "uri": format!("file://{}", path.display()), "languageId": "yaml",
+                        "version": 1, "text": text
+                    }
+                }))
+                .finish();
+            service.ready().await.unwrap().call(open).await.unwrap();
+            let opened = socket.next().await.expect("didOpen should publish");
+            let codes: Vec<String> = opened
+                .params()
+                .and_then(|p| p.get("diagnostics").cloned())
+                .and_then(|d| d.as_array().cloned())
+                .expect("publish carries a diagnostics array")
+                .iter()
+                .filter_map(|d| d.get("code").and_then(|c| c.as_str()).map(String::from))
+                .collect();
+            assert_eq!(
+                codes,
+                want.map(String::from).into_iter().collect::<Vec<_>>(),
+                "{rel}"
+            );
+        }
         fs::remove_dir_all(&root).ok();
     }
 

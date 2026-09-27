@@ -525,6 +525,9 @@ pub struct ClockView {
     pub weekday_label: Option<String>,
     /// `clock.ended` — `None` on a clock that never ends.
     pub ended: Option<bool>,
+    /// Where the clock stands, when that is a finite clock's last position
+    /// and it has not ended yet — it ends on the next advance past it.
+    pub last: Option<String>,
 }
 
 /// The world `w` as expectations judge it: the effective state, every
@@ -562,12 +565,14 @@ pub fn world_view(p: &ExecProject, w: &World, with_facts: bool) -> WorldView {
     // dsl 0.26.0 §7 (T2-5): where the clock stands, for step `expect.clock`.
     let clock = p.index.clock.as_ref().and_then(|decl| {
         let at = clock_at(p, w)?;
+        let ended = decl.is_finite().then(|| crate::clock::ended(&w.state));
         Some(ClockView {
             day: at.day,
             slot: decl.slot_name(at.slot).map(str::to_string),
             weekday: decl.weekday(at.day),
             weekday_label: decl.weekday_label(at.day).map(str::to_string),
-            ended: decl.is_finite().then(|| crate::clock::ended(&w.state)),
+            ended,
+            last: (ended == Some(false) && decl.last_at() == Some(at)).then(|| decl.describe(at)),
         })
     });
     WorldView {

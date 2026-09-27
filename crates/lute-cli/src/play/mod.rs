@@ -129,6 +129,7 @@ fn load(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Loaded, (Exit
 fn load_script(script_path: &Path) -> Result<PlayScript, (ExitCode, String)> {
     let usage = |e: String| (ExitCode::from(2), e);
     let text = std::fs::read_to_string(script_path).map_err(|e| {
+        let e = lute_manifest::io_reason(&e);
         usage(format!(
             "cannot read play script {}: {e}",
             script_path.display()

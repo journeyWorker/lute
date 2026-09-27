@@ -101,6 +101,15 @@ pub fn check_bundle_beats(
             Layer::Logic,
             &mut diags,
         );
+        if let Some((true, also_span)) = beat.also {
+            diags.extend(crate::beats::also_fault(
+                on,
+                also_span,
+                false,
+                occasions,
+                Layer::Logic,
+            ));
+        }
     }
     diags
 }

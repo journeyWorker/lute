@@ -791,6 +791,71 @@ fn envelope_never_possible_read_replaces_maybe_unset_with_state_unavailable_erro
     }
 }
 
+/// Ledger LG28-8: no scene sets an `owner: engine` path, so its
+/// unavailable read is advised a guard or a schema `default:`, never an
+/// `after:` naming a scene that sets it.
+#[test]
+fn envelope_unavailable_engine_path_is_not_told_to_add_an_after() {
+    let dir = temp_dir("envelope-engine-owned");
+    let y =
+        "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    write(&dir, "y.lute", y);
+    write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n").replace(
+            "run.z: { type: number }",
+            "run.z: { type: number, owner: engine }",
+        ),
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{stdout}");
+    let line = stdout
+        .lines()
+        .find(|l| l.contains("E-STATE-MAYBE-UNAVAILABLE"))
+        .unwrap_or_else(|| panic!("{stdout}"));
+    assert!(line.contains("`owner: engine`"), "{line}");
+    assert!(!line.contains("add an `after:`"), "{line}");
+}
+
+/// P28S-03/HW28-06: a quest id with a `.` is refused where it is declared
+/// (`E-PATH-IDENT`); across the project that is the one report, not also
+/// an `E-UNDECLARED` at every read of it.
+#[test]
+fn a_dotted_quest_id_is_reported_once_at_its_declaration() {
+    let dir = temp_dir("dotted-quest-reads");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(
+        &dir,
+        "q.lute",
+        "---\nkind: quest\nid: wing\nstate:\n  run.n: { type: number, default: 0 }\n---\n\
+         <quest id=\"wing.hush\" title=\"Hush\" start=\"run.n >= 1\" tier=\"run\">\n  \
+         <objective id=\"bed\" title=\"Bed\" done=\"run.n >= 2\"/>\n</quest>\n",
+    );
+    write(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: s\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         @narrator{when=\"quest.wing.hush.state == 'complete'\"}: Asleep.\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("E-PATH-IDENT"), "{stdout}");
+    assert!(!stdout.contains("E-UNDECLARED"), "{stdout}");
+    // Checked alone, the read still says what is wrong.
+    let alone = run(&["check", dir.join("s.lute").to_str().unwrap()]);
+    assert!(
+        String::from_utf8_lossy(&alone.stdout).contains("E-UNDECLARED"),
+        "{}",
+        String::from_utf8_lossy(&alone.stdout)
+    );
+}
+
 #[test]
 fn envelope_tainted_node_leaves_maybe_unset_untouched() {
     // `after` references an UNRESOLVABLE `visited()` target -- the node is
@@ -2572,6 +2637,55 @@ fn wip_keeps_a_produced_relation_that_never_matches_an_error() {
         text.contains("error [E-ENTRY-UNREACHABLE] entry `heading`"),
         "{text}"
     );
+}
+
+/// A beat on an occasion, in a project with a `terminal:`, dead only for want
+/// of a producer is judged twice — by its `when` alone and under
+/// `!terminal` — but reported once, with `--wip` as without.
+#[test]
+fn wip_reports_a_beat_dead_under_the_terminal_once() {
+    let dir = temp_dir("wip-terminal-once");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: g\nprofiles:\n  g:\n    plugins: { p: true }\n\
+         defaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "plugins/p/plugin.yaml",
+        "id: p\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports:\n  occasions: occasions/\n",
+    );
+    write(
+        &dir,
+        "plugins/p/occasions/o.yaml",
+        "occasions:\n  chime: { select: first }\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  crew: { members: [vesna, toma] }\nrelations:\n  found: { args: [crew], tier: run }\n\
+         state:\n  run.over: { type: bool, default: false }\nterminal: \"run.over\"\n",
+    );
+    write(
+        &dir,
+        "notes.lute",
+        "---\nkind: lore\nid: notes\ntitle: Records\n---\n\
+         <entry id=\"found\" on=\"chime\" when=\"holds(found(toma))\">\n  @narrator: Found him.\n</entry>\n",
+    );
+    for (flag, code) in [(None, "E-ENTRY-UNREACHABLE"), (Some("--wip"), "W-WIP")] {
+        let mut args = vec!["check-project"];
+        args.extend(flag);
+        args.push(dir.to_str().unwrap());
+        let out = run(&args);
+        let text = String::from_utf8_lossy(&out.stdout);
+        let dead = text
+            .lines()
+            .filter(|l| l.contains(&format!("[{code}] entry `found`")))
+            .count();
+        assert_eq!(dead, 1, "{text}");
+    }
 }
 
 /// An id `add:`ed to a second kind is `E-ENTITY-KIND-CLASH` at that `add:`

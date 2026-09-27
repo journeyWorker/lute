@@ -19,8 +19,65 @@ const LUTE_CHOICES: &str = "Lute choices are `<choice id=\"…\" label=\"…\">`
 /// [`speakerless`] — the caller asks it only after ruling out a line wrapped
 /// from the one above ([`continues`]).
 pub(super) fn foreign_line(line: &str) -> Option<String> {
+    if line == "->->" {
+        return Some(
+            "`->->` returns from an Ink tunnel; a Lute component returns on its own when its \
+             lines end, so the scene goes on after its `::use{component=\"…\"}`"
+                .to_string(),
+        );
+    }
     if let Some(rest) = line.strip_prefix("->") {
         return Some(divert(rest));
+    }
+    if line == "<>" {
+        return Some(
+            "`<>` is Ink glue; Lute joins nothing: write the whole sentence on one content line"
+                .to_string(),
+        );
+    }
+    if line.starts_with("<-") {
+        return Some(format!(
+            "`{}` is an Ink thread; Lute has no threads: write the choices it would gather \
+             into this scene's own `<branch>` or `<hub>`",
+            echo(line)
+        ));
+    }
+    if let Some(rest) = line.strip_prefix("=>") {
+        return Some(format!(
+            "`{}` is a Yarn line group; Lute makes no random choice: guard each line \
+             (`@narrator{{when=\"…\"}}: {}`) or choose between lines with a `<match>` on a path \
+             the engine sets",
+            echo(line),
+            echo(rest.trim())
+        ));
+    }
+    if let Some(rest) = line.strip_prefix("TODO:") {
+        return Some(format!(
+            "Ink's `TODO:` line is a note for the writer; a Lute comment is `// TODO: {}` on a \
+             line of its own",
+            echo(rest.trim())
+        ));
+    }
+    if let Some(rest) = line
+        .strip_prefix("INCLUDE")
+        .filter(|r| r.starts_with([' ', '\t']))
+    {
+        return Some(format!(
+            "`INCLUDE {}` pulls in another Ink file; a Lute project is every `.lute` file under \
+             `lute.project.yaml`, with shared state in schemas imported with `uses:`",
+            echo(rest.trim())
+        ));
+    }
+    if line
+        .strip_prefix("EXTERNAL")
+        .is_some_and(|r| r.starts_with([' ', '\t']))
+    {
+        return Some(
+            "`EXTERNAL` declares an Ink game function; Lute asks the engine to do something with \
+             a directive a plugin declares, written `::name{key=\"value\"}` on its own line, and \
+             names a computed value with a def under `defs:`"
+                .to_string(),
+        );
     }
     if line.starts_with("<<") {
         return Some(yarn_command(line));
@@ -57,6 +114,9 @@ pub(super) fn foreign_line(line: &str) -> Option<String> {
     }
     if line.starts_with("==") {
         let name = line.trim_matches(|c: char| c == '=' || c.is_whitespace());
+        if let Some(sig) = name.strip_prefix("function ").map(str::trim) {
+            return Some(ink_function(line, sig));
+        }
         return Some(if name.is_empty() {
             format!(
                 "`{}` ends a Yarn node; a Lute scene is its own `.lute` file and needs no end \
@@ -168,11 +228,18 @@ fn is_node_name(s: &str) -> bool {
 }
 
 /// What replaces a jump to `target` (an Ink divert, a Yarn `<<jump>>` or
-/// link): `::end` for Ink's `END`/`DONE`, otherwise the three ways Lute moves
-/// on.
+/// link): Ink's `END` is the schema's `terminal:`, `DONE` is `::end`,
+/// otherwise the three ways Lute moves on.
 fn no_diverts(target: &str) -> String {
-    if matches!(target, "END" | "DONE") {
-        return "a scene ends with `::end`".to_string();
+    match target {
+        "END" => {
+            return "it ends the whole story, which in Lute is the schema's `terminal:` \
+                    condition: a scene makes it hold with an ordinary `::set{…}` (`::end` is \
+                    Ink's `-> DONE`: it ends only this scene)"
+                .to_string();
+        }
+        "DONE" => return "a scene ends with `::end`, or simply at its last line".to_string(),
+        _ => {}
     }
     let name = if is_node_name(target) { target } else { "…" };
     format!(
@@ -183,15 +250,23 @@ fn no_diverts(target: &str) -> String {
     )
 }
 
-/// `-> rest`: an Ink divert (`-> knot`, `-> END`, a tunnel `-> knot ->`) or,
-/// when `rest` is text rather than a name, a Yarn option.
+/// `-> rest`: an Ink divert (`-> knot`, `-> END`), a tunnel `-> knot ->`
+/// or, when `rest` is text rather than a name, a Yarn option.
 fn divert(rest: &str) -> String {
     let rest = rest.trim();
+    let tunnel = rest.len() > 2 && rest.ends_with("->");
     let target = rest
         .trim_start_matches("->")
         .trim()
         .trim_end_matches("->")
         .trim();
+    if tunnel && is_node_name(target) {
+        return format!(
+            "`-> {target} ->` is an Ink tunnel; Lute's nearest is a component: \
+             `::use{{component=\"{target}\"}}` plays the component's lines here, and the scene \
+             goes on after them"
+        );
+    }
     if target.is_empty() || is_node_name(target) {
         let shown = if target.is_empty() {
             "->".to_string()
@@ -201,6 +276,40 @@ fn divert(rest: &str) -> String {
         return format!("`{shown}` is an Ink divert; {}", no_diverts(target));
     }
     format!("`-> {}` is a Yarn option; {LUTE_CHOICES}", echo(rest))
+}
+
+/// `=== function name(params) ===`: an Ink function, whose Lute form is a
+/// def with params.
+fn ink_function(line: &str, sig: &str) -> String {
+    let (name, params) = sig
+        .split_once('(')
+        .map_or((sig, ""), |(n, p)| (n.trim(), p.trim_end_matches(')')));
+    let name = if is_node_name(name) { name } else { "f" };
+    let params: Vec<&str> = params
+        .split(',')
+        .map(str::trim)
+        .filter(|p| is_node_name(p))
+        .collect();
+    let (decl, call) = if params.is_empty() {
+        (String::new(), String::new())
+    } else {
+        (
+            format!(
+                "params: {{ {} }}, ",
+                params
+                    .iter()
+                    .map(|p| format!("{p}: …"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            "(…)".to_string(),
+        )
+    };
+    format!(
+        "`{}` is an Ink function; Lute computes a value with a def under `defs:` in the \
+         frontmatter (`{name}: {{ type: …, {decl}cel: \"…\" }}`), read as `@{name}{call}`",
+        echo(line)
+    )
 }
 
 /// `* [label]` / `+ [label]`: an Ink choice (`*` once-only, `+` sticky).
@@ -329,6 +438,11 @@ fn yarn_command(line: &str) -> String {
         }
         "jump" => format!("`{shown}` is a Yarn jump; {}", no_diverts(args)),
         "stop" => format!("`{shown}` is a Yarn command; a scene ends with `::end`"),
+        "once" | "endonce" => format!(
+            "`{shown}` is a Yarn once block; Lute counts in a number path it `::set`s (`scene.*` \
+             for this presentation, `run.*` for the run) and chooses the lines with a `<match>` \
+             on it; a menu option offered once is a hub `<choice … once>`"
+        ),
         _ => format!(
             "`{shown}` is a Yarn command; a Lute directive is written `::name{{key=\"value\"}}` \
              on its own line"
@@ -366,10 +480,39 @@ mod tests {
     #[test]
     fn ink_diverts_point_at_next_and_end() {
         assert!(hint("-> ledger").contains("`::next{to=\"ledger\"}`"));
-        assert!(hint("-> END").contains("`::end`"));
-        assert!(hint("-> DONE").contains("`::end`"));
-        // A Yarn option (text, not a node name) is a choice, not a divert.
+        // `-> END` ends the story (the schema's `terminal:`); `-> DONE` ends
+        // the scene (`::end`). Pointing END at `::end` taught the mistake of
+        // a game that goes on to its next chapter.
+        let end = hint("-> END");
+        assert!(end.contains("`terminal:`"), "{end}");
+        assert!(!end.contains("a scene ends with `::end`"), "{end}");
+        assert!(hint("-> DONE").contains("a scene ends with `::end`"));
+        // A Yarn option (text, not a name) is a choice, not a divert.
         assert!(hint("-> Wait for dark").contains("`<choice"));
+    }
+
+    // Each Ink/Yarn construct names the Lute form the guide maps it to, not
+    // a neighbouring one (a tunnel is not a divert, `INCLUDE` is not prose).
+    #[test]
+    fn other_ink_and_yarn_shapes_name_their_lute_form() {
+        for (line, want) in [
+            ("-> lamp_room ->", "`::use{component=\"lamp_room\"}`"),
+            ("->->", "component returns on its own"),
+            ("<- whispers", "Ink thread"),
+            ("<>", "Ink glue"),
+            (
+                "=== function lower(x) ===",
+                "`lower: { type: …, params: { x: … }, cel: \"…\" }`",
+            ),
+            ("INCLUDE ledger.ink", "`lute.project.yaml`"),
+            ("EXTERNAL playSound(name)", "a plugin declares"),
+            ("TODO: fix this", "`// TODO: fix this`"),
+            ("=> Fog rolls in.", "`@narrator{when=\"…\"}: Fog rolls in.`"),
+            ("<<once>>", "`<match>`"),
+        ] {
+            let h = hint(line);
+            assert!(h.contains(want), "{line}: {h}");
+        }
     }
 
     #[test]

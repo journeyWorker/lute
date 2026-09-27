@@ -37,7 +37,7 @@ mod machine;
 pub mod record;
 pub mod seam;
 pub mod session;
-mod store;
+pub(crate) mod store;
 
 pub use driver::{
     guard_premise, BridgeCall, BridgeQueues, BridgeReply, Driver, Forced, GuardRead, Menu,

@@ -405,6 +405,37 @@ fn hub_fixture() -> String {
         .to_string()
 }
 
+// A hub picked again and a `<match>` re-run inside it count each distinct
+// option / arm once: `c1` picked three times, `c2` and `leave` once is 3 of
+// 3 options, and the match's three arms all ran is 3 of 3 — not "choices
+// 5/3" and "arms 1/3" (the last run overwrote the count).
+#[test]
+fn hub_loop_coverage_counts_distinct_picks_and_arms() {
+    let text = "---\nkind: scene\nid: lamp\nstate:\n  scene.n: { type: number, default: 0 }\n---\n\
+                ## Shot 1.\n\
+                <hub id=\"h\">\n\
+                <choice id=\"c1\" label=\"C1\">\n::set{scene.n += 1}\n\
+                <match on=\"scene.n\">\n<when is=\"1\">\n@narrator: one\n</when>\n\
+                <when is=\"2\">\n@narrator: two\n</when>\n<otherwise>\n@narrator: more\n</otherwise>\n\
+                </match>\n</choice>\n\
+                <choice id=\"c2\" label=\"C2\">\n@narrator: c2\n</choice>\n\
+                <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
+                </hub>\n";
+    let input = input_for(text, "hub-coverage", Path::new("."));
+    let mocks = choose(&[("h", &["c1", "c1", "c2", "c1", "leave"])]);
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    let hub = &report.coverage.choices["h"];
+    assert_eq!((hub.visited, hub.total), (3, 3), "{hub:?}");
+    let arms: Vec<(usize, usize)> = report
+        .coverage
+        .arms
+        .values()
+        .map(|c| (c.visited, c.total))
+        .collect();
+    assert_eq!(arms, [(3, 3)], "{:?}", report.coverage.arms);
+}
+
 #[test]
 fn hub_reevaluates_between_picks() {
     let text = hub_fixture();
@@ -462,7 +493,8 @@ fn hub_reevaluates_between_picks() {
 
 /// dsl 0.28.0 §5: the hub's `<return>` block runs after each non-`exit`
 /// arm and before the next presentation — never before the first menu,
-/// never after the `exit` arm.
+/// never after the `exit` arm. Each run is marked, so the return's lines
+/// do not read as the arm's.
 #[test]
 fn hub_return_runs_after_each_non_exit_arm() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
@@ -483,13 +515,24 @@ fn hub_return_runs_after_each_non_exit_arm() {
             .iter()
             .filter_map(|s| match s {
                 lute_trace::Step::Line { text, .. } => Some(text.clone()),
+                lute_trace::Step::HubReturn { hub } => Some(format!("<return {hub}>")),
                 _ => None,
             })
             .collect::<Vec<_>>()
     };
     assert_eq!(
         lines(&["ledger", "ledger", "leave"]),
-        ["up", "ledger", "again", "ledger", "again", "bye", "down"]
+        [
+            "up",
+            "ledger",
+            "<return lamp>",
+            "again",
+            "ledger",
+            "<return lamp>",
+            "again",
+            "bye",
+            "down"
+        ]
     );
     assert_eq!(lines(&["leave"]), ["up", "bye", "down"]);
 }

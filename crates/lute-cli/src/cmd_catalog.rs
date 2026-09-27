@@ -21,6 +21,7 @@ use lute_manifest::provider::ProviderSnapshot;
 /// discards filenames) so each snapshot rewrites to the file it came from.
 pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
     if let Err(e) = std::fs::create_dir_all(dir) {
+        let e = lute_manifest::io_reason(&e);
         eprintln!("lute: cannot create {}: {e}", dir.display());
         return ExitCode::from(2);
     }
@@ -46,6 +47,7 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
     let entries = match std::fs::read_dir(dir) {
         Ok(rd) => rd,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot read {}: {e}", dir.display());
             return ExitCode::from(2);
         }
@@ -68,6 +70,7 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
         let raw = match std::fs::read_to_string(path) {
             Ok(r) => r,
             Err(e) => {
+                let e = lute_manifest::io_reason(&e);
                 eprintln!("lute: cannot read {}: {e}", path.display());
                 return ExitCode::from(2);
             }
@@ -92,6 +95,7 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
             }
         };
         if let Err(e) = std::fs::write(path, out) {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot write {}: {e}", path.display());
             return ExitCode::from(2);
         }

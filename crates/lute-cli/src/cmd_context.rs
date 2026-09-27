@@ -547,6 +547,91 @@ fn literal_json(l: &Literal) -> serde_json::Value {
     }
 }
 
+/// The attribute a `{ fromAttr: … }` names — `{ name: <attr> }` in a path
+/// segment, the bare name in a write value.
+fn from_attr_name(v: &serde_json::Value) -> &str {
+    v.as_str().or_else(|| v["name"].as_str()).unwrap_or("")
+}
+
+/// A directive's declared write, read aloud: `= true`, `= <attr>` (the
+/// value the call passes), `= bridge result `passed``, `+= 1`, `-= <attr>`.
+fn write_value_outline(v: &serde_json::Value) -> (&'static str, String) {
+    let number = |n: &serde_json::Value| match n.as_f64() {
+        Some(f) if f.fract() == 0.0 && f.abs() < 1e15 => format!("{}", f as i64),
+        _ => n.to_string(),
+    };
+    if let Some(field) = v
+        .get("fromBridgeResult")
+        .and_then(serde_json::Value::as_str)
+    {
+        return ("=", format!("bridge result `{field}`"));
+    }
+    if let Some(a) = v.get("fromAttr") {
+        return ("=", format!("<{}>", from_attr_name(a)));
+    }
+    if let Some(op) = v.get("op").and_then(serde_json::Value::as_str) {
+        let by = match v.get("by") {
+            Some(b) if b.is_number() => number(b),
+            Some(b) => format!("<{}>", from_attr_name(&b["fromAttr"])),
+            None => "1".into(),
+        };
+        return (if op == "decrement" { "-=" } else { "+=" }, by);
+    }
+    (
+        "=",
+        if v.is_number() {
+            number(v)
+        } else {
+            v.to_string()
+        },
+    )
+}
+
+/// The effective permission layers, read aloud: `unrestricted` with none;
+/// else each layer's restricted categories (an absent one is unrestricted).
+fn permissions_outline(p: &serde_json::Value) -> String {
+    let layers: Vec<String> = p["layers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|layer| {
+            let parts: Vec<String> = layer
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(k, v)| match (v.as_array(), v.as_bool()) {
+                    (Some(xs), _) if xs.is_empty() => format!("{k}: none"),
+                    (Some(xs), _) => format!(
+                        "{k}: {}",
+                        xs.iter()
+                            .filter_map(|x| x.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    (_, Some(true)) => format!("{k}: allowed"),
+                    (_, Some(false)) => format!("{k}: denied"),
+                    _ => format!("{k}: {v}"),
+                })
+                .collect();
+            if parts.is_empty() {
+                "unrestricted".into()
+            } else {
+                parts.join("; ")
+            }
+        })
+        .collect();
+    match layers.as_slice() {
+        [] => "unrestricted".into(),
+        [one] => one.clone(),
+        many => many
+            .iter()
+            .enumerate()
+            .map(|(i, l)| format!("layer {}: {l}", i + 1))
+            .collect::<Vec<_>>()
+            .join(" | "),
+    }
+}
+
 /// A compact human outline of the authoring surface (non-`--json` mode): the
 /// capabilityVersion, directive names + attr keys + semantics flags, enum
 /// names WITH their members, state paths (with enum domains), the referenced
@@ -562,8 +647,7 @@ fn context_outline(surface: &serde_json::Value) -> String {
         "capabilityVersion: {}",
         surface["capabilityVersion"].as_str().unwrap_or("")
     );
-    let permissions = serde_json::to_string(&surface["permissions"])
-        .unwrap_or_else(|_| "{\"layers\":[]}".to_string());
+    let permissions = permissions_outline(&surface["permissions"]);
     let _ = writeln!(
         out,
         "permissions: {permissions} (authoring/compile-time restrictions; not runtime sandbox enforcement)"
@@ -625,10 +709,11 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 for seg in w["path"].as_array().into_iter().flatten() {
                     path.push(match seg.as_str() {
                         Some(s) => s.to_string(),
-                        None => format!("<{seg}>"),
+                        None => format!("<{}>", from_attr_name(&seg["fromAttr"])),
                     });
                 }
-                parts.push(format!("writes {} = {}", path.join("."), w["value"]));
+                let (op, value) = write_value_outline(&w["value"]);
+                parts.push(format!("writes {} {op} {value}", path.join(".")));
             }
             for (key, verb) in [("asserts", "asserts"), ("retracts", "retracts")] {
                 for f in effects[key].as_array().into_iter().flatten() {

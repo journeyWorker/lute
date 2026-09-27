@@ -168,8 +168,9 @@ const MEANT_ATTRS: &[(&str, &[&str], &str)] = &[
     (
         "on",
         &["on", "occasion"],
-        "a quest handler names what it answers with `event=`, e.g. `<on event=\"<name>\">` (it \
-         also runs when an occasion of the same name is raised)",
+        "a quest handler names the world event it answers with `event=`, e.g. `<on \
+         event=\"<name>\">`; a raised occasion runs it only when a world event of the same name \
+         is declared (to judge an objective on an occasion, write `<objective on=\"<occasion>\">`)",
     ),
     (
         "entry",
@@ -600,6 +601,9 @@ fn close(
             // dsl 0.5.0 §2.2 "did you mean", over the construct's own table:
             // a misspelt key (`fial`, `optinal`) is the common case, and
             // naming the intended key makes the error a one-keystroke fix.
+            _ if permitted.is_empty() => {
+                format!("`<{tag}>` has no attribute `{key}`: it takes no attributes")
+            }
             _ => {
                 let near = lute_manifest::suggest::did_you_mean(key, permitted.iter().copied());
                 let listed: Vec<String> = permitted.iter().map(|k| format!("`{k}`")).collect();

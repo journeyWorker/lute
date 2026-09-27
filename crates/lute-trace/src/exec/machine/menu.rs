@@ -683,8 +683,14 @@ impl<D: Driver> Machine<D> {
                 break;
             }
             // dsl 0.28.0 §5: control returns to the hub through its
-            // `<return>` block, before the menu is judged and presented again.
+            // `<return>` block, before the menu is judged and presented again
+            // — marked, so its lines do not read as the option's.
             if let Some(back) = return_idx {
+                self.driver.emit(json!({
+                    "addr": addr(cmd),
+                    "kind": "hubReturn",
+                    "hub": id,
+                }));
                 self.run_range(back, converge_idx);
                 if self.stopped() {
                     return Step::Halt;

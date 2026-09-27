@@ -168,7 +168,13 @@ impl<'p> Session<'p> {
                     super::seam::Closed::Unknown(_) => "undecided",
                 }),
             };
-            let halt = super::seam::refusal(n, occasion, target.as_deref(), &why);
+            let halt = super::seam::refusal(
+                n,
+                occasion,
+                target.as_deref(),
+                &why,
+                self.project.index.clock.as_ref(),
+            );
             return (body, Vec::new(), Some(halt));
         }
         let out = run_occasion(

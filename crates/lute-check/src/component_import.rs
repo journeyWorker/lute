@@ -321,6 +321,7 @@ fn read_and_parse(
     let text = match std::fs::read_to_string(canon) {
         Ok(t) => t,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             diags.push(comp_diag(
                 "E-COMPONENT-PARSE",
                 format!("cannot read component import `{}`: {e}", canon.display()),

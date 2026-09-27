@@ -132,8 +132,10 @@ declares. Scenes you do not list, like the endings below, still write their keys
 
 A chapter that may not play, because its own `when:` reads state the story may never set, stalls
 the chain: the next listed scene waits on it through its `after:`, and `lute check-project` warns
-(`W-CHAPTER-STALL`). A `when:` that reads only the clock merely delays the chain, so it draws no
-warning. Either give the scene after the optional chapter its own `after:` naming the chapter
+(`W-CHAPTER-STALL`). A `when:` that reads only the clock merely delays the chain while a later
+raise of its occasion still meets it, so it draws no warning; one whose window closes does: a
+`dayStart` chapter for the day the run starts (the clock never raises `dayStart` then), or a slot
+on the last day of a clock that ends, which the chain may reach too late. Either give the scene after the optional chapter its own `after:` naming the chapter
 before it, or, for the first chapter, take it out of the chain and give it its own `on:`. `lute
 play` names a derived `after:` in its reasons: `after: visited("pryceWakes") is not satisfied
 (written by `chapters:` in lute.project.yaml)`.

@@ -63,6 +63,7 @@ pub(super) fn compile_project(project_dir: &Path, gate: Gate) -> Result<ExecProj
             }
         }
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!(
                 "{cmd}: cannot walk {} for manifests: {e}",
                 project_dir.display()

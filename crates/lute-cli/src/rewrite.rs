@@ -67,6 +67,7 @@ fn targets(path: &Path) -> Result<Option<Vec<PathBuf>>, ExitCode> {
         return Ok(None);
     }
     crate::find_lute_files(path).map(Some).map_err(|e| {
+        let e = lute_manifest::io_reason(&e);
         eprintln!("lute: cannot walk {}: {e}", path.display());
         ExitCode::from(2)
     })
@@ -103,6 +104,7 @@ fn read(file: &Path) -> Option<String> {
     match std::fs::read_to_string(file) {
         Ok(t) => Some(t),
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot read {}: {e}", file.display());
             None
         }
@@ -113,6 +115,7 @@ fn write(file: &Path, text: &str) -> bool {
     match std::fs::write(file, text) {
         Ok(()) => true,
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot write {}: {e}", file.display());
             false
         }

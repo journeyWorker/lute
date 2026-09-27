@@ -74,6 +74,11 @@ pub fn is_body_split(d: &Directive) -> bool {
 /// `::use` by it.
 pub(crate) const AUTHORED_ATTR: &str = "__authored";
 
+/// Marks the `<match on="occasion.target">` [`expand_target_uses`]
+/// synthesizes to play a `::use{… who=occasion.target}` for the bound
+/// member: its record is compiler-injected, never an authored decision.
+pub(crate) const TARGET_USE_ATTR: &str = "__targetUse";
+
 /// The internal attr carrying a component line's SOURCE-ORDER back-filled
 /// `code` (ashen N7). [`expand_use`] stamps it on every untagged line of the
 /// cloned body BEFORE binding and folding; the lowering reads it when no
@@ -337,8 +342,13 @@ fn expand_target_uses(nodes: &mut Vec<Node>, targets: &OccasionScopes) {
                     lute_check::beats::OCCASION_TARGET.to_string(),
                     span,
                 ),
-                // Synthesized, not authored: no residual attributes exist.
-                attrs: Vec::new(),
+                // Synthesized, not authored: only the marker.
+                attrs: vec![Attr {
+                    key: TARGET_USE_ATTR.to_string(),
+                    value: AttrValue::Str(String::new()),
+                    value_span: span,
+                    span,
+                }],
                 arms,
                 span,
             }),
@@ -875,7 +885,10 @@ fn expand_use(
     // has expanded ([`guard_match`]).
     let mut attrs = vec![attr("component", name), attr(COMPONENT_SCOPE_ATTR, scope)];
     if d.when.is_some() {
-        attrs.push(attr(AUTHORED_ATTR, crate::lower::authored_directive(d)));
+        attrs.push(attr(
+            AUTHORED_ATTR,
+            crate::lower::authored_directive(d, None),
+        ));
     }
     let begin = Node::Directive(Directive {
         tag: COMPONENT_BEGIN.to_string(),

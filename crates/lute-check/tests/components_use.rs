@@ -335,6 +335,17 @@ fn def_arg_to_enum_param_must_produce_members() {
         1,
         "a string read cannot be proven a member"
     );
+    // A bool def is one report, naming what it produces (lighthouse NEW-3).
+    let bool_def: Vec<_> = diagnostics(&dir, &with_def("run.mood == 'brief'"))
+        .into_iter()
+        .filter(|d| d.code == "E-COMPONENT-ARG")
+        .collect();
+    assert_eq!(bool_def.len(), 1, "{bool_def:#?}");
+    assert!(
+        bool_def[0].message.contains("is `bool`"),
+        "{}",
+        bool_def[0].message
+    );
 }
 
 /// Every diagnostic `check()` reports for `text`, its `components:` resolved

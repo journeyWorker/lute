@@ -489,6 +489,7 @@ fn templates_for<'a>(
 /// walk spanning two subprojects exports each one's real ids.
 fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     let files = crate::find_lute_files(dir).map_err(|e| {
+        let e = lute_manifest::io_reason(&e);
         eprintln!("lute loc: cannot walk {}: {e}", dir.display());
         ExitCode::from(2)
     })?;
@@ -586,6 +587,7 @@ pub fn run_export(dir: &Path, format: &str, out: Option<&Path>) -> ExitCode {
 
     let write_result = match out {
         Some(path) => std::fs::write(path, rendered.as_bytes()).map_err(|e| {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute loc export: cannot write {}: {e}", path.display());
         }),
         None => crate::write_stdout(&rendered).map_err(|_| {}),
@@ -998,6 +1000,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
         let text = match std::fs::read_to_string(file) {
             Ok(t) => t,
             Err(e) => {
+                let e = lute_manifest::io_reason(&e);
                 eprintln!("lute loc import: cannot read {}: {e}", file.display());
                 return ExitCode::from(2);
             }
@@ -1084,6 +1087,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
     let rendered = LocaleBundle::from_triples(triples).to_json();
     let write_result = match out {
         Some(path) => std::fs::write(path, rendered.as_bytes()).map_err(|e| {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute loc import: cannot write {}: {e}", path.display());
         }),
         None => crate::write_stdout(&rendered).map_err(|_| {}),

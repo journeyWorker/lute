@@ -2174,20 +2174,27 @@ fn yaml_parse_error(meta: &Meta, e: &serde_yaml::Error) -> (String, Span) {
     }
     problem.push_str(&rest);
 
+    // A `.lute` document's frontmatter, or a whole `.yaml` file (a schema).
+    let what = if enveloped {
+        "the frontmatter"
+    } else {
+        "this file"
+    };
     if loc.is_none() {
         return (
-            format!("invalid meta frontmatter YAML: {problem}"),
+            format!("{what} does not parse as YAML: {problem}"),
             meta.span,
         );
     }
     // The shared YAML fault reader words the known slips (a tab in the
     // indentation, a quote nested or never closed, `key:value`, a value
-    // holding `: `, …) with their fix, and anchors at the slip.
+    // holding `: `, …) with their fix, and anchors at the slip; anything
+    // else is the library's sentence, without its line/column marks.
     let fault = lute_manifest::yaml_text::yaml_fault(&meta.raw_yaml, e);
-    let message = format!(
-        "invalid meta frontmatter YAML — {} (YAML: {problem})",
-        fault.message
-    );
+    let message = match fault.message.strip_prefix("the YAML does not parse: ") {
+        Some(problem) => format!("{what} does not parse as YAML: {problem}"),
+        None => format!("{what} does not parse as YAML — {}", fault.message),
+    };
     let mut start = fault.offset.min(meta.raw_yaml.len());
     while !meta.raw_yaml.is_char_boundary(start) {
         start -= 1;
@@ -2614,8 +2621,9 @@ pub(crate) fn engine_namespace(path: &str) -> Option<String> {
              it from the `<branch>`/`<hub>` and writes it when a choice is taken"
         }
         ["scene", "visited", ..] => {
-            "`scene.visited.*` records the scenes and marks a run has visited; the engine \
-             declares and writes it"
+            "`scene.visited.<hub>.<choice>` records whether that hub choice was taken in this \
+             presentation; the engine declares it from the `<hub>` and writes it when the choice \
+             is picked"
         }
         ["occasion", ..] => {
             "`occasion.*` describes the raise a beat answers — its `target` and `payload` come \

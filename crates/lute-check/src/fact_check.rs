@@ -202,7 +202,13 @@ pub fn check_fact_guards(
         let Some(seam) = b.seam(folded) else {
             continue;
         };
-        if out.iter().any(|d| d.code == b.code && d.span == b.span) {
+        // Already dead by its `when` alone — also when `--wip` graded that
+        // report to `W-WIP`.
+        let without_wip = format!("`{}` without `--wip`", b.code);
+        if out.iter().any(|d| {
+            d.span == b.span
+                && (d.code == b.code || d.code == W_WIP && d.message.contains(&without_wip))
+        }) {
             continue;
         }
         let judge = |conds: &[String]| -> Option<(Vec<SlotVerdict>, bool)> {
@@ -352,6 +358,41 @@ pub fn reconcile_member_matches(
     }
 }
 
+/// dsl 0.28.0: the targets a kind or `for=` beat never plays for — its
+/// `when` decided once per member, `occasion.target` bound to it and the
+/// root's fact envelope in scope: the per-member verdicts
+/// `E-BEAT-UNREACHABLE` reports a beat dead by once they cover every member.
+/// A kind beat's are its `<prefix>.<member>` targets
+/// ([`crate::ProjectBeat::kind_targets`]), a `for=` beat's its bare members,
+/// in member order. Empty for any other beat, or a `when` that does not read
+/// `occasion.target`.
+pub fn beat_never_for(beat: &crate::ProjectBeat<'_>, env: &FactEnv) -> Vec<String> {
+    let Some(when) = beat.when_slot else {
+        return Vec::new();
+    };
+    let folded = beat.folded;
+    let at = (when.span.byte_start, when.span.byte_end);
+    let members = folded.env.occasion_scopes.members_at(at.0, at.1);
+    let params = BTreeMap::new();
+    let g = Guards::new(beat.path, folded, env, &params);
+    let never = g
+        .over(&folded.env_at(when.span).state)
+        .members_never(when, members)
+        .never();
+    match &beat.kind_targets {
+        None => never,
+        Some(targets) => never
+            .iter()
+            .filter_map(|m| {
+                targets
+                    .iter()
+                    .find(|t| t.strip_suffix(m.as_str()).is_some_and(|p| p.ends_with('.')))
+                    .cloned()
+            })
+            .collect(),
+    }
+}
+
 /// Every `<match on="occasion.target">` in `nodes`, nested ones included.
 fn target_matches<'n>(nodes: &'n [Node], out: &mut Vec<&'n lute_syntax::ast::Match>) {
     for node in nodes {
@@ -482,19 +523,31 @@ impl MemberVerdicts<'_> {
         {
             return None;
         }
-        let mut reasons: Vec<String> = Vec::new();
-        for v in vs {
-            let r = v.dead_reasons();
-            if !r.is_empty() && !reasons.contains(&r) {
-                reasons.push(r);
+        // One reason per member, members sharing a reason named together; a
+        // member the `when` is false for as written needs no fact to say so.
+        let mut reasons: Vec<(Vec<&str>, String)> = Vec::new();
+        for (m, v) in self.members.iter().zip(vs) {
+            let r = match v.dead_reasons() {
+                r if !r.is_empty() => r,
+                _ if v.base == Some(Decided::Bool(false)) => {
+                    "false as written, whatever the facts".to_string()
+                }
+                _ => "the facts make its `when` false".to_string(),
+            };
+            match reasons.iter_mut().find(|(_, x)| *x == r) {
+                Some((ms, _)) => ms.push(m.as_str()),
+                None => reasons.push((vec![m.as_str()], r)),
             }
         }
         let head = crate::reachability::for_every_member(self.members);
-        let why = if reasons.is_empty() {
-            head
-        } else {
-            format!("{head}: {}", reasons.join("; "))
-        };
+        let each: Vec<String> = reasons
+            .iter()
+            .map(|(ms, r)| {
+                let ms: Vec<String> = ms.iter().map(|m| format!("`{m}`")).collect();
+                format!("{} — {r}", ms.join(", "))
+            })
+            .collect();
+        let why = format!("{head}: {}", each.join("; "));
         Some((why, vs.iter().find(|v| v.wip).unwrap_or(&vs[0])))
     }
 }
@@ -847,6 +900,14 @@ impl<'a> Guards<'a> {
         let mut arena = lute_cel::CelArena::default();
         let handle = lute_cel::parse_slot_marked_refs(&mut arena, &expanded)?;
         let expr = &arena.get(handle)?.expr;
+        // A bare root read here is a member named like a state root, already
+        // refused where it is declared: the guard means nothing to judge.
+        if crate::cel_paths::collect_path_uses(expr)
+            .iter()
+            .any(|u| !u.path.contains('.') && self.schema.is_faulty(&u.path))
+        {
+            return None;
+        }
         let with_ctx = self.ctx(dollar, slot.span, true);
         let mut atoms = Vec::new();
         collect_atoms(expr, &with_ctx, false, &mut atoms);

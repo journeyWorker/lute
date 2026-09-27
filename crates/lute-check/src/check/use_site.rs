@@ -117,13 +117,26 @@ pub(super) fn check_use(
                     2,
                 );
                 misspelt.extend(near);
+                // A `<beat use=…>` also writes the `<beat>`'s own keys
+                // (EMB-07: `priorty="5"` is the header key `priority`).
+                let hint = match near {
+                    Some(n) => format!(" — did you mean `{n}`?"),
+                    None if crate::templates::is_template_use(dir) => {
+                        lute_manifest::suggest::nearest(
+                            &attr.key,
+                            crate::templates::TEMPLATE_KEYS.iter().copied(),
+                            2,
+                        )
+                        .map(|k| format!(" — did you mean the `<beat>` key `{k}`?"))
+                        .unwrap_or_default()
+                    }
+                    None => String::new(),
+                };
                 diags.push(use_diag(
                     E_COMPONENT_ARG,
                     format!(
-                        "component `{name}` has no parameter `{}`{} (dsl §13)",
-                        attr.key,
-                        near.map(|n| format!(" — did you mean `{n}`?"))
-                            .unwrap_or_default()
+                        "component `{name}` has no parameter `{}`{hint} (dsl §13)",
+                        attr.key
                     ),
                     attr.span,
                 ))
@@ -150,11 +163,19 @@ pub(super) fn check_use(
                         }
                         _ => String::new(),
                     };
+                    // Name what a `@def` argument produces: the declared
+                    // type alone does not say why it does not fit.
+                    let produced = match &attr.value {
+                        AttrValue::Ref(slot) => ref_produced_type(&slot.raw, ctx)
+                            .map(|t| format!(" is `{}`, which", param_ty_label(t)))
+                            .unwrap_or_default(),
+                        _ => String::new(),
+                    };
                     diags.push(use_diag(
                         E_COMPONENT_ARG,
                         format!(
-                            "argument {shown} to component `{name}` does not fit `{}`, the type \
-                             its param `{}` declares{hint} (dsl §13)",
+                            "argument {shown} to component `{name}`{produced} does not fit `{}`, \
+                             the type its param `{}` declares{hint} (dsl §13)",
                             param_ty_label(pty),
                             attr.key
                         ),
@@ -1056,6 +1077,7 @@ pub(super) fn check_use_def_enum_args(
     doc: &Document,
     components: &ComponentSet,
     def_bodies: &std::collections::BTreeMap<String, String>,
+    def_types: &std::collections::BTreeMap<String, Type>,
     schema: &crate::meta::StateSchema,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -1091,6 +1113,15 @@ pub(super) fn check_use_def_enum_args(
             let Some(body) = def_bodies.get(&r.name) else {
                 continue; // undeclared ref: `E-UNDECLARED-REF` owns it
             };
+            // A def whose type does not fit the enum at all (a `bool`) is
+            // `check_use`'s one report; its values are only asked of a def
+            // the type check lets through (lighthouse NEW-3).
+            if def_types
+                .get(&r.name)
+                .is_some_and(|t| !compatible(t, &ExpectedType::Ty(Type::Enum(members.clone()))))
+            {
+                continue;
+            }
             let mut arena = CelArena::default();
             let values = lute_cel::parse_slot_marked_refs(&mut arena, body)
                 .and_then(|h| arena.get(h))

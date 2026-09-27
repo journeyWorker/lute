@@ -42,6 +42,43 @@ fn on_unknown_event_errors() {
     assert!(cs.contains(&"E-UNKNOWN-EVENT".to_string()), "{cs:?}");
 }
 
+// `<on occasion="dusk">` is told to write `event=`; `<on event="dusk">` for
+// an occasion with no world event of its name then dead-ended at a bare
+// list of events. It now says what makes a raise run the handler.
+#[test]
+fn on_event_naming_an_occasion_says_what_makes_it_run() {
+    let mut snapshot = lute_manifest::core::load_core_snapshot();
+    snapshot.occasions.insert(
+        "dusk".into(),
+        lute_manifest::schema::OccasionDecl {
+            name: "dusk".into(),
+            ..Default::default()
+        },
+    );
+    let res = check(&CheckInput {
+        text: "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n\
+               <on event=\"dusk\">\n@x: hi\n</on>\n</quest>\n"
+            .into(),
+        uri: "on".into(),
+        snapshot,
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+        defaults: Default::default(),
+    });
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-UNKNOWN-EVENT")
+        .expect("E-UNKNOWN-EVENT");
+    assert!(
+        d.message.contains("`dusk` is an occasion") && d.message.contains("`events:` export"),
+        "{}",
+        d.message
+    );
+}
+
 #[test]
 fn on_builtin_lifecycle_event_is_clean() {
     let cs = codes(

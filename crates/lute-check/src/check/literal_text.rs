@@ -4,10 +4,12 @@
 //! A content line's text and a `<choice>` label are literal: only `{{…}}` is
 //! read (dsl §7.6). An author porting from Ink or Yarn writes that
 //! language's inline markup — `{run.oil}`, `{cond: text}`, `{~a|b}`, `{$x}`,
-//! a trailing `// note` or `# tag`, a `[bracketed]` choice label — and the
-//! player sees it verbatim. Each shape is a warning naming what Lute writes
-//! instead. Braces whose inside has none of these shapes (`{sighs}`) are
-//! left alone, as is `{{…}}` and an escaped `\{{`.
+//! Yarn's `{0}`, Ink glue `<>`, a trailing `// note` or `# tag`, a
+//! `[bracketed]` choice label — and the player sees it verbatim. Each shape
+//! is a warning naming what Lute writes instead. Braces whose inside has
+//! none of these shapes (`{sighs}`) are left alone, as is `{{…}}` and an
+//! escaped `\{{`. Yarn's `[b]…[/b]` markup is left alone too: it is also
+//! the BBCode an engine's rich-text label renders.
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_syntax::ast::Line;
@@ -23,6 +25,8 @@ pub const W_TEXT_COMMENT_LIKE: &str = "W-TEXT-COMMENT-LIKE";
 /// A choice label wrapped in `[…]`, Ink's bracket suppression: the brackets
 /// show on the button.
 pub const W_TEXT_BRACKET_LABEL: &str = "W-TEXT-BRACKET-LABEL";
+/// Ink glue `<>` inside text: Lute joins no lines, so the player sees it.
+pub const W_TEXT_GLUE: &str = "W-TEXT-GLUE";
 
 /// Longest brace group or tail echoed back verbatim.
 const ECHO_MAX: usize = 40;
@@ -48,10 +52,12 @@ enum Site<'a> {
 }
 
 impl Text<'_> {
+    /// What the text is, after "literal": `line text`, `text in a choice
+    /// label`.
     fn noun(&self) -> &'static str {
         match self.site {
             Site::Line(_) => "line text",
-            Site::Label => "choice label",
+            Site::Label => "text in a choice label",
         }
     }
 
@@ -93,33 +99,63 @@ pub(super) fn line_text(l: &Line, ctx: &Ctx<'_>, src: Option<&str>, diags: &mut 
         site: Site::Line(&l.speaker),
     };
     single_braces(&text, ctx, diags);
+    glue(&text, diags);
     comment_like(&text, diags);
 }
 
-/// The literal-text warnings for a `<choice>` label, anchored at `span` (the
-/// label's own offset is not kept on the AST).
-pub(super) fn choice_label(label: &str, span: Span, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+/// The literal-text warnings for a `<choice>` label whose value sits at
+/// `span` in `src` (the document source, when the caller has it).
+pub(super) fn choice_label(
+    label: &str,
+    span: Span,
+    src: Option<&str>,
+    ctx: &Ctx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
     let text = Text {
         text: label,
         span,
-        src: None,
+        src,
         site: Site::Label,
     };
     single_braces(&text, ctx, diags);
+    glue(&text, diags);
     comment_like(&text, diags);
+    // Ink's `* [Go inside]` hides the bracketed label from the output; the
+    // whole label in brackets is that habit. A leading tag followed by more
+    // text (`[Persuasion] Step into the light`) is a label meant to show.
     let trimmed = label.trim();
-    if trimmed.starts_with('[') && trimmed.contains(']') {
-        let plain = trimmed.replace(['[', ']'], "");
+    if let Some(inner) = trimmed
+        .strip_prefix('[')
+        .and_then(|r| r.strip_suffix(']'))
+        .filter(|i| !i.contains(['[', ']']) && !i.trim().is_empty())
+    {
         diags.push(text.warn(
             W_TEXT_BRACKET_LABEL,
             format!(
                 "choice label `{}` shows its brackets on the button — a label is shown exactly \
                  as written (Lute has no Ink-style bracket suppression); write `label=\"{}\"`",
                 echo(trimmed),
-                plain.trim()
+                inner.trim()
             ),
             0,
             label.len(),
+        ));
+    }
+}
+
+/// `W-TEXT-GLUE` for Ink glue `<>` inside text.
+fn glue(text: &Text<'_>, diags: &mut Vec<Diagnostic>) {
+    if let Some(at) = text.text.find("<>") {
+        diags.push(text.warn(
+            W_TEXT_GLUE,
+            format!(
+                "`<>` is Ink glue and literal {}, so the player sees it — Lute joins nothing: \
+                 write the whole sentence on one line",
+                text.noun()
+            ),
+            at,
+            at + 2,
         ));
     }
 }
@@ -150,17 +186,31 @@ fn single_braces(text: &Text<'_>, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
             if let Some(rel) = s[j + 1..].find(['{', '}']) {
                 let close = j + 1 + rel;
                 if b[close] == b'}' {
-                    let group = &s[j..=close];
-                    if let Some(why) = brace_shape(&s[j + 1..close], text.site, ctx) {
+                    // `\{run.oil\}`: a backslash escapes nothing in line
+                    // text, so it ships beside the braces.
+                    let escaped = j > 0 && b[j - 1] == b'\\';
+                    let start = if escaped { j - 1 } else { j };
+                    let inner = &s[j + 1..close];
+                    let inner = if escaped {
+                        inner.strip_suffix('\\').unwrap_or(inner)
+                    } else {
+                        inner
+                    };
+                    if let Some(why) = brace_shape(inner, text.site, ctx) {
+                        let seen = if escaped {
+                            "a backslash does not escape a brace here, so the player sees the \
+                             braces and the backslashes"
+                        } else {
+                            "single braces are not read, so the player sees them"
+                        };
                         diags.push(text.warn(
                             W_TEXT_SINGLE_BRACE,
                             format!(
-                                "`{}` is literal {}: single braces are not read, so the player \
-                                 sees them — {why}",
-                                echo(group),
+                                "`{}` is literal {}: {seen} — {why}",
+                                echo(&s[start..=close]),
                                 text.noun()
                             ),
-                            j,
+                            start,
                             close + 1,
                         ));
                     }
@@ -208,6 +258,12 @@ fn brace_shape(inner: &str, site: Site<'_>, ctx: &Ctx<'_>) -> Option<String> {
     }
     if is_path(t) {
         return Some(format!("interpolation is `{{{{{t}}}}}`"));
+    }
+    if !t.is_empty() && t.bytes().all(|c| c.is_ascii_digit()) {
+        return Some(format!(
+            "Yarn's `{{{t}}}` is a placeholder its line provider fills; Lute fills none, so \
+             interpolate the value itself (`{{{{run.…}}}}`)"
+        ));
     }
     if let Some(name) = t.strip_prefix('@').filter(|n| ctx.env.defs.contains(*n)) {
         return Some(format!("interpolation is `{{{{@{name}}}}}`"));

@@ -75,8 +75,8 @@ fn member_diag(
                     .collect();
                 Some(diag(
                     format!(
-                        "`{written}` is a number, which a condition reads as the number, never as \
-                         a name, so it cannot name {what} — rename it (e.g. `n{instead}`)"
+                        "`{written}` cannot name {what} because it is a number, which a condition reads \
+                         as the number, never as a name — rename it (e.g. `n{instead}`)"
                     ),
                     span,
                 ))

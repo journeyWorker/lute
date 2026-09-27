@@ -42,6 +42,7 @@ pub(crate) fn run_check_project(
     let manifest_invalid = match manifests::validate_manifests_under(dir) {
         Ok(verdicts) => manifests::report_and_gate(&verdicts),
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot walk {} for manifests: {e}", dir.display());
             return ExitCode::from(2);
         }
@@ -146,6 +147,7 @@ pub(crate) fn run_check_project(
     match mockcheck::check_mocks_under(dir, &by_root, &inputs) {
         Ok(diags) => project_diags.extend(diags),
         Err(e) => {
+            let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot walk {} for mocks: {e}", dir.display());
             return ExitCode::from(2);
         }

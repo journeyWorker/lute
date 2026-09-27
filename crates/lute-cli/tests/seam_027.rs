@@ -533,6 +533,69 @@ fn raising_after_the_game_is_over_is_refused_and_a_new_run_continues() {
     assert!(t.contains("── end: complete (3 steps)"), "{t}");
 }
 
+/// The game-over note follows the settle that ended the game (a quest the
+/// step completed), and a terminal over state a new run keeps says so — on
+/// the step that ended it and on the `newRun` that did not reopen it.
+#[test]
+fn the_game_over_note_follows_its_settle_and_names_a_kept_terminal() {
+    let dir = open_ward("note-order");
+    let schema = std::fs::read_to_string(dir.join("world.schema.yaml")).unwrap();
+    write(
+        &dir,
+        "world.schema.yaml",
+        &schema.replace(
+            "terminal: \"run.fate == 'taken'\"",
+            "terminal: \"quest.doom.state == 'complete'\"",
+        ),
+    );
+    write(
+        &dir,
+        "quests/doom.lute",
+        "---\nkind: quest\nid: qs\n---\n\n<quest id=\"doom\" title=\"Doom\" start=\"true\" tier=\"run\">\n  \
+         <objective id=\"fall\" title=\"Fall\" on=\"knock\" done=\"run.fate == 'taken'\"/>\n</quest>\n",
+    );
+    let out = play(&dir, "steps:\n  - occasion: knock\n", false);
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    let settle = t
+        .find("quest doom -> complete")
+        .unwrap_or_else(|| panic!("{t}"));
+    let note = t
+        .find("note: the game is over")
+        .unwrap_or_else(|| panic!("{t}"));
+    assert!(settle < note, "the note follows the settle: {t}");
+    assert!(t.contains("`newRun: true` starts a new run)"), "{t}");
+
+    // `user.*` outlives a new run: the note does not offer one.
+    let dir = open_ward("kept-terminal");
+    for rel in ["world.schema.yaml", "scenes/taken.lute"] {
+        let body = std::fs::read_to_string(dir.join(rel)).unwrap();
+        write(&dir, rel, &body.replace("run.fate", "user.fate"));
+    }
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: knock\n  - newRun: true\n",
+        false,
+    );
+    let t = text(&out);
+    assert!(out.status.success(), "{t}");
+    assert!(!t.contains("starts a new run"), "{t}");
+    assert!(
+        t.contains("it still holds after a new run: it reads `user.fate`, which a new run keeps)"),
+        "{t}"
+    );
+    let new_run = t
+        .find("── step 2 · new run")
+        .unwrap_or_else(|| panic!("{t}"));
+    assert!(
+        t[new_run..].contains(
+            "note: the game is still over after the new run — `terminal: user.fate == 'taken'` \
+             holds"
+        ),
+        "{t}"
+    );
+}
+
 /// `lute beats` marks the ladder of a target whose gate can never hold —
 /// here nothing ever lets the player into the office — judged under the
 /// project's fact envelope, in text and JSON.
@@ -724,6 +787,67 @@ fn tools_show_gates_for_beats_terminal_endings_and_structured_writers() {
             "how": "set", "via": null, "text": "scene `taken`" }),
         "{v}"
     );
+}
+
+/// `reach --endings`: a beat is no writer of its own `when` (it writes it
+/// only once the `when` held), and a `terminal:` over a quest's state
+/// counts the beats whose raise judges that quest as endings.
+#[test]
+fn endings_skip_a_beats_own_writes_and_trace_a_quest_terminal() {
+    let dir = open_ward("endings-own");
+    write(
+        &dir,
+        "scenes/relapse.lute",
+        "---\nkind: scene\nid: relapse\non: knock\npriority: 5\nwhen: \"run.fate == 'alive'\"\n---\n\n\
+         ## Relapse\n\n::set{run.fate = \"alive\"}\n@narrator: You hold on.\n",
+    );
+    let d = dir.to_str().unwrap();
+    let lute = |args: &[&str]| text(&Command::new(BIN).args(args).output().unwrap());
+    let t = lute(&["scenario", d, "reach", "--endings=knock"]);
+    let relapse = &t[t.find("  relapse (scene").unwrap_or_else(|| panic!("{t}"))..];
+    let need = relapse
+        .lines()
+        .find(|l| l.trim_start().starts_with("run.fate —"))
+        .unwrap_or_else(|| panic!("{t}"));
+    assert_eq!(need, "      run.fate — written by scene `taken`", "{t}");
+
+    // Only the beat itself writes what its `when` needs.
+    std::fs::remove_file(dir.join("scenes/taken.lute")).unwrap();
+    let t = lute(&["scenario", d, "reach", "--endings=knock"]);
+    assert!(
+        t.contains(
+            "      run.fate — only this beat writes it, after its conditions held — nothing else \
+             does, so it keeps its declared default"
+        ),
+        "{t}"
+    );
+
+    let dir = open_ward("endings-quest");
+    let schema = std::fs::read_to_string(dir.join("world.schema.yaml")).unwrap();
+    write(
+        &dir,
+        "world.schema.yaml",
+        &schema.replace(
+            "terminal: \"run.fate == 'taken'\"",
+            "terminal: \"quest.doom.state == 'complete'\"",
+        ),
+    );
+    write(
+        &dir,
+        "quests/doom.lute",
+        "---\nkind: quest\nid: qs\n---\n\n<quest id=\"doom\" title=\"Doom\" start=\"true\" tier=\"run\">\n  \
+         <objective id=\"fall\" title=\"Fall\" on=\"knock\" done=\"run.fate == 'taken'\"/>\n</quest>\n",
+    );
+    let d = dir.to_str().unwrap();
+    let t = lute(&["scenario", d, "reach", "--endings"]);
+    assert!(
+        t.contains(
+            "  taken (scene, scenes/taken.lute): reachable\n    ends: its `knock` raise judges \
+             quest `doom`, whose state `terminal: quest.doom.state == 'complete'` reads\n"
+        ),
+        "{t}"
+    );
+    assert!(!t.contains("lobby (scene"), "{t}");
 }
 
 /// A calendar cell whose occasion's `raisedWhen` is false reads `gate false`

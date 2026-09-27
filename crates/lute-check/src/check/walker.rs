@@ -221,7 +221,8 @@ impl Walker<'_> {
                         );
                         super::literal_text::choice_label(
                             &choice.label,
-                            choice.span,
+                            choice.label_span,
+                            Some(self.src),
                             ctx,
                             &mut self.diags,
                         );
@@ -250,6 +251,11 @@ impl Walker<'_> {
                     for arm in &m.arms {
                         crate::logic_attrs::check_arm_attrs(arm, &mut self.diags);
                     }
+                    self.diags
+                        .extend(crate::match_check::check_match_has_subject(
+                            m,
+                            &ctx.env.state,
+                        ));
                     // The subject expression is evaluated OUTSIDE match scope: `$`
                     // is only valid in a `<when test>` (dsl §8.2), never in `on=`.
                     // Force `in_match=false` so a nested `<match on="$">` (whose
@@ -474,7 +480,8 @@ impl Walker<'_> {
                         );
                         super::literal_text::choice_label(
                             &choice.label,
-                            choice.span,
+                            choice.label_span,
+                            Some(self.src),
                             ctx,
                             &mut self.diags,
                         );
@@ -507,9 +514,27 @@ impl Walker<'_> {
                         self.picks = outer;
                     }
                     // dsl 0.28.0 §5: the `<return>` body gets the same node
-                    // checks as an option body.
+                    // checks as an option body, under what it records.
                     if let Some(r) = &h.on_return {
+                        let hub_id = h
+                            .attrs
+                            .iter()
+                            .find(|a| a.key == "id")
+                            .and_then(|a| match &a.value {
+                                AttrValue::Str(s) => Some(s.as_str()),
+                                _ => None,
+                            })
+                            .unwrap_or("");
+                        let picks = crate::reachability::Pick::on_return(
+                            &self.picks,
+                            hub_id,
+                            h,
+                            &self.targets,
+                            false,
+                        );
+                        let outer = std::mem::replace(&mut self.picks, picks);
                         self.walk(&r.body, ctx);
+                        self.picks = outer;
                     }
                 }
                 Node::Objective(o) => {

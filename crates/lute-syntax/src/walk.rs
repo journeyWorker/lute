@@ -541,6 +541,7 @@ mod tests {
                     Choice {
                         id: "cA".to_string(),
                         label: "A".to_string(),
+                        label_span: span(),
                         when: Some(slot("s5")),
                         attrs: vec![ref_attr("pick", "s6")],
                         body: vec![set_node("scene.b", "s7")],
@@ -549,6 +550,7 @@ mod tests {
                     Choice {
                         id: "cB".to_string(),
                         label: "B".to_string(),
+                        label_span: span(),
                         when: None,
                         attrs: vec![ref_attr("pick", "s8")],
                         body: vec![Node::Line(Line {

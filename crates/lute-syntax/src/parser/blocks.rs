@@ -275,10 +275,26 @@ impl Parser<'_> {
                 }
                 continue;
             }
-            if open_tag_name(&trimmed).as_deref() == Some("choice") {
+            let name = open_tag_name(&trimmed);
+            if name.as_deref() == Some("choice") {
                 let c = self.parse_choice();
                 last_end = c.span.byte_end;
                 choices.push(c);
+            } else if let Some(tag) = name.as_deref().filter(|t| is_return_like(t)) {
+                // A `<return>` (or a misspelling of it) in a branch: one
+                // report, and the block is skipped whole — its lines and
+                // close tag draw nothing more.
+                self.emit_line(
+                    E_LOGIC_CONTENT,
+                    &format!(
+                        "`<{tag}>` belongs to a `<hub>`: a `<branch>` asks once, so nothing \
+                         comes back to it — write the lines after `</branch>`, or make the menu \
+                         a `<hub>`"
+                    ),
+                    self.cursor,
+                    Layer::Logic,
+                );
+                self.skip_block(&open, "branch", tag, &trimmed);
             } else {
                 // §7.3: a <branch> body admits only <choice> children. Report the
                 // stray line (mirroring <track>/E-TIMELINE-CONTENT) before skipping
@@ -639,6 +655,18 @@ impl Parser<'_> {
                         on_return = Some(r);
                     }
                 }
+                Some(tag) if is_return_like(tag) => {
+                    self.emit_line(
+                        E_LOGIC_CONTENT,
+                        &format!(
+                            "`<{tag}>` is no <hub> child — did you mean `<return>`? A <hub> \
+                             body holds <choice>s and one <return> block"
+                        ),
+                        self.cursor,
+                        Layer::Logic,
+                    );
+                    self.skip_block(&open, "hub", tag, &trimmed);
+                }
                 _ => {
                     // §7.3.2: a <hub> body admits only <choice> children (and
                     // one <return>). Report the stray line (mirroring
@@ -681,17 +709,37 @@ impl Parser<'_> {
         }
     }
 
+    /// Skip a mistaken `<tag>` block inside `parent` whole — its open line,
+    /// its body and its `</tag>` — after the caller reported it once.
+    fn skip_block(&mut self, parent: &OpenTag, parent_tag: &str, tag: &str, trimmed: &str) {
+        let one_line = trimmed.ends_with("/>") || trimmed.contains(&format!("</{tag}>"));
+        self.skip_stray();
+        while !one_line {
+            self.skip_blanks();
+            if self.block_body_done(parent) || self.at_close(parent_tag) {
+                break;
+            }
+            let at_end = self.at_close(tag);
+            self.skip_stray();
+            if at_end {
+                break;
+            }
+        }
+    }
+
     /// `Choice ::= "<choice" Attrs ">" Node* "</choice>"` (§7.3, §11.1).
     fn parse_choice(&mut self) -> Choice {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
         let id = take_str(&mut attrs, "id").unwrap_or_default();
-        let label = take_str(&mut attrs, "label").unwrap_or_default();
+        let (label, label_span) = take_str_spanned(&mut attrs, "label")
+            .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.start_o)));
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let (body, end_o) = self.parse_block_body("choice", &open);
         Choice {
             id,
             label,
+            label_span,
             when,
             attrs,
             body,
@@ -749,21 +797,7 @@ impl Parser<'_> {
                         self.cursor,
                         Layer::Logic,
                     );
-                    let tag = tag.to_string();
-                    let one_line =
-                        trimmed.ends_with("/>") || trimmed.contains(&format!("</{tag}>"));
-                    self.skip_stray();
-                    while !one_line {
-                        self.skip_blanks();
-                        if self.block_body_done(&open) || self.at_close("match") {
-                            break;
-                        }
-                        let at_end = self.at_close(&tag);
-                        self.skip_stray();
-                        if at_end {
-                            break;
-                        }
-                    }
+                    self.skip_block(&open, "match", tag, &trimmed);
                 }
                 _ => {
                     // §7.3: a <match> body admits only <when>/<otherwise> arms.
@@ -1226,6 +1260,14 @@ fn parse_reward_amount(raw: &str) -> Option<crate::ast::RewardAmount> {
     raw.parse::<i64>().ok().map(RewardAmount::Scalar)
 }
 
+/// `true` for `<return>` or a spelling of it an author reaches for: another
+/// casing (`<Return>`) or a neighbouring word (`<again>`, `<revisit>`).
+fn is_return_like(tag: &str) -> bool {
+    ["return", "again", "revisit", "onreturn"]
+        .iter()
+        .any(|w| tag.eq_ignore_ascii_case(w))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ast::Node;
@@ -1403,6 +1445,41 @@ mod tests {
         let r = h.on_return.as_ref().expect("the first <return>");
         assert_eq!(r.span.line, 3);
         assert!(h.choices[0].body.is_empty(), "{:?}", h.choices[0].body);
+    }
+
+    // A `<return>` in a `<branch>`, and `<Return>` / `<again>` in a hub, were
+    // three errors each (two stray lines and an unmatched close) naming
+    // neither the hub nor `<return>`. Each is one error at its open line,
+    // and the menu still parses.
+    #[test]
+    fn return_misplaced_or_misspelt_is_one_error() {
+        let body = "\n@narrator: Back.\n";
+        for (open, close, menu, want) in [
+            ("<return>", "</return>", "branch", "belongs to a `<hub>`"),
+            ("<Return>", "</Return>", "hub", "did you mean `<return>`?"),
+            ("<again>", "</again>", "hub", "did you mean `<return>`?"),
+        ] {
+            let src = format!(
+                "## S\n<{menu} id=\"m\">\n{open}{body}{close}\n<choice id=\"a\" label=\"A\">\n\
+                 @narrator: a\n</choice>\n<choice id=\"x\" label=\"X\" exit>\n@narrator: x\n\
+                 </choice>\n</{menu}>\n"
+            );
+            let (doc, diags) = parse(&src);
+            assert_eq!(diags.len(), 1, "{open}: {diags:?}");
+            assert_eq!(diags[0].code, "E-LOGIC-CONTENT");
+            assert_eq!(diags[0].span.line, 3, "{open}");
+            assert!(
+                diags[0].message.contains(want),
+                "{open}: {}",
+                diags[0].message
+            );
+            let choices = match &doc.shots[0].body[0] {
+                Node::Branch(b) => b.choices.len(),
+                Node::Hub(h) => h.choices.len(),
+                n => panic!("{n:?}"),
+            };
+            assert_eq!(choices, 2, "{open}");
+        }
     }
 
     #[test]

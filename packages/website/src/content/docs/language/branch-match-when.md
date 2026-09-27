@@ -199,6 +199,11 @@ It is the form for a fact query, which may only ever be a guard:
 Arms are tried top to bottom as usual. The checker cannot prove `test` guards cover every case, so
 the `<otherwise>` is required.
 
+Every arm of such a `<match>` is a `test`. An `is` compares against the subject, and there is none,
+so `<when is="ren">` or `<when is="run.lamps >= 3">` inside a `<match>` with no `on` is
+`E-MATCH-NO-SUBJECT`: add `on="…"` to the `<match>` (the message names the declared path the
+literal belongs to, when exactly one does), or write the condition as `test="run.lamps >= 3"`.
+
 ### Arms narrow their subject
 
 Reading a maybe-unset path — a `run.*`/`app.*` path with no default — is `E-MAYBE-UNSET` until

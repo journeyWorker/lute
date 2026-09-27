@@ -893,6 +893,10 @@ pub(super) fn walk_component_body(
                 for arm in &m.arms {
                     crate::logic_attrs::check_arm_attrs(arm, diags);
                 }
+                diags.extend(crate::match_check::check_match_has_subject(
+                    m,
+                    &ctx.env.state,
+                ));
                 // Subject-slot CEL validation happens OUTSIDE match scope
                 // (dsl §8.2, mirrors the scene-level `Walker`): resolved
                 // against the SAME component `@param` env every other slot

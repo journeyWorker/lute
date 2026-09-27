@@ -316,15 +316,48 @@ impl RootVocab {
 
     /// seven F3 (dsl 0.23.1): mark the root incomplete when any of `docs`
     /// has a frontmatter that does not parse (`E-META-PARSE` —
-    /// [`crate::meta::frontmatter_parses`]). And a `<beat use>` refused at
-    /// its use is not expanded: every relation its template's body asserts
-    /// is unbounded, so nothing reading one is called impossible for want
-    /// of the refused use (its argument error is the one report). Call
-    /// before [`MaySet::build`].
+    /// [`crate::meta::frontmatter_parses`]). An `::assert` whose pattern does
+    /// not parse writes a fact nothing can know: the relation it names is
+    /// unbounded. And a `<beat use>` refused at its use is not expanded:
+    /// every relation its template's body asserts is unbounded — the
+    /// template it names, or the one a misspelt name stands for. Nothing
+    /// reading such a relation is called impossible for want of the dropped
+    /// write (its own error is the one report). Call before
+    /// [`MaySet::build`].
     pub fn note_unreadable_documents(&mut self, docs: &[(PathBuf, lute_syntax::ast::Document)]) {
         self.incomplete |= docs
             .iter()
             .any(|(_, d)| !crate::meta::frontmatter_parses(&d.meta));
+        fn body_asserts(d: &lute_syntax::ast::Document) -> Vec<&lute_syntax::ast::Assert> {
+            let mut asserts = Vec::new();
+            let bodies = d
+                .shots
+                .iter()
+                .map(|s| &s.body)
+                .chain(d.quests.iter().map(|q| &q.body))
+                .chain(d.entries.iter().map(|e| &e.body))
+                .chain(d.beats.iter().map(|b| &b.body));
+            for body in bodies {
+                crate::connectivity::collect_asserts(body, &mut asserts);
+            }
+            asserts
+        }
+        for (_, d) in docs {
+            self.unparsed_heads.extend(
+                body_asserts(d)
+                    .iter()
+                    .filter(|a| a.pattern.relation.is_empty())
+                    .map(|a| {
+                        a.raw
+                            .trim_start()
+                            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                            .next()
+                            .unwrap_or_default()
+                            .to_string()
+                    })
+                    .filter(|name| !name.is_empty()),
+            );
+        }
         let refused: BTreeSet<&str> = docs
             .iter()
             .flat_map(|(_, d)| &d.beats)
@@ -334,20 +367,74 @@ impl RootVocab {
         if refused.is_empty() {
             return;
         }
-        for (_, d) in docs {
-            let name = serde_yaml::from_str::<serde_yaml::Value>(&d.meta.raw_yaml)
-                .ok()
-                .and_then(|v| v.get("component")?.as_str().map(str::to_string));
-            if !name.is_some_and(|n| refused.contains(n.as_str())) {
-                continue;
+        let components: Vec<(String, &lute_syntax::ast::Document)> = docs
+            .iter()
+            .filter_map(|(_, d)| {
+                let name = serde_yaml::from_str::<serde_yaml::Value>(&d.meta.raw_yaml)
+                    .ok()?
+                    .get("component")?
+                    .as_str()?
+                    .to_string();
+                Some((name, d))
+            })
+            .collect();
+        let names = || components.iter().map(|(n, _)| n.as_str());
+        let meant: BTreeSet<&str> = refused
+            .iter()
+            .filter_map(|r| {
+                names()
+                    .find(|n| n == r)
+                    .or_else(|| lute_manifest::suggest::nearest(r, names(), 2))
+            })
+            .collect();
+        for (name, d) in &components {
+            if meant.contains(name.as_str()) {
+                self.unparsed_heads
+                    .extend(body_asserts(d).iter().map(|a| a.pattern.relation.clone()));
             }
-            let mut asserts = Vec::new();
-            for shot in &d.shots {
-                crate::connectivity::collect_asserts(&shot.body, &mut asserts);
-            }
-            self.unparsed_heads
-                .extend(asserts.iter().map(|a| a.pattern.relation.clone()));
         }
+    }
+
+    /// The ground facts an asserted `pattern` may produce: the one it names,
+    /// or — for an `occasion.target` argument (dsl 0.28.0 §3) — one per
+    /// member the argument's domain admits, the same member at every
+    /// `occasion.target` position. The member the write runs for is checked
+    /// against that domain at the write, so this covers every member of the
+    /// bound kind. Empty for a wildcard or `@param` pattern, and for an
+    /// `occasion.target` over an undeclared relation or an open domain (the
+    /// relation is then unbounded anyway).
+    pub fn asserted_facts(&self, pattern: &FactPattern) -> Vec<GroundFact> {
+        let targets: Vec<usize> = pattern
+            .args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.term == FactTerm::Target)
+            .map(|(i, _)| i)
+            .collect();
+        let Some(&first) = targets.first() else {
+            return GroundFact::from_pattern(pattern).into_iter().collect();
+        };
+        let Some(decl) = self.relations.get(&pattern.relation) else {
+            return Vec::new();
+        };
+        let closed = |i: usize| match decl.args.get(i).map(|a| self.universe(a)) {
+            Some(Universe::Closed(m)) => Some(m),
+            _ => None,
+        };
+        let Some(members) = closed(first) else {
+            return Vec::new();
+        };
+        let others: Option<Vec<Vec<&str>>> = targets[1..].iter().map(|&i| closed(i)).collect();
+        let Some(others) = others else {
+            return Vec::new();
+        };
+        members
+            .into_iter()
+            .filter(|m| others.iter().all(|o| o.contains(m)))
+            .filter_map(|m| {
+                GroundFact::from_pattern(&crate::target_writes::instantiate_pattern(pattern, m))
+            })
+            .collect()
     }
 
     /// The member universe a domain / predicate name denotes. `bool` is the
@@ -899,7 +986,7 @@ fn unify<'a>(
 /// reads a guard as satisfiable unless it decides `false` (a literal-false
 /// guard, `1 > 2`); the must closure ([`derive_guaranteed`]) only uses a
 /// clause whose guard decides `true`.
-fn guard_decides(cel: &str, value: bool) -> bool {
+pub(crate) fn guard_decides(cel: &str, value: bool) -> bool {
     let bodies = BTreeMap::new();
     let def_params = BTreeMap::new();
     let defs = crate::cel_expand::DefTable {

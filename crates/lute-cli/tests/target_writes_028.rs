@@ -119,6 +119,22 @@ fn a_kind_beat_writes_only_the_member_it_ran_for() {
     assert!(!out.contains("eel"), "{out}");
 }
 
+/// A fact asserted through `occasion.target` — by `::assert` or a directive's
+/// declared effect — may hold for every member of the kind, so a condition
+/// reading it for one member is not impossible.
+#[test]
+fn a_fact_written_through_the_target_is_producible_for_every_member() {
+    let lore = format!(
+        "{WRITES}\n<beat id=\"brag\" on=\"camp\" once=\"false\" \
+         when=\"holds(caught(eel)) && holds(hauled(cod))\">\n  @narrator: Brag.\n</beat>\n"
+    );
+    let dir = project("producer", &lore);
+    let check = run(&dir, &["check-project", "."]);
+    let out = text(&check);
+    assert!(check.status.success(), "{out}");
+    assert!(!out.contains("E-BEAT-UNREACHABLE"), "{out}");
+}
+
 #[test]
 fn a_component_argument_passes_the_member_it_ran_for() {
     let lore = "<beat id=\"join\" on=\"camp\" for=\"kind:pal\" once=\"false\" when=\"!holds(met(occasion.target))\">\n  \

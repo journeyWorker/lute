@@ -319,7 +319,10 @@ fn clock_ended_turns_true_at_the_advance_that_ends_the_clock() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(
-        t.contains("expect clock ended: expected true, actual false"),
+        t.contains(
+            "expect clock ended: expected true, actual false — the clock stands at its last \
+             position (day 1 h05) and ends on the next `advance:`"
+        ),
         "{t}"
     );
 
@@ -334,6 +337,101 @@ fn clock_ended_turns_true_at_the_advance_that_ends_the_clock() {
         t.contains(
             "`expect.clock.ended` — the clock never ends (it declares no `last:` or `days:`)"
         ),
+        "{t}"
+    );
+}
+
+/// `clock.ended` turns true before the last `dayEnd` is raised, so with
+/// `terminal: "clock.ended"` the game is over and that raise is closed: a
+/// beat only it would take never plays. The checker warns, the calendar
+/// shows the cell `not raised`, and play agrees. Without the terminal the
+/// raise is made, and nothing is warned. A `dayStart` beat for the day the
+/// run starts is warned the same way: the clock never raises it there.
+#[test]
+fn a_beat_only_a_raise_the_clock_never_makes_would_take_is_warned() {
+    let schema = |terminal: &str| {
+        format!(
+            "state:\n  run.day: {{ type: number, default: 1, owner: engine }}\n  \
+             run.slot: {{ type: {{ enum: [dawn, dusk] }}, default: dawn, owner: engine }}\n\
+             {terminal}clock:\n  day: run.day\n  slot: run.slot\n  slots: [dawn, dusk]\n  \
+             raise: {{ dayStart: morning, dayEnd: nightfall }}\n  last: {{ day: 2 }}\n"
+        )
+    };
+    let docs = [(
+        "scenes/farewell.lute",
+        scene(
+            "farewell",
+            "nightfall",
+            "when: \"clock.day == 2\"\n",
+            "@narrator: The boats sail home.",
+        ),
+    )];
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(p, s)| (*p, s.as_str())).collect();
+    let occasions = "  nightfall: { select: first }\n  morning: { select: first }\n";
+    let steps = "steps:\n  - advance: day\n  - advance: day\n";
+
+    let dir = project(
+        "closed-end",
+        &schema("terminal: \"clock.ended\"\n"),
+        occasions,
+        &docs,
+    );
+    let t = text(&check_project(&dir));
+    assert!(
+        t.contains(
+            "warning [W-BEAT-UNRAISED] scene `farewell` answers `nightfall`, but its `when` \
+             `clock.day == 2` holds at no raise of it: it can hold at day 2 dusk, where only the \
+             advance that ends the clock raises `nightfall`"
+        ),
+        "{t}"
+    );
+    let cal = Command::new(BIN)
+        .args([
+            "calendar",
+            &dir.display().to_string(),
+            "--axis",
+            "clock=1..2",
+        ])
+        .args(["--occasion", "nightfall"])
+        .output()
+        .unwrap();
+    let c = text(&cal);
+    assert!(cal.status.success(), "{c}");
+    assert!(
+        c.lines()
+            .any(|l| l.starts_with("2 dusk") && l.contains("not raised")),
+        "{c}"
+    );
+    let t = text(&play(&dir, steps));
+    assert!(!t.contains("The boats sail home."), "{t}");
+
+    let dir = project("open-end", &schema(""), occasions, &docs);
+    let t = text(&check_project(&dir));
+    assert!(!t.contains("W-BEAT-UNRAISED"), "{t}");
+    let t = text(&play(&dir, steps));
+    assert!(t.contains("The boats sail home."), "{t}");
+
+    let first = [(
+        "scenes/arrival.lute",
+        scene(
+            "arrival",
+            "morning",
+            "when: \"run.day == 1\"\n",
+            "@narrator: Off the bus.",
+        ),
+    )];
+    let first: Vec<(&str, &str)> = first.iter().map(|(p, s)| (*p, s.as_str())).collect();
+    let dir = project("first-day", &schema(""), occasions, &first);
+    let t = text(&check_project(&dir));
+    assert!(
+        t.contains(
+            "[W-BEAT-UNRAISED] scene `arrival` answers `morning`, but its `when` `run.day == 1` \
+             holds at no raise of it"
+        ),
+        "{t}"
+    );
+    assert!(
+        t.contains("answer the occasion the run starts with instead"),
         "{t}"
     );
 }
@@ -377,6 +475,56 @@ fn a_season_tier_relation_resets_when_its_season_opens() {
     let t = text(&check_project(&dir));
     assert!(
         t.contains("[E-SEASON-DECL] relation `wished`'s `tier: season:lantern` names season `lantern`, which no schema declares (declared: lanterns) — did you mean `lanterns`?"),
+        "{t}"
+    );
+
+    // A season spelt as a state path or bare, or a state path for a tier, is
+    // refused at its `tier:` key with the tier it means.
+    for (tier, meant) in [
+        ("season.lanterns", "season:lanterns"),
+        ("lanterns", "season:lanterns"),
+        ("run.wished", "run"),
+    ] {
+        let bad = schema.replace("tier: \"season:lanterns\"", &format!("tier: {tier}"));
+        let dir = project("season-spelling", &bad, DIVE_OCCASIONS, &docs);
+        let t = text(&check_project(&dir));
+        let line = t
+            .lines()
+            .find(|l| l.contains("[E-RELATION-DOMAIN]"))
+            .unwrap_or_else(|| panic!("{t}"));
+        assert!(
+            line.contains("world.schema.yaml:6:27: error")
+                && line.contains(&format!("`tier: {tier}` — did you mean `{meant}`?")),
+            "{t}"
+        );
+    }
+
+    // An undeclared season in `defaults.questTier` is the manifest's, reported
+    // once there — not at each quest it applies to.
+    let quests = "---\nkind: quest\nid: q.doc\n---\n\n\
+                  <quest id=\"a\" title=\"A\" start=\"true\">\n  <objective id=\"o\" title=\"O\" done=\"holds(wished(mira))\"/>\n</quest>\n\
+                  <quest id=\"b\" title=\"B\" start=\"true\">\n  <objective id=\"o\" title=\"O\" done=\"holds(wished(ren))\"/>\n</quest>\n";
+    let mut docs = docs.clone();
+    docs.push(("quests/q.lute", quests));
+    let dir = project("season-quest-tier", schema, DIVE_OCCASIONS, &docs);
+    let manifest = std::fs::read_to_string(dir.join("lute.project.yaml")).unwrap();
+    write(
+        &dir,
+        "lute.project.yaml",
+        &manifest.replace(
+            "defaults: { uses: [world.schema.yaml] }",
+            "defaults:\n  uses: [world.schema.yaml]\n  questTier: season:lantern\n",
+        ),
+    );
+    let t = text(&check_project(&dir));
+    let errors: Vec<&str> = t
+        .lines()
+        .filter(|l| l.contains("[E-SEASON-DECL]"))
+        .collect();
+    assert_eq!(errors.len(), 1, "{t}");
+    assert!(
+        errors[0].contains("lute.project.yaml:6:3: error")
+            && errors[0].contains("`defaults.questTier: season:lantern` names season `lantern`"),
         "{t}"
     );
 }

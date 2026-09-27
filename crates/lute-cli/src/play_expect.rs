@@ -962,7 +962,18 @@ fn check_clock(
                 (held, actual)
             }
             "ended" => match c.ended {
-                Some(ended) => (want.as_bool() == Some(ended), ended.to_string()),
+                Some(ended) => (
+                    want.as_bool() == Some(ended),
+                    match &c.last {
+                        // The last position is not the end: the clock ends
+                        // on the advance that would go past it.
+                        Some(at) => format!(
+                            "{ended} — the clock stands at its last position ({at}) and ends on \
+                             the next `advance:`"
+                        ),
+                        None => ended.to_string(),
+                    },
+                ),
                 None => (
                     false,
                     "none (the clock never ends: it declares no `last:` or `days:`)".to_string(),
@@ -1402,6 +1413,7 @@ transcriptLacks: ["Welcome"]
                 weekday: Some(5),
                 weekday_label: Some("Fri".into()),
                 ended: None,
+                last: None,
             }),
             ..WorldView::default()
         });

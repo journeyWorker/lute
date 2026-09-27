@@ -486,7 +486,7 @@ fn project(texts: &[(&str, &str)], snapshot: CapabilitySnapshot) -> Project {
     }
     let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
-        .filter_map(|(_, a)| GroundFact::from_pattern(&a));
+        .flat_map(|(_, a)| vocab.asserted_facts(&a));
     let may = MaySet::build(&vocab, facts, &lute_check::stable_seeds(&docs, &vocab));
     let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);

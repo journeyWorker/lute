@@ -95,6 +95,24 @@ fn the_tie_check_reads_the_must_set_at_a_beats_slot() {
     assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
 }
 
+/// dsl 0.28.0 (T3-5): a beat whose error was folded into an earlier one's
+/// `(+N more: …)` is rejected all the same — it leaves the tie pass.
+#[test]
+fn a_beat_whose_error_was_folded_leaves_the_tie_check() {
+    let dir = project("folded");
+    write(
+        &dir,
+        "lore/probes.lute",
+        "---\nkind: lore\nid: probes\nuses: ../world.schema.yaml\n---\n\
+         <entry id=\"first\" on=\"knock\" when=\"run.nope > 1\">\n@narrator: First.\n</entry>\n\
+         <beat id=\"probeA\" on=\"peer\" priority=\"7\" when=\"run.nope > 2\">\n@narrator: A.\n</beat>\n\
+         <beat id=\"probeB\" on=\"peer\" priority=\"7\" when=\"run.day > 1\">\n@narrator: B.\n</beat>\n",
+    );
+    let t = text(&run(&["check-project", dir.to_str().unwrap()]));
+    assert!(t.contains("(+1 more:"), "the second read is folded: {t}");
+    assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
+}
+
 #[test]
 fn beats_shows_a_fallback_covered_by_an_earlier_beat() {
     let dir = project("covered");

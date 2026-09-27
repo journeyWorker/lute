@@ -154,6 +154,7 @@ pub(crate) fn collect_project_inputs(
     ExitCode,
 > {
     let files = find_lute_files(dir).map_err(|e| {
+        let e = lute_manifest::io_reason(&e);
         eprintln!("lute: cannot walk {}: {e}", dir.display());
         ExitCode::from(2)
     })?;
@@ -222,7 +223,7 @@ pub(crate) fn collect_project_inputs(
         })?;
         for m in &built.project_diags {
             if reported.insert(m.clone()) {
-                eprintln!("lute: {m}");
+                eprintln!("{}", crate::input::project_diag_line(m));
                 resolve_errors += usize::from(m.starts_with("E-"));
             }
         }

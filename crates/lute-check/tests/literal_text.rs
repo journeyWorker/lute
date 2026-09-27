@@ -48,6 +48,14 @@ fn single_brace_shapes_warn_with_the_lute_form() {
             "@narrator: {~Fog|Mist|Rain} rolls in.",
             "no inline alternatives",
         ),
+        // Yarn's string-table placeholder is filled by nothing in Lute.
+        ("@narrator: You have {0} cans.", "`{{run.…}}`"),
+        // A backslash escapes nothing in line text: it ships beside the
+        // braces, so the escaped group still warns.
+        (
+            "@narrator: Escaped \\{run.oil\\} braces.",
+            "the braces and the backslashes",
+        ),
     ] {
         let diags = check_body(line);
         let hits = warnings(&diags, "W-TEXT-SINGLE-BRACE");
@@ -104,6 +112,59 @@ fn bracket_label_warns() {
         hits[0].message.contains("`label=\"Go inside\"`"),
         "{}",
         hits[0].message
+    );
+    // Anchored at the label's value, not at `<choice`: line 12 is the
+    // choice, and `  <choice id="in" label="` is 25 characters.
+    assert_eq!(
+        (hits[0].span.line, hits[0].span.column),
+        (12, 26),
+        "{:#?}",
+        hits[0]
+    );
+}
+
+// A leading CRPG tag followed by more text is a label meant to show; only a
+// label wholly in brackets is Ink's suppression habit.
+#[test]
+fn tagged_label_does_not_warn() {
+    let diags = check_body(
+        "<branch id=\"door\">\n  <choice id=\"in\" label=\"[Persuasion] Step into the light.\">\n    \
+         @narrator: In.\n  </choice>\n  <choice id=\"out\" label=\"Stay\">\n    @narrator: Out.\n  \
+         </choice>\n</branch>",
+    );
+    assert!(
+        warnings(&diags, "W-TEXT-BRACKET-LABEL").is_empty(),
+        "{diags:#?}"
+    );
+}
+
+// A single-brace group in a label is located inside the label value.
+#[test]
+fn label_brace_is_anchored_in_the_label() {
+    let diags = check_body(
+        "<branch id=\"door\">\n  <choice id=\"in\" label=\"Oil {run.oil}\">\n    @narrator: In.\n  \
+         </choice>\n  <choice id=\"out\" label=\"Stay\">\n    @narrator: Out.\n  </choice>\n\
+         </branch>",
+    );
+    let d = warnings(&diags, "W-TEXT-SINGLE-BRACE")[0];
+    assert!(
+        d.message.contains("literal text in a choice label"),
+        "{}",
+        d.message
+    );
+    assert_eq!((d.span.line, d.span.column), (12, 30), "{d:#?}");
+}
+
+#[test]
+fn ink_glue_warns() {
+    let diags = check_body("@narrator: The lamp room smells of <>");
+    let hits = warnings(&diags, "W-TEXT-GLUE");
+    assert_eq!(hits.len(), 1, "{diags:#?}");
+    assert_eq!(
+        (hits[0].span.line, hits[0].span.column),
+        (11, 36),
+        "{:#?}",
+        hits[0]
     );
 }
 

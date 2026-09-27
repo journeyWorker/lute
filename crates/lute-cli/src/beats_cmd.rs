@@ -12,7 +12,10 @@
 //! where the beat wins another target's ladder. A kind beat's row names its
 //! `kind:<kind>` target. dsl 0.27.0 §4: a ladder of a gated occasion says
 //! when its `raisedWhen` can never hold for the targets it is raised for
-//! (all of them, or which members), judged under the root's fact envelope.
+//! (all of them, or which members), judged under the root's fact envelope;
+//! dsl 0.28.0: a kind or `for=` beat's cell says `never for <target>` where
+//! its `when` never holds for the ladder's target, judged per member as
+//! `check-project` judges it ([`lute_check::fact_check::beat_never_for`]).
 //!
 //! Nothing is re-derived. The rows are [`lute_check::project_beats`] — the
 //! beat list the project beat passes judge — and the verdicts are the
@@ -150,6 +153,9 @@ struct Cells<'r, 'a> {
     covered: &'r [Option<&'r str>],
     /// [`lute_check::beats::always_eligible`] per beat.
     always: &'r [bool],
+    /// dsl 0.28.0: per beat, the targets its `when` never holds for
+    /// ([`lute_check::fact_check::beat_never_for`]).
+    never_for: &'r [Vec<String>],
 }
 
 impl Cells<'_, '_> {
@@ -170,6 +176,23 @@ impl Cells<'_, '_> {
                 .map(|a| self.beats[a].id.as_str())
                 .collect(),
         )
+    }
+
+    /// dsl 0.28.0: the targets row `i` never plays for on `ladder` — the
+    /// ladder's own (every one on a ladder raised without a target: a `for=`
+    /// beat's members) — unless the beat is unreachable outright, which its
+    /// own verdict already says.
+    fn never_for(&self, ladder: &Ladder<'_>, i: usize) -> Vec<&str> {
+        if self.verdicts[i].iter().any(|d| {
+            d.code == lute_check::E_BEAT_UNREACHABLE || d.code == lute_check::E_ENTRY_UNREACHABLE
+        }) {
+            return Vec::new();
+        }
+        self.never_for[i]
+            .iter()
+            .filter(|t| ladder.members.is_empty() || ladder.members.contains(t))
+            .map(String::as_str)
+            .collect()
     }
 }
 
@@ -258,11 +281,20 @@ pub(crate) fn run_beats(
             .collect();
         let mut ladders = ladders(&beats, &decls, occasions, targets);
         gate_marks(&mut ladders, &beats, fact_envs.get(root));
+        // dsl 0.28.0: a kind or `for=` beat's `when` judged per member, as
+        // `check-project` judges it.
+        let no_facts = lute_check::FactEnv::default();
+        let env = fact_envs.get(root).unwrap_or(&no_facts);
+        let never_for: Vec<Vec<String>> = beats
+            .iter()
+            .map(|b| lute_check::fact_check::beat_never_for(b, env))
+            .collect();
         let cells = Cells {
             beats: &beats,
             verdicts: &verdicts,
             covered: &covered,
             always: &always,
+            never_for: &never_for,
         };
         if json_out {
             roots_json.push(root_json(root, &cells, &ladders));
@@ -412,11 +444,14 @@ fn ladders<'a>(
 
 /// The verdict cell: the `check-project` verdicts about the beat, with
 /// (dsl 0.27.0 T3-9) `shadowed by <id>` where this ladder's earlier beats
-/// win every time it could — even when it wins on another ladder.
+/// win every time it could — even when it wins on another ladder — and
+/// (dsl 0.28.0) `never for <target>` where its `when` never holds for this
+/// ladder's target.
 fn verdict_words(
     ds: &[&Diagnostic],
     covered: Option<&str>,
     shadowed_by: Option<&[&str]>,
+    never_for: &[&str],
 ) -> String {
     let words: BTreeSet<&str> = ds
         .iter()
@@ -431,6 +466,9 @@ fn verdict_words(
         .collect();
     if let Some(by) = shadowed_by.filter(|_| !words.iter().any(|w| w.starts_with("shadowed"))) {
         words.insert(0, format!("shadowed by {}", by.join(" / ")));
+    }
+    if !never_for.is_empty() {
+        words.insert(0, format!("never for {}", never_for.join(" / ")));
     }
     if let Some(id) = covered {
         words.push(format!("covered by {id}"));
@@ -536,7 +574,12 @@ fn render_root(
                 id,
                 kind_label(b.kind).to_string(),
                 once,
-                verdict_words(&cells.verdicts[i], cells.covered[i], shadowed_by.as_deref()),
+                verdict_words(
+                    &cells.verdicts[i],
+                    cells.covered[i],
+                    shadowed_by.as_deref(),
+                    &cells.never_for(ladder, i),
+                ),
                 b.after.map_or_else(|| "-".to_string(), one_line),
                 when,
             ]);
@@ -625,6 +668,12 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                     // dsl 0.27.0 (T3-9): this ladder's own verdict.
                     if let Some(by) = cells.shadowed_by(l, i) {
                         m.insert("shadowedBy".into(), json!(by));
+                    }
+                    // dsl 0.28.0: the ladder's targets its `when` never
+                    // holds for.
+                    let never_for = cells.never_for(l, i);
+                    if !never_for.is_empty() {
+                        m.insert("neverFor".into(), json!(never_for));
                     }
                     m.insert(
                         "verdicts".into(),

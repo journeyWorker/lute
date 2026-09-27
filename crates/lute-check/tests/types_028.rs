@@ -327,6 +327,30 @@ fn a_def_body_reads_only_declared_paths() {
     );
 }
 
+/// A read or a foreign literal written in a def another def uses names the
+/// def that writes it, and the def the site used to reach it.
+#[test]
+fn a_nested_def_fault_names_the_def_that_writes_it() {
+    let defs = "defs:\n  inner: \"run.nmae == 'x'\"\n  outer: \"@inner && run.oil >= 0\"\n  \
+                onRen: \"run.route == 'rne'\"\n";
+    let text = lore(
+        "<beat id=\"s\" on=\"chime\" once=\"false\" when=\"@outer\">\n  \
+         @narrator{when=\"@onRen\"}: x\n</beat>\n",
+    );
+    let ds = diagnostics(&text, world(defs), "");
+    let errs = errors(&ds);
+    assert!(
+        errs.iter().any(|(c, m)| *c == "E-UNDECLARED"
+            && m.contains("`@inner` (used by `@outer`) reads state path `run.nmae`")),
+        "{errs:?}"
+    );
+    assert!(
+        errs.iter().any(|(c, m)| *c == "E-WHEN-LITERAL-DOMAIN"
+            && m.starts_with("in `@onRen`: `'rne'` is not a member")),
+        "{errs:?}"
+    );
+}
+
 /// T3-39: a def that reads one member of an indexed family takes the
 /// family's type.
 #[test]
@@ -582,4 +606,44 @@ fn schemas_are_cross_checked() {
             && d.message.contains("`run.lanterns.gold`")),
         "{ds:?}"
     );
+}
+
+/// A `{ domain: K }` / `{ entity: K }` path must name a declared K, and its
+/// `default:` must be one of K's members — played, a value no `<match>` arm
+/// takes. An imported schema's is reported at its line; a document's own at
+/// the `default:` key; a `per:` family once.
+#[test]
+fn a_domain_typed_path_names_a_declared_kind_and_defaults_to_a_member() {
+    let bad = "  run.r: { type: { domain: route }, default: nnoe }\n  \
+               run.where: { type: { entity: place }, default: rof }\n  \
+               run.isle: { type: { entity: plac }, default: village }\n  \
+               run.ok: { type: { entity: place }, default: village }\n";
+    let schema = WORLD.replacen("state:\n", &format!("state:\n{bad}"), 1);
+    let ds = diagnostics(
+        &beat("  @narrator: x\n"),
+        imports(&[("world.schema.yaml", &schema)]),
+        "",
+    );
+    let errs = errors(&ds);
+    assert_eq!(errs.len(), 3, "{ds:?}");
+    assert!(errs.iter().any(|(c, m)| *c == "E-STATE-DECL"
+        && m.contains("`run.r`'s `default: nnoe` is not a member of enum `route` [none, ren, mika] — did you mean `none`?")));
+    assert!(errs.iter().any(|(c, m)| *c == "E-STATE-DECL"
+        && m.contains("`run.where`'s `default: rof` is not a member of entity kind `place`")));
+    assert!(errs.iter().any(|(c, m)| *c == "E-DOMAIN-UNKNOWN"
+        && m.contains("`run.isle` is typed `{ entity: plac }`, but `plac` is not a declared enum or entity kind — did you mean `place`?")));
+
+    let text = "---\nkind: lore\nid: l\ntitle: L\nstate:\n  \
+                user.bond: { type: { entity: place }, default: lighthose, per: place }\n\
+                ---\n<beat id=\"b\" on=\"chime\" once=\"false\">\n  @narrator: x\n</beat>\n";
+    let ds = diagnostics(text, world(""), "");
+    let decl: Vec<&Diagnostic> = ds.iter().filter(|d| d.code == "E-STATE-DECL").collect();
+    assert_eq!(decl.len(), 1, "{ds:?}");
+    assert!(
+        decl[0]
+            .message
+            .starts_with("`user.bond`'s `default: lighthose`"),
+        "{ds:?}"
+    );
+    assert_eq!((decl[0].span.line, decl[0].span.column), (6, 41), "{ds:?}");
 }

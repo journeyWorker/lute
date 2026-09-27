@@ -259,11 +259,15 @@ pub fn check_state(
 }
 
 /// `once: season:<name>` (a scene's, an entry's, a bundle beat's) and
-/// `<quest tier="season:<name>">` naming an undeclared season.
+/// `<quest tier="season:<name>">` naming an undeclared season. A tier the
+/// quest takes from `defaults.questTier` is the manifest's: one report for
+/// the document, at the manifest's key (the project roll-up folds the
+/// documents' copies into one).
 pub fn check_uses(
     doc: &lute_syntax::ast::Document,
     beat: Option<&crate::beats::BeatMeta>,
     seasons: &Seasons,
+    defaults: &lute_manifest::project::MetaDefaults,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     if let Some(name) = beat.and_then(|b| b.once.season()) {
@@ -283,14 +287,40 @@ pub fn check_uses(
             }
         }
     }
+    let mut default_reported = false;
     for q in &doc.quests {
-        if let Some((raw, span)) = &q.tier {
-            if let Some(name) = season_ref(raw) {
-                if let Some(msg) = undeclared(name, &format!("`tier=\"{raw}\"`"), seasons) {
-                    out.push(diag(msg, *span));
-                }
-            }
+        let Some((raw, span)) = &q.tier else { continue };
+        let Some(name) = season_ref(raw) else {
+            continue;
+        };
+        // `crate::meta::apply_quest_tier_default` anchors a default at the id.
+        let from_default = *span == q.id_span;
+        if from_default && default_reported {
+            continue;
         }
+        let what = if from_default {
+            format!("`defaults.questTier: {raw}`")
+        } else {
+            format!("`tier=\"{raw}\"`")
+        };
+        let Some(msg) = undeclared(name, &what, seasons) else {
+            continue;
+        };
+        if !from_default {
+            out.push(diag(msg, *span));
+            continue;
+        }
+        default_reported = true;
+        let home = defaults
+            .quest_tier_home()
+            .map(|(file, at)| crate::rel_schema::DeclOrigin {
+                file: file.clone(),
+                span: *at,
+            });
+        out.push(crate::rel_schema::at_manifest_origin(
+            diag(msg, *span),
+            home.as_ref(),
+        ));
     }
     out
 }
@@ -385,12 +415,18 @@ pub(crate) fn hint_declared(
             continue;
         };
         let refused = format!("relation `{rel}` has unknown `tier: {tier}`");
-        for d in diags.iter_mut().filter(|d| {
-            d.code == "E-RELATION-DOMAIN"
-                && d.message.starts_with(&refused)
-                && !d.message.contains("did you mean")
-        }) {
-            d.message.push_str(&hint(name));
+        // After the refused value, where the tier check puts its own hint —
+        // also in the schema-line copy an imported relation's report carries.
+        let hinted = |m: &mut String| {
+            if m.starts_with(&refused) && !m.contains("did you mean") {
+                m.insert_str(refused.len(), &hint(name));
+            }
+        };
+        for d in diags.iter_mut().filter(|d| d.code == "E-RELATION-DOMAIN") {
+            hinted(&mut d.message);
+            for r in &mut d.related {
+                hinted(&mut r.diagnostic.message);
+            }
         }
     }
     if !is_scene {
@@ -419,29 +455,33 @@ fn legacy_season(raw: &str, name: &str, live: &str) -> String {
 /// Every season's `live:` checked like any condition slot in this
 /// document's environment: a `Bool`, and definitely assigned with nothing
 /// dominating it (the engine judges it between steps, like a `<quest
-/// start>`). A schema document's own at its `seasons:` key; an imported
-/// schema's at that schema's `seasons:` line (`check-project` folds the
-/// importers' identical reports into one).
+/// start>`). Reported at the season's `live:` key (its name, in the short
+/// form): a schema document's own in this document, an imported schema's in
+/// that schema (`lives`, by file; `check-project` folds the importers'
+/// identical reports into one).
 pub(crate) fn check_live_texts(
     doc: &lute_syntax::ast::Document,
     own: &Seasons,
     imported: &[(std::path::PathBuf, Seasons, Span)],
+    lives: &BTreeMap<std::path::PathBuf, BTreeMap<String, Span>>,
     ctx: &crate::ctx::Ctx<'_>,
     scope: &crate::defassign::Scope<'_>,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    if !own.is_empty() {
-        let at = crate::meta::meta_key_span(&doc.meta, "seasons");
-        for (name, decl) in own {
-            out.extend(check_live(name, &decl.live, at, ctx, scope));
-        }
+    for (name, decl) in own {
+        let at = crate::meta::meta_path_span(&doc.meta, &["seasons", name.as_str(), "live"]);
+        out.extend(check_live(name, &decl.live, at, ctx, scope));
     }
     for (file, seasons, span) in imported {
-        let origin = crate::rel_schema::DeclOrigin {
-            file: file.clone(),
-            span: *span,
-        };
         for (name, decl) in seasons {
+            let origin = crate::rel_schema::DeclOrigin {
+                file: file.clone(),
+                span: lives
+                    .get(file)
+                    .and_then(|l| l.get(name))
+                    .copied()
+                    .unwrap_or(*span),
+            };
             out.extend(
                 check_live(name, &decl.live, doc.meta.span, ctx, scope)
                     .into_iter()
@@ -515,16 +555,16 @@ enum Gate {
 /// [`W_SEASON_UNGATED`] for every beat of `doc` (its scene beat, entry
 /// beats and bundle beats) with `once: season:<name>`, and every quest with
 /// `tier="season:<name>"` and a `start`, whose condition — the beat's
-/// `when` under its occasion's `raisedWhen` gate, the quest's `start` —
-/// does not imply the season's `live`: `condition && !live` must decide
-/// false. An undeclared season is `E-SEASON-DECL`'s.
+/// `when` under its occasion's `raisedWhen` gate, the quest's `start` — is
+/// shown not to imply the season's `live` ([`crate::decide::implies_slot`]:
+/// a `live` it cannot judge either way stays quiet). An undeclared season
+/// is `E-SEASON-DECL`'s.
 pub(crate) fn check_ungated(
     doc: &lute_syntax::ast::Document,
     folded: &crate::check::FoldedEnv,
     defs: &crate::cel_expand::DefTable<'_>,
     ctx: &crate::decide::DecideCtx<'_>,
 ) -> Vec<Diagnostic> {
-    use crate::decide::{decide_slot, Decided};
     let gate = |on: &str| {
         crate::gates::gate_of(&folded.occasions, on)
             .filter(|g| !crate::occasion_bind::mentions_target(g))
@@ -599,6 +639,11 @@ pub(crate) fn check_ungated(
     }
     let mut out = Vec::new();
     for (what, name, parts, slot, span) in units {
+        // A season name refused at its declaration (`E-RESERVED-NAME`) is
+        // that error's; its window is not judged a second time.
+        if lute_manifest::reserved::refusal(lute_manifest::reserved::Slot::Season, name).is_some() {
+            continue;
+        }
         let Some(live) = folded
             .env
             .seasons
@@ -613,12 +658,7 @@ pub(crate) fn check_ungated(
             .map(str::trim)
             .filter(|p| !p.is_empty())
             .collect();
-        let mut judged: Vec<String> = parts.iter().map(|p| format!("({p})")).collect();
-        judged.push(format!("!({live})"));
-        if matches!(
-            decide_slot(&judged.join(" && "), defs, ctx),
-            Some(Decided::Bool(false))
-        ) {
+        if crate::decide::implies_slot(&parts, live, defs, ctx) != Some(false) {
             continue;
         }
         out.push(ungated(

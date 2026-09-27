@@ -179,7 +179,7 @@ fn a_test_refuses_a_non_member_seed_or_expectation_at_its_line() {
         "tests/seed.test.yaml:4:3: error [E-TRACE-MOCK-TYPE] `state: { run.route: rne }` is not \
          compatible with `run.route`'s declared type: `rne` is not a member of `route` (ren, mika) \
          — did you mean `ren`?",
-        "tests/expect.test.yaml:4:12: error [E-TRACE-MOCK-TYPE] `expect.state.run.route: rne` can \
+        "tests/expect.test.yaml:4:23: error [E-TRACE-MOCK-TYPE] `expect.state.run.route: rne` can \
          never hold: `rne` is not a member of `route` (ren, mika) — did you mean `ren`?",
     ] {
         assert!(t.contains(want), "missing `{want}` in:\n{t}");

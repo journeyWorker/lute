@@ -116,29 +116,55 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
     // is ONE error at the opener, naming where the `---` belongs — and is
     // read as closed there, so its keys are not denied (`E-KIND-MISSING`,
     // `E-META-MISSING`) and its lines do not become body text.
-    if let Some((end, last_line)) = unclosed_frontmatter_end(text) {
+    if let Some(open) = unclosed_frontmatter_end(text) {
         let at = Span::from_bytes(&idx, 0, 3);
-        let insert = Span::from_bytes(&idx, end, end);
-        let lead = if text[..end].ends_with('\n') {
-            ""
-        } else {
-            "\n"
+        let (end, message, fix) = match &open.near_fence {
+            // A line of dashes meant as the fence: the frontmatter ends
+            // before it, the body after it, and the fix rewrites it.
+            Some((range, line, written)) => (
+                range.start,
+                format!(
+                    "the frontmatter opened on line 1 is never closed — `{}` on line {line} is \
+                     not a closing fence, which is exactly `---`",
+                    written.trim()
+                ),
+                (
+                    Span::from_bytes(&idx, range.start, range.end),
+                    "---".to_string(),
+                ),
+            ),
+            None => {
+                let lead = if text[..open.end].ends_with('\n') {
+                    ""
+                } else {
+                    "\n"
+                };
+                (
+                    open.end,
+                    format!(
+                        "the frontmatter opened on line 1 is never closed — add a `---` line \
+                         after line {}",
+                        open.last_line
+                    ),
+                    (
+                        Span::from_bytes(&idx, open.end, open.end),
+                        format!("{lead}---\n"),
+                    ),
+                )
+            }
         };
         diags.push(Diagnostic {
             code: "E-META-PARSE".into(),
             severity: Severity::Error,
-            message: format!(
-                "the frontmatter opened on line 1 is never closed — add a `---` line after \
-                 line {last_line}"
-            ),
+            message,
             span: at,
             layer: Layer::Content,
             fixits: vec![Fixit {
                 title: "Close the frontmatter with `---`".to_string(),
                 kind: "quickfix".to_string(),
                 edit: vec![TextEdit {
-                    span: insert,
-                    new_text: format!("{lead}---\n"),
+                    span: fix.0,
+                    new_text: fix.1,
                 }],
                 confidence: 90,
             }],
@@ -146,15 +172,20 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
             covered: Vec::new(),
             related: Vec::new(),
         });
+        let body_at = open.near_fence.as_ref().map_or(end, |(range, _, _)| {
+            text[range.end..]
+                .find('\n')
+                .map_or(text.len(), |n| range.end + n + 1)
+        });
         let span = Span {
             byte_start: 0,
-            byte_end: end,
+            byte_end: body_at,
             line: 1,
             column: 1,
             utf16_range: (0, 0),
         };
         fm = Some((text[4..end].to_string(), span));
-        body_start = end;
+        body_start = body_at;
     }
     let (raw_yaml, meta_span) = match fm {
         Some((yaml, span)) => (yaml, span),
@@ -679,8 +710,12 @@ impl Parser<'_> {
                             "a `<{tag}>` block belongs at the top level of the document, not \
                              inside a shot"
                         ),
-                        Some(tag) => format!("unexpected `<{tag}>` block here"),
-                        // round-6 T3-60: a Yarn `<<command>>` names its Lute form.
+                        // round-6 T3-60: a Yarn `<<command>>`, an Ink thread
+                        // `<- knot` or glue `<>` names its Lute form.
+                        Some(tag) => foreign::foreign_line(&trimmed).map_or_else(
+                            || format!("unexpected `<{tag}>` block here"),
+                            |hint| format!("unrecognized line: {hint}"),
+                        ),
                         None => foreign::foreign_line(&trimmed).map_or_else(
                             || "unexpected block here".to_string(),
                             |hint| format!("unrecognized line: {hint}"),
@@ -2823,7 +2858,7 @@ mod tests {
     fn foreign_lines_after_a_content_line_name_the_lute_form() {
         for (line, want) in [
             ("-> ledger", "`::next{to=\"ledger\"}`"),
-            ("-> END", "`::end`"),
+            ("-> END", "`terminal:`"),
             ("~ run.oil = run.oil + 2", "`::set{run.oil = run.oil + 2}`"),
             ("VAR x = 1", "`state:`"),
             ("* [Read the ledger]", "`once`"),

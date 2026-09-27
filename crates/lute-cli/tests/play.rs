@@ -1503,6 +1503,40 @@ fn engine_writes_are_validated_before_anything_plays() {
     }
 }
 
+/// HW28-08: every usage error of a step is reported at once — a step's
+/// second refusal (another write, its `engine:` beside its `occasion:`) no
+/// longer waits for the first to be fixed.
+#[test]
+fn every_usage_error_of_one_step_is_reported() {
+    let dir = harness_project("step-usage-all");
+    for (script, needles) in [
+        (
+            "steps:\n  - engine: { state: { run.flor: 1, quest.climb.state: complete } }\n",
+            &[
+                "`engine.state.run.flor` is not a declared state path",
+                "`engine.state.quest.climb.state`: quest state is written by the quest lifecycle",
+            ][..],
+        ),
+        (
+            "steps:\n  - occasion: hubVisitt\n    engine: { facts: [slew(dragon)] }\n",
+            &[
+                "occasion `hubVisitt`",
+                "`dragon`, which is not a member of `foe` (warden, hound)",
+            ][..],
+        ),
+        (
+            "steps:\n  - occasion: hubVisit\n    engine: { state: { occasion.payload.n: 2 } }\n",
+            &["write `n` in this step's `payload:` instead"][..],
+        ),
+    ] {
+        let out = play_in(&dir, "step-usage-all", script, false);
+        assert_eq!(out.status.code(), Some(2), "{script}\n{}", stderr(&out));
+        for needle in needles {
+            assert!(stderr(&out).contains(needle), "{script}\n{}", stderr(&out));
+        }
+    }
+}
+
 #[test]
 fn a_new_run_resets_run_tier_quests_then_applies_its_seed() {
     let v = harness_json(

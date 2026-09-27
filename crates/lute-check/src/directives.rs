@@ -237,14 +237,24 @@ pub fn check_directive(
                         attr.key
                     )
                 } else {
+                    let near = lute_manifest::suggest::did_you_mean(
+                        &attr.key,
+                        decl.attrs.iter().map(|a| a.name.as_str()),
+                    );
+                    // No near name: list the directive's own attributes, as
+                    // `E-UNKNOWN-ATTR` on an element does.
+                    let listed = if !near.is_empty() {
+                        String::new()
+                    } else if decl.attrs.is_empty() {
+                        "; it takes no attributes".to_string()
+                    } else {
+                        let names: Vec<String> =
+                            decl.attrs.iter().map(|a| format!("`{}`", a.name)).collect();
+                        format!("; its attributes are {}", names.join(", "))
+                    };
                     format!(
-                        "`::{}` has no attribute `{}`{}",
-                        dir.tag,
-                        attr.key,
-                        lute_manifest::suggest::did_you_mean(
-                            &attr.key,
-                            decl.attrs.iter().map(|a| a.name.as_str())
-                        )
+                        "`::{}` has no attribute `{}`{near}{listed}",
+                        dir.tag, attr.key
                     )
                 },
                 attr.span,
@@ -1143,6 +1153,30 @@ mod tests {
                 "`::camera` has no attribute `move-y` — did you mean `moveY`?",
             ],
             "{errs:?}"
+        );
+    }
+
+    /// An unknown attribute with no near name lists the directive's own
+    /// attributes, as an element's `E-UNKNOWN-ATTR` does.
+    #[test]
+    fn unknown_attr_with_no_near_name_lists_the_attributes() {
+        let d = directive("sfx", &[("id", "wind")]);
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
+        let m = &errs
+            .iter()
+            .find(|e| e.code == "E-UNKNOWN-ATTR")
+            .expect("E-UNKNOWN-ATTR")
+            .message;
+        assert!(
+            m.starts_with("`::sfx` has no attribute `id`; its attributes are ")
+                && m.contains("`sound`"),
+            "{m}"
         );
     }
 
