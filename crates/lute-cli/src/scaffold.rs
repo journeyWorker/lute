@@ -96,7 +96,7 @@ fn minimal_files() -> Vec<File> {
         File {
             rel: "world.schema.yaml",
             content: "\
-# Minimal shared world schema (dsl §9). Imported by scenes via
+# Minimal shared world schema. Imported by scenes via
 # `uses: ../world.schema.yaml`. Every path carries a `default:` so each read is
 # definitely assigned even in a standalone single-file `lute check`.
 state:
@@ -1477,14 +1477,14 @@ fn new_schema(name: &str, dest: &Destination) -> ExitCode {
     let path = dest.root.join(format!("{name}.schema.yaml"));
     let content = format!(
         "\
-# {name} schema (dsl §9). A pure declaration map — no `---`/body. Import it
+# {name} schema. A pure declaration map — no `---`/body. Import it
 # from a document with `uses:`, or list it in lute.project.yaml's
 # `defaults: uses:`. Every path should carry a `default:` so reads are
 # definitely assigned.
 state:
   run.example: {{ type: number, default: 0 }}
 
-# Relational vocabulary (0.3.0 §3/§4) — uncomment and extend as needed:
+# Relational vocabulary — uncomment and extend as needed:
 # entities:
 #   thing: {{ members: [a, b] }}
 # relations:

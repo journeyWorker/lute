@@ -126,7 +126,16 @@ pub(crate) use project::{
 };
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            if let Some(code) = explain_subcommand_typo() {
+                eprintln!("error: unrecognized subcommand 'explain'; did you mean `lute --explain {code}`?");
+                return ExitCode::from(2);
+            }
+            err.exit()
+        }
+    };
     if let Some(code) = cli.explain {
         return codes::explain(code);
     }
@@ -378,4 +387,29 @@ fn main() -> ExitCode {
         ),
         Command::Version { json } => run_version(json),
     }
+}
+
+/// `lute explain E-FOO`: the diagnostic-code lookup is the `--explain` flag,
+/// not a subcommand, and clap would otherwise suggest `play`. Returns the
+/// code-shaped argument (`^[EWL]-[A-Z0-9-]+$`, any case) when the first
+/// positional argument is `explain` and the next one looks like a code.
+fn explain_subcommand_typo() -> Option<String> {
+    let args: Vec<String> = std::env::args_os()
+        .skip(1)
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    let at = args.iter().position(|a| !a.starts_with('-'))?;
+    if args[at] != "explain" {
+        return None;
+    }
+    let code = args.get(at + 1)?;
+    let upper = code.to_ascii_uppercase();
+    let bytes = upper.as_bytes();
+    let looks_like_code = bytes.len() > 2
+        && matches!(bytes[0], b'E' | b'W' | b'L')
+        && bytes[1] == b'-'
+        && bytes[2..]
+            .iter()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || *b == b'-');
+    looks_like_code.then(|| code.clone())
 }

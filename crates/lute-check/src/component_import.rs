@@ -400,6 +400,19 @@ fn read_and_parse(
         .iter()
         .map(|p| (p.name.clone(), p.ty.clone()))
         .collect();
+    // dsl 0.27.0 §6: the def names a template's condition keys may name
+    // besides its params — its inline `defs:` and those of its own `uses:`
+    // (the import's faults are the component's own check's to report).
+    let beat = tm.beat_template.clone().map(|mut t| {
+        t.defs = tm.defs.keys().cloned().collect();
+        if !tm.uses.is_empty() || !tm.extends.is_empty() {
+            let base = canon.parent().unwrap_or(Path::new("."));
+            let imports =
+                crate::schema_import::resolve_imports(base, &tm.uses, &tm.extends, doc.meta.span);
+            t.defs.extend(imports.defs.into_keys());
+        }
+        t
+    });
     (
         ParsedComponent {
             name: tm.component.clone(),
@@ -407,7 +420,7 @@ fn read_and_parse(
             speakers: tm.speaker_params.clone(),
             defaults: tm.param_defaults.clone(),
             effects: tm.effects,
-            beat: tm.beat_template.clone(),
+            beat,
             body: doc,
             src: canon.to_path_buf(),
         },

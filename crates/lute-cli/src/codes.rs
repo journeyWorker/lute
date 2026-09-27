@@ -1587,6 +1587,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.23.0 §8"],
     },
     Code {
+        code: "W-SEQUENCE-ORDER",
+        summary: "On a `select: sequence` occasion, a scene listed in the project's `sequence:` writes its own `priority:`, which places it out of the order the list gives — the list's order is the priority the sequence derives. Remove the scene's `priority:`, or move it in `sequence.scenes`.",
+        spec: &["dsl 0.27.0 §8"],
+    },
+    Code {
         code: "W-SEQUENCE-STALL",
         summary: "A scene listed in the project's `sequence:` has its own `when:`, and the next listed scene waits on it through the `after:` the sequence writes — when the first does not play, the chain stalls. Give the next scene its own `after:`, or take the optional scene out of the list.",
         spec: &["dsl 0.27.0 §8"],

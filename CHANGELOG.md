@@ -382,6 +382,12 @@ table.
 - `lute doctor` counts the scenes whose `on:` comes from the manifest's `sequence:` (and template-expanded beats) in its occasion tally.
 - `lute trace` heads a beat or entry the engine would not raise with that reason (its occasion's `raisedWhen` is false, or `terminal:` holds), and a false `when` names itself with what it read. It used to say `` `when` is false `` in every case.
 - `lute play` and `lute test` report a schema or plugin fault every importing document shares once, at its own line (as `check-project` does), and then refuse. They used to repeat it once per document.
+- A beat template whose `when:` / `spentBy:` names a `@name` that is no param and no def is reported once, at the header key in the component, with a did-you-mean over the params and defs (`` `@onyl` is not a declared param or def — did you mean `@only`? ``). It used to be reported at every `<beat use=…>`, with no suggestion; the uses now derive no condition for that key and say nothing about it.
+- `lute init` no longer writes spec citations (`(dsl §9)`) into the scaffolded schema comments; `lute new schema` likewise.
+- `lute explain E-FOO` (a diagnostic code, any case) answers ``did you mean `lute --explain E-FOO`?`` (exit 2) instead of clap suggesting `play`.
+- `lute test` prints a state miss's numbers and booleans bare and strings quoted (`state run.clues: expected 3, got 2`); it used to quote every value (`expected "3"`).
+- New warning `W-SEQUENCE-ORDER`: on a `select: sequence` occasion, a scene listed in the project's `sequence:` that writes its own `priority:` out of the listed order is reported at that key. It used to reorder the chain silently.
+- `::set{ add 1 to run.cluesFound }` is one `E-SET-SHAPE` naming the shape (`` `::set` takes `<path> <op> <value>`, e.g. `run.cluesFound += 1` ``) with no invented operator guess (it suggested `add = 1 to run.cluesFound`), and no cascading `E-UNDECLARED` / `E-CEL-PARSE`.
 
 - The seam in every runtime (0.27 prerelease). `lute test` and `lute trace` judge a beat whose
   occasion has a `raisedWhen` gate, or a project with `terminal:`, by the same rule `lute play`

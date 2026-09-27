@@ -515,7 +515,7 @@ impl Parser<'_> {
             return Some(self.parse_fact_directive(true));
         }
         if trimmed.starts_with("::set{") {
-            return Some(self.parse_set());
+            return self.parse_set();
         }
         if trimmed.starts_with("::") {
             return Some(self.parse_directive());
@@ -619,7 +619,7 @@ impl Parser<'_> {
 
     /// `Set ::= "::set{" Path WS AssignOp WS CelExpr (WS "when=" Quoted)? "}"`
     /// (§7.3.4; dsl 0.24.0 §1 adds the trailing guard). Layer = Logic.
-    fn parse_set(&mut self) -> Node {
+    fn parse_set(&mut self) -> Option<Node> {
         let i = self.cursor;
         let (s, e) = self.lines[i];
         let cstart = s + leading_ws(&self.body[s..e]);
@@ -751,6 +751,31 @@ impl Parser<'_> {
             inner[expr_start..expr_end].to_string(),
             self.span(inner_start + expr_start, inner_start + expr_end),
         );
+        // `::set{ add 1 to run.cluesFound }`: the text does not open with a
+        // state path and an operator (or a value), so any operator guess
+        // (`add = 1 to …`) would be invented. Name the shape once and emit no
+        // node, so the leftover words do not cascade into `E-UNDECLARED` /
+        // `E-CEL-PARSE`.
+        let first_word_is_bare = shape_err == Some(None)
+            && expr.raw.split_whitespace().next().is_some_and(|w| {
+                w.bytes().all(|c| c.is_ascii_alphabetic() || c == b'_')
+                    && !matches!(w, "true" | "false" | "null")
+            });
+        if shape_err.is_some() && (!path.contains('.') || first_word_is_bare) {
+            let (a, b) = (
+                self.orig(inner_start + path_start),
+                self.orig(inner_start + expr_end.max(op_start)),
+            );
+            self.emit_o(
+                E_SET_SHAPE,
+                "`::set` takes `<path> <op> <value>`, e.g. `run.cluesFound += 1`".to_string(),
+                a,
+                b,
+                Layer::Logic,
+            );
+            self.cursor += 1;
+            return None;
+        }
         if let Some(guess) = shape_err {
             let value = match expr.raw.trim() {
                 "" if step => "1",
@@ -792,14 +817,14 @@ impl Parser<'_> {
         }
         let span = self.span(cstart, node_end);
         self.cursor += 1;
-        Node::Set(Set {
+        Some(Node::Set(Set {
             path,
             path_span,
             op: op.to_string(),
             expr,
             span,
             when,
-        })
+        }))
     }
 
     /// `Assert ::= "::assert{" FactPattern "}"` / `Retract ::= "::retract{"

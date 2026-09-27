@@ -1593,6 +1593,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 명세: [dsl 0.23.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
 
+### W-SEQUENCE-ORDER
+
+`select: sequence` 계기에서 프로젝트 `sequence:`에 나열된 장면이 자체 `priority:`를 써서, 목록이 정한 순서를 벗어난 자리에서 재생됩니다. 목록의 순서가 곧 sequence가 파생하는 우선순위입니다. 장면의 `priority:`를 지우거나, `sequence.scenes`에서 장면을 옮기세요.
+
+명세: [dsl 0.27.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+
 ### W-SEQUENCE-STALL
 
 프로젝트 `sequence:`에 나열된 장면에 자체 `when:`이 있고, 다음 장면이 sequence가 쓰는 `after:`로 그 장면을 기다립니다. 앞 장면이 재생되지 않으면 체인이 멈춥니다. 다음 장면에 자체 `after:`를 주거나, 선택적 장면을 목록에서 빼세요.

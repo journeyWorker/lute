@@ -33,7 +33,7 @@
 //! diagnostics are `E-TEMPLATE`'s ([`check_body_markers`] and the header
 //! checks here).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{
@@ -70,6 +70,11 @@ pub struct BeatTemplate {
     pub keys: Vec<TemplateKey>,
     pub span: Span,
     pub faulty: bool,
+    /// The def names the component itself sees — its inline `defs:` and
+    /// those of its own `uses:` (set by the component import). A condition
+    /// key's `@name` that is none of these, no param and no def of the host
+    /// is [`check_template_refs`]'s, reported once at the header.
+    pub defs: BTreeSet<String>,
 }
 
 /// One `beat:` header key: its name, raw text, and the key's span in the
@@ -120,6 +125,41 @@ pub fn check_template_header(
                 k.key, d.message
             );
             out.push(d);
+        }
+    }
+    out
+}
+
+/// dsl 0.27.0 §6: a `@name` in a condition key (`when:` / `spentBy:`) that
+/// is neither a param nor a def the component sees (`defs`, params
+/// included) is `E-UNDECLARED-REF` once, at the header key, with a
+/// did-you-mean over both — not at every use, which derives nothing for
+/// that key ([`expand_beat_templates`]).
+pub fn check_template_refs(template: &BeatTemplate, defs: &BTreeSet<String>) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for k in template
+        .keys
+        .iter()
+        .filter(|k| CEL_KEYS.contains(&k.key.as_str()))
+    {
+        let mut seen = BTreeSet::new();
+        for (_, _, name) in at_refs(&k.raw) {
+            if defs.contains(name) || !seen.insert(name) {
+                continue;
+            }
+            let hint = lute_manifest::suggest::nearest(name, defs.iter().map(String::as_str), 2)
+                .map_or_else(String::new, |n| format!(" — did you mean `@{n}`?"));
+            out.push(Diagnostic {
+                code: "E-UNDECLARED-REF".to_string(),
+                ..diag(
+                    format!(
+                        "template header `beat.{}` (every `<beat use=…>` derives it): `@{name}` \
+                         is not a declared param or def{hint} (dsl §8.1)",
+                        k.key
+                    ),
+                    k.span,
+                )
+            });
         }
     }
     out
@@ -287,6 +327,7 @@ pub fn parse_beat_template(
                 keys,
                 span,
                 faulty: true,
+                defs: BTreeSet::new(),
             }),
             diags,
         );
@@ -363,7 +404,13 @@ pub fn parse_beat_template(
         });
     }
     let faulty = !diags.is_empty();
-    (Some(BeatTemplate { keys, span, faulty }), diags)
+    let template = BeatTemplate {
+        keys,
+        span,
+        faulty,
+        defs: BTreeSet::new(),
+    };
+    (Some(template), diags)
 }
 
 /// An argument's text in a header: a literal as written, a `@def` as its
@@ -447,18 +494,22 @@ fn component_attr(name: &str, at: Span) -> Attr {
 /// doc). Runs once per beat (`TemplateUse::expanded`), so every surface may
 /// call it on the document it parsed; the diagnostics come with the first
 /// expansion. `components` is the document's resolved `components:`;
-/// `occasions` the resolved vocabulary a fixed `on:` is judged against.
+/// `occasions` the resolved vocabulary a fixed `on:` is judged against;
+/// `host_defs` the def names the document resolves `@name` against.
 ///
 /// A header value no use can change ([`TemplateKey::fixed`]) that is faulty
 /// is [`check_template_header`]'s, reported once in the component: the use
-/// derives nothing for that key. Such a use — and one of a faulty header,
-/// an unknown component or one with no `beat:` — is marked
+/// derives nothing for that key. So is a condition key naming a `@name`
+/// that is no param, no def the component sees and no def of the host
+/// ([`check_template_refs`]). Such a use — and one of a faulty header, an
+/// unknown component or one with no `beat:` — is marked
 /// `TemplateUse::failed`, so the checks say nothing about what the template
 /// would have supplied.
 pub fn expand_beat_templates(
     doc: &mut Document,
     components: &ComponentSet,
     occasions: &BTreeMap<String, OccasionDecl>,
+    host_defs: &BTreeSet<String>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for beat in &mut doc.beats {
@@ -527,7 +578,17 @@ pub fn expand_beat_templates(
                 failed = true;
                 continue;
             }
-            if !CEL_KEYS.contains(&key.as_str()) {
+            if CEL_KEYS.contains(&key.as_str()) {
+                let unknown = at_refs(raw).into_iter().any(|(_, _, n)| {
+                    !def.params.iter().any(|(p, _)| p == n)
+                        && !template.defs.contains(n)
+                        && !host_defs.contains(n)
+                });
+                if unknown {
+                    failed = true;
+                    continue;
+                }
+            } else {
                 let bad = at_refs(raw)
                     .into_iter()
                     .find_map(|(_, _, n)| expr.get(n).map(|s| (n, *s)));

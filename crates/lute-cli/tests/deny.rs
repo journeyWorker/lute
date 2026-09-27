@@ -241,3 +241,24 @@ fn check_project_unknown_deny_code_is_usage_error() {
     ]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// `lute explain <code>` is not a command: the lookup is `--explain`. A
+/// code-shaped argument (any case) gets that hint (exit 2) instead of clap's
+/// "similar subcommand: play"; anything else keeps clap's own usage error.
+#[test]
+fn explain_subcommand_with_a_code_hints_the_flag() {
+    for code in ["E-UNDECLARED-REF", "w-sequence-stall"] {
+        let out = run(&["explain", code]);
+        assert_eq!(out.status.code(), Some(2));
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            err.contains(&format!("did you mean `lute --explain {code}`?")),
+            "{err}"
+        );
+        assert!(!err.contains("play"), "{err}");
+    }
+    let out = run(&["explain", "something"]);
+    assert_eq!(out.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!err.contains("--explain"), "clap's own error stays: {err}");
+}

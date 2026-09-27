@@ -1594,6 +1594,12 @@ A quest handler's `::set` writes the same path a `<reward kind="…" credits=…
 
 Spec: [dsl 0.23.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
 
+### W-SEQUENCE-ORDER
+
+On a `select: sequence` occasion, a scene listed in the project's `sequence:` writes its own `priority:`, which places it out of the order the list gives — the list's order is the priority the sequence derives. Remove the scene's `priority:`, or move it in `sequence.scenes`.
+
+Spec: [dsl 0.27.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+
 ### W-SEQUENCE-STALL
 
 A scene listed in the project's `sequence:` has its own `when:`, and the next listed scene waits on it through the `after:` the sequence writes — when the first does not play, the chain stalls. Give the next scene its own `after:`, or take the optional scene out of the list.

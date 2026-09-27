@@ -240,10 +240,93 @@ pub fn check_project_sequence(
         .sequence()
         .map(|s| check_sequence(s, &manifest, docs, occasions))
         .unwrap_or_default();
+    let order = project
+        .defaults
+        .sequence()
+        .map(|s| check_sequence_order(s, docs, occasions))
+        .unwrap_or_default();
     shape
         .chain(ids)
         .map(|d| (manifest_path.clone(), d))
+        .chain(order)
         .collect()
+}
+
+/// A listed scene whose own `priority:` puts it out of the listed order on
+/// a `select: sequence` occasion, where the chain IS the priority order
+/// ([`chained`]).
+pub const W_SEQUENCE_ORDER: &str = "W-SEQUENCE-ORDER";
+
+/// [`W_SEQUENCE_ORDER`], at the scene's own `priority:` key: on a `select:
+/// sequence` occasion, a listed scene that writes its own `priority:` whose
+/// value breaks the strictly descending order the list derives — against the
+/// effective (own or derived) priority of every other listed scene. `docs`
+/// are already desugared.
+pub fn check_sequence_order(
+    sequence: &Sequence,
+    docs: &[(PathBuf, Document)],
+    occasions: &BTreeMap<String, OccasionDecl>,
+) -> Vec<(PathBuf, Diagnostic)> {
+    if chained(&sequence.occasion, occasions) {
+        return Vec::new();
+    }
+    let scenes = crate::connectivity::scene_key_set(docs);
+    let priority = |yaml: &str| {
+        serde_yaml::from_str::<serde_yaml::Value>(yaml)
+            .ok()?
+            .get("priority")?
+            .as_f64()
+    };
+    // (index in the list, path, doc, effective priority, own priority)
+    let listed: Vec<(usize, &PathBuf, &Document, f64, Option<f64>)> = sequence
+        .scenes
+        .iter()
+        .enumerate()
+        .flat_map(|(i, id)| {
+            scenes
+                .get(id)
+                .into_iter()
+                .flatten()
+                .filter_map(move |(path, _)| {
+                    let (p, doc) = docs.iter().find(|(p, _)| p == path)?;
+                    let effective = priority(&doc.meta.raw_yaml)?;
+                    Some((
+                        i,
+                        p,
+                        doc,
+                        effective,
+                        priority(authored_yaml(&doc.meta.raw_yaml)),
+                    ))
+                })
+        })
+        .collect();
+    let mut out = Vec::new();
+    for &(i, path, doc, effective, own) in &listed {
+        let Some(own) = own else { continue };
+        let out_of_order = listed.iter().any(|&(j, _, _, other, _)| {
+            (j < i && other <= effective) || (j > i && other >= effective)
+        });
+        if !out_of_order {
+            continue;
+        }
+        let id = &sequence.scenes[i];
+        out.push((
+            path.clone(),
+            Diagnostic {
+                code: W_SEQUENCE_ORDER.to_string(),
+                severity: Severity::Warning,
+                ..diag(
+                    format!(
+                        "scene `{id}` sets its own `priority: {own}`, so it plays out of the order \
+                         `sequence:` lists — remove its `priority:` to play it where it is listed, \
+                         or move it in `sequence.scenes` (dsl 0.27.0 §8)"
+                    ),
+                    crate::meta::meta_key_span(&doc.meta, "priority"),
+                )
+            },
+        ));
+    }
+    out
 }
 
 /// Every occasion a beat of `docs` answers by its own hand — a scene's
