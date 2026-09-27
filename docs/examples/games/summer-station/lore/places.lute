@@ -1,0 +1,39 @@
+---
+kind: lore
+id: places
+title: The station and the village, when nobody is there
+---
+
+// Fallbacks: what a place says when no one in the schedule is in it.
+// Negative priority, so any person-beat outranks them.
+
+<entry id="deckEmpty" on="visit" target="place.deck" category="bark" priority="-1">
+  @narrator: The deck is empty. The anemometer turns for nobody in particular. The logbook lies open on the desk under a stone.
+</entry>
+
+<entry id="kitchenEmpty" on="visit" target="place.kitchen" category="bark" priority="-1">
+  @narrator: The kitchen is empty. The kettle is still warm, which at this altitude means someone left it within the last ten minutes.
+</entry>
+
+<entry id="radioEmpty" on="visit" target="place.radio" category="bark" priority="-1">
+  @narrator: The radio room hums to itself. A red light says RECEIVING, and nobody is.
+</entry>
+
+<entry id="roofEmpty" on="visit" target="place.roof" category="bark" priority="-1">
+  <match on="run.weather">
+    <when is="storm">
+      @narrator: You get the hatch open three inches and the wind takes the rest of the decision for you. Not tonight.
+    </when>
+    <otherwise>
+      @narrator: The roof is tar, a guard rail, and the whole sky. Nobody else is up here.
+    </otherwise>
+  </match>
+</entry>
+
+<entry id="villageShut" on="visit" target="place.village" category="bark" priority="100" when="holds(pathShut(village))">
+  @narrator: The first switchback is a brown river carrying half the mountain down to the valley. You go back inside.
+</entry>
+
+<entry id="villageQuiet" on="visit" target="place.village" category="bark" priority="-1">
+  @narrator: The village is shuttered for the evening. A cat on the hall steps looks at you like you've arrived at the wrong time, which you have.
+</entry>

@@ -1,0 +1,36 @@
+---
+kind: scene
+id: kai.date
+title: Kai — the fifth bar
+on: slotStart
+when: "run.route == 'kai' && run.day == 7 && run.slot == 'afterSchool'"
+priority: 10
+after: 'visited("common.festival")'
+---
+
+## The old music room
+
+::bg{location="musicRoom" time="dusk"}
+::music{action="start" mood="romantic" volume="down"}
+::auto{character="kai" anchor="center" action="fadeInUp"}
+@kai{emotion="smirk"}: Mind the floor. Left of the piano is a hole. Right of the piano is a bigger hole.
+@kai: Four bars. I've had four bars for a year. Sit. Play the fifth one.
+@kai{emotion="happy" when="holds(locked(ren))"}: Aoki still thinks the room is empty. You lied very well for someone who's bad at lying.
+
+::date{with="kai" spot="musicRoom" resultKey="duet"}
+
+<match on="scene.date.duet.mood">
+  <when is="perfect">
+    @kai{emotion="fond"}: ...That's it. That's the fifth bar. Play it again, I need to hear it's real.
+    ::use{component="cg" id="cgKaiDuet"}
+    ::set{run.aff.kai += 2}
+  </when>
+  <when is="sweet">
+    @kai{emotion="smirk"}: Wrong notes. Right idea. Come back tomorrow.
+    ::set{run.aff.kai += 1}
+  </when>
+  <otherwise>
+    @kai{emotion="angry"}: Forget it. It's not your song. It's not anybody's.
+  </otherwise>
+</match>
+@narrator{when="scene.date.duet.hearts >= 5"}: He leaves the lid open when you go. He never leaves the lid open.

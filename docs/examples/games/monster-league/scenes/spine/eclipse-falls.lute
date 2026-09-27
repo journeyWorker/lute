@@ -1,0 +1,20 @@
+---
+kind: scene
+id: spine.eclipseFalls
+title: The Director steps down
+on: battleEnd
+priority: 100
+when: "holds(defeated(vex))"
+---
+
+## The empty gym
+
+::bg{location="earth-gym" time="day"}
+::music{action="change" mood="sad" volume="down"}
+::auto{character="vex" anchor="center" action="enter"}
+@vex: So. A child from Hollowtown, with a Dex and a bag of badges.
+@vex{when="run.lair.helixHQ == 'cleared'"}: You took my tower. You took my people out of it one floor at a time. And now this.
+@vex: Team Eclipse is finished. I am finished with it.
+@vex: I am going somewhere quiet, to think about what the monsters owe me and what I owe them. Do not look for me.
+::auto{character="vex" action="exit"}
+@narrator: The gym is empty. On the leader's platform, where Director Vex stood, the Earth Badge's case lies open.

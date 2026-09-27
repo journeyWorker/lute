@@ -1,0 +1,52 @@
+---
+kind: lore
+id: barks
+title: Passing someone in the corridor
+---
+
+// Tap someone on the map. Each love interest has a passing line, a cold one
+// once their route is locked, and a warm one once you are on their route.
+
+<entry id="renPass" on="talk" target="npc.ren" category="bark">
+  @ren: Walk on the left. The corridor has a left for a reason.
+</entry>
+<entry id="renCold" on="talk" target="npc.ren" category="bark" priority="10" when="holds(locked(ren))">
+  @ren{emotion="stern"}: Excuse me.
+</entry>
+<entry id="renWarm" on="talk" target="npc.ren" category="bark" priority="20" when="run.route == 'ren'">
+  @ren{emotion="flustered"}: You're walking on the right. ...I'll allow it. Today.
+</entry>
+
+<entry id="mikaPass" on="talk" target="npc.mika" category="bark">
+  @mika{emotion="laughing"}: Race you to the canteen! Walking race! I'm winning!
+</entry>
+<entry id="mikaCold" on="talk" target="npc.mika" category="bark" priority="10" when="holds(locked(mika))">
+  @mika{emotion="hurt"}: Hey. ...Hey.
+</entry>
+<entry id="mikaWarm" on="talk" target="npc.mika" category="bark" priority="20" when="run.route == 'mika'">
+  @mika{emotion="fond"}: There you are. I saved you the good bench. It's the same as the other benches, but it's good because I saved it.
+</entry>
+
+<entry id="sorenPass" on="talk" target="npc.soren" category="bark">
+  @soren{emotion="shy"}: Oh — hello. I was just — reading. Walking. Reading while walking. Sorry.
+</entry>
+<entry id="sorenCold" on="talk" target="npc.soren" category="bark" priority="10" when="holds(locked(soren))">
+  @soren{emotion="sad"}: The annex has the old atlases. You should look at the old atlases. Somebody should.
+</entry>
+<entry id="sorenWarm" on="talk" target="npc.soren" category="bark" priority="20" when="run.route == 'soren'">
+  @soren{emotion="happy"}: I've been reading the same page for an hour. I blame you. Formally.
+</entry>
+
+<entry id="kaiPass" on="talk" target="npc.kai" category="bark">
+  @kai{emotion="smirk"}: What. I'm not doing anything. Keep walking.
+</entry>
+<entry id="kaiCold" on="talk" target="npc.kai" category="bark" priority="10" when="holds(locked(kai))">
+  @kai{emotion="angry"}: Tell Aoki I said hi.
+</entry>
+<entry id="kaiWarm" on="talk" target="npc.kai" category="bark" priority="20" when="run.route == 'kai'">
+  @kai{emotion="fond"}: Hummed the fifth bar in maths. Teacher asked if I was ill. Your fault.
+</entry>
+
+<entry id="nanaPass" on="talk" target="npc.nana" category="bark">
+  @nana{emotion="teasing"}: Report later. I want names.
+</entry>

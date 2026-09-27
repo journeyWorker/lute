@@ -1,0 +1,7 @@
+# Without the flute the giant blocks Route 12 in mid's words (over the spine
+# fallback); with it the gate is open and neither bark is eligible.
+file: ../../lore/mid/gates.lute
+entry: midGateSleepingGiant
+expect:
+  eligible: { midGateSleepingGiant: true }
+  transcriptContains: ["It rises, it falls, it snores."]

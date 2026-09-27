@@ -1,0 +1,147 @@
+# Hollow Ward — the world contract.
+#
+# St. Agathe's Hollow Ward, closed 1979. One night, 23:00 to dawn. Nell Arden
+# goes in after her brother Tobias. The ENGINE owns the clock, the doors, the
+# bag, the sanity meter, where the Orderly is, and the chase; content reads
+# those and says what each moment means.
+
+state:
+  # ── the clock: one night, one slot per hour (engine) ──
+  run.night: { type: number, default: 1, owner: engine }
+  run.hour:  { type: { domain: hour }, default: h23, owner: engine }
+
+  # ── the meters and the Orderly (engine) ──
+  run.sanity:  { type: number, default: 10, owner: engine }
+  run.stalker: { type: { domain: room }, default: morgue, owner: engine }
+
+  # ── content-owned progress ──
+  run.power:    { type: bool, default: false }   # the boiler relit, the lifts and surgery doors live
+  run.bellRung: { type: bool, default: false }   # the chapel bell rung at the hour of the round
+  run.fate:     { type: { domain: fate }, default: alive }
+  run.chases:   { type: number, default: 0 }     # encounters survived
+
+  # ── across nights ──
+  user.deaths: { type: number, default: 0 }
+
+enums:
+  hour:
+    members: [h23, h00, h01, h02, h03, h04, h05]
+    labels: { h23: "eleven", h00: "midnight", h01: "one", h02: "two", h03: "three", h04: "four", h05: "five" }
+  fate:
+    members: [alive, taken, broken, drowned, burned, lost, escaped, together, released]
+    labels:
+      alive: "still inside"
+      taken: "taken by the Orderly"
+      broken: "admitted"
+      drowned: "drowned in the hydrotherapy suite"
+      burned: "burned in the boiler room"
+      lost: "kept by the ward at dawn"
+      escaped: "out, alone"
+      together: "out, with Tobias"
+      released: "out, and the ward asleep"
+
+clock:
+  day: run.night
+  slot: run.hour
+  slots: [h23, h00, h01, h02, h03, h04, h05]
+  raise: { slot: hourStrikes, dayEnd: dawn }
+  days: 1                  # one night: the move past five is dawn, and the clock stops
+
+entities:
+  room:
+    members: [gate, lobby, reception, chapel, childrensWard, hydro, pharmacy, records, morgue, boiler, surgery, office]
+    labels:                # 0.27: what {{occasion.target}} says for a room
+      gate: "the gate"
+      lobby: "the lobby"
+      reception: "reception"
+      chapel: "the chapel"
+      childrensWard: "the children's ward"
+      hydro: "hydrotherapy"
+      pharmacy: "the pharmacy"
+      records: "records"
+      morgue: "the morgue"
+      boiler: "the boiler room"
+      surgery: "surgery"
+      office: "the director's office"
+  item:
+    members: [lantern, recordsKey, morgueKey, sedative, brassKey, keycard, matches, ledger, musicBox]
+  fixture:
+    members: [pharmacyPad, gatePad, officeSafe, hydroValves, boilerLevers, furnace, freezer, bellRope, crib]
+  note:
+    members: [plaque, roster, drawing, hymnBoard, ledgerPage1, ledgerPage2, ledgerPage3, diary, tape, bedCard, orderlyFile, tobiasNote]
+  person: { members: [tobias] }
+
+relations:
+  # the bag: the ENGINE asserts holding() when the player picks something up
+  # (and raises pickup@item.<item>); ::give asks it to, ::consume takes one away
+  holding:   { args: [item], tier: run, reserved: true, changedOn: [pickup] }
+  # rooms the ward leaves open
+  openAtNight: { args: [room], tier: run }
+  # content-owned progress
+  solved:    { args: [fixture], tier: run }     # a puzzle done for good
+  burned:    { args: [item], tier: run }
+  following: { args: [person], tier: run }
+  taken:     { args: [person], tier: run, excludes: [following] }
+  # what the engine reads to open a door
+  canEnter:  { args: [room], derive: true }
+  # the door graph, and where the Orderly is one room away (footsteps' gate)
+  door:      { args: [room, room], tier: run }
+  nextTo:    { args: [room, room], derive: true }
+  close:     { args: [room], derive: true }
+
+facts:
+  - "openAtNight(gate)"
+  - "openAtNight(lobby)"
+  - "openAtNight(reception)"
+  - "openAtNight(chapel)"
+  - "openAtNight(childrensWard)"
+  - "openAtNight(hydro)"
+  - "door(gate, lobby)"
+  - "door(lobby, reception)"
+  - "door(lobby, chapel)"
+  - "door(lobby, childrensWard)"
+  - "door(reception, records)"
+  - "door(reception, pharmacy)"
+  - "door(pharmacy, morgue)"
+  - "door(childrensWard, hydro)"
+  - "door(hydro, boiler)"
+  - "door(morgue, boiler)"
+  - "door(boiler, surgery)"
+  - "door(surgery, office)"
+  - "door(records, office)"
+
+rules:
+  - "canEnter(R) :- openAtNight(R)"
+  - "canEnter(pharmacy) :- solved(pharmacyPad)"
+  - "canEnter(records) :- holding(recordsKey)"
+  - "canEnter(morgue) :- holding(morgueKey)"
+  - "canEnter(boiler) :- holding(lantern)"
+  - "canEnter(surgery) :- cel(\"run.power\")"
+  - "canEnter(office) :- holding(brassKey)"
+  - "nextTo(A, B) :- door(A, B)"
+  - "nextTo(A, B) :- door(B, A)"
+  - "close(R) :- nextTo(R, S), cel(\"run.stalker == S\")"
+
+# the game is over: dead, or out through the gate
+terminal: "run.fate != 'alive'"
+
+defs:
+  # the codes (the notes give them away)
+  pharmacyCode: "1947"      # the plaque: the year the ward opened
+  safeCode: "318"           # the hymn board: 3, 1, 8
+  gateCode: "275"           # the three ledger pages: 2, 7, 5
+  # meters
+  shaken: "run.sanity <= 6"
+  fraying: "run.sanity <= 3"
+  lateNight: "clock.index >= 4"   # three o'clock on
+  dead: "run.fate in ['taken', 'broken', 'drowned', 'burned', 'lost']"
+  out: "run.fate in ['escaped', 'together', 'released']"
+  withToby: "holds(following(tobias))"
+
+cast:
+  nell:    { name: Nell }
+  tobias:  { name: Tobias, present: "holds(following(tobias))" }
+  orderly: { name: "The Orderly" }
+  maud:    { name: "Sister Maud" }
+  hale:    { name: "Dr. Hale" }
+  child:   { name: "A child" }

@@ -1,0 +1,34 @@
+---
+kind: lore
+id: skerry.wreckage
+title: What the storm left
+---
+
+<entry id="oilskin" on="examine" target="item.oilskin" category="item" title="An oilskin coat">
+  @narrator: A woman's oilskin, wedged in the landing chain above the high-water mark. It is dry inside: hung there after the rain stopped, at first light.
+  @narrator: The collar tape reads A. PELL.
+  ::assert{placedBy(oilskin, ada, landing, dawn)}
+  ::pocket{item="oilskin"}
+</entry>
+
+<entry id="galleryRail" on="examine" target="item.gallery_rail" category="item" title="The gallery rail">
+  @narrator: The seaward rail of the lantern gallery has sheared at both bolts. A tuft of navy wool is snagged on the stump.
+  @narrator: Ninety feet below, the Teeth show white with every swell.
+  ::assert{damaged(gallery_rail)}
+</entry>
+
+<entry id="guillemot" on="examine" target="item.guillemot" category="item" title="The Guillemot">
+  @narrator: What is left of a clinker-built fishing boat lies jammed in the north gully. Her name board has come away whole: GUILLEMOT, and under it, T. CRANE.
+  ::assert{implicates(guillemot, tobias)}
+</entry>
+
+<entry id="mooringRope" on="examine" target="item.mooring_rope" category="item" title="The Guillemot's painter">
+  @narrator: A length of the Guillemot's painter still trails from her stem ring. The end is not cut. It is chafed to a brush, the way rope goes when it saws all night against a quay ring.
+  @inspector{mono}: Nobody sailed her here. She came on her own.
+</entry>
+
+<entry id="supperTin" on="examine" target="item.supper_tin" category="item" title="A supper tin">
+  @narrator: A dented supper tin on the cottage table, lid off, the bread in it barely touched.
+  @narrator: A label is tied to the handle: "For E. from A. Eat something."
+  ::assert{implicates(supper_tin, ada)}
+</entry>

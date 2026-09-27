@@ -1,0 +1,46 @@
+# Route C — draw steel: turn Oda away, refuse every bargain, storm the bridge.
+# The ENGINE fights the battle: it writes run.battle.outcome and who fell, then
+# raises battleEnd with the wagons it burned. Isolde does not get up, and the
+# engine no longer offers to talk to her (`talk`'s raisedWhen).
+#   lute play . --script plays/battle.play.yaml
+choose:
+  orders: swear
+  plea: refuse
+  chain: [steel]
+steps:
+  - include: steps/to-the-ford.yaml
+  - label: camp, then on to the chain
+    advance: day
+    engine: { state: { run.leg: 3 } }
+    expect: { winner: bridge.arrival, state: { run.bridge: stormed }, quests: { emberRoad: active, hostages: unset }, notFacts: [inParty(wren)] }
+  - label: the battle system fights the Tollbridge
+    engine:
+      state: { run.battle.outcome: won }
+      facts: [fell(isolde), fell(maelis)]
+    expect: { quests: { emberRoad: active, openBridge: complete }, facts: [mourned(isolde)], notFacts: [inParty(isolde)] }
+  - occasion: battleEnd
+    label: after the battle
+    payload: { wagonsLost: 2 }
+    expect: { presented: [bridge.victory, bridge.fallen], state: { run.wagons: 9 } }
+  - occasion: camp
+    expect: { presented: [camp.fire, camp.mourning] }
+  - occasion: banter
+    expect: { winner: banterGrief }
+  - engine: { state: { run.leg: 4 } }
+  - occasion: chapterEnd
+expect:
+  end: complete
+  quests: { emberRoad: complete, hostages: unset, parley: unset, toll: unset, isoldeOath: unset }
+  state: { run.bridge: stormed, run.battle.outcome: won, run.rep.dusk: -3 }
+  facts: [fell(isolde), mourned(isolde), fell(maelis), inParty(corvin)]
+  notFacts: [inParty(isolde), inParty(wren)]
+  transcriptContains:
+    - "@narrator: Maelis of Coldwater lies across the chain she guarded."
+    - "@narrator: Isolde Vane lies where she chose to stand"
+    - "@corvin: She'd have given a speech."
+    - "@narrator: The Tollbridge is quiet again."
+    - "@narrator: The wagons crossed over the cut chain"
+    - "@narrator: The Company's count comes to two wagons fewer than it was this morning."
+    - "@narrator: Nine wagons on the far bank."
+  transcriptLacks:
+    - "@isolde: I knew her brother. Now I have known them both."

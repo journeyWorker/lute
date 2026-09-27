@@ -1,0 +1,12 @@
+# June settles only for someone who knows her name (the beat template's
+# body frames the beat's own lines).
+file: ../lore/isolation.lute
+beat: june
+entriesRead: { run: [fileJune] }
+expect:
+  transcriptContains:
+    - "@june: You know my name. Nobody here knows my name."
+    - "The breathing under the sheet slows"
+  state: { run.hush: 1 }
+  facts: [calmed(june)]
+  end: complete

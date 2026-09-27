@@ -1,0 +1,5 @@
+file: ../../quests/north/side.lute
+accepts: [northDojo]
+facts: [defeated(verdantDojoKarateKoji)]
+expect:
+  quests: { northDojo: active }

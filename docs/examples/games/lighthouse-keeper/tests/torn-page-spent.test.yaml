@@ -1,0 +1,5 @@
+# Once the page is pieced the puzzle is spent (spentBy), and the page reads as an entry.
+file: ../lore/torn-page.lute
+facts: ["carrying(torn_page)", "pieced(torn_page)"]
+expect:
+  eligible: { pieceThePage: false, tornPageRead: true }

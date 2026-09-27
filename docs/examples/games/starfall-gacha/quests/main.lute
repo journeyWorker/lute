@@ -1,0 +1,37 @@
+---
+kind: quest
+id: mainQuests
+---
+
+<quest id="chapter1" title="Chapter 1: Ashfall" start="visited('main.prologue')" follows="visited('main.prologue')">
+  <reward kind="GEMS" amount="300"/>
+  <objective id="road" title="Clear Ashfall Road" done="visited('main.c1s1')"/>
+  <objective id="knight" title="Drive off the Lantern Knight" done="visited('main.c1s8')"/>
+  <on event="questComplete">
+    @lumi{emotion="happy"}: Chapter 1 cleared! Three hundred gems in your pocket. You know where the well is.
+  </on>
+</quest>
+
+<quest id="chapter2" title="Chapter 2: Cold Forges" start="quest.chapter1.state == 'complete'">
+  <reward kind="GEMS" amount="300"/>
+  <objective id="forge" title="Find the last burning forge" done="visited('main.c2s1')"/>
+  <objective id="lantern" title="Free the star in the lantern" done="visited('main.c2s8')"/>
+</quest>
+
+<quest id="chapter3" title="Chapter 3: The Hollow Keep" start="quest.chapter2.state == 'complete' && @ch3Released">
+  <reward kind="GEMS" amount="500"/>
+  <reward kind="HERO" target="aria" amount="1"/>
+  <objective id="gate" title="Reach the keep" done="visited('main.c3s1')"/>
+  <objective id="king" title="Face the Hollow King" done="visited('main.c3s8')"/>
+  <on event="questComplete">
+    @lumi{emotion="happy"}: Main story cleared! Here, an extra Aria. She insisted.
+  </on>
+</quest>
+
+<quest id="chapter4" title="Chapter 4: The Lantern Sea" start="quest.chapter3.state == 'complete' && @ch4Released">
+  <reward kind="GEMS" amount="500"/>
+  <objective id="shore" title="Reach the shore" done="visited('main.c4s1')"/>
+  <objective id="watch" title="Choose who keeps watch" done="visited('main.c4s2')"/>
+  <objective id="deep" title="Find the deep lantern" done="visited('main.c4s3')"/>
+  <objective id="codex" title="Read about the Frost King" done="holds(learned(frostKing))" optional/>
+</quest>

@@ -1,0 +1,17 @@
+---
+kind: scene
+id: run.descent
+title: Over the rail
+pov: ilo
+# The routine: every dive opens with it.
+on: runStart
+once: false
+priority: 10
+---
+
+## Rail
+
+::bg{location="rail" time="dawn"}
+::sfx{sound="rope paying out"}
+@narrator: Ilo checks the knot at his waist twice, the way Brann taught him, and goes over the side.
+@brann{os}: Count your breaths, boy. Count them out loud if you have to.

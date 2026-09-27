@@ -1,0 +1,16 @@
+# Dawdle until evening: the deadline passes before Pippa names anyone.
+choose: { firstLook: sugarBowl, askCook: [oven, leave], accuse: accuseCook }
+steps:
+  - occasion: chapter
+    expect: { winner: arrival }
+  - advance: slot
+  - advance: slot
+  - occasion: chapter
+    expect: { winner: parlour }
+  - occasion: chapter
+  - occasion: chapter
+  - occasion: chapter
+    expect: { winner: ending.wrong }
+expect:
+  quests: { findSpoon: failed }
+  state: { run.slot: evening }

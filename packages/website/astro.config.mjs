@@ -181,7 +181,7 @@ export default defineConfig({
         {
           label: "Examples",
           translations: { ko: "예제" },
-          items: [{ slug: "examples/showcase" }],
+          items: [{ slug: "examples/showcase" }, { slug: "examples/games" }],
         },
         {
           label: "Specification",

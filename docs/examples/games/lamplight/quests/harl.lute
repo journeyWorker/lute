@@ -1,0 +1,13 @@
+---
+kind: quest
+id: lamplight.harl
+title: The one wire
+---
+
+<quest id="telegram" title="One wire from Harl" tier="run" start="visited('timetable.harl')">
+  <objective id="sent" title="Wire someone before the train leaves Harl" done="run.wired != 'none'" by="clock.index >= 3"/>
+  <objective id="answer" title="Have the answer in hand at Ossery" done="visited('timetable.wireBoard') || visited('timetable.wireVarn')" on="hourStrikes" until="run.hour == 'h06'"/>
+  <on event="questFailed">
+    @inspector{code="0010" mono}: The whistle, and Harl slides away behind us with its one lit window. No wire, then. Only what I can see.
+  </on>
+</quest>

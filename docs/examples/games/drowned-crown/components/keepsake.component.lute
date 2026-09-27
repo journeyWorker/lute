@@ -1,0 +1,14 @@
+---
+component: keepsake
+# A crew member hands Ilo a keepsake: record the gift (the sea-chest offers it
+# from then on) and say where it went.
+effects: true
+params:
+  who: speaker
+  item: { enum: [compass, lantern, shell] }
+---
+
+## Keepsake
+
+::assert{gifted(@who, @item)}
+@narrator: Ilo stows {{@who}}'s {{@item}} in the sea-chest at the stern.

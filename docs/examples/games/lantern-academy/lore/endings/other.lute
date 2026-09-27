@@ -1,0 +1,23 @@
+---
+kind: lore
+id: end.other
+title: The lone ending and the keeper's ending
+---
+
+<beat id="keeper" on="termEnd" after="visited('hotaru.farewell')" title="Hotaru — the keeper's ending" priority="20" when="run.route == 'hotaru'">
+  @narrator: On the last night of term every lantern on the lake goes out at once, and then, one by one, relights itself, with nobody on the jetty to light it.
+  @nana{emotion="worried"}: Who's the girl in the old uniform? In the front row? She's crying. She's — laughing?
+  @hotaru{emotion="smiling"}: Hello. I'm new. I think I'm new. Have we met?
+  ::use{component="cg" id="cgKeeperEnd"}
+  ::set{run.ending = 'keeper'}
+  ::set{user.terms += 1}
+</beat>
+
+<beat id="lone" on="termEnd" title="The lone ending" priority="0">
+  @narrator: The ceremony ends. The ferry is loud with people promising to write to each other.
+  @nana{emotion="happy"}: Same room next term? I'll save you the window that sticks.
+  @you{mono}: My lantern came back to shore this morning. Empty. Waiting.
+  ::set{run.ending = 'solo'}
+  ::set{user.terms += 1}
+  @narrator: ~ The lone ending ~
+</beat>

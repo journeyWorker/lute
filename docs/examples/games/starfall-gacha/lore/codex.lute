@@ -1,0 +1,36 @@
+---
+kind: lore
+id: codex
+title: The Archive (codex pages)
+series: frostCodex
+---
+
+/* The Archive tab. Each page answers codexOpen for its topic and teaches
+   it for good (learned is user tier). Pages unlock as the story reaches
+   them; the order below is the series order the Archive lists them in. */
+
+<entry id="lanternSeaPage" on="codexOpen" target="topic.lanternSea" title="The Lantern Sea" when="visited('main.c3s8')">
+  @narrator: Every wish the Hollow King swallowed and could not keep, he let go. They drift west, lit, forever.
+  ::assert{learned(lanternSea)}
+</entry>
+
+<entry id="frostKingPage" on="codexOpen" target="topic.frostKing" title="The Frost King" when="holds(learned(lanternSea))">
+  @narrator: Before he was hollow he was the Frost King, and his first wish was for winter to stay. It did. He drowned the lantern himself.
+  ::assert{learned(frostKing)}
+</entry>
+
+<entry id="nyxOathPage" on="codexOpen" target="topic.nyxOath" title="Nyx's Oath" when="holds(owned(nyx))">
+  @nyx{emotion="shy"}: I swore to keep one candle lit for every wish nobody kept. It's a lot of candles.
+  ::assert{learned(nyxOath)}
+</entry>
+
+<entry id="vigilPage" on="codexOpen" target="topic.vigil" title="The Frostlight Vigil">
+  @narrator: Once a year the sea freezes for seven nights, and the lanterns can be reached on foot.
+  @narrator{when="@frostLive"}: The ice is thick tonight. {{@frostDaysLeft:plural(# night|# nights)}} of vigil left after this one.
+</entry>
+
+/* A page whose topic the story has not reached yet: the title, and nothing
+   else. The kind target renders the topic's label. */
+<entry id="blankPage" on="codexOpen" target="kind:topic" title="(locked)" priority="-1">
+  @narrator: "{{occasion.target}}". The rest of the page is still blank.
+</entry>

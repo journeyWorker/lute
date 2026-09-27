@@ -1,0 +1,12 @@
+# The third night comes with the twins still in the tunnel: the `by=` deadline fails the quest.
+file: ../quests/ember-road.lute
+# the rescue is a subquest of the Ember Road: accepted only while it is active
+visited: [road.departure]
+accepts: [hostages]
+facts: ["knows(passage)"]
+state: { run.night: 3 }
+expect:
+  quests: { hostages: failed }
+  state: { run.rep.marrow: -2 }
+  transcriptContains: ["By the third night the tunnel under the mill is empty"]
+  end: complete

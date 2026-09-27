@@ -1,0 +1,25 @@
+---
+kind: scene
+id: rock.thirdMorning
+title: The Last Morning
+on: arrive
+when: "@lastDay"
+priority: 10
+after: 'visited("rock.secondMorning")'
+---
+
+## The Landing, Early
+
+::bg{location="skerry_landing" time="morning"}
+::auto{character="hollis" anchor="left" action="fadeInUp"}
+@hollis: Relief boat's tomorrow on the tide. The Board wants your report on it, Inspector, or they'll write their own.
+@hollis{when="holds(present(ada, _))"}: And Ada Pell is up and about. Walking the quay like a ghost.
+<match on="run.weather">
+  <when is="clear">
+    @hollis: Calm as a pond. Could have rowed out here in a washtub.
+  </when>
+  <otherwise>
+    @hollis: Still lumpy out past the Teeth. Keep your report dry.
+  </otherwise>
+</match>
+::clear

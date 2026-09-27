@@ -1,0 +1,10 @@
+# Balking at Corvin's deal at the chain.
+file: ../lore/bridge-talks.lute
+visited: [bridge.arrival]
+beat: maelisSale
+quests: { toll: active }
+choose: { sale: balk }
+expect:
+  eligible: true
+  state: { run.tollRefused: true, run.bridge: held, run.approval.corvin: -1, run.approval.isolde: 1 }
+  end: complete

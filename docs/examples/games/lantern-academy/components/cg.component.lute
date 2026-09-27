@@ -1,0 +1,12 @@
+---
+component: cg
+effects: true
+params:
+  id: { type: { entity: cg } }
+---
+
+## CG
+
+// The engine shows the picture and files it; the save remembers it for good.
+::unlockCg{cg=@id}
+::assert{cgSeen(@id)}

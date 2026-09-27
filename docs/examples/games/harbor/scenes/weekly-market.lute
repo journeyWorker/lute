@@ -1,0 +1,16 @@
+---
+kind: scene
+id: market.weekly
+title: Monday market
+on: tide
+once: week
+when: "@monday && clock.slot == 'noon'"
+priority: 10
+---
+
+## Market
+
+@harbormaster: Market day! Bring what you caught.
+@narrator: The stalls go up at noon.
+@harbormaster{when="holds(caught(marlin))"}: That marlin fetches five coins.
+::sell{fish="marlin" price=5 when="holds(caught(marlin))"}

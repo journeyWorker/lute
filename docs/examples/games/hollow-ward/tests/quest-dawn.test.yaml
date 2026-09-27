@@ -1,0 +1,7 @@
+# Still inside at dawn: the ward keeps her (run.fate = lost), and both run
+# quests fail. (The clock ends at five: there is no night 2 to be late for.)
+file: ../quests/night.lute
+state: { run.fate: lost }
+expect:
+  quests: { beforeDawn: failed, findTobias: failed, quietWard: unset }
+  transcriptContains: ["The ward keeps its night. It has kept it for forty years; it can keep yours."]

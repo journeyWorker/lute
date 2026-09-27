@@ -1,0 +1,7 @@
+# The repeat bark answers any guardian; the Regent speaks his own.
+file: ../lore/guardians.lute
+entry: guardianAgain
+state: { occasion.target: regent }
+expect:
+  transcriptContains: ["@regent: Again, little heir? The throne is patient."]
+  transcriptLacks: ["The eel again."]

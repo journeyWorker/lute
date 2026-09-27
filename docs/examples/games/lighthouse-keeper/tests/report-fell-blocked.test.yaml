@@ -1,0 +1,16 @@
+# Tobias swears he saw Voss alive on the landing at dawn. Until something puts
+# someone ELSE on the landing at dawn, his sighting defeats `not seenAfter`, so
+# "he fell" cannot be written in the report.
+file: ../scenes/report.lute
+visited: [rock.arrival]
+facts:
+  - "placedBy(logbook, elias, gallery, midnight)"
+  - "damaged(gallery_rail)"
+  - "sawAt(tobias, elias, landing, dawn)"
+choose: { fate: drowned, onRock: nobody, liar: tobias, cause: misadventure }
+expect:
+  options: { fate: [drowned], liar: [tobias, nobody] }
+  facts: ["seenAfter(elias)"]
+  notFacts: ["fell(elias)", "misidentified(tobias, elias, dawn)"]
+  state: { run.verdictFate: drowned, run.verdictLiar: tobias }
+  end: complete

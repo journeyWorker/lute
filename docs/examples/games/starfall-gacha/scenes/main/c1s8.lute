@@ -1,0 +1,21 @@
+---
+kind: scene
+id: main.c1s8
+title: "1-8: The Lantern Knight"
+target: stage.c1s8
+once: user
+---
+
+## The knight falls back
+
+@hollow{os}: Little wishes. Little lights. You think you can take back what I have eaten?
+@aria{emotion="sad"}: That voice. That's him. That's the one who took the winter.
+<branch id="c1s8Answer" prompt="The voice is waiting for you to answer.">
+  <choice id="defy" label="Every star, one by one.">
+    @hollow{os emotion="smug"}: Then I will eat them twice.
+  </choice>
+  <choice id="silent" label="Say nothing. Draw your sword.">
+    @hollow{os}: Silence. Good. The quiet ones taste sweeter.
+  </choice>
+</branch>
+@lumi{emotion="sad"}: I hate him so much. I'm a star. I'm not built for hating. But I'm managing.

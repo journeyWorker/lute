@@ -1,0 +1,80 @@
+---
+kind: lore
+id: witnesses
+title: Testimony
+components: [../components/witness.component.lute]
+---
+
+<beat use="witness" id="hollis" who="hollis" title="Hollis, the boatman">
+  @hollis: Ask quick. The tide will not wait on the Board of Trade.
+  <hub id="hollisQ" prompt="What do you ask Hollis?">
+    <choice id="night" label="Where were you the night of the storm?" once>
+      @hollis: Behind my own bar till I shut at one. Full house, nobody fishing in that.
+      @hollis: Tobias Crane was on the end stool the whole evening, drinking his boat money. Still there when I rang time.
+      ::assert{sawAt(hollis, tobias, village, midnight)}
+    </choice>
+    <choice id="elias" label="What kind of keeper was Voss?" once>
+      @hollis: Careful. Too careful. Wound that clockwork every four hours like it was a sick child.
+    </choice>
+    <choice id="done" label="That will do" exit>
+      @hollis: Mind the weed on the steps.
+    </choice>
+  </hub>
+</beat>
+
+<beat use="witness" id="maren" who="maren" title="Maren Hale, the postmistress">
+  @maren: You'll be the man from the Board. Sit, if you must.
+  @maren: Ada? She was here with me all that night, burning with fever. I sat up with her till the light came.
+  ::assert{sawAt(maren, ada, village, midnight)}
+  ::assert{sawAt(maren, ada, village, dawn)}
+  <branch id="marenPress" prompt="Maren folds her hands.">
+    <choice id="thank" label="Thank her">
+      @maren: Then we are done.
+    </choice>
+    <choice id="tin" label="Ask who sent the keeper's supper" when="holds(implicates(supper_tin, ada))">
+      @maren{emotion="angry"}: Nobody sent anything. Ada could not stand, let alone row.
+    </choice>
+  </branch>
+</beat>
+
+<beat use="witness" id="marenConfronted" who="maren" title="Maren Hale, again" after="visited('witnesses.maren')" only="holds(liar(maren))">
+  @inspector: The log has a page in Ada's hand, dated two in the morning. On the rock.
+  @maren{emotion="sad"}: ...She took the skiff at dusk. I told her it was madness. She said he had not eaten in two days and the glass was falling.
+  @maren: I lied because a keeper who leaves her post is finished. And one who was on the rock when the head keeper died is worse than finished.
+</beat>
+
+<beat use="witness" id="tobias" who="tobias" title="Tobias Crane, fisherman">
+  @tobias: I know what they're saying. My boat on your rock, so I must have been there too.
+  @tobias: I was at Hollis's till he threw us out. At first light I borrowed my brother's skiff to look for the Guillemot.
+  @tobias: And I saw him. Voss. On the landing, in his oilskin, waving me off the Teeth. Alive, I swear it.
+  ::assert{sawAt(tobias, elias, landing, dawn)}
+  <branch id="tobiasAsk" prompt="Tobias twists his cap.">
+    <choice id="help" label="Promise to look into the Guillemot">
+      ::accept{quest="clearName"}
+      @tobias: That's all I ask. Look at her rope. Look at it.
+    </choice>
+    <choice id="doubt" label="Say nothing">
+      @tobias: Aye. Everyone says nothing.
+    </choice>
+  </branch>
+</beat>
+
+<beat use="witness" id="ada" who="ada" title="Ada Pell, assistant keeper">
+  @ada: Aunt Maren says you have been asking about me.
+  <branch id="adaPress" prompt="Ada will not meet your eye.">
+    <choice id="gentle" label="Ask how she is feeling">
+      @ada: Better. I was ill. I was ashore.
+    </choice>
+    <choice id="page" label="Show her the page in her hand" when="holds(onRock(ada, midnight))">
+      @ada{emotion="sad"}: I went out at dusk with his supper. The lamp was turning when I tied up. At two it was dark.
+      @ada: I went up. The rail was gone. I lit the lamp because that is what you do. Then I waited on the landing for the light to come.
+      @ada: Someone in a skiff came close under the Teeth at dawn. I waved him off. I had Elias's... no. I had my own coat on.
+      @ada{when="entry.keeperLogStub.read"}: The page he tore out. I took it. I tried to burn it in Aunt Maren's grate and I could not.
+      ::pocket{item="torn_page" when="entry.keeperLogStub.read"}
+      ::accept{quest="tornPage" when="entry.keeperLogStub.read"}
+    </choice>
+    <choice id="coat" label="Hand her the oilskin" when="holds(carrying(oilskin))">
+      @ada{emotion="sad"}: That is mine. He made me wear it on the gallery. He never wore his own.
+    </choice>
+  </branch>
+</beat>

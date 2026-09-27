@@ -1,0 +1,37 @@
+# Week 3 (days 15-21): Chapter 3 released on day 15; the harvest stall's
+# three-day grace; the first bond story.
+steps:
+  - occasion: login
+    label: the new week re-armed the tower climb
+    expect: { clock: { day: 15, weekday: Mon }, presented: [login.standardCard], quests: { towerWeekly: active } }
+  - occasion: shopVisit
+    target: shop.harvestShop
+    label: the festival is over, the stall is not
+    choose: { harvestStall: [leave] }
+    expect: { winner: shop.pimHarvest }
+  - occasion: stageClear
+    target: stage.c3s1
+    expect: { winner: main.c3s1 }
+  - occasion: stageClear
+    target: stage.c3s8
+    choose: { c3s8Choice: offer }
+    expect: { winner: main.c3s8, quests: { chapter3: complete } }
+  # bond points from three weeks of battles (engine)
+  - engine: { state: { user.bond.aria: 150, user.bond.cyra: 90 } }
+  - occasion: bondStory
+    target: hero.aria
+    expect: { winner: bonds.aria.ariaR1 }
+  - occasion: bondStory
+    target: hero.aria
+    label: r2 needs 300 points
+    expect: { winner: home.bondNotYet }
+  - occasion: bondStory
+    target: hero.cyra
+    expect: { winner: home.bondNotYet }
+  - advance: { to: { weekday: Thu } }
+    engine: { state: { user.loginStreak: 18, user.loginTotal: 18 } }
+    expect: { clock: { day: 18 } }
+  - occasion: shopVisit
+    target: shop.harvestShop
+    label: grace period over
+    expect: { winner: shop.pimClosed }

@@ -1,0 +1,8 @@
+# Ink `-> END` from the gallery rail: the scene stops mid-hub
+file: ../scenes/keeper.lute
+visited: [arrival]
+choose: { lamp: [gallery, gallery, gallery, leap] }
+expect:
+  state: { run.fate: drowned }
+  transcriptLacks: ["@narrator: The sun goes under."]
+  end: terminal

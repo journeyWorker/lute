@@ -1,0 +1,15 @@
+---
+kind: scene
+id: main.c2s8
+title: "2-8: What the Hounds Carry"
+target: stage.c2s8
+once: user
+---
+
+## A lantern in the snow
+
+@narrator: The last hound drops something as it flees: a lantern, cracked, with a single star inside.
+@lumi{emotion="surprised"}: That's Nell! She lived next to me! She owes me a comet!
+@narrator: The glass breaks. A pinprick of light shoots up and sticks to the sky.
+@aria{emotion="happy"}: Nine thousand nine hundred and... well. One more.
+@lumi: The keep's past the mountains. The road there isn't open yet. We'll need a lot more stars.

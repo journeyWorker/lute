@@ -1,0 +1,10 @@
+# day 13: one festival day left after today, one token in the pocket
+file: ../lore/shop.lute
+beat: pimHarvest
+state: { user.day: 13, season.harvest.tokens: 1 }
+choose: { harvestStall: [leave] }
+expect:
+  eligible: true
+  transcriptContains:
+    - "@pim: Welcome to the Harvest stall! The festival runs 1 more day after today. You've got 1 token."
+  end: complete

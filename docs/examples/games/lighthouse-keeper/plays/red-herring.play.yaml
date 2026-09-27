@@ -1,0 +1,54 @@
+# The island's version: the inspector follows the wreck, never reads past the
+# first log page, and hangs it on Tobias Crane. The Board is not convinced.
+choose:
+  firstQuestion: askBoat
+  lanternLook: [done]
+  marenPress: thank
+  fate: murdered
+  onRock: tobias
+  liar: nobody
+  cause: misadventure
+steps:
+  - occasion: arrive
+  - occasion: examine
+    target: item.guillemot
+    expect: { facts: ["suspect(tobias)"] }
+  - occasion: explore
+    target: place.lantern
+  - occasion: examine
+    target: item.logbook
+    expect: { winner: keeperLog1 }
+  - label: the engine schedules Maren overnight
+    advance: day
+    engine:
+      facts: ["present(maren, village)"]
+    expect: { winner: rock.secondMorning, presented: [rock.nightfall, places.thoughtsSuspect for tobias, rock.secondMorning] }
+  - occasion: interview
+    pick: witnesses.maren
+    # with only her word, Maren's alibi for Ada stands
+    expect: { facts: ["alibied(ada)"], notFacts: ["liar(maren)", "suspect(ada)"] }
+  - occasion: report
+    # the rule-only conclusion is not offered: nothing proves fell(elias) yet
+    expect:
+      winner: rock.report
+      options: { fate: [murdered, drowned], onRock: [tobias, nobody], liar: [nobody] }
+      notFacts: ["fell(elias)", "onRock(ada, midnight)"]
+  - occasion: inquest
+    expect: { quests: { reconstruction: failed, keeperInquiry: failed }, state: { run.verdictFate: murdered, run.verdictOnRock: tobias } }
+  # The Board sends the inspector back to try again.
+  - newRun: true
+    expect: { quests: { reconstruction: active, keeperInquiry: active }, state: { run.verdictFate: undecided }, facts: ["present(hollis, landing)", "onTheRock(lantern)"], notFacts: ["implicates(guillemot, tobias)"] }
+  - occasion: arrive
+    choose: { firstQuestion: askAda }
+    expect: { winner: rock.arrival }
+expect:
+  end: complete
+  state: { run.verdictFate: undecided, prev.run.verdictFate: murdered, user.casesClosed: 0 }
+  transcriptContains:
+    - "The inspector alleges foul play. A grave charge. The Board will want to see how it is supported."
+    - "The Board finds the reconstruction unsafe and returns an open verdict."
+    - "@chair: The Board does not accept the finding on the manner of death."
+    - "They sent you back, then. The last report satisfied nobody."
+  transcriptLacks:
+    - "The Board accepts the inspector's reconstruction in full."
+    - "No reconstruction reached the Board before the relief boat sailed."

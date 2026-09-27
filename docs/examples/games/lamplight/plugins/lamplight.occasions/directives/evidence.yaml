@@ -1,0 +1,8 @@
+# The inspector bags a clue. The engine files it in the evidence tray; the
+# fact it asserts is what the rules and the casebook read.
+directives:
+  - name: evidence
+    attrs:
+      - { name: clue, required: true, type: { entity: clue } }
+    effects:
+      asserts: ["found(@clue)"]

@@ -1,0 +1,81 @@
+---
+kind: lore
+id: farewell
+title: The last two nights
+---
+
+/* The end of the week, side by side: Saturday night, then the three Sunday
+   endings at the bus shelter. One bundle so the ending conditions read as one
+   table (FINDINGS-0.23 N6 on what a bundle costs). */
+
+<beat id="packing" on="slotStart" title="Saturday — Packing" priority="20" when="run.day == 6 && @night">
+  ::bg{location="lantern_shop" time="night"}
+  ::music{action="start" mood="wistful" volume="down"}
+  ::auto{character="pell" anchor="left" action="fadeInUp"}
+  @narrator: Your bag is half packed on the bed. The other half of it is somehow all over the shop.
+  <match on="run.festivalWith">
+    <when is="ines">
+      @pell{emotion="teasing"}: The library girl walked past the window twice today. Twice. The library is the other way.
+    </when>
+    <when is="theo">
+      @pell{emotion="teasing"}: There's a bundle of reed on the step with your name on it. Well. Not your name. "Qualified hands."
+    </when>
+    <otherwise>
+      @pell: You'll come back next summer. Everyone says they won't and then they do.
+    </otherwise>
+  </match>
+  @sol{mono}: One more day.
+  ::auto{character="pell" action="fadeOut"}
+  ::music{action="fadeOut"}
+</beat>
+
+<beat id="ines" on="slotStart" title="Sunday — The almanac" priority="30" when="run.day == 7 && @night && isSet(run.festivalWith) && run.festivalWith == 'ines' && run.aff.ines >= 4">
+  ::bg{location="marrow_bay_bus_shelter" time="night"}
+  ::music{action="start" mood="tender" volume="down"}
+  ::auto{character="ines" anchor="center" action="fadeInUp"}
+  @ines{emotion="shy"}: The library's shut on Sundays. So technically I'm not working. So technically this is just — standing at a bus stop.
+  @narrator: She presses the 1962 tide almanac into your hands. Inside the cover, under someone's grandfather's handwriting, in hers: *Next summer. Wednesday afternoon. I'll put some aside.*
+  @sol: Ines —
+  @ines{emotion="happy"}: Don't. Say it next summer. It'll keep. Kozo holds when it's wet.
+  ::auto{character="ines" action="fadeOut"}
+  ::set{user.endings += 1}
+  ::set{run.departed = true}
+  ::end{reason="ending.ines"}
+</beat>
+
+<beat id="theo" on="slotStart" title="Sunday — Green reed" priority="30" when="run.day == 7 && @night && isSet(run.festivalWith) && run.festivalWith == 'theo' && run.aff.theo >= 4">
+  ::bg{location="marrow_bay_bus_shelter" time="night"}
+  ::music{action="start" mood="tender" volume="down"}
+  ::auto{character="theo" anchor="center" action="fadeInUp"}
+  @theo{emotion="neutral"}: Pell said six. It's five to. I ran.
+  @narrator: He holds out a bundle of green reed tied with fishing line.
+  @theo{emotion="shy"}: For next year's. Soak it the night before. Don't bend it dry. You know. You've got qualified hands.
+  @sol: Theo.
+  @theo{emotion="shy" when="holds(confided(theo))"}: Dad would've liked you. He liked anyone who shut up and watched.
+  @theo{emotion="happy"}: The sea blushes in August too. Just so you know. Just — for planning purposes.
+  ::auto{character="theo" action="fadeOut"}
+  ::set{user.endings += 1}
+  ::set{run.departed = true}
+  ::end{reason="ending.theo"}
+</beat>
+
+<beat id="pell" on="slotStart" title="Sunday — The shop on Tern Street" priority="10" when="run.day == 7 && @night">
+  ::bg{location="marrow_bay_bus_shelter" time="night"}
+  ::music{action="start" mood="wistful" volume="down"}
+  ::auto{character="pell" anchor="center" action="fadeInUp"}
+  @pell{emotion="sad"}: Well. Seven days. That's a week, the way they used to make them.
+  <match on="quest.festivalLantern.state">
+    <when is="complete">
+      @pell{emotion="happy"}: Mrs Kaur says our lantern got furthest out. She's a liar, but she's a kind one.
+    </when>
+    <otherwise>
+      @pell: Next year there'll be a lantern. You'll see. I'll practise.
+    </otherwise>
+  </match>
+  @pell: Go on. The driver won't wait, he never has.
+  @sol{mono}: Through the back window, the shop sign on Tern Street, getting small. Then the headland. Then only the lighthouse.
+  ::auto{character="pell" action="fadeOut"}
+  ::set{user.endings += 1}
+  ::set{run.departed = true}
+  ::end{reason="ending.pell"}
+</beat>

@@ -1,0 +1,7 @@
+# One diary line per person seen today (`for="kind:person"`); the count
+# renders with the 0.27 plural hint.
+file: ../lore/diary.lute
+beat: person
+state: { occasion.target: ines, run.day: 3, run.seen.ines: 3, run.aff.ines: 1 }
+expect:
+  transcriptContains: ["@sol: Ines. 1 kind word, if I'm counting, which I'm not."]

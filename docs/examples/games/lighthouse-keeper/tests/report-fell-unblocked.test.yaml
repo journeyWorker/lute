@@ -1,0 +1,16 @@
+# The same record plus Ada's oilskin on the landing at dawn: Tobias saw HER, so
+# his sighting no longer counts, and the rule concludes fell(elias).
+file: ../scenes/report.lute
+visited: [rock.arrival]
+facts:
+  - "placedBy(logbook, elias, gallery, midnight)"
+  - "damaged(gallery_rail)"
+  - "sawAt(tobias, elias, landing, dawn)"
+  - "placedBy(oilskin, ada, landing, dawn)"
+choose: { fate: fell, onRock: nobody, liar: nobody, cause: misadventure }
+expect:
+  options: { fate: [fell, drowned], onRock: [nobody], liar: [tobias, nobody] }
+  facts: ["fell(elias)", "misidentified(tobias, elias, dawn)"]
+  notFacts: ["seenAfter(elias)", "liar(tobias)"]
+  state: { run.verdictFate: fell }
+  end: complete

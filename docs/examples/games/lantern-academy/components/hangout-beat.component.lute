@@ -1,0 +1,23 @@
+---
+component: afterSchool
+effects: true
+params:
+  who: speaker
+  place: { type: { entity: place } }
+# (0.27) a beat template: every hangout with a love interest answers `visit`
+# at their place, once a day, days 1 to 5, while their route is open.
+beat:
+  on: visit
+  target: "place.@place"
+  once: day
+  when: "run.day <= 5 && !holds(locked(@who))"
+---
+
+## Hangout
+
+// The beat's own lines first, then an hour's affection and one more paper
+// lantern folded for the festival.
+::body
+::set{run.aff[@who] += 1}
+::set{run.lanterns += 1}
+@narrator: Before the bell, {{@who}} folds a paper lantern with you and writes a wish on it, hiding the words with one hand.

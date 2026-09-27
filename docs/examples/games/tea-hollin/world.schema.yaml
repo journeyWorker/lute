@@ -1,0 +1,13 @@
+state:
+  run.accused: { type: { enum: [nobody, cook, vicar, mabel, magpie] }, default: nobody }
+  run.cluesFound: { type: number, default: 0 }
+  run.sawPocket: { type: bool, default: false }
+  run.tastedCake: { type: bool, default: false }
+  run.day: { type: number, default: 1, owner: engine }
+  run.slot: { type: { enum: [morning, afternoon, evening] }, default: morning, owner: engine }
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [morning, afternoon, evening]
+  raise: teatime
+  days: 1

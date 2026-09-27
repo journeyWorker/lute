@@ -1,0 +1,29 @@
+---
+kind: scene
+id: sol.confession
+title: Saturday, on the roof
+on: visit
+target: place.roof
+priority: 50
+when: "run.day == 6 && holds(at(sol, roof)) && holds(ready(sol))"
+---
+
+## Saturday night
+
+::bg{location="roof" time="night"}
+::music{action="start" mood="romantic" volume="down"}
+::use{component="enter" who="sol"}
+@sol{emotion="shy"}: I rehearsed this on the night frequency. A trawler captain gave me notes.
+@sol: Tomorrow there's the festival, and then there's a funicular, and then you're a name in the log. And I don't — I'd like to be a bit more than a column you filled in.
+@sol{os}: Say something. Say anything. Say a pressure reading.
+
+<branch id="solAnswer" prompt="The mast ticks. Below you, the village band starts up, badly.">
+  <choice id="kiss" label="Kiss him">
+    ::set{run.route = 'sol'}
+    ::vfx{type="whiteOut"}
+    @sol{emotion="laughing"}: Okay. Okay! That's — logging that. Oh-two-hundred, visibility unlimited.
+  </choice>
+  <choice id="friends" label="Tell him he'll always be in the log, but as a friend">
+    @sol{emotion="sad"}: Yeah. No, that's — that's good. Friends is a good column.
+  </choice>
+</branch>

@@ -1,0 +1,4 @@
+# World events: raised by the engine, answered by active quests' <on event>.
+# `battleEnd` is also an occasion: raising it fires this event for quests first.
+events:
+  - { name: battleEnd }

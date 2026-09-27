@@ -1,0 +1,7 @@
+# Out with him.
+file: ../quests/night.lute
+state: { run.fate: together }
+facts: [following(tobias)]
+expect:
+  quests: { beforeDawn: complete, findTobias: complete }
+  transcriptContains: ["@tobias: You came in. I told you not to come in."]

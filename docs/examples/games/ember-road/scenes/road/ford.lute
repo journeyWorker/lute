@@ -1,0 +1,55 @@
+---
+kind: scene
+id: road.ford
+title: Harrow's Ford
+on: travel
+when: "run.leg == 2"
+priority: 10
+after: 'visited("road.departure")'
+components: [../../components/reaction.component.lute, ../../components/joins.component.lute]
+---
+
+## The Ford
+
+::bg{location="harrows_ford" time="evening"}
+::music{action="change" mood="tense" volume="normal"}
+@narrator: Harrow's Ford is a mill, a river with no bridge, and thirty houses with their shutters nailed shut. Someone has painted a black sun on the mill door.
+::auto{character="oda" anchor="center" action="fadeInUp"}
+@oda{emotion="angry"}: Company wagons. Of course. Nobody comes for us, but the Company's cargo gets an escort.
+@isolde: Mistress, we are only passing through.
+@oda: So were the Duskbound. They passed through my house and took my twins with them. Pell and Hanne. Nine years old.
+::auto{character="wren" anchor="right" action="fadeInUp"}
+@wren: They're alive. The river told me. They're somewhere under the ford, where the water can't hear them.
+@corvin: The river told her.
+@wren: The river tells everyone, smuggler. Most people don't listen.
+
+<branch id="plea" prompt="Oda is looking at you, not at the wagons.">
+  <choice id="help" label="\"We'll find them.\"">
+    ::accept{quest="hostages"}
+    @oda{emotion="sad"}: Don't say it if you don't mean it. I've had enough of men who say things.
+    ::use{component="reaction" who="isolde" feel="adores"}
+    ::set{run.approval.wren += 1}
+    ::set{run.rep.marrow += 1}
+    @wren: Then I'm coming with you. I know the mill. I know the river. And you'll need someone who can hear it.
+    ::use{component="joins" who="wren"}
+  </choice>
+  <choice id="price" label="The Company pays me to guard wagons. What will you pay?">
+    ::accept{quest="hostages"}
+    @oda{emotion="angry"}: Thirty silver. All of it. Everything the mill made this year.
+    ::use{component="reaction" who="corvin" feel="approves"}
+    ::use{component="reaction" who="isolde" feel="disapproves"}
+    @wren: I'll come. Not for you. For Pell and Hanne.
+    ::use{component="joins" who="wren"}
+  </choice>
+  <choice id="refuse" label="The wagons can't wait. I'm sorry.">
+    @oda: Sorry. Yes. Everyone is sorry.
+    ::use{component="reaction" who="isolde" feel="despises"}
+    ::set{run.rep.marrow -= 1}
+    @wren{emotion="angry"}: Go on, then. The river will remember your wagons.
+    ::auto{character="wren" action="fadeOut"}
+  </choice>
+</branch>
+
+::auto{character="oda" action="fadeOut"}
+@corvin{mono}: Nine years old. Of course they are.
+@narrator: The caravan circles its wagons on the mill green. Beyond the ford the road climbs toward the Tollbridge, and the black sun is painted on every milestone.

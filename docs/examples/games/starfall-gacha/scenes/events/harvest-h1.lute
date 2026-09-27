@@ -1,0 +1,19 @@
+---
+kind: scene
+id: harvest.h1
+title: "Harvest Moon 1: Moon Cakes for Nobody"
+on: eventStage
+target: estage.h1
+once: user
+when: "@harvestLive"
+---
+
+/* Event story: once: user, so a player who read it in the original run is
+   not shown it again in the rerun, and a newcomer in the rerun is. */
+
+## The empty festival
+
+@pim{emotion="happy"}: Moon cakes! Lanterns! Harvest sigils! Get 'em while the moon's up!
+@narrator: The square is strung with lanterns. Not one is lit. Nobody is buying.
+@pim: It's the moon. It won't come up full. No full moon, no festival. No festival, no customers.
+@lumi{emotion="sad"}: The Hollow King took the harvest moon a hundred years ago. Somebody got it back. Nobody knows who.

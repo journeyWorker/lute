@@ -1,0 +1,9 @@
+# A shallow dive: telling her the depth earns nothing, her grandmother's map does.
+file: ../scenes/talk/sefa-mapping.lute
+quests: { sefaChart: active }
+state: { run.depth: 1, user.bond.sefa: 2 }
+choose: { mapping: [depth, mother, done] }
+expect:
+  options: { mapping: [depth, mother, done] }
+  transcriptContains: ["Everyone has to start at the stair."]
+  state: { user.bond.sefa: 3 }

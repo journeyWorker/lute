@@ -1,0 +1,18 @@
+# Day 8 after school to day 10, after the play's gift: lighting the dorm
+# window (lampDuty, rearmed on Monday), the notes under the door (day 8
+# evening), the confession (day 9, Tuesday evening), and the closing ceremony
+# (day 10 morning).
+steps:
+  - label: the dorm window
+    occasion: visit
+    target: place.dorm
+    expect: { winner: dorm.lamps }
+  - label: notes under the door
+    advance: slot
+    expect: { clock: { day: 8, slot: evening } }
+  - label: confession night
+    advance: { to: { weekday: Tuesday, slot: evening } }
+    expect: { clock: { day: 9, slot: evening } }
+  - label: closing ceremony
+    advance: { to: { weekday: Wednesday, slot: morning } }
+  - occasion: termEnd

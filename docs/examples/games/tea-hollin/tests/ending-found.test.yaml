@@ -1,0 +1,5 @@
+file: ../scenes/ending/found.lute
+visited: [garden]
+state: { run.accused: magpie }
+expect:
+  transcriptContains: ["@aunt_mabel: Pippa! You clever, clever girl. More tea?"]

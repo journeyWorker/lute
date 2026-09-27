@@ -1,0 +1,41 @@
+---
+kind: quest
+id: quests.library
+title: The drowned library
+---
+
+/* The library opens once Ilo has seen the Regent fall: Quill remembers the
+   books were kept for the heir. User tier: it spans every dive. */
+
+<quest id="libraryKey" title="The drowned library" tier="user" start="holds(felled(regent))">
+  <reward kind="PEARLS" amount="25"/>
+  <objective id="sluice" title="Work out the sluice gate" done="holds(solved(sluice))"/>
+  <objective id="keeper" title="Silence the Archivist" done="holds(felled(archivist))"/>
+  <on event="questActive">
+    @quill{os when="entry.quillFirst.everRead"}: There's a library under the throne room. The heir's books. Your books, I suppose.
+  </on>
+  <on event="questComplete">
+    @quill{os when="entry.quillFirst.everRead"}: Every book in there has your name in it somewhere. I'd start with the thin ones.
+  </on>
+</quest>
+
+/* One salvage run a neap: the tide is low for this one dive, and whatever Ilo
+   hauls up from the drained halls sells for pearls. A new neap starts it over. */
+<quest id="neapSalvage" title="Low water" tier="season:neap" start="@neapLive">
+  <reward kind="PEARLS" amount="15"/>
+  <objective id="haul" title="Haul up three things from the drained halls" done="season.neap.salvage >= 3"/>
+  <on event="questComplete">
+    @tavi{emotion="delighted"}: Three! The fence in Port Ostry will weep. With joy. Then with regret.
+  </on>
+</quest>
+
+/* The epilogue. Once Ilo wears the crown the game is over (`terminal:`) and
+   no occasion is raised again, so no beat can answer "after the crown"; a
+   quest's completion handler still plays in the settle that follows. */
+<quest id="theCrown" title="The crown" tier="user" start="true">
+  <objective id="wear" title="Wear the crown" done="user.crowned"/>
+  <on event="questComplete">
+    @sefa{emotion="sad"}: The sea's gone flat. Brann, the sea's gone flat.
+    @brann{emotion="grim"}: Then he's got it. Haul the rope in. He won't be needing it.
+  </on>
+</quest>

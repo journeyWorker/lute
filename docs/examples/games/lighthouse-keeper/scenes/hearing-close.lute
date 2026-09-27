@@ -1,0 +1,25 @@
+---
+kind: scene
+id: board.close
+title: The Hearing Rises
+when: "@filed"
+after: 'visited("rock.report")'
+---
+
+## The Hearing Room
+
+// `inquest` is `judge: before`: the reconstruction's `until` objectives are
+// already judged when this scene plays, so it can read the Board's verdict.
+<match on="quest.reconstruction.state">
+  <when is="complete">
+    @chair: The Board accepts the inspector's reconstruction in full.
+  </when>
+  <otherwise>
+    @chair{when="quest.reconstruction.objectives.fate.failed"}: The Board does not accept the finding on the manner of death.
+    @chair{when="quest.reconstruction.objectives.whoWasThere.failed"}: The Board does not accept the account of who was on the rock.
+    @chair{when="quest.reconstruction.objectives.whoLied.failed"}: The Board does not accept the finding on whose statement was false.
+    @chair: The Board finds the reconstruction unsafe and returns an open verdict.
+  </otherwise>
+</match>
+@chair: The inquiry will rise.
+::set{run.fileClosed = true}

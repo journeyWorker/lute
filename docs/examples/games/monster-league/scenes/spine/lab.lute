@@ -1,0 +1,47 @@
+---
+kind: scene
+id: spine.lab
+title: Three capsules
+on: enterPlace
+target: place.profLab
+after: 'visited("spine.home")'
+---
+
+## The lab
+
+::bg{location="prof-lab" time="day"}
+::auto{character="profAlder" anchor="center" action="enter"}
+::auto{character="rival" anchor="right" action="enter"}
+@rival{emotion="smug"}: Gramps! I've been waiting all morning. Oh. It's you.
+@profAlder: Kai, patience. {{userName}}, on the table: three monsters. You choose first.
+@rival{emotion="angry"}: What? Why do they get to pick first?
+@profAlder: Because you were rude, Kai.
+
+<branch id="starter" prompt="Three capsules sit on the table.">
+  <choice id="sproutle" label="Sproutle, the seed monster">
+    ::assert{chose(sproutle)}
+    @profAlder: Sproutle! Steady, patient and very hard to uproot.
+  </choice>
+  <choice id="cindle" label="Cindle, the ember monster">
+    ::assert{chose(cindle)}
+    @profAlder: Cindle! It runs hot. Keep it out of the rain.
+  </choice>
+  <choice id="dewpup" label="Dewpup, the puddle monster">
+    ::assert{chose(dewpup)}
+    @profAlder: Dewpup! It will follow you to the ends of the earth, and splash you there.
+  </choice>
+</branch>
+
+@rival{when="holds(rivalChose(cindle))"}: Then I'll take Cindle. Fire burns grass, everybody knows that.
+@rival{when="holds(rivalChose(dewpup))"}: Then I'll take Dewpup. Water puts fire out. Sorry, not sorry.
+@rival{when="holds(rivalChose(sproutle))"}: Then I'll take Sproutle. Roots drink water. Look it up.
+::use{component="obtain" item="monDex"}
+@profAlder: That Dex records every monster you see and every one you catch. Fill it for me, would you? Ten kinds would be a fine start.
+::accept{quest="dexProject"}
+
+## Kai
+
+::use{component="rivalBattle" meet="lab" intro="Wait! Let's check out our monsters. Come on, I'll take you on!" win="What? Unbelievable! I picked the wrong monster!" lose="Yeah! Am I great or what?"}
+@rival: Gramps, I'm going to catch every monster in Verdane before {{userName}} catches ten. Smell you later!
+::auto{character="rival" action="exit"}
+@profAlder{emotion="worried"}: That boy. {{userName}}, the road north goes through Pebbleton. Take care out there.

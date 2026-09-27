@@ -1,0 +1,55 @@
+---
+kind: lore
+id: post
+title: The post office
+components: [../components/postcard.component.lute]
+---
+
+/* The franking machine is a puzzle you can fail and retry: it stays until it
+   is fixed (`spentBy`, 0.27). Then one postcard a day (`once: day` + one
+   `share` key across the three template uses). */
+
+<beat id="machine" on="placeVisit" target="place.post" title="The franking machine" priority="20" after="visited('post.mira.meet')" when="holds(present(mira, post))" spentBy="run.machineFixed">
+  ::auto{character="mira" anchor="left" action="fadeInUp"}
+  ::set{run.seen.mira = run.day}
+  @mira{emotion="tired"}: It's eaten another one. I can hear it chewing.
+  <branch id="machineFix" prompt="The franking machine hums at you.">
+    <choice id="thump" label="Thump it.">
+      @narrator: It swallows the stamp you were holding. Mira sighs the sigh of a woman who has tried this.
+    </choice>
+    <choice id="reed" label="Poke a length of green reed into the roller." when="run.lantern.frame">
+      ::set{run.machineFixed = true}
+      @narrator: Something clicks. The machine spits out eleven stamps, a paperclip, and a very old toffee.
+      @mira{emotion="surprised"}: Since EASTER.
+    </choice>
+  </branch>
+  ::auto{character="mira" action="fadeOut"}
+</beat>
+
+<beat use="postcard" id="mum" to="mum" rank="12">
+  @sol{mono}: Dear Mum. The sea is very big. Aunt Pell is fine. I am fine. Love, me.
+</beat>
+
+<beat use="postcard" id="gran" to="gran" rank="11">
+  @sol{mono}: Dear Gran. They still do the Lantern Walk. Pell says you started it. Is that true?
+</beat>
+
+<beat use="postcard" id="maya" to="maya" rank="10">
+  @sol{mono}: Maya. Nothing happens here. (Something might be happening here.) Tell you in September.
+</beat>
+
+<beat id="noticed" on="placeVisit" target="place.post" also once="run" title="Your name on the board" when="quest.postcards.state == 'complete'">
+  @narrator: On the board behind the counter, in Mira's felt-tip: POSTCARD OF THE WEEK — SOL (THREE!!).
+</beat>
+
+<entry id="miraBark" on="placeVisit" target="place.post" category="bark" when="holds(present(mira, post))" once="day">
+  @mira: Morning, afternoon, whichever it is. The van's at four.
+</entry>
+
+<entry id="miraBusy" on="placeVisit" target="place.post" category="bark" priority="-1" when="holds(present(mira, post))">
+  @mira: Queue's out the door, love. Well. Queue's you.
+</entry>
+
+<entry id="postShut" on="placeVisit" target="place.post" category="bark" when="!holds(present(mira, post))">
+  @narrator: CLOSED. The letter box by the door says LAST COLLECTION 4PM SATURDAY in letters older than you.
+</entry>

@@ -1,0 +1,44 @@
+---
+kind: lore
+id: bonds.elin
+title: Elin of the Quiet Ward (SR)
+---
+
+/* Elin has no custom duplicate line: duplicates fall to the generic
+   kind:sr summon beat in lore/summons.lute. */
+
+<beat id="elinIntro" on="summon" target="hero.elin" once="user" priority="10">
+  @elin{emotion="surprised"}: Oh! Sorry! I didn't mean to land on your rug. Is anyone hurt? Are you hurt?
+  @elin{emotion="shy"}: I'm Elin. I heal things. Please don't need me too often.
+</beat>
+
+<beat id="elinTap" on="homeTap" target="hero.elin" once="day">
+  @elin{emotion="shy"}: Have you had water today? Real water, not potion. Sorry. Sorry! I just worry.
+</beat>
+
+<beat id="elinBirthday" on="dailyReset" once="day" when="holds(celebrate(elin))">
+  @elin{emotion="happy"}: A party? For me? I'll just... I'll bandage the cake knife first. For safety.
+</beat>
+
+<beat use="bondStory" id="elinR1" who="elin" rank="r1" vow="I'll try to say sorry less. I'll try to say thank you more.">
+  @elin: I apologize a lot. I know. It's a habit from the ward.
+  @elin{emotion="shy"}: When you're the only healer and there are forty beds, you say sorry to thirty-nine of them.
+</beat>
+
+<beat use="bondStory" id="elinR2" who="elin" rank="r2" prev="bonds.elin.elinR1" vow="Nobody hurts you while I'm standing.">
+  @elin: Someone in the last battle hurt you. I saw.
+  @elin{emotion="surprised"}: I hit him with my staff. Hard. I've never done that before.
+  <branch id="elinR2Answer" prompt="Elin is shaking a little.">
+    <choice id="proud" label="I'm proud of you.">
+      @elin{emotion="happy"}: Don't be proud! Be careful! ...Be a little proud.
+    </choice>
+    <choice id="okay" label="Are you okay?">
+      @elin{emotion="shy"}: Nobody ever asks the healer that. I'm okay. Now I am.
+    </choice>
+  </branch>
+</beat>
+
+<beat use="bondStory" id="elinR3" who="elin" rank="r3" prev="bonds.elin.elinR2" vow="Elin of the Quiet Ward. Loud for you.">
+  @elin: I went back to the ward today. All forty beds, empty. Everyone went home.
+  @elin{emotion="happy"}: I didn't say sorry once.
+</beat>

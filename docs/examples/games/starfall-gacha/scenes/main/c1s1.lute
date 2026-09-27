@@ -1,0 +1,14 @@
+---
+kind: scene
+id: main.c1s1
+title: "1-1: Ashfall Road"
+target: stage.c1s1
+once: user
+---
+
+## After the fight
+
+@aria{emotion="surprised"}: Did we win? We won! Those were Hollow hounds. They eat light.
+@lumi: They'll be back. The Hollow King sends them wherever a star falls.
+@aria: Then we don't let them catch any more. Where's the next star?
+@lumi: East. Toward the keep. Of course it's toward the keep.

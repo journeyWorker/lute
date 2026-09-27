@@ -1,0 +1,12 @@
+# With every route cleared (fourLanterns complete, a user-tier quest), the
+# girl on the far jetty is offered too, whatever this term's locks.
+file: ../scenes/common/festival.lute
+visited: [common.eve]
+state: { run.day: 6, run.slot: evening }
+quests: { festivalPrep: failed, fourLanterns: complete }
+choose: { lantern: hotaru }
+expect:
+  options: { lantern: [hotaru, alone] }
+  state: { run.route: hotaru }
+  transcriptContains: ["Nobody has ever floated one with me."]
+  end: complete

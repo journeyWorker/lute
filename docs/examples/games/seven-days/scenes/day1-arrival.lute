@@ -1,0 +1,40 @@
+---
+kind: scene
+id: day1.arrival
+title: Monday — The last bus
+on: dayStart
+when: 'run.day == 1'
+priority: 100
+---
+
+## The bus shelter
+
+::bg{location="marrow_bay_bus_shelter" time="morning"}
+::music{action="start" mood="wistful" volume="down"}
+@narrator: The last stop on the coast road is a shelter with no walls, only a roof and a timetable nobody has updated since spring.
+@sol{mono}: Seven days. Aunt Pell said seven days, and then the festival, and then the bus home.
+::auto{character="pell" anchor="center" action="fadeInUp"}
+::set{run.seen.pell = run.day}
+@pell{emotion="happy"}: There you are! You've grown a whole head. Give me that bag before the gulls do.
+@sol: Hi, Aunt Pell.
+@pell{emotion="teasing" when="isSet(prev.run.lantern.paper) && !prev.run.lantern.paper"}: And this summer we find the paper first. I've written it on my hand. Look. PAPER.
+
+## The lantern shop
+
+::bg{location="lantern_shop" time="morning"}
+::auto{character="pell" anchor="left" action="fadeInUp"}
+@narrator: The shop smells of glue and salt. Paper lanterns hang from every beam like sleeping bats.
+@pell: Friday night is the Lantern Walk. Every household sends one lantern out on the tide.
+@pell{emotion="tired"}: And this year my hands shake too much to fold the frame.
+<branch id="help" prompt="Aunt Pell looks at you over her glasses.">
+  <choice id="yes" label="I'll make the lantern.">
+    ::accept{quest="festivalLantern"}
+    @pell{emotion="happy"}: I knew you would. You'll want reed for the frame and good paper. The library girl knows paper.
+  </choice>
+  <choice id="maybe" label="I've never made one...">
+    ::accept{quest="festivalLantern"}
+    @pell{emotion="teasing"}: Nobody has, until they have. Ask at the library for paper. Theo at the pier cuts reed.
+  </choice>
+</branch>
+::auto{character="pell" action="fadeOut"}
+@sol{mono}: Friday. Four days to build something that floats.

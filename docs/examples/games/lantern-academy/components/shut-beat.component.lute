@@ -1,0 +1,21 @@
+---
+component: shutOut
+params:
+  who: speaker
+  place: { type: { entity: place } }
+# (0.27) a beat template: the same place, once that route is locked. It outranks
+# the hangout and repeats, so the player learns the door is shut.
+beat:
+  on: visit
+  target: "place.@place"
+  priority: 10
+  once: "false"
+  when: "holds(locked(@who))"
+---
+
+## Shut
+
+// The beat's own line first; then the place, rendered through the place kind's
+// `labels:` (0.27: an entity-typed param renders its label).
+::body
+@narrator: You leave {{@place}} the way you came.

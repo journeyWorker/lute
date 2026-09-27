@@ -1,0 +1,6 @@
+# One heart is not enough for the treasured beat (the boundary is 3).
+file: ../lore/gifts.lute
+beat: treasured
+state: { occasion.target: soren, occasion.payload.hearts: 1, run.route: soren }
+expect:
+  eligible: { treasured: false }

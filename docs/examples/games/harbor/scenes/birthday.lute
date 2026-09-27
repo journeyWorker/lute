@@ -1,0 +1,14 @@
+---
+kind: scene
+id: birthday.song
+title: A birthday song
+on: morning
+for: "kind:villager"
+once: false
+when: "holds(birthdayToday(occasion.target))"
+---
+
+## Song
+
+@narrator: The harbor sings for {{occasion.target}}.
+::set{user.bond[occasion.target] += 1}

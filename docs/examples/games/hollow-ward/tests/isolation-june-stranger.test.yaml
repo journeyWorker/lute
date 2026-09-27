@@ -1,0 +1,4 @@
+file: ../lore/isolation.lute
+beat: june
+expect:
+  eligible: false

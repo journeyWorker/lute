@@ -1,0 +1,46 @@
+---
+kind: lore
+id: bonds.cyra
+title: Cyra, Priestess of the Harvest Moon (limited SSR)
+---
+
+/* Limited: only on the Harvest Moon banner (the festival and its rerun). */
+
+<beat id="cyraIntro" on="summon" target="hero.cyra" once="user" priority="10">
+  @cyra{emotion="sleepy"}: Mm. Is it harvest already? I was having such a good nap in the moon.
+  @cyra: I'm Cyra. I bless fields. And people, if they stand still long enough.
+</beat>
+
+<beat id="cyraRateUp" on="summon" target="hero.cyra" also once="false" when="occasion.payload.banner == 'harvest'">
+  @lumi{emotion="happy"}: The rate-up held! That's the {{occasion.payload.banner}}'s own priestess!
+</beat>
+
+<beat id="cyraDupe" on="summon" target="hero.cyra" once="false" priority="3" when="holds(owned(cyra)) && occasion.payload.copies <= 6">
+  @cyra{emotion="sleepy"}: Twice-harvested. Like good barley. I'll sleep twice as well.
+</beat>
+
+<beat id="cyraTap" on="homeTap" target="hero.cyra" once="day">
+  @cyra{emotion="sleepy"}: Shh. I'm listening to the wheat. It says you work too hard.
+  @cyra{when="@harvestLive"}: The moon's full this week. Everything grows. Even courage.
+</beat>
+
+<beat id="cyraBirthday" on="dailyReset" once="day" when="holds(celebrate(cyra))">
+  @cyra{emotion="happy"}: A birthday? For me? I'll plant the candles. See what comes up.
+</beat>
+
+<beat use="bondStory" id="cyraR1" who="cyra" rank="r1" vow="Wake me if you need me. I'll come. Slowly.">
+  @cyra: You want to know why I sleep so much.
+  @cyra{emotion="sad"}: When the Hollow King ate the moon, I went in after it. I held it from inside for a hundred winters.
+  @cyra{emotion="sleepy"}: I'm still tired. That's all. It isn't sad. It's just... a long shift.
+</beat>
+
+<beat use="bondStory" id="cyraR2" who="cyra" rank="r2" prev="bonds.cyra.cyraR1" vow="Every harvest from now on, the first sheaf is yours.">
+  @cyra: I planted something for you. Come see.
+  @narrator: In a pot on the windowsill, a single stalk of silver wheat leans toward you.
+  @cyra{emotion="happy"}: It grows toward whoever it trusts. Don't tell it I told you.
+</beat>
+
+<beat use="bondStory" id="cyraR3" who="cyra" rank="r3" prev="bonds.cyra.cyraR2" vow="Priestess Cyra, awake for you. Mostly.">
+  @cyra: I haven't napped in three days. Do you know why?
+  @cyra{emotion="happy"}: I didn't want to miss anything. That's never happened before.
+</beat>

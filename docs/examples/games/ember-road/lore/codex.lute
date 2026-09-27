@@ -1,0 +1,40 @@
+---
+kind: lore
+id: lore.codex
+title: The Warden's journal
+series: codex
+---
+
+<entry id="codexRoad" target="codex.road" category="codex" title="The Ember Road">
+  @narrator: The Ember Road runs from Ostwick to the Tollbridge and on into the hill country. The Ashen Company built its eastern half twelve years ago. The maps show no villages along it. The maps are new.
+</entry>
+
+<entry id="codexCompany" target="codex.company" category="codex" title="The Ashen Company">
+  @narrator: Mercenaries turned merchants turned landlords. The Company escorts its own cargo, collects its own tolls, and writes its own histories.
+  @narrator{when="holds(knows(ledger))"}: One of those histories is in your pack now, and it lists farms by name.
+</entry>
+
+<entry id="codexDusk" target="codex.dusk" category="codex" title="The Duskbound" when="visited('road.ford')">
+  @narrator: Deserters, burned-out farmers, and their children, under a black sun. They hold the Tollbridge and charge the Company for it.
+  @narrator{when="run.maelisGrievance"}: Their captain, Maelis, was from Coldwater. Coldwater is not on the map either.
+</entry>
+
+<entry id="codexMarrow" target="codex.marrow" category="codex" title="The Marrow folk" when="visited('road.ford')">
+  @narrator: The river people of Harrow's Ford: millers, ferrymen, hedge-witches. They hide deserters from both sides, and have done since before there were sides.
+  <match on="run.rep.marrow">
+    <when is="2..">
+      @narrator: They call the Warden a friend of the ford, and mean it.
+    </when>
+    <when is="..-2">
+      @narrator: They spit when the Company wagons pass. They spit twice for the Warden.
+    </when>
+    <otherwise>
+      @narrator: They have not made up their minds about the Warden.
+    </otherwise>
+  </match>
+</entry>
+
+<entry id="codexColdwater" target="codex.coldwater" category="codex" title="Coldwater" when="visited('coldwater.ruins')">
+  @narrator: A village of the hill country, burned by the Ashen Company twelve years ago to clear the line of the Ember Road. The Company map shows empty hill.
+  @narrator{when="holds(knows(roll))"}: Its parish roll is in your pack: two hundred and six names, and one of them is Maelis's mother.
+</entry>

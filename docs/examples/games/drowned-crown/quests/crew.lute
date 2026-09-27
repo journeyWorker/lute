@@ -1,0 +1,47 @@
+---
+kind: quest
+id: quests.crew
+title: The crew of the Gull's Mercy
+---
+
+/* Relationship quests. Default tier: user — they span every dive. */
+
+<quest id="sefaChart" title="A chart of the drowned palace">
+  <reward kind="PEARLS" amount="30"/>
+  <objective id="hall" title="Tell Sefa about the long hall's keeper" on="talk" target="npc.sefa" done="holds(heard(sefa, eel))"/>
+  <objective id="deep" title="Reach the fifth chamber" done="user.deepest >= 5"/>
+  <objective id="trust" title="Earn Sefa's trust" done="holds(trusts(sefa))"/>
+  <on event="questComplete">
+    @sefa{emotion="delighted"}: It's done. Look at it. Every hall, every door. You drew this, you know. I only held the pen.
+  </on>
+</quest>
+
+<quest id="brannOath" title="The captain's terms">
+  <reward kind="KEEPSAKE" amount="1"/>
+  <objective id="surface" title="Come up on your own" done="user.surfaces >= 1"/>
+  <objective id="tell" title="Tell Brann the Regent is dead" on="talk" target="npc.brann" done="holds(told(brann, regent))"/>
+  <on event="runEnd" when="@surfaced">
+    @brann{os}: Line coming up light! He's swimming! Haul, you dogs, haul!
+  </on>
+  <on event="questComplete">
+    @brann: Here. It was your father's lantern. He'd want it lit.
+    ::use{component="keepsake" who="brann" item="lantern"}
+  </on>
+</quest>
+
+<quest id="quillMemory" title="What Quill forgot" start="entry.quillFirst.everRead">
+  <objective id="name" title="Learn Quill's name" done="entry.quillName.everRead"/>
+  <objective id="death" title="Learn how Quill drowned" done="entry.quillDeath.everRead"/>
+  <objective id="heir" title="Learn who Quill served" done="entry.quillHeir.everRead"/>
+  <on event="bossDefeated">
+    @quill{os}: I was there. I saw it fall. Nobody ever lets me see anything fall.
+    ::set{user.bond.quill += 1}
+  </on>
+  <on event="bossDefeated" target="foe.regent">
+    @quill{os}: The throne's empty. Three hundred years I've waited to see it empty.
+  </on>
+  <on event="questComplete">
+    @quill: I remember now. I held the rope for your father too. I let it go.
+    ::use{component="keepsake" who="quill" item="shell"}
+  </on>
+</quest>

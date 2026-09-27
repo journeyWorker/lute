@@ -1,0 +1,18 @@
+---
+component: wire
+params:
+  to: { enum: [board, varn] }
+  sender: string
+beat:
+  on: hourStrikes
+  once: run
+  title: "A wire from @sender"
+  when: "run.hour == 'h06' && run.wired == '@to'"
+---
+
+## A wire
+
+::sfx{sound="platform bell"}
+@narrator{code="0010"}: A telegraph boy runs the length of platform four with a buff envelope held over his head. It is for you. It is from {{@sender}}.
+::body
+@inspector{code="0010" mono}: Four o'clock at Harl, one wire, one answer. It had better be the right question.

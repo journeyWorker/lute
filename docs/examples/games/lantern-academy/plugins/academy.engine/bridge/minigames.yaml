@@ -1,0 +1,15 @@
+# The engine's two minigames. A date is a short choose-the-reply minigame at a
+# spot on the map; the exam is a timed quiz. Content reads only the outcome.
+bridgeCapabilities:
+  - service: dating
+    operation: date
+    replay: recorded
+    result:
+      - { name: mood,   type: { enum: [awkward, sweet, perfect] } }
+      - { name: hearts, type: number }    # 0..5 hearts the minigame showed
+  - service: school
+    operation: exam
+    replay: recorded
+    result:
+      - { name: grade, type: { enum: [fail, pass, top] } }
+      - { name: score, type: number }     # 0..100

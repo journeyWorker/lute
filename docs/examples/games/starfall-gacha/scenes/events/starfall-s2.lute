@@ -1,0 +1,25 @@
+---
+kind: scene
+id: starfall.s2
+title: "Starfall Night 2: The Lantern Opened"
+on: eventStage
+target: estage.s2
+once: user
+after: visited('starfall.s1')
+when: "@starfallLive"
+---
+
+## Why she left
+
+@vesper: Every comet tonight is a star I let out. I opened his lantern. They fell. You're selling them.
+@pim{emotion="smug"}: Retail's retail.
+<branch id="s2Answer" prompt="Vesper is waiting to see what you think of her.">
+  <choice id="thank" label="Thank you for opening it.">
+    @vesper{emotion="sad"}: ...Nobody's thanked me. They mostly run.
+  </choice>
+  <choice id="late" label="Why did it take eleven years?">
+    @vesper{emotion="angry"}: Because I'm a coward who got brave late. Is that what you wanted?
+    @vesper{emotion="sad"}: Late still counts. I hope.
+  </choice>
+</branch>
+@lumi{emotion="happy"}: She's on the Wishing Well tonight. If you want her.

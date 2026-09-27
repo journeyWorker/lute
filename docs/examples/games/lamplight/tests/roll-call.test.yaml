@@ -1,0 +1,7 @@
+# At five Crane counts heads: a line for each suspect nobody has placed yet.
+file: ../lore/timetable.lute
+beat: rollCall
+state: { run.hour: h05, occasion.target: crane }
+facts: ["alive(hask, late)", "unanswered(cab7, tunnel)"]
+expect:
+  transcriptContains: ["@crane: Tobiah Crane, present."]

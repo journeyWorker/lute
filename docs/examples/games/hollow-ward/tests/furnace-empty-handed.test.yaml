@@ -1,0 +1,6 @@
+# Without the matches, there is nothing to do at the furnace.
+file: ../scenes/puzzles/boiler.lute
+beat: furnace
+facts: [holding(ledger)]
+expect:
+  eligible: { furnace: false }

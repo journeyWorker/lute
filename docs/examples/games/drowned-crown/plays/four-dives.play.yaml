@@ -1,0 +1,142 @@
+# Four dives into the palace of Vael, end to end.
+#   lute play . --script plays/four-dives.play.yaml
+# The engine owns the dive: every `engine:` step is the game reporting what
+# happened below. A dive is a run; the hub visit after it belongs to that run.
+choose:
+  oathAnswer: swear
+  bountyAnswer: take
+  chartAnswer: yes
+  mapping: [depth, mother, done]
+steps:
+  # ---------------- dive 1: the eel ----------------
+  - label: dive 1 begins
+    engine: { state: { user.runs: { add: 1 } } }
+  - occasion: runStart
+    expect: { presented: [run.descent] }
+  - occasion: keepsakes
+    expect: { winner: none, presented: [] }
+  - label: the eel takes him in chamber 2
+    engine:
+      state: { run.depth: 2, run.outcome: died, run.killedBy: eel, user.deaths: { add: 1 }, user.deepest: 2 }
+    expect: { quests: { regentHunt: failed } }
+  - occasion: runEnd
+    payload: { pearls: 0 }
+    expect: { winner: end.drowned }
+  - occasion: hubVisit
+    expect: { presented: [hub.firstWaking], offered: [hub.returnDied, hub.deck] }
+  - occasion: talk
+    target: npc.brann
+    expect: { winner: brann.oath, quests: { brannOath: active } }
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: quillFirst, quests: { quillMemory: active } }
+  - occasion: talk
+    target: npc.sefa
+    expect: { winner: sefa.idle }
+  - occasion: talk
+    target: npc.tavi
+    expect: { winner: tavi.bounty, quests: { eelBounty: unset } }
+
+  # ---------------- dive 2: the eel falls, Ilo surfaces ----------------
+  - label: dive 2 begins
+    newRun: { state: { user.runs: { add: 1 } } }
+    expect: { quests: { eelBounty: active } }
+  - occasion: runStart
+    expect: { presented: [run.descent, run.recap] }
+  - label: the eel falls in chamber 3
+    engine:
+      state: { run.depth: 3 }
+      facts: [slew(eel), felled(eel)]
+  - occasion: bossDefeated
+    target: foe.eel
+    expect: { winner: eelFirst }
+  - label: Ilo swims up from chamber 4
+    engine:
+      state: { run.depth: 4, run.outcome: surfaced, user.surfaces: { add: 1 }, user.deepest: 4 }
+  - occasion: runEnd
+    payload: { pearls: 0 }
+    expect: { winner: end.surfaced, quests: { eelBounty: complete }, state: { user.bond.quill: 2 } }
+  - occasion: hubVisit
+    expect: { presented: [hub.returnSurfaced, hub.gulls] }
+  - occasion: talk
+    target: npc.sefa
+    expect: { winner: sefa.eelReport, offered: [sefa.chartOffer] }
+  - occasion: talk
+    target: npc.sefa
+    expect: { winner: sefa.chartOffer, quests: { sefaChart: active } }
+  - occasion: talk
+    target: npc.brann
+    expect: { winner: brann.early }
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: quillName }
+
+  # ---------------- dive 3: the Regent ----------------
+  - label: dive 3 begins
+    newRun: { state: { user.runs: { add: 1 } } }
+  - occasion: runStart
+    # Quill (bond 3 now) says a word at the rail; the sendoff is for="kind:bonded".
+    expect: { presented: [run.descent, sendoff.word for quill, run.recap] }
+  - label: the Regent falls in chamber 5
+    engine:
+      state: { run.depth: 5, user.deepest: 5 }
+      facts: [slew(regent), felled(regent)]
+    expect: { quests: { regentHunt: complete }, state: { user.pearls: 20 } }
+  - occasion: bossDefeated
+    target: foe.regent
+    expect: { winner: boss.regent }
+  - label: the pressure takes him on the way up
+    engine:
+      state: { run.outcome: died, run.killedBy: pressure, user.deaths: { add: 1 } }
+  - occasion: runEnd
+    payload: { pearls: 0 }
+    expect: { winner: end.drowned }
+  - occasion: hubVisit
+    expect: { presented: [hub.regentFell, hub.gulls], offered: [hub.returnDied] }
+  - occasion: talk
+    target: npc.brann
+    expect: { winner: brann.regentTold, quests: { brannOath: complete } }
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: quillHeir }
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: quillDeath, quests: { quillMemory: complete } }
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: quillWitness }
+  - occasion: talk
+    target: npc.sefa
+    expect: { winner: sefa.mapping, quests: { sefaChart: complete } }
+  - occasion: talk
+    target: npc.sefa
+    expect: { winner: sefa.gift }
+
+  # ---------------- dive 4: the keepsakes ----------------
+  - label: dive 4 begins
+    newRun: { state: { user.runs: { add: 1 } } }
+  - occasion: runStart
+    expect: { presented: [run.descent, sendoff.word for sefa, sendoff.word for quill, run.recap] }
+  - occasion: keepsakes
+    pick: keepLantern
+    expect: { offered: [keepCompass, keepLantern, keepShell] }
+  - occasion: talk
+    target: npc.brann
+    expect: { winner: brann.middling }
+  # Dive 4 is a neap dive (the tide is low on dives 4 and 5).
+  - occasion: talk
+    target: npc.tavi
+    expect: { winner: neapTavi, quests: { neapSalvage: active } }
+  - occasion: talk
+    target: npc.tavi
+    expect: { winner: tavi.meal, state: { run.sharedMeal: true } }
+  - occasion: talk
+    target: npc.tavi
+    expect: { winner: taviRich }
+expect:
+  end: complete
+  quests: { brannOath: complete, sefaChart: complete, quillMemory: complete, regentHunt: active }
+  state: { user.runs: 4, user.deaths: 2, user.surfaces: 1, user.pearls: 50, user.bond.sefa: 4, user.bond.quill: 4 }
+  facts: ["heard(tavi, regent)", "heard(quill, eel)", "trusts(brann)", "trusts(quill)", "gifted(brann, lantern)", "gifted(quill, shell)"]
+  notFacts: [slew(regent)]
+  transcriptContains: ["still shows 20 fathoms", "still shows 40 fathoms", "It's done. Look at it.", "He'd want it lit.", "I let it go.", "I saw that. I'll tell them.", "Line coming up light!", "Eel steaks!", "A slab of eel in the net", "The throne's empty.", "Ilo stows Captain Brannoch's lantern"]

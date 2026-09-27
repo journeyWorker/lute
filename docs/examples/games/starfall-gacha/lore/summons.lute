@@ -1,0 +1,43 @@
+---
+kind: lore
+id: summons
+title: The Wishing Well (generic pull lines)
+---
+
+/* Roster-wide pull lines. Each hero's own intro and duplicate line live in
+   lore/bonds/<hero>.lute and outrank these (member > sub-kind > kind).
+   The pull itself arrives as the summon payload: copies (owned now, this one
+   included), streak (pulls since the last SSR), banner. owned(<hero>) still
+   describes the account before this pull. */
+
+/* Seventh copy and beyond: the hero is maxed, the copy becomes stardust. */
+<beat id="maxedOut" on="summon" target="kind:hero" once="false" priority="5" when="occasion.payload.copies > 6">
+  @narrator: {{occasion.target}} is already at full constellation. The copy melts into stardust.
+  @lumi{emotion="smug"}: Stardust is still a wish. Just a crunchier one.
+</beat>
+
+/* SSR fallback: kind:ssr outranks kind:hero at equal priority. */
+<beat id="goldLight" on="summon" target="kind:ssr" once="false">
+  @narrator: The well turns gold. {{occasion.target}} steps out of the light.
+  @lumi{when="!holds(owned(occasion.target))"}: A new star for the roster! Say hello, {{occasion.target}}.
+  @lumi{emotion="surprised" when="occasion.payload.streak >= 60"}: After {{occasion.payload.streak}} pulls! I was starting to think the well was broken.
+  @lumi{emotion="happy" when="occasion.payload.streak < 10"}: That fast? Don't tell the others. They'll get ideas.
+</beat>
+
+<beat id="blueLight" on="summon" target="kind:sr" once="false">
+  @narrator: The well glows blue. {{occasion.target}} climbs out, dusting off.
+  @lumi{when="holds(owned(occasion.target))"}: A duplicate! It'll strengthen {{occasion.target}}'s constellation.
+</beat>
+
+/* Limited heroes without a duplicate line of their own */
+<beat id="limitedGlow" on="summon" target="kind:limited" once="false">
+  @narrator: The well flares silver. Only a festival star burns like that: {{occasion.target}}.
+  <match on="occasion.payload.banner">
+    <when is="standard">
+      @lumi{emotion="surprised"}: Off the Wishing Well? A festival star, off-season? Buy a lottery ticket.
+    </when>
+    <otherwise>
+      @lumi: Your {{user.loginTotal:ordinal}} day with us, and the {{occasion.payload.banner}} delivers.
+    </otherwise>
+  </match>
+</beat>

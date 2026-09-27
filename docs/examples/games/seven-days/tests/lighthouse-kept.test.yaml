@@ -1,0 +1,7 @@
+file: ../quests/festival.lute
+state: { run.day: 4, run.aff.theo: 3 }
+accepts: [theoLighthouse]
+visited: [theo.lighthouse]
+expect:
+  quests: { theoLighthouse: complete }
+  state: { run.aff.theo: 4 }

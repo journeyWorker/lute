@@ -1,0 +1,17 @@
+---
+kind: scene
+id: harvest.h3
+title: "Harvest Moon 3: A Hundred Winters"
+on: eventStage
+target: estage.h3
+once: user
+after: visited('harvest.h2')
+when: "@harvestLive"
+---
+
+## Moonrise
+
+@cyra: I held the moon inside that lantern for a hundred winters. I think it's time to let it out.
+@narrator: She opens the lid. The moon climbs out slowly, like someone getting out of a warm bath, and rises full over the square.
+@pim{emotion="happy"}: CUSTOMERS!
+@cyra{emotion="happy"}: Happy harvest, Wishkeeper. Come find me on the Wishing Well. I'll be awake. Probably.

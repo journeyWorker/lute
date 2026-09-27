@@ -1,0 +1,14 @@
+---
+kind: quest
+id: skerry.tobias
+title: The Guillemot
+---
+
+<quest id="clearName" title="Clear Tobias Crane's name" tier="run">
+  <objective id="rope" title="Look at the Guillemot's rope" done="entry.mooringRope.read"/>
+  <objective id="alibi" title="Find someone who can place Tobias ashore" done="holds(cleared(tobias))"/>
+  <on event="questComplete">
+    @tobias{when="holds(present(tobias, _))"}: Hollis told me. You'll put it in the report? That she broke her own rope?
+    @inspector{mono}: Crane's name is clear. It will be in the report.
+  </on>
+</quest>

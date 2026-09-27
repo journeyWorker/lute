@@ -1,0 +1,18 @@
+# Hollow Ward — survival horror / escape across one night.
+pluginsDir: plugins/
+defaultProfile: ward
+profiles:
+  ward:
+    plugins: { ward.engine: true }
+defaults:
+  luteVersion: "0.28.1"
+  uses:
+    - schema/world.schema.yaml
+    - schema/vocabulary.schema.yaml
+    - schema/isolation.schema.yaml
+  questTier: run
+  components:
+    - components/chase.component.lute
+chapters:                  # 0.28 (was 0.27 `sequence:`): the lift ride down to isolation, one stop per raise
+  - on: liftStops
+    scenes: [lift.first, lift.second, lift.third]

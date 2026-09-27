@@ -1,0 +1,6 @@
+# Once the porter places Crane in the brake van, the passkey page is gone (FINDINGS-0.23 N6, fixed).
+file: ../lore/casebook.lute
+entry: pageCrane
+facts: ["seen(crane, brakevan, tunnel)", "alive(hask, late)", "unanswered(cab7, tunnel)"]
+expect:
+  eligible: { pageCrane: false }

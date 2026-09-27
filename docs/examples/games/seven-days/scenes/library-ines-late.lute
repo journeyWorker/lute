@@ -1,0 +1,23 @@
+---
+kind: scene
+id: library.ines.late
+title: The sheets she put aside anyway
+on: placeVisit
+target: place.library
+after: 'visited("library.ines.meet")'
+when: 'run.day > 3 && holds(present(ines, library)) && !run.lantern.paper'
+priority: 30
+---
+
+## The returns desk
+
+::bg{location="library_reading_room" time="afternoon"}
+::auto{character="ines" anchor="center" action="fadeInUp"}
+::set{run.seen.ines = run.day}
+@ines{emotion="neutral"}: Oh. It's you.
+@narrator: She slides a parcel across the desk without looking up. The sheets inside are the colour of weak tea.
+@ines: I kept them. Wednesday. In case.
+::set{run.lantern.paper = true}
+@sol: Ines, I'm sorry, I —
+@ines{emotion="sad"}: It's fine. It's paper. Mind the corners.
+::auto{character="ines" action="fadeOut"}

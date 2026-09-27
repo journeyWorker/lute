@@ -1,0 +1,42 @@
+---
+kind: lore
+id: skerry.notebook
+title: The inspector's notebook
+series: notebook
+---
+
+<entry id="nbTimeline" target="journal.case" category="codex" title="The light">
+  @inspector: 14th Oct. Lit at dusk. Dark by two bells, Hollis says. Burning again by morning. Keeper Voss not found.
+</entry>
+
+<entry id="nbGuillemot" target="journal.case" category="codex" title="The Guillemot" when="holds(suspect(tobias))">
+  @inspector: Tobias Crane's boat is wrecked on the rock. Nobody on the island can place him ashore that night. Yet.
+</entry>
+
+<entry id="nbTobiasCleared" target="journal.case" category="codex" title="Crane's alibi" when="holds(cleared(tobias))">
+  @inspector: Hollis puts Crane on his end stool until one in the morning. The Guillemot broke her own painter and came here empty.
+</entry>
+
+<entry id="nbAdaAlibi" target="journal.case" category="codex" title="Miss Pell's alibi" when="holds(alibied(ada))">
+  @inspector: Maren Hale swears her niece was in her house, fevered, all night.
+</entry>
+
+<entry id="nbMarenLied" target="journal.case" category="codex" title="A false statement" when="holds(liar(maren))">
+  @inspector: Maren Hale says Ada was ashore at midnight. Ada's own hand says she was in the lantern at ten past two. One of them is lying, and ink does not.
+</entry>
+
+<entry id="nbAdaOnRock" target="journal.case" category="codex" title="Who kept the light" when="holds(onRock(ada, midnight))">
+  @inspector: Ada Pell was on the rock in the small hours. She relit the lamp. She has told nobody.
+</entry>
+
+<entry id="nbFigure" target="journal.case" category="codex" title="The figure on the landing" when="holds(misidentified(tobias, elias, dawn))">
+  @inspector: Crane saw someone in an oilskin on the landing at dawn and took it for Voss. The oilskin on the chain has Pell's name in the collar.
+</entry>
+
+<entry id="nbFell" target="journal.case" category="codex" title="The gallery" when="holds(fell(elias))">
+  @inspector: Voss went out on the gallery at eleven-forty to clear the glass. The seaward rail failed. No honest witness saw him after. He fell.
+</entry>
+
+<entry id="nbNeglect" target="journal.case" category="codex" title="The rail" when="holds(preventable(gallery_rail))">
+  @inspector: Voss reported the seaward rail rotten in August. The Board refused the money in September. The rail failed in October.
+</entry>

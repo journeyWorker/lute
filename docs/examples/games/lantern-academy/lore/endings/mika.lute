@@ -1,0 +1,18 @@
+---
+kind: lore
+id: end.mika
+title: Mika's endings
+---
+
+<beat id="lantern" on="termEnd" after="visited('mika.confession')" title="Mika — the lantern ending" priority="10" when="run.route == 'mika' && @devoted(run.aff.mika)">
+  @narrator: The closing ceremony. Mika walks the length of the hall to collect a certificate for "services to morale", and the hall gives him a standing ovation for it.
+  @mika{emotion="laughing"}: Slowest lap of my life. Best one, too. You were at the finish line. You're always at the finish line.
+  ::use{component="cg" id="cgMikaEnd"}
+  ::use{component="ending" who="mika" kind="good" title="Mika — the lantern ending"}
+</beat>
+
+<beat id="ember" on="termEnd" after="visited('mika.confession')" title="Mika — the ember ending" priority="5" when="run.route == 'mika'">
+  @narrator: Mika sits the ceremony out in the infirmary. When you visit, he's asleep, with the relay baton on his chest like a lily.
+  @mika{emotion="sad"}: Spring. I'll be fast again in spring. Wait for me? ...Don't answer. I'll ask again in spring.
+  ::use{component="ending" who="mika" kind="bittersweet" title="Mika — the ember ending"}
+</beat>

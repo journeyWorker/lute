@@ -1,0 +1,9 @@
+# The singer at the door: a bundle beat under test (FINDINGS-0.23 N5, fixed).
+file: ../lore/talk.lute
+beat: liseDoor
+facts: ["seen(lise, cab7, early)", "watchReads(early)"]
+choose: { letter: promise }
+expect:
+  quests: { lisesLetter: active }
+  facts: ["claims(lise, cab7, early)", "placed(lise)"]
+  transcriptContains: ["That is more than he ever did."]

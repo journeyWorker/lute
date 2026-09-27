@@ -1,0 +1,42 @@
+# The festival deadline passes: the player never finds paper before Friday
+# night, so festivalLantern fails the moment the clock reaches the Lantern
+# Walk. Then a new run starts (a second summer): once:run beats come back, the
+# run-tier quests reset and can be taken up again, and Pell remembers last
+# summer through prev.run.
+choose:
+  help: yes
+  theoFirst: joke
+  lighthouseAsk: no
+  walkWith: pell
+steps:
+  - { occasion: dayStart, label: Mon morning, expect: { winner: day1.arrival } }
+  - { occasion: placeVisit, target: place.pier }
+  - include: steps/stay-home.steps.yaml
+  - { occasion: placeVisit, target: place.pier, label: Tue morning, expect: { winner: pier.theo.reed, clock: { weekday: Tuesday } } }
+  # Tuesday to Friday afternoon: the player stays home; only the clock moves.
+  - include: steps/stay-home.steps.yaml
+    repeat: 3
+  - advance: slot
+    label: Fri afternoon
+    expect: { clock: { weekday: Friday, slot: afternoon }, quests: { festivalLantern: active } }
+  - advance: slot
+    label: Fri night — the deadline
+    # 0.24: transcriptContains matches content lines only, so the objective
+    # bookkeeping ("festivalLantern.paper failed (by)") is asserted here.
+    expect:
+      winner: day5.festival
+      quests: { festivalLantern: failed }
+      state: { quest.festivalLantern.objectives.frame.done: true, quest.festivalLantern.objectives.paper.failed: true }
+  - newRun: true
+  - occasion: dayStart
+    label: a second summer
+    choose: { help: maybe }
+    expect: { winner: day1.arrival, clock: { weekday: Monday, slot: morning } }
+expect:
+  end: complete
+  quests: { festivalLantern: active, theoLighthouse: unset, inesWednesday: unset }
+  state: { run.day: 1, run.lantern.frame: false, prev.run.lantern.frame: true, prev.run.day: 5 }
+  transcriptContains:
+    - "for the first time in forty years"
+    - "It's only paper."
+    - "I've written it on my hand. Look. PAPER."

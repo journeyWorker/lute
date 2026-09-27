@@ -1,0 +1,7 @@
+# Once the porter puts Crane in the brake van, he is not called out.
+file: ../lore/timetable.lute
+beat: rollCall
+state: { run.hour: h05, occasion.target: crane }
+facts: ["alive(hask, late)", "unanswered(cab7, tunnel)", "seen(crane, brakevan, tunnel)"]
+expect:
+  eligible: { rollCall: false }

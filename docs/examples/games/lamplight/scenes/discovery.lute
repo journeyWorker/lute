@@ -1,0 +1,34 @@
+---
+kind: scene
+id: lamplight.discovery
+title: A knock after the tunnel
+pov: inspector
+on: caseOpen
+once: user
+components: [../components/lamps-out.component.lute]
+---
+
+## Sleeper car, 2:31
+
+::bg{location="sleeper_corridor" time="night"}
+::music{action="start" mood="tense" volume="down"}
+@narrator{code="0010"}: The Lamplight Express runs north from Varn with nine cars and one gas main, and every lamp aboard is fed from the same pipe.
+@narrator{code="0020"}: At 2:31 somebody knocks on compartment 3 as though the door owes them money.
+::auto{character="porter" anchor="right" action="fadeInUp"}
+@porter{code="0010" emotion="surprised"}: Inspector Wren? Beg pardon. It's Mr. Hask in seven. He won't wake. He won't — he's cold, ma'am.
+@inspector{code="0010"}: Cold is a strong word for a man who rang for tea an hour ago.
+@porter{code="0020"}: That's what the conductor said. He's gone to fetch the doctor off five.
+
+::auto{character="porter" action="fadeOut"}
+
+## Compartment 7
+
+::bg{location="compartment_7" time="night"}
+@narrator{code="0030"}: Aurel Hask lies on the lower berth with his boots still on. The lamp above him is lit and turned low. The window is shut. The tea on the fold-down table has a skin on it.
+::use{component="lampsOut" depth="brief" where="the sleeper car" memory="Did I sleep through the tunnel, or only through the dark?"}
+@inspector{code="0030" mono}: The Lamplight reaches Ossery at six. Four hours, nine cars, and everyone who could have done it is still aboard.
+::auto{character="crane" anchor="left" action="fadeInUp"}
+@crane{code="0010" emotion="sad"}: Tobiah Crane, conductor. Dr. Solt has looked at him already. Says he's been gone since a quarter past one.
+@inspector{code="0040"}: Then nobody touches anything else until I have.
+::auto{character="crane" action="fadeOut"}
+::music{action="change" mood="tense" volume="normal"}

@@ -1,0 +1,14 @@
+# Staging vocabulary. `emotion` is the union of the cast's emotions:
+# (plugins/academy.engine/cast/academy.yaml narrows it per speaker).
+enums:
+  emotion: [neutral, happy, teasing, worried, sad, stern, flustered, fond, laughing, hurt, shy, surprised, smirk, angry, smiling]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fadeInUp, fadeOut]
+    exits: [fadeOut]
+  mood: [peaceful, tense, romantic, sad, festive]
+  volume: [down, normal]
+  musicAction: [start, fadeOut]
+  vfxType: [petals, lanterns, whiteOut]

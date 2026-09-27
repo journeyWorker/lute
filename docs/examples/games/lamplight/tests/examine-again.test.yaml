@@ -1,0 +1,6 @@
+# Any clue already bagged falls through to the inspector's shrug, by its label.
+file: ../scenes/examine.lute
+beat: nothingMore
+state: { occasion.target: teacup }
+expect:
+  transcriptContains: ["@inspector: Nothing more from the teacup."]

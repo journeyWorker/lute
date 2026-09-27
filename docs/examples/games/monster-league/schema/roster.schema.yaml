@@ -1,0 +1,77 @@
+# Monster League — the roster: people, trainers and places.
+#
+# LEAD-OWNED. Declares the four kinds and the lead's members: the spine's own
+# people and places, plus the CONTRACT ids the spine names whose content an
+# area writes (the owning area is noted). Every other member is added by its
+# area in schema/areas/<area>.schema.yaml with `add:` (dsl 0.26.0 §2.3); a
+# member listed twice anywhere is E-ENTITY-KIND-SHAPE naming both files.
+#
+#   person     every talk target (npc.<id>); trainers are persons already
+#   trainer    every battler (trainer.<id>, defeated(<id>)) — subsetOf person
+#   elite      the Elite Four (the eight leaders are LEAD trainers)
+#   place      every enterPlace target (place.<id>)
+
+entities:
+  person:
+    members:
+      - mom
+      - profAlder
+      - aide
+      - rival
+      - gatekeeper
+
+      # contract, written by south
+      - cassius
+      # contract, written by east
+      - captainOrla
+      - elderRook
+      # contract, written by mid
+      - wardenHolt
+
+  trainer:
+    subsetOf: person
+    members:
+      - petra
+      - marin
+      - volta
+      - fern
+      - sabine
+      - kessler
+      - ignatius
+      - vex
+      - frostine
+      - tarrok
+      - morwen
+      - drakon
+
+      # contract, written by south
+      - gruntDig
+      # contract, written by east
+      - gruntTower
+      # contract, written by mid
+      - gruntCorner
+      - gruntHelix
+
+  elite:     { subsetOf: trainer, members: [frostine, tarrok, morwen, drakon] }
+
+  place:
+    members:
+      - playerHouse
+      - profLab
+      - summitPlateau
+      - riftCavern
+
+      # contract, written by south
+      - moonstoneCave
+      - tidewellCape
+      # contract, written by east
+      - ferryMeridian
+      - ashTower
+      - lanternTunnel
+      # contract, written by mid
+      - gameCorner
+      - helixTower
+      - wildmoorPreserve
+      # contract, written by north
+      - cinderMansion
+      - victoryRoad

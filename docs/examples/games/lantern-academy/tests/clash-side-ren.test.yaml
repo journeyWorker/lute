@@ -1,0 +1,11 @@
+# Siding with Ren at the hearing locks Kai's route for the term.
+file: ../scenes/common/council-clash.lute
+visited: [common.arrival]
+state: { run.day: 2, run.slot: morning }
+choose: { clash: sideRen }
+expect:
+  options: { clash: [sideRen, sideKai, stayOut] }
+  state: { run.aff.ren: 2, run.aff.kai: 0 }
+  facts: ["locked(kai)"]
+  notFacts: ["locked(ren)"]
+  end: complete

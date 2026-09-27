@@ -1,0 +1,32 @@
+---
+kind: quest
+id: quests.companions
+title: Companion quests
+---
+
+/* Isolde's oath. Offered at camp once she trusts you (camp.talks.isoldeOath). */
+<quest id="isoldeOath" title="The Oath Unbroken" fail="run.bridge == 'sold' || holds(fell(isolde))">
+  <reward kind="XP" amount="100"/>
+  <objective id="twins" title="See the miller's twins home" done="run.hostagesFreed"/>
+  <objective id="truth" title="Put the Company's ledger where it can do some good" done="run.bridge == 'parleyed'" optional/>
+  <objective id="nobody" title="Cross the Tollbridge without selling anyone to do it" on="chapterEnd" done="@bridgeOpen"/>
+  <on event="questComplete">
+    /* her closing words are in the far-bank epilogue (chapterEnd judges before it presents) */
+    ::set{run.approval.isolde += 2}
+  </on>
+  <on event="questFailed">
+    ::set{run.approval.isolde -= 2}
+    @narrator: Isolde takes off the Company clasp she still wore at her collar, and does not put it back on.
+  </on>
+</quest>
+
+/* Wren's river. It opens by itself once she is with the party and warm to you. */
+<quest id="wrenRoots" title="What the River Keeps" follows="visited('road.ford')" start="holds(inParty(wren)) && run.approval.wren >= 2" fail="holds(departed(wren)) || holds(fell(wren))">
+  <reward kind="XP" amount="100"/>
+  <reward kind="ITEM" amount="1"/>
+  <objective id="listen" title="Hear what the river told Wren" done="holds(knows(token))"/>
+  <objective id="carry" title="Carry Tam's token across the gorge" on="chapterEnd" done="@bridgeOpen && holds(inParty(wren))"/>
+  <on event="questFailed">
+    @narrator: Somewhere a river token sinks, and nobody hears it.
+  </on>
+</quest>

@@ -1,0 +1,76 @@
+---
+kind: quest
+id: east.quests
+title: Eastmarch side quests
+---
+
+// OWNED BY east. Every quest is tier="run" (AREAS.md §8). Who hands them out:
+//   eastMeridianPassengers  starts when Kai has been met on the Meridian
+//   eastLanterns            Yun the lantern-maker, Ashgrove (complete="any")
+//   eastGardens             Poppy the florist, Bloomfield; its two errands are
+//                           activate="accept" children (Poppy, Beekeeper Tom)
+//   eastPowerOutage         the Monster Center board (accept="external")
+//   eastThunderwing         Keeper Sol at the Portvolt lighthouse, at night
+
+// ── The Meridian: beat every passenger who wants a battle ────────────────
+<quest id="eastMeridianPassengers" title="Every passenger aboard" start="visited('east.ferryRival')">
+  <objective id="crew" title="Beat the two sailors" done="holds(defeated(meridianSailorBram)) && holds(defeated(meridianSailorOona))"/>
+  <objective id="guests" title="Beat the four guests" done="holds(defeated(meridianGentlemanHale)) && holds(defeated(meridianLassPip)) && holds(defeated(meridianFisherTeo)) && holds(defeated(meridianBeautyCeline))"/>
+  <reward kind="MONEY" amount="2000"/>
+  <on event="questComplete">
+    @meridianSteward: Every passenger on the Meridian, beaten fair and square. The captain has asked me to present you with the ship's compliments, and something more practical.
+  </on>
+</quest>
+
+// ── Ashgrove: a lantern for the tower (either way closes it) ─────────────
+<quest id="eastLanterns" title="A lantern for Ash Tower" complete="any">
+  <objective id="night" title="Walk with the lanterns on a Friday night" done="visited('east.lanternNight')"/>
+  <objective id="ghost" title="Or bring Yun a ghost to carry the light" on="talk" target="npc.ashgroveLanternMaker" done="holds(caughtType(ghost))"/>
+  <reward kind="ITEM" amount="1" target="spellTag"/>
+  <on event="questComplete">
+    @ashgroveLanternMaker: There. Now there's a light up there that's yours. Take this; it was my mother's. Ghosts like it. Well. Some ghosts.
+  </on>
+</quest>
+
+// ── Bloomfield: Poppy's gardens (two errands, taken up separately) ───────
+<quest id="eastGardens" title="Bloomfield's gardens">
+  <objective id="seeds" title="Deliver Poppy's seeds" quest="eastGardensSeeds"/>
+  <objective id="bees" title="Find Tom's hive a new queen" quest="eastGardensBees"/>
+  <reward kind="ITEM" amount="1" target="miracleSeed"/>
+  <on event="questComplete">
+    @bloomfieldFlorist{vo}: Seeds in Portvolt, a queen in the hive. Bloomfield will be in bloom by Sunday. You've earned this: it grows anything.
+  </on>
+</quest>
+
+<quest id="eastGardensSeeds" title="Seeds for the Portvolt market" activate="accept">
+  <objective id="deliver" title="Take the seed packets to Marta in Portvolt" on="talk" target="npc.portvoltVendor" done="true"/>
+  <reward kind="MONEY" amount="500"/>
+  <on event="questComplete">
+    @portvoltVendor: Poppy's seeds! Finally something on my stall people want. Here, for your trouble. Tell her the striped awning says thank you.
+  </on>
+</quest>
+
+<quest id="eastGardensBees" title="A new queen for the hive" activate="accept">
+  <objective id="queen" title="Show Tom a waspire" on="talk" target="npc.bloomfieldBeekeeper" done="holds(caught(waspire))"/>
+  <on event="questComplete">
+    @bloomfieldBeekeeper: A waspire! Look at her. The hive'll follow her anywhere. Don't worry, she'll still be yours. They just like to know she's about.
+  </on>
+</quest>
+
+// ── The board: Portvolt's flickering lights ──────────────────────────────
+<quest id="eastPowerOutage" title="Board: Portvolt's lights keep flickering" accept="external">
+  <objective id="plant" title="Find the old power plant down Route 8" done="visited('east.powerPlant')"/>
+  <objective id="tamsin" title="Get past the council's engineer" done="holds(defeated(powerPlantEngineerTamsin))"/>
+  <reward kind="MONEY" amount="3000"/>
+  <on event="questComplete">
+    @narrator: The council's note on the Center board has been stamped PAID. Somebody has drawn a small lightning bird in the corner.
+  </on>
+</quest>
+
+// ── Keeper Sol's storm bird ──────────────────────────────────────────────
+<quest id="eastThunderwing" title="The storm bird">
+  <objective id="catch" title="Find what sits on the power plant's chimney" done="holds(caught(thunderwing))"/>
+  <on event="questComplete">
+    @portvoltKeeper{vo}: So it was real. I'll sleep tonight, for the first time in forty years.
+  </on>
+</quest>

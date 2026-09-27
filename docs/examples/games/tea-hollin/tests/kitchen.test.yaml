@@ -1,0 +1,8 @@
+file: ../scenes/kitchen.lute
+visited: [parlour]
+state: { run.slot: afternoon }
+choose: { askCook: [scullery, leave] }
+expect:
+  transcriptContains: ["@narrator: A tray of washed spoons. Five of them.", "@cook: Mind the step."]
+  end: complete
+  state: { run.cluesFound: 1 }

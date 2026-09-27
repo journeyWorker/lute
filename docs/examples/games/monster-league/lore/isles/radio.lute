@@ -1,0 +1,13 @@
+---
+kind: lore
+id: isles.radio
+title: The Sunfall morning report
+---
+
+// AREA isles: Radio Verdane's island report, once each morning, for every
+// beacon that burned the night before (dayStart, a select: sequence
+// occasion raised for no target).
+
+<entry id="islesBeaconReport" on="dayStart" for="kind:island" category="bark" when="holds(islesRelit(occasion.target))">
+  @announcer: The {{occasion.target}} beacon burned all night. The island boats report calm water.
+</entry>

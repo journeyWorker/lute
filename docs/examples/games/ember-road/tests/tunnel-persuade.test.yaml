@@ -1,0 +1,13 @@
+# [Persuasion] The engine rolls; a pass talks the guards down. The roll is the
+# bridge's answer, given with `bridges:` (dsl 0.24 §5).
+file: ../scenes/road/tunnel.lute
+visited: [road.ford]
+quests: { hostages: active }
+facts: ["knows(passage)"]
+state: { run.approval.isolde: 1 }
+bridges: { check: [ { passed: true } ] }
+choose: { tunnel: talk }
+expect:
+  state: { run.approval.isolde: 2, run.rep.dusk: 0, run.hostagesFreed: true }
+  transcriptContains: ["He puts the crossbow down."]
+  end: complete

@@ -1,0 +1,71 @@
+# The Wishing Well across the roster: every hero's first pull, the
+# duplicate ladder (own line, generic line, stardust), pity commentary.
+# Each pull carries its payload (copies owned now, pity streak, banner); the
+# engine asserts owned(<hero>) after the pull's beats.
+state: { user.day: 5 }
+steps:
+  - occasion: summon
+    target: hero.bram
+    payload: { copies: 1, streak: 4, banner: standard }
+    expect: { winner: bonds.bram.bramIntro }
+  - occasion: summon
+    target: hero.dax
+    payload: { copies: 1, streak: 4, banner: standard }
+    expect: { winner: bonds.dax.daxIntro }
+  - occasion: summon
+    target: hero.elin
+    payload: { copies: 1, streak: 4, banner: standard }
+    expect: { winner: bonds.elin.elinIntro }
+  - occasion: summon
+    target: hero.fen
+    payload: { copies: 1, streak: 4, banner: standard }
+    expect: { winner: bonds.fen.fenIntro }
+  - occasion: summon
+    target: hero.gale
+    payload: { copies: 1, streak: 4, banner: standard }
+    expect: { winner: bonds.gale.galeIntro }
+  - occasion: summon
+    target: hero.aria
+    label: an SSR in four pulls
+    payload: { copies: 1, streak: 4, banner: standard }
+    expect: { winner: bonds.aria.ariaIntro }
+  - engine: { facts: ["owned(bram)", "owned(dax)", "owned(elin)", "owned(fen)", "owned(gale)", "owned(aria)"] }
+  # duplicates
+  - occasion: summon
+    target: hero.elin
+    label: Elin has no duplicate line of her own
+    payload: { copies: 2, streak: 9, banner: standard }
+    expect: { winner: summons.blueLight }
+  - occasion: summon
+    target: hero.fen
+    payload: { copies: 2, streak: 9, banner: standard }
+    expect: { winner: bonds.fen.fenDupe }
+  - occasion: summon
+    target: hero.aria
+    payload: { copies: 2, streak: 9, banner: standard }
+    expect: { winner: bonds.aria.ariaDupe }
+  - occasion: summon
+    target: hero.aria
+    label: seventh Aria after a long dry spell
+    payload: { copies: 7, streak: 72, banner: standard }
+    expect: { winner: summons.maxedOut }
+  - occasion: summon
+    target: hero.vesper
+    label: an off-banner Vesper
+    payload: { copies: 1, streak: 73, banner: standard }
+    expect: { presented: [bonds.vesper.vesperIntro] }
+  - engine: { facts: ["owned(vesper)"] }
+  - occasion: summon
+    target: hero.vesper
+    label: an off-banner Vesper duplicate (no rate-up line)
+    payload: { copies: 2, streak: 1, banner: standard }
+    expect: { presented: [summons.limitedGlow] }
+expect:
+  transcriptContains:
+    - "@aria: Me again! I'll count this as a second wish. Or a 2nd."
+    - "@narrator: The well glows blue. Elin climbs out, dusting off."
+    - "@lumi: A duplicate! It'll strengthen Elin's constellation."
+    - "@narrator: Aria is already at full constellation. The copy melts into stardust."
+    - "@narrator: The well flares silver. Only a festival star burns like that: Vesper."
+  transcriptLacks:
+    - "The rate-up held!"

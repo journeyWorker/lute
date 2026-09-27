@@ -1,0 +1,8 @@
+# Nobody rows ashore in a gale: the engine does not raise `explore` for the
+# village while it blows (the occasion's raisedWhen gate), so the quay scene
+# is not offered, although its own after: holds.
+file: ../scenes/village.lute
+visited: [rock.arrival]
+state: { run.weather: gale }
+expect:
+  eligible: false

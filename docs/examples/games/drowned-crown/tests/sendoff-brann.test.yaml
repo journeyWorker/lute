@@ -1,0 +1,7 @@
+# The send-off runs once per bonded crew member; Brann speaks once his bond is 3.
+file: ../lore/sendoff.lute
+beat: word
+state: { occasion.target: brann, user.bond.brann: 3 }
+expect:
+  eligible: { sendoff.word: true }
+  transcriptContains: ["@brann{os}: Come back up, boy. That's an order."]

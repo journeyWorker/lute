@@ -1,0 +1,20 @@
+---
+kind: scene
+id: harvest.encore
+title: "Harvest Moon (Rerun): Encore"
+on: eventStage
+target: estage.h3
+once: user
+after: visited('harvest.h3')
+when: "@harvestRerun"
+---
+
+/* Rerun-only epilogue for players who finished the original story. A
+   newcomer in the rerun reads harvest.h3 first; this becomes eligible the
+   next time they clear the stage. */
+
+## A year older
+
+@cyra{emotion="sleepy"}: You came back. The moon remembers you. So do I, vaguely. I was asleep for part of it.
+@pim{emotion="smug"}: Same moon cakes, same moth. New prices.
+@cyra{emotion="happy"}: Stay for the moonrise. It's better the second time. You know what's coming, so you can watch the faces instead.

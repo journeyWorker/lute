@@ -1,0 +1,6 @@
+file: ../scenes/day5-festival.lute
+state: { run.day: 5, run.slot: night, run.aff.theo: 3 }
+choose: { walkWith: theo }
+expect:
+  state: { run.festivalWith: theo, run.aff.theo: 4 }
+  transcriptContains: ["You carry nothing."]

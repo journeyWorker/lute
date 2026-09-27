@@ -1,0 +1,15 @@
+# Accusing the singer at Ossery fails tonight's accusation, and with it tonight's
+# case file. Nothing is credited; the run-tier quests reopen with the next loop.
+# (0.28: was tests/case-wrong-name.test.yaml; see case-silence.play.yaml.)
+visited: [lamplight.discovery]
+steps:
+  - advance: { to: h06 }
+  - occasion: accuse
+    choose: { accuse: lise }
+    expect: { winner: lamplight.accusation }
+expect:
+  end: terminal
+  quests: { accusation: failed, lamplightCase: failed }
+  state: { user.casesClosed: 0 }
+  transcriptContains: ["misadventure"]
+  transcriptLacks: ["one doctor shorter"]

@@ -1,0 +1,10 @@
+occasions:
+  hubVisit:  { select: first }
+  chapter:   { select: first }
+  talk:      { select: first, target: { prefix: npc, entity: villager } }
+  landed:    { select: first, target: { prefix: fish, entity: fish }, payload: { weight: number } }
+  morning:   { select: sequence }
+  tide:      { select: first }
+  nightfall: { select: first, judge: before }
+  launch:    { select: first, target: { prefix: boat, entity: boat }, raisedWhen: "holds(canSail(occasion.target))" }
+  lanternNight: { select: all, raisedWhen: "@festivalLive" }

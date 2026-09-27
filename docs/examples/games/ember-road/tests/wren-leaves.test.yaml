@@ -1,0 +1,9 @@
+# After the sale, Wren packs up at the next camp.
+file: ../scenes/camp/wren-leaves.lute
+facts: ["recruited(wren)"]
+quests: { toll: complete }
+expect:
+  facts: ["departed(wren)"]
+  notFacts: ["inParty(wren)"]
+  transcriptContains: ["Tam's friends are in a Duskbound cage tonight"]
+  end: complete

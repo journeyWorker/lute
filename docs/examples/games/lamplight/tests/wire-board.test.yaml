@@ -1,0 +1,7 @@
+# The Board's answer gives the inspector the doctor's means without the bag.
+file: ../lore/timetable.lute
+beat: wireBoard
+state: { run.hour: h06, run.wired: board }
+expect:
+  facts: ["means(solt)"]
+  transcriptContains: ["It is from the Medical Board.", "NEVER RETURNED"]

@@ -1,0 +1,4 @@
+cast:
+  lumi:   { name: Lumi, emotions: [neutral, happy, surprised, sad, smug] }       # the guide star, lives in the menu
+  pim:    { name: Pim, emotions: [neutral, happy, smug] }                      # event shopkeeper, a moth in a waistcoat
+  hollow: { name: The Hollow King, emotions: [neutral, angry, smug] }

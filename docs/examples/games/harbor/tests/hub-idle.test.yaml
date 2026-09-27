@@ -1,0 +1,4 @@
+file: ../scenes/hub-idle.lute
+state: { run.coins: 1 }
+expect:
+  transcriptContains: ["and you have 1 coin."]

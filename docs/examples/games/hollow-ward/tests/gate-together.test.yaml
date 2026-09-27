@@ -1,0 +1,10 @@
+# The card, the three pages, Tobias at her shoulder: out together.
+file: ../scenes/endings/gate.lute
+facts: [holding(keycard), following(tobias)]
+entriesRead: { run: [ledgerPage1, ledgerPage2, ledgerPage3] }
+bridges: { keypad: [ { entered: 275 } ] }
+expect:
+  state: { run.fate: together }
+  transcriptContains: ["@nell: Two. Seven. Five. The gate remembers them in order.", "@tobias: Don't look back. Don't. I looked back once tonight and look where it got me."]
+  transcriptLacks: ["Night night, nurse."]
+  end: terminal

@@ -1,0 +1,13 @@
+# The moments the Ember Road engine raises.
+occasions:
+  travel:     { select: first, description: "The caravan reaches the next leg of the road; run.leg is already advanced" }
+  camp:       { select: sequence, description: "The party makes camp; every eligible camp beat plays, in order" }
+  # nobody talks to the dead: the engine greys out a fallen person (dsl 0.27 §4)
+  talk:       { select: first, target: { prefix: npc, entity: person }, raisedWhen: "!holds(fell(occasion.target))", description: "The player walks up to someone (npc.<person>)" }
+  # Coldwater is off the road: the map shows it only from the Tollbridge leg
+  explore:    { select: first, target: { prefix: place, entity: site }, raisedWhen: "occasion.target != 'coldwater' || run.leg == 3", description: "The player searches somewhere (place.<site>)" }
+  banter:     { select: first, description: "A lull on the road; one companion bark" }
+  # the battle system also says how many wagons burned (dsl 0.27 §3)
+  battleEnd:  { select: first, payload: { wagonsLost: number }, description: "The battle system resolved a fight; run.battle.outcome and fell() are written" }
+  # judge: before — the far-bank epilogue reads how the chapter's quests ended
+  chapterEnd: { select: first, judge: before, description: "The caravan crosses; the chapter closes" }

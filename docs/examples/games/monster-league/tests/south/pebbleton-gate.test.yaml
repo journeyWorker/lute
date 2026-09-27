@@ -1,0 +1,7 @@
+# Dobbs holds the east road until the Stone Badge; with it, neither his bark
+# nor the spine fallback is eligible.
+file: ../../lore/south/pebbleton.lute
+entry: southPebbletonEastShut
+facts: [hasBadge(stone)]
+expect:
+  eligible: { southPebbletonEastShut: false, southDobbsOpen: true, southDobbsShut: false }

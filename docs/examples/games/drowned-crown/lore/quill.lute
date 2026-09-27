@@ -1,0 +1,40 @@
+---
+kind: lore
+id: lore.quill
+title: Quill, at the figurehead
+---
+
+/* Quill is a drowned ghost who haunts the figurehead and follows Ilo down.
+   Every piece of his memory is a bark you only ever hear once. */
+
+<entry id="quillFirst" on="talk" target="npc.quill" category="bark" title="The ghost at the figurehead" priority="30" once="user">
+  @quill: Oh. You can see me. Nobody on this ship can see me.
+  @ilo: You were down there. In the hall. You watched me die.
+  @quill{emotion="sad"}: I watch everyone die. You're the first one who came back to complain about it.
+  ::set{user.bond.quill += 1}
+</entry>
+
+<entry id="quillName" on="talk" target="npc.quill" category="bark" title="A name" priority="20" once="user" when="@runsAtLeast(2)">
+  @quill{emotion="surprised"}: Quill. My name was Quill. I just — it came back. You brought it up with you.
+  ::set{user.bond.quill += 1}
+</entry>
+
+<entry id="quillDeath" on="talk" target="npc.quill" category="bark" title="How Quill drowned" priority="20" once="user" when="@runsAtLeast(3) && entry.quillName.everRead">
+  @quill: I held a rope. Someone was on the other end of it. The water was very cold and I was very tired.
+</entry>
+
+<entry id="quillHeir" on="talk" target="npc.quill" category="bark" title="Who Quill served" priority="25" once="user" when="holds(felled(regent))">
+  @quill{emotion="grim"}: The man on the other end of the rope wore the crown. He had your eyes.
+</entry>
+
+<entry id="quillWitness" on="talk" target="npc.quill" category="bark" title="Quill saw it" priority="15" once="run" when="holds(heard(quill, regent))">
+  @quill{emotion="delighted"}: I saw you do it, you know. I was right there. It's the best thing I've seen in three hundred years.
+</entry>
+
+<entry id="quillBark" on="talk" target="npc.quill" category="bark">
+  @quill: The water remembers everything. I wish I did.
+</entry>
+
+<entry id="quillAfter" on="talk" target="npc.quill" category="bark" title="Quill, remembering" priority="5" once="run" when="quest.quillMemory.state == 'complete'">
+  @quill: I keep remembering small things now. The smell of the galley. Your father laughing. It's awful. It's wonderful.
+</entry>

@@ -1,0 +1,98 @@
+# Theo route: keeps the Wednesday-night lighthouse date, misses the
+# Wednesday library delivery (Ines gives the paper late, hurt), walks the
+# festival with Theo, gets his ending. Fixes Mira's franking machine with a
+# length of Theo's reed and sends two postcards (not three: the post chapter
+# fails quietly on this route).
+choose:
+  help: maybe
+  theoFirst: honest
+  inesFirst: brief
+  lighthouseAsk: yes
+  glow: blush
+  wish: someone
+  walkWith: theo
+  market: theo
+steps:
+  # ── Day 1 · Monday
+  - { occasion: dayStart, label: Mon morning, expect: { winner: day1.arrival } }
+  - { occasion: placeVisit, target: place.pier, expect: { winner: pier.theo.meet } }
+  - { advance: slot, label: Mon afternoon }
+  - { occasion: placeVisit, target: place.library, expect: { winner: library.ines.meet } }
+  - { advance: slot, label: Mon night }
+  # ── Day 2 · Tuesday
+  - { advance: slot, label: Tue morning }
+  - { occasion: placeVisit, target: place.pier, label: reed + invitation, expect: { winner: pier.theo.reed } }
+  - { occasion: placeVisit, target: place.post, label: meets Mira, expect: { winner: post.mira.meet } }
+  - occasion: placeVisit
+    target: place.post
+    label: the machine, first try
+    choose: { machineFix: thump }
+    expect: { winner: post.machine }
+  - occasion: placeVisit
+    target: place.post
+    label: the machine, with reed
+    choose: { machineFix: reed }
+    expect: { winner: post.machine, state: { run.machineFixed: true } }
+  - occasion: placeVisit
+    target: place.post
+    label: first postcard
+    expect: { winner: post.mum, notOffered: [post.machine], state: { run.postcards: 1 } }
+  - occasion: placeVisit
+    target: place.post
+    label: one a day
+    expect: { winner: miraBark, notOffered: [post.gran] }
+  - { advance: 2, label: Tue night }
+  # ── Day 3 · Wednesday — skips the library afternoon
+  - { advance: slot, label: Wed morning }
+  - occasion: placeVisit
+    target: place.pier
+    expect: { winner: lore.places.theoBark, notOffered: [pier.theo.reed] }   # the frame is done: reed is spent
+  - { occasion: placeVisit, target: place.post, label: second postcard, expect: { winner: post.gran } }
+  - { advance: slot, label: Wed afternoon }
+  - { occasion: placeVisit, target: place.square }
+  - { advance: slot, label: Wed night (the library window closes), expect: { winner: shop.evening, quests: { inesWednesday: failed } } }
+  - occasion: placeVisit
+    target: place.lighthouse
+    label: the date
+    expect: { winner: theo.lighthouse, offered: [lighthouseUninvited] }
+  # ── Day 4 · Thursday
+  - advance: slot
+    label: Thu morning
+    expect:                                    # no bad news: the date was kept
+      presented: [diary.day, diary.person for theo, diary.person for pell, diary.person for mira, shop.morning]
+  - { occasion: placeVisit, target: place.pier, expect: { winner: lore.places.theoBark } }
+  - { advance: slot, label: Thu afternoon }
+  - occasion: placeVisit
+    target: place.library
+    label: the late paper
+    expect: { winner: library.ines.late, notOffered: [library.ines.wednesday] }
+  - { advance: slot, label: Thu night, expect: { winner: shop.evening } }   # the wish
+  # ── Day 5 · Friday
+  - { advance: 3, label: Fri night, expect: { winner: day5.festival } }
+  - { occasion: placeVisit, target: place.shop, expect: { winner: shopDark } }   # Pell is at the Walk
+  # ── Day 6 · Saturday
+  - { advance: slot, label: Sat morning }
+  - { occasion: placeVisit, target: place.square, label: market, expect: { winner: square.market } }
+  - { advance: 2, label: Sat night — the last post has gone, expect: { winner: farewell.packing, quests: { postcards: failed } } }
+  # ── Day 7 · Sunday
+  - { advance: slot, label: Sun morning }
+  - { occasion: placeVisit, target: place.post, expect: { winner: postShut } }
+  - { occasion: placeVisit, target: place.pier, expect: { winner: lore.places.theoBark } }
+  - advance: 2
+    label: ending
+    expect: { winner: farewell.theo, offered: [farewell.pell], notOffered: [farewell.ines] }
+expect:
+  end: terminal
+  quests: { festivalLantern: complete, theoLighthouse: complete, inesWednesday: failed, postcards: failed }
+  state: { run.festivalWith: theo, run.lantern.wish: someone, run.aff.theo: 7, run.aff.ines: 0, user.endings: 1, run.postcards: 2 }
+  facts: ["confided(theo)", "sentTo(mum)", "sentTo(gran)"]
+  notFacts: ["sentTo(maya)"]
+  transcriptContains:
+    - "My dad used to say it's the sea blushing."
+    - "I kept them. Wednesday. In case."
+    - "Dad would've liked you."
+    - "Since EASTER."
+    - "@sol: Dear Gran. They still do the Lantern Walk."
+    - "@mira: Gran. Lovely. It'll go with the afternoon van."
+  transcriptLacks:
+    - "The Maddox boy came by at seven."

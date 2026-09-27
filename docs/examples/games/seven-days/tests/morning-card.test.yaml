@@ -1,0 +1,4 @@
+file: ../scenes/morning-card.lute
+state: { run.day: 3 }
+expect:
+  transcriptContains: ["Wednesday. Low tide after dark.", "Library delivery day"]

@@ -1,0 +1,9 @@
+# Staging vocabulary.
+enums:
+  emotion: [neutral, afraid, relieved, numb]
+  action: { members: [fadeIn, fadeOut], exits: [fadeOut] }
+  anchor: { members: [left, center, right], default: center }
+  mood: [dread, hush, pulse]
+  volume: [low, normal]
+  musicAction: [start, stop]
+  vfxType: [flicker, redout, whiteout]

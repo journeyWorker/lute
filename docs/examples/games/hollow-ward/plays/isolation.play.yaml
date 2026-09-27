@@ -1,0 +1,59 @@
+# The isolation wing: the boiler is lit, Nell has the music box. Down in the
+# lift, the ward key, three patients settled before three.
+#
+#   lute play . --script plays/isolation.play.yaml
+state: { run.power: true }
+facts: [holding(musicBox)]
+steps:
+  - occasion: enter
+    target: room.lift
+    expect: { winner: room.lift }
+  - occasion: liftStops
+    expect: { winner: lift.first }
+  - occasion: liftStops
+    expect: { winner: lift.second, state: { run.sanity: 9 } }
+  - occasion: liftStops
+    expect: { winner: lift.third, facts: [holding(wardKey), canEnter(isolation)] }
+  - occasion: enter
+    target: room.isolation
+    expect: { winner: room.isolation, quests: { hushWing: active } }
+  - occasion: lightsFlicker
+    payload: { seconds: 3 }
+    label: the first dark
+    expect: { presented: [isolation.dark, isolation.breathing, isolation.breathing, isolation.breathing, isolation.back] }
+  - occasion: examine
+    target: fixture.bedFour
+    expect: { winner: isolation.edith, state: { run.hush: 1 } }
+  - occasion: examine
+    target: fixture.pellChair
+    expect: { winner: isolation.walter, state: { run.hush: 2 } }
+  - occasion: examine
+    target: fixture.juneCot
+    label: she will not settle for a stranger
+    expect: { winner: fixtureDone, notOffered: [isolation.june] }
+  - occasion: lightsFlicker
+    payload: { seconds: 2 }
+    expect: { presented: [isolation.dark, isolation.breathing, isolation.back] }
+  - occasion: read
+    target: note.fileJune
+    expect: { winner: fileJune }
+  - occasion: examine
+    target: fixture.juneCot
+    expect: { winner: isolation.june, quests: { hushWing: complete } }
+  - occasion: lightsFlicker
+    payload: { seconds: 1 }
+    expect: { presented: [isolation.dark, isolation.back] }
+  - occasion: enter
+    target: room.laundry
+    choose: { search: [copper, hatch, leave] }
+    expect: { options: { search: [mangle, copper, hatch, leave] }, state: { run.sawCopper: true, run.sanity: 8 } }
+  - advance: { to: h03 }
+    expect: { notOffered: [isolation.wingHour] }
+expect:
+  transcriptContains:
+    - "One second of dark."
+    - "3 seconds of dark."
+    - "The lights come back. 2 beds are quiet."
+    - "The lights come back on three quiet beds."
+    - "@nell{mono}: 0 of them are asleep now."
+    - "@narrator: In the dark, June is sitting up in bed."

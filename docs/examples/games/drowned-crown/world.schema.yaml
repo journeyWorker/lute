@@ -1,0 +1,95 @@
+# The Drowned Crown — world schema.
+#
+# A "run" is one dive into the sunken palace of Vael. The engine owns the dive:
+# how deep Ilo got, how it ended, what killed him, what fell. Content reads all
+# of that and writes only relationships and small per-run choices.
+state:
+  # --- engine-owned counters (user tier: they survive every dive) ---
+  user.runs:       { type: number, default: 0, owner: engine }   # dives started
+  user.deaths:     { type: number, default: 0, owner: engine }
+  user.surfaces:   { type: number, default: 0, owner: engine }
+  user.deepest:    { type: number, default: 0, owner: engine }   # deepest chamber ever reached
+  # --- engine-owned dive state (run tier: reset at every new dive) ---
+  run.depth:       { type: number, default: 0, owner: engine }   # chamber reached, 0 = the rail
+  run.outcome:     { type: { enum: [diving, died, surfaced] }, default: diving, owner: engine }
+  run.killedBy:    { type: { enum: [eel, choir, archivist, regent, pressure] }, owner: engine }   # unset unless Ilo died
+  # --- content-owned ---
+  user.pearls:     { type: number, default: 0 }   # the ship's currency; rewards credit it
+  user.bond:       { type: number, default: 0, per: bonded }   # user.bond.brann / .sefa / .quill
+  run.sharedMeal:  { type: bool, default: false }   # Tavi feeds you once per dive
+  # --- the drowned library (chapter 5) ---
+  run.valves:      { type: number, default: 0 }       # sluice valves Ilo has turned this dive
+  user.crowned:    { type: bool, default: false }     # Ilo put the crown on: the game is over
+  # --- the neap tide: two dives in every six the upper halls drain ---
+  season.neap.salvage: { type: number, default: 0 }   # things Ilo hauled up this neap
+
+entities:
+  # Everyone Ilo can talk to: Tavi, and everyone whose regard he can earn
+  # (bonded), of whom the confidants trust him once it runs deep enough.
+  # A sub-kind's members are its parent's too, so npc lists only Tavi.
+  npc:  { members: [tavi] }
+  foe:
+    members: [eel, choir, archivist, regent]
+    # A label wins over a cast `name:` in text; the Archivist's and the
+    # Regent's speaker heads keep their cast names.
+    labels: { eel: the Long Eel, choir: the Drowned Choir, archivist: the Archivist, regent: the Tide Regent }
+  puzzle: { members: [sluice] }
+  item: { members: [compass, lantern, shell] }
+  bonded:    { subsetOf: npc, members: [brann] }
+  confidant: { subsetOf: bonded, members: [sefa, quill] }
+
+relations:
+  # The engine asserts these when a guardian falls: this dive, and ever.
+  slew:    { args: [foe], tier: run, reserved: true, changedOn: [bossDefeated] }
+  felled:  { args: [foe], tier: user, reserved: true, changedOn: [bossDefeated] }
+  # Who lives aboard; Quill is a ghost that dives with Ilo, not crew.
+  aboard:  { args: [npc], tier: run }
+  # Content: Ilo told this person about that kill (remembered across dives).
+  told:    { args: [npc, foe], tier: user }
+  # Content: this person gave Ilo a keepsake.
+  gifted:  { args: [npc, item], tier: user }
+  # Derived: who knows about a kill. Word spreads aboard; Quill saw it.
+  heard:   { args: [npc, foe], derive: true }
+  trusts:  { args: [npc], derive: true }
+  # Content: a palace puzzle Ilo has worked out (it stays worked out).
+  solved:  { args: [puzzle], tier: user }
+
+facts:
+  - "aboard(brann)"
+  - "aboard(sefa)"
+  - "aboard(tavi)"
+
+rules:
+  - "heard(N, F) :- told(N, F)"
+  - "heard(N, F) :- told(M, F), aboard(M), aboard(N), N != M"
+  - "heard(quill, F) :- felled(F)"
+  - "trusts(P) :- confidant(P), cel(\"user.bond[P] >= 3\")"
+  - "trusts(brann) :- heard(brann, regent), cel(\"user.bond.brann >= 2\")"
+
+defs:
+  died:       "run.outcome == 'died'"
+  surfaced:   "run.outcome == 'surfaced'"
+  fathoms:    "run.depth * 10"
+  lastFathoms: "prev.run.depth * 10"
+  veteran:    "user.runs >= 6"
+  runsAtLeast: { type: bool, params: { n: number }, cel: "user.runs >= n" }
+  neapLive:   "user.runs % 6 >= 4"   # dives 4-5, 10-11, …
+  readyForCrown: "holds(felled(regent)) && quest.libraryKey.state == 'complete' && quest.quillMemory.state == 'complete'"
+
+# Two dives in every six the tide runs low and the upper halls drain.
+seasons:
+  neap: { live: "@neapLive" }
+
+# Once Ilo wears the crown there are no more dives — for good: the ending
+# outlives runs on purpose, so a new run does not reopen the game.
+terminal: { when: "user.crowned", persists: true }
+
+cast:
+  ilo:    { name: Ilo, emotions: [neutral] }
+  brann:  { name: Captain Brannoch, emotions: [neutral, grim, wry, surprised] }
+  sefa:   { name: Sefa, emotions: [neutral, delighted, surprised, sad, shy, content] }
+  # A ghost: nobody hears him until Ilo meets him at the figurehead.
+  quill:  { name: Quill, present: "entry.quillFirst.everRead", emotions: [neutral, sad, surprised, grim, delighted] }
+  tavi:   { name: Tavi, emotions: [neutral, delighted, wry] }
+  regent: { name: The Tide Regent, emotions: [neutral] }
+  archivist: { name: The Archivist, emotions: [neutral, grim] }

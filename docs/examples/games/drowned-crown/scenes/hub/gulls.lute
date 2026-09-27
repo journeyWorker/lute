@@ -1,0 +1,14 @@
+---
+kind: scene
+id: hub.gulls
+title: The gulls
+# A side remark: from the second dive on, after whatever wins the visit.
+on: hubVisit
+also: true
+once: false
+when: "@runsAtLeast(2)"
+---
+
+## Rigging
+
+@narrator: The gulls have learned his face. They wait on the yard-arm for scraps.

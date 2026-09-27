@@ -1,0 +1,24 @@
+---
+kind: scene
+id: harvest.h2
+title: "Harvest Moon 2: The Sleeper in the Field"
+on: eventStage
+target: estage.h2
+once: user
+after: visited('harvest.h1')
+when: "@harvestLive"
+---
+
+## Silver wheat
+
+@narrator: In the middle of the last unharvested field, someone is fast asleep, curled around a lantern the size of a barrel.
+@cyra{emotion="sleepy"}: Mm. Five more winters.
+<branch id="h2Wake" prompt="The lantern is glowing faintly. So is she.">
+  <choice id="gentle" label="Wake her gently.">
+    @cyra{emotion="sleepy"}: Oh. A kind one. The moon likes kind ones.
+  </choice>
+  <choice id="pim" label="Let Pim do it.">
+    @pim: RISE AND SHINE, PRIESTESS! PAYING CUSTOMERS!
+    @cyra{emotion="sleepy"}: ...The moon does not like Pim.
+  </choice>
+</branch>

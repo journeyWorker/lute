@@ -1,0 +1,7 @@
+file: ../lore/login.lute
+beat: standardCard
+state: { user.loginStreak: 7 }
+expect:
+  eligible: true
+  transcriptContains: ["@lumi: Seven days straight! The big gift, as promised. Don't spend it all on one pull. Or do."]
+  end: complete

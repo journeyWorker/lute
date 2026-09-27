@@ -1,0 +1,26 @@
+---
+kind: lore
+id: news
+title: Pell's news at breakfast
+---
+
+/* Side remarks after the morning card (`also`): they ride along after the
+   routine instead of replacing it. Each plays once per run. */
+
+<beat id="lanternDone" on="dayStart" also priority="10" title="The lantern is done" when="quest.festivalLantern.state == 'complete' && run.day <= 5">
+  ::auto{character="pell" anchor="left" action="fadeInUp"}
+  @narrator: The lantern hangs from the beam over the counter, turning slowly in the draught from the door.
+  @pell{emotion="happy"}: That will float. That will float all the way to the lighthouse.
+  ::auto{character="pell" action="fadeOut"}
+</beat>
+
+<beat id="theoCameBy" on="dayStart" also title="Thursday — the morning after" when="run.day == 4 && quest.theoLighthouse.state == 'failed'">
+  ::bg{location="lantern_shop" time="morning"}
+  ::auto{character="pell" anchor="left" action="fadeInUp"}
+  @pell{emotion="teasing"}: The Maddox boy came by at seven. Didn't buy anything. Stood there looking at the glue.
+  @pell: Asked if you were feeling all right. Said you'd "had a lot on" last night.
+  @sol{mono}: Wednesday. Low tide. I said I'd be there.
+  @pell{emotion="sad"}: Whatever you did, love, go and undo it before Friday. Boys on this coast hold a grudge longer than a tide table.
+  ::set{run.aff.theo -= 2}
+  ::auto{character="pell" action="fadeOut"}
+</beat>

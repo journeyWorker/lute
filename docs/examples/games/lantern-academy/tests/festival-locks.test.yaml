@@ -1,0 +1,14 @@
+# The festival offers a route only when it is open: warm enough (3+) and not
+# locked. Ren is warmest but locked; Soren is just below the bar; Kai is warm
+# but locked; the keeper's route is not open on a save with routes to go.
+file: ../scenes/common/festival.lute
+visited: [common.eve]
+state: { run.day: 6, run.slot: evening, run.aff.ren: 9, run.aff.mika: 3, run.aff.soren: 2, run.aff.kai: 5 }
+facts: ["locked(ren)", "locked(kai)"]
+quests: { festivalPrep: complete, fourLanterns: active }
+choose: { lantern: mika }
+expect:
+  options: { lantern: [mika, alone] }
+  state: { run.route: mika }
+  transcriptContains: ["Our dorm's lanterns are the brightest three on the water."]
+  end: complete

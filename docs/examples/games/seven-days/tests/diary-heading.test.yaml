@@ -1,0 +1,5 @@
+file: ../lore/diary.lute
+beat: day
+state: { run.day: 5, run.postcards: 1 }
+expect:
+  transcriptContains: ["Friday. 1 postcard home so far."]

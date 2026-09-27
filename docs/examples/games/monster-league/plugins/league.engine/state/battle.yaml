@@ -1,0 +1,7 @@
+stateShapes:
+  - name: battleResult
+    fields:
+      - { name: won,     type: bool,   default: false }
+      - { name: prize,   type: number, default: 0 }
+      - { name: turns,   type: number, default: 0 }
+      - { name: fainted, type: number, default: 0 }

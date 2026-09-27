@@ -1,0 +1,13 @@
+# Ink route: straight to dusk -> ending_dark
+choose:
+  door: inside
+  lamp: [gallery, dusk]
+steps:
+  - occasion: chapter
+  - occasion: chapter
+  - occasion: chapter
+    expect: { winner: ending.dark }
+expect:
+  end: complete
+  state: { run.oil: 1, run.knowsName: false }
+  transcriptContains: ['@narrator: Only fog.', '@narrator: The lamp room again. The dark is closer.']

@@ -1,0 +1,9 @@
+# Maren's word alone gives Ada an alibi; the notebook records it.
+file: ../lore/notebook.lute
+entry: nbAdaAlibi
+facts: ["sawAt(maren, ada, village, midnight)"]
+expect:
+  eligible: true
+  transcriptContains: ["Maren Hale swears her niece was in her house, fevered, all night."]
+  facts: ["alibied(ada)"]
+  end: complete

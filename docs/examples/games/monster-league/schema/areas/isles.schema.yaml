@@ -1,0 +1,73 @@
+# OWNED BY AREA isles (the Sunfall Isles, postgame; round 6): area-private
+# state, relations, rules and defs, and the area's roster members. Every name
+# declared here starts with the area: run.islesX, relation/def islesX.
+#
+# The story: what is left of Team Eclipse (the Dusk Remnant, Admin Nyx) has
+# stolen the lens of each island's beacon. Win each lens back from its grunt,
+# bring it to the island's keeper, and when all three burn the Sunfall Shrine
+# under Sunport opens.
+state:
+  # the Sunport Battle Tower: wins in a row this week (the engine sets it back
+  # to 0 on Monday; a loss sets it to 0 here)
+  run.islesTowerStreak: { type: number, default: 0 }
+  # the Mistral windmill puzzle: vanes turned into the wind (3 opens the loft)
+  run.islesVanes: { type: number, default: 0 }
+
+relations:
+  # a beacon's lens is back in the player's bag (won from its Dusk grunt)
+  islesLensBack: { args: [island], tier: run }
+  # the island's keeper has relit its beacon
+  islesRelit:    { args: [island], tier: run }
+
+rules:
+  # the shrine under Sunport opens when all three beacons burn
+  - "canPass(islesShrineDoor) :- count(islesRelit(_)) >= 3"
+
+defs:
+  # the tide is out in the morning: the Coralreach sea cave is walkable
+  islesLowTide: "run.slot == 'morning'"
+  # how many beacons burn
+  islesLit: "count(islesRelit(_))"
+  # the Battle Tower takes challengers at the weekend
+  islesTowerOpen: "clock.weekday >= 5"
+
+entities:
+  town:
+    add: [sunport]
+    labels: { sunport: "Sunport" }
+  arena:
+    add: [sunportTower]
+  gate:
+    add: [islesShrineDoor]
+  martStock:
+    add: [sunportStock]
+  person:
+    add:
+      - sunportHarbormaster
+      - sunportTowerClerk
+      - sunportSage
+      - sunportKid
+      - emberkeyKeeper
+      - mistralKeeper
+      - coralreachKeeper
+  trainer:
+    add:
+      - duskAdminNyx
+      - duskGruntCinder
+      - duskGruntGale
+      - duskGruntBrine
+      - emberkeyHikerRook
+      - emberkeyFirebreatherIda
+      - mistralBirdKeeperOwen
+      - mistralKiteFlyerJun
+      - coralreachSwimmerTess
+      - coralreachFishermanAbe
+      - sunportAceKestrel
+  # the Dusk Remnant's grunts: one bark answers all of them once beaten
+  islesDusk: { subsetOf: trainer, members: [duskGruntCinder, duskGruntGale, duskGruntBrine] }
+  place:
+    add:
+      - emberkeyBeacon
+      - mistralWindmill
+      - coralCave
+      - sunfallShrine

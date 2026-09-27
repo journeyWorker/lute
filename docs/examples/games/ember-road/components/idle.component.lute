@@ -1,0 +1,13 @@
+---
+component: idle
+params:
+  who: speaker
+# A companion's standing talk (dsl 0.27 §6): repeatable, and only while they
+# travel with the Warden. Each use writes the companion's own words.
+beat:
+  on: talk
+  target: npc.@who
+  title: "{{@who}}"
+  once: "false"
+  when: "holds(inParty(@who))"
+---

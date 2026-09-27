@@ -1,0 +1,18 @@
+---
+kind: scene
+id: place.gallery
+title: The Gallery
+on: explore
+target: place.gallery
+priority: 10
+after: 'visited("place.lanternRoom")'
+---
+
+## The Gallery
+
+::bg{location="skerry_gallery" time="day"}
+::sfx{sound="wind_howl"}
+@narrator: The gallery runs round the outside of the lantern, a ledge of iron plate with a rail at waist height.
+@narrator: On the seaward side, the rail simply stops.
+@inspector{mono}: If he came out here to wipe the glass, in that wind, in the dark...
+@inspector{mono,when="holds(placedBy(logbook, elias, gallery, midnight))"}: Eleven-forty. His own hand. He was coming out here.

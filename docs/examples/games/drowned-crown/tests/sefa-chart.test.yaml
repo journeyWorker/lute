@@ -1,0 +1,12 @@
+# The chart completes when the hall is reported at her table, the fifth chamber reached, and she trusts you.
+file: ../quests/crew.lute
+accepts: [sefaChart]
+facts: ["told(sefa, eel)"]
+state: { user.deepest: 5, user.bond.sefa: 3 }
+occasions: [talk@npc.sefa]
+expect:
+  quests: { sefaChart: complete }
+  state: { user.pearls: 30 }
+  facts: ["trusts(sefa)", "heard(brann, eel)"]
+  transcriptContains: ["I only held the pen."]
+  end: complete

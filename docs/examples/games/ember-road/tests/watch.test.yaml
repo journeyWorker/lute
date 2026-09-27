@@ -1,0 +1,7 @@
+# A companion who trusts the Warden takes the watch; one who does not, doesn't.
+file: ../lore/camp-talks.lute
+beat: watch
+state: { occasion.target: corvin, run.approval.corvin: 3 }
+expect:
+  eligible: { watch: true }
+  transcriptContains: ["@narrator: Corvin takes a turn at the watch without being asked."]

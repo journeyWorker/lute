@@ -1,0 +1,2 @@
+events:
+  - { name: seasonClose }   # the engine closes the open event's missions before the next season opens

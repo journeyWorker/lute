@@ -1,0 +1,12 @@
+# The rescue quest completes, pays Oda's thirty silver, and warms the ford.
+file: ../quests/ember-road.lute
+# the rescue is a subquest of the Ember Road: accepted only while it is active
+visited: [road.departure]
+accepts: [hostages]
+facts: ["knows(passage)"]
+state: { run.hostagesFreed: true }
+expect:
+  quests: { hostages: complete }
+  state: { run.gold: 70, run.rep.marrow: 2 }
+  transcriptContains: ["Oda does not thank you."]
+  end: complete

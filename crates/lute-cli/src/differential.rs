@@ -1108,12 +1108,15 @@ fn presentation_cases(
         // The persistent tiers the document declares, and the `prev.` copy
         // of each (what the last `newRun` left, which content may read).
         for (path, v) in &pr.state_before {
-            // Another document's `entry.<id>.read` the content reads, too.
+            // Another document's `entry.<id>.read` the content reads, and the
+            // reserved quest reads the lifecycle wrote (the status is seeded
+            // from the world's quests below), too.
             let seeded = keys.contains(path)
                 || path
                     .strip_prefix("prev.")
                     .is_some_and(|p| declared.contains(p))
-                || (path.starts_with("entry.") && subject.input.text.contains(path.as_str()));
+                || ((path.starts_with("entry.") || is_quest_lifecycle_read(path))
+                    && subject.input.text.contains(path.as_str()));
             if seeded {
                 if let Some(text) = mock_literal(v) {
                     mock.state.push((path.clone(), text, None));
@@ -1266,6 +1269,16 @@ fn relation_of(fact: &str) -> &str {
 fn quest_of_state_path(path: &str) -> Option<&str> {
     let rest = path.strip_prefix("quest.")?.strip_suffix(".state")?;
     (!rest.is_empty() && !rest.contains('.')).then_some(rest)
+}
+
+/// A reserved quest read the lifecycle writes into the world's state beside
+/// the status (dsl 0.24.0 §2): `quest.<id>.failedBy`,
+/// `quest.<id>.objectives.<oid>.done` / `.failed`.
+fn is_quest_lifecycle_read(path: &str) -> bool {
+    matches!(
+        path.split('.').collect::<Vec<_>>().as_slice(),
+        ["quest", _, "failedBy"] | ["quest", _, "objectives", _, "done" | "failed"]
+    )
 }
 
 /// Trace's rendering of a value (`report::value_text`, `format_num`).

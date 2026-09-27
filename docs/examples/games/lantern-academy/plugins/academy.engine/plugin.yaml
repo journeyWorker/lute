@@ -1,0 +1,13 @@
+# The Lantern Academy engine pack. What the engine raises (occasions), the two
+# minigames content hands off to and reads back (bridges: ::date, ::exam), the
+# fire-and-forget CG unlock (::unlockCg), and the cast.
+id: academy.engine
+version: 0.1.0
+kind: capability
+depends: [ { id: lute.core, range: "^0.0.1" } ]
+exports:
+  occasions: occasions/
+  directives: directives/
+  bridge: bridge/
+  state: state/
+  cast: cast/

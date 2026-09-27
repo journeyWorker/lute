@@ -1,0 +1,19 @@
+# Two answers right, one wrong: the Board names only the rejected finding
+# (quest.<id>.objectives.<o>.failed, dsl 0.24.0 §2) and the reconstruction fails
+# at the hearing (`until`), not for want of a report (`by`).
+file: ../quests/inquiry.lute
+state:
+  run.verdictFate: drowned
+  run.verdictOnRock: ada
+  run.verdictLiar: maren
+occasions: [inquest]
+expect:
+  quests: { reconstruction: failed, keeperInquiry: failed }
+  state:
+    quest.reconstruction.failedBy: until
+    quest.reconstruction.objectives.fate.failed: true
+    user.casesClosed: 0
+  # the hearing's closing scene names the rejected finding (tests/hearing-close-partial)
+  transcriptLacks:
+    - "No reconstruction reached the Board before the relief boat sailed."
+  end: complete

@@ -1,0 +1,32 @@
+# Kai's ember ending: lie for him at the hearing (locks Ren), one afternoon
+# in the music room, a sweet-but-wrong duet, and offering to go to the council.
+choose:
+  firstLook: kai
+  clash: sideKai
+  injury: urge
+  lantern: kai
+  kaiAsk: fix
+bridges:
+  exam: [ { grade: pass, score: 60 } ]
+  date: [ { mood: sweet, hearts: 3 } ]
+steps:
+  - include: steps/term-start.steps.yaml
+  - include: steps/day-musicRoom.steps.yaml
+  - include: steps/day-council.steps.yaml
+  - include: steps/day-roof.steps.yaml
+  - include: steps/day-roof.steps.yaml
+  - include: steps/day-roof.steps.yaml
+  - include: steps/finale.steps.yaml
+  - occasion: gift
+    target: npc.kai
+    payload: { hearts: 1 }
+  - include: steps/week2.steps.yaml
+expect:
+  end: complete
+  state: { run.route: kai, run.ending: bittersweet, run.aff.kai: 4, user.terms: 1 }
+  facts: ["locked(ren)", "cleared(kai, bittersweet)"]
+  transcriptContains:
+    - "@ren{emotion=\"stern\"}: The council room is for council business."
+    - "Aoki still thinks the room is empty."
+    - "Wrong notes. Right idea."
+    - "~ Kai — the ember ending ~"

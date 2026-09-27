@@ -1,0 +1,30 @@
+directives:
+  # a bond-rank reward: a voice line, a costume colour, a title (engine picks)
+  - name: bondReward
+    attrs:
+      - { name: hero, required: true, type: { entity: hero } }
+      - { name: rank, required: true, type: { entity: rank } }
+  # open the summon screen on a banner
+  - name: openBanner
+    attrs:
+      - { name: banner, required: true, type: { domain: banner } }
+  # a login stamp card: the engine animates the stamp and pays the day's gift
+  - name: stamp
+    attrs:
+      - { name: card, required: true, type: { enum: [standard, harvest, starfall, frost] } }
+  # buy one item in the open shop: a blocking bridge (the engine checks tokens)
+  - name: purchase
+    layer: bridge
+    attrs:
+      - { name: item,      required: true, type: { entity: shopItem } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.shop } } }
+      - { name: sync,      type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [shop, { fromAttr: { name: resultKey, slotType: localId } }], shape: purchaseResult }
+    effects:
+      writes:
+        - { scope: scene, path: [shop, { fromAttr: { name: resultKey } }, bought],    value: { fromBridgeResult: bought } }
+        - { scope: scene, path: [shop, { fromAttr: { name: resultKey } }, remaining], value: { fromBridgeResult: remaining } }
+    bridge: { service: shop, operation: purchase }

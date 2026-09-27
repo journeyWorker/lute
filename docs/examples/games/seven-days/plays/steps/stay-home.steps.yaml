@@ -1,0 +1,7 @@
+# One day at home: the player goes nowhere, only the clock moves (three slots,
+# ending at the next morning). Spliced into a route with `include:`.
+steps:
+  - advance: slot
+  - advance: slot
+  - advance: slot
+    expect: { clock: { slot: morning } }

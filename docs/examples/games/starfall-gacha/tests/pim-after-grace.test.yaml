@@ -1,0 +1,5 @@
+file: ../lore/shop.lute
+beat: pimHarvest
+state: { user.day: 18 }
+expect:
+  eligible: false

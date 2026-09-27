@@ -1,0 +1,28 @@
+---
+kind: lore
+id: lore.noticeboard
+title: The harbour square notice board
+---
+
+<entry id="noticeLanternWalk" on="noticeBoard" target="place.square" category="note" title="THE LANTERN WALK" priority="20" when="run.day <= 5">
+  @narrator: THE LANTERN WALK — FRIDAY AT DUSK. Promenade to slipway. One lantern per household. Candles only, NO sparklers (this means you, Dennis).
+</entry>
+
+<entry id="noticeMarket" on="noticeBoard" target="place.square" category="note" title="SATURDAY MARKET" priority="10" when="run.day <= 6">
+  @narrator: SATURDAY MARKET, 8 till 2. Local produce. Knife sharpening. Tide almanacs & other books (library surplus).
+</entry>
+
+<entry id="noticeTides" on="noticeBoard" target="place.square" category="note" title="Tide table">
+  @narrator: A laminated tide table. Wednesday's low water is at 22:40. Someone has drawn a small blue star beside it.
+</entry>
+
+<entry id="noticeWalkThanks" on="noticeBoard" target="place.square" category="note" title="Thank you" when="run.day > 5">
+  <match on="quest.festivalLantern.state">
+    <when is="complete">
+      @narrator: THANK YOU to everyone who walked. Special mention: the shop on Tern Street, back after a year off. Forty-one years!
+    </when>
+    <otherwise>
+      @narrator: THANK YOU to everyone who walked. The committee will be collecting stray sticks from the slipway on Sunday.
+    </otherwise>
+  </match>
+</entry>

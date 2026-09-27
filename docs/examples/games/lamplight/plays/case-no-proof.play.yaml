@@ -1,0 +1,14 @@
+# Naming Solt with nothing to hold him is a failed accusation too: the deadline
+# is the moment a name is said, and the case must already be made by then.
+# (0.28: was tests/case-no-proof.test.yaml; see case-silence.play.yaml.)
+visited: [lamplight.discovery]
+facts: ["motive(solt)"]
+steps:
+  - advance: { to: h06 }
+  - occasion: accuse
+    choose: { accuse: solt }
+    expect: { winner: lamplight.accusation }
+expect:
+  end: terminal
+  quests: { accusation: failed, lamplightCase: failed }
+  transcriptLacks: ["one doctor shorter"]

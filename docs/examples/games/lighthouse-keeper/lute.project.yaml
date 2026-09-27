@@ -1,0 +1,15 @@
+# Skerry Rock: the keeper of a remote lighthouse has vanished.
+pluginsDir: plugins/
+defaultProfile: game
+profiles:
+  game:
+    plugins: { skerry.occasions: true }
+defaults:
+  luteVersion: "0.28.1"
+  uses: [world.schema.yaml, vocabulary.schema.yaml]
+# 0.27: the Board's hearing is one chapter of three scenes, played in one raise
+# of `inquest` (a `select: sequence` occasion), in this order.
+# 0.28: `sequence: { occasion, scenes }` is `chapters: [{ on, scenes }]`.
+chapters:
+  - on: inquest
+    scenes: [board.hearing, board.rail, board.close]

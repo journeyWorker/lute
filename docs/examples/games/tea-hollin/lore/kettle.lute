@@ -1,0 +1,9 @@
+---
+kind: lore
+id: kettle
+title: The Kettle
+---
+
+<entry id="kettleSings" on="teatime" once="slot">
+  @narrator: Somewhere below stairs, the kettle sings.
+</entry>

@@ -1,0 +1,17 @@
+# Thursday morning from a save: the lighthouse date was missed. The routine
+# card plays, then Pell's news rides along (`also`) instead of replacing it.
+# And the other way round: a kept date means no news.
+quests: { theoLighthouse: failed, festivalLantern: active }
+presented: { run: [day1.arrival] }
+state: { run.day: 4, run.aff.theo: 3 }
+steps:
+  - occasion: dayStart
+    label: Thu morning, date missed
+    expect: { presented: [shop.morning, news.theoCameBy] }
+  - advance: day                                # Thursday's diary, then Friday's breakfast
+    label: Fri morning
+    expect: { presented: [diary.day, diary.person for pell, shop.morning] }   # once: run — the news is told once
+expect:
+  end: complete
+  state: { run.aff.theo: 1 }
+  transcriptContains: ["Thursday.", "The Maddox boy came by at seven.", "Friday. The Lantern Walk."]

@@ -1,0 +1,18 @@
+---
+component: villagerChat
+params:
+  who: speaker
+  need: { type: number, default: 0 }
+  prev: { type: string, default: "" }
+beat:
+  on: talk
+  target: "npc.@who"
+  once: user
+  when: "user.bond[@who] >= @need"
+  after: "@prev"
+---
+
+## Chat
+
+@@who: Oh, it's you.
+::body

@@ -1,0 +1,8 @@
+# `::pickup{item="ledger"}`: the engine moves an item into the party's packs
+# (the inventory screen shows it) and the story learns the party has it.
+directives:
+  - name: pickup
+    attrs:
+      - { name: item, required: true, type: { entity: item } }
+    effects:
+      asserts: ["knows(@item)"]

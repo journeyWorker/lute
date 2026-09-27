@@ -1,0 +1,20 @@
+# `::check{skill="persuasion" dc="12" resultKey="guards"}`: the engine rolls a
+# skill check and writes the result into `scene.check.guards.*`, which the
+# same scene reads right after (sync).
+directives:
+  - name: check
+    layer: bridge
+    attrs:
+      - { name: skill,     required: true, type: { enum: [persuasion, intimidation, stealth, insight] } }
+      - { name: dc,        required: true, type: number }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.check } } }
+      - { name: sync,      type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [check, { fromAttr: { name: resultKey, slotType: localId } }], shape: checkResult }
+    effects:
+      writes:
+        - { scope: scene, path: [check, { fromAttr: { name: resultKey } }, passed], value: { fromBridgeResult: passed } }
+        - { scope: scene, path: [check, { fromAttr: { name: resultKey } }, margin], value: { fromBridgeResult: margin } }
+    bridge: { service: dice, operation: check }

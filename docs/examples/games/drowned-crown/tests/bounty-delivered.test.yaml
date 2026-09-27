@@ -1,0 +1,10 @@
+# The eel killed and Ilo home: Tavi pays on runEnd.
+file: ../quests/dive.lute
+accepts: [eelBounty]
+state: { run.outcome: surfaced }
+facts: ["slew(eel)"]
+occasions: [runEnd]
+expect:
+  quests: { eelBounty: complete, regentHunt: failed }
+  transcriptContains: ["@tavi: Eel steaks! Tonight we eat like kings. Kings who live on a boat."]
+  end: complete

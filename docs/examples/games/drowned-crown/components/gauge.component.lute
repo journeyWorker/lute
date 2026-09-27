@@ -1,0 +1,22 @@
+---
+component: gauge
+# The gauge always shows where the last dive's needle stuck; a host that
+# means some other depth can still pass `fathoms=`.
+params:
+  fathoms: { type: number, default: "@lastFathoms" }
+  mood: { enum: [calm, grim] }
+---
+
+## Gauge
+
+::sfx{sound="brass needle ticking"}
+@narrator: The depth gauge on the rail still shows {{@fathoms}} fathoms, where the needle stuck.
+
+<match on="@mood">
+  <when is="grim">
+    @sefa{emotion="sad"}: I'll mark it on the chart. Another line that ends in a cross.
+  </when>
+  <when is="calm">
+    @sefa{emotion="content"}: I'll mark it on the chart. Deeper than yesterday.
+  </when>
+</match>

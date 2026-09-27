@@ -1,0 +1,49 @@
+---
+kind: scene
+id: hub.returnDied
+title: Hauled up again
+pov: ilo
+on: hubVisit
+priority: 10
+when: "@died"
+---
+
+## Rail
+
+::bg{location="deck" time="night"}
+@narrator: The line goes slack, then heavy. They haul him up hand over hand.
+
+<match on="run.killedBy">
+  <when is="eel">
+    @narrator: There are tooth-marks in his diving leathers, a hand's width apart.
+  </when>
+  <when is="choir">
+    @narrator: He comes up humming a song none of them taught him, and cannot stop.
+  </when>
+  <when is="archivist">
+    @narrator: His hands are black with ink to the wrist. None of it will wash off.
+  </when>
+  <when is="regent">
+    @narrator: His lips are blue and his eyes are open. Something sat on a throne and looked at him.
+  </when>
+  <when is="pressure">
+    @narrator: He went too deep, too fast. His ears are bleeding.
+  </when>
+  <when is="unset">
+    @narrator: Nobody can say what took him this time.
+  </when>
+</match>
+
+@tavi{when="quest.eelBounty.failedBy == 'until'"}: No eel, then. The pot stays on anyway.
+
+<match on="user.deaths">
+  <when is="..1">
+    @brann: Again. You died again, and you came back again.
+  </when>
+  <when is="2..4">
+    @brann: That's the {{user.deaths:ordinalWord}} time I've pulled a corpse out of the sea and had it thank me.
+  </when>
+  <otherwise>
+    @brann{emotion="wry"}: I've stopped counting, boy. The sea hasn't.
+  </otherwise>
+</match>

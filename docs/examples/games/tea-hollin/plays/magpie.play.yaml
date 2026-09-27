@@ -1,0 +1,17 @@
+choose: { firstLook: vicarPocket, askCook: [scullery, leave], accuse: accuseMagpie }
+steps:
+  - occasion: chapter
+    expect: { winner: arrival }
+  - occasion: chapter
+    expect: { winner: parlour }
+  - advance: slot
+    expect: { winner: kettleSings }
+  - occasion: chapter
+    expect: { winner: kitchen }
+  - occasion: chapter
+    expect: { winner: garden }
+  - occasion: chapter
+    expect: { winner: ending.found }
+expect:
+  state: { run.accused: magpie, run.cluesFound: 2, run.slot: afternoon }
+  quests: { findSpoon: complete }

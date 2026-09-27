@@ -1,0 +1,11 @@
+# Top of the year (after the study group): Soren warms, and the board gets a lantern.
+file: ../scenes/common/exam.lute
+visited: [common.injury]
+state: { run.day: 4, run.slot: morning }
+quests: { studyGroup: complete }
+bridges: { exam: [ { grade: top, score: 98 } ] }
+expect:
+  state: { run.exam: top, run.aff.soren: 1 }
+  notFacts: ["locked(soren)"]
+  transcriptContains: ["Dates in blue, kings in green.", "That's — that's my rank you took.", "Somebody has drawn a small lantern next to it."]
+  end: complete

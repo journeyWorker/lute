@@ -1,0 +1,9 @@
+# `::encounter{id="tollbridge"}` hands the fight to the battle system. The
+# engine plays the battle after the scene, writes `run.battle.outcome` and any
+# `fell(...)` facts, then raises the `battleEnd` occasion. Content never learns
+# the result inside the scene that starts the fight.
+directives:
+  - name: encounter
+    attrs:
+      - { name: id, required: true, type: string }
+      - { name: foes, type: string }

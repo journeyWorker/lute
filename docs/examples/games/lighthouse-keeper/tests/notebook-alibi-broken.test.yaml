@@ -1,0 +1,16 @@
+# One page in Ada's hand makes Maren a liar, and a liar's alibi counts for
+# nothing: the negated premise `not liar(maren)` fails, so the alibi entry is
+# no longer eligible and the false-statement entry is (judged without presenting
+# either: a map-form `eligible:` stands alone in 0.24).
+# 0.28: without a presented entry, `facts:` / `notFacts:` are judged on the
+# seeded and derived world again (a 0.27 bug, fixed), so the 0.27
+# `entry: nbMarenLied` workaround is gone.
+file: ../lore/notebook.lute
+facts:
+  - "sawAt(maren, ada, village, midnight)"
+  - "placedBy(logbook, ada, lantern, midnight)"
+expect:
+  eligible: { nbAdaAlibi: false, nbMarenLied: true }
+  facts: ["liar(maren)", "contradicts(maren, ada, midnight)"]
+  notFacts: ["alibied(ada)"]
+  end: complete

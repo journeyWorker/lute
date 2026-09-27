@@ -1,0 +1,12 @@
+---
+component: loginStamp
+params:
+  card: { enum: [standard, harvest, starfall, frost] }
+  who: { type: speaker, default: lumi }
+  line: string
+---
+
+## Stamp
+
+::stamp{card=@card}
+@@who: {{@line}}

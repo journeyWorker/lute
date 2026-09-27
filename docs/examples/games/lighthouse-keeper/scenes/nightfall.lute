@@ -1,0 +1,16 @@
+---
+kind: scene
+id: rock.nightfall
+title: Lighting Up
+on: nightfall
+priority: 10
+once: day
+components: [../components/lamp-lighting.component.lute]
+---
+
+## Dusk
+
+::bg{location="skerry_lantern" time="night"}
+::use{component="lampLighting"}
+@inspector{mono}: My {{run.day:ordinalWord}} night on Skerry Rock. Whatever else happened on the fourteenth, somebody kept this light burning till morning. I will do no less.
+@inspector{mono,when="@statements >= 1"}: {{@statements:plural(One statement|# statements)}} in the notebook tonight, and the light still to keep.

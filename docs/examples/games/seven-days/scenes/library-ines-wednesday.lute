@@ -1,0 +1,34 @@
+---
+kind: scene
+id: library.ines.wednesday
+title: Wednesday delivery
+on: placeVisit
+target: place.library
+after: 'visited("library.ines.meet")'
+when: '@at(3, "afternoon") && holds(present(ines, library))'
+priority: 40
+---
+
+## Behind the returns desk
+
+::bg{location="library_back_room" time="afternoon"}
+::auto{character="ines" anchor="right" action="slideInRight"}
+::set{run.seen.ines = run.day}
+@ines{emotion="happy"}: You remembered! Nobody remembers Wednesdays.
+@narrator: On the desk: a flat parcel in brown paper, already opened, the sheets inside the colour of weak tea.
+@ines: Kozo. I ordered extra. Don't tell the council.
+::set{run.lantern.paper = true}
+@ines{emotion="shy"}: I could — show you how to fold the corners. So they don't tear on the frame. If you want.
+
+<branch id="fold" prompt="She has already rolled up her sleeves.">
+  <choice id="together" label="“Show me.”">
+    ::set{run.aff.ines += 2}
+    @narrator: Her hands are cold and quick. She folds; you copy; she refolds yours without comment, and then, eventually, doesn't have to.
+    @ines{emotion="happy"}: There. You have lantern hands now.
+  </choice>
+  <choice id="self" label="“I'll manage, thanks.”">
+    @ines{emotion="neutral"}: Of course. Mind the corners.
+  </choice>
+</branch>
+
+::auto{character="ines" action="fadeOut"}

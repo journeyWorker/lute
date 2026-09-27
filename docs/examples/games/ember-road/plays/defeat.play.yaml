@@ -1,0 +1,38 @@
+# From a save at the chain, steel drawn: the battle system decides the caravan
+# loses, and Corvin falls. The main quest fails (its fail= reads the engine's
+# outcome) and pays its consolation reward.
+#   lute play . --script plays/defeat.play.yaml
+visited: [road.departure, road.ford, bridge.arrival]
+quests: { emberRoad: active }
+state:
+  run.leg: 3
+  run.night: 3
+  run.bridge: stormed
+  quest.emberRoad.objectives.ford.done: true
+steps:
+  - label: the battle system fights the Tollbridge, and loses
+    engine:
+      state: { run.battle.outcome: lost }
+      facts: [fell(corvin)]
+    expect: { quests: { emberRoad: failed }, state: { run.gold: 60 } }
+  - occasion: battleEnd
+    payload: { wagonsLost: 4 }
+    expect: { presented: [bridge.defeat, bridge.fallen], state: { run.wagons: 7 } }
+  - occasion: camp
+    expect: { presented: [camp.fire, camp.mourning] }
+  - occasion: chapterEnd
+    expect: { winner: road.crossing }
+expect:
+  end: complete
+  quests: { emberRoad: failed }
+  facts: [mourned(corvin)]
+  notFacts: [inParty(corvin)]
+  transcriptContains:
+    - "@narrator: The Ember Road keeps the wagons."
+    - "@isolde: Get the wounded on the last wagon."
+    - "@narrator: The Duskbound do not chase you far. They do not need to. Four wagons burn on the near arch"
+    - "@isolde: He owed me four silver."
+    - "@narrator: What is left of the caravan limps back toward Harrow's Ford."
+  transcriptLacks:
+    - "@corvin: I would like it noted"
+    - "@narrator: The Tollbridge is quiet again."

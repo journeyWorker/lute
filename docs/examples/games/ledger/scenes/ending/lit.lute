@@ -1,0 +1,13 @@
+---
+kind: scene
+id: ending.lit
+title: The Lamp Catches
+on: chapter
+after: 'visited("keeper")'
+when: "run.oil >= 3 && run.knowsName"
+---
+
+## The Lamp Catches
+
+@narrator: The lamp catches. Out on the water the ship turns.
+::end{reason="lit"}

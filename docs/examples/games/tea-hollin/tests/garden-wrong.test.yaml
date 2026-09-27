@@ -1,0 +1,8 @@
+file: ../scenes/garden.lute
+visited: [kitchen]
+choose: { accuse: accuseCook }
+expect:
+  transcriptContains:
+    - "@pippa{mono}: Magpies love anything that shines."
+    - "@pippa: Mrs. Dunn, you washed five spoons, not six."
+  state: { run.accused: cook }

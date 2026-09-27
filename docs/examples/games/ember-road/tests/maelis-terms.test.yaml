@@ -1,0 +1,12 @@
+# Bringing the ledger before the twins are freed: Maelis frees them herself.
+file: ../lore/bridge-talks.lute
+visited: [bridge.arrival]
+beat: maelisTerms
+quests: { parley: active }
+facts: ["knows(ledger)"]
+expect:
+  eligible: true
+  state: { run.bridge: parleyed, run.hostagesFreed: true }
+  transcriptContains: ["The children go home tonight."]
+  transcriptLacks: ["And you already took the miller's twins back"]
+  end: complete

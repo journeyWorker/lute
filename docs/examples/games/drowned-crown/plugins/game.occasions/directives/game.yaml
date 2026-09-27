@@ -1,0 +1,10 @@
+# Engine actions content may call.
+directives:
+  # Ilo hauls something up from a drained hall during the neap; the engine
+  # counts it for the season.
+  - name: salvage
+    attrs:
+      - { name: what, type: string, required: true }
+    effects:
+      writes:
+        - { scope: season, path: [neap, salvage], value: { op: increment, by: 1 } }

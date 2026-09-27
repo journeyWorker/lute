@@ -1,0 +1,79 @@
+---
+kind: lore
+id: mid.wardenmere
+title: Wardenmere (the Venom Gym, Warden Holt, the Wildmoor gate)
+---
+
+// A marsh town on stilts at the bottom of the Mill Road, gateway to the
+// Wildmoor Preserve. Warden Holt has lost his gold tooth somewhere in the
+// Preserve (the tooth is at the rest house, mid.wildmoor; the trade is
+// mid.wardenHolt).
+
+<beat id="arrive" on="enterTown" target="town.wardenmere" title="Wardenmere" priority="10" once="run">
+  ::bg{location="wardenmere" time="day"}
+  ::music{action="change" mood="calm" volume="normal"}
+  @narrator: Wardenmere stands on stilts over the marsh. Boardwalks instead of streets, rowing boats instead of trams, and at the far end the green gates of the Wildmoor Preserve.
+  @narrator: The Venom Gym is the only building on solid ground. It is painted purple. Somebody is laughing inside it, very loudly.
+  @narrator: A note is pinned to the Center door in handwriting you know: "KESSLER'S NEXT. DON'T WAIT UP. — K."
+</beat>
+
+<entry id="midWardenmereMorning" on="enterTown" target="town.wardenmere" category="bark" once="day" when="@isMorning">
+  @narrator: The marsh steams in the morning sun. Boats knock together at their moorings, and Maud is sweeping the inn's boardwalk into the water.
+</entry>
+
+<entry id="midWardenmereDay" on="enterTown" target="town.wardenmere" category="bark" once="day" when="run.slot == 'day'">
+  @narrator: Rowing boats, fishing lines and a queue of trainers with nets at the Preserve gates.
+</entry>
+
+<entry id="midWardenmereNight" on="enterTown" target="town.wardenmere" category="bark" once="day" when="@isNight">
+  @narrator: At night Wardenmere is lanterns on stilts, frogs, and the purple glow of the Venom Gym, where Kessler trains until the small hours.
+</entry>
+
+<entry id="midWardenmereContestDay" on="enterTown" target="town.wardenmere" category="bark" priority="5" once="day" when="@midContestOpen">
+  @narrator: It's contest day. Half of Wardenmere is heading for the Preserve gates with a net over their shoulder, and the other half is selling them nets.
+</entry>
+
+// ── services ──────────────────────────────────────────────────────────────
+
+<beat id="center" on="heal" target="town.wardenmere" title="Monster Center" once="false">
+  ::use{component="nurse" town="wardenmere"}
+</beat>
+
+<beat id="mart" on="shop" target="town.wardenmere" title="Mart" once="false">
+  @clerk: Antidotes are on special. They're always on special. It's Wardenmere.
+  ::use{component="shop" stock="wardenmereStock"}
+</beat>
+
+// ── people ────────────────────────────────────────────────────────────────
+
+<entry id="midHoltToothless" on="talk" target="npc.wardenHolt" category="bark" priority="-5" when="!holds(hasItem(goldTooth)) && !holds(hasItem(hmStrength))">
+  @wardenHolt{emotion="sad"}: Hwah? Ah'm the Warden of the Pweserve. Ah wost mah teef in thewe. Mah gold teef. Can't whishtle for mah Wanger without 'em.
+</entry>
+
+<entry id="midHoltThanks" on="talk" target="npc.wardenHolt" category="bark" priority="-5" when="holds(hasItem(hmStrength))">
+  @wardenHolt{emotion="happy"}: Ah, the young trainer who found my tooth! I've been whistling all week. The rangers are sick of it.
+</entry>
+
+<entry id="midInnkeeper" on="talk" target="npc.wardenmereInnkeeper" category="bark">
+  @wardenmereInnkeeper: Room's twenty coins, breakfast is fish, and the floor moves a little when the tide comes in. We don't have a tide. Nobody knows why it moves.
+</entry>
+
+<entry id="midInnkeeperMorning" on="talk" target="npc.wardenmereInnkeeper" category="bark" priority="5" once="day" when="@isMorning">
+  @wardenmereInnkeeper: You look like you slept on a boardwalk. Everybody does, first night. It's the frogs.
+</entry>
+
+<entry id="midKidBefore" on="talk" target="npc.wardenmereKid" category="bark" when="!holds(hasBadge(venom))">
+  @wardenmereKid: My dad says Kessler's gym has walls you can't see. I walked into one once. It was the door. It was open.
+</entry>
+
+<entry id="midKidAfter" on="talk" target="npc.wardenmereKid" category="bark" when="holds(hasBadge(venom))">
+  @wardenmereKid: You beat Kessler?! Can I touch the badge? I won't lick it. I only licked the last one a little.
+</entry>
+
+<entry id="midFisher" on="talk" target="npc.wardenmereFisher" category="bark" when="!@isNight">
+  @wardenmereFisher: The old well at the end of the boardwalk? Don't lean over it. My gran says there's a girl down there who never finished her song.
+</entry>
+
+<entry id="midFisherNight" on="talk" target="npc.wardenmereFisher" category="bark" when="@isNight">
+  @wardenmereFisher: Hear that? From the well. Singing. Nope. I'm going in.
+</entry>

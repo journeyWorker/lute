@@ -1,0 +1,22 @@
+---
+kind: scene
+id: sefa.chartDone
+title: Sefa, after the chart
+on: talk
+target: npc.sefa
+once: run
+priority: 10
+when: "quest.sefaChart.state == 'complete'"
+---
+
+## Chart table
+
+@sefa{emotion="content"}: I've started a second copy. For the next heir. There's always a next heir.
+<match on="user.deepest">
+  <when is="6..">
+    @sefa: You've been deeper than the chart goes, you know. Chamber {{user.deepest}}. Tell me about it sometime.
+  </when>
+  <otherwise>
+    @sefa: Everything down to the throne, inked and dry.
+  </otherwise>
+</match>

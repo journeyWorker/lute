@@ -1,0 +1,16 @@
+# Week 5 (days 29-35): no event. Starfall's missions close unfinished; the
+# player drifts away for a week and comes back.
+steps:
+  - advance: day
+    label: Starfall ends
+    expect:
+      presented: [resets.eventLastCall, resets.dailyNotice, resets.weeklyNotice]
+      quests: { starfallMissions: failed }
+  - advance: { to: { weekday: Sun } }
+    engine: { state: { user.daysAway: 7, user.loginStreak: 1, user.loginTotal: 30 } }
+    expect: { clock: { day: 35 }, quests: { streakSeven: active } }
+  - occasion: login
+    expect: { presented: [login.welcomeBack, login.standardCard, login.milestone] }
+  - occasion: shopVisit
+    target: shop.starShop
+    expect: { winner: shop.pimStarClosed }

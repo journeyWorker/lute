@@ -1,0 +1,16 @@
+# Every piece of evidence, plus a witness who puts Solt in the dining car during the
+# tunnel. The alibi defeats `not alibi(solt, tunnel)`, so there is no case: the
+# negation is what this test pins.
+file: ../scenes/accusation.lute
+state: { run.hour: h06 }   # the engine raises `accuse` only at Ossery, six o'clock
+facts:
+  - "alive(hask, late)"
+  - "unanswered(cab7, tunnel)"
+  - "motive(solt)"
+  - "means(solt)"
+  - "seen(solt, dining, tunnel)"
+choose: { accuse: solt }
+expect:
+  transcriptContains: ["Do get some sleep."]
+  transcriptLacks: ["held a pillow over a sleeping man"]
+  end: terminal

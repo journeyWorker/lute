@@ -1,0 +1,104 @@
+# Chapter 5: the drowned library, the neap tide, and the last dive — from a
+# save three dives past the Regent.
+#   lute play . --script plays/library.play.yaml
+state:
+  user.runs: 3
+  user.deaths: 2
+  user.surfaces: 1
+  user.deepest: 5
+  user.pearls: 50
+  user.bond.brann: 2
+  user.bond.sefa: 4
+  user.bond.quill: 4
+  run.outcome: died
+  run.killedBy: pressure
+  run.depth: 5
+facts: ["felled(eel)", "felled(regent)", "told(brann, regent)", "told(sefa, eel)", "gifted(sefa, compass)", "gifted(brann, lantern)", "gifted(quill, shell)"]
+presented:
+  user: [hub.firstWaking, hub.regentFell, brann.oath, brann.regentTold, sefa.chartOffer, sefa.eelReport, sefa.gift, boss.regent]
+entriesRead:
+  user: [quillFirst, quillName, quillDeath, quillHeir, eelFirst]
+quests: { brannOath: complete, sefaChart: complete, quillMemory: complete }
+choose:
+  valveOrder: [crownFirst, eelFirst]
+  crownChoice: wear
+steps:
+  # ---------------- dive 4: the neap opens ----------------
+  - label: dive 4 begins
+    newRun: { state: { user.runs: { add: 1 } } }
+    expect: { quests: { neapSalvage: active } }
+  # A send-off from each crew member Ilo is close to (for="kind:bonded"),
+  # in member order: Brann (bond 2) stays quiet.
+  - occasion: runStart
+    expect: { presented: [run.descent, sendoff.word for sefa, sendoff.word for quill, run.recap] }
+  # The sluice is raised only from chamber 3 (its raisedWhen). The puzzle
+  # repeats until it is solved (spentBy), in the same dive.
+  - label: chamber 3
+    engine: { state: { run.depth: 3 } }
+  - occasion: sluice
+    expect: { winner: library.sluice, notFacts: [solved(sluice)] }
+  - occasion: sluice
+    expect: { winner: library.sluice, facts: [solved(sluice)], state: { run.valves: 4 } }
+  - label: Ilo swims up
+    engine: { state: { run.outcome: surfaced, user.surfaces: { add: 1 } } }
+  - occasion: runEnd
+    payload: { pearls: 3 }
+    expect: { winner: end.surfaced, presented: [end.surfaced, neap.haul], state: { season.neap.salvage: 1 } }
+  - occasion: hubVisit
+  - occasion: talk
+    target: npc.tavi
+    expect: { winner: neapTavi }
+  - occasion: talk
+    target: npc.tavi
+    expect: { winner: tavi.meal }
+  # Bond stories come from one template (components/bond-story.component.lute).
+  - occasion: talk
+    target: npc.sefa
+    expect: { winner: bonds.sefa1 }
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: quillWitness }
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: bonds.quill1 }
+
+  # ---------------- dive 5: the Archivist ----------------
+  - label: dive 5 begins
+    newRun: { state: { user.runs: { add: 1 } } }
+  - occasion: runStart
+  - label: the Archivist falls in chamber 4
+    engine:
+      state: { run.depth: 4 }
+      facts: [slew(archivist), felled(archivist)]
+    expect: { quests: { libraryKey: complete }, state: { user.pearls: 75 } }
+  - occasion: bossDefeated
+    target: foe.archivist
+    expect: { winner: boss.archivist }
+  - occasion: sluice
+    expect: { winner: library.doors }
+  - label: Ilo swims up with the library's books
+    engine: { state: { run.outcome: surfaced, user.surfaces: { add: 1 } } }
+  - occasion: runEnd
+    payload: { pearls: 1 }
+    expect: { state: { season.neap.salvage: 2 } }
+
+  # ---------------- dive 6: the last dive ----------------
+  # The neap closes: its quest waits, unfinished, for the next one.
+  - label: dive 6 begins
+    newRun: { state: { user.runs: { add: 1 } } }
+    expect: { quests: { neapSalvage: active } }
+  - occasion: lastDive
+    expect: { winner: last.rail }
+  - occasion: lastDive
+    expect: { winner: last.throne }
+  - occasion: lastDive
+    expect: { winner: last.crown, state: { user.crowned: true }, quests: { theCrown: complete } }
+expect:
+  end: terminal
+  transcriptContains:
+    - "@narrator: Ilo's net comes up heavy: 3 pearls, and a bell with no clapper."
+    - "@narrator: Ilo's net comes up heavy: one pearl, and a bell with no clapper."
+    - "@tavi{emotion=\"wry\"}: I've fed a dead man 2 times now. I should charge double."
+    - "@narrator: Sefa makes room for Ilo without being asked."
+    - "@brann{emotion=\"grim\"}: Then he's got it. Haul the rope in. He won't be needing it."
+  transcriptLacks: ["@brann{os}: Come back up, boy."]

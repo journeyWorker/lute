@@ -1,0 +1,65 @@
+# Every route closed by the festival, so the lantern goes on the water alone:
+# lying for Kai locks Ren; telling the coach locks Mika; failing the midterm
+# locks Soren; and Kai, at 2 affection, never warms enough to open (routeOpen
+# needs 3). Afternoons on the roof fold no lanterns: festivalPrep fails too.
+choose:
+  firstLook: soren
+  clash: sideKai
+  injury: coach
+  lantern: alone
+bridges:
+  exam: [ { grade: fail, score: 22 } ]
+steps:
+  - include: steps/term-start.steps.yaml
+  - include: steps/day-roof.steps.yaml
+  - include: steps/day-roof.steps.yaml
+  - include: steps/day-roof.steps.yaml
+  - label: day 4 · after school, from the annex
+    advance: slot
+  - occasion: visit
+    target: place.library
+    expect: { winner: hangouts.annex }
+  - occasion: visit
+    target: place.council
+    expect: { winner: hangouts.councilShut, notOffered: [hangouts.council] }
+  - occasion: visit
+    target: place.track
+    expect: { winner: hangouts.trackShut }
+  - occasion: talk
+    target: npc.ren
+    expect: { winner: renCold }
+  - label: evening
+    advance: slot
+  - label: day 5
+    advance: { to: evening }
+    expect: { presented: [common.eve, dorm.evening] }
+  - label: festival night
+    advance: { to: evening }
+    expect:
+      presented: [common.festival]
+      options: { lantern: [alone] }
+      quests: { festivalPrep: failed }
+      notFacts: ["routeOpen(ren)", "routeOpen(mika)", "routeOpen(soren)", "routeOpen(kai)"]
+  - advance: { to: afterSchool }
+  - label: Sunday night
+    advance: { to: evening }
+    expect: { presented: [dorm.sunday], quests: { lampDuty: failed } }
+  - label: after the storm, with nothing on the window to lose
+    advance: slot
+    expect: { presented: [common.storm], quests: { lampDuty: active } }
+  - advance: slot
+  - label: a lantern for Nana
+    occasion: gift
+    target: npc.nana
+    payload: { hearts: 0 }
+    expect: { winner: gifts.nana }
+  # the dorm window, and no notes under the door
+  - include: steps/week2.steps.yaml
+expect:
+  end: complete
+  state: { run.route: alone, run.ending: solo, run.aff.kai: 2, run.lanterns: 0, run.exam: fail, user.terms: 1 }
+  facts: ["locked(ren)", "locked(mika)", "locked(soren)"]
+  notFacts: ["locked(kai)"]
+  transcriptContains: ["My lantern. My wish. The lake can keep a secret.", "~ The lone ending ~", "Our window is the dark one this year.", "At least we had nothing on the window to lose.", "@narrator: You leave the council room the way you came.", "Mine went out past the buoys on its own."]
+  transcriptLacks: ["A folded note under the door"]
+  quests: { lampDuty: complete }

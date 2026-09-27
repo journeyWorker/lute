@@ -1,0 +1,6 @@
+# The ledger reads front to back: each page opens the next, and the last page names Solt.
+file: ../lore/ledger.lute
+entries: [ledger1, ledger2, ledger3]
+expect:
+  transcriptContains: ["Let her have the roof.", "The answer is no.", "Doctors always pay."]
+  end: complete

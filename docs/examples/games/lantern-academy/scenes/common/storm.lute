@@ -1,0 +1,40 @@
+---
+kind: scene
+id: common.storm
+title: The morning after the storm
+on: slotStart
+when: "run.day == 8 && run.slot == 'morning'"
+priority: 10
+after: 'visited("common.festival")'
+---
+
+## The jetty, after the storm
+
+::bg{location="lakeshore" time="morning"}
+::music{action="start" mood="sad" volume="down"}
+@narrator: It rained all night. The lake is grey and flat, and the jetty is covered in wet paper.
+@nana{emotion="worried" when="run.lanterns >= 1"}: The wind took the window, too. {{run.lanterns:plural(One lantern|All # lanterns)}}, gone into the lake.
+@nana{emotion="sad" when="run.lanterns == 0"}: At least we had nothing on the window to lose. That's the bright side. That's the only side.
+@nana{emotion="teasing"}: New week, new window. Somebody has to light the dorm lanterns again. Somebody who is you.
+
+<match on="run.route">
+  <when is="ren">
+    @ren{emotion="stern"}: Storm damage to school property, item one. The festival lanterns are council business. I'll have them fished out by noon.
+    @ren{emotion="flustered"}: ...Not ours. Ours can stay in the lake. It's where we put it.
+  </when>
+  <when is="mika">
+    @mika{emotion="laughing"}: I ran the shore at six! Found eleven lanterns and a boot. Not ours. Ours made it out past the buoys. I checked twice.
+  </when>
+  <when is="soren">
+    @soren{emotion="shy"}: I've been writing down which ones washed back. For the book. Ours didn't. I checked the list three times.
+  </when>
+  <when is="kai">
+    @kai{emotion="smirk"}: Everyone's crying over wet paper. Ours is fine. Ours is at the bottom of the lake where nobody can read the wish.
+  </when>
+  <when is="hotaru">
+    @hotaru{emotion="smiling"}: The storm never reaches my jetty. Ours is still out there. I watched it all night.
+  </when>
+  <otherwise>
+    @you{mono}: Mine went out past the buoys on its own. I'd like to think it's still lit.
+  </otherwise>
+</match>

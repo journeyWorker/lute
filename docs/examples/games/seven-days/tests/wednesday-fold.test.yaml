@@ -1,0 +1,8 @@
+# 0.27: trace judges the beat's `after:` too, so the save must have met Ines.
+file: ../scenes/library-ines-wednesday.lute
+state: { run.day: 3, run.slot: afternoon, run.aff.ines: 1 }
+visited: [library.ines.meet]
+choose: { fold: together }
+expect:
+  state: { run.aff.ines: 3, run.lantern.paper: true }
+  transcriptContains: ["You have lantern hands now."]

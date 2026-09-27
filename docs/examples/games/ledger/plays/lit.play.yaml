@@ -1,0 +1,19 @@
+# Ink route: ledger x3, desk, gallery x3, stores, name, dusk -> ending_lit
+choose:
+  door: inside
+  lamp: [ledger, ledger, ledger, desk, gallery, gallery, gallery, stores, name, dusk]
+steps:
+  - occasion: chapter
+    expect: { winner: arrival }
+  - occasion: chapter
+    expect: { winner: keeper }
+  - occasion: chapter
+    expect: { winner: ending.lit }
+expect:
+  end: complete
+  state: { run.oil: 3, run.knowsName: true }
+  transcriptContains:
+    # Ink `{lamp_room == 1: …|The lamp room again. The dark is closer.}`: the hub's <return>
+    - '@narrator: The lamp room again. The dark is closer.'
+    - '@narrator: The words have stopped changing.'
+    - '@narrator: A light on the water. A ship, coming in blind.'

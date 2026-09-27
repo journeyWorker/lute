@@ -1,0 +1,8 @@
+# Catching Slumbear closes the giant's quest; letting it go is superseded.
+file: ../../quests/mid/side-quests.lute
+accepts: [midSleepingGiant]
+facts: [seen(slumbear), caught(slumbear)]
+expect:
+  quests: { midSleepingGiant: complete }
+  transcriptContains: ["The giant that slept across Route 12 for a hundred years is yours now."]
+  transcriptLacks: ["lumbers off toward the hills"]

@@ -1,0 +1,87 @@
+# Two nights. On the first the inspector names the singer — the watch's story —
+# and tonight's accusation and case file fail. The Lamplight loops. What she
+# learned survives (user-tier facts, everRead); the run-tier case file reopens,
+# the lines of inquiry she already closed close again at once, and on the second
+# night she finishes the case.
+choose:
+  accuse: solt
+  press: soft
+steps:
+  # --- night one --------------------------------------------------------
+  - occasion: caseOpen
+    expect: { winner: lamplight.discovery }
+  - occasion: examine
+    target: obj.watch
+  - occasion: talk
+    target: npc.solt
+    pick: soltTime
+  - occasion: talk
+    target: npc.crane
+    pick: craneTea
+  - occasion: talk
+    target: npc.crane
+    pick: craneTunnel
+  - occasion: talk
+    target: npc.crane
+    pick: craneLamps
+    expect: { quests: { timeOfDeath: complete } }
+  - label: she sits out the night until Ossery
+    advance: { to: h06 }
+    expect: { presented: [timetable.ossery], quests: { telegram: unset } }
+  - label: night one ends on the wrong name
+    occasion: accuse
+    choose: { accuse: lise }
+    expect:
+      winner: lamplight.accusation
+      quests: { accusation: failed, lamplightCase: failed, whoWanted: failed }
+  # --- night two --------------------------------------------------------
+  - newRun: true
+    expect: { quests: { lamplightCase: active, timeOfDeath: complete, accusation: active } }
+  - label: the knock, again
+    occasion: caseOpen
+    expect: { winner: lamplight.again, notOffered: [lamplight.discovery] }
+  - label: the casebook kept its pages
+    occasion: review
+    pick: pageSoltLied
+    expect: { offered: [pageTime, pageWatchLies] }
+  - label: the interview menu is open again tonight
+    occasion: talk
+    target: npc.solt
+    pick: talk.soltConfront
+    expect: { offered: [soltTime] }
+  - occasion: examine
+    target: obj.medkit
+  - occasion: examine
+    target: obj.ledger
+    repeat: 3
+  - occasion: talk
+    target: npc.porter
+    pick: porterTunnel
+  - occasion: talk
+    target: npc.mirela
+    pick: mirelaTunnel
+  - occasion: talk
+    target: npc.lise
+    pick: liseTunnel
+  - occasion: review
+    pick: pageOneLeft
+  - advance: { to: h06 }
+  - occasion: accuse
+expect:
+  end: terminal
+  quests:
+    lamplightCase: complete
+    timeOfDeath: complete
+    whoWanted: complete
+    whereWere: complete
+    accusation: complete
+    lisesLetter: unset
+  state: { user.casesClosed: 1, run.accused: solt, prev.run.accused: lise }
+  facts: ["prime(solt)", "claims(lise, dining, tunnel)"]
+  transcriptContains:
+    - "misadventure"
+    - "The wrong name. Somewhere a watch is being wound back."
+    - "Last time I named the wrong one"
+    - "held a pillow over a sleeping man"
+    - "one doctor shorter"
+  transcriptLacks: ["Last time I named the doctor", "Last time I said nothing"]

@@ -1,0 +1,6 @@
+# day 20: between festivals, no festival card
+file: ../lore/login.lute
+beat: harvestCard
+state: { user.day: 20 }
+expect:
+  eligible: false

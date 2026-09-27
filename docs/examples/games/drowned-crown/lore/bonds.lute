@@ -1,0 +1,28 @@
+---
+kind: lore
+id: bonds
+title: Bond stories
+---
+
+/* Each of the crew has two stories, told once ever when Ilo has earned them. */
+
+<beat use="bondStory" id="brann1" who="brann" need="3">
+  @brann: My brother dived for the crown. Before your father. Before me.
+  @brann{emotion="grim"}: He came up once. Said the palace talked to him. Went down again the next morning.
+</beat>
+
+<beat use="bondStory" id="brann2" who="brann" need="5" prev="bonds.brann1">
+  @brann{emotion="wry"}: I kept his knife. You can have it when you stop coming up dead.
+</beat>
+
+<beat use="bondStory" id="sefa1" who="sefa" need="4">
+  @sefa{emotion="shy"}: My grandmother didn't just draw the palace. She lived in it. She was a librarian.
+</beat>
+
+<beat use="bondStory" id="sefa2" who="sefa" need="6" prev="bonds.sefa1">
+  @sefa{emotion="content"}: If the library's open, her books are down there. Her handwriting. Bring me one page.
+</beat>
+
+<beat use="bondStory" id="quill1" who="quill" need="4" only="entry.quillFirst.everRead">
+  @quill{emotion="sad"}: I had a sister. She sang in the choir. I think she's still singing.
+</beat>

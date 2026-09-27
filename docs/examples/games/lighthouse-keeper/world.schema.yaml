@@ -1,0 +1,132 @@
+# Skerry Rock. Progress is what the inspector KNOWS: testimony and physical
+# evidence are base facts; everything the inspector concludes is derived.
+state:
+  run.day:     { type: number, default: 1, owner: engine }
+  run.weather: { type: { enum: [gale, fog, clear] }, default: gale, owner: engine }
+  # The reconstruction the inspector files. Written by the report scene.
+  run.verdictFate:   { type: { enum: [undecided, murdered, drowned, fell] }, default: undecided }
+  run.verdictOnRock: { type: { enum: [undecided, nobody, ada, tobias] }, default: undecided }
+  run.verdictLiar:   { type: { enum: [undecided, nobody, maren, tobias, hollis] }, default: undecided }
+  # 0.27 chapter "The Torn Page": was the loss preventable?
+  run.verdictCause:  { type: { enum: [undecided, misadventure, neglect] }, default: undecided }
+  run.fileClosed:    { type: bool, default: false }
+  user.casesClosed:  { type: number, default: 0 }
+
+# A day-granular clock (dsl 0.24.0 §1, no slots). `advance: day` in a play closes
+# the day with `nightfall` (the lamp is lit whether or not the player asked),
+# then moves run.day and raises `arrive`, the morning boat. Day 1 is Thursday 16 October; the relief
+# boat sails on day 4, Sunday.
+clock:
+  day: run.day
+  raise: { slot: arrive, dayEnd: nightfall }
+  # The morning boat lands the inspector on the run's first day too: the
+  # engine raises `arrive` where the run starts.
+  raiseAtStart: true
+  week:
+    length: 7
+    first: 3
+    labels: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+  # 0.27: the relief boat sails on day 4 and the inquiry is over; no day 5.
+  days: 4
+
+# 0.27: the game is over once the Board has closed the file: the hearing rose
+# (board.close), or the relief boat sailed without a report. On 0.27 a terminal
+# over quest.keeperInquiry.state refused the hearing's own scenes, because
+# `inquest` judges before its beats; 0.28 decides terminal
+# when the occasion is raised, but the file closing is still the story's end.
+# Not visited("board.close"): visited() outlives a new run, and the Board sends
+# the inspector back (0.28 warns W-TERMINAL-PERSISTENT for that).
+terminal: "run.fileClosed || quest.reconstruction.failedBy == 'by'"
+
+entities:
+  person:   { members: [elias, ada, maren, tobias, hollis] }
+  place:
+    members: [lantern, gallery, landing, cottage, village]
+    labels: { lantern: the lantern room, gallery: the gallery, landing: the landing, cottage: the keepers' cottage, village: the village }
+  hour:     { members: [dusk, midnight, dawn] }
+  evidence:
+    members: [logbook, oilskin, gallery_rail, guillemot, mooring_rope, supper_tin, torn_page, requisition]
+    labels: { logbook: the keeper's log, oilskin: the oilskin, gallery_rail: the gallery rail, guillemot: the Guillemot, mooring_rope: the painter, supper_tin: the supper tin, torn_page: the torn page, requisition: the Board's letter }
+
+relations:
+  # --- base: what the inspector has on record -------------------------
+  # testimony: witness W says S was at P at hour H
+  sawAt:      { args: [person, person, place, hour], tier: run }
+  # physical evidence E places S at P at hour H
+  placedBy:   { args: [evidence, person, place, hour], tier: run }
+  # evidence that turns suspicion on someone
+  implicates: { args: [evidence, person], tier: run }
+  # the rail is broken, the lamp clockwork seized, ...
+  damaged:    { args: [evidence], tier: run }
+  # what the inspector carries (asserted by the ::pocket directive's effects)
+  carrying:   { args: [evidence], tier: run }
+  # the torn page, pieced together
+  pieced:     { args: [evidence], tier: run }
+  # the keeper reported the fault in E to the Board; the Board refused to mend E
+  reported:   { args: [evidence], tier: run }
+  refusedRepair: { args: [evidence], tier: run }
+  # the static map of the rock (seeded below; 0.28 W-RELATION-TIER-IMPLICIT)
+  onTheRock:  { args: [place], tier: run }
+  # the engine's schedule: who can be found where today
+  present:    { args: [person, place], tier: run, reserved: true }
+  # --- derived: what the inspector can conclude -----------------------
+  at:            { args: [person, place, hour], derive: true }
+  contradicts:   { args: [person, person, hour], derive: true }
+  liar:          { args: [person], derive: true }
+  misidentified: { args: [person, person, hour], derive: true }
+  # a suspect is by definition not alibied, and a cleared person is not a suspect
+  alibied:       { args: [person], derive: true }
+  suspect:       { args: [person], derive: true, excludes: [alibied, cleared] }
+  cleared:       { args: [person], derive: true }
+  onRock:        { args: [person, hour], derive: true }
+  seenAfter:     { args: [person], derive: true }
+  # a man who fell from the gallery was not seen alive after the storm
+  fell:          { args: [person], derive: true, excludes: [seenAfter] }
+  # a fault the keeper reported and the Board refused to mend, which then failed
+  preventable:   { args: [evidence], derive: true }
+
+facts:
+  - "onTheRock(lantern)"
+  - "onTheRock(gallery)"
+  - "onTheRock(landing)"
+  - "onTheRock(cottage)"
+  - "present(hollis, landing)"
+
+rules:
+  # evidence puts a person somewhere
+  - "at(S, P, H) :- placedBy(_, S, P, H)"
+  # testimony puts S ashore while evidence puts S on the rock: the witness lied
+  - "contradicts(W, S, H) :- sawAt(W, S, P1, H), not onTheRock(P1), at(S, P2, H), onTheRock(P2)"
+  - "liar(W) :- contradicts(W, _, _)"
+  # a witness saw S where the evidence puts somebody else: an honest mistake
+  - "misidentified(W, S, H) :- sawAt(W, S, P, H), at(X, P, H), X != S"
+  # an alibi only counts from a witness who has not been caught lying
+  - "alibied(S) :- sawAt(W, S, village, midnight), not liar(W)"
+  - "suspect(S) :- implicates(_, S), not alibied(S)"
+  - "cleared(S) :- implicates(_, S), alibied(S)"
+  - "onRock(S, H) :- at(S, P, H), onTheRock(P)"
+  # seen alive after the storm, by someone honest who was not looking at somebody else
+  - "seenAfter(S) :- sawAt(W, S, _, dawn), not liar(W), not misidentified(W, S, dawn)"
+  - "fell(S) :- at(S, gallery, midnight), damaged(gallery_rail), not seenAfter(S)"
+  - "preventable(E) :- reported(E), refusedRepair(E), damaged(E)"
+
+defs:
+  lastDay: "run.day >= 3"
+  # how the lamp burns tonight: a gale finds every seam in the lantern
+  glassTonight: { type: { enum: [steady, guttering] }, cel: "run.weather == 'gale' ? 'guttering' : 'steady'" }
+  filed:   "run.verdictFate != 'undecided' && run.verdictOnRock != 'undecided'"
+  # how many islanders have given a statement
+  statements: "countDistinct(sawAt(W, _, _, _), W)"
+
+# `present:` (dsl 0.24.0 §4): an islander who is not on the engine's schedule
+# today cannot speak (W-CAST-ABSENT). Hollis ferries the inspector, so his
+# presence is the boat's, not the schedule's. Ada's log page is read in her
+# voice ({vo}), which needs no presence.
+cast:
+  inspector: { name: The Inspector }
+  elias:     { name: Elias Voss }
+  ada:       { name: Ada Pell, present: "holds(present(ada, _))", emotions: [sad] }
+  maren:     { name: Maren Hale, present: "holds(present(maren, _))", emotions: [angry, sad] }
+  tobias:    { name: Tobias Crane, present: "holds(present(tobias, _))" }
+  hollis:    { name: Hollis, emotions: [sad] }
+  chair:     { name: The Chairman }

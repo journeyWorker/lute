@@ -1,0 +1,45 @@
+# The post office chapter from a Tuesday-morning save (the reed frame is done):
+# meet Mira, fix the franking machine on the second try, one postcard a day
+# (Tue, Wed, Thu), and on Friday your name is on the board.
+quests: { festivalLantern: active }
+presented: { run: [day1.arrival] }
+state: { run.day: 2, run.lantern.frame: true }
+steps:
+  - { occasion: placeVisit, target: place.post, label: Tue morning, expect: { winner: post.mira.meet, quests: { postcards: active } } }
+  - occasion: placeVisit
+    target: place.post
+    choose: { machineFix: thump }
+    expect: { winner: post.machine, options: { machineFix: [thump, reed] } }
+  - occasion: placeVisit
+    target: place.post
+    choose: { machineFix: reed }
+    expect: { winner: post.machine }
+  - { occasion: placeVisit, target: place.post, expect: { winner: post.mum } }
+  - { occasion: placeVisit, target: place.post, expect: { winner: miraBark } }
+  - { occasion: placeVisit, target: place.post, expect: { winner: miraBusy } }
+  - { advance: day, label: Wed morning }
+  - { occasion: placeVisit, target: place.post, expect: { winner: post.gran } }
+  - { advance: slot, label: Wed afternoon }
+  - { occasion: placeVisit, target: place.post, expect: { winner: miraBark, notOffered: [post.maya] } }
+  - { advance: 2, label: Thu morning }
+  - occasion: placeVisit
+    target: place.post
+    label: third card — the quest completes
+    expect: { presented: [post.maya], quests: { postcards: complete } }
+  - { advance: slot, label: Thu afternoon }
+  - { occasion: placeVisit, target: place.post, expect: { presented: [miraBark, post.noticed] } }
+  - { advance: slot, label: Thu night }
+  - { occasion: placeVisit, target: place.post, expect: { winner: postShut } }
+  - advance: slot
+    label: Fri morning
+    expect:
+      presented: [diary.day, diary.person for pell, diary.person for mira, shop.morning]
+expect:
+  end: complete
+  quests: { postcards: complete }
+  state: { run.postcards: 3, quest.postcards.objectives.gran.done: true }
+  facts: ["sentTo(mum)", "sentTo(gran)", "sentTo(maya)"]
+  transcriptContains:
+    - "@sol: Maya. Nothing happens here."
+    - "@sol: Thursday. 3 postcards home so far."
+    - "POSTCARD OF THE WEEK"

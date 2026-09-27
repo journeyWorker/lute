@@ -1,0 +1,28 @@
+---
+kind: scene
+id: harl.platform
+title: Harl junction, four o'clock
+pov: inspector
+on: enterCar
+target: place.harl
+spentBy: "run.wired != 'none'"
+---
+
+## The telegraph office
+
+::bg{location="harl_platform" time="night"}
+@narrator{code="0010"}: The telegraph office is a hut with a stove, a clerk in fingerless gloves, and a pad of pink forms. Eleven words to the shilling.
+@narrator{code="0020" when="visited('harl.platform')"}: The clerk looks up from the same pink pad. "Made up your mind, Inspector?"
+
+<branch id="wire" prompt="Whom do you wire?">
+  <choice id="board" label="The Medical Board at Ossery: what did Dr. Solt sign for?" into="run.wired" value="board">
+    @inspector{code="0010"}: Medical Board, Ossery. Whatever you hold on an Emmerich Solt. Reply to the train.
+    @narrator{code="0030"}: The key chatters. The clerk counts the words twice and charges you for three more.
+  </choice>
+  <choice id="varn" label="The Varn police: what do they know of Crane?" into="run.wired" value="varn">
+    @inspector{code="0020"}: Varn Constabulary. Tobiah Crane, conductor. And Aurel Hask, while you are about it.
+  </choice>
+  <choice id="later" label="Not yet." into="run.wired" value="none">
+    @inspector{code="0030" mono}: A wire is a question you only get to ask once tonight. Not until I know which.
+  </choice>
+</branch>

@@ -1,0 +1,34 @@
+# Starfall — a live-service gacha RPG, story layer only.
+#
+# The engine owns: the server calendar (user.day), login streaks, summons and
+# their results, bond points, currencies, shops, battles. Lute owns: which
+# lines play when, the live-ops calendar as named windows (schema/calendar),
+# and what each character says as their bond deepens.
+#
+# TIERS. An account never "starts over", so everything the player keeps is
+# user.*. Each festival is a SEASON (schema/calendar.schema.yaml seasons:):
+# its window opening resets season.<name>.* (event currency), its
+# tier="season:<name>" missions and its once: season:<name> lines, so a rerun
+# is one more window on the same def. See README.md.
+pluginsDir: plugins/
+defaultProfile: starfall
+profiles:
+  starfall:
+    plugins: { starfall.engine: true }
+defaults:
+  luteVersion: "0.28.1"
+  uses:
+    - schema/world.schema.yaml
+    - schema/roster.schema.yaml
+    - schema/calendar.schema.yaml
+  questTier: user
+  components:
+    - components/bond-story.component.lute
+    - components/login-stamp.component.lute
+    - components/event-opens.component.lute
+# The main story is one manifest chapters: chain: each listed stage scene gets
+# on: stageClear, a descending priority and after: the one before, so a new
+# stage is one line here. (The prologue answers newGame and stays outside.)
+chapters:
+  - on: stageClear
+    scenes: [main.c1s1, main.c1s8, main.c2s1, main.c2s8, main.c3s1, main.c3s8, main.c4s1, main.c4s2, main.c4s3]

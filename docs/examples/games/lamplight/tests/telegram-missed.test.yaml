@@ -1,0 +1,7 @@
+# Harl comes and goes and nobody is wired: the quest fails when the train pulls out.
+file: ../quests/harl.lute
+visited: [timetable.harl]
+state: { run.hour: h05 }
+expect:
+  quests: { telegram: failed }
+  transcriptContains: ["No wire, then."]

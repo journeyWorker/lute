@@ -1,0 +1,5 @@
+file: ../lore/bonds/gale.lute
+beat: galeBirthday
+state: { user.day: 24 }
+expect:
+  eligible: false

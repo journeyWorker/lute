@@ -1,0 +1,20 @@
+# Two answers right, one wrong: the hearing's closing scene names only the
+# rejected finding. `inquest` judges before its beats, so the scene reads the
+# reconstruction's verdict (mocked here as the judged quest state).
+file: ../scenes/hearing-close.lute
+visited: [rock.report]
+state:
+  run.verdictFate: drowned
+  run.verdictOnRock: ada
+  run.verdictLiar: maren
+  quest.reconstruction.objectives.fate.failed: true
+quests: { reconstruction: failed }
+expect:
+  transcriptContains:
+    - "@chair: The Board does not accept the finding on the manner of death."
+    - "@chair: The Board finds the reconstruction unsafe and returns an open verdict."
+  transcriptLacks:
+    - "The Board does not accept the account of who was on the rock."
+    - "The Board accepts the inspector's reconstruction in full."
+  state: { run.fileClosed: true }
+  end: terminal

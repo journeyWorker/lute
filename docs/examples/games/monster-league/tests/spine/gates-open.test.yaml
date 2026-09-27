@@ -1,0 +1,8 @@
+# With the disc and the badge, the sea route and Victory Road's boulders are
+# open: canPass holds and the barks are not eligible.
+file: ../../lore/spine/obstacles.lute
+entry: blockSeaRoute
+facts: [hasItem(hmSurf), hasBadge(venom), hasItem(hmStrength), hasBadge(bloom)]
+expect:
+  eligible: { blockSeaRoute: false, blockVictoryRoadBoulders: false }
+  facts: [canUse(surf), canUse(strength), canPass(seaRoute), canPass(victoryRoadBoulders)]

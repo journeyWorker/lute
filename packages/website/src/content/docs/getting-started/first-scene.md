@@ -710,7 +710,9 @@ covers every scene in the project, alongside its quests and lore entries.
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
 instead of guessing. From here, follow the **Language** section for each construct in depth, keep
 the [cheatsheet](/reference/cheatsheet/) open while you write, or read the
-[full-spec showcase](/examples/showcase/) for a feature-by-feature tour of a real project.
+[full-spec showcase](/examples/showcase/) for a feature-by-feature tour of a real project. For whole
+games — a cozy mystery, an Ink port, roguelikes, visual novels — each a checked project with its
+tests and plays, see the [example games](/examples/games/).
 
 **Editor and terminal disagree?** Run `lute doctor .` in the project. It checks your toolchain and
 project setup and names an editor language server that is older than your `lute`.

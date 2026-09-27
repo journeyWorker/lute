@@ -1,0 +1,10 @@
+---
+kind: quest
+id: quests.postcards
+title: Postcards home
+---
+
+<quest id="postcards" title="Postcards home" start="visited('post.mira.meet')" tier="run">
+  <objective id="three" title="Send three postcards home (the last post goes Saturday afternoon)" done="run.postcards >= 3" by="@lastPostGone"/>
+  <objective id="gran" title="(Optional) One of them to Gran" done="holds(sentTo(gran))" optional/>
+</quest>

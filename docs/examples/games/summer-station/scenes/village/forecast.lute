@@ -1,0 +1,28 @@
+---
+kind: scene
+id: ines.forecast
+title: Writing the forecast
+on: visit
+target: place.radio
+priority: 20
+when: "holds(at(ines, radio)) && quest.forecast.state == 'active' && !run.forecastWritten && run.readings >= 2"
+---
+
+## The chart table
+
+::bg{location="radio_room" time="afternoon"}
+::use{component="enter" who="ines" side="left"}
+@ines{emotion="neutral"}: Sit. Your mornings, my charts. A ridge of high pressure coming in off the Atlantic — see how the isobars open out?
+@ines: The question is whether it holds until Sunday night, or breaks on Saturday like it did in '94.
+
+<branch id="call" prompt="She slides the pen over to you.">
+  <choice id="clear" label="Forecast clear skies for Sunday night">
+    @ines{emotion="fond"}: Brave. Your numbers back you. Sign it.
+  </choice>
+  <choice id="cautious" label="Forecast clear, with a chance of wind after midnight">
+    @ines{emotion="happy"}: That's a forecaster's answer. Honest and a little cowardly. Sign it.
+  </choice>
+</branch>
+
+::set{run.forecastWritten = true}
+@ines: Now it has to get down the mountain before Friday is over. The radio doesn't count; Maren wants paper.

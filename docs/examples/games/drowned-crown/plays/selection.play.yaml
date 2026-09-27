@@ -1,0 +1,103 @@
+# The selection model under stress, from a veteran's save: six dives in, the
+# Regent felled once, every first-meeting beat long spent.
+#   lute play . --script plays/selection.play.yaml
+state:
+  user.runs: 6
+  user.deaths: 5
+  user.surfaces: 1
+  user.deepest: 6
+  user.bond.brann: 2
+  user.bond.sefa: 4
+  user.bond.quill: 3
+  prev.run.outcome: died
+  prev.run.killedBy: choir
+  prev.run.depth: 4
+facts: ["felled(eel)", "felled(regent)", "told(brann, regent)", "told(sefa, eel)", "gifted(sefa, compass)"]
+presented:
+  user: [hub.firstWaking, hub.regentFell, brann.oath, brann.regentTold, sefa.chartOffer, sefa.eelReport, sefa.gift, boss.regent]
+entriesRead:
+  user: [quillFirst, quillName, quillDeath, quillHeir, eelFirst]
+quests: { brannOath: complete, sefaChart: complete, quillMemory: complete }
+steps:
+  # runStart is a sequence: the routine, a word from each crew member Ilo is
+  # close to (bond 3 or more: Sefa and Quill, not Brann), then the recap.
+  - occasion: runStart
+    expect: { presented: [run.descent, sendoff.word for sefa, sendoff.word for quill, run.recap] }
+  # Nothing eligible (select: first): the engine raises runEnd before writing an
+  # outcome. The occasion passes; no story plays.
+  - label: runEnd raised while still diving
+    occasion: runEnd
+    payload: { pearls: 0 }
+    expect: { winner: none, presented: [] }
+  # One repeat bark a dive (`guardianAgain`, target="kind:foe", once="run"):
+  # the first repeat kill gets it, every later kill that dive falls through to
+  # the untargeted fallback `anyGuardian`.
+  - label: the eel, again
+    engine: { facts: [slew(eel)] }
+  - occasion: bossDefeated
+    target: foe.eel
+    expect: { winner: guardianAgain, offered: [anyGuardian], notOffered: [eelFirst] }
+  - label: the eel, on the way back up
+    engine: { facts: [slew(eel)] }
+  - occasion: bossDefeated
+    target: foe.eel
+    expect: { winner: anyGuardian, notOffered: [eelFirst, guardianAgain] }
+  # The choir falls for the first time: its once="user" first-kill bark wins.
+  - label: the choir falls
+    engine: { facts: [slew(choir), felled(choir)] }
+  - occasion: bossDefeated
+    target: foe.choir
+    expect: { winner: choirFirst }
+  - occasion: bossDefeated
+    target: foe.choir
+    expect: { winner: anyGuardian, notOffered: [guardianAgain] }
+  - label: surfaced from chamber 7
+    engine: { state: { run.outcome: surfaced, run.depth: 7, user.surfaces: { add: 1 }, user.deepest: 7 } }
+  - occasion: runEnd
+    payload: { pearls: 0 }
+    expect: { winner: end.surfaced }
+  # hubVisit: the also-beat rides along; firstWaking and regentFell are spent.
+  - occasion: hubVisit
+    expect: { presented: [hub.returnSurfaced, hub.gulls], notOffered: [hub.firstWaking, hub.regentFell, hub.returnDied] }
+  - occasion: hubVisit
+    expect: { presented: [hub.deck, hub.gulls] }
+  # The run-count ladder: at six dives Brann has moved on to his veteran line.
+  - occasion: talk
+    target: npc.brann
+    expect: { winner: brann.veteranTalk, notOffered: [brann.middling, brann.early] }
+  # Quill: witness (once per run), then remembering (once per run), then the bark.
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: quillWitness }
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: quillAfter }
+  - occasion: talk
+    target: npc.quill
+    expect: { winner: quillBark }
+  # Sefa's first bond story (bond 4) outranks the chart talk.
+  - occasion: talk
+    target: npc.sefa
+    expect: { winner: bonds.sefa1, notOffered: [bonds.sefa2] }
+  - occasion: talk
+    target: npc.sefa
+    expect: { winner: sefa.chartDone }
+  - occasion: talk
+    target: npc.sefa
+    expect: { winner: sefa.idle }
+  # select: all with one eligible entry; the menu offers only what was gifted.
+  - occasion: keepsakes
+    pick: keepCompass
+    expect: { offered: [keepCompass], notOffered: [keepLantern, keepShell] }
+  # Three quiet dives in a row; the recap keeps pace with prev.run.
+  - label: a quiet dive
+    newRun: { state: { user.runs: { add: 1 } } }
+    repeat: 3
+  - occasion: runStart
+    expect: { presented: [run.descent, sendoff.word for sefa, sendoff.word for quill, run.recap] }
+expect:
+  end: complete
+  state: { user.runs: 9, prev.run.outcome: diving, prev.run.depth: 0 }
+  facts: ["heard(quill, choir)", "heard(tavi, eel)"]
+  notFacts: ["slew(choir)"]
+  transcriptContains: ["Last time the choir.", "40 fathoms", "Last time never really ended.", "Chamber 7. Tell me about it sometime."]

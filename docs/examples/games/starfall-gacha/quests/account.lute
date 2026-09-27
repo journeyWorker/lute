@@ -1,0 +1,20 @@
+---
+kind: quest
+id: accountQuests
+---
+
+/* Account quests that come back. They are user tier (the account never
+   starts over) and rearm on their own condition instead of a run or season. */
+
+<quest id="towerWeekly" title="Hollow Tower: this week's climb" tier="user" start="user.day > 7" rearm="@newWeek">
+  <reward kind="GEMS" amount="100"/>
+  <objective id="climb" title="Clear 10 tower floors" done="user.towerFloors >= 10"/>
+  <on event="questComplete">
+    @lumi{emotion="happy"}: Ten floors! The tower's getting nervous. See you next week, same stairs.
+  </on>
+</quest>
+
+<quest id="streakSeven" title="Seven days in a row" tier="user" start="true" rearm="user.loginStreak == 1">
+  <reward kind="GEMS" amount="50"/>
+  <objective id="streak" title="Log in seven days running" done="user.loginStreak >= 7"/>
+</quest>

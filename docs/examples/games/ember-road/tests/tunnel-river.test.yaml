@@ -1,0 +1,12 @@
+# With Wren along, she floods the cut.
+file: ../scenes/road/tunnel.lute
+visited: [road.ford]
+quests: { hostages: active }
+facts: ["knows(passage)", "recruited(wren)"]
+state: { run.approval.isolde: 1 }
+choose: { tunnel: river }
+expect:
+  options: { tunnel: [talk, river, knife, rush] }
+  state: { run.approval.wren: 2 }
+  transcriptContains: ["Come on, little fish."]
+  end: complete

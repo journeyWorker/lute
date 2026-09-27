@@ -1,0 +1,12 @@
+# [Persuasion] A failed roll: the boy's crossbow goes off.
+file: ../scenes/road/tunnel.lute
+visited: [road.ford]
+quests: { hostages: active }
+facts: ["knows(passage)"]
+state: { run.approval.isolde: 1 }
+bridges: { check: [ { passed: false } ] }
+choose: { tunnel: talk }
+expect:
+  state: { run.approval.isolde: 1, run.rep.dusk: -2 }
+  transcriptContains: ["The boy's crossbow goes off."]
+  end: complete

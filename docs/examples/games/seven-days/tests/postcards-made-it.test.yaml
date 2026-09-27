@@ -1,0 +1,6 @@
+file: ../quests/postcards.lute
+state: { run.day: 6, run.slot: afternoon, run.postcards: 3 }
+visited: [post.mira.meet]
+facts: [sentTo(gran)]
+expect:
+  quests: { postcards: complete }

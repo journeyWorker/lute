@@ -1,0 +1,10 @@
+# The moments the engine raises while the inspector is on Skerry Rock.
+occasions:
+  arrive:    { select: first, description: The morning boat lands the inspector (run.day already set) }
+  # nobody rows ashore to the village in a gale
+  explore:   { select: first, target: { prefix: place, entity: place }, raisedWhen: "occasion.target != 'village' || run.weather != 'gale'", description: The inspector walks to a place }
+  examine:   { select: first, target: { prefix: item, entity: evidence }, description: The inspector picks up or studies an object }
+  interview: { select: all, description: "Islanders willing to talk today, the player picks one" }
+  nightfall: { select: sequence, description: "Dusk on the rock, the lamp must be lit" }
+  report:    { select: first, description: The inspector sits down to write the reconstruction }
+  inquest:   { select: sequence, judge: before, description: The Board of Trade hearing reads the report }

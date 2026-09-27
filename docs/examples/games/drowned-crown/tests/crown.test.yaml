@@ -1,0 +1,9 @@
+# Wearing the crown ends the game.
+file: ../scenes/last/crown.lute
+visited: [last.throne]
+facts: ["felled(regent)"]
+quests: { libraryKey: complete, quillMemory: complete }
+choose: { crownChoice: wear }
+expect:
+  state: { user.crowned: true }
+  transcriptContains: ["@ilo{mono}: It's cold. It's so cold. It fits."]

@@ -1,0 +1,9 @@
+# At nightfall the inspector broods on each suspect, one presentation per member.
+file: ../lore/places.lute
+beat: thoughtsSuspect
+state: { occasion.target: tobias }
+facts: ["implicates(guillemot, tobias)"]
+expect:
+  eligible: true
+  transcriptContains: ["@inspector{mono}: Tobias Crane. The island has already hanged them in its mind. I have not, yet."]
+  end: complete

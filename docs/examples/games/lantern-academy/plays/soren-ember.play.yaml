@@ -1,0 +1,31 @@
+# Soren's ember ending: two afternoons in the library is one study session
+# short (studyGroup fails by the exam), an awkward date among the bindings,
+# and a blank return slip kept as a souvenir.
+choose:
+  firstLook: soren
+  clash: stayOut
+  injury: urge
+  lantern: soren
+  sorenAsk: keep
+bridges:
+  exam: [ { grade: pass, score: 62 } ]
+  date: [ { mood: awkward, hearts: 0 } ]
+steps:
+  - include: steps/term-start.steps.yaml
+  - include: steps/day-library.steps.yaml
+  - include: steps/day-library.steps.yaml
+  - include: steps/day-roof.steps.yaml
+  - include: steps/day-roof.steps.yaml
+  - include: steps/day-roof.steps.yaml
+  - include: steps/finale.steps.yaml
+  - occasion: gift
+    target: npc.soren
+    payload: { hearts: 2 }
+  - include: steps/week2.steps.yaml
+expect:
+  end: complete
+  state: { run.route: soren, run.ending: bittersweet, run.aff.soren: 2, run.study: 1, user.terms: 1 }
+  quests: { studyGroup: failed, festivalPrep: failed }
+  facts: ["cleared(soren, bittersweet)"]
+  transcriptContains: ["@soren{emotion=\"sad\"}: We ran out of evenings.", "Nobody wants to hear about bindings.", "~ Soren — the ember ending ~"]
+  transcriptLacks: ["You took my rank on the midterm."]

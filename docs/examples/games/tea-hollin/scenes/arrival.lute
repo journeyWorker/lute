@@ -1,0 +1,12 @@
+---
+kind: scene
+id: arrival
+title: "Tea at Hollin Street: Arrival"
+pov: pippa
+---
+
+## The Front Step
+
+@narrator: Number nine Hollin Street smells of lemon polish and scones.
+@aunt_mabel: Pippa, darling! You're late, and the spoons are counted.
+@pippa{mono}: The spoons are always counted in this house.

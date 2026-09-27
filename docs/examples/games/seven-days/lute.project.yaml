@@ -1,0 +1,13 @@
+# Seven Days in Marrow Bay — a day-clock visual novel.
+# The engine owns the clock (run.day / run.slot) and raises occasions;
+# Lute declares which beats answer them.
+pluginsDir: plugins/
+defaultProfile: vn
+profiles:
+  vn:
+    plugins: { sevendays.clock: true }
+defaults:
+  luteVersion: "0.28.1"
+  contentLang: en-US
+  pov: sol
+  uses: [world.schema.yaml, vocabulary.schema.yaml]

@@ -1,0 +1,12 @@
+---
+kind: scene
+id: storm.hit
+title: The storm
+on: nightfall
+when: "clock.day >= 13 && run.storm == 'squall'"
+---
+
+## Storm
+
+@narrator: The squall breaks the moorings.
+::set{run.storm = 'wrecked'}

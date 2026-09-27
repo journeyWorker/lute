@@ -1,0 +1,13 @@
+# Blame the vicar: the quest fails on the spot.
+choose: { firstLook: vicarPocket, askCook: [leave], accuse: accuseVicar }
+steps:
+  - occasion: chapter
+  - occasion: chapter
+  - advance: slot
+  - occasion: chapter
+    expect: { winner: kitchen }
+  - occasion: chapter
+  - occasion: chapter
+    expect: { winner: ending.wrong }
+expect:
+  quests: { findSpoon: failed }

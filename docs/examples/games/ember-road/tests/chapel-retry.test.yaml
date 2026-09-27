@@ -1,0 +1,11 @@
+# [Insight] in the chapel ash: a failed roll finds nothing and leaves the
+# search open (spentBy: the roll is not found).
+file: ../lore/coldwater.lute
+beat: chapel
+visited: [bridge.arrival, coldwater.ruins]
+state: { run.leg: 3 }
+bridges: { check: [ { passed: false } ] }
+expect:
+  eligible: { chapel: true }
+  notFacts: [knows(roll)]
+  transcriptContains: ["@narrator: Ash, and more ash."]

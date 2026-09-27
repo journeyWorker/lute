@@ -1,0 +1,18 @@
+---
+kind: scene
+id: east.lanternTunnel
+title: The Lantern Tunnel
+on: enterPlace
+target: place.lanternTunnel
+---
+
+// Between Route 5 and Ashgrove. The rockTunnel gate (Flash: hmFlash from
+// south + the Stone Badge) keeps it shut until the player can light it.
+
+## The dark
+
+::bg{location="lantern-tunnel" time="night"}
+::music{action="change" mood="eerie" volume="down"}
+@narrator: Old lamp brackets line the tunnel walls, every one of them empty. The dark swallows the light from outside after three steps.
+@narrator: Your monster's Flash fills the tunnel with white. Something with a lot of legs leaves in a hurry.
+@narrator: Hand-painted on the wall, faded: ASHGROVE, 2 MILES. MIND THE HIKERS.

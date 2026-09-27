@@ -1,0 +1,71 @@
+# Route A — the honest crossing: rescue the twins, find the ledger, talk Maelis
+# off the chain. Corvin's scheme is heard out too, and the parley supersedes it.
+# Every companion stays; every quest but the betrayal completes.
+#   lute play . --script plays/parley.play.yaml
+choose:
+  orders: price
+  plea: help
+  tunnel: river
+  oath: hold
+  chain: [why, withdraw]
+  scheme: listen
+steps:
+  - occasion: travel
+    label: leaving Ostwick
+    expect: { winner: road.departure, quests: { emberRoad: active, hostages: unset } }
+  - occasion: banter
+    expect: { winner: banterCrate }
+  - label: camp, then on to Harrow's Ford
+    advance: day
+    engine: { state: { run.leg: 2 } }
+    expect: { winner: road.ford, quests: { hostages: active }, facts: [inParty(wren)] }
+  - occasion: explore
+    target: place.mill
+    expect: { winner: millPassage, facts: [knows(passage)] }
+  - occasion: explore
+    target: place.tunnel
+    expect: { winner: road.tunnel, quests: { hostages: complete, wrenRoots: active }, state: { run.gold: 70 } }
+  - occasion: explore
+    target: place.wagons
+    expect: { winner: ninthWagon, facts: [knows(ledger)] }
+  - occasion: talk
+    target: npc.isolde
+    expect: { winner: camp.talks.isoldeOath, quests: { isoldeOath: active } }
+  - occasion: talk
+    target: npc.wren
+    expect: { winner: camp.talks.wrenBrother, facts: [knows(token)] }
+  - occasion: banter
+    expect: { winner: banterRiver }
+  - label: camp, then on to the Tollbridge
+    advance: day
+    engine: { state: { run.leg: 3 } }
+    expect: { winner: bridge.arrival, quests: { parley: active } }
+  - occasion: talk
+    target: npc.corvin
+    expect: { winner: camp.talks.corvinScheme, quests: { toll: active } }
+  - occasion: talk
+    target: npc.maelis
+    expect:
+      winner: bridge.talks.maelisTerms
+      quests: { parley: complete, openBridge: complete, toll: failed }
+      state: { run.bridge: parleyed, quest.toll.failedBy: superseded }
+  - occasion: talk
+    target: npc.maelis
+    expect: { winner: bridge.talks.maelisWaiting }
+  - occasion: camp
+  - engine: { state: { run.leg: 4 } }
+  - occasion: chapterEnd
+    expect: { winner: road.crossing }
+expect:
+  end: complete
+  quests: { emberRoad: complete, openBridge: complete, hostages: complete, parley: complete, toll: failed, isoldeOath: complete, wrenRoots: complete }
+  state: { run.gold: 220, user.xp: 650, run.bridge: parleyed, user.chaptersCleared: 1 }
+  facts: [inParty(wren), inParty(isolde), inParty(corvin), loyal(isolde), loyal(wren), hostile(company)]
+  notFacts: [hostile(dusk), hostile(marrow)]
+  transcriptContains:
+    - "@maelis: Tell Ostwick the Duskbound can read, Warden."
+    - "@narrator: On the parapet a Duskbound crossbowman lifts his bow"
+    - "@wren: Hold the wagon a moment. There. Tam's token"
+    - "@corvin: Three deserters and a sack of silver, and we walked past them."
+    - "@isolde: I swore at Coldwater I'd never again stand by and call it orders."
+  transcriptLacks: ["@narrator: Wren's pack is not on the last wagon."]

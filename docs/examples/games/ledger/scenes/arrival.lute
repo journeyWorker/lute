@@ -1,0 +1,15 @@
+---
+kind: scene
+id: arrival
+title: Arrival
+---
+
+## The Rock
+
+@narrator: The boat leaves you on the rock at dusk. The keeper's door is unlocked.
+
+<branch id="door">
+  <choice id="inside" label="Go inside">
+    @narrator: The hinges complain. Stairs spiral up into the dark.
+  </choice>
+</branch>

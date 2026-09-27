@@ -1,0 +1,44 @@
+---
+kind: lore
+id: gifts
+title: A lantern folded for someone
+---
+
+// (0.27) After school on day 8 the player gives someone a lantern folded in
+// the wrapping minigame. The engine raises gift@npc.<person> with
+// payload.hearts (0..5), which these beats read. Each arm writes its own
+// suitor's run.aff member.
+
+<beat id="treasured" on="gift" target="kind:suitor" title="A treasured lantern" when="occasion.payload.hearts >= 3 && run.route == occasion.target">
+  @narrator: {{occasion.target}} turns the lantern over in both hands. {{occasion.payload.hearts:plural(One heart|# hearts)}} in the fold, and every one of them showing.
+  <match on="occasion.target">
+    <when is="ren">
+      ::set{run.aff.ren += 1}
+      @ren{emotion="flustered"}: This is... very straight folding. I'm keeping it. On the desk. Officially.
+    </when>
+    <when is="mika">
+      ::set{run.aff.mika += 1}
+      @mika{emotion="fond"}: For me? I'm hanging it in my locker. No, over my bed. No — both. Fold me another.
+    </when>
+    <when is="soren">
+      ::set{run.aff.soren += 1}
+      @soren{emotion="happy"}: I'll press it in the lantern book. Page two hundred. I've been saving page two hundred.
+    </when>
+    <when is="kai">
+      ::set{run.aff.kai += 1}
+      @kai{emotion="fond"}: ...It's not bad. It's not bad at all. Don't look at me while I say that.
+    </when>
+  </match>
+</beat>
+
+<beat id="polite" on="gift" target="kind:suitor" title="A polite thank-you" priority="-5" once="false">
+  @narrator: {{occasion.target}} says thank you, and means it, and puts the lantern carefully in a pocket.
+</beat>
+
+<beat id="hotaru" on="gift" target="npc.hotaru" title="A lantern for the keeper">
+  @hotaru{emotion="fond"}: My own lantern. I've kept a hundred for other people. I'll keep this one for me.
+</beat>
+
+<beat id="nana" on="gift" target="npc.nana" title="A lantern for Nana" once="false">
+  @nana{emotion="happy"}: For the window? For ME? I'm putting it in the middle. Everyone else is getting demoted.
+</beat>

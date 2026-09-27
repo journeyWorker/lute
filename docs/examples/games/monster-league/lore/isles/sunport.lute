@@ -1,0 +1,74 @@
+---
+kind: lore
+id: isles.sunport
+title: Sunport
+---
+
+// AREA isles: Sunport, the ferry town of the Sunfall Isles. Its first visit
+// is the scene isles.arrival; these are the later visits, services, people,
+// the Battle Tower desk and the shrine door.
+
+// ── arriving ────────────────────────────────────────────────────────────────
+
+<entry id="islesSunportDay" on="enterTown" target="town.sunport" category="bark" once="day" when="!@isNight">
+  @narrator: Sunport smells of fish and hot stone. The ferry horn sounds twice from the quay.
+</entry>
+
+<entry id="islesSunportNight" on="enterTown" target="town.sunport" category="bark" once="day" when="@isNight">
+  @narrator{when="@islesLit < 3"}: The harbor is dark. The boats are all tied up.
+  @narrator{when="@islesLit >= 3"}: Three beacons burn on the horizon, and the night boats go out under them.
+</entry>
+
+// ── services ────────────────────────────────────────────────────────────────
+
+<beat id="center" on="heal" target="town.sunport" title="Monster Center" once="false">
+  ::use{component="nurse" town="sunport"}
+</beat>
+
+<beat id="mart" on="shop" target="town.sunport" title="Mart" once="false">
+  ::use{component="shop" stock="sunportStock"}
+</beat>
+
+// ── people ──────────────────────────────────────────────────────────────────
+
+<entry id="islesHarbormistressBark" on="talk" target="npc.sunportHarbormaster" category="bark">
+  @sunportHarbormaster: The ferry calls at Emberkey, Mistral and Coralreach, and back. Mind the gap.
+</entry>
+
+<entry id="islesTamsinBark" on="talk" target="npc.sunportSage" category="bark">
+  @sunportSage: {{@islesLit:plural(One beacon burns|# beacons burn)}}. My grandmother said they were never all dark at once in her lifetime.
+</entry>
+
+<entry id="islesTamsinDone" on="talk" target="npc.sunportSage" category="bark" priority="5" when="quest.islesBeacons.state == 'complete'">
+  @sunportSage{emotion="happy"}: I sleep with the curtains open now, just to see them.
+</entry>
+
+<entry id="islesWickMorning" on="talk" target="npc.sunportKid" category="bark" when="@isMorning">
+  @sunportKid: Low tide! You can walk right into the Coralreach cave in the morning. My mum says don't.
+</entry>
+
+<entry id="islesWickBark" on="talk" target="npc.sunportKid" category="bark" priority="-1">
+  @sunportKid: Are you really the Champion? Say something Champion-y.
+</entry>
+
+// The Dusk Remnant's grunts, once beaten, all say the same thing.
+<beat id="duskBeaten" on="talk" target="kind:islesDusk" title="A beaten grunt" once="false" when="holds(defeated(occasion.target))">
+  @narrator: The grunt pulls up the collar of a grey coat and will not look at {{userName}}.
+</beat>
+
+// ── the Battle Tower desk ───────────────────────────────────────────────────
+
+<beat id="towerRules" on="talk" target="npc.sunportTowerClerk" title="This week at the tower" priority="5" once="week">
+  @sunportTowerClerk: A new week at the Battle Tower! Three wins in a row by Sunday takes the weekly prize.
+  @sunportTowerClerk{when="!@islesTowerOpen"}: The tower floor opens on Saturday.
+</beat>
+
+<entry id="islesTowerClerkBark" on="talk" target="npc.sunportTowerClerk" category="bark">
+  @sunportTowerClerk: Your streak this week: {{run.islesTowerStreak:plural(# win|# wins)}}.
+</entry>
+
+// ── the shrine door ─────────────────────────────────────────────────────────
+
+<entry id="islesShrineSealed" on="enterPlace" target="place.sunfallShrine" category="bark" priority="-10" when="!holds(canPass(islesShrineDoor))">
+  @narrator: Stone steps lead down under the town to a round door with no handle. Three slots in the ceiling let in no light at all.
+</entry>

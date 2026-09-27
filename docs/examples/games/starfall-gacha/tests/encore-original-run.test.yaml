@@ -1,0 +1,6 @@
+# the encore exists only in the rerun window
+file: ../scenes/events/harvest-encore.lute
+visited: [harvest.h3]
+state: { user.day: 12 }
+expect:
+  eligible: false

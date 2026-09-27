@@ -1,0 +1,64 @@
+---
+kind: lore
+id: bridge.talks
+title: Talking to Maelis on the chain
+components: [../components/reaction.component.lute]
+---
+
+<beat after="visited('bridge.arrival')" id="maelisTerms" on="talk" target="npc.maelis" title="Show Maelis the proof" priority="30" when="quest.parley.state == 'active' && @hasProof">
+  <match>
+    <when test="holds(knows(ledger))">
+      @narrator: You hold up the ledger. Maelis does not take it at first. She reads it from where she stands, the way you read a gravestone.
+      @maelis: Coldwater. Burned. In a clerk's hand. They wrote it down.
+    </when>
+    <otherwise>
+      @narrator: You hold out the tin box from the chapel. Maelis knows it before she opens it. Her hands do not.
+      @maelis: My mother's hand. She kept the roll. Two hundred and six. She kept counting after.
+    </otherwise>
+  </match>
+  <match on="run.hostagesFreed">
+    <when is="true">
+      @maelis: And you already took the miller's twins back out of my tunnel, so you are not here to bargain. You are here to be right. Gods help me, you are.
+    </when>
+    <when is="false">
+      @maelis: The children go home tonight. I will walk them to the ford myself. I don't need leverage any more. I have this.
+      ::set{run.hostagesFreed = true}
+    </when>
+  </match>
+  @isolde{when="holds(inParty(isolde))"}: Maelis. For what it's worth.
+  @maelis: It's worth nothing, Vane. Keep it anyway.
+  ::set{run.bridge = "parleyed"}
+  @maelis: Drop the chain.
+</beat>
+
+<beat after="visited('bridge.arrival')" id="maelisSale" on="talk" target="npc.maelis" title="Corvin's offer" priority="20" when="quest.toll.state == 'active' && holds(inParty(corvin))">
+  @corvin: Three deserters, a sack of your silver, and the cellar under the ford where they sleep. Ask me how I know.
+  @maelis: I don't care how you know. I care whether it's true.
+  <branch id="sale" prompt="Maelis is listening. So is everyone else.">
+    <choice id="sell" label="Tell her where they hide.">
+      @maelis: Then we have a bargain, Warden. Drop the chain.
+      ::set{run.bridge = "sold"}
+      ::use{component="reaction" who="corvin" feel="adores"}
+      ::use{component="reaction" who="isolde" feel="despises"}
+      ::set{run.approval.wren -= 4}
+      @wren{when="@wrenWithUs"}: Those are my neighbours. Tam's mother bakes on the fourth day. You just sold her son for a bridge.
+    </choice>
+    <choice id="balk" label="No. Not like this.">
+      @corvin: Suit yourself. I'll be over here, being right, quietly.
+      ::set{run.tollRefused = true}
+      ::use{component="reaction" who="corvin" feel="disapproves"}
+      ::use{component="reaction" who="isolde" feel="approves"}
+    </choice>
+  </branch>
+</beat>
+
+<beat after="visited('bridge.arrival')" id="maelisWaiting" on="talk" target="npc.maelis" title="Maelis on the chain" once="false">
+  <match on="run.bridge">
+    <when is="held">
+      @maelis: Till the fourth night, Warden. I can count too.
+    </when>
+    <otherwise>
+      @maelis: The bridge is open. Use it before I remember why I closed it.
+    </otherwise>
+  </match>
+</beat>

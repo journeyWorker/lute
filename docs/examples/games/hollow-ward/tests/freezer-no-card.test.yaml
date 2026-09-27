@@ -1,0 +1,7 @@
+# Without the bed card, drawer 13 is not on the menu: the player cannot know.
+file: ../scenes/puzzles/freezer.lute
+choose: { drawer: seven }
+expect:
+  options: { drawer: [seven, twentyOne] }
+  notFacts: [following(tobias)]
+  end: complete

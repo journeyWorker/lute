@@ -1,0 +1,66 @@
+---
+kind: quest
+id: south.quests
+title: Southshore side quests
+---
+
+// OWNED BY south. Every quest is tier="run" (FINDINGS-lead F10).
+
+// ── The museum's fossil ───────────────────────────────────────────────────
+// Accepted by the curator (south.museum). The player carries ONE fossil out
+// of the Moonstone dig (run.southFossil); Dr. Kell revives it
+// (south.museumRevive, ::gift). Either fossil closes the quest.
+<quest id="southFossil" title="The museum's fossil" complete="any">
+  <objective id="dome" title="Bring a dome fossil back to life" done="holds(caught(domefossil))"/>
+  <objective id="spiral" title="Bring a spiral fossil back to life" done="holds(caught(spiralfossil))"/>
+  <reward kind="MONEY" amount="1500"/>
+  <on event="questComplete">
+    @pebbletonCurator{vo}: The museum thanks you. The museum is also slightly jealous of you. Please visit with it.
+  </on>
+</quest>
+
+// ── Old Salt's lessons ────────────────────────────────────────────────────
+// Accepted with the Old Rod (south.oldSalt). Lesson one activates with the
+// parent; lesson two is handed out when lesson one is reported.
+<quest id="southOldSalt" title="Old Salt's lessons">
+  <objective id="first" title="Lesson one: a Goldfinn" quest="southOldSaltFirst"/>
+  <objective id="big" title="Lesson two: a Crownfinn" quest="southOldSaltBig"/>
+  <on event="questComplete">
+    @tidewellMorrow{emotion="laughing"}: That's everything I know. The rest you learn from the fish. They're better teachers than me, and they don't talk as much.
+  </on>
+</quest>
+
+<quest id="southOldSaltFirst" title="Lesson one: a Goldfinn">
+  <objective id="show" title="Show Old Salt a Goldfinn" on="talk" target="npc.tidewellMorrow" done="holds(caught(goldfinn))"/>
+  <on event="questComplete">
+    @tidewellMorrow{emotion="happy"}: A Goldfinn! Useless, flappy, gasping thing. Keep it. Raise it. One day it'll bite the hand of everyone who laughed.
+    @tidewellMorrow: Lesson two. A Goldfinn that grew up. A Crownfinn. Most people give up before the Goldfinn does. Don't.
+    ::accept{quest="southOldSaltBig"}
+  </on>
+</quest>
+
+<quest id="southOldSaltBig" title="Lesson two: a Crownfinn" activate="accept">
+  <objective id="show" title="Show Old Salt a Crownfinn" on="talk" target="npc.tidewellMorrow" done="holds(caught(crownfinn))"/>
+  <reward kind="ITEM" amount="1" target="mysticWater"/>
+</quest>
+
+// ── The Center board: a parcel for Granny Wren ────────────────────────────
+// The engine's Monster Center board accepts it. The Pebbleton Mart hands
+// the parcel over (south.pebbletonTown.parcel); Granny Wren thanks the player
+// (south.hollowtownTown.wrenParcel).
+<quest id="southParcel" title="Board: a parcel for Granny Wren" accept="external">
+  <objective id="pickup" title="Collect the parcel at the Pebbleton Mart" done="visited('south.pebbletonTown.parcel')"/>
+  <objective id="deliver" title="Take it to Granny Wren in Hollowtown" on="talk" target="npc.hollowtownWren" done="visited('south.pebbletonTown.parcel')"/>
+  <reward kind="MONEY" amount="800"/>
+</quest>
+
+// ── The Tidewell Sunday derby ─────────────────────────────────────────────
+// Pim signs the player up on a Sunday (south.derby). A Seahorsling caught
+// on any other day does not count; the quest waits for the next Sunday.
+<quest id="southDerby" title="The Sunday derby">
+  <objective id="land" title="Land a Seahorsling on derby day" on="caught" target="mon.seahorsling" done="@southDerbyDay"/>
+  <reward kind="MONEY" amount="3000"/>
+  <on event="questComplete">
+    @tidewellPim{emotion="surprised"}: A SEAHORSLING! On derby day! Somebody fetch the trophy! Somebody fetch my great-great-grandmother!
+  </on>
+</quest>

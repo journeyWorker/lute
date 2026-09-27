@@ -1,0 +1,39 @@
+---
+kind: scene
+id: run.recap
+title: Last time
+pov: ilo
+# Plays after the routine once a dive has ended: what the last dive left him with.
+on: runStart
+once: false
+when: "isSet(prev.run.outcome)"
+---
+
+## Memory
+
+<match on="prev.run.outcome">
+  <when is="died">
+    <match on="prev.run.killedBy">
+      <when is="eel">
+        @ilo{mono}: Last time the eel. Stay off the floor of the long hall.
+      </when>
+      <when is="choir">
+        @ilo{mono}: Last time the choir. Don't listen. Don't hum along.
+      </when>
+      <when is="regent">
+        @ilo{mono}: Last time the throne. I got that far. I can get that far again.
+      </when>
+      <otherwise>
+        @ilo{mono}: Last time the dark just closed over me.
+      </otherwise>
+    </match>
+    ::use{component="gauge" mood="grim"}
+  </when>
+  <when is="surfaced">
+    @ilo{mono}: Last time I came up on my own. The sea let me go.
+    ::use{component="gauge" mood="calm"}
+  </when>
+  <when is="diving">
+    @ilo{mono}: Last time never really ended.
+  </when>
+</match>

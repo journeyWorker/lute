@@ -1,0 +1,78 @@
+---
+kind: scene
+id: lamplight.accusation
+title: Ossery, six o'clock
+pov: inspector
+on: accuse
+components: [../components/lamps-out.component.lute]
+---
+
+## Platform four
+
+::bg{location="ossery_platform" time="dawn"}
+::music{action="change" mood="tense" volume="down"}
+::sfx{sound="brakes, long hiss"}
+@narrator{code="0010"}: The Lamplight comes into Ossery under a sky the colour of dishwater. Two constables wait on platform four with their hands behind their backs.
+@narrator{code="0020"}: Crane has kept everyone in the dining car. Nobody has touched their coffee.
+@inspector{code="0010" mono}: One name. Say it once and say it plainly, or say nothing.
+
+<branch id="accuse" prompt="Whom do you name?">
+  <choice id="solt" label="Dr. Emmerich Solt." into="run.accused" value="solt">
+    @inspector{code="0020"}: Dr. Solt.
+  </choice>
+  <choice id="lise" label="Lise Varo." into="run.accused" value="lise">
+    @inspector{code="0030"}: Miss Varo. You were at his door when his watch stopped.
+  </choice>
+  <choice id="mirela" label="Mirela Dace." into="run.accused" value="mirela">
+    @inspector{code="0040"}: Miss Dace. Your father's cufflink was under his berth, and his house is yours this morning.
+  </choice>
+  <choice id="crane" label="Tobiah Crane." into="run.accused" value="crane">
+    @inspector{code="0050"}: Mr. Crane. You carry a key to every door on this train.
+  </choice>
+  <choice id="silent" label="Say nothing." into="run.accused" value="silence">
+    @inspector{code="0060"}: The constables may take everyone's names. I have nothing to add.
+  </choice>
+</branch>
+
+<match on="run.accused">
+  <when is="solt" test="holds(prime(solt))">
+    @inspector{code="0070"}: Aurel Hask held your note for four hundred crowns and a story about a girl in Kessel that would have finished you.
+    @inspector{code="0080"}: You put laudanum in the tea he rang for at five to two. You waited for the Orla. When the lamps went out you walked six feet down a dark corridor and held a pillow over a sleeping man.
+    @inspector{code="0090"}: Then you set his watch back to a quarter past one, because you had heard Miss Varo at his door, and a watch is the first thing a doctor looks at.
+    @solt{code="0010" emotion="angry"}: You have a watch and a teacup and a conductor's say-so.
+    @inspector{code="0100"}: I have your bag, Doctor. The cork is still damp. And I have his ledger, with your initials on the last page he ever wrote.
+    @solt{code="0020"}: He would have sent it to the Board in the morning. He told me so over the tea. He liked to watch you understand things.
+    @narrator{code="0030"}: The constables step up into the car.
+    ::music{action="fadeOut"}
+    ::end{reason="solved"}
+  </when>
+  <when is="solt">
+    @inspector{code="0110"}: You were not in your berth when the lamps went out.
+    @solt{code="0030"}: Nor were half the passengers on this train, I expect. Have you anything else?
+    @narrator{code="0040"}: The constables look at you, and at the doctor's calm grey face, and at each other. Nobody moves.
+    @solt{code="0040"}: Good morning, Inspector. Do get some sleep.
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The right name and no case. Somewhere a watch is being wound back."}
+  </when>
+  <when is="lise">
+    @lise{code="0010" emotion="sad"}: I sang for the whole of the tunnel. There are twenty people in this car who heard me.
+    @narrator{code="0050"}: The constables take her arm anyway. Behind them, at the far table, Dr. Solt finishes his coffee.
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The wrong name. Somewhere a watch is being wound back."}
+  </when>
+  <when is="mirela">
+    @mirela{code="0010" emotion="angry"}: For a cufflink he stole from a dead man. Well done, Inspector.
+    @narrator{code="0060"}: Dr. Solt steps down onto the platform with his bag and does not look back.
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The wrong name. Somewhere a watch is being wound back."}
+  </when>
+  <when is="crane">
+    @crane{code="0010" emotion="sad"}: Twenty-two years on this line.
+    @narrator{code="0070"}: Dr. Solt steps down onto the platform with his bag and does not look back.
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The wrong name. Somewhere a watch is being wound back."}
+  </when>
+  <when is="silence | nobody">
+    @narrator{code="0080"}: The passengers file off into Ossery one by one. The last is a doctor with a black calf bag, who tips his hat to you.
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="Nothing said, and nothing to show for it. Somewhere a watch is being wound back."}
+  </when>
+</match>
+/* Any name said here ends the night: the schema's `terminal:` (`run.accused != 'nobody'`) holds from
+   this scene on, and the engine raises nothing more until it starts a new run (the loop). `::end` only
+   ends this presentation; the solved arm keeps it as the reason an engine can show. */

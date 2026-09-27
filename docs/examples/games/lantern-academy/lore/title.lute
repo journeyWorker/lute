@@ -1,0 +1,32 @@
+---
+kind: lore
+id: title
+title: The title screen
+---
+
+// The title screen remembers the save: a fresh one, one with terms behind
+// it, one that has cleared every route, and one that set the keeper free.
+
+<beat id="fresh" on="title" title="A new save" once="false" when="user.terms == 0">
+  @narrator: Lantern Academy. A single lantern burns on the lake behind the logo.
+</beat>
+
+<beat id="returning" on="title" title="A save with terms behind it" priority="10" once="false" when="@ngPlus && quest.fourLanterns.state != 'complete'">
+  <match on="user.terms">
+    <when is="1">
+      @narrator: Lantern Academy. One lantern floats on the lake behind the logo. A girl on the far jetty is watching it.
+    </when>
+    <otherwise>
+      @narrator: Lantern Academy. {{user.terms}} lanterns float on the lake behind the logo. A girl on the far jetty is counting them.
+    </otherwise>
+  </match>
+</beat>
+
+<beat id="keeperWaits" on="title" title="Every route cleared" priority="20" once="false" when="quest.fourLanterns.state == 'complete' && !holds(cgSeen(cgKeeperEnd))">
+  @narrator: Lantern Academy. Every lantern on the lake is lit. On the far jetty, the girl has turned round, and is looking at you.
+  @hotaru{vo}: Next term. The one without a lantern.
+</beat>
+
+<beat id="freed" on="title" title="The keeper set free" priority="30" once="false" when="holds(cgSeen(cgKeeperEnd))">
+  @narrator: Lantern Academy. The lake is dark. On the jetty, a crowd of students, and one of them, in an old uniform, waves.
+</beat>

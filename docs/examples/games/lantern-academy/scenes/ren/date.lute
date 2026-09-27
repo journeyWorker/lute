@@ -1,0 +1,35 @@
+---
+kind: scene
+id: ren.date
+title: Ren — the roof after curfew
+on: slotStart
+when: "run.route == 'ren' && run.day == 7 && run.slot == 'afterSchool'"
+priority: 10
+after: 'visited("common.festival")'
+---
+
+## The observatory roof
+
+::bg{location="roof" time="dusk"}
+::music{action="start" mood="romantic" volume="down"}
+::auto{character="ren" anchor="center" action="fadeInUp"}
+@ren{emotion="stern"}: This roof is off limits. I have the only key. Therefore I am the only one who can break the rule, and I am choosing to. Sit.
+@ren{emotion="flustered"}: I come up here to name the stars. Officially they have names. I give them better ones.
+
+::date{with="ren" spot="roof" resultKey="stars"}
+
+<match on="scene.date.stars.mood">
+  <when is="perfect">
+    @ren{emotion="happy"}: That one is yours now. I just decided. Don't argue with the president.
+    ::use{component="cg" id="cgRenStars"}
+    ::set{run.aff.ren += 2}
+  </when>
+  <when is="sweet">
+    @ren{emotion="fond"}: You're a terrible astronomer. Come back tomorrow and be terrible again.
+    ::set{run.aff.ren += 1}
+  </when>
+  <otherwise>
+    @ren{emotion="sad"}: ...It's cold. We should go down. I'll sign you out.
+  </otherwise>
+</match>
+@narrator{when="scene.date.stars.hearts >= 5"}: He walks you to the dormitory door and forgets, for once, to check the time.

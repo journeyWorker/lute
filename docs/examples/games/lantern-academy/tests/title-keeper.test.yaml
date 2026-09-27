@@ -1,0 +1,9 @@
+# The title screen after every route is cleared: Hotaru has turned round.
+file: ../lore/title.lute
+beat: keeperWaits
+state: { user.terms: 4 }
+quests: { fourLanterns: complete }
+expect:
+  eligible: { keeperWaits: true, returning: false, freed: false, fresh: false }
+  transcriptContains: ["Next term. The one without a lantern."]
+  end: complete

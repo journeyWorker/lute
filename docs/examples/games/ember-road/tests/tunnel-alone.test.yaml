@@ -1,0 +1,11 @@
+# Without Wren in the party and without Isolde's trust, the tunnel offers only
+# Corvin's knife or a rush.
+file: ../scenes/road/tunnel.lute
+visited: [road.ford]
+quests: { hostages: active }
+facts: ["knows(passage)"]
+choose: { tunnel: knife }
+expect:
+  options: { tunnel: [knife, rush] }
+  state: { run.hostagesFreed: true, run.approval.corvin: 1, run.approval.isolde: -1 }
+  end: complete

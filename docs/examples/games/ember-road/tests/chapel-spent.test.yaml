@@ -1,0 +1,8 @@
+# Once the roll is in the pack, the chapel is spent.
+file: ../lore/coldwater.lute
+beat: chapel
+visited: [bridge.arrival, coldwater.ruins]
+facts: [knows(roll)]
+state: { run.leg: 3 }
+expect:
+  eligible: { chapel: { false: spentBy } }

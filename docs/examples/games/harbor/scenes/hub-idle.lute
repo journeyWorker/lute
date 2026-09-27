@@ -1,0 +1,11 @@
+---
+kind: scene
+id: hub.idle
+title: The quiet pier
+on: hubVisit
+once: false
+---
+
+## Pier
+
+@narrator: Gulls argue over a fish head. It is {{clock.weekdayLabel}}, and you have {{run.coins:plural(# coin|# coins)}}.

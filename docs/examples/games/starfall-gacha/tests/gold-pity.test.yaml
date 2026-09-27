@@ -1,0 +1,12 @@
+# a kind-target beat: the member comes from occasion.target, the pity streak
+# from the summon payload; Aria is not owned yet, so she is a new star
+file: ../lore/summons.lute
+beat: goldLight
+state: { occasion.target: aria, occasion.payload.streak: 75 }
+expect:
+  transcriptContains:
+    - "@narrator: The well turns gold. Aria steps out of the light."
+    - "@lumi: A new star for the roster! Say hello, Aria."
+    - "@lumi: After 75 pulls! I was starting to think the well was broken."
+  transcriptLacks: ["That fast?"]
+  end: complete

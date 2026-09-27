@@ -1,0 +1,20 @@
+---
+kind: scene
+id: hub.regentFell
+title: The Regent falls
+pov: ilo
+on: hubVisit
+once: user
+priority: 50
+when: "holds(slew(regent))"
+---
+
+## Deck
+
+::bg{location="deck" time="dawn"}
+::music{action="start" mood="upbeat" volume="normal"}
+@narrator: The sea around the Gull's Mercy has gone flat and bright as a coin.
+@sefa{emotion="surprised"}: The current's stopped. Brann, the current has stopped.
+@brann: Then the thing on the throne is dead. Or it's waiting.
+@ilo: It's dead. I watched it come apart.
+@brann{emotion="grim"}: Things down there come apart and put themselves back together, boy. Tell me all of it. Later.

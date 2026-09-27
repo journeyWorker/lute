@@ -1,0 +1,12 @@
+# Ink: gallery x3, then the rail -> END. `terminal:` is Lute's END; no third step can run.
+choose:
+  door: inside
+  lamp: [gallery, gallery, gallery, leap]
+steps:
+  - occasion: chapter
+  - occasion: chapter
+    expect: { winner: keeper }
+expect:
+  end: terminal
+  state: { run.fate: drowned }
+  transcriptLacks: ['@narrator: The sun goes under.']

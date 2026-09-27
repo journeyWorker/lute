@@ -1,0 +1,43 @@
+# THE LIVE-OPS CALENDAR. Every date the story reads is named here, once.
+# Days are server days since launch (day 1 = launch Monday). A rerun is one
+# more window on the same def; nothing else in the project changes.
+defs:
+  onDays: { type: bool, params: { first: number, last: number }, cel: "user.day >= first && user.day <= last" }
+
+  # Harvest Moon Festival (limited SSR: Cyra). Ran week 2; rerun week 6.
+  harvestOriginal: "@onDays(8, 14)"
+  harvestRerun:    "@onDays(36, 42)"
+  harvestLive:     "@harvestOriginal || @harvestRerun"
+  harvestShopOpen: "@onDays(8, 14 + 3) || @onDays(36, 42 + 3)"   # the shop stays three days after
+  harvestDaysLeft: "@harvestRerun ? 42 - user.day : 14 - user.day"
+
+  # Starfall Night (limited SSR: Vesper). Week 4, no rerun yet.
+  starfallLive:     "@onDays(22, 28)"
+  starfallShopOpen: "@onDays(22, 28 + 3)"
+  starfallDaysLeft: "28 - user.day"
+
+  # Frostlight Vigil (limited SSR: Nyx). Week 7, the first event after Chapter 4.
+  frostLive:     "@onDays(43, 49)"
+  frostShopOpen: "@onDays(43, 49 + 3)"
+  frostDaysLeft: "49 - user.day"
+
+  anyEventLive:    "@harvestLive || @starfallLive || @frostLive"
+
+  # Main story releases
+  ch3Released: "user.day >= 15"
+  ch4Released: "user.day >= 43"
+  # the engine raises stageClear only for a released stage (occasion raisedWhen)
+  stageReleased: "(!(occasion.target in ['c3s1', 'c3s8']) || @ch3Released) && (!(occasion.target in ['c4s1', 'c4s2', 'c4s3']) || @ch4Released)"
+
+  # Resets
+  newWeek:     "clock.weekday == 0"   # Monday 04:00
+  weekend:     "clock.weekday >= 5"
+
+# The festivals are seasons: each opening (the window going live) resets
+# season.<name>.*, clears once: season:<name> beats and resets
+# tier="season:<name>" quests. The engine reads the same declaration from the
+# artifact, so the calendar is written once.
+seasons:
+  harvest:  { live: "@harvestLive" }
+  starfall: { live: "@starfallLive" }
+  frost:    { live: "@frostLive" }

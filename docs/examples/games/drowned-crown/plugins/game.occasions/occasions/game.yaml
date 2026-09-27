@@ -1,0 +1,13 @@
+occasions:
+  hubVisit:     { select: first, description: Ilo climbs back aboard the Gull's Mercy after a dive }
+  talk:         { select: first, target: { prefix: npc, entity: npc }, description: Ilo talks to someone aboard (npc.<name>) }
+  runStart:     { select: sequence, description: A dive begins at the rail; every eligible beat plays in turn }
+  runEnd:       { select: first, judge: before, payload: { pearls: number }, description: "The dive is over; the engine has written run.outcome, run.depth and run.killedBy, and says how many pearls came up" }
+  bossDefeated: { select: first, target: { prefix: foe, entity: foe }, description: A palace guardian falls (foe.<name>) }
+  keepsakes:    { select: all, description: The sea-chest at the stern; Ilo takes one keepsake down }
+  # The library's sluice gate, three chambers down: the engine raises it only
+  # once Ilo is deep enough to stand in front of it.
+  sluice:       { select: first, raisedWhen: "run.depth >= 3", description: Ilo stands at the library's sluice gate }
+  # The last dive: raised at the rail once the crew's stories are told and the
+  # Regent has fallen. Its scenes are chained in lute.project.yaml `sequence:`.
+  lastDive:     { select: first, raisedWhen: "@readyForCrown", description: "The last dive, down to the empty throne" }

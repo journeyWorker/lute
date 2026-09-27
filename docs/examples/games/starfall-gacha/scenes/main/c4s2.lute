@@ -1,0 +1,29 @@
+---
+kind: scene
+id: main.c4s2
+title: "4-2: Who Rows With You"
+target: stage.c4s2
+once: user
+---
+
+## Midwater
+
+@narrator: Halfway out, the lanterns bunch around the boat like cats at a door.
+@lumi: Someone should keep watch at the bow. Who do you trust with that?
+<branch id="c4s2Watch" prompt="Who keeps watch at the bow?">
+  <choice id="aria" label="Aria." when="holds(owned(aria))">
+    @aria{emotion="happy"}: Me? Of course. I'll call out every star I see. Loudly.
+    ::assert{rowedWith(aria)}
+  </choice>
+  <choice id="cyra" label="Cyra." when="holds(owned(cyra))">
+    @cyra{emotion="sleepy"}: I'll watch. With my eyes closed. It's a priestess thing.
+    ::assert{rowedWith(cyra)}
+  </choice>
+  <choice id="nyx" label="Nyx." when="holds(owned(nyx))">
+    @nyx{emotion="shy"}: The lanterns know me. They'll behave.
+    ::assert{rowedWith(nyx)}
+  </choice>
+  <choice id="lumi" label="Lumi can do it.">
+    @lumi{emotion="smug"}: Obviously. I'm a guide star. Guiding is the job.
+  </choice>
+</branch>

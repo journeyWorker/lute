@@ -1,0 +1,5 @@
+# A save's very first term has no previous run: no recap.
+file: ../lore/term.lute
+beat: recap
+expect:
+  eligible: { recap: false }

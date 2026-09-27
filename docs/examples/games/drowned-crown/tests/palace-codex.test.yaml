@@ -1,0 +1,8 @@
+# The codex fills in as guardians fall: the hall's page opens once the eel is
+# gone; the throne's page stays shut while the Regent lives.
+file: ../lore/palace.lute
+entries: [codexStair, codexHall]
+facts: ["felled(eel)"]
+expect:
+  transcriptContains: ["Four hundred steps down", "Something long used to keep it."]
+  eligible: { codexHall: true, codexThrone: false }

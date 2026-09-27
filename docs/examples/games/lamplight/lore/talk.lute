@@ -1,0 +1,112 @@
+---
+kind: lore
+id: talk
+title: Interviews
+---
+
+<entry id="craneTea" on="talk" target="npc.crane" category="testimony" once="run" title="The tea at five to two">
+  @crane{code="0010"}: He rang at five to two. I remember because we were a minute from the Orla mouth and I wanted it done before the lamps went.
+  @crane{code="0020"}: I brought it myself. He took the tray at the door and said the sugar was short. Alive and complaining, Inspector. Same as every trip.
+  ::assert{alive(hask, late)}
+</entry>
+
+<entry id="craneTunnel" on="talk" target="npc.crane" category="testimony" once="run" title="Where were you in the tunnel?">
+  @crane{code="0010"}: In the brake van, where the rulebook puts me. The gas cock for the whole train is back there. You shut it for the tunnel or the lamps choke the cars with smoke.
+  @crane{code="0020"}: Emil was with me. Ask him.
+  ::assert{claims(crane, brakevan, tunnel)}
+</entry>
+
+<entry id="craneLamps" on="talk" target="npc.crane" category="testimony" once="run" title="After the tunnel" when="entry.craneTunnel.read">
+  @crane{code="0010"}: Ten past two I walked the sleeper with the taper, relighting. You knock, you say "lamps", you light it. Most folk don't even wake.
+  @crane{code="0020"}: Seven didn't answer. I lit it from the corridor through the transom and thought no more of it.
+  @crane{code="0030"}: Five's door was on the latch and the berth was made up, empty. I supposed the doctor had gone along to the dining car for a brandy.
+  ::assert{unanswered(cab7, tunnel)}
+  ::assert{empty(cab5, tunnel)}
+</entry>
+
+<entry id="porterDoor" on="talk" target="npc.porter" category="testimony" once="run" title="A quarter past one">
+  @porter{code="0010"}: I was turning down the corridor blinds. Miss Varo — the singer — was at seven's door. She knocked, he opened it a hand's width, she gave him an envelope and went off quick.
+  @porter{code="0020"}: Quarter past one by the corridor clock. I'd swear to it.
+  ::assert{seen(lise, cab7, early)}
+</entry>
+
+<entry id="porterTunnel" on="talk" target="npc.porter" category="testimony" once="run" title="The tunnel">
+  @porter{code="0010"}: With Mr. Crane in the van, on the gas cock. He counts the seconds out loud in the Orla. Four minutes and ten, this time. He was sore about the ten.
+  ::assert{seen(crane, brakevan, tunnel)}
+</entry>
+
+<entry id="mirelaTunnel" on="talk" target="npc.mirela" category="testimony" once="run" title="Where were you in the tunnel?">
+  @mirela{code="0010"}: In the dining car, being sung at. Miss Varo does not stop for tunnels. She sang the whole of the Orla in the dark, the second verse twice.
+  @mirela{code="0020"}: I could hear her not six feet from me the entire time. Ask her where I was, if you like. She will have heard me not applauding.
+  ::assert{claims(mirela, dining, tunnel)}
+  ::assert{seen(lise, dining, tunnel)}
+</entry>
+
+<entry id="mirelaMatch" on="talk" target="npc.mirela" category="testimony" once="run" title="Did you see anyone pass?" when="entry.mirelaTunnel.read">
+  @mirela{code="0010"}: Once. The steward struck a match for the singer's music, halfway through the second verse, and for a moment the door glass lit up.
+  @mirela{code="0020"}: A man went past it toward the sleepers. Tall. Spectacles — the flame caught them. Then the match went out and he was gone.
+  ::assert{seen(solt, corridor, tunnel)}
+</entry>
+
+<entry id="mirelaCufflink" on="talk" target="npc.mirela" category="testimony" once="run" title="The cufflink" when="holds(found(cufflink))">
+  @mirela{code="0010"}: Those were my father's. Martin Dace. My uncle took the pair as interest the winter Father died owing him.
+  @mirela{code="0020"}: He wore them to make a point, Inspector. At the funeral he wore them. I have not touched them in three years, and I would not dirty my hands on them now.
+</entry>
+
+<entry id="liseTunnel" on="talk" target="npc.lise" category="testimony" once="run" title="Where were you in the tunnel?">
+  @lise{code="0010"}: Singing. The steward asked me to keep the car calm in the dark, and I did. "The Lamplighter's Daughter", twice through.
+  @lise{code="0020"}: Miss Dace sat at the table under the dead lamp the whole time. I know because she coughed on every high note.
+  ::assert{claims(lise, dining, tunnel)}
+  ::assert{seen(mirela, dining, tunnel)}
+</entry>
+
+<entry id="soltTime" on="talk" target="npc.solt" category="testimony" once="run" title="The time of death">
+  @solt{code="0010"}: A quarter past one, give or take. The limbs, the warmth of the trunk. And his own watch stopped at the minute, which rather settles it.
+  @solt{code="0020"}: I was asleep in five from midnight until the conductor fetched me. I sleep like a stone on trains. It is the one mercy of the Varn line.
+  ::assert{claims(solt, cab5, tunnel)}
+</entry>
+
+<beat id="liseDoor" on="talk" target="npc.lise" title="A quarter past one" when="holds(placed(lise))">
+  ::bg{location="dining_car" time="night"}
+  ::auto{character="lise" anchor="center" action="fadeInUp"}
+  @inspector{code="0010"}: The porter saw you at compartment 7 at a quarter past one. The watch on the dead man's wrist stopped at a quarter past one.
+  @lise{code="0010" emotion="angry"}: And so I must have stopped it. With what — a high C?
+  @lise{code="0020" emotion="sad"}: I went to beg. There, you can write that down. He held a note of mine, sixty crowns, and he had called it in. I wrote him a letter asking for time and I took it to his door because I could not bear to wait for the morning.
+  @lise{code="0030"}: He opened it a hand's width. He took the envelope. He said he would answer it after his tea. Then he shut the door on me, and I went and sang.
+  ::assert{claims(lise, cab7, early)}
+  @lise{code="0040"}: Inspector. That letter is in his things somewhere. If it is read out at an inquest, no hall in Ossery will have me.
+  <branch id="letter" prompt="Lise is waiting.">
+    <choice id="promise" label="I'll find the letter.">
+      ::accept{quest="lisesLetter"}
+      @inspector{code="0020"}: If it has nothing to do with his death, it goes back to you. That is all I can promise.
+      @lise{code="0050" emotion="content"}: That is more than he ever did.
+    </choice>
+    <choice id="refuse" label="Everything he carried is evidence.">
+      @inspector{code="0030"}: Everything he carried is evidence, Miss Varo. Including your letter.
+      @lise{code="0060" emotion="angry"}: Then I hope you enjoy the prose.
+    </choice>
+  </branch>
+  ::auto{character="lise" action="fadeOut"}
+</beat>
+
+<beat id="soltConfront" on="talk" target="npc.solt" title="The empty berth" when="holds(lied(solt))" priority="10">
+  ::bg{location="compartment_5" time="night"}
+  ::auto{character="solt" anchor="center" action="fadeInUp"}
+  @inspector{code="0010"}: You told me you slept in this berth from midnight until the conductor fetched you.
+  @solt{code="0010"}: I did.
+  @inspector{code="0020"}: At ten past two Mr. Crane came down this corridor with his taper. Your door was on the latch. Your bed was made. You were not in it.
+  <branch id="press" prompt="Solt folds his spectacles, slowly.">
+    <choice id="hard" label="Where were you in the tunnel, Doctor?">
+      @inspector{code="0030"}: Where were you during the four minutes the lamps were out?
+      @solt{code="0020" emotion="angry"}: Attending to my own bowels, Inspector, since you insist on the details. Trains disagree with me.
+      ::set{run.soltRattled = true}
+      @inspector{code="0040" mono}: The washroom is at the end of this car. Hask's compartment is between here and there.
+    </choice>
+    <choice id="soft" label="Let him fill the silence.">
+      @narrator{code="0010"}: You say nothing. The wheels count the rail joints.
+      @solt{code="0030"}: I may have stepped out. A man does not remember every minute of a night like this.
+      @inspector{code="0050" mono}: A physician does. It's the one thing they are trained to do.
+    </choice>
+  </branch>
+  ::auto{character="solt" action="fadeOut"}
+</beat>

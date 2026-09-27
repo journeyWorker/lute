@@ -1,0 +1,12 @@
+# A squall is forecast; on day 13 it breaks the moorings and ends the game (schema `terminal:`).
+steps:
+  - label: squall forecast
+    engine: { state: { run.storm: squall } }
+  - advance: { to: { weekday: Sat, slot: dusk } }
+  - advance: { to: { weekday: Sat, slot: dusk } }
+  - advance: day
+    expect: { clock: { day: 14, slot: dawn, ended: false } }
+expect:
+  end: terminal
+  state: { run.storm: wrecked }
+  transcriptContains: ["@narrator: The squall breaks the moorings."]

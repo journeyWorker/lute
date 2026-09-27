@@ -1,0 +1,11 @@
+# One school day from the morning on: after school at place.track, the dorm
+# evening, and the next morning (whatever slotStart the calendar has there).
+steps:
+  - label: after school
+    advance: slot
+  - occasion: visit
+    target: place.track
+  - label: evening
+    advance: slot
+  - label: next morning
+    advance: slot

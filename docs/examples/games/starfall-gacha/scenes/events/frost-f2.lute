@@ -1,0 +1,29 @@
+---
+kind: scene
+id: frost.f2
+title: "Frostlight Vigil 2: One Candle Each"
+on: eventStage
+target: estage.f2
+once: user
+when: "@frostLive"
+after: visited('frost.f1')
+---
+
+## The vigil
+
+@nyx: Everyone gets one candle. You light it for a wish. Yours, or somebody else's.
+<branch id="f2Wish" prompt="Whose wish do you light the candle for?">
+  <choice id="cyra" label="Cyra's: a long, uninterrupted nap." when="holds(owned(cyra))">
+    ::assert{vigilWish(cyra)}
+    @nyx{emotion="happy"}: A good wish. The ice likes it.
+  </choice>
+  <choice id="vesper" label="Vesper's: a king worth following." when="holds(owned(vesper))">
+    ::assert{vigilWish(vesper)}
+    @nyx: A heavy one. I'll hold the other end.
+  </choice>
+  <choice id="hollow" label="The Hollow King's.">
+    @nyx{emotion="sad"}: Nobody's ever picked his. ...Thank you.
+  </choice>
+</branch>
+::set{season.frost.vigils += 1}
+@narrator: The candle catches. For a moment every lantern in the ice burns a little brighter.

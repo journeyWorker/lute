@@ -1,0 +1,26 @@
+---
+kind: scene
+id: puzzle.bell
+title: The chapel bell
+on: examine
+target: fixture.bellRope
+priority: 10
+spentBy: "run.bellRung"
+---
+
+## Bell
+
+@narrator: The rope is stiff and smells of pigeons. Far above, the bell waits.
+<match on="run.hour">
+  <when is="h03">
+    @narrator: You pull. The bell speaks once, and all through the building the beds stop creaking.
+    @maud{vo}: Three o'clock. The round. Everybody down.
+    @narrator: And from the morgue, faint, the long sigh of a gurney that has finally been parked.
+    ::set{run.bellRung = true}
+  </when>
+  <otherwise>
+    @narrator: You pull. The bell answers, loud and wrong, and the sound goes looking for someone.
+    @nell{mono when="entry.diary.read"}: Three. The diary said three. Not now.
+    ::lure{room="chapel"}
+  </otherwise>
+</match>

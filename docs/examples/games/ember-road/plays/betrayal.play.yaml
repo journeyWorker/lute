@@ -1,0 +1,49 @@
+# Route B — silver for the toll: let the twins' deadline pass, take Corvin's
+# scheme, sell the deserters to Maelis. Wren walks out at the next camp.
+#   lute play . --script plays/betrayal.play.yaml
+choose:
+  orders: price
+  plea: price
+  chain: [twins, withdraw]
+  scheme: listen
+  sale: sell
+steps:
+  - include: steps/to-the-ford.yaml
+  - occasion: talk
+    target: npc.oda
+    expect: { winner: camp.talks.odaWaiting, quests: { hostages: active }, state: { run.approval.isolde: -1 } }
+  - label: a night passes; the twins are moved on; the Tollbridge
+    advance: day
+    engine: { state: { run.leg: 3 } }
+    expect: { winner: bridge.arrival, quests: { hostages: failed, parley: unset }, state: { run.rep.marrow: -2 } }
+  - occasion: talk
+    target: npc.corvin
+    expect: { winner: camp.talks.corvinScheme, quests: { toll: active } }
+  - occasion: talk
+    target: npc.maelis
+    expect: { winner: bridge.talks.maelisSale, quests: { toll: complete, openBridge: complete, parley: unset }, state: { run.bridge: sold, quest.parley.failedBy: unset } }
+  - occasion: banter
+    expect: { winner: banterSold }
+  - occasion: talk
+    target: npc.isolde
+    expect: { winner: camp.talks.isoldeSold }
+  - occasion: camp
+    label: the camp after the sale
+    expect: { presented: [camp.fire, camp.wrenLeaves, camp.talks.watch for corvin], facts: [departed(wren)], notFacts: [inParty(wren)] }
+  - occasion: talk
+    target: npc.wren
+    expect: { winner: camp.talks.companionGone }
+  - occasion: talk
+    target: npc.oda
+    expect: { winner: camp.talks.odaWaiting }
+  - engine: { state: { run.leg: 4 } }
+  - occasion: chapterEnd
+    expect: { winner: road.crossing }
+expect:
+  end: complete
+  quests: { emberRoad: complete, hostages: failed, toll: complete, parley: unset, isoldeOath: unset, wrenRoots: unset }
+  state: { run.gold: 250, run.bridge: sold, run.approval.wren: -4, run.approval.corvin: 5 }
+  facts: [hostile(marrow), departed(wren), loyal(corvin)]
+  notFacts: [inParty(wren), loyal(isolde)]
+  transcriptContains: ["@narrator: Wren has left the party.", "@narrator: The Marrow folk will not forget", "@narrator: Wren's bedroll is gone from the wagon. So is Wren."]
+  transcriptLacks: ["@wren: Hold the wagon a moment.", "@narrator: Behind you at the ford, a miller"]

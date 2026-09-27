@@ -1,0 +1,61 @@
+# Week 1 (days 1-7, Mon-Sun): launch. Standard banner only.
+steps:
+  - occasion: newGame
+    label: new account
+    choose: { prologueName: yes }
+    expect: { presented: [main.prologue], state: { user.tutorialDone: true } }
+  - occasion: login
+    expect: { presented: [login.standardCard] }
+  # the free first pull: the engine rolls Aria
+  - occasion: summon
+    target: hero.aria
+    payload: { copies: 1, streak: 1, banner: standard }
+    expect: { winner: bonds.aria.ariaIntro }
+  - engine: { facts: ["owned(aria)"] }
+  - occasion: stageClear
+    target: stage.c1s1
+    expect: { winner: main.c1s1 }
+  - occasion: stageClear
+    target: stage.c1s8
+    choose: { c1s8Answer: defy }
+    expect: { winner: main.c1s8, quests: { chapter1: complete, chapter2: active } }
+  - occasion: homeTap
+    target: hero.aria
+    expect: { winner: bonds.aria.ariaTap }
+  - occasion: homeTap
+    target: hero.aria
+    label: second tap, same day
+    expect: { winner: home.idleTap }
+  # day 2
+  - advance: day
+    engine: { state: { user.loginStreak: 2, user.loginTotal: 2 } }
+    expect: { presented: [resets.dailyNotice], clock: { day: 2, weekday: Tue } }
+  - occasion: login
+    expect: { presented: [login.standardCard] }
+  # day 3: Aria's birthday (day 3 of the moon), and she is owned
+  - advance: day
+    engine: { state: { user.loginStreak: 3, user.loginTotal: 3 } }
+    expect: { presented: [resets.dailyNotice, "resets.birthday for aria", bonds.aria.ariaBirthday] }
+  - occasion: stageClear
+    target: stage.c2s1
+  - occasion: stageClear
+    target: stage.c2s8
+    expect: { quests: { chapter2: complete, chapter3: unset } }
+  # the weekend
+  - advance: { to: { weekday: Sat } }
+    engine: { state: { user.loginStreak: 6, user.loginTotal: 6 } }
+    expect: { clock: { day: 6, weekday: Sat } }
+  - occasion: homeTap
+    target: hero.aria
+    expect: { winner: bonds.aria.ariaTap }
+  - occasion: homeTap
+    target: hero.aria
+    expect: { winner: home.lateTap }
+  - occasion: homeTap
+    target: hero.aria
+    expect: { winner: home.idleTap }
+  - advance: day
+    engine: { state: { user.loginStreak: 7, user.loginTotal: 7 } }
+    expect: { clock: { day: 7, weekday: Sun }, quests: { streakSeven: complete, towerWeekly: unset } }
+  - occasion: login
+    expect: { presented: [login.standardCard] }

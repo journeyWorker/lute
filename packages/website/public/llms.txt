@@ -65,3 +65,4 @@ Lute is deliberately non-Turing: every document is a finite, terminating artifac
 
 - [GitHub repository](https://github.com/journeyWorker/lute): Source, issues, and the full history of the Lute language and toolchain.
 - [Full-spec showcase](https://lute-lang.vercel.app/examples/showcase/): A walkthrough of the self-contained showcase project exercising every implemented Lute feature end-to-end.
+- [Example games](https://lute-lang.vercel.app/examples/games/): Fourteen complete games in the repository under `docs/examples/games/` — mysteries, roguelikes, visual novels, live-ops, a gacha, an Ink port — each its own project with a README naming the features it exercises, checked in CI with `check-project --deny-warnings` and run with its tests and plays.

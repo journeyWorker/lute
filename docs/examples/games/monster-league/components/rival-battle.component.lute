@@ -1,0 +1,32 @@
+---
+component: rivalBattle
+effects: true
+params:
+  meet: string     # the rivalMeet member: lab, bridge, ferry, tower, road, champion
+  kind: { type: { enum: [rival, champion] }, default: rival }
+  intro: string
+  win: string      # the player won
+  lose: string     # the player lost
+---
+
+## Rival battle
+
+/* Kai. Every meeting is recorded (rivalFought), a win is recorded
+   (rivalBeaten), and the standing moves one step either way. The outcome is
+   this component's own ::battle result. */
+::auto{character="rival" action="enter"}
+@rival: {{@intro}}
+::music{action="change" mood="battle" volume="up"}
+::battle{foe="rival" kind=@kind team=@meet resultKey="fight"}
+::assert{rivalFought(@meet)}
+<match on="scene.battle.fight.won">
+  <when is="true">
+    @rival: {{@win}}
+    ::assert{rivalBeaten(@meet)}
+    ::set{run.rivalStanding += 1}
+  </when>
+  <otherwise>
+    @rival: {{@lose}}
+    ::set{run.rivalStanding -= 1}
+  </otherwise>
+</match>

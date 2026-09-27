@@ -1,0 +1,16 @@
+---
+kind: scene
+id: end.drowned
+title: The dark closes
+pov: ilo
+on: runEnd
+once: false
+when: "@died"
+---
+
+## Below
+
+::bg{location="palace" time="night"}
+::vfx{type="blackOut"}
+@ilo{mono}: Count your breaths. One. Two. Th—
+@narrator: The palace keeps him for a while. Then, as it always does, it lets go of the rope.

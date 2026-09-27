@@ -1,0 +1,7 @@
+# A save, not a playthrough: Monday is done (arrival, Theo at the pier, Ines at
+# the library, lantern accepted). For `lute calendar --script`:
+#   lute calendar . --axis run.day=2..7 --axis run.slot=morning,afternoon,night \
+#     --script saves/after-monday.play.yaml
+presented: { run: [day1.arrival, pier.theo.meet, library.ines.meet] }
+quests: { festivalLantern: active, inesWednesday: active }
+state: { run.aff.ines: 1, run.aff.theo: 1 }

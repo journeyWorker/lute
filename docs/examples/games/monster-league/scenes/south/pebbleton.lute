@@ -1,0 +1,28 @@
+---
+kind: scene
+id: south.pebbleton
+title: Pebbleton
+on: enterTown
+target: town.pebbleton
+priority: 10
+after: 'visited("spine.lab")'
+---
+
+// The first time in Pebbleton: the grey town, its museum, and Kai coming
+// out of the gym one step ahead, as always.
+
+## The grey town
+
+::bg{location="pebbleton" time="day"}
+::music{action="start" mood="calm" volume="normal"}
+@narrator: Pebbleton is built of the mountain it sits under: grey houses, grey walls, grey roofs, and one bright red door on the museum as if somebody had lost an argument.
+@narrator: The Stone Gym stands at the top of the town. The door bangs open as you arrive.
+::auto{character="rival" anchor="right" action="enter"}
+@rival{emotion="smug"}: Oh, hey. Look who finally made it through the Hushwood. I just came out of the gym.
+@rival: Did I win? Let's just say Petra and I had a very educational afternoon. For one of us.
+@rival{emotion="laughing"}: The east road's shut until you beat her. See you on the other side. Maybe. If you ever get there.
+::auto{character="rival" action="exit"}
+::auto{character="pebbletonJuniper" anchor="left" action="enter"}
+@pebbletonJuniper{emotion="happy"}: He lost, you know. Twice. Petra doesn't gloat, so I do it for her. I'm Juniper. I'm her biggest fan.
+@pebbletonJuniper: If you want to beat Petra, don't bring anything that burns or flies. Bring water. Or grass. Or a lot of courage.
+::auto{character="pebbletonJuniper" action="exit"}

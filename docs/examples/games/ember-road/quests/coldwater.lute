@@ -1,0 +1,19 @@
+---
+kind: quest
+id: quests.coldwater
+title: Coldwater
+---
+
+/* Opens by itself on the first visit to the burned village. The parish roll is
+   proof of its own: Maelis takes it as she would the ledger (quest parley). */
+<quest id="coldwaterNames" title="The Names at Coldwater" start="visited('coldwater.ruins')" fail="holds(fell(isolde))">
+  <reward kind="XP" amount="100"/>
+  <objective id="roll" title="Find what Coldwater kept of itself" done="holds(knows(roll))"/>
+  <objective id="isolde" title="Show Isolde the roll" on="talk" target="npc.isolde" done="holds(knows(roll))"/>
+  <on event="questComplete">
+    @narrator: Two hundred and six names. You find you have read every one.
+  </on>
+  <on event="questFailed">
+    @narrator: The roll stays in your pack. There is nobody left to read it to.
+  </on>
+</quest>

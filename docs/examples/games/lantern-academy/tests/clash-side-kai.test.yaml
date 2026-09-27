@@ -1,0 +1,10 @@
+# Lying for Kai locks Ren's route instead.
+file: ../scenes/common/council-clash.lute
+visited: [common.arrival]
+state: { run.day: 2, run.slot: morning }
+choose: { clash: sideKai }
+expect:
+  state: { run.aff.kai: 2 }
+  facts: ["locked(ren)"]
+  notFacts: ["locked(kai)"]
+  end: complete

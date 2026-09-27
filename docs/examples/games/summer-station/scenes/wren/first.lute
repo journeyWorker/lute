@@ -1,0 +1,33 @@
+---
+kind: scene
+id: wren.first
+title: The goat pen
+on: visit
+target: place.village
+priority: 20
+when: "holds(at(wren, village))"
+---
+
+## Below the switchbacks
+
+::bg{location="village_pen" time="afternoon"}
+::music{action="start" mood="upbeat" volume="down"}
+@narrator: The path down takes forty minutes and your knees file a complaint at every bend. At the bottom: a stone trough, a goat pen, and a girl sitting on the fence with a bundle of willow sticks across her lap.
+::use{component="enter" who="wren" side="left"}
+@wren{emotion="laughing"}: You're the station intern. You walk like the station intern. Everybody walks like that the first week.
+@wren{emotion="happy"}: Wren. Those are my goats; that one's Ines, don't tell Ines.
+@narrator: The willow sticks are half a lantern: a ribbed frame the size of a hatbox, tied with kitchen string.
+@wren{emotion="worried"}: For Sunday. It needs proper paper, wire that won't rust, and a candle that burns slow — and I have exactly none of those, because the shop sells postcards and rope.
+
+<branch id="lanternAsk" prompt="She holds the frame up to the light and squints through it.">
+  <choice id="help" label="Offer to find the parts up at the station">
+    ::set{run.aff.wren += 1}
+    ::accept{quest="lantern"}
+    @wren{emotion="surprised"}: Really? You don't even know me. That's either very kind or you're very bored.
+    @wren{emotion="fond"}: Paper, wire, candle. Before Sunday. I'll be here most afternoons.
+  </choice>
+  <choice id="admire" label="Just admire the frame">
+    @wren{emotion="shy"}: It's not much yet. Come back when it's something.
+  </choice>
+</branch>
+

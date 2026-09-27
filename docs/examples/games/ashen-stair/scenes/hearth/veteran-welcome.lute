@@ -1,0 +1,16 @@
+---
+kind: scene
+id: hearth.veteranWelcome
+title: The Hearth, for someone who knows the way
+on: hubVisit
+priority: 15
+once: run
+when: '@veteran'
+---
+
+## Regular
+
+::bg{location="hearth" time="night"}
+@maud{code="0010" emotion="wry"}: Your {{user.runs:ordinal}} climb coming up, and you don't even throw up anymore. I miss it, a little.
+@wren{code="0010"}: You keep count?
+@maud{code="0020"}: Someone has to. The Stair certainly doesn't.

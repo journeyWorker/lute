@@ -1,0 +1,12 @@
+file: ../lore/bonds/aria.lute
+beat: ariaR2
+visited: [bonds.aria.ariaR1]
+state: { user.bond.aria: 300 }
+choose: { ariaR2Answer: stayed }
+expect:
+  eligible: true
+  options: { ariaR2Answer: [stayed, tomorrow] }
+  transcriptContains:
+    - "@aria: ...That's a really unfair thing to say. Thank you."
+    - "@aria: I'll keep calling. You keep answering."
+  end: complete

@@ -1,0 +1,17 @@
+---
+kind: scene
+id: end.surfaced
+title: Light above
+pov: ilo
+on: runEnd
+once: false
+when: "@surfaced"
+---
+
+## Shaft
+
+::bg{location="shaft" time="dawn"}
+::vfx{type="whiteOut"}
+@ilo{mono}: Light. Up there. Kick. Kick.
+@narrator: He breaks the surface with his lungs on fire and the palace's cold still in his teeth.
+@ilo{mono when="quest.eelBounty.state == 'complete'"}: A slab of eel in the net at his belt. Tavi will be unbearable.

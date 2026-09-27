@@ -1,0 +1,64 @@
+# Route F — the roll instead of the ledger: rescue the twins, hear Maelis out,
+# then walk an hour off the road to Coldwater. The chapel search fails once
+# and holds on the second try (`spentBy`), Isolde reads the roll, and Maelis
+# takes it as her proof. Nobody opens the ninth wagon.
+#   lute play . --script plays/coldwater.play.yaml
+choose:
+  orders: swear
+  plea: help
+  tunnel: river
+  chain: [why, withdraw]
+steps:
+  - include: steps/to-the-ford.yaml
+  - occasion: explore
+    target: place.mill
+    expect: { winner: millPassage }
+  - occasion: explore
+    target: place.tunnel
+    expect: { winner: road.tunnel, quests: { hostages: complete } }
+  - label: camp, then on to the Tollbridge
+    advance: day
+    engine: { state: { run.leg: 3 } }
+    expect: { winner: bridge.arrival, quests: { parley: active }, clock: { day: 3 } }
+  - occasion: explore
+    target: place.coldwater
+    label: an hour off the road
+    expect: { winner: coldwater.ruins, quests: { coldwaterNames: active } }
+  - occasion: explore
+    target: place.coldwater
+    label: "[Insight] the chapel, first try"
+    bridges: { check: [ { passed: false } ] }
+    expect: { winner: coldwater.chapel, notFacts: [knows(roll)] }
+  - occasion: explore
+    target: place.coldwater
+    label: "[Insight] the chapel, again"
+    bridges: { check: [ { passed: true } ] }
+    expect: { winner: coldwater.chapel, facts: [knows(roll)], quests: { parley: active } }
+  - occasion: explore
+    target: place.coldwater
+    expect: { winner: searchedOut }
+  - occasion: talk
+    target: npc.isolde
+    expect: { winner: camp.talks.isoldeRoll, quests: { coldwaterNames: complete } }
+  - occasion: talk
+    target: npc.maelis
+    expect: { winner: bridge.talks.maelisTerms, quests: { parley: complete, openBridge: complete } }
+  - occasion: camp
+    expect: { presented: [camp.fire, camp.talks.watch for isolde, camp.talks.watch for wren] }
+  - engine: { state: { run.leg: 4 } }
+  - occasion: chapterEnd
+    expect: { winner: road.crossing }
+expect:
+  end: complete
+  quests: { emberRoad: complete, parley: complete, coldwaterNames: complete, hostages: complete }
+  state: { run.bridge: parleyed, run.approval.isolde: 7 }
+  facts: [knows(roll), loyal(isolde)]
+  notFacts: [knows(ledger)]
+  transcriptContains:
+    - "@narrator: Maelis said Coldwater. You had not thought she meant a place you could walk to."
+    - "@narrator: Ash, and more ash."
+    - "@maelis: My mother's hand. She kept the roll."
+    - "@narrator: You go over what is left of Coldwater again. Nothing you have not already seen."
+    - "@narrator: Isolde Vane takes a turn at the watch without being asked."
+    - "@narrator: Eleven wagons on the far bank."
+  transcriptLacks: ["@maelis: Coldwater. Burned. In a clerk's hand."]

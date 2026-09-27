@@ -1,0 +1,17 @@
+occasions:
+  # the account
+  newGame:    { select: sequence, description: "A new account finished the name screen" }
+  login:      { select: sequence, description: "The app opened to the home screen (after any dailyReset)" }
+  # the clock (schema/world.schema.yaml clock.raise)
+  dailyReset: { select: sequence, description: "04:00 server time: user.day has advanced" }
+  dayClose:   { select: first, description: "The server day is about to roll over (user.day not yet advanced)" }
+  # the roster
+  homeTap:    { select: first, target: { prefix: hero, entity: hero }, description: "The player taps the hero on the home screen (hero.<hero>)" }
+  summon:     { select: first, target: { prefix: hero, entity: hero }, payload: { copies: number, streak: number, banner: { domain: banner } }, description: "A pull resolved to hero.<hero>. payload: copies owned now (this one included), pulls since the last SSR (pity), the banner. owned(<hero>) is asserted AFTER the beats" }
+  bondStory:  { select: first, target: { prefix: hero, entity: hero }, description: "The player opens the hero's Bond tab and taps Story (hero.<hero>)" }
+  # the story
+  stageClear: { select: first, target: { prefix: stage, entity: stage }, raisedWhen: "@stageReleased", description: "A main-story stage was cleared (stage.<stage>); a stage exists only once its chapter is released" }
+  eventStage: { select: first, target: { prefix: estage, entity: estage }, raisedWhen: "@anyEventLive", description: "An event-story stage was cleared (estage.<estage>); event stages exist only while a festival runs" }
+  # the codex: the Archive tab, one topic page per tap (topic.<topic>)
+  codexOpen:  { select: first, target: { prefix: topic, entity: topic }, description: "The player opens a codex page (topic.<topic>)" }
+  shopVisit:  { select: first, target: { prefix: shop, entity: shop }, description: "The player opens a shop (shop.<shop>)" }

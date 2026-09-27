@@ -1,0 +1,16 @@
+---
+kind: scene
+id: hub.returnSurfaced
+title: Up on his own
+pov: ilo
+on: hubVisit
+priority: 10
+when: "@surfaced"
+---
+
+## Rail
+
+::bg{location="deck" time="dawn"}
+@narrator: For once, Ilo climbs the ladder on his own.
+@sefa{emotion="delighted"}: He swam! Brann, he swam up!
+@brann{emotion="wry"}: So he did. {{@fathoms}} fathoms and back. Don't make a habit of surprising me.

@@ -1,0 +1,14 @@
+# Saying nothing at Ossery is a failed accusation as well.
+# (0.28: was tests/case-silence.test.yaml. A quest test cannot raise `accuse`
+# once `run.accused` is seeded — `terminal:` already holds — so the accusation
+# is played through the scene that writes it.)
+visited: [lamplight.discovery]
+steps:
+  - advance: { to: h06 }
+  - occasion: accuse
+    choose: { accuse: silent }
+    expect: { winner: lamplight.accusation }
+expect:
+  end: terminal
+  state: { run.accused: silence }
+  quests: { accusation: failed, lamplightCase: failed }

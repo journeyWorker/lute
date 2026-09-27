@@ -1,0 +1,9 @@
+file: ../../lore/north/route13.lute
+beat: r13SwimmerNoor
+state: { run.slot: night }
+bridges: { battle: [ { won: true } ] }
+expect:
+  eligible: true
+  facts: [defeated(r13SwimmerNoor)]
+  state: { run.money: 5000 }
+  end: complete

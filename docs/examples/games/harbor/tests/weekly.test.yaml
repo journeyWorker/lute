@@ -1,0 +1,5 @@
+file: ../quests/harbor.lute
+state: { run.weekFish: 5, run.day: 8 }
+expect:
+  quests: { weeklyCatch: complete }
+  transcriptContains: ["Five fish! The market thanks you."]

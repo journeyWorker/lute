@@ -1,0 +1,5 @@
+file: ../scenes/lantern-hang.lute
+state: { user.festivalOn: true, prev.season.lanterns.hung: 6 }
+expect:
+  transcriptContains: ["Last festival the harbor hung 6 lanterns."]
+  state: { season.lanterns.hung: 2 }

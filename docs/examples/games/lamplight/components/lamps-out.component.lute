@@ -1,0 +1,22 @@
+---
+component: lampsOut
+params:
+  where: string
+  memory: string
+  depth: { enum: [brief, long] }
+---
+
+## Lamps out
+
+::sfx{sound="train whistle, long"}
+::vfx{type="blackOut"}
+<match on="@depth">
+  <when is="brief">
+    @narrator{code="0010"}: The lamps gutter, and for a moment {{@where}} is only noise.
+  </when>
+  <when is="long">
+    @narrator{code="0020"}: Every lamp in {{@where}} shrinks to a blue bead and then to nothing, and the dark smells of soot and wet stone.
+    @narrator{code="0030"}: Four minutes. Anyone can walk anywhere in four minutes.
+  </when>
+</match>
+@inspector{code="0010" mono}: {{@memory}}

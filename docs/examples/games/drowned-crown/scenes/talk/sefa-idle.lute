@@ -1,0 +1,12 @@
+---
+kind: scene
+id: sefa.idle
+title: Sefa, inking
+on: talk
+target: npc.sefa
+once: false
+---
+
+## Chart table
+
+@sefa: Mm? Sorry. If I stop now the line goes crooked.

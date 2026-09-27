@@ -1,0 +1,24 @@
+---
+kind: lore
+id: lamplight.ledger
+title: Hask's pocket ledger
+series: haskLedger
+---
+
+<entry id="ledger1" on="examine" target="obj.ledger" category="note" title="Varn Street" priority="10" once="run">
+  @hask{code="0010"}: Varn Street house and contents to pass on my death to my niece M. Dace, as her father's debt is by then discharged in full. Let her have the roof. She will find it leaks.
+  ::evidence{clue="ledger"}
+  ::assert{motive(mirela)}
+</entry>
+
+<entry id="ledger2" on="examine" target="obj.ledger" category="note" title="L. Varo" priority="20" when="entry.ledger1.read" once="run">
+  @hask{code="0010"}: L. Varo. Sixty crowns against the Kessel contract, called in. Her letter enclosed, asking for time. I shall answer it after my tea. The answer is no.
+  ::evidence{clue="letter"}
+  ::assert{motive(lise)}
+</entry>
+
+<entry id="ledger3" on="examine" target="obj.ledger" category="note" title="E. Solt" priority="30" when="entry.ledger2.read">
+  @hask{code="0010"}: E. Solt. Four hundred crowns, due on arrival at Ossery, in notes, not paper. Otherwise the Medical Board receives my account of the Kessel girl and the bottle he signed for.
+  @hask{code="0020"}: He will pay. Doctors always pay. They have so much further to fall.
+  ::assert{motive(solt)}
+</entry>

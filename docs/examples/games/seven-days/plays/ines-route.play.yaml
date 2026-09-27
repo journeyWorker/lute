@@ -1,0 +1,86 @@
+# Ines route: says yes to Theo's lighthouse invitation, then forgets it
+# (missed event -> Thursday consequence), keeps the Wednesday library date,
+# walks the festival with Ines, gets her ending.
+#
+# Engine contract: the schema's clock (0.24) owns run.day / run.slot. An
+# `advance: slot` step moves it one slot and raises what the clock raises there:
+# slotStart; across midnight dayEnd (night), dayStart and slotStart (morning).
+# The player's map moves are `placeVisit`s. The engine also raises dayStart
+# where a run starts (the clock's `raiseAtStart: true`): step 1 is that raise,
+# and it must present the arrival scene.
+choose:
+  help: yes
+  theoFirst: honest
+  inesFirst: ask
+  lighthouseAsk: yes
+  fold: together
+  walkWith: ines
+  market: ines
+steps:
+  # ── Day 1 · Monday ──────────────────────────
+  - occasion: dayStart
+    label: Mon morning
+    expect: { presented: [day1.arrival], clock: { weekday: Monday, slot: morning } }
+  - { occasion: placeVisit, target: place.pier, expect: { winner: pier.theo.meet } }
+  - { advance: slot, label: Mon afternoon, expect: { winner: none } }
+  - { occasion: placeVisit, target: place.library, expect: { winner: library.ines.meet } }
+  - { advance: slot, label: Mon night, expect: { winner: shop.evening } }
+  # ── Day 2 · Tuesday ─────────────────────────
+  - { advance: slot, label: Tue morning, expect: { presented: [diary.day, diary.person for ines, diary.person for theo, diary.person for pell, shop.morning] } }
+  - { occasion: placeVisit, target: place.pier, expect: { winner: pier.theo.reed } }
+  - { advance: slot, label: Tue afternoon }
+  - { occasion: placeVisit, target: place.square, expect: { winner: squareQuiet } }
+  - occasion: noticeBoard
+    target: place.square
+    pick: noticeTides
+    expect: { offered: [noticeLanternWalk, noticeMarket, noticeTides], notOffered: [noticeWalkThanks] }
+  - { advance: slot, label: Tue night, expect: { winner: shop.evening } }
+  # ── Day 3 · Wednesday ───────────────────────
+  - { advance: slot, label: Wed morning }
+  - { occasion: placeVisit, target: place.pier, expect: { winner: lore.places.theoBark } }
+  - { advance: slot, label: Wed afternoon }
+  - occasion: placeVisit
+    target: place.library
+    label: the Wednesday delivery
+    expect: { winner: library.ines.wednesday, notOffered: [library.ines.late] }
+  - occasion: slotEnd               # judges inesWednesday.noticed (on="slotEnd")
+  - advance: slot                   # the lantern is done: the wish, but not tonight
+    label: Wed night
+    choose: { wish: later }
+    expect: { winner: shop.evening }
+  # never goes to the lighthouse
+  # ── Day 4 · Thursday ────────────────────────
+  - advance: slot
+    label: Thu morning (the lighthouse deadline passes)
+    expect: { presented: [diary.day, diary.person for ines, diary.person for theo, diary.person for pell, shop.morning, news.lanternDone, news.theoCameBy], quests: { theoLighthouse: failed } }
+  - { advance: slot, label: Thu afternoon }
+  - { occasion: placeVisit, target: place.library, expect: { winner: lore.places.inesBark, notOffered: [library.ines.late] } }
+  - advance: slot
+    label: Thu night
+    choose: { wish: sea }            # same branch id, a different night, a different answer
+    expect: { winner: shop.evening }
+  # ── Day 5 · Friday ──────────────────────────
+  - { advance: 2, label: Fri afternoon }
+  - { occasion: noticeBoard, target: place.square, pick: noticeLanternWalk }
+  - { advance: slot, label: Fri night, expect: { winner: day5.festival } }
+  # ── Day 6 · Saturday ────────────────────────
+  - { advance: slot, label: Sat morning }
+  - { occasion: placeVisit, target: place.square, expect: { winner: square.market } }
+  - { advance: 2, label: Sat night, expect: { winner: farewell.packing } }
+  # ── Day 7 · Sunday ──────────────────────────
+  - { advance: slot, label: Sun morning }
+  - { occasion: placeVisit, target: place.library, expect: { winner: libraryClosedSunday } }
+  - advance: 2
+    label: Sun night
+    expect: { winner: farewell.ines, offered: [farewell.pell], notOffered: [farewell.theo] }
+expect:
+  end: terminal
+  quests: { festivalLantern: complete, theoLighthouse: failed, inesWednesday: complete }
+  state: { run.festivalWith: ines, run.lantern.wish: sea, run.aff.ines: 6, user.endings: 1 }
+  notFacts: ["confided(theo)", "present(ines, library)"]   # never at the lighthouse; library shut Sundays
+  transcriptContains:
+    - "It'll keep. Wishes do."
+    - "Keep them safe. Whoever's out there tonight."
+    - "The Maddox boy came by at seven."
+    - "Thursday."
+    - "Kozo holds when it's wet."

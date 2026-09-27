@@ -1,0 +1,10 @@
+# (0.27) An occasion payload is mocked like state: three hearts or more for the
+# suitor on your route is the treasured gift, and one more affection.
+file: ../lore/gifts.lute
+beat: treasured
+state: { occasion.target: soren, occasion.payload.hearts: 3, run.route: soren, run.aff.soren: 6 }
+expect:
+  eligible: { treasured: true }
+  state: { run.aff.soren: 7 }
+  transcriptContains: ["@narrator: Soren Voss turns the lantern over in both hands. 3 hearts in the fold, and every one of them showing."]
+  end: complete

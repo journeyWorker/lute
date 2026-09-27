@@ -1,0 +1,9 @@
+# Reading the log to the end puts Ada Pell in the lantern at midnight: a
+# conclusion no page states, drawn by the onRock rule.
+file: ../lore/keeper-log.lute
+entries: [keeperLog1, keeperLog2, keeperLog3]
+expect:
+  transcriptContains: ["2.10. Light relit. He is not on the gallery. The rail is gone on the seaward side. I have looked everywhere. A.P."]
+  facts: ["onRock(ada, midnight)", "at(elias, gallery, midnight)"]
+  notFacts: ["fell(elias)"]
+  end: complete

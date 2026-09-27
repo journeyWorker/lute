@@ -1,0 +1,10 @@
+# The good-ending bar is 7: at 7 Ren's lantern ending plays and is remembered.
+file: ../lore/endings/ren.lute
+beat: lantern
+visited: [ren.confession]
+state: { run.route: ren, run.aff.ren: 7, user.terms: 2 }
+expect:
+  eligible: { lantern: true }
+  state: { run.ending: good, user.terms: 3 }
+  facts: ["cleared(ren, good)", "cgSeen(cgRenEnd)"]
+  end: complete

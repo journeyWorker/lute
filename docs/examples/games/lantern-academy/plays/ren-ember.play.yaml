@@ -1,0 +1,34 @@
+# Ren's ember ending: on his route, but a cold date and the wrong answer.
+# Telling the coach about Mika's ankle locks Mika; one afternoon with Ren
+# (Thursday), the rest in the library (Soren's study group, taken Monday).
+choose:
+  firstLook: ren
+  clash: sideRen
+  injury: coach
+  lantern: ren
+  renAsk: obey
+bridges:
+  exam: [ { grade: pass, score: 68 } ]
+  date: [ { mood: awkward, hearts: 1 } ]
+steps:
+  - include: steps/term-start.steps.yaml
+  - include: steps/day-library.steps.yaml
+  - include: steps/day-library.steps.yaml
+  - include: steps/day-library.steps.yaml
+  - include: steps/day-council.steps.yaml
+  - include: steps/day-library.steps.yaml
+  - include: steps/finale.steps.yaml
+  - label: a lantern folded badly (2 hearts)
+    occasion: gift
+    target: npc.ren
+    payload: { hearts: 2 }
+    expect: { winner: gifts.polite, notOffered: [gifts.treasured] }
+  - include: steps/week2.steps.yaml
+expect:
+  end: complete
+  state: { run.route: ren, run.ending: bittersweet, run.aff.ren: 4, user.terms: 1 }
+  quests: { studyGroup: complete }
+  facts: ["locked(kai)", "locked(mika)", "cleared(ren, bittersweet)"]
+  notFacts: ["cleared(ren, good)", "cgSeen(cgRenStars)", "cgSeen(cgRenEnd)"]
+  transcriptContains: ["@coach: Sato! Bench. Ice. Now.", "It's cold. We should go down.", "@ren{emotion=\"sad\"}: I'll write. Officially. On letterhead. ...Name a star after me, if you find a spare one.", "~ Ren — the ember ending ~", "@narrator: A folded note under the door, in Soren Voss's handwriting."]
+  transcriptLacks: ["Sign here. Once is enough, this time.", "turns the lantern over in both hands"]

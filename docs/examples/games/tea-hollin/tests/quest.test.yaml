@@ -1,0 +1,6 @@
+# Two clues and the magpie named in the afternoon: the case closes.
+file: ../quests/spoon.lute
+state: { run.cluesFound: 2, run.accused: magpie, run.slot: afternoon }
+expect:
+  quests: { findSpoon: complete }
+  transcriptContains: ["@narrator: The case of the Hollin spoon is closed."]

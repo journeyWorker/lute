@@ -1,0 +1,12 @@
+# Ink `{ledger: - 1: … - 2: … - else: …}` ported as a scene counter (the hub flag is a bool, set before the arm runs).
+file: ../scenes/keeper.lute
+visited: [arrival]
+choose: { lamp: [ledger, ledger, ledger, desk, name, dusk] }
+expect:
+  state: { run.knowsName: true }
+  transcriptContains:
+    - '@narrator: The last entry is three weeks old. "Oil low. Ship due."'
+    - '@narrator: You read it again. The handwriting shakes toward the end.'
+    - '@narrator: The words have stopped changing.'
+    - '@narrator: The lamp room again. The dark is closer.'
+  end: complete

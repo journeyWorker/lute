@@ -1,0 +1,5 @@
+file: ../scenes/ending/wrong.lute
+visited: [garden]
+state: { run.accused: cook, run.slot: evening }
+expect:
+  transcriptContains: ["@narrator: The evening tea has gone cold in the pot."]

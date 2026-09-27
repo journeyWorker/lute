@@ -1,0 +1,25 @@
+---
+kind: scene
+id: east.ashTowerLens
+title: Ash Tower, through the lens
+on: enterPlace
+target: place.ashTowerHall
+priority: 30
+when: "holds(hasItem(spectralLens)) && run.lair.towerSiege != 'cleared'"
+---
+
+// With the spectralLens (mid, mid.gameCorner) the thing on the stairs can be
+// seen. The engine opens ashTowerStairs (canPass holds); this scene is the
+// moment the player walks up to it. A scripted wild battle with the spirit;
+// the engine raises caught / battleEnd afterwards.
+
+## The third step
+
+::bg{location="ash-tower-hall" time="night"}
+::music{action="change" mood="eerie" volume="down"}
+::set{run.lair.towerSiege = "found" when="run.lair.towerSiege == 'hidden'"}
+@narrator: You raise the Spectral Lens. The thing on the third step has a shape now: a phantomaw, grey as candle smoke, standing between the stairs and the living.
+@narrator: It is not angry. It is guarding something. It does not know how to stop.
+::encounter{species="phantomaw" level="28"}
+@narrator: When it is over, the phantomaw looks at you through the lens for a long moment. Then it is only smoke, and the stairs are only stairs.
+@narrator: From far above, very faint, someone is shouting at someone else to be quiet.

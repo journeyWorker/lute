@@ -1,0 +1,13 @@
+# Content vocabulary for Seven Days.
+enums:
+  emotion: [neutral, happy, shy, sad, surprised, teasing, tired]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fadeInUp, slideInLeft, slideInRight, lean, fadeOut, slideOut]
+    exits: [fadeOut, slideOut]
+  mood: [peaceful, wistful, festive, lonely, tender]
+  volume: [silent, down, normal, up]
+  musicAction: [start, change, stop, fadeOut]
+  vfxType: [lanterns, dawn, rain, fadeBlack]

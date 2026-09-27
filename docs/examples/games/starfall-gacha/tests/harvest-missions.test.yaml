@@ -1,0 +1,7 @@
+file: ../quests/events.lute
+state: { user.day: 9, season.harvest.tokens: 400 }
+occasions: ["eventStage@estage.h3"]
+expect:
+  quests: { harvestMissions: complete, starfallMissions: unset }
+  state: { user.gems: 200 }
+  transcriptContains: ["@pim: Every mission done! Here's a sigil. Pinned it myself. Slightly crooked."]

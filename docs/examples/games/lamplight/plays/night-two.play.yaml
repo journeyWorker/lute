@@ -1,0 +1,30 @@
+# A save from the second night: last night the inspector named Solt with nothing
+# to hold him. Nothing is replayed — the save seeds what she has seen and heard.
+visited: [lamplight.accusation]
+presented: { user: [lamplight.discovery, examine.watch] }
+entriesRead: { user: [craneTea, craneTunnel, craneLamps, soltTime] }
+state: { prev.run.accused: solt }
+facts:
+  - "found(watch)"
+  - "watchReads(early)"
+  - "alive(hask, late)"
+  - "claims(crane, brakevan, tunnel)"
+  - "unanswered(cab7, tunnel)"
+  - "empty(cab5, tunnel)"
+  - "claims(solt, cab5, tunnel)"
+steps:
+  - occasion: caseOpen
+    expect: { winner: lamplight.again, notOffered: [lamplight.discovery] }
+  - label: the second look is open from the first knock
+    occasion: examine
+    target: obj.watch
+    expect: { winner: examine.watchAgain }
+  - occasion: talk
+    target: npc.solt
+    pick: talk.soltConfront
+    choose: { press: hard }
+expect:
+  quests: { lamplightCase: active, timeOfDeath: complete, whereWere: active, accusation: active }
+  state: { run.soltRattled: true }
+  facts: ["lied(solt)", "falseClue(watch)"]
+  transcriptContains: ["Last time I named the doctor and could not hold him."]

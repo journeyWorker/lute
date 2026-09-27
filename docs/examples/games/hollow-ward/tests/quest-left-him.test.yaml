@@ -1,0 +1,6 @@
+# Out alone: the escape holds, the search fails.
+file: ../quests/night.lute
+state: { run.fate: escaped }
+expect:
+  quests: { beforeDawn: complete, findTobias: failed }
+  transcriptContains: ["Some nights, driving past, you swear the dome light in his car is on."]

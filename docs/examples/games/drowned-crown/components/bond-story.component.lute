@@ -1,0 +1,23 @@
+---
+component: bondStory
+# A crew member's bond story: told once ever, at their talk, once Ilo's
+# regard with them is high enough (and, for a later story, after the one
+# before it).
+params:
+  who: speaker
+  need: number
+  prev: { type: string, default: "" }
+  only: { type: string, default: "" }   # an extra condition, conjoined
+beat:
+  on: talk
+  target: "npc.@who"
+  once: user
+  priority: 12   # under the story beats (quill 15-30, sefa 20-45), over the everyday talk (10)
+  when: "user.bond[@who] >= @need && (@only)"
+  after: "@prev"
+---
+
+## Bond
+
+@narrator: {{@who}} makes room for Ilo without being asked.
+::body

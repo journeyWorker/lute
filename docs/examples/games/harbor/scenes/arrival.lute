@@ -1,0 +1,10 @@
+---
+kind: scene
+id: arrival
+title: Arrival at the harbor
+---
+
+## The pier
+
+@harbormaster: Welcome to the harbor. Mind the nets.
+::set{user.days += 1}

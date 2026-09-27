@@ -1,0 +1,10 @@
+---
+kind: scene
+id: lift.first
+title: First stop
+after: 'visited("room.lift")'
+---
+
+## First stop
+
+@narrator: The lift drops a floor and stops dead. Through the gate: a brick wall, painted with a number that has been painted over.
