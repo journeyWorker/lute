@@ -3,5 +3,5 @@ defaultProfile: base
 profiles:
   base: { plugins: { p: true } }
 defaults:
-  luteVersion: "0.27.0"
+  luteVersion: "0.28.0"
   uses: [world.schema.yaml]

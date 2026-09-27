@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.27.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.27.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.27.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.27.schema.json`](../schemas/lute-ir-0.27.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.28.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.28.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.28.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.27.schema.json`](../schemas/lute-ir-0.27.schema.json)
+published as [`schemas/lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -747,12 +747,76 @@ plain beats and conditions, so none adds a field. A `<match>` arm's `test` now
 carries the whole arm condition as CEL (an `is` arm over a subject with no
 portable `expr` used to lower to an empty or partial `test`). The schema file
 renames per release line (`lute-ir-0.26.schema.json` →
-[`lute-ir-0.27.schema.json`](../schemas/lute-ir-0.27.schema.json)).
+`lute-ir-0.27.schema.json`, since renamed).
 Artifacts that use none of it compile byte-identically apart from the version
 strings; `lute.core` does not move, so neither does `capabilityVersion`.
 Engines gate on MAJOR, so nothing widens. The tree-sitter grammar admits a
 self-closing template use (`<beat use="trainer" id="r3"/>`) and treats
 `rearm` / `spentBy` values as CEL.
+
+**`0.28.0` aligns all three axes at `0.28.0`; the language and the IR both
+earn the move.** One rule per slot, one name per idea: what the sixth dogfood
+round asked for — a whole-language review of eleven games plus four new
+personas ([`proposals/scenario-dsl/0.28.0.md`](proposals/scenario-dsl/0.28.0.md)).
+Every accepting place checks the same way: every condition slot (`when`,
+`after`, `rearm`, `spentBy`, a season's `live`, `raisedWhen`, `terminal`, a
+rule `cel()`, a def body) resolves declared paths, literal domains, members
+and types (`E-CEL-TYPE`); `lute.project.yaml`, `plugin.yaml` and its export
+files, `state:` rows and `enums:` long forms refuse unknown keys with a
+located did-you-mean (the new `E-MANIFEST-KEY`, `E-MANIFEST`, `E-PLUGIN-KEY`);
+reserved words are refused where they are declared (the new
+`E-RESERVED-NAME`, which absorbs `E-CHOICE-ID-RESERVED` and
+`E-RELATION-RESERVED-NAME`); and flag attributes are written bare (the new
+`E-FLAG-VALUE`). Renames land as clean cutovers whose old spelling is an
+error naming the new one: the manifest's `sequence: { occasion, scenes }` is
+`chapters: [{ on, scenes }]` (`E-CHAPTERS`, `W-CHAPTER-ORDER`,
+`W-CHAPTER-STALL` replace `E-SEQUENCE`, `W-SEQUENCE-ORDER`,
+`W-SEQUENCE-STALL`), `<quest after=>` / `<reward on=>` / `<objective when=>`
+are `follows=` / `outcome=` / `visibleWhen=`, a test's `expect.offered` is
+`expect.options` and its `accept:` is `accepts:`, play and test
+`expect.exit` is `expect.end`, `::camera{move-x move-y}` is `moveX` /
+`moveY`, plugin exports are `rewardKinds` / `assetKinds` / `stampAttrs`, and
+`lute new --on` is `--occasion`. `spentBy` latches — once its condition has
+held the beat stays spent for its `once` period, which may now be written
+beside it. `occasion.target` can be written (`::set`, `::assert` /
+`::retract`, directive and component arguments), `select: sequence`
+re-judges each beat at its turn, a `for` beat spends `once` per member, and
+the seam is decided when the occasion is raised. The language fills its gaps:
+the read-only `clock.day` / `clock.slot` / `clock.ended`, a clock's
+`raiseAtStart: true`, relation tiers and `defaults.questTier` of
+`season:<name>`, an occasion's `outsideRun: true`, a hub's `<return>` block,
+`failedBy: subquest`, a type naming the clock's enums, kind label forms
+(`{ text, start, indefinite }`) with the `:start`, `:indefinite`,
+`:capitalize` and `:cardinalWord` hints, and kind labels winning over cast
+names in text (`W-LABEL-CAST-SHADOWED` retired). New errors `E-BEAT-ID-DUP`,
+`E-DOMAIN-NAME-CLASH`, `E-MATCH-NO-SUBJECT`, `E-PLURAL-FORM` and
+`E-SUBQUEST-REARM`, and new advisories — `W-TEXT-SINGLE-BRACE`,
+`W-TEXT-COMMENT-LIKE`, `W-TEXT-BRACKET-LABEL` and `W-TEXT-GLUE` for another
+language's markup, `W-RELATION-TIER-IMPLICIT`, `W-SEASON-UNGATED`,
+`W-BRANCH-ID-SHARED`, `W-QUEST-REARM-CONSTANT`, `W-SPENT-BY-REVERSIBLE`,
+`W-TERMINAL-PERSISTENT`, `W-BEAT-UNRAISED`, `W-DEADLINE-BEFORE-WINDOW`,
+`W-TEMPLATE-OVERRIDE`, `W-TEMPLATE-DOT-PARAM` and `check-project --wip`'s
+`W-WIP` — can appear on a 0.27-clean project; the rest of what moves is
+listed under the changelog's Compatibility heading. Diagnostic columns
+count characters, not bytes. The IR renames three quest-layer fields with
+their attributes — `ObjectiveEntry.when` is `visibleWhen`, `RewardEntry.on`
+is `outcome`, and a quest's `prereqEdges` row carries `follows` instead of
+`after` — and is otherwise additive: optional `outsideRun` on the artifact
+and index, `HubCmd.return`, `clock.raiseAtStart`, `labelForms` on
+`entities[]` and `state[]` entries, `authored` on a seam condition, the
+placeholder formats `cardinalWord`, `capitalize`, `start` and `indefinite`
+(also on `reserved` and `occasionTarget` placeholders), and the relation
+tier `season:<name>`; an `occasion.target` write keeps `F[occasion.target]`
+/ `occasion.target` for the engine to bind, and a `spentBy` beat's `once` is
+its period (`run` unless written), not `none`. The schema file renames per
+release line (`lute-ir-0.27.schema.json` →
+[`lute-ir-0.28.schema.json`](../schemas/lute-ir-0.28.schema.json)).
+Artifacts that use none of it compile byte-identically apart from the version
+strings. `lute.core` moves — `::camera` takes `moveX` / `moveY` — so
+`capabilityVersion` moves with it. Engines gate on MAJOR, so nothing widens;
+an engine reading the renamed fields reads them under their new names. The
+tree-sitter grammar admits a hub's `<return>` block and treats
+`visibleWhen` values as CEL.
 
 ## Which bump when
 

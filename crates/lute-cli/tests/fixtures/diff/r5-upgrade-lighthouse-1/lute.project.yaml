@@ -2,4 +2,4 @@ defaultProfile: game
 profiles:
   game: {}
 defaults:
-  luteVersion: "0.27.0"
+  luteVersion: "0.28.0"

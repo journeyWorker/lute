@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.27.0`, the grammar and semantics the checker
+- **Language** — currently `0.28.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.27.0`) and gated on by consuming engines.
+  artifact (currently `0.28.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -37,6 +37,31 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.28.0] - 2026-09-27
+
+**One rule per slot, one name per idea.**
+
+A large minor release from a sixth dogfood round: a whole-language review of
+eleven games plus four new personas (a novice, an Ink / Yarn writer, a
+live-ops designer and a confusability audit). Every accepting place checks the
+same way — every condition slot runs the same typed checks, every YAML surface
+refuses unknown keys with a located did-you-mean, reserved words are refused
+where they are declared and flag attributes are written bare. One name per
+idea: the manifest's `sequence:` is `chapters:`, `<quest after=>` /
+`<reward on=>` / `<objective when=>` are `follows=` / `outcome=` /
+`visibleWhen=`, `expect.offered` is `expect.options` and `expect.exit` is
+`expect.end`, each old spelling an error naming the new one, and messages call
+a `::next` target a *mark*. `spentBy` latches, `occasion.target` can be written,
+`select: sequence` re-judges each beat at its turn, and the language fills its
+gaps: `clock.day` / `clock.slot` / `clock.ended` and `raiseAtStart:`,
+season-tier relations, `outsideRun:` occasions, a hub's `<return>` block,
+label forms and number words. Text written in another language's markup
+warns, and messages put the cause first, once. The language and the IR both
+earn the move (the IR renames three quest-layer fields and is otherwise
+additive); see
+[`docs/proposals/scenario-dsl/0.28.0.md`](docs/proposals/scenario-dsl/0.28.0.md)
+and [`docs/versioning.md`](docs/versioning.md).
 
 ### Added
 
@@ -630,6 +655,30 @@ table.
   `<beat also>` or template header `also: true` on a `select: all` /
   `sequence` occasion is now `E-BEAT-ATTR` (remove `also`). Both passed the
   check before and never ran as written.
+- **Restamp `luteVersion:`.** A document or `defaults:` stamped with an
+  older version draws `W-LUTE-VERSION-STALE`, which names the stamp to
+  write (`luteVersion: "0.28.0"`); bump the stamp, or `--deny-warnings`
+  fails the project.
+- **Schema file renamed; three IR fields renamed, the rest additive.** The
+  version strings move to `0.28.0` and `schemas/lute-ir-0.27.schema.json` is
+  renamed to
+  [`schemas/lute-ir-0.28.schema.json`](schemas/lute-ir-0.28.schema.json)
+  (`$id` updated). An engine reading quests reads `ObjectiveEntry.visibleWhen`
+  (was `when`), `RewardEntry.outcome` (was `on`) and a quest's `prereqEdges`
+  row `follows` (was `after`; scene and bundle-beat rows keep `after`), and
+  must not spend a `spentBy` beat on presentation: its `once` is now its
+  period (`run` unless written), not `none`. Every new field is optional and
+  appears only when the source uses the feature: `outsideRun` on the artifact
+  and `project.index.json`, `HubCmd.return`, `clock.raiseAtStart`,
+  `labelForms` on `entities[]` and `state[]` entries, `authored` on a seam
+  condition, the placeholder formats `"cardinalWord"`, `"capitalize"`,
+  `"start"` and `"indefinite"` (also on `reserved` / `occasionTarget`
+  placeholders), and the relation tier `"season:<name>"`; an
+  `occasion.target` write keeps `F[occasion.target]` / `occasion.target` for
+  the engine to bind. `lute.core` moves (`::camera` `moveX` / `moveY`), so
+  `capabilityVersion` moves with it. Engines gate on MAJOR, so nothing
+  widens; the tree-sitter grammar admits a hub's `<return>` block and treats
+  `visibleWhen` values as CEL.
 
 ## [0.27.0] - 2026-09-27
 

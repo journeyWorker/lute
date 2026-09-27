@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.27.0.md`](proposals/scenario-dsl/0.27.0.md). The
+> [`proposals/scenario-dsl/0.28.0.md`](proposals/scenario-dsl/0.28.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -46,7 +46,11 @@ target is the flat command-record format the engine consumes.
 > gates, a `terminal:` state, a finite clock and directive `asserts` / `retracts`, cadence
 > gains `once: week`, `seasons:`, quest `rearm=` and `spentBy:`, a component may be a beat
 > template, and the manifest chains scenes into chapters (`chapters:`, one chain per occasion
-> since 0.28.0).
+> since 0.28.0). Since 0.28.0 every condition slot and YAML surface is checked the same way
+> (typed comparisons, unknown keys and reserved names refused where they are written), each
+> idea has one name (`follows=`, `outcome=`, `visibleWhen=`, `expect.options`, `expect.end`,
+> a *mark* for a `::next` target), `spentBy` latches, `occasion.target` can be written, and a
+> hub may carry a `<return>` block.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -766,6 +770,17 @@ above, never a rule-body dependency):
   Messages carry no spec citation (`lute_core_span::plain_message`); `lute-cli`'s
   `codes.rs` registry holds each code's grade, meaning and sections for `--explain`,
   `--deny` and the diagnostics reference.
+- **One rule per slot, one name per idea (dsl 0.28.0).** `cel_types.rs` types every
+  comparison in every condition slot (`E-CEL-TYPE`), and the literal-domain and member checks
+  run in `rearm`, `spentBy`, season `live`, `raisedWhen`, `terminal`, rule `cel()` guards and
+  def bodies as in `when`. `lute_manifest::reserved` is the one table of reserved names,
+  refused where they are declared by `reserved_names.rs` (`E-RESERVED-NAME`);
+  `lute_manifest::yaml_text` locates every YAML surface's unknown keys with a did-you-mean
+  (`E-MANIFEST-KEY`, `E-PLUGIN-KEY`, `E-STATE-DECL`). `chapters.rs` replaces `sequence.rs`,
+  `target_writes.rs` checks each `occasion.target` write once per member, `clock_positions.rs`
+  decides clock-reading guards at every position the clock can stand (`W-BEAT-UNRAISED`,
+  `W-CHAPTER-STALL`), `check/literal_text.rs` owns the `W-TEXT-*` markup advisories, and the
+  parser's `foreign.rs` names the Lute form of an Ink or Yarn line.
 
 ### Narrative time (spec §6, D11)
 

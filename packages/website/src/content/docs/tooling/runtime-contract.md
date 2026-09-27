@@ -10,7 +10,7 @@ behavior lives on the far side of the artifact, in the **engine**. This page is
 the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)
 and the machine-checkable shape is
-[`schemas/lute-ir-0.27.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.27.schema.json)
+[`schemas/lute-ir-0.28.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.28.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -107,6 +107,55 @@ Gate on `irVersion` by **MAJOR only** (since `0.13.0`):
   older engine.
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
+
+### What IR 0.28.0 changed
+
+**Three quest-layer fields renamed; everything else additive.** There is no new command `kind`
+and no field is retyped or removed, so under the MAJOR-only gate an engine that loads 0.27
+artifacts loads 0.28 ones — but one that reads the renamed fields must read them under their new
+names (dsl 0.28.0 §6):
+
+- **`ObjectiveEntry.visibleWhen`** (was `when`): visibility only — show the objective while it
+  holds; it never gates `done`.
+- **`RewardEntry.outcome`** (was `on`): only ever `"failed"`, on a quest-level reward that grants
+  on a fresh `failed` transition.
+- **A quest's `prereqEdges` row carries `follows`** (was `after`): quest-graph metadata that never
+  gates the quest (its `start` does). Scene and bundle-beat rows keep `after`.
+
+New behaviour and optional fields, each omitted when unauthored:
+
+- **`outsideRun: [occasion]`** on the artifact and `project.index.json`, name-sorted: raise these
+  occasions even after `terminal` holds (a title screen, a gallery between runs); every other
+  occasion stays closed once the game is over.
+- **`HubCmd.return`**: the address of the hub's `<return>` segment. Run it each time a non-exit
+  option's segment ends, before the hub is judged and presented again — never before the first
+  menu and never after an `exit` option. Like an option target, it bounds the segment before it.
+- **`clock.raiseAtStart: true`**: raise the clock's slot occasion (the string form, or the map's
+  `slot`) and the map's `dayStart` yourself at the run's first position, where no advance stops.
+  Omitted when `false`.
+- **The reserved clock reads `clock.day` and `clock.slot`** (aliases of the clock's day and slot
+  paths) and, on a finite clock, **`clock.ended`**: `false` until the advance that ends the clock,
+  `true` from that advance's settle until a new run starts a run-tier clock over.
+- **`labelForms: { <member>: { start?, indefinite? } }`** on `entities[]` and `state[]` entries,
+  and the placeholder formats **`cardinalWord`** (`one` … `twenty`, digits above),
+  **`capitalize`**, **`start`** and **`indefinite`**, also on `reserved` and `occasionTarget`
+  placeholders. `capitalize` upper-cases the rendered text's first letter; `start` renders the
+  member's `start` form, else capitalizes; `indefinite` renders its `indefinite` form, else `a` /
+  `an` by the first letter, a space and the text. In a `plural` form, `#word` / `#Word` is the
+  number as a (capitalized) cardinal word.
+- **Relation `tier: "season:<name>"`**: the relation's facts go back to the seed facts each time
+  that season opens.
+- **`authored`** beside `raw` on a seam condition (`gates[].raisedWhen`, `terminal`,
+  `seasons[].live`) when `@def` expansion changed it: for messages only; evaluate `raw`.
+- **`spentBy` latches**: the `once` of a `spentBy` beat is now its period (`run` unless written),
+  not `"none"` — never spend such a beat on presentation (see `spentBy` below).
+- **A `forKind` beat spends `once` per member**: each member's presentation counts separately, and
+  a `for` entry's first-read writes apply on each member's first read in the run.
+- **`occasion.target` writes**: see *Writes through `occasion.target`* below.
+- **When the seam is decided**: judge `terminal` and an occasion's `raisedWhen` when the occasion is
+  raised; a `judge: before` judgement that makes `terminal` hold does not close that occasion's
+  own beats. A `select: sequence` raise judges each beat again just before its turn, once an
+  earlier beat of the raise has played.
 
 ### What IR 0.27.0 changed
 
