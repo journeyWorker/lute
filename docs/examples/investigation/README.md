@@ -186,7 +186,7 @@ state:                       # mock seed — identical to `lute trace --mock`
 choose:
   accuse: accuseBlake
 expect:
-  exit: complete             # complete | incomplete
+  end: complete             # complete | incomplete
   transcriptContains:        # substrings that MUST appear in the transcript
     - "The cuffs close on the right wrists. Case closed."
   state:                     # the trace's FINAL written state

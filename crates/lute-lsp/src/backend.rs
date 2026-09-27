@@ -31,14 +31,15 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CodeActionOrCommand, CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
     CompletionOptions, CompletionParams, CompletionResponse, Diagnostic as LspDiagnostic,
-    DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentSymbolParams, DocumentSymbolResponse, FoldingRange,
-    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
-    InitializeResult, Location, MessageType, OneOf, Position, Range, ReferenceParams,
-    SemanticTokens, SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams,
-    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Uri, WorkDoneProgressOptions,
+    DiagnosticRelatedInformation, DiagnosticSeverity, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentSymbolParams,
+    DocumentSymbolResponse, FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, Location, MessageType, OneOf, Position, Range,
+    ReferenceParams, SemanticTokens, SemanticTokensFullOptions, SemanticTokensOptions,
+    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
+    WorkDoneProgressOptions,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
@@ -71,6 +72,16 @@ pub struct Backend {
     /// `Diagnostic` the client echoes back in `CodeActionContext` never
     /// carried one. Cleared on `did_close` alongside `docs`.
     diagnostics: DashMap<Uri, Vec<Diagnostic>>,
+    /// What the last `analyze` published for each open document from its own
+    /// check, and the version it was stamped with — republished together
+    /// with [`Self::imported`] when another document's analysis changes the
+    /// latter.
+    published: DashMap<Uri, (Vec<LspDiagnostic>, Option<i32>)>,
+    /// Round-6 T3-68: diagnostics located in ANOTHER file — a schema import's
+    /// or plugin file's fault an importer reports — keyed by that file's
+    /// canonical path, each with the importer it came from. Published on the
+    /// file's own URI while it is open.
+    imported: DashMap<PathBuf, Vec<(Uri, LspDiagnostic)>>,
     /// dsl 0.26.0 §8: the binary this server runs, as it was at start.
     binary: Option<(PathBuf, BinaryId)>,
     /// Round-5 T3-19: whether [`Self::warn_if_older_than_stamp`] has shown
@@ -120,6 +131,8 @@ impl Backend {
             client,
             docs: DashMap::new(),
             diagnostics: DashMap::new(),
+            published: DashMap::new(),
+            imported: DashMap::new(),
             binary: std::env::current_exe()
                 .ok()
                 .and_then(|p| binary_id(&p).map(|id| (p, id))),
@@ -268,7 +281,14 @@ impl Backend {
                 let project = lute_manifest::project::load_project(&project_root)
                     .ok()
                     .flatten();
-                let (doc_ast, _) = lute_syntax::parse(&snapshot.text);
+                // The manifest's `chapters:` derivation, as `check` read the
+                // document: a chain-listed scene lints as the beat it is.
+                let (mut doc_ast, _) = lute_syntax::parse(&snapshot.text);
+                lute_check::chapters::apply_chapters(
+                    &mut doc_ast,
+                    &input.defaults,
+                    &input.snapshot.occasions,
+                );
                 all_diags.extend(crate::lint::lint_document(
                     &file_path,
                     &project_root,
@@ -283,14 +303,145 @@ impl Backend {
         // beside the published LSP form for `code_action` to read back later.
         self.diagnostics.insert(uri.clone(), all_diags.clone());
         let idx = lute_core_span::TextIndex::new(&snapshot.text);
+        let mut foreign = Vec::new();
+        let mut texts = std::collections::HashMap::new();
         let mut diags: Vec<LspDiagnostic> = all_diags
             .iter()
-            .map(|d| to_lsp_diagnostic(d, &idx, &uri))
+            .map(|d| {
+                let mut lsp = to_lsp_diagnostic(d, &idx, &uri);
+                self.relate(d, &uri, &mut lsp, &mut texts, &mut foreign);
+                lsp
+            })
             .collect();
         diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
-        self.client
-            .publish_diagnostics(uri, diags, Some(snapshot.version))
+        self.publish(uri, Some((diags, Some(snapshot.version))), foreign)
             .await;
+    }
+
+    /// Round-6 T3-68: `d`'s sub-diagnostics located in another file (the
+    /// schema import or plugin file its declaration sits in) become
+    /// `relatedInformation` on `lsp` at that file's range, and — so the file
+    /// shows its own fault while open — a diagnostic there pointing back at
+    /// `uri`, pushed to `foreign` keyed by the file's canonical path. `texts`
+    /// caches each file's text for one analysis; the check read the same
+    /// files from disk.
+    fn relate(
+        &self,
+        d: &Diagnostic,
+        uri: &Uri,
+        lsp: &mut LspDiagnostic,
+        texts: &mut std::collections::HashMap<String, Option<String>>,
+        foreign: &mut Vec<(PathBuf, LspDiagnostic)>,
+    ) {
+        for r in &d.related {
+            let text = texts
+                .entry(r.file.clone())
+                .or_insert_with(|| std::fs::read_to_string(&r.file).ok());
+            let Some(text) = text.as_deref() else {
+                continue;
+            };
+            let Some(mut location) = crate::convert::related_location(r, text) else {
+                continue;
+            };
+            let path = PathBuf::from(&r.file);
+            if let Some(open) = self.open_uri_of(&path) {
+                location.uri = open;
+            }
+            let mirror = (canonical_path_of(uri).as_ref() != Some(&path)).then(|| {
+                let mut there =
+                    to_lsp_diagnostic(&r.diagnostic, &TextIndex::new(text), &location.uri);
+                there.related_information = Some(vec![DiagnosticRelatedInformation {
+                    location: Location {
+                        uri: uri.clone(),
+                        range: lsp.range,
+                    },
+                    message: "reported here".to_string(),
+                }]);
+                there
+            });
+            lsp.related_information.get_or_insert_with(Vec::new).push(
+                DiagnosticRelatedInformation {
+                    location,
+                    message: r.diagnostic.text().into_owned(),
+                },
+            );
+            // A document importing itself shows the fault once, not mirrored.
+            if let Some(there) = mirror {
+                foreign.push((path, there));
+            }
+        }
+    }
+
+    /// The open document whose file is `path` (canonical), as the client
+    /// spells its URI — a `/tmp/…` buffer is `/private/tmp/…` canonically.
+    fn open_uri_of(&self, path: &Path) -> Option<Uri> {
+        self.docs
+            .iter()
+            .map(|e| e.key().clone())
+            .find(|u| canonical_path_of(u).as_deref() == Some(path))
+    }
+
+    /// Publish `own` (diagnostics, version) for `uri` together with what other
+    /// documents report in its file — `None` once `uri` is closed: an empty
+    /// set — replace `uri`'s own reports in other files by `foreign`, and
+    /// republish every open file whose set of those changed.
+    async fn publish(
+        &self,
+        uri: Uri,
+        own: Option<(Vec<LspDiagnostic>, Option<i32>)>,
+        foreign: Vec<(PathBuf, LspDiagnostic)>,
+    ) {
+        let mut touched: Vec<PathBuf> = Vec::new();
+        for mut entry in self.imported.iter_mut() {
+            let before = entry.value().len();
+            entry.value_mut().retain(|(from, _)| from != &uri);
+            if entry.value().len() != before {
+                touched.push(entry.key().clone());
+            }
+        }
+        for (path, d) in foreign {
+            if !touched.contains(&path) {
+                touched.push(path.clone());
+            }
+            self.imported
+                .entry(path)
+                .or_default()
+                .push((uri.clone(), d));
+        }
+        let own_path = canonical_path_of(&uri);
+        match own {
+            Some((own, version)) => {
+                self.published.insert(uri.clone(), (own, version));
+                self.republish(uri).await;
+            }
+            None => {
+                // The buffer is gone: clear what the client shows for it.
+                self.published.remove(&uri);
+                self.client.publish_diagnostics(uri, Vec::new(), None).await;
+            }
+        }
+        for path in touched {
+            if Some(&path) == own_path.as_ref() {
+                continue;
+            }
+            if let Some(open) = self.open_uri_of(&path) {
+                self.republish(open).await;
+            }
+        }
+    }
+
+    /// Send `uri`'s last own diagnostics plus those other documents report
+    /// in its file.
+    async fn republish(&self, uri: Uri) {
+        let Some((mut diags, version)) = self.published.get(&uri).map(|e| e.value().clone()) else {
+            return;
+        };
+        if let Some(path) = canonical_path_of(&uri) {
+            if let Some(entries) = self.imported.get(&path) {
+                diags.extend(entries.iter().map(|(_, d)| d.clone()));
+            }
+        }
+        self.client.publish_diagnostics(uri, diags, version).await;
     }
 
     /// Analyze an open project declaration `.yaml`/`.yml` — state/defs/enums/
@@ -493,8 +644,7 @@ impl Backend {
             .map(|d| to_lsp_diagnostic(d, &idx, &uri))
             .collect();
         lsp_diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
-        self.client
-            .publish_diagnostics(uri, lsp_diags, Some(snapshot.version))
+        self.publish(uri, Some((lsp_diags, Some(snapshot.version))), Vec::new())
             .await;
     }
 
@@ -598,6 +748,7 @@ impl Backend {
                 Ok(p) => p,
                 Err(message) => {
                     load_diags.push(lute_manifest::project::ResolveDiag {
+                        span: None,
                         code: "E-PROJECT-CONFIG".to_string(),
                         message,
                     });
@@ -886,8 +1037,9 @@ impl LanguageServer for Backend {
         // LSP diagnostics are server-owned and persist in the client until the
         // server replaces them. The buffer is gone, so publish an empty set to
         // clear any squiggles the last analyze() left behind (no version stamp:
-        // the document has no live version once closed).
-        self.client.publish_diagnostics(uri, Vec::new(), None).await;
+        // the document has no live version once closed), and withdraw what it
+        // reported in other open files.
+        self.publish(uri, None, Vec::new()).await;
     }
 }
 
@@ -970,7 +1122,7 @@ fn resolve_diag_to_lsp(d: &lute_manifest::project::ResolveDiag) -> LspDiagnostic
         code: Some(tower_lsp_server::ls_types::NumberOrString::String(
             d.code.clone(),
         )),
-        message: d.message.clone(),
+        message: lute_core_span::plain_message(&d.message).into_owned(),
         ..Default::default()
     }
 }
@@ -986,6 +1138,13 @@ fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
         return None;
     }
     uri.to_file_path().map(|p| p.into_owned())
+}
+
+/// [`uri_to_path`], canonicalized — how the checker names an imported file
+/// (`RelatedDiagnostic::file`); the lexical path when it does not exist.
+fn canonical_path_of(uri: &Uri) -> Option<PathBuf> {
+    let path = uri_to_path(uri)?;
+    Some(std::fs::canonicalize(&path).unwrap_or(path))
 }
 
 /// Walk up from the document at `file_path`, returning the first ancestor

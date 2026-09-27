@@ -8,7 +8,7 @@ state:
 choose:
   thePlainAnswer: ownIt
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "It moved once while you were in the bank. I was counting."
     - "One. All right. One I can carry."

@@ -17,12 +17,13 @@ use crate::ast::*;
 use crate::datalog::{parse_fact, DatalogError, FactPattern};
 use crate::lex::{
     line_text_start_blanked, peel_frontmatter, strip_comments_checked, text_start_for_line,
-    CommentError,
+    unclosed_frontmatter_end, CommentError,
 };
 use lute_core_span::{Diagnostic, Fixit, Layer, Severity, Span, TextEdit, TextIndex};
 
 mod attrs;
 mod blocks;
+mod foreign;
 
 /// Diagnostic code: a body line matched no §4.3 rule (rule 7).
 pub const E_UNCLASSIFIED: &str = "E-UNCLASSIFIED";
@@ -110,7 +111,51 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
     let idx = TextIndex::new(text);
     let mut diags = Vec::new();
 
-    let (fm, body_start) = peel_frontmatter(text).unwrap_or((None, 0));
+    let (mut fm, mut body_start) = peel_frontmatter(text).unwrap_or((None, 0));
+    // dsl 0.28.0 (T3-46): a frontmatter opened with `---` and never closed
+    // is ONE error at the opener, naming where the `---` belongs — and is
+    // read as closed there, so its keys are not denied (`E-KIND-MISSING`,
+    // `E-META-MISSING`) and its lines do not become body text.
+    if let Some((end, last_line)) = unclosed_frontmatter_end(text) {
+        let at = Span::from_bytes(&idx, 0, 3);
+        let insert = Span::from_bytes(&idx, end, end);
+        let lead = if text[..end].ends_with('\n') {
+            ""
+        } else {
+            "\n"
+        };
+        diags.push(Diagnostic {
+            code: "E-META-PARSE".into(),
+            severity: Severity::Error,
+            message: format!(
+                "the frontmatter opened on line 1 is never closed — add a `---` line after \
+                 line {last_line}"
+            ),
+            span: at,
+            layer: Layer::Content,
+            fixits: vec![Fixit {
+                title: "Close the frontmatter with `---`".to_string(),
+                kind: "quickfix".to_string(),
+                edit: vec![TextEdit {
+                    span: insert,
+                    new_text: format!("{lead}---\n"),
+                }],
+                confidence: 90,
+            }],
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        });
+        let span = Span {
+            byte_start: 0,
+            byte_end: end,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        };
+        fm = Some((text[4..end].to_string(), span));
+        body_start = end;
+    }
     let (raw_yaml, meta_span) = match fm {
         Some((yaml, span)) => (yaml, span),
         None => (String::new(), zero_span()),
@@ -144,7 +189,8 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         lines,
         cursor: 0,
         diags,
-        doc_kind: frontmatter_kind(&raw_yaml),
+        doc_kind: frontmatter_scalar(&raw_yaml, "kind"),
+        template_component: template_component(&raw_yaml),
         top_block: None,
         hoisted: Vec::new(),
         open_blocks: Vec::new(),
@@ -202,6 +248,7 @@ pub(crate) fn parse_body_fragment(text: &str) -> (Vec<Node>, Vec<Diagnostic>) {
         cursor: 0,
         diags,
         doc_kind: None,
+        template_component: None,
         top_block: None,
         hoisted: Vec::new(),
         open_blocks: Vec::new(),
@@ -225,6 +272,10 @@ pub(crate) struct Parser<'a> {
     /// The frontmatter's literal `kind:` value, when written — only for
     /// kind-aware recovery messages (`lore`/`quest` bodies have no shots).
     doc_kind: Option<String>,
+    /// A component that declares a `beat:` header template: its name. Its
+    /// body is a beat body, written without a shot — content before any
+    /// `## ` heading is a shot of its own, headed by that name.
+    template_component: Option<String>,
     /// The top-level block (`<entry>` / `<beat>` / `<quest>`) whose body is
     /// being parsed — what a top-level opener nested inside it names
     /// (lamplight F23).
@@ -257,13 +308,24 @@ pub(crate) enum Hoisted {
     Quest(Quest),
 }
 
-/// The literal `kind:` value of a frontmatter block (a top-level key only).
-fn frontmatter_kind(raw_yaml: &str) -> Option<String> {
+/// The literal value of top-level frontmatter key `key` (`kind`,
+/// `component`), when written.
+fn frontmatter_scalar(raw_yaml: &str, key: &str) -> Option<String> {
     raw_yaml.lines().find_map(|l| {
-        let v = l.strip_prefix("kind:")?.trim();
+        let v = l.strip_prefix(key)?.strip_prefix(':')?.trim();
         let v = v.trim_matches(|c| c == '"' || c == '\'');
         (!v.is_empty()).then(|| v.to_string())
     })
+}
+
+/// The component name of a frontmatter that declares a `beat:` header
+/// template (top-level `component:` and `beat:` keys).
+fn template_component(raw_yaml: &str) -> Option<String> {
+    raw_yaml
+        .lines()
+        .any(|l| l.starts_with("beat:"))
+        .then(|| frontmatter_scalar(raw_yaml, "component"))
+        .flatten()
 }
 
 impl Parser<'_> {
@@ -326,21 +388,24 @@ impl Parser<'_> {
     }
 
     /// Emit the residual [`E_UNCLASSIFIED`] "unrecognized line" catch-all
-    /// (dsl 0.5.0 §2.1). When the immediately preceding physical line looked
-    /// like a content line or `<tag>` opener, appends the §2.3 continuation
-    /// hint — the likely cause is a construct that wrapped across physical
-    /// lines, which Lute's line-oriented parser does not support.
+    /// (dsl 0.5.0 §2.1), with the most specific pointer the line allows: an
+    /// Ink/Yarn shape names what Lute writes instead ([`foreign::foreign_line`],
+    /// round-6 T3-60); a line that reads as the wrapped tail of the content
+    /// line / `<tag` above gets the §2.3 one-physical-line note; other text
+    /// is a line missing its `@speaker:` head ([`foreign::speakerless`]).
     fn emit_unclassified(&mut self, i: usize, layer: Layer) {
-        if i > 0 && looks_like_content_or_tag_line(&self.trimmed(i - 1)) {
-            self.emit_line(
-                E_UNCLASSIFIED,
-                "unrecognized line (note: a content line / tag cannot span multiple physical lines, dsl §2.3)",
-                i,
-                layer,
-            );
+        let line = self.trimmed(i);
+        let msg = if let Some(hint) = foreign::foreign_line(&line) {
+            format!("unrecognized line: {hint}")
+        } else if i > 0 && foreign::continues(&self.trimmed(i - 1), &line) {
+            "unrecognized line (note: a content line / tag cannot span multiple physical lines)"
+                .to_string()
+        } else if let Some(hint) = foreign::speakerless(&line) {
+            format!("unrecognized line: {hint}")
         } else {
-            self.emit_line(E_UNCLASSIFIED, "unrecognized line", i, layer);
-        }
+            "unrecognized line".to_string()
+        };
+        self.emit_line(E_UNCLASSIFIED, &msg, i, layer);
     }
 
     // -- top-level document ----------------------------------------------------
@@ -366,12 +431,35 @@ impl Parser<'_> {
         let mut quests = Vec::new();
         let mut entries = Vec::new();
         let mut beats = Vec::new();
+        // One report per region of content outside every block: the first
+        // content-shaped line is reported, and the rest of the region (its
+        // other content lines and the closes that pair with them) is folded
+        // into that one diagnostic. `(diag index, first line, last line)`.
+        let mut outside: Option<(usize, usize, usize)> = None;
         loop {
             self.skip_blanks();
             if self.cursor >= self.lines.len() {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
+            let opens_block = trimmed.starts_with("## ")
+                || trimmed.starts_with("# ")
+                || (trimmed.starts_with('<')
+                    && matches!(
+                        open_tag_name(&trimmed).as_deref(),
+                        Some("quest" | "entry" | "beat")
+                    ));
+            if opens_block {
+                self.close_outside_region(outside.take());
+            } else if outside.is_some()
+                && (trimmed.starts_with("</") || is_content_shaped_line(&trimmed))
+            {
+                if let Some((_, _, last)) = outside.as_mut() {
+                    *last = self.cursor;
+                }
+                self.cursor += 1;
+                continue;
+            }
             if trimmed.starts_with("## ") {
                 shots.push(self.parse_shot());
             } else if trimmed.starts_with('<')
@@ -405,6 +493,13 @@ impl Parser<'_> {
                 // `E-CONTENT-OUTSIDE-SHOT`).
                 self.report_stray_close();
                 self.cursor += 1;
+            } else if let Some(name) = self
+                .template_component
+                .clone()
+                .filter(|_| is_content_shaped_line(&trimmed))
+            {
+                // A beat template's body is a beat body: it needs no shot.
+                shots.push(self.parse_headless_shot(name));
             } else if is_content_shaped_line(&trimmed) {
                 // dsl 0.5.0 §2.1: a content-shaped line reached here only
                 // because no shot/scene is currently open (this loop never
@@ -414,14 +509,12 @@ impl Parser<'_> {
                 // advice names its own block instead of a `## ` heading.
                 let msg = match self.doc_kind.as_deref() {
                     Some("lore") => {
-                        "content in a lore document lives inside an `<entry>` or `<beat>` block \
-                         (dsl 0.19.0 §2)"
+                        "content in a lore document lives inside an `<entry>` or `<beat>` block"
                     }
-                    Some("quest") => {
-                        "content in a quest document lives inside a `<quest>` block (dsl 0.2.0 §6.3)"
-                    }
-                    _ => "content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)",
+                    Some("quest") => "content in a quest document lives inside a `<quest>` block",
+                    _ => "content lives inside a shot; add a `## <title>` heading above it",
                 };
+                outside = Some((self.diags.len(), self.cursor, self.cursor));
                 self.emit_line(E_CONTENT_OUTSIDE_SHOT, msg, self.cursor, Layer::Content);
                 self.cursor += 1;
             } else {
@@ -438,7 +531,26 @@ impl Parser<'_> {
                 }
             }
         }
+        self.close_outside_region(outside);
         (title, shots, quests, entries, beats)
+    }
+
+    /// Widen a region's one `E-CONTENT-OUTSIDE-SHOT` over every line folded
+    /// into it and name that extent.
+    fn close_outside_region(&mut self, region: Option<(usize, usize, usize)>) {
+        let Some((at, first, last)) = region else {
+            return;
+        };
+        if last == first {
+            return;
+        }
+        let end = self.orig(self.line_content_end(last));
+        let last_line = self.span_o(end, end).line;
+        let (start, first_line) = (self.diags[at].span.byte_start, self.diags[at].span.line);
+        let span = self.span_o(start, end);
+        let d = &mut self.diags[at];
+        d.message = format!("{} (this covers lines {first_line}–{last_line})", d.message);
+        d.span = span;
     }
 
     /// `Title ::= "# " Text` (§6.2). Text is opaque to EOL.
@@ -473,6 +585,20 @@ impl Parser<'_> {
         self.cursor += 1;
         let body = self.parse_shot_body();
         let end_o = body.last().map(node_end).unwrap_or(head_end_o);
+        Shot {
+            heading,
+            body,
+            span: self.span_o(start_o, end_o),
+        }
+    }
+
+    /// A beat template's body written without a `## ` heading: the shot
+    /// runs from the content line at `cursor` to the next heading, headed
+    /// by the component's name (`heading`).
+    fn parse_headless_shot(&mut self, heading: String) -> Shot {
+        let start_o = self.orig(self.line_content_start(self.cursor));
+        let body = self.parse_shot_body();
+        let end_o = body.last().map(node_end).unwrap_or(start_o);
         Shot {
             heading,
             body,
@@ -543,7 +669,7 @@ impl Parser<'_> {
                     self.parse_nested_top_block(tag);
                     return None;
                 }
-                Some(tag @ ("choice" | "when" | "otherwise" | "track" | "reward")) => {
+                Some(tag @ ("choice" | "when" | "otherwise" | "track" | "reward" | "return")) => {
                     self.parse_misplaced_child(tag);
                     return None;
                 }
@@ -554,7 +680,11 @@ impl Parser<'_> {
                              inside a shot"
                         ),
                         Some(tag) => format!("unexpected `<{tag}>` block here"),
-                        None => "unexpected block here".to_string(),
+                        // round-6 T3-60: a Yarn `<<command>>` names its Lute form.
+                        None => foreign::foreign_line(&trimmed).map_or_else(
+                            || "unexpected block here".to_string(),
+                            |hint| format!("unrecognized line: {hint}"),
+                        ),
                     };
                     self.emit_line(E_UNCLASSIFIED, &msg, self.cursor, Layer::Logic);
                     self.cursor += 1;
@@ -565,10 +695,12 @@ impl Parser<'_> {
         if trimmed.starts_with("# ") {
             // §6.2/I1: a `# ` H1 title inside a shot body is a misplaced title,
             // not a generic unclassified line. (`## ` shot headings never reach
-            // here — parse_shot_body breaks on them.)
+            // here — parse_shot_body breaks on them.) Round-6 T3-60: Ink writes
+            // a tag line this way, so say what `#` is not.
             self.emit_line(
                 E_TITLE_PLACEMENT,
-                "document title must appear at most once, before the first shot (dsl §6.2)",
+                "document title must appear at most once, before the first shot; inside a shot \
+                 `#` starts neither a comment nor a tag (a comment is `// …` on its own line)",
                 self.cursor,
                 Layer::Content,
             );
@@ -663,6 +795,27 @@ impl Parser<'_> {
                 j = k + 1;
             }
         }
+        // dsl 0.28.0 §3: `run.count[occasion.target]` — the member a kind or
+        // `for=` beat runs for, bound when the write executes. The index
+        // joins the path exactly as spelled; the checker judges it per member.
+        const TARGET_INDEX: &str = "[occasion.target]";
+        // Any other bracket index (`run.count[cod]`, `run.count['cod']`) is
+        // one `E-SET-SHAPE` naming the member path, recovered as that path so
+        // the leftover `[…]` does not cascade into operator/expression errors
+        // (with no node at all when the index names no member).
+        let mut literal_index: Option<(String, Option<String>)> = None;
+        if inner[j..].starts_with(TARGET_INDEX) {
+            j += TARGET_INDEX.len();
+        } else if j > path_start && ib.get(j) == Some(&b'[') && ib.get(j + 1) != Some(&b'@') {
+            if let Some(close) = inner[j..].find(']') {
+                let key = inner[j + 1..j + close].trim().trim_matches(['\'', '"']);
+                let member = (!key.is_empty()
+                    && key.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_'))
+                .then(|| format!("{}.{key}", &inner[path_start..j]));
+                literal_index = Some((inner[path_start..j + close + 1].to_string(), member));
+                j += close + 1;
+            }
+        }
         // `run.aff.@who` — a param as a dotted segment. Only `run.aff[@who]`
         // indexes a family; recover as that path so the error does not
         // cascade into `E-UNDECLARED run.aff.` / `E-CEL-PARSE`.
@@ -680,6 +833,11 @@ impl Parser<'_> {
         let path_end = j;
         let path = param_segment
             .clone()
+            .or_else(|| {
+                literal_index
+                    .as_ref()
+                    .and_then(|(_, member)| member.clone())
+            })
             .unwrap_or_else(|| inner[path_start..path_end].to_string());
         let path_span = self.span(inner_start + path_start, inner_start + path_end);
         while j < n && (ib[j] == b' ' || ib[j] == b'\t') {
@@ -814,6 +972,26 @@ impl Parser<'_> {
                 self.orig(inner_start + path_end),
             );
             self.emit_o(E_SET_SHAPE, msg, a, b, Layer::Logic);
+        }
+        if let Some((written, member)) = &literal_index {
+            let fix = member
+                .as_ref()
+                .map(|m| format!("name the member with a dot, `{m}`; "))
+                .unwrap_or_default();
+            let msg = format!(
+                "`{written}`: {fix}a `::set` path is indexed only by `[occasion.target]` (in a \
+                 beat or entry that targets a kind or runs for each member of one) or a \
+                 component's `[@param]`"
+            );
+            let (a, b) = (
+                self.orig(inner_start + path_start),
+                self.orig(inner_start + path_end),
+            );
+            self.emit_o(E_SET_SHAPE, msg, a, b, Layer::Logic);
+            if member.is_none() {
+                self.cursor += 1;
+                return None;
+            }
         }
         let span = self.span(cstart, node_end);
         self.cursor += 1;
@@ -1267,18 +1445,6 @@ fn is_content_shaped_line(trimmed: &str) -> bool {
         return false;
     }
     if trimmed.starts_with("::") || trimmed.starts_with('<') {
-        return true;
-    }
-    is_line_head(trimmed)
-}
-
-/// True when `trimmed` looks like a content line (`@speaker…`/legacy
-/// `:speaker…`) or a `<tag …>` opener (not a `</tag>` close) — the two §2.3
-/// construct shapes that MUST fit on one physical line. Used only for the
-/// `E-UNCLASSIFIED` continuation hint (dsl 0.5.0 §2.1): NOT `::directive`,
-/// which the hint's wording does not name.
-fn looks_like_content_or_tag_line(trimmed: &str) -> bool {
-    if trimmed.starts_with('<') && !trimmed.starts_with("</") {
         return true;
     }
     is_line_head(trimmed)
@@ -2647,6 +2813,44 @@ mod tests {
             d.message.contains("cannot span multiple physical lines"),
             "{}",
             d.message
+        );
+    }
+
+    // Round-6 T3-60: an Ink/Yarn line (or speakerless prose) after a finished
+    // content line was told it "cannot span multiple physical lines". It now
+    // names the Lute form, and the wrap note is kept for real wraps.
+    #[test]
+    fn foreign_lines_after_a_content_line_name_the_lute_form() {
+        for (line, want) in [
+            ("-> ledger", "`::next{to=\"ledger\"}`"),
+            ("-> END", "`::end`"),
+            ("~ run.oil = run.oil + 2", "`::set{run.oil = run.oil + 2}`"),
+            ("VAR x = 1", "`state:`"),
+            ("* [Read the ledger]", "`once`"),
+            ("+ [Wait for dark]", "`<hub>`"),
+            ("- gather", "no gathers"),
+            ("=== ledger ===", "`## ledger`"),
+            ("Plain prose line with no speaker.", "`@narrator: …`"),
+            ("<<set $oil to 3>>", "`::set{run.oil = 3}`"),
+            ("<<if $oil > 2>>", "`<match"),
+        ] {
+            let (_, diags) = parse(&format!("## Shot 1.\n@narrator: hi\n{line}\n"));
+            let d = diags
+                .iter()
+                .find(|d| d.code == "E-UNCLASSIFIED")
+                .unwrap_or_else(|| panic!("{line}: {diags:?}"));
+            assert!(
+                d.message.contains(want) && !d.message.contains("physical lines"),
+                "{line}: {}",
+                d.message
+            );
+        }
+        let (_, diags) = parse("## Shot 1.\n@narrator: hi\n# mood:cold\n");
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code == "E-TITLE-PLACEMENT" && d.message.contains("`// …`")),
+            "{diags:?}"
         );
     }
 

@@ -528,8 +528,8 @@ fn walk_in(
                 // transition context (dsl 0.1.0 grammar, unchanged) — safe
                 // regardless of `doc` since it just re-threads the current
                 // (already doc-consistent) `ctx`.
-                for choice in &h.choices {
-                    walk_in(&choice.body, doc, ctx, Some(nk), effect_only, diags);
+                for b in h.bodies() {
+                    walk_in(b, doc, ctx, Some(nk), effect_only, diags);
                 }
             }
             Node::On(o) => walk_in(

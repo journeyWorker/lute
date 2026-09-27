@@ -1180,7 +1180,7 @@ fn dead_required_objective_relational_marks_completed_gate_unreachable() {
         &dir,
         "deadrelquest.lute",
         "---\nkind: quest\nentities:\n  loc: { members: [a] }\nrelations:\n  \
-         neverProduced: { args: [loc] }\n---\n<quest id=\"deadRelQuest\" start=\"true\">\n\
+         neverProduced: { args: [loc], tier: run }\n---\n<quest id=\"deadRelQuest\" start=\"true\">\n\
          <objective id=\"o\" done=\"holds(neverProduced(a))\"/>\n</quest>\n",
     );
     write(
@@ -1476,14 +1476,14 @@ fn fixpoint_closure_propagates_through_a_multi_hop_chain() {
         "s.lute",
         "---\nkind: scene\ncharacter: chainS\nseason: 1\nepisode: 1\n\
          after: 'completed(\"chainQ1\")'\nentities:\n  loc: { members: [a] }\n\
-         relations:\n  chainRel: { args: [loc] }\n---\n## Shot 1.\n\
+         relations:\n  chainRel: { args: [loc], tier: run }\n---\n## Shot 1.\n\
          ::assert{ chainRel(a) }\n",
     );
     write(
         &dir,
         "q2.lute",
         "---\nkind: quest\nentities:\n  loc: { members: [a] }\nrelations:\n  \
-         chainRel: { args: [loc] }\n---\n<quest id=\"chainQ2\" start=\"true\">\n\
+         chainRel: { args: [loc], tier: run }\n---\n<quest id=\"chainQ2\" start=\"true\">\n\
          <objective id=\"checkChain\" done=\"holds(chainRel(a))\"/>\n</quest>\n",
     );
     write(
@@ -1542,7 +1542,7 @@ fn dead_required_objective_never_drops_a_sibling_optional_objectives_live_assert
         &dir,
         "mixedquest2.lute",
         "---\nkind: quest\nentities:\n  loc: { members: [a] }\nrelations:\n  \
-         liveRel: { args: [loc] }\nstate:\n  run.opt: { type: bool, default: true }\n\
+         liveRel: { args: [loc], tier: run }\nstate:\n  run.opt: { type: bool, default: true }\n\
          ---\n<quest id=\"mixedQuest2\" start=\"true\">\n\
          <objective id=\"deadReq\" done=\"false\"/>\n\
          <objective id=\"liveOpt\" done=\"run.opt\" optional>\n\
@@ -2550,8 +2550,14 @@ fn wip_downgrades_a_guard_dead_only_for_want_of_a_producer() {
     let wip = run(&["check-project", "--wip", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&wip.stdout);
     assert_eq!(wip.status.code(), Some(0), "{text}");
-    assert!(text.contains("warning [E-ENTRY-UNREACHABLE]"), "{text}");
-    assert!(text.contains("`--wip`"), "{text}");
+    // The downgrade prints as its own warning code, never `warning [E-…]`;
+    // the message names the error it is without the flag.
+    assert!(text.contains("warning [W-WIP] entry `found`"), "{text}");
+    assert!(
+        text.contains("`E-ENTRY-UNREACHABLE` without `--wip`"),
+        "{text}"
+    );
+    assert!(!text.contains("warning [E-"), "{text}");
 }
 
 #[test]
@@ -2561,12 +2567,198 @@ fn wip_keeps_a_produced_relation_that_never_matches_an_error() {
     let wip = run(&["check-project", "--wip", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&wip.stdout);
     assert_eq!(wip.status.code(), Some(1), "{text}");
+    assert!(text.contains("warning [W-WIP] entry `found`"), "{text}");
     assert!(
-        text.contains("warning [E-ENTRY-UNREACHABLE] entry `found`"),
+        text.contains("error [E-ENTRY-UNREACHABLE] entry `heading`"),
+        "{text}"
+    );
+}
+
+/// An id `add:`ed to a second kind is `E-ENTITY-KIND-CLASH` at that `add:`
+/// entry — the later declaration — naming both places relative to the
+/// project root, not at the kind that declared the id first.
+#[test]
+fn entity_kind_clash_is_reported_at_the_add_naming_both_files() {
+    let dir = temp_dir("kind-clash-at-add");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  uses: [world.schema.yaml, schema/isles.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  island: { members: [coralreach, mistral] }\n  person: { members: [tamsin] }\n",
+    );
+    write(
+        &dir,
+        "schema/isles.schema.yaml",
+        "entities:\n  person:\n    add:\n      - coralreach\n",
+    );
+    write(
+        &dir,
+        "scenes/s.lute",
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let line = text
+        .lines()
+        .find(|l| l.contains("[E-ENTITY-KIND-CLASH]"))
+        .unwrap_or_else(|| panic!("no E-ENTITY-KIND-CLASH:\n{text}"));
+    assert!(
+        line.contains("isles.schema.yaml:4:9: error"),
+        "at the `add:` entry: {line}"
+    );
+    assert!(
+        line.contains("`island` (`world.schema.yaml:2`)")
+            && line.contains("`person` (`schema/isles.schema.yaml:4`)"),
+        "both places, relative: {line}"
+    );
+}
+
+/// A document's own `uses:` replaces `defaults.uses`: an error naming
+/// something only the replaced list declared says so and names the schema;
+/// a name no schema declares gets no such note.
+#[test]
+fn replaced_default_uses_is_named_on_the_errors_it_causes() {
+    let dir = temp_dir("defaults-uses-replaced");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.world: { type: number, default: 0 }\n",
+    );
+    write(
+        &dir,
+        "wake.schema.yaml",
+        "state:\n  run.wake: { type: number, default: 0 }\n",
+    );
+    write(
+        &dir,
+        "scenes/own.lute",
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nuses: [../wake.schema.yaml]\n---\n\
+         \n## S\n\n::set{ run.world = 1 }\n::set{ run.nowhere = 1 }\n@a: hi\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let line = |path: &str| {
+        text.lines()
+            .find(|l| l.contains("[E-UNDECLARED]") && l.contains(path))
+            .unwrap_or_else(|| panic!("no E-UNDECLARED for {path}:\n{text}"))
+    };
+    assert!(
+        line("run.world").contains(
+            "this document's `uses:` replaces `defaults.uses` (from lute.project.yaml), and \
+             `run.world` is declared in `world.schema.yaml`"
+        ),
+        "{text}"
+    );
+    assert!(!line("run.nowhere").contains("defaults.uses"), "{text}");
+}
+
+/// A document's own `components:` replaces `defaults.components`: a
+/// `<beat use>` naming a component only the replaced list imports says so
+/// and names its file; an unknown name keeps the ordinary hint.
+#[test]
+fn replaced_default_components_is_named_on_the_template_use() {
+    let dir = temp_dir("defaults-components-replaced");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  components: [components/bond.lute]\n",
+    );
+    write(
+        &dir,
+        "components/bond.lute",
+        "---\ncomponent: bondStory\nparams:\n  who: { type: string }\n\
+         beat:\n  on: bond\n---\n## Bond\n::body\n@narrator: The bond deepens.\n",
+    );
+    write(
+        &dir,
+        "components/greet.lute",
+        "---\ncomponent: greet\n---\n## G\n@narrator: Hi there.\n",
+    );
+    write(
+        &dir,
+        "lore/bonds.lute",
+        "---\nkind: lore\nid: bonds\ncomponents: [../components/greet.lute]\n---\n\n\
+         <beat use=\"bondStory\" id=\"first\" who=\"aria\">\n@narrator: Hello.\n</beat>\n\n\
+         <beat use=\"nowhereStory\" id=\"second\" who=\"aria\">\n@narrator: Hello.\n</beat>\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let line = |name: &str| {
+        text.lines()
+            .find(|l| l.contains("[E-TEMPLATE]") && l.contains(&format!("use=\"{name}\"")))
+            .unwrap_or_else(|| panic!("no E-TEMPLATE for {name}:\n{text}"))
+    };
+    assert!(
+        line("bondStory").contains(
+            "this document's `components:` replaces `defaults.components` (from \
+             lute.project.yaml), which imports it from `components/bond.lute`"
+        ),
         "{text}"
     );
     assert!(
-        text.contains("error [E-ENTRY-UNREACHABLE] entry `heading`"),
+        !line("nowhereStory").contains("defaults.components"),
+        "{text}"
+    );
+}
+
+fn branch_scene(branch: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n\
+         <branch id=\"{branch}\">\n<choice id=\"c\" label=\"L\">\n@a: yo\n</choice>\n</branch>\n"
+    )
+}
+
+/// Two documents declaring one `<branch id>`: a play's `choose:` key answers
+/// both, so the later one is warned, naming the other relative to the root.
+/// Distinct ids say nothing; a repeat inside one document stays its own
+/// `E-DUP-BRANCH` and is not also this warning.
+#[test]
+fn check_project_warns_on_a_branch_id_two_documents_share() {
+    let dir = temp_dir("branch-id-shared");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(&dir, "scenes/a.lute", &branch_scene("dig"));
+    write(&dir, "scenes/b.lute", &branch_scene("dig"));
+    write(&dir, "scenes/c.lute", &branch_scene("other"));
+    write(
+        &dir,
+        "scenes/d.lute",
+        &format!(
+            "{}<branch id=\"twice\">\n<choice id=\"c\" label=\"L\">\n@a: yo\n</choice>\n</branch>\n",
+            branch_scene("twice")
+        ),
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let shared: Vec<&str> = text
+        .lines()
+        .filter(|l| l.contains("[W-BRANCH-ID-SHARED]"))
+        .collect();
+    assert_eq!(shared.len(), 1, "{text}");
+    assert!(
+        shared[0].contains("scenes/b.lute:11:1: warning")
+            && shared[0].contains("at `scenes/a.lute:11`")
+            && shared[0].contains("`choose: { dig: … }` answers both"),
+        "{text}"
+    );
+    assert!(
+        text.lines()
+            .any(|l| l.contains("[E-DUP-BRANCH]") && l.contains("scenes/d.lute")),
         "{text}"
     );
 }

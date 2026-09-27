@@ -71,30 +71,30 @@ fn quest_reward_reversed_range_is_e_reward_attr() {
 }
 
 #[test]
-fn objective_reward_with_on_is_e_reward_attr() {
-    // dsl 0.16.0 §2 D-D: only a QUEST-level reward may carry `on="failed"`;
+fn objective_reward_with_outcome_is_e_reward_attr() {
+    // dsl 0.16.0 §2 D-D: only a QUEST-level reward may carry `outcome="failed"`;
     // an objective grants at first `done` and never at fail.
     let cs = codes(
         "---\nkind: quest\n---\n<quest id=\"q\">\n\
          <objective id=\"o\" done=\"run.d\">\n\
-         <reward kind=\"gold\" amount=\"1\" on=\"failed\"/>\n\
+         <reward kind=\"gold\" amount=\"1\" outcome=\"failed\"/>\n\
          </objective>\n</quest>\n",
     );
     assert!(
         cs.iter().any(|c| c == "E-REWARD-ATTR"),
-        "want E-REWARD-ATTR for an objective-level `on=`: {cs:?}"
+        "want E-REWARD-ATTR for an objective-level `outcome=`: {cs:?}"
     );
 }
 
 #[test]
-fn quest_reward_bad_on_enum_value_is_e_reward_attr() {
+fn quest_reward_bad_outcome_value_is_e_reward_attr() {
     let cs = codes(
         "---\nkind: quest\n---\n<quest id=\"q\">\n\
-         <reward kind=\"gold\" amount=\"1\" on=\"banana\"/>\n</quest>\n",
+         <reward kind=\"gold\" amount=\"1\" outcome=\"banana\"/>\n</quest>\n",
     );
     assert!(
         cs.iter().any(|c| c == "E-REWARD-ATTR"),
-        "want E-REWARD-ATTR for on=\"banana\": {cs:?}"
+        "want E-REWARD-ATTR for outcome=\"banana\": {cs:?}"
     );
 }
 

@@ -209,24 +209,36 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
 /// The domain a component param's declared TYPE induces (dsl 0.4.0 §6.3):
 /// `Bool` -> `Finite[true, false]`; `Enum(members)` -> `Finite(members)`
 /// (declaration order); `Number` -> `Number` (the real line, dsl 0.18.0 §4);
-/// `Str`/anything else -> `Infinite` (`<otherwise>` REQUIRED,
-/// `E-NONEXHAUSTIVE`). ALWAYS `maybe_unset: false,
+/// `{ domain: K }` -> `Finite` over K's members when `domains` declares K
+/// closed (the clock's `clock.slot` / `clock.weekdayLabel` included), so a
+/// component names the host's vocabulary instead of copying it; `Str`/anything else -> `Infinite` (`<otherwise>`
+/// REQUIRED, `E-NONEXHAUSTIVE`). ALWAYS `maybe_unset: false,
 /// resolved: true` — every `::use` binds every param (`E-COMPONENT-ARG`
 /// enforces count/type, dsl §13.3), so `unset` is never a member of a
 /// param's domain: `is="unset"` on a param subject is
 /// `E-WHEN-LITERAL-DOMAIN` (rule 3), and `E-UNSET-UNCOVERED` — gated on
 /// `maybe_unset` in [`check_match_with_domain`] — is structurally
 /// unreachable for a param-subject `<match>`.
-pub(crate) fn param_domain(ty: &Type) -> DomainInfo {
-    let domain = match ty {
-        Type::Bool => Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
-        Type::Enum(members) => Domain::Finite(
+pub(crate) fn param_domain(
+    ty: &Type,
+    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
+) -> DomainInfo {
+    let finite = |members: &[String]| {
+        Domain::Finite(
             members
                 .iter()
                 .map(|m| DomainValue::Str(m.clone()))
                 .collect(),
-        ),
+        )
+    };
+    let domain = match ty {
+        Type::Bool => Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
+        Type::Enum(members) => finite(members),
         Type::Number => Domain::Number,
+        Type::Domain(name) => match domains.get(name) {
+            Some(d) if !d.open => finite(&d.members),
+            _ => Domain::Infinite,
+        },
         _ => Domain::Infinite,
     };
     DomainInfo {
@@ -313,7 +325,7 @@ fn def_subject_of(
         return Some((Some(path), info));
     }
     let ty = def_types.get(&r.name)?;
-    let mut info = param_domain(ty);
+    let mut info = param_domain(ty, &BTreeMap::new());
     info.maybe_unset = crate::defassign::may_read_unset(&expr, schema);
     Some((None, info))
 }

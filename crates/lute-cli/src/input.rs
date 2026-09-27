@@ -23,6 +23,11 @@ pub(crate) struct BuiltInput {
     /// `lute:` channel instead of the per-document diagnostic list — but they
     /// are errors, and every gating command MUST fold this into its exit code.
     pub resolve_error: bool,
+    /// `true` when one of those errors leaves no snapshot worth checking the
+    /// document against ([`ResolveDiag::stops_checking`]); a name declared
+    /// twice keeps its first declaration and does not. A walk over many
+    /// documents still checks them when only the latter was reported.
+    pub resolve_blocks: bool,
     /// The project-level problems resolution surfaced, in emission order: a
     /// `lute.project.yaml` that failed to load, then each
     /// [`resolve_document_snapshot`] diagnostic as `<code>: <message>`. Each is
@@ -162,19 +167,21 @@ pub(crate) fn assemble_input(
 
     let resolved = cache.snapshot(root, project, meta0.profile.as_deref(), &meta0.plugins);
     let (mut snapshot, mut rdiags) = (resolved.0.clone(), resolved.1.clone());
-    // dsl 0.27.0 §8: the chain a `sequence:` derives depends on its
+    // dsl 0.28.0 §4: the chain a `chapters:` entry derives depends on its
     // occasion's `select:`, so it is applied once the vocabulary is known.
-    lute_check::sequence::apply_sequence(&mut parsed.0, &defaults, &snapshot.occasions);
+    lute_check::chapters::apply_chapters(&mut parsed.0, &defaults, &snapshot.occasions);
     if let Some(name) = permission_profile {
         match project.as_ref() {
             Some(config) => match resolve_permissions(config, name) {
                 Ok(permissions) => snapshot.restrict_permissions(&permissions),
                 Err(error) => rdiags.push(ResolveDiag {
+                    span: None,
                     code: error.code().to_string(),
                     message: error.to_string(),
                 }),
             },
             None => rdiags.push(ResolveDiag {
+                span: None,
                 code: "E-PERMISSION-PROFILE".to_string(),
                 message: format!(
                     "`--permission-profile {name}` requires a loaded `lute.project.yaml` from `--project <DIR>`"
@@ -183,6 +190,7 @@ pub(crate) fn assemble_input(
         }
     }
     let mut resolve_error = !project_diags.is_empty();
+    let mut resolve_blocks = resolve_error;
     for d in &rdiags {
         project_diags.push(format!(
             "{}: {}",
@@ -196,6 +204,7 @@ pub(crate) fn assemble_input(
         // must still set the exit code, or `E-PLUGIN-OPTION-TYPE` and friends
         // would print and pass.
         resolve_error |= d.code.starts_with("E-");
+        resolve_blocks |= d.stops_checking();
     }
     let identity = project
         .as_ref()
@@ -232,6 +241,7 @@ pub(crate) fn assemble_input(
             defaults: defaults.clone(),
         },
         resolve_error,
+        resolve_blocks,
         project_diags,
         meta: meta0,
         defaults,

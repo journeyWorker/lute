@@ -23,7 +23,7 @@ state:
 
 <quest id="rescueHalsinGrove" tier="run" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
 <reward kind="XP" amount="300"/>
-<reward kind="REPUTATION" target="grove" amount="1" on="failed"/>
+<reward kind="REPUTATION" target="grove" amount="1" outcome="failed"/>
 <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
 <objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed">
   <reward kind="XP" amount="50"/>

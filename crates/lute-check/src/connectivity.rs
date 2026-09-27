@@ -430,9 +430,9 @@ fn nearest_match<'a>(
 /// `Atom::Active` — both name a QUEST, lang 0.8.0); a miss
 /// pushes one [`E_CONN_UNKNOWN_NODE`] anchored at `span` — the SOURCE
 /// formula's span (the scene's `after:` key span, or the quest's
-/// `after_span`), never a synthetic per-atom location (`PrereqFormula`
-/// carries none). `quest_after`: the formula is a `<quest after=…>` — its
-/// miss says how to drop `after=` instead (dsl 0.24.0 §2).
+/// `follows_span`), never a synthetic per-atom location (`PrereqFormula`
+/// carries none). `quest_after`: the formula is a `<quest follows=…>` — its
+/// miss says how to drop `follows=` instead (dsl 0.24.0 §2).
 fn check_formula_atoms(
     formula: &PrereqFormula,
     span: Span,
@@ -450,7 +450,7 @@ fn check_formula_atoms(
         // name quoted back in the message differs.
         let (id, func) = match &atom {
             Atom::Visited(key) => {
-                check_scene_key(key, "dsl §2.3/§4.1", span, path, key_set, hint, out);
+                check_scene_key(key, false, span, path, key_set, hint, out);
                 continue;
             }
             Atom::Completed(id) => (id, "completed"),
@@ -470,17 +470,18 @@ fn check_formula_atoms(
     }
 }
 
-/// The tail of an unresolvable `<quest after=…>` miss (dsl 0.24.0 §2): a
-/// quest has no `when`, and an accept-driven quest needs no `after=` to be
+/// The tail of an unresolvable `<quest follows=…>` miss (dsl 0.24.0 §2): a
+/// quest has no `when`, and an accept-driven quest needs no `follows=` to be
 /// drawn — it is anchored at every `::accept` of it.
-const QUEST_AFTER_HINT: &str = "; if the quest is taken on by `::accept`, drop `after=` — an \
+const QUEST_AFTER_HINT: &str = "; if the quest is taken on by `::accept`, drop `follows=` — an \
      accept-driven quest is anchored at every document that accepts it (dsl 0.24.0 §2)";
 
 /// One `visited(K)` target against the project's scene and bundle beat keys
 /// (a bundle beat is a graph node, dsl 0.24.0 §2): a miss is
 /// [`E_CONN_UNKNOWN_NODE`] at `span`, with a "did you mean" when a key is
-/// close and `hint` appended when given. `cite` names the surface the call
-/// came from.
+/// close and `hint` appended when given. `cel` is whether the call is a CEL
+/// `visited()` (else a prerequisite formula atom) — it picks the cited
+/// surface, and the quest read a quest id is pointed at.
 ///
 /// A miss is NOT reported when the key set is incomplete
 /// ([`SceneKeys::complete`]): some document in the root has a frontmatter that
@@ -490,7 +491,7 @@ const QUEST_AFTER_HINT: &str = "; if the quest is taken on by `::accept`, drop `
 /// fine (0.21.1 T3-8, seven F3).
 fn check_scene_key(
     key: &str,
-    cite: &str,
+    cel: bool,
     span: Span,
     path: &Path,
     key_set: &SceneKeys<'_>,
@@ -500,6 +501,11 @@ fn check_scene_key(
     if key_set.keys.contains_key(key) || key_set.bundles.contains_key(key) || !key_set.complete {
         return;
     }
+    let cite = if cel {
+        "dsl 0.21.0 §7a.1"
+    } else {
+        "dsl §2.3/§4.1"
+    };
     let mut message = format!(
         "unknown node: no scene or bundle beat resolves to key `{key}` (`visited`, {cite})"
     );
@@ -515,6 +521,15 @@ fn check_scene_key(
         message.push_str(&format!(
             " — did you mean `{canonical}`? A bundle beat's key is `<document id>.<beat id>`"
         ));
+    }
+    if key_set.quests.contains(key) {
+        // A quest is no `visited()` node: its state is the read.
+        let read = if cel {
+            format!("quest.{key}.state == 'complete'")
+        } else {
+            format!("completed('{key}')")
+        };
+        message.push_str(&format!("; `{key}` is a quest — write `{read}`"));
     }
     if let Some(hint) = hint {
         message.push_str(hint);
@@ -546,6 +561,9 @@ struct SceneKeys<'a> {
     /// dsl 0.23.0 §4: the bundle beat canonical ids ([`bundle_beat_key_set`]).
     bundles: BTreeMap<String, Vec<(PathBuf, Span)>>,
     complete: bool,
+    /// Every declared quest id ([`quest_id_set`]): `visited()` on one is
+    /// pointed at the quest read.
+    quests: &'a BTreeSet<String>,
 }
 
 /// dsl 0.21.0 §7a.1: every `visited('<scene id>')` call in a condition slot
@@ -569,7 +587,7 @@ fn check_visited_calls(
             return;
         };
         for key in crate::cel_resolve::visited_targets(&root.expr) {
-            check_scene_key(&key, "dsl 0.21.0 §7a.1", span, path, key_set, None, out);
+            check_scene_key(&key, true, span, path, key_set, None, out);
         }
     };
     lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
@@ -593,9 +611,9 @@ fn scene_frontmatter_str(doc: &Document, key: &str) -> Option<String> {
     value.get(key)?.as_str().map(str::to_string)
 }
 
-/// Resolve every `after` prerequisite formula in `docs` — BOTH surfaces
+/// Resolve every prerequisite formula in `docs` — BOTH surfaces
 /// (dsl §2.1): a scene document's frontmatter `after:` key, AND every
-/// `<quest after="…">` attribute (a quest pack declares its prerequisite
+/// `<quest follows="…">` attribute (a quest pack declares its prerequisite
 /// there instead) — against the known project node sets, and every
 /// condition slot's `visited('<scene id>')` call (dsl 0.21.0 §7a.1) against
 /// the scene keys. `key_set` (T3
@@ -617,14 +635,15 @@ pub fn resolve_nodes(
         complete: docs
             .iter()
             .all(|(_, doc)| crate::meta::frontmatter_parses(&doc.meta)),
+        quests: quest_ids,
     };
     let mut out = Vec::new();
     for (path, doc) in docs {
-        // dsl 0.27.0 §8: an `after:` the manifest's `sequence:` derived names
-        // the entry before this one; a bad entry is `E-SEQUENCE`'s, at the
+        // dsl 0.28.0 §4: an `after:` a `chapters:` chain derived names the
+        // entry before this one; a bad entry is `E-CHAPTERS`'s, at the
         // manifest, never this scene's.
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene)
-            && !crate::sequence::derived(&doc.meta, "after")
+            && !crate::chapters::derived(&doc.meta, "after")
         {
             if let SceneAfter::String(after) = scene_after(doc) {
                 let after_span = meta_key_span(&doc.meta, "after");
@@ -637,12 +656,12 @@ pub fn resolve_nodes(
             }
         }
         for quest in &doc.quests {
-            if let Some(after) = &quest.after {
-                let (formula, _) = parse_prereq(after, quest.after_span);
+            if let Some(after) = &quest.follows {
+                let (formula, _) = parse_prereq(after, quest.follows_span);
                 if let Some(formula) = formula {
                     check_formula_atoms(
                         &formula,
-                        quest.after_span,
+                        quest.follows_span,
                         path,
                         key_set,
                         quest_ids,
@@ -1050,14 +1069,16 @@ pub fn assemble_graph(
     // could silently drop a quest -- and its edges/cycles -- from the graph).
     for (path, doc) in docs {
         for quest in &doc.quests {
-            let Some(after) = &quest.after else { continue };
+            let Some(after) = &quest.follows else {
+                continue;
+            };
             if quest.id.is_empty() {
                 continue;
             }
             let prereq = if after.is_empty() {
                 PrereqState::Absent
             } else {
-                match parse_prereq(after, quest.after_span).0 {
+                match parse_prereq(after, quest.follows_span).0 {
                     Some(f) => PrereqState::Valid(f),
                     None => PrereqState::Invalid,
                 }
@@ -1275,7 +1296,7 @@ impl<'a> QuestDecls<'a> {
                 first
                     .entry(quest.id.as_str())
                     .or_insert((path.as_path(), quest));
-                if quest.after.is_some() {
+                if quest.follows.is_some() {
                     with_after.insert(quest.id.as_str());
                 }
             }
@@ -1530,9 +1551,9 @@ pub enum OmittedRef {
     /// `visited('<scene>')` in a lifecycle condition of `quest`, which
     /// declares no `after`, that draws no edge — not a top-level `start`
     /// conjunct (dsl 0.25.0 §4). `slot` names where it is read: `start`,
-    /// `fail`, or `objective <id> <done|when|by|until>`. A condition read
-    /// gates the quest; it is no anchor, and an `after` copying it would
-    /// replace the quest's real anchors (summer S1).
+    /// `fail`, or `objective <id> <done|visibleWhen|by|until>`. A condition
+    /// read gates the quest; it is no anchor, and a `follows` copying it
+    /// would replace the quest's real anchors (summer S1).
     Visited {
         quest: String,
         scene: String,
@@ -1571,7 +1592,7 @@ pub fn omitted_refs(
     }
     for (_, doc) in docs {
         for quest in &doc.quests {
-            if quest.after.is_some() || quest.id.is_empty() {
+            if quest.follows.is_some() || quest.id.is_empty() {
                 continue;
             }
             let mut slots: Vec<(String, &lute_syntax::ast::CelSlot)> = Vec::new();
@@ -1581,7 +1602,7 @@ pub fn omitted_refs(
                 if let Node::Objective(o) = node {
                     let named = |key: &str| format!("objective {} {key}", o.id);
                     slots.push((named("done"), &o.done));
-                    slots.extend(o.when.iter().map(|s| (named("when"), s)));
+                    slots.extend(o.visible_when.iter().map(|s| (named("visibleWhen"), s)));
                     slots.extend(o.by.iter().map(|s| (named("by"), s)));
                     slots.extend(o.until.iter().map(|s| (named("until"), s)));
                 }
@@ -2347,8 +2368,8 @@ pub fn collect_asserts<'d>(nodes: &'d [Node], out: &mut Vec<&'d Assert>) {
                 }
             }
             Node::Hub(h) => {
-                for choice in &h.choices {
-                    collect_asserts(&choice.body, out);
+                for b in h.bodies() {
+                    collect_asserts(b, out);
                 }
             }
             Node::On(o) => collect_asserts(&o.body, out),

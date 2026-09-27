@@ -94,7 +94,10 @@ fn the_after_premise_quest_mock_is_accepted() {
     );
     let (code, t) = run(&dir, &["test", "."]);
     assert_eq!(code, Some(1), "{t}");
-    assert!(t.contains("mock `quests: { caseClosed: complete }`"), "{t}");
+    assert!(
+        t.contains("add `quests: { caseClosed: complete }` to the mocks"),
+        "{t}"
+    );
     write(
         &dir,
         "a.test.yaml",

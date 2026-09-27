@@ -62,7 +62,7 @@ impl Bucket {
 struct Need {
     /// `run.aff.ren`, or `holds(cleared(ren, good))` / `!holds(…)`.
     what: String,
-    producers: Vec<String>,
+    producers: Vec<Writer>,
     /// The sound "nothing produces it" case.
     none: bool,
     /// The words for `producers` when the list alone does not say it.
@@ -81,6 +81,14 @@ struct Row {
     when_token: &'static str,
     when_text: String,
     needs: Vec<Need>,
+    /// The occasion's `raisedWhen` gate — a condition of the beat as much
+    /// as its `when` — and what it reads.
+    gate: Option<(String, Vec<Need>)>,
+    /// The beat's content can run `::end`.
+    runs_end: bool,
+    /// What the beat writes (a state path, `holds(<relation>(…))`) that
+    /// the project's `terminal:` reads — it can end the game that way.
+    terminal: Vec<String>,
     /// OT-F-13: the errors inside the `when` (the root cause of a
     /// never-holds verdict), as `(code, line, column, message)`.
     causes: Vec<(String, u32, u32, String)>,
@@ -90,7 +98,90 @@ struct Row {
 /// One root's rows.
 struct RootRows {
     root: PathBuf,
+    /// The project's `terminal:` condition, as declared.
+    terminal: Option<String>,
     rows: Vec<Row>,
+}
+
+/// The project's `terminal:` condition and what it reads: the state paths,
+/// and the relations of the facts it needs to hold.
+struct Terminal {
+    raw: String,
+    paths: BTreeSet<String>,
+    relations: BTreeSet<String>,
+}
+
+impl Terminal {
+    fn of(root: &Path, group: &DocGroup, producers: &Producers<'_>) -> Option<Self> {
+        let folded = group
+            .iter()
+            .map(|(_, _, f)| f)
+            .find(|f| f.env.terminal.is_some())?;
+        let raw = folded.env.terminal.clone()?;
+        let expanded = expand(folded, &raw);
+        let relations =
+            crate::knowledge::condition_atoms(root, group, &expanded, &producers.asserts)
+                .into_iter()
+                .filter(|(_, negated, _)| !negated)
+                .filter_map(|(atom, _, _)| atom.split_once('(').map(|(r, _)| r.trim().to_string()))
+                .collect();
+        Some(Terminal {
+            paths: read_paths(&expanded),
+            relations,
+            raw,
+        })
+    }
+
+    /// What beat `b`'s content writes that the condition reads.
+    fn written_by(
+        &self,
+        root: &Path,
+        producers: &Producers<'_>,
+        b: &ProjectBeat<'_>,
+    ) -> Vec<String> {
+        let mut out: BTreeSet<String> = BTreeSet::new();
+        for (w, path) in &producers.writes {
+            if w.origin.is_beat(b, root) {
+                out.extend(self.paths.iter().filter(|r| overlaps(path, r)).cloned());
+            }
+        }
+        for (origin, relation) in &producers.asserted {
+            if origin.is_beat(b, root) && self.relations.contains(relation) {
+                out.insert(format!("holds({relation}(…))"));
+            }
+        }
+        out.into_iter().collect()
+    }
+}
+
+/// `cond` with its `@def`s expanded in `folded`'s document.
+fn expand(folded: &lute_check::FoldedEnv, cond: &str) -> String {
+    let defs = lute_check::cel_expand::DefTable {
+        bodies: &folded.def_bodies,
+        params: &folded.env.def_params,
+    };
+    lute_check::cel_expand::expand_cel(cond, &defs, None, &mut Vec::new())
+        .unwrap_or_else(|_| cond.to_string())
+}
+
+/// Whether `cond` decides false in `folded`'s document on its own — the
+/// verdict a literal fault inside it (`E-WHEN-LITERAL-DOMAIN`) stands for
+/// when that fault is the one report.
+fn decides_false(folded: &lute_check::FoldedEnv, cond: &str) -> bool {
+    let defs = lute_check::DefTable {
+        bodies: &folded.def_bodies,
+        params: &folded.env.def_params,
+    };
+    let ctx = lute_check::DecideCtx {
+        schema: &folded.env.state,
+        dollar: None,
+        params: &BTreeMap::new(),
+        facts: None,
+    };
+    matches!(
+        lute_check::decide_slot(cond, &defs, &ctx),
+        Some(lute_check::Decided::Bool(false))
+    )
 }
 
 /// `Err(exit)` on an unknown `--endings=<occasion>` (reported).
@@ -134,6 +225,7 @@ fn rows(
         ));
         known.extend(beats.iter().map(|b| b.on.to_string()));
         let producers = Producers::of(root, group);
+        let terminal = Terminal::of(root, group, &producers);
         let mut rows = Vec::new();
         for b in &beats {
             let doc = scenario
@@ -141,11 +233,16 @@ fn rows(
                 .iter()
                 .find(|(p, _)| p == b.path)
                 .map(|(_, d)| d);
+            let runs_end =
+                doc.is_some_and(|d| beat_body(d, b).is_some_and(|body| producers.can_end(body, 0)));
+            let writes_terminal = terminal
+                .as_ref()
+                .map(|t| t.written_by(root, &producers, b))
+                .unwrap_or_default();
             let is_ending = match occasion {
                 Some(o) => b.on == o,
-                None => doc.is_some_and(|d| {
-                    beat_body(d, b).is_some_and(|body| producers.can_end(body, 0))
-                }),
+                // An ending runs `::end`, or can make `terminal:` hold.
+                None => runs_end || !writes_terminal.is_empty(),
             };
             if !is_ending {
                 continue;
@@ -169,10 +266,14 @@ fn rows(
                         .collect()
                 })
                 .unwrap_or_default();
-            rows.push(row(root, group, &scenario, &producers, b, &about, &causes));
+            let mut row = row(root, group, &scenario, &producers, b, &about, &causes);
+            row.runs_end = runs_end;
+            row.terminal = writes_terminal;
+            rows.push(row);
         }
         out.push(RootRows {
             root: root.clone(),
+            terminal: terminal.map(|t| t.raw),
             rows,
         });
     }
@@ -241,6 +342,8 @@ fn row(
             (token, crate::reach_verdict_text(scenario, &node))
         };
     let when_authored = b.when_slot.map(|s| one_line(&s.raw));
+    // The occasion's `raisedWhen`: the beat plays only when it holds.
+    let gate = lute_check::gates::gate_of(&b.folded.occasions, b.on);
     let unreachable = about.iter().find(|d| {
         d.code == lute_check::E_BEAT_UNREACHABLE || d.code == lute_check::E_ENTRY_UNREACHABLE
     });
@@ -262,18 +365,29 @@ fn row(
             .collect();
         format!(" — caused by {}", each.join("; "))
     };
+    // A literal fault that makes the `when` never hold is that verdict's one
+    // report: the row still reads never-holds, caused by it.
+    let dead_by_cause = unreachable.is_none()
+        && !causes.is_empty()
+        && b.when_slot.is_some_and(|s| decides_false(b.folded, &s.raw));
     let (when_token, when_text) = if let Some(d) = unreachable {
         (
             "never-holds",
             format!("never holds{caused} ({}: {})", d.code, d.text()),
         )
+    } else if dead_by_cause {
+        ("never-holds", format!("never holds{caused}"))
     } else if let Some(d) = shadowed {
         (
             "never-wins",
             format!("never wins ({}: {})", d.code, d.text()),
         )
     } else if b.when.is_none() {
-        ("absent", "no `when` — always holds".to_string())
+        let always = match gate {
+            Some(_) => "no `when` — holds whenever its gate lets the occasion be raised",
+            None => "no `when` — always holds",
+        };
+        ("absent", always.to_string())
     } else {
         (
             "unrefuted",
@@ -284,7 +398,19 @@ fn row(
         (Some(expanded), "unrefuted") => needs(root, group, producers, expanded),
         _ => Vec::new(),
     };
-    let bucket = if after_token == "unreachable" || unreachable.is_some() || shadowed.is_some() {
+    // The gate is judged with the `when`: a refuted beat needs nothing.
+    let gate = gate.map(|raw| {
+        let needs = match when_token {
+            "never-holds" | "never-wins" => Vec::new(),
+            _ => self::needs(root, group, producers, &expand(b.folded, raw)),
+        };
+        (raw.to_string(), needs)
+    });
+    let bucket = if after_token == "unreachable"
+        || unreachable.is_some()
+        || dead_by_cause
+        || shadowed.is_some()
+    {
         Bucket::Unreachable
     } else if after_token == "unknown" {
         Bucket::Unknown
@@ -310,6 +436,10 @@ fn row(
         when_token,
         when_text,
         needs,
+        gate,
+        // Set by the caller, which decides what makes the beat an ending.
+        runs_end: false,
+        terminal: Vec::new(),
         causes: causes
             .iter()
             .map(|d| {
@@ -492,11 +622,112 @@ fn overlaps(w: &str, r: &str) -> bool {
         .all(|(a, b)| a == b || a == "*" || b == "*")
 }
 
-/// One root's writers of state and asserters of facts, as `(label, path)`.
+/// Where a write or assert sits: the beat (or quest) whose content makes
+/// it, and the component it runs inside when a `::use` brought it in.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct Origin {
+    /// `scene`, `entry`, `beat` or `quest`.
+    kind: &'static str,
+    id: String,
+    /// The document, root-relative.
+    file: String,
+    /// The `::use`d component.
+    via: Option<String>,
+}
+
+impl Origin {
+    /// ``scene `k` ``, ``scene `k` via component `c` ``.
+    fn text(&self) -> String {
+        match &self.via {
+            Some(c) => format!("{} `{}` via component `{c}`", self.kind, self.id),
+            None => format!("{} `{}`", self.kind, self.id),
+        }
+    }
+
+    /// Whether this is beat `b`'s own content (or a component it uses).
+    fn is_beat(&self, b: &ProjectBeat<'_>, root: &Path) -> bool {
+        let file = b
+            .path
+            .strip_prefix(root)
+            .unwrap_or(b.path)
+            .display()
+            .to_string();
+        self.file == file
+            && match b.kind {
+                // One scene per document.
+                ProjectBeatKind::Scene => self.kind == "scene",
+                ProjectBeatKind::Entry => self.kind == "entry" && self.id == b.id,
+                ProjectBeatKind::Bundle => self.kind == "beat" && self.id == b.id,
+            }
+    }
+}
+
+/// How a write is made.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum How {
+    /// `::set`.
+    Set,
+    /// A `<choice into>`.
+    ChoiceInto,
+    /// A plugin directive's declared `effects.writes`.
+    Directive(String),
+    /// A reward kind's `credits:`.
+    Reward(String),
+}
+
+/// One writer of a state path.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct Writer {
+    origin: Origin,
+    how: How,
+}
+
+impl Writer {
+    /// The writer as the text report names it.
+    fn text(&self) -> String {
+        let at = self.origin.text();
+        match &self.how {
+            How::Set => at,
+            How::ChoiceInto => format!("{at} (choice into)"),
+            How::Directive(tag) => format!("{at} via `::{tag}`"),
+            How::Reward(kind) => format!("{at} (reward `{kind}`)"),
+        }
+    }
+
+    /// `{ kind, id, file, how, via, directive?, reward?, text }`.
+    fn json(&self) -> Json {
+        let o = &self.origin;
+        let mut m = serde_json::Map::new();
+        m.insert("kind".into(), json!(o.kind));
+        m.insert("id".into(), json!(o.id));
+        m.insert("file".into(), json!(o.file));
+        let how = match &self.how {
+            How::Set => "set",
+            How::ChoiceInto => "choice into",
+            How::Directive(tag) => {
+                m.insert("directive".into(), json!(tag));
+                "directive"
+            }
+            How::Reward(kind) => {
+                m.insert("reward".into(), json!(kind));
+                "reward"
+            }
+        };
+        m.insert("how".into(), json!(how));
+        m.insert("via".into(), json!(o.via));
+        m.insert("text".into(), json!(self.text()));
+        Json::Object(m)
+    }
+}
+
+/// One root's writers of state and asserters of facts.
 struct Producers<'g> {
-    writes: Vec<(String, String)>,
+    /// `(writer, written path)`.
+    writes: Vec<(Writer, String)>,
     /// `(label, relation)` asserting sites the knowledge walk does not see.
     asserts: Vec<(String, String)>,
+    /// `(origin, relation)` of every assert, the document's own included.
+    asserted: Vec<(Origin, String)>,
     /// component name -> its document.
     components: BTreeMap<String, &'g Document>,
     snapshot: CapabilitySnapshot,
@@ -519,22 +750,35 @@ impl<'g> Producers<'g> {
         let mut p = Producers {
             writes: Vec::new(),
             asserts: Vec::new(),
+            asserted: Vec::new(),
             components,
             snapshot,
             group,
         };
-        for (_, doc, folded) in group {
+        let none = BTreeMap::new();
+        for (path, doc, folded) in group {
             if folded.typed.component.is_some() {
                 continue;
             }
+            let file = path
+                .strip_prefix(root)
+                .unwrap_or(path)
+                .display()
+                .to_string();
+            let at = |kind: &'static str, id: String| Origin {
+                kind,
+                id,
+                file: file.clone(),
+                via: None,
+            };
             if let Some(key) = lute_check::connectivity::scene_key(doc) {
-                let label = format!("scene `{key}`");
+                let origin = at("scene", key);
                 for shot in &doc.shots {
-                    p.walk(&shot.body, &label, &BTreeMap::new(), 0);
+                    p.walk(&shot.body, &origin, &none, 0);
                 }
             }
             for e in &doc.entries {
-                p.walk(&e.body, &format!("entry `{}`", e.id), &BTreeMap::new(), 0);
+                p.walk(&e.body, &at("entry", e.id.clone()), &none, 0);
             }
             let bundle = lute_check::connectivity::bundle_id(doc);
             for b in &doc.beats {
@@ -542,18 +786,23 @@ impl<'g> Producers<'g> {
                     Some(d) => lute_check::bundle_beat_key(d, &b.id),
                     None => b.id.clone(),
                 };
-                p.walk(&b.body, &format!("beat `{id}`"), &BTreeMap::new(), 0);
+                p.walk(&b.body, &at("beat", id), &none, 0);
             }
             for q in &doc.quests {
-                let label = format!("quest `{}`", q.id);
-                p.rewards(&q.rewards, &label);
-                p.walk(&q.body, &label, &BTreeMap::new(), 0);
+                let origin = at("quest", q.id.clone());
+                p.rewards(&q.rewards, &origin);
+                p.walk(&q.body, &origin, &none, 0);
             }
         }
         p
     }
 
-    fn rewards(&mut self, rewards: &[Reward], label: &str) {
+    fn write(&mut self, origin: &Origin, how: How, path: String) {
+        let origin = origin.clone();
+        self.writes.push((Writer { origin, how }, path));
+    }
+
+    fn rewards(&mut self, rewards: &[Reward], origin: &Origin) {
         for r in rewards {
             if let Some(path) = self
                 .snapshot
@@ -561,58 +810,67 @@ impl<'g> Producers<'g> {
                 .get(&r.kind)
                 .and_then(|k| k.credits.clone())
             {
-                self.writes
-                    .push((format!("{label} (reward `{}`)", r.kind), path));
+                self.write(origin, How::Reward(r.kind.clone()), path);
             }
         }
     }
 
-    /// Record every write / assert `nodes` makes, labelled `label`; a
-    /// `::use` walks its component with the call's arguments bound.
-    fn walk(&mut self, nodes: &[Node], label: &str, params: &BTreeMap<String, String>, depth: u8) {
+    /// Record every write / assert `nodes` makes at `origin`; a `::use`
+    /// walks its component with the call's arguments bound.
+    fn walk(
+        &mut self,
+        nodes: &[Node],
+        origin: &Origin,
+        params: &BTreeMap<String, String>,
+        depth: u8,
+    ) {
         for node in nodes {
             match node {
-                Node::Set(s) => self
-                    .writes
-                    .push((label.to_string(), normalize(&s.path, params))),
-                Node::Directive(d) => self.directive(d, label, params, depth),
+                Node::Set(s) => self.write(origin, How::Set, normalize(&s.path, params)),
+                Node::Directive(d) => self.directive(d, origin, params, depth),
                 Node::Branch(b) => {
                     for c in &b.choices {
-                        self.choice(&c.attrs, &c.body, label, params, depth);
+                        self.choice(&c.attrs, &c.body, origin, params, depth);
                     }
                 }
                 Node::Hub(h) => {
                     for c in &h.choices {
-                        self.choice(&c.attrs, &c.body, label, params, depth);
+                        self.choice(&c.attrs, &c.body, origin, params, depth);
+                    }
+                    if let Some(r) = &h.on_return {
+                        self.walk(&r.body, origin, params, depth);
                     }
                 }
                 Node::Match(m) => {
                     for arm in &m.arms {
                         let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
-                        self.walk(body, label, params, depth);
+                        self.walk(body, origin, params, depth);
                     }
                 }
-                Node::On(o) => self.walk(&o.body, label, params, depth),
+                Node::On(o) => self.walk(&o.body, origin, params, depth),
                 Node::Objective(o) => {
-                    self.rewards(&o.rewards, label);
-                    self.walk(&o.body, label, params, depth);
+                    self.rewards(&o.rewards, origin);
+                    self.walk(&o.body, origin, params, depth);
                 }
                 Node::Timeline(t) => {
                     for clip in t.tracks.iter().flat_map(|t| &t.clips) {
                         match &clip.node {
-                            ClipNode::Set(s) => self
-                                .writes
-                                .push((label.to_string(), normalize(&s.path, params))),
-                            ClipNode::Directive(d) => self.directive(d, label, params, depth),
+                            ClipNode::Set(s) => {
+                                self.write(origin, How::Set, normalize(&s.path, params))
+                            }
+                            ClipNode::Directive(d) => self.directive(d, origin, params, depth),
                         }
                     }
                 }
-                // Asserts in a document's own body are the knowledge walk's.
-                Node::Assert(a) if depth > 0 => {
-                    self.asserts
-                        .push((label.to_string(), a.pattern.relation.clone()));
+                Node::Assert(a) => {
+                    let relation = a.pattern.relation.clone();
+                    // Asserts in a document's own body are the knowledge walk's.
+                    if depth > 0 {
+                        self.asserts.push((origin.text(), relation.clone()));
+                    }
+                    self.asserted.push((origin.clone(), relation));
                 }
-                Node::Line(_) | Node::Assert(_) | Node::Retract(_) => {}
+                Node::Line(_) | Node::Retract(_) => {}
             }
         }
     }
@@ -621,22 +879,21 @@ impl<'g> Producers<'g> {
         &mut self,
         attrs: &[lute_syntax::ast::Attr],
         body: &[Node],
-        label: &str,
+        origin: &Origin,
         params: &BTreeMap<String, String>,
         depth: u8,
     ) {
         if let Some(AttrValue::Str(into)) = attrs.iter().find(|a| a.key == "into").map(|a| &a.value)
         {
-            self.writes
-                .push((format!("{label} (choice into)"), normalize(into, params)));
+            self.write(origin, How::ChoiceInto, normalize(into, params));
         }
-        self.walk(body, label, params, depth);
+        self.walk(body, origin, params, depth);
     }
 
     fn directive(
         &mut self,
         d: &Directive,
-        label: &str,
+        origin: &Origin,
         params: &BTreeMap<String, String>,
         depth: u8,
     ) {
@@ -668,13 +925,13 @@ impl<'g> Producers<'g> {
             if depth > 8 {
                 return;
             }
-            let label = if depth == 0 {
-                format!("{label} via component `{name}`")
-            } else {
-                label.to_string()
-            };
+            // The outermost component names the way in.
+            let mut inner = origin.clone();
+            if inner.via.is_none() {
+                inner.via = Some(name.clone());
+            }
             for shot in &doc.shots {
-                self.walk(&shot.body, &label, &args, depth + 1);
+                self.walk(&shot.body, &inner, &args, depth + 1);
             }
             return;
         }
@@ -685,7 +942,6 @@ impl<'g> Producers<'g> {
         else {
             return;
         };
-        let label = format!("{label} via `::{}`", d.tag);
         for w in &effects.writes {
             let mut segs = vec![w.scope.clone()];
             segs.extend(w.path.iter().map(|s| {
@@ -697,10 +953,19 @@ impl<'g> Producers<'g> {
                         .unwrap_or_else(|| "*".to_string()),
                 }
             }));
-            self.writes.push((label.clone(), segs.join(".")));
+            let origin = origin.clone();
+            self.writes.push((
+                Writer {
+                    origin,
+                    how: How::Directive(d.tag.clone()),
+                },
+                segs.join("."),
+            ));
         }
         for a in &effects.asserts {
-            self.asserts.push((label.clone(), a.relation.clone()));
+            let label = format!("{} via `::{}`", origin.text(), d.tag);
+            self.asserts.push((label, a.relation.clone()));
+            self.asserted.push((origin.clone(), a.relation.clone()));
         }
     }
 
@@ -727,7 +992,7 @@ impl<'g> Producers<'g> {
         nodes.iter().any(|node| match node {
             Node::Directive(d) => directive(d),
             Node::Branch(b) => b.choices.iter().any(|c| self.nodes_end(&c.body, depth)),
-            Node::Hub(h) => h.choices.iter().any(|c| self.nodes_end(&c.body, depth)),
+            Node::Hub(h) => h.bodies().any(|b| self.nodes_end(b, depth)),
             Node::On(o) => self.nodes_end(&o.body, depth),
             Node::Objective(o) => self.nodes_end(&o.body, depth),
             Node::Match(m) => m.arms.iter().any(|arm| {
@@ -763,7 +1028,7 @@ impl<'g> Producers<'g> {
     fn of_path(&self, path: &str) -> Need {
         let mut segs = path.split('.');
         let head = segs.next().unwrap_or_default();
-        let need = |producers: Vec<String>, none: bool, note: Option<String>| Need {
+        let need = |producers: Vec<Writer>, none: bool, note: Option<String>| Need {
             what: path.to_string(),
             producers,
             none,
@@ -788,19 +1053,23 @@ impl<'g> Producers<'g> {
             true => (path.strip_prefix("prev.").unwrap_or(path).to_string(), true),
             false => (path.to_string(), false),
         };
-        let mut writers: BTreeSet<String> = self
+        let mut writers: BTreeSet<Writer> = self
             .writes
             .iter()
             .filter(|(_, w)| overlaps(w, &target))
-            .map(|(label, _)| label.clone())
+            .map(|(writer, _)| writer.clone())
             .collect();
         // A body the checker already spliced a component's effects into
-        // writes the same path under its own label; the `via` one says why.
-        let spliced: Vec<String> = writers
+        // writes the same path as its own; the `via` one says why.
+        let spliced: Vec<Writer> = writers
             .iter()
-            .filter_map(|l| {
-                l.split_once(" via component ")
-                    .map(|(own, _)| own.to_string())
+            .filter(|w| w.origin.via.is_some())
+            .map(|w| Writer {
+                origin: Origin {
+                    via: None,
+                    ..w.origin.clone()
+                },
+                how: w.how.clone(),
             })
             .collect();
         for own in spliced {
@@ -835,6 +1104,31 @@ impl<'g> Producers<'g> {
     }
 }
 
+/// A need's text line: what, and who produces it.
+fn need_line(out: &mut String, n: &Need) {
+    let mut parts = Vec::new();
+    if !n.producers.is_empty() {
+        let by: Vec<String> = n.producers.iter().map(Writer::text).collect();
+        parts.push(format!("written by {}", by.join(", ")));
+    }
+    if let Some(note) = &n.note {
+        parts.push(note.clone());
+    }
+    if parts.is_empty() {
+        parts.push("producers not determined".to_string());
+    }
+    outln!(out, "      {} — {}", n.what, parts.join("; "));
+}
+
+fn need_json(n: &Need) -> Json {
+    json!({
+        "what": n.what,
+        "writers": n.producers.iter().map(Writer::json).collect::<Vec<_>>(),
+        "note": n.note,
+        "nothingProduces": n.none,
+    })
+}
+
 /// `lute scenario <dir> reach --endings[=<occasion>]`, text.
 pub(crate) fn run_text(
     out: &mut String,
@@ -846,19 +1140,26 @@ pub(crate) fn run_text(
         Ok(r) => r,
         Err(code) => return code,
     };
-    let what = match occasion {
-        Some(o) => format!("the beats answering `{o}`"),
-        None => "the beats whose content can run `::end`".to_string(),
-    };
     for r in &roots {
+        let what = match (occasion, &r.terminal) {
+            (Some(o), _) => format!("the beats answering `{o}`"),
+            (None, Some(t)) => format!(
+                "the beats whose content can run `::end` or write what `terminal: {t}` reads"
+            ),
+            (None, None) => "the beats whose content can run `::end`".to_string(),
+        };
         outln!(out, "project root: {}", r.root.display());
         outln!(out, "endings ({what}):");
         if r.rows.is_empty() && occasion.is_none() {
             // OT-F-13: a game that ends by an occasion, not by `::end`.
+            let ends = match &r.terminal {
+                Some(t) => format!("runs `::end` or writes what `terminal: {t}` reads"),
+                None => "runs `::end`".to_string(),
+            };
             outln!(
                 out,
-                "  (none) — no beat's content runs `::end`; if the game ends on an occasion, \
-                 name it: `--endings=<occasion>`"
+                "  (none) — no beat's content {ends}; if the game ends on an occasion, name it: \
+                 `--endings=<occasion>`"
             );
         } else if r.rows.is_empty() {
             outln!(out, "  (none)");
@@ -872,23 +1173,32 @@ pub(crate) fn run_text(
                 row.file,
                 row.bucket.as_str()
             );
+            if let (false, Some(t)) = (row.terminal.is_empty(), &r.terminal) {
+                let what: Vec<String> = row.terminal.iter().map(|w| format!("`{w}`")).collect();
+                outln!(
+                    out,
+                    "    ends: writes {}, which `terminal: {t}` reads",
+                    what.join(", ")
+                );
+            }
             outln!(out, "    after: {}", row.after_text);
+            if let Some((gate, needs)) = &row.gate {
+                let tail = if needs.is_empty() {
+                    ""
+                } else {
+                    " — it needs:"
+                };
+                outln!(out, "    gate: `raisedWhen: {gate}`{tail}");
+                for n in needs {
+                    need_line(out, n);
+                }
+            }
             match &row.when {
                 Some(w) => outln!(out, "    when: `{w}` — {}", row.when_text),
                 None => outln!(out, "    when: {}", row.when_text),
             }
             for n in &row.needs {
-                let mut parts = Vec::new();
-                if !n.producers.is_empty() {
-                    parts.push(format!("written by {}", n.producers.join(", ")));
-                }
-                if let Some(note) = &n.note {
-                    parts.push(note.clone());
-                }
-                if parts.is_empty() {
-                    parts.push("producers not determined".to_string());
-                }
-                outln!(out, "      {} — {}", n.what, parts.join("; "));
+                need_line(out, n);
             }
         }
         let count = |b: Bucket| r.rows.iter().filter(|x| x.bucket == b).count();
@@ -946,7 +1256,13 @@ pub(crate) fn json(
                         "kind": row.kind,
                         "file": row.file,
                         "verdict": row.bucket.as_str(),
+                        "runsEnd": row.runs_end,
+                        "writesTerminal": row.terminal,
                         "after": { "reach": row.after_token, "text": row.after_text },
+                        "gate": row.gate.as_ref().map(|(text, needs)| json!({
+                            "text": text,
+                            "needs": needs.iter().map(need_json).collect::<Vec<_>>(),
+                        })),
                         "when": {
                             "text": row.when,
                             "verdict": row.when_token,
@@ -958,18 +1274,14 @@ pub(crate) fn json(
                             "column": column,
                             "message": message,
                         })).collect::<Vec<_>>(),
-                        "needs": row.needs.iter().map(|n| json!({
-                            "what": n.what,
-                            "writers": n.producers,
-                            "note": n.note,
-                            "nothingProduces": n.none,
-                        })).collect::<Vec<_>>(),
+                        "needs": row.needs.iter().map(need_json).collect::<Vec<_>>(),
                     })
                 })
                 .collect();
             json!({
                 "root": r.root.display().to_string(),
                 "occasion": occasion,
+                "terminal": r.terminal,
                 "endings": endings,
                 "summary": {
                     "endings": r.rows.len(),

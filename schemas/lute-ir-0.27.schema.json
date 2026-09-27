@@ -92,7 +92,7 @@
       "items": {
         "$ref": "#/$defs/prereqEdgeEntry"
       },
-      "description": "advisory raw `after` prerequisite edges (connectivity T13); omitted when empty."
+      "description": "advisory raw `after` / `follows` graph edges (connectivity T13); omitted when empty."
     },
     "shots": {
       "type": "array",
@@ -134,6 +134,11 @@
         "required": ["name", "live"]
       },
       "description": "dsl 0.27.0 §5: the declared seasons, name-sorted, each with its `@def`-expanded `live` condition. When `live` goes false→true the engine opens the season: `season.<name>.*` back to the declared defaults (the old values to `prev.season.<name>.*`), its `once: season:<name>` beats and `tier: season:<name>` quests reset. Omitted when none; serialized after `clock`, `gates` and `terminal`."
+    },
+    "outsideRun": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "dsl 0.28.0 (T2-9): the occasions declared `outsideRun: true`, name-sorted. The engine raises these even after `terminal` holds (a title screen, a gallery between runs); every other occasion stays closed once the game is over. Omitted when none; serialized after `seasons`."
     }
   },
   "allOf": [
@@ -383,6 +388,10 @@
         },
         "expr": {
           "$ref": "#/$defs/exprNode"
+        },
+        "authored": {
+          "type": "string",
+          "description": "A seam condition (`gates[].raisedWhen`, `terminal`, `seasons[].live`) as its author wrote it (`@stageReleased`), present only when `@def` expansion changed it. For messages; the engine evaluates `raw`."
         }
       },
       "additionalProperties": true,
@@ -452,6 +461,10 @@
             "token": {
               "type": "string",
               "description": "reserved token (only userName in 0.1)."
+            },
+            "format": {
+              "$ref": "#/$defs/placeholderFormat",
+              "description": "A text hint (`capitalize`, `start`, `indefinite`) on the rendered token."
             }
           },
           "additionalProperties": true,
@@ -462,7 +475,7 @@
         },
         {
           "type": "object",
-          "description": "dsl 0.26.0 §5: {{occasion.target}} in a beat or entry targeting a kind (or, dsl 0.27.0 §3, presented once per member with `forKind`) — the member the beat runs for (the beat's `occasion.target`), a member of `entityKind`. Render the member's display name: its cast `name:` when the member is a cast id, else (dsl 0.27.0 §7) the `labels[member]` of the `entities[]` entry named `entityKind`, else the id.",
+          "description": "dsl 0.26.0 §5: {{occasion.target}} in a beat or entry targeting a kind (or, dsl 0.27.0 §3, presented once per member with `forKind`) — the member the beat runs for (the beat's `occasion.target`), a member of `entityKind`. Render the member's display name: the `labels[member]` of the `entities[]` entry named `entityKind`, else its cast `name:` when the member is a cast id, else the id.",
           "properties": {
             "kind": {
               "const": "occasionTarget"
@@ -470,6 +483,10 @@
             "entityKind": {
               "type": "string",
               "description": "The beat's `target=\"kind:<kind>\"` kind (its `targetKind.kind`), or its `forKind.kind`."
+            },
+            "format": {
+              "$ref": "#/$defs/placeholderFormat",
+              "description": "A text hint (`capitalize`, `start`, `indefinite`) on the rendered member: `start` / `indefinite` render the `labelForms[member]` form of the `entities[]` entry named `entityKind` when it declares one."
             }
           },
           "additionalProperties": true,
@@ -481,12 +498,32 @@
       ]
     },
     "placeholderFormat": {
-      "description": "dsl 0.24.0 §4 / 0.25.0 §8 / 0.27.0 §7: the interpolation's format hint ({{user.deaths:ordinal}}), omitted when none was written. The engine renders the value in that format (a locale-aware engine localizes it). `ordinal`: a non-negative integer as an English ordinal (1st 2nd 3rd 4th … 11th 12th 13th … 21st 22nd … 101st 111th). `ordinalWord`: an ordinal word (first second … twentieth for 1–20, the `ordinal` digits above). `plural`: the placeholder's `forms` — the first when the number is 1, the second otherwise, each `#` replaced by the number. Any other value renders unchanged.",
+      "description": "dsl 0.24.0 §4 / 0.25.0 §8 / 0.27.0 §7: the interpolation's format hint ({{user.deaths:ordinal}}), omitted when none was written. The engine renders the value in that format (a locale-aware engine localizes it). `ordinal`: a non-negative integer as an English ordinal (1st 2nd 3rd 4th … 11th 12th 13th … 21st 22nd … 101st 111th). `ordinalWord`: an ordinal word (first second … twentieth for 1–20, the `ordinal` digits above). `cardinalWord`: a cardinal word (one two … twenty for 1–20, the digits otherwise). `plural`: the placeholder's `forms` — the first when the number is 1, the second otherwise, with `#word` replaced by the number as a cardinal word, `#Word` by that word capitalized and any other `#` by the number. The text hints apply to the text the value renders as (a label, a cast name, a string): `capitalize` upper-cases its first letter; `start` renders the member's declared `labelForms` `start` form, else `capitalize`; `indefinite` renders the declared `indefinite` form, else `an` (before a vowel) or `a`, a space and the text. Any other value renders unchanged.",
       "enum": [
         "ordinal",
         "ordinalWord",
-        "plural"
+        "cardinalWord",
+        "plural",
+        "capitalize",
+        "start",
+        "indefinite"
       ]
+    },
+    "labelForms": {
+      "description": "member → the label forms a kind's `labels:` entry declares beside its text (`{ text, start, indefinite }`): `start` is what a `:start` placeholder renders, `indefinite` what an `:indefinite` one renders. Omitted when no member declares a form; an absent form falls back (see `placeholderFormat`).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "indefinite": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
     },
     "placeholderForms": {
       "description": "dsl 0.27.0 §7: a `plural` placeholder's forms as written in {{n:plural(lantern|lanterns)}} — the English singular, then the plural; a `#` in a form stands for the number. Present exactly when `format` is `plural`; an engine may localize the count from them.",
@@ -528,7 +565,10 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "dsl 0.27.0 §7: member → display text (the kind's `labels:`, with its sub-kinds' and ancestors' labels for shared members). What a {{…}} of a value of this kind renders — an `occasionTarget` placeholder of this `entityKind` (a cast `name:` wins); a `{ domain: <kind> }` state path carries the same map as `state[].labels`. Omitted when none; an unlabelled member renders its id."
+          "description": "dsl 0.27.0 §7: member → display text (the kind's `labels:`, with its sub-kinds' and ancestors' labels for shared members). What a {{…}} of a value of this kind renders — an `occasionTarget` placeholder of this `entityKind` (over a cast `name:`); a `{ domain: <kind> }` state path carries the same map as `state[].labels`. Omitted when none; an unlabelled member renders its id."
+        },
+        "labelForms": {
+          "$ref": "#/$defs/labelForms"
         }
       },
       "additionalProperties": true,
@@ -573,7 +613,7 @@
         },
         "tier": {
           "type": "string",
-          "description": "effective write tier for base relations (default `run`); ABSENT for `derive: true` (a derived relation has no write tier)."
+          "description": "effective write tier for base relations (default `run`): `scene`, `run`, `user`, `app`, `quest`, or `season:<name>` — the relation's facts go back to the seed facts each time that declared season opens. ABSENT for `derive: true` (a derived relation has no write tier)."
         },
         "derive": {
           "type": "boolean"
@@ -816,15 +856,22 @@
         },
         "after": {
           "type": "string",
-          "description": "the RAW declared `after` formula text — unresolved, unvalidated CEL."
+          "description": "a scene's `after:` or a bundle beat's `after=`: the RAW declared prerequisite formula text — unresolved, unvalidated CEL. An eligibility gate."
+        },
+        "follows": {
+          "type": "string",
+          "description": "a quest's `follows=`: the RAW declared quest-graph formula text — unresolved, unvalidated CEL. Graph metadata only; it never gates the quest (its `start` does)."
         }
       },
       "additionalProperties": true,
       "required": [
-        "node",
-        "after"
+        "node"
       ],
-      "description": "One advisory prerequisite edge (connectivity spec §2.6, T13): a single node's raw declared `after`, verbatim."
+      "oneOf": [
+        { "required": ["after"] },
+        { "required": ["follows"] }
+      ],
+      "description": "One advisory graph edge (connectivity spec §2.6, T13): a single node's raw declared `after` (scene, bundle beat) or `follows` (quest), verbatim."
     },
     "sceneMeta": {
       "type": "object",
@@ -1057,6 +1104,9 @@
             "type": "string"
           },
           "description": "dsl 0.24.0 §1: value -> display label, from the named enum the path is typed against (`{ domain: <name> }`). A `{{path}}` interpolation renders the label when the value has one, the value otherwise. Absent when the enum declares no labels."
+        },
+        "labelForms": {
+          "$ref": "#/$defs/labelForms"
         }
       },
       "additionalProperties": true,
@@ -1274,10 +1324,10 @@
           "$ref": "#/$defs/celPair",
           "description": "Optional CEL gate evaluated at the grant instant (spec §3). Grants fire iff `when` decides Bool(true); a `false`/`unknown` gate silently skips the entry once (a transition is monotone and fires at most once, so `when` is a one-shot filter, not a re-triable predicate)."
         },
-        "on": {
+        "outcome": {
           "type": "string",
           "enum": ["failed"],
-          "description": "Optional lifecycle-transition filter (dsl 0.16.0 §2). Only ever `\"failed\"` on the wire, and only on a quest-level entry — a quest reward with `on=\"failed\"` grants ONLY on a fresh `failed` transition (authored `fail` OR §2.3 cascade); absent `on=` means the reward grants ONLY on a fresh `complete`. Objective-level entries never carry `on=` (checker `E-REWARD-ATTR`)."
+          "description": "Optional lifecycle-transition filter (dsl 0.16.0 §2). Only ever `\"failed\"` on the wire, and only on a quest-level entry — a quest reward with `outcome=\"failed\"` grants ONLY on a fresh `failed` transition (authored `fail` OR §2.3 cascade); absent `outcome=` means the reward grants ONLY on a fresh `complete`. Objective-level entries never carry `outcome=` (checker `E-REWARD-ATTR`)."
         },
         "credits": {
           "type": "string",
@@ -1286,7 +1336,7 @@
       },
       "additionalProperties": true,
       "required": ["kind"],
-      "description": "One `<reward kind= target= amount= when= on=/>` declaration (dsl 0.16.0 §2/§3). Pure data — the compiler NEVER synthesizes handler bodies or `Command::Set` records for a reward; the reference engine (`crates/lute-cli/src/runner.rs` `Runner::emit_grants`) emits deterministic `grant` transcript events at each fresh lifecycle transition, and `lute trace` mirrors those events (`crates/lute-trace/src/walk.rs`)."
+      "description": "One `<reward kind= target= amount= when= outcome=/>` declaration (dsl 0.16.0 §2/§3). Pure data — the compiler NEVER synthesizes handler bodies or `Command::Set` records for a reward; the reference engine (`crates/lute-cli/src/runner.rs` `Runner::emit_grants`) emits deterministic `grant` transcript events at each fresh lifecycle transition, and `lute trace` mirrors those events (`crates/lute-trace/src/walk.rs`)."
     },
     "objectiveEntry": {
       "type": "object",
@@ -1303,8 +1353,9 @@
         "done": {
           "$ref": "#/$defs/celPair"
         },
-        "when": {
-          "$ref": "#/$defs/celPair"
+        "visibleWhen": {
+          "$ref": "#/$defs/celPair",
+          "description": "visibility only: the objective is shown only while this holds. It never gates `done` (authored `visibleWhen=`). Absent when not authored."
         },
         "optional": {
           "type": "boolean"
@@ -1325,7 +1376,7 @@
           "items": {
             "$ref": "#/$defs/rewardEntry"
           },
-          "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this objective in declaration order. Objective grants fire once at fresh `done` (spec §3 D-D), BEFORE any quest-level grant. `on=` is never legal on an objective-level entry (checker `E-REWARD-ATTR`); every entry here has no `on` field. Omitted when the objective authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
+          "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this objective in declaration order. Objective grants fire once at fresh `done` (spec §3 D-D), BEFORE any quest-level grant. `outcome=` is never legal on an objective-level entry (checker `E-REWARD-ATTR`); every entry here has no `outcome` field. Omitted when the objective authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
         },
         "on": {
           "type": "string",
@@ -2177,6 +2228,10 @@
           "type": "string",
           "description": "dsl 0.23.0 §4: the prompt line shown with the hub's options. Present only when authored."
         },
+        "return": {
+          "type": "string",
+          "description": "dsl 0.28.0 §5: address of the hub's `<return>` segment. It runs each time a non-exit option's segment ends, before the hub is judged and presented again; like an option target it bounds the segment before it. Present only when authored."
+        },
         "wait": {
           "type": "boolean"
         },
@@ -2342,7 +2397,7 @@
           "items": {
             "$ref": "#/$defs/rewardEntry"
           },
-          "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this quest in declaration order. Quest grants fire at fresh `complete`/`failed` transitions (spec §3 D-D). A `<reward on=\"failed\"/>` entry fires ONLY on `failed` (authored fail OR §2.3 downward cascade); a default (no `on=`) entry fires ONLY on `complete`. Runs BEFORE the corresponding `questComplete`/`questFailed` handler bodies. Omitted when the quest authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
+          "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this quest in declaration order. Quest grants fire at fresh `complete`/`failed` transitions (spec §3 D-D). A `<reward outcome=\"failed\"/>` entry fires ONLY on `failed` (authored fail OR §2.3 downward cascade); a default (no `outcome=`) entry fires ONLY on `complete`. Runs BEFORE the corresponding `questComplete`/`questFailed` handler bodies. Omitted when the quest authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
         },
         "rearm": {
           "$ref": "#/$defs/celPair",

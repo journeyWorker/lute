@@ -9,7 +9,7 @@ use lute_manifest::provider::ProviderSet;
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
 entities:\n  person: { members: [ann, bob] }\n  town: { members: [t1, t2] }\n\
-relations:\n  toured: { args: [person, town] }\n  listed: { args: [person] }\n\
+relations:\n  toured: { args: [person, town], tier: run }\n  listed: { args: [person], tier: run }\n\
 \x20 traveled: { args: [person], derive: true }\n  busy: { args: [person], derive: true }\n\
 facts:\n  - \"listed(ann)\"\n  - \"toured(ann, t1)\"\n";
 

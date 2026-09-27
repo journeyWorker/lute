@@ -17,7 +17,7 @@ facts:
 choose:
   theCorrection: listTheMass
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Two of you, then, and a wall. Whatever was going to be said had to be said by the people who were awake to say it."
     - "Crew addition. One name. Ottavio, loader, aboard since the yard, eats and breathes like the rest of us."

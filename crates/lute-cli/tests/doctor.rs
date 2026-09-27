@@ -134,16 +134,16 @@ fn doctor_counts_bundle_beats_answering_an_occasion() {
     );
 }
 
-/// dsl 0.27.0 §8 (round-5 First N1): a scene whose `on:` the manifest's
-/// `sequence:` derives answers that occasion, so doctor counts it.
+/// A scene whose `on:` the manifest's `chapters:` derives answers that
+/// occasion, so doctor counts it.
 #[test]
-fn doctor_counts_scenes_a_sequence_puts_on_an_occasion() {
-    let proj = occasions_project("sequence");
+fn doctor_counts_scenes_a_chain_puts_on_an_occasion() {
+    let proj = occasions_project("chapters");
     write_at(
         &proj,
         "lute.project.yaml",
         "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    plugins: { demo.occasions: true }\n\
-         sequence:\n  occasion: hubVisit\n  scenes: [ch.one, ch.two]\n",
+         chapters:\n  - on: hubVisit\n    scenes: [ch.one, ch.two]\n",
     );
     for id in ["one", "two"] {
         write_at(
@@ -152,7 +152,7 @@ fn doctor_counts_scenes_a_sequence_puts_on_an_occasion() {
             &format!("---\nkind: scene\nid: ch.{id}\n---\n\n## One\n\n@narrator: {id}.\n"),
         );
     }
-    let text = doctor(&proj, &temp_dir("sequence-path"));
+    let text = doctor(&proj, &temp_dir("chapters-path"));
     assert_eq!(
         line(&text, "occasions (beats answering)").trim(),
         "• occasions (beats answering): 2 declared, 4 beat(s) — hubVisit (4), talk (0)",
@@ -315,9 +315,10 @@ fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
 
 /// Round-5 OT-F5: a bun/npm global install puts the package's `lsp-bin.js`
 /// launcher (a symlink into `node_modules/@lute-lang/lute/`) on `PATH`,
-/// while `lute` runs the native binary beside its own `lute-lsp`. The two
-/// files never match byte for byte, so the launcher's reported version
-/// decides: the same version passes, another fails.
+/// while `lute` runs the native binary beside its own `lute-lsp`. Doctor
+/// compares the binary the launcher starts: the sibling's bytes pass,
+/// another build of the same version fails. A launcher that starts nothing
+/// doctor can find is judged by the version it reports, and says so.
 #[cfg(unix)]
 #[test]
 fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
@@ -331,7 +332,7 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
         &sibling,
         &format!("#!/bin/sh\nprintf 'lute-lsp {ours}\\n'\n"),
     );
-    let launcher_at = |tag: &str, version: &str| {
+    let launcher_at = |tag: &str, version: &str, starts: Option<&[u8]>| {
         let root = temp_dir(tag);
         let pkg = root.join("node_modules/@lute-lang/lute");
         std::fs::create_dir_all(&pkg).unwrap();
@@ -340,6 +341,10 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
             &script,
             &format!("#!/bin/sh\nprintf 'lute-lsp {version}\\n'\n"),
         );
+        if let Some(bytes) = starts {
+            std::fs::create_dir_all(pkg.join("bin")).unwrap();
+            std::fs::write(pkg.join("bin/lute-lsp"), bytes).unwrap();
+        }
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         std::os::unix::fs::symlink(&script, bin.join("lute-lsp")).unwrap();
@@ -356,14 +361,38 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
         String::from_utf8_lossy(&out.stdout).to_string()
     };
 
-    let text = run(&launcher_at("launcher-current", ours));
+    let text = run(&launcher_at("launcher-current", ours, None));
     let l = line(&text, "lute-lsp beside lute");
-    assert!(l.contains('✓') && l.contains("npm launcher"), "{text}");
+    assert!(
+        l.contains('✓')
+            && l.contains("npm launcher")
+            && l.contains("compared by reported version only"),
+        "{text}"
+    );
 
-    let text = run(&launcher_at("launcher-stale", "0.17.1"));
+    let text = run(&launcher_at("launcher-stale", "0.17.1", None));
     let l = line(&text, "lute-lsp beside lute");
     assert!(
         l.contains('✗') && l.contains("0.17.1") && l.contains(&format!("differs from lute {ours}")),
+        "{text}"
+    );
+
+    let same = std::fs::read(&sibling).unwrap();
+    let text = run(&launcher_at("launcher-same", ours, Some(&same)));
+    let l = line(&text, "lute-lsp beside lute");
+    assert!(
+        l.contains('✓') && l.contains("starts the same build"),
+        "{text}"
+    );
+
+    // Another build that reports this very version: only the bytes tell.
+    let other = format!("#!/bin/sh\n# another build\nprintf 'lute-lsp {ours}\\n'\n");
+    let text = run(&launcher_at("launcher-other", ours, Some(other.as_bytes())));
+    let l = line(&text, "lute-lsp beside lute");
+    assert!(
+        l.contains('✗')
+            && l.contains("another build than")
+            && !l.contains("compared by reported version"),
         "{text}"
     );
 }

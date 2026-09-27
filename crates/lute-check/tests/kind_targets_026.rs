@@ -130,6 +130,7 @@ fn project_codes(kinds: &str, body: &str) -> Vec<(String, String)> {
         &[&folded],
         &lute_check::cast::fact_producers(&docs, &Default::default()),
         None,
+        &Default::default(),
     )
     .into_iter()
     .map(|(_, d)| (d.code, d.message))

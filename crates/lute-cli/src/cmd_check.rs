@@ -44,8 +44,9 @@ fn callers_of_component(root: &Path, name: &str) -> Vec<PathBuf> {
     out
 }
 
-/// True when any `::use` anywhere in `doc` names component `name`. Reads the
-/// same attribute `lute_check`'s `fold_use` reads.
+/// True when any `::use` anywhere in `doc` names component `name`, or a
+/// `<beat use="name">` applies it as a beat template (dsl 0.27.0 §6). Reads
+/// the same attribute `lute_check`'s `fold_use` reads.
 fn document_uses_component(doc: &lute_syntax::ast::Document, name: &str) -> bool {
     doc.shots
         .iter()
@@ -54,6 +55,14 @@ fn document_uses_component(doc: &lute_syntax::ast::Document, name: &str) -> bool
             .quests
             .iter()
             .any(|quest| nodes_use_component(&quest.body, name))
+        || doc
+            .entries
+            .iter()
+            .any(|entry| nodes_use_component(&entry.body, name))
+        || doc.beats.iter().any(|beat| {
+            beat.template.as_ref().is_some_and(|t| t.name == name)
+                || nodes_use_component(&beat.body, name)
+        })
 }
 
 /// Whether `d` is a `::use` of `name`.
@@ -73,7 +82,7 @@ fn nodes_use_component(nodes: &[lute_syntax::ast::Node], name: &str) -> bool {
     nodes.iter().any(|node| match node {
         Node::Directive(d) => directive_uses_component(d, name),
         Node::Branch(b) => b.choices.iter().any(|c| nodes_use_component(&c.body, name)),
-        Node::Hub(h) => h.choices.iter().any(|c| nodes_use_component(&c.body, name)),
+        Node::Hub(h) => h.bodies().any(|b| nodes_use_component(b, name)),
         Node::On(o) => nodes_use_component(&o.body, name),
         Node::Objective(o) => nodes_use_component(&o.body, name),
         Node::Match(m) => m.arms.iter().any(|arm| match arm {
@@ -152,6 +161,7 @@ pub(crate) fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
         &cast,
         &folded.env.domains,
         &folded.env.state,
+        &folded.env.occasion_scopes,
     );
     let bodies = if folded.typed.component.is_some() {
         let mut bodies = folded.def_bodies.clone();
@@ -194,12 +204,7 @@ pub(crate) fn merge_gate_diags(result: &mut lute_check::CheckResult, gate: Vec<D
     if !added {
         return;
     }
-    result.diagnostics.sort_by(|a, b| {
-        a.span
-            .byte_start
-            .cmp(&b.span.byte_start)
-            .then_with(|| a.code.cmp(&b.code))
-    });
+    result.diagnostics.sort_by(lute_check::diagnostic_order);
     result.ok = !result
         .diagnostics
         .iter()
@@ -368,7 +373,7 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
         let end = d.span.byte_end.min(byte_end).max(start);
         d.span = Span::from_bytes(&idx, start, end);
     }
-    diagnostics.sort_by(|a, b| (a.span.byte_start, &a.code).cmp(&(b.span.byte_start, &b.code)));
+    diagnostics.sort_by(lute_check::diagnostic_order);
     let result = lute_check::CheckResult {
         ok: !diagnostics.iter().any(|d| d.severity == Severity::Error),
         diagnostics,

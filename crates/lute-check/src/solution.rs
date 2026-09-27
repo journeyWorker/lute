@@ -183,7 +183,7 @@ pub(crate) fn domain_value(d: &Decided) -> Option<DomainValue> {
     }
 }
 
-fn contains(set: &SolutionSet, value: &Decided) -> bool {
+pub(crate) fn contains(set: &SolutionSet, value: &Decided) -> bool {
     match set {
         SolutionSet::Interval {
             lo,

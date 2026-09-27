@@ -88,75 +88,6 @@ pub fn check_speakers(doc: &Document, cast: &BTreeMap<String, CastMember>) -> Ve
     out
 }
 
-/// A kind's `labels:` entry names a cast member whose `name:` is what text
-/// renders, so the label is never shown (dsl 0.27.0 §7).
-pub const W_LABEL_CAST_SHADOWED: &str = "W-LABEL-CAST-SHADOWED";
-
-/// [`W_LABEL_CAST_SHADOWED`] for every `labels:` entry the document sees —
-/// the imported kinds' (at the entry's schema line, folded across importers)
-/// and its own `entities:` (at the entry) — whose member is a cast member
-/// with a `name:` other than the label: a `{{…}}` of that member renders the
-/// cast name (dsl 0.27.0 §7), never the label.
-pub fn check_label_shadows(
-    imports: &crate::schema_import::RelImports,
-    own: &lute_manifest::relations::ParsedKinds,
-    meta: &lute_syntax::ast::Meta,
-    cast: &BTreeMap<String, CastMember>,
-) -> Vec<Diagnostic> {
-    use crate::rel_schema::{at_origin, kind_label_spans, member_origin_key};
-    let shadowed = |member: &str, label: &str| {
-        let name = cast.get(member)?.name.as_deref()?;
-        (name != label).then(|| {
-            format!(
-                "label `{label}` for `{member}` is never shown: `{member}` is a cast member, \
-                 whose `name:` (`{name}`) is what text renders — drop the label or change the \
-                 cast name (dsl 0.27.0 §7)"
-            )
-        })
-    };
-    let warning = |message: String, span: Span| Diagnostic {
-        code: W_LABEL_CAST_SHADOWED.to_string(),
-        severity: Severity::Warning,
-        message,
-        span,
-        layer: Layer::Content,
-        fixits: Vec::new(),
-        provenance: None,
-        covered: Vec::new(),
-        related: Vec::new(),
-    };
-    let mut out = Vec::new();
-    for (kind, decl) in &imports.kinds {
-        if own.kinds.contains_key(kind) {
-            continue;
-        }
-        for (member, label) in &decl.labels {
-            if let Some(message) = shadowed(member, label) {
-                let origin = imports.origins.labels.get(&member_origin_key(kind, member));
-                out.push(at_origin(warning(message, meta.span), origin));
-            }
-        }
-    }
-    let own_labels = own
-        .kinds
-        .iter()
-        .map(|(kind, decl)| (kind, &decl.labels))
-        .chain(own.add_labels.iter());
-    for (kind, labels) in own_labels {
-        let spans = kind_label_spans(meta, kind);
-        for (member, label) in labels {
-            if let Some(message) = shadowed(member, label) {
-                let span = spans
-                    .iter()
-                    .find(|(m, _)| m == member)
-                    .map_or_else(|| crate::meta::meta_key_span(meta, kind), |(_, s)| *s);
-                out.push(warning(message, span));
-            }
-        }
-    }
-    out
-}
-
 /// The character-naming attribute of a staging directive (dsl 0.24.0 §4):
 /// `::auto{character}` and `::camera{focus}`.
 fn staged_attr(tag: &str) -> Option<&'static str> {
@@ -197,7 +128,7 @@ fn collect_staged<'a>(nodes: &'a [Node], out: &mut Vec<(&'static str, &'a str, S
                 }
             }
             Node::Branch(b) => b.choices.iter().for_each(|c| collect_staged(&c.body, out)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| collect_staged(&c.body, out)),
+            Node::Hub(h) => h.bodies().for_each(|b| collect_staged(b, out)),
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {
@@ -368,7 +299,7 @@ fn visit<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
         f(node);
         match node {
             Node::Branch(b) => b.choices.iter().for_each(|c| visit(&c.body, f)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| visit(&c.body, f)),
+            Node::Hub(h) => h.bodies().for_each(|b| visit(b, f)),
             Node::Match(m) => {
                 for arm in &m.arms {
                     let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
@@ -605,18 +536,27 @@ pub fn check_presence(
         Some(_) => ladder_at(crate::beats::top_key_span(&doc.meta, "on")),
         None => &[],
     };
-    let scene_when = w.slot_cond(folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()));
+    let mut scene_conds: Vec<(Expr, String)> = w
+        .slot_cond(folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()))
+        .into_iter()
+        .collect();
+    if let Some(b) = &folded.typed.beat {
+        scene_conds.extend(w.seam_cond(&b.on, b.target.as_deref()));
+    }
+    // A `spentBy` beat is not spent by being presented: it may play again,
+    // as a `once: false` one, until its condition has held.
     let scene_absent = w.absent_facts(
         0,
         folded
             .typed
             .beat
             .as_ref()
+            .filter(|b| b.spent_by.is_none())
             .map_or(BeatOnce::None, |b| b.once.clone()),
     );
     let scene_after = after(0, folded.typed.beat.as_ref().map(|b| b.on.as_str()));
     w.unit(
-        scene_when.into_iter().collect(),
+        scene_conds,
         scene_ladder,
         scene_absent,
         &scene_after,
@@ -655,10 +595,13 @@ pub fn check_presence(
                 None,
             ));
         }
+        if let Some((on, _)) = &entry.on {
+            conds.extend(w.seam_cond(on, entry.target.as_ref().map(|(t, _)| t.as_str())));
+        }
         let ladder = entry.on.as_ref().map_or(&[][..], |(_, s)| ladder_at(*s));
         let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
-            Some(raw) => BeatOnce::parse(raw).unwrap_or(BeatOnce::None),
-            None => BeatOnce::None,
+            Some(raw) if entry.spent_by.is_none() => BeatOnce::parse(raw).unwrap_or(BeatOnce::None),
+            _ => BeatOnce::None,
         };
         let absent = w.absent_facts(entry.span.byte_start, once);
         let entry_after = after(
@@ -674,9 +617,16 @@ pub fn check_presence(
         );
     }
     for beat in &doc.beats {
-        let conds = w.slot_cond(beat.when.as_ref()).into_iter().collect();
+        let mut conds: Vec<(Expr, String)> = w.slot_cond(beat.when.as_ref()).into_iter().collect();
+        if let Some((on, _)) = &beat.on {
+            conds.extend(w.seam_cond(on, beat.target.as_ref().map(|(t, _)| t.as_str())));
+        }
         let ladder = beat.on.as_ref().map_or(&[][..], |(_, s)| ladder_at(*s));
-        let absent = w.absent_facts(beat.span.byte_start, crate::bundles::bundle_beat_once(beat));
+        let once = match beat.spent_by {
+            Some(_) => BeatOnce::None,
+            None => crate::bundles::bundle_beat_once(beat),
+        };
+        let absent = w.absent_facts(beat.span.byte_start, once);
         let beat_after = after(
             beat.span.byte_start,
             beat.on.as_ref().map(|(o, _)| o.as_str()),
@@ -947,9 +897,10 @@ pub(crate) fn unit_facts(
                 ))
             } else if !spent_by_run {
                 Some(match once {
-                    BeatOnce::None => {
-                        format!("it is never spent, so it may play again after asserting `{fact}`")
-                    }
+                    BeatOnce::None => format!(
+                        "it is not spent by being presented, so it may play again after \
+                         asserting `{fact}`"
+                    ),
                     period => format!(
                         "`once: {}` spends it for one period, not one run, so it may play again \
                          after asserting `{fact}`",
@@ -1750,6 +1701,24 @@ impl Presence<'_> {
         slot.and_then(|s| self.parse(&s.raw, None))
     }
 
+    /// What a unit answering occasion `on` (for `target`) may assume from
+    /// the engine seam: the occasion's `raisedWhen` gate and `!terminal`
+    /// ([`crate::gates::folded_seam`]) — one member's condition, or their
+    /// disjunction when `occasion.target` ranges over several.
+    fn seam_cond(&self, on: &str, target: Option<&str>) -> Option<(Expr, String)> {
+        let seam = crate::gates::folded_seam(self.folded, on, target, None)?;
+        let text = match seam.conds.as_slice() {
+            [] => return None,
+            [one] => one.clone(),
+            many => many
+                .iter()
+                .map(|c| format!("({c})"))
+                .collect::<Vec<_>>()
+                .join(" || "),
+        };
+        self.parse(&text, None)
+    }
+
     /// `e` with each `holds(A)` of a derived relation reached through
     /// `!`/`&&`/`||` read through its rules ([`definition`]): on the guard
     /// side a positive `holds(A)` becomes `holds(A) && D` (what it implies)
@@ -2169,14 +2138,18 @@ impl Presence<'_> {
                 Node::Hub(h) => {
                     // A hub body runs again and again: whatever one round
                     // writes, the next round's guards may not survive.
-                    for c in &h.choices {
-                        self.kill_writes(&c.body);
+                    for b in h.bodies() {
+                        self.kill_writes(b);
                     }
                     let conds = self.choice_conds(&h.choices);
+                    // dsl 0.28.0 §5: the `<return>` block is one more path,
+                    // under no guard of its own.
+                    let back = h.on_return.iter().map(|r| (Vec::new(), &r.body[..]));
                     self.fork(
                         conds
                             .into_iter()
                             .zip(h.choices.iter().map(|c| &c.body[..]))
+                            .chain(back)
                             .collect(),
                     );
                 }

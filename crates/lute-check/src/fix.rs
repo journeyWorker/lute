@@ -312,6 +312,9 @@ fn collect_choices<'a>(nodes: &'a [Node], out: &mut Vec<&'a Choice>) {
                     out.push(choice);
                     collect_choices(&choice.body, out);
                 }
+                if let Some(r) = &h.on_return {
+                    collect_choices(&r.body, out);
+                }
             }
             Node::Match(m) => {
                 for arm in &m.arms {
@@ -344,8 +347,8 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
                 }
             }
             Node::Hub(h) => {
-                for choice in &h.choices {
-                    collect_lines(&choice.body, out);
+                for b in h.bodies() {
+                    collect_lines(b, out);
                 }
             }
             Node::Match(m) => {

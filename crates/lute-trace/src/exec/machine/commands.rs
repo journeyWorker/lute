@@ -57,7 +57,21 @@ impl<D: Driver> Machine<D> {
     pub(super) fn rec_line(&mut self, cmd: &Json) {
         let speaker = cmd.get("speaker").and_then(Json::as_str).unwrap_or("");
         let raw = cmd.get("text").and_then(Json::as_str).unwrap_or("");
-        let text = self.interpolate(raw, cmd.get("placeholders").and_then(Json::as_array));
+        let placeholders = cmd.get("placeholders").and_then(Json::as_array);
+        // dsl 0.28.0 (T1-13): a payload field the raise did not carry has
+        // no text to print; the driver decides whether the walk stops here.
+        if let Some(path) = self.unset_payload(placeholders) {
+            let atoms = [UnresolvedAtom::Path(path.clone())];
+            self.unresolved.extend(atoms.iter().cloned());
+            if self.at_unknown(
+                Site::new(SiteKind::Payload, &path, addr(cmd)),
+                &path,
+                &atoms,
+            ) {
+                return;
+            }
+        }
+        let text = self.interpolate(raw, placeholders);
         let mut rec = serde_json::Map::new();
         rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("line".into()));
@@ -86,13 +100,20 @@ impl<D: Driver> Machine<D> {
     /// (`+=`, `-=`, `*=`, `/=`) folds it into the current value — an operand
     /// that is not a number (unknown, absent, another type) makes the result
     /// unknown, never a guessed `0` (D5). An unknown result is a
-    /// [`SiteKind::SetValue`] site.
+    /// [`SiteKind::SetValue`] site. dsl 0.28.0 §3: a `F[occasion.target]`
+    /// target writes `F.<member>`, the member bound as `occasion.target`.
     pub(super) fn exec_set(&mut self, cmd: &Json) {
-        let path = cmd
-            .get("path")
-            .and_then(Json::as_str)
-            .unwrap_or("")
-            .to_string();
+        let written = cmd.get("path").and_then(Json::as_str).unwrap_or("");
+        let path = match lute_check::target_writes::indexed_family(written) {
+            None => written.to_string(),
+            Some(family) => {
+                let site = Site::new(SiteKind::OccasionTarget, written, addr(cmd));
+                let Some(member) = self.bound_target(site, written) else {
+                    return;
+                };
+                format!("{family}.{member}")
+            }
+        };
         let op = cmd.get("op").and_then(Json::as_str).unwrap_or("=");
         let rhs_raw = cmd.get("value").and_then(Json::as_str).unwrap_or("");
         let (rhs, mut atoms) = self.eval_atoms(rhs_raw);
@@ -133,17 +154,59 @@ impl<D: Driver> Machine<D> {
         self.exclusive_check(&before);
     }
 
-    pub(super) fn exec_assert(&mut self, cmd: &Json) {
+    /// dsl 0.28.0 §3: the member bound as `occasion.target` — what a write
+    /// through it names (`F[occasion.target]`, `r(occasion.target)`, a
+    /// plugin attribute). With none bound (the beat is not a kind or `for=`
+    /// beat's, or a trace left it unmocked) the write is an [`UnknownSite`]
+    /// at `site` and is not applied.
+    ///
+    /// [`UnknownSite`]: crate::exec::driver::UnknownSite
+    pub(super) fn bound_target(&mut self, site: Site<'_>, raw: &str) -> Option<String> {
+        match self.store.read(lute_check::beats::OCCASION_TARGET) {
+            Read::Value(Value::Str(member)) => Some(member),
+            _ => {
+                let atoms = [UnresolvedAtom::Path(
+                    lute_check::beats::OCCASION_TARGET.to_string(),
+                )];
+                self.unresolved.extend(atoms.iter().cloned());
+                self.at_unknown(site, raw, &atoms);
+                None
+            }
+        }
+    }
+
+    /// A fact record's `relation` and `args`, each `occasion.target` argument
+    /// read as the bound member ([`Machine::bound_target`]); `None` when one
+    /// is written with no member bound.
+    fn fact_of(&mut self, cmd: &Json) -> Option<(String, Vec<String>)> {
         let rel = cmd
             .get("relation")
             .and_then(Json::as_str)
             .unwrap_or("")
             .to_string();
-        let args: Vec<String> = cmd
+        let mut args: Vec<String> = cmd
             .get("args")
             .and_then(Json::as_array)
             .map(|a| a.iter().map(json_arg_to_string).collect())
             .unwrap_or_default();
+        if args.iter().any(|a| a == lute_check::beats::OCCASION_TARGET) {
+            let written = render_fact(&rel, &args);
+            let site = Site::new(SiteKind::OccasionTarget, &written, addr(cmd));
+            let member = self.bound_target(site, &written)?;
+            for a in args
+                .iter_mut()
+                .filter(|a| *a == lute_check::beats::OCCASION_TARGET)
+            {
+                a.clone_from(&member);
+            }
+        }
+        Some((rel, args))
+    }
+
+    pub(super) fn exec_assert(&mut self, cmd: &Json) {
+        let Some((rel, args)) = self.fact_of(cmd) else {
+            return;
+        };
         let before = self.store.exclusive_now();
         self.store.assert((rel.clone(), args.clone()));
         self.driver.emit(json!({
@@ -155,16 +218,9 @@ impl<D: Driver> Machine<D> {
     }
 
     pub(super) fn exec_retract(&mut self, cmd: &Json) {
-        let rel = cmd
-            .get("relation")
-            .and_then(Json::as_str)
-            .unwrap_or("")
-            .to_string();
-        let args: Vec<String> = cmd
-            .get("args")
-            .and_then(Json::as_array)
-            .map(|a| a.iter().map(json_arg_to_string).collect())
-            .unwrap_or_default();
+        let Some((rel, args)) = self.fact_of(cmd) else {
+            return;
+        };
         let before = self.store.exclusive_now();
         // `_` positions are a bulk wildcard over the ground positions.
         self.store.retract(&rel, &args);
@@ -209,10 +265,20 @@ impl<D: Driver> Machine<D> {
         rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("skipped".into()));
         rec.insert("effect".into(), Json::String(kind.to_string()));
+        // A write through `occasion.target` names the member it would have
+        // written, when one is bound.
+        let member = match self.store.read(lute_check::beats::OCCASION_TARGET) {
+            Read::Value(Value::Str(m)) => Some(m),
+            _ => None,
+        };
         match kind {
             "set" => {
                 let path = cmd.get("path").and_then(Json::as_str).unwrap_or("");
-                rec.insert("path".into(), Json::String(path.to_string()));
+                let path = match &member {
+                    Some(m) => lute_check::target_writes::member_path(path, m),
+                    None => path.to_string(),
+                };
+                rec.insert("path".into(), Json::String(path));
             }
             _ => {
                 let rel = cmd.get("relation").and_then(Json::as_str).unwrap_or("");
@@ -220,6 +286,19 @@ impl<D: Driver> Machine<D> {
                     .get("args")
                     .and_then(Json::as_array)
                     .map(|a| a.iter().map(json_arg_to_string).collect())
+                    .map(|args: Vec<String>| match &member {
+                        Some(m) => args
+                            .into_iter()
+                            .map(|a| {
+                                if a == lute_check::beats::OCCASION_TARGET {
+                                    m.clone()
+                                } else {
+                                    a
+                                }
+                            })
+                            .collect(),
+                        None => args,
+                    })
                     .unwrap_or_default();
                 let key = if kind == "assert" { "fact" } else { "pattern" };
                 rec.insert(key.into(), Json::String(render_fact(rel, &args)));

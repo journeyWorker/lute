@@ -1,9 +1,9 @@
 ---
 kind: scene
-id: hub.morning
+id: town.morning
 title: Another morning
 # Repeatable (`once: false`) and only after the first day.
-on: hubVisit
+on: townVisit
 once: false
 when: '!@firstDay'
 ---

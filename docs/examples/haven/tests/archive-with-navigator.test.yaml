@@ -16,7 +16,7 @@ facts:
 choose:
   theSequence: pocketIt
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Move. That drawer is mine and it has been for eleven years."
     - "Filed heading. And it is not the heading we are flying."

@@ -62,29 +62,26 @@ pub(crate) fn run_context(
     // state table byte-for-byte (choice ids ∪ `unset`) — no divergence. The set is
     // expansion-invariant, so the raw parsed `doc` yields the same paths.
     let branch_paths = lute_compile::collect_branch_paths(&doc);
-    // dsl 0.5.1 §2: the reserved `quest.<id>.state` / `quest.<id>.objectives.<oid>.done`
-    // paths this document actually REFERENCES (any CEL slot) — reuses `lute-trace`'s
-    // own walk ([`lute_trace::collect_referenced_reserved_quest_paths`], §1.1's
-    // "does the document reference this exact path" test) so `context` never
-    // diverges from what `trace --state` admits on a reserved path.
+    // The reserved quest paths this document REFERENCES (any CEL slot) —
+    // `lute-trace`'s own walk, the one `trace --state` admits by — joined in
+    // `extend_surface` with every reserved path of every declared quest.
     let reserved_quest_paths = lute_trace::collect_referenced_reserved_quest_paths(&doc);
     let mut surface = authoring_surface(
         &input,
         &folded.env.state,
         &folded.env.rel_vocab,
         &branch_paths,
-        &reserved_quest_paths,
     );
     // dsl 0.22.0 §13: defs, built-in directives, project ids; dsl 0.27.0:
-    // beat / quest keys, clock, terminal, seasons, the manifest's sequence.
+    // beat / quest keys, clock, terminal, seasons, the manifest's chapters.
     context::extend_surface(
         &mut surface,
         &folded,
-        input.defaults.sequence(),
+        &input,
+        &reserved_quest_paths,
         file,
         project,
     );
-
     if json {
         match serde_json::to_string_pretty(&surface) {
             Ok(s) => {
@@ -112,19 +109,15 @@ pub(crate) fn run_context(
 /// `rel_vocab` is the ALREADY-MERGED relational vocabulary `fold_env` computes
 /// (dsl 0.3.0 §3/§4, spec §5) — entity kinds, relations (+arity/domains/
 /// `derive`), seed facts, rules, and project-level `enums:` — surfaced here
-/// verbatim, no new resolution. `reserved_quest_paths` (dsl 0.5.1 §2) is the
-/// set of reserved `quest.<id>.state`/`quest.<id>.objectives.<oid>.done`
-/// paths this document actually REFERENCES (already computed by the
-/// caller via `lute_trace::collect_referenced_reserved_quest_paths`) —
-/// surfaced under its OWN `reservedQuestPaths` key, clearly separate from
-/// the ordinary (author-declared/folded) `stateSchema`: these paths are
-/// never declared by the document, only implicitly readable.
+/// verbatim, no new resolution. Reserved quest paths and `occasion.*` are
+/// not state the document declares: `stateSchema` leaves them out
+/// (`reservedQuestPaths`, `enginePaths` and each occasion's `payload` list
+/// them), and marks every other engine-owned path `owner: engine`.
 fn authoring_surface(
     input: &CheckInput,
     state: &lute_check::StateSchema,
     rel_vocab: &RelVocab,
     branch_paths: &BTreeSet<String>,
-    reserved_quest_paths: &BTreeSet<String>,
 ) -> serde_json::Value {
     use serde_json::{Map, Value};
     let snap = &input.snapshot;
@@ -167,6 +160,13 @@ fn authoring_surface(
             }
             o.insert("attrs".into(), attrs.into());
             o.insert("semantics".into(), d.semantics.clone().into());
+            // plugin §7.4, dsl 0.27.0 §4: what a call writes / asserts / retracts.
+            if let Some(effects) = d.effects.as_ref().filter(|e| !e.is_empty()) {
+                o.insert(
+                    "effects".into(),
+                    serde_json::to_value(effects).unwrap_or(Value::Null),
+                );
+            }
             Value::Object(o)
         })
         .collect();
@@ -193,6 +193,9 @@ fn authoring_surface(
     let state_schema: Vec<Value> = state
         .decls
         .iter()
+        .filter(|(path, _)| {
+            lute_check::cel_paths::reserved_path(path).is_none() && !path.starts_with("occasion.")
+        })
         .map(|(path, decl)| {
             // A path folded from a real `<branch>`/`<hub>` is an implicit choice
             // slot: its authorable enum domain is choice ids ∪ `unset` (compile's
@@ -203,12 +206,16 @@ fn authoring_surface(
             o.insert("path".into(), path.clone().into());
             o.insert("type".into(), ty.into());
             o.insert("namespace".into(), namespace_str(decl.namespace).into());
-            // dsl 0.22.0 §1.2: engine-owned paths are read-only to content.
+            // dsl 0.22.0 §1.2: engine-owned paths are read-only to content —
+            // declared `owner: engine`, or in a namespace the engine owns
+            // (`scene.choices.*`, `clock.*`, `prev.*` …).
             if let Some(owner) = &decl.owner {
                 o.insert(
                     "owner".into(),
                     serde_json::to_value(owner).unwrap_or(Value::Null),
                 );
+            } else if lute_check::cel_paths::is_engine_owned_path(path) {
+                o.insert("owner".into(), "engine".into());
             }
             if let Some(def) = &decl.default {
                 o.insert("default".into(), literal_json(def));
@@ -232,7 +239,13 @@ fn authoring_surface(
                 .params
                 .iter()
                 .map(|(pname, pty)| {
-                    let (ty, domain) = attr_type_str(pty);
+                    // dsl 0.24.0 §4: a `speaker` param is typed `string` in
+                    // `params` and named in `speakers`.
+                    let (ty, domain) = if def.speakers.contains(pname) {
+                        ("speaker".to_string(), None)
+                    } else {
+                        attr_type_str(pty)
+                    };
                     let mut o = Map::new();
                     o.insert("name".into(), pname.clone().into());
                     o.insert("type".into(), ty.into());
@@ -257,8 +270,12 @@ fn authoring_surface(
             let mut o = Map::new();
             o.insert("name".into(), name.clone().into());
             o.insert("params".into(), params.into());
+            if def.effects {
+                o.insert("effects".into(), true.into());
+            }
             // dsl 0.27.0 §6: a beat template's header (`<beat use="name">`).
             if let Some(t) = &def.beat {
+                o.insert("template".into(), true.into());
                 let header: Map<String, Value> = t
                     .keys
                     .iter()
@@ -294,10 +311,12 @@ fn authoring_surface(
             }
             // dsl 0.27.0 §7: the display text `{{…}}` renders per member.
             if !decl.labels.is_empty() {
-                o.insert(
-                    "labels".into(),
-                    serde_json::to_value(&decl.labels).unwrap_or(Value::Null),
-                );
+                let text: serde_json::Map<String, Value> = decl
+                    .labels
+                    .iter()
+                    .map(|(m, l)| (m.clone(), l.text.clone().into()))
+                    .collect();
+                o.insert("labels".into(), Value::Object(text));
             }
             Value::Object(o)
         })
@@ -343,27 +362,6 @@ fn authoring_surface(
         .rules
         .iter()
         .map(|r| Value::String(r.raw.clone()))
-        .collect();
-
-    // dsl 0.5.1 §2: the reserved quest paths this document actually
-    // REFERENCES (`reserved_quest_paths`, already a `BTreeSet` ⇒ path-sorted),
-    // each carrying its fixed reserved-namespace domain (§1) the same way an
-    // ordinary `stateSchema` entry carries its `domain` — kept under its OWN
-    // key, never merged into `stateSchema`, since these paths are implicit
-    // (the document never declares them).
-    let reserved_quest_paths_json: Vec<Value> = reserved_quest_paths
-        .iter()
-        .map(|path| {
-            let (ty, domain) = reserved_quest_path_type(path);
-            let mut o = Map::new();
-            o.insert("path".into(), path.clone().into());
-            o.insert("type".into(), ty.into());
-            o.insert("namespace".into(), "quest".into());
-            if let Some(dom) = domain {
-                o.insert("domain".into(), dom.into());
-            }
-            Value::Object(o)
-        })
         .collect();
 
     // dsl 0.5.1 §3: the fixed, always-present set of content-line delivery
@@ -450,39 +448,9 @@ fn authoring_surface(
         "projectEnums".into(),
         serde_json::to_value(&rel_vocab.enums).unwrap_or_else(|_| serde_json::json!({})),
     );
-    // dsl 0.5.1 §2/§3: the referenced reserved quest paths and the fixed
-    // delivery-flag vocabulary — new, always-present authoring-surface keys.
-    root.insert(
-        "reservedQuestPaths".into(),
-        reserved_quest_paths_json.into(),
-    );
+    // dsl 0.5.1 §3: the fixed delivery-flag vocabulary.
     root.insert("deliveryFlags".into(), delivery_flags.into());
     Value::Object(root)
-}
-
-/// The domain of a reserved quest path (dsl 0.2.0 §5.2 / 0.5.1 §1): a
-/// `quest.<id>.state` path is the fixed lifecycle enum
-/// `active`/`complete`/`failed`/`unset`; a `quest.<id>.objectives.<oid>.done`
-/// path is a plain `bool` (no domain, mirroring `state_type_str`'s scalar
-/// arms). The shape mirrors `lute-trace`'s own reserved-path shape test
-/// (`is_reserved_quest_path`, dsl 0.2.0 §5.2) — this function is only ever
-/// called on a path already known (by construction of
-/// `reserved_quest_paths`) to match one of the two reserved shapes, so no
-/// third arm is needed.
-fn reserved_quest_path_type(path: &str) -> (&'static str, Option<Vec<String>>) {
-    if path.ends_with(".state") {
-        (
-            "enum",
-            Some(vec![
-                "active".to_string(),
-                "complete".to_string(),
-                "failed".to_string(),
-                "unset".to_string(),
-            ]),
-        )
-    } else {
-        ("bool", None)
-    }
 }
 
 /// Render a state-path `Type` for parity with `lute_compile`'s `type_label`
@@ -608,9 +576,33 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 .as_str()
                 .map(|l| format!(" [{l}]"))
                 .unwrap_or_default();
-            let attrs: Vec<&str> = d["attrs"]
+            // The attribute types the checker holds each value to.
+            let attrs: Vec<String> = d["attrs"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|x| x["name"].as_str()).collect())
+                .map(|a| {
+                    a.iter()
+                        .map(|x| {
+                            let dom = x["domain"]
+                                .as_array()
+                                .map(|d| {
+                                    let m: Vec<&str> =
+                                        d.iter().filter_map(|v| v.as_str()).collect();
+                                    format!("[{}]", m.join(", "))
+                                })
+                                .unwrap_or_default();
+                            let req = if x["required"].as_bool().unwrap_or(false) {
+                                " (required)"
+                            } else {
+                                ""
+                            };
+                            format!(
+                                "{}: {}{dom}{req}",
+                                x["name"].as_str().unwrap_or(""),
+                                x["type"].as_str().unwrap_or("")
+                            )
+                        })
+                        .collect()
+                })
                 .unwrap_or_default();
             // #32 / T2.5: `--json` has always carried these and the human
             // outline dropped them. `mayExitCharacter` is the machine-readable
@@ -626,6 +618,26 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 format!("   [{}]", semantics.join(" "))
             };
             let _ = writeln!(out, "  {name}{layer}: {}{sem}", attrs.join(", "));
+            let effects = &d["effects"];
+            let mut parts = Vec::new();
+            for w in effects["writes"].as_array().into_iter().flatten() {
+                let mut path = vec![w["scope"].as_str().unwrap_or("").to_string()];
+                for seg in w["path"].as_array().into_iter().flatten() {
+                    path.push(match seg.as_str() {
+                        Some(s) => s.to_string(),
+                        None => format!("<{seg}>"),
+                    });
+                }
+                parts.push(format!("writes {} = {}", path.join("."), w["value"]));
+            }
+            for (key, verb) in [("asserts", "asserts"), ("retracts", "retracts")] {
+                for f in effects[key].as_array().into_iter().flatten() {
+                    parts.push(format!("{verb} {}", f.as_str().unwrap_or("")));
+                }
+            }
+            if !parts.is_empty() {
+                let _ = writeln!(out, "    effects: {}", parts.join("; "));
+            }
         }
     }
     if let Some(bridges) = surface["bridges"].as_array() {
@@ -672,17 +684,26 @@ fn context_outline(surface: &serde_json::Value) -> String {
             // dsl 0.27.0 §3/§4: the typed payload and the gate.
             let mut extra = String::new();
             if let Some(payload) = o["payload"].as_object() {
+                // Payload, not state: each field is read as
+                // `occasion.payload.<field>` in a beat answering it.
                 let fields: Vec<String> = payload
                     .iter()
                     .map(|(f, ty)| match ty.as_str() {
-                        Some(t) => format!("{f}: {t}"),
-                        None => format!("{f}: {ty}"),
+                        Some(t) => format!("occasion.payload.{f}: {t}"),
+                        None => format!("occasion.payload.{f}: {ty}"),
                     })
                     .collect();
                 let _ = write!(extra, ", payload: {{ {} }}", fields.join(", "));
             }
             if let Some(gate) = o["raisedWhen"].as_str() {
                 let _ = write!(extra, ", raisedWhen: {gate}");
+            }
+            // dsl 0.24.0 §2: `on=` objectives judged before the beats.
+            if let Some(judge) = o["judge"].as_str() {
+                let _ = write!(extra, ", judge: {judge}");
+            }
+            if o["outsideRun"].as_bool() == Some(true) {
+                extra.push_str(", outsideRun");
             }
             let description = o["description"]
                 .as_str()
@@ -730,13 +751,15 @@ fn context_outline(surface: &serde_json::Value) -> String {
             let _ = writeln!(out, "  {path}: {ty}{dom}{owner}");
         }
     }
-    // dsl 0.5.1 §2: the reserved quest paths this document REFERENCES —
-    // kept as its own section, clearly separate from the ordinary
-    // (author-declared/folded) `stateSchema` above; omitted entirely when
-    // the document references none (the reserved namespace is unbounded).
+    // Every reserved path of every declared (or read) quest, typed by the
+    // checker's reserved-path table — never part of `stateSchema`.
     if let Some(reserved) = surface["reservedQuestPaths"].as_array() {
         if !reserved.is_empty() {
-            let _ = writeln!(out, "reservedQuestPaths ({}):", reserved.len());
+            let _ = writeln!(
+                out,
+                "reservedQuestPaths ({}; engine-owned, read-only):",
+                reserved.len()
+            );
             for s in reserved {
                 let path = s["path"].as_str().unwrap_or("");
                 let ty = s["type"].as_str().unwrap_or("");
@@ -883,9 +906,24 @@ fn context_outline(surface: &serde_json::Value) -> String {
                             .collect()
                     })
                     .unwrap_or_default();
+                let mut tags = Vec::new();
+                if c["template"].as_bool() == Some(true) {
+                    tags.push(format!(
+                        "template: <beat use=\"{}\">",
+                        c["name"].as_str().unwrap_or("")
+                    ));
+                }
+                if c["effects"].as_bool() == Some(true) {
+                    tags.push("effects: its body may write state".to_string());
+                }
+                let tags = if tags.is_empty() {
+                    String::new()
+                } else {
+                    format!("   [{}]", tags.join("; "))
+                };
                 let _ = writeln!(
                     out,
-                    "  {}({})",
+                    "  {}({}){tags}",
                     c["name"].as_str().unwrap_or(""),
                     params.join(", ")
                 );

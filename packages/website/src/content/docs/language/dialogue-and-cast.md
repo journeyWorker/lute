@@ -238,7 +238,7 @@ entities:
   companion: { members: [isolde] }
 relations:
   inParty: { args: [companion], tier: run }
-  fell:    { args: [companion], reserved: true, changedOn: [battleEnd] }
+  fell:    { args: [companion], tier: run, reserved: true, changedOn: [battleEnd] }
 cast:
   isolde: { name: Isolde, present: "holds(inParty(isolde)) && !holds(fell(isolde))", assume: true }
 ```
@@ -299,8 +299,12 @@ render time:
 `{{userName}}` is the always-available reserved token. Any other interpolation must name a
 **declared** state path; an interpolation is a *read* for definite-assignment analysis, so a
 maybe-unset path interpolated without a guard is `E-MAYBE-UNSET`. The text after the second colon
-is otherwise opaque to end of line — parentheses, `<`, `//`, and anything else are literal, never
-parsed.
+is otherwise opaque to end of line — parentheses, `<`, `//`, `#`, single braces and anything else
+are literal, never parsed. The checker warns on the shapes that are markup in Ink or Yarn, since
+the player would see them: a single-brace `{run.oil}` or `{run.oil > 0: …}`
+(`W-TEXT-SINGLE-BRACE`; interpolation is `{{run.oil}}`, conditional text is a guarded line), and
+a ` // note` or trailing `# tag` (`W-TEXT-COMMENT-LIKE`; a comment is `//` on a line of its own).
+See [Coming from Ink or Yarn](/guides/coming-from-ink-yarn/).
 
 A path typed against an enum whose members carry display `labels:` renders the label, not the
 member id: `Today is {{run.weekday}}.` reads `Today is Sunday.` (see
@@ -349,4 +353,38 @@ state:
 
 The IR placeholder carries `"format": "ordinalWord"`, and the engine localizes the word. `lute run`, `lute play`, `lute trace` and `lute test` render the English words `first` `second` … `twentieth` for 1–20, and fall back to the `:ordinal` digits outside that range (`0th`, `21st`). The checker admits `:ordinalWord` wherever it admits `:ordinal`.
 
-`ordinal` and `ordinalWord` are the only hints: `{{run.floor:roman}}` is `E-CEL-PROFILE`, and so is a misspelt `{{run.day:ordinalword}}`. Either hint needs a number, so on a string, enum or bool path or def, or on `{{userName}}`, it is `E-REF-TYPE`.
+### Number words and plurals: `{{x:cardinalWord}}`, `{{x:plural(one|other)}}`
+
+`:cardinalWord` spells a number `one` `two` … `twenty` and falls back to its digits outside that range (`0`, `21`); the checker admits it wherever it admits `:ordinal`. `:plural(singular|plural)` picks the first form when the number is 1 and the second otherwise. In a form, `#` is the number, `#word` the number as a cardinal word and `#Word` that word capitalized, for a sentence that starts with it:
+
+```lute check
+---
+kind: scene
+id: road.wagons
+state:
+  run.wagons: { type: number, default: 11 }
+---
+
+## Camp
+
+@narrator: {{run.wagons:plural(One wagon waits|#Word wagons wait)}} at the ford, {{run.wagons:cardinalWord}} in all.
+```
+
+That line reads `Eleven wagons wait at the ford, eleven in all.` Plural forms are bare text separated by `|`: a quoted form (`plural("One wagon"|"# wagons")`) would print its quotes and a `,` separator (`plural(wagon,wagons)`) is one form, so both are `E-PLURAL-FORM`, and the message shows the rewrite.
+
+### Text hints and label forms: `{{x:capitalize}}`, `{{x:start}}`, `{{x:indefinite}}`
+
+Three hints format text — a string, an enum or kind label, a cast name, `{{occasion.target}}`, `{{userName}}`. `:capitalize` upper-cases the first letter. `:start` and `:indefinite` read the forms a kind's `labels:` entry may declare beside its text:
+
+```yaml
+entities:
+  spot:
+    members: [cut, den]
+    labels:
+      cut: { text: "the smugglers' cut", start: "The smugglers' cut", indefinite: "a smugglers' cut" }
+      den: ashwraith den
+```
+
+`{{occasion.target:start}} is quiet.` reads `The smugglers' cut is quiet.` for `cut`. When a form is absent the hint falls back: `:start` capitalizes the text (`Ashwraith den`), and `:indefinite` puts `an` before a text whose first letter is a vowel and `a` before any other (`an ashwraith den`). Declare `indefinite:` for the words that rule gets wrong (`an hour`, `a unicorn`). A label entry is a string or `{ text, start, indefinite }` with `text:` required; any other key is `E-ENTITY-KIND-SHAPE`. The IR carries the hint as the placeholder's `format` and the forms as `labelForms` on the kind's `entities[]` entry and on a state path typed by the kind, so an engine can localize them. A component param spliced as a literal takes the fallbacks.
+
+The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for a number, and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A number hint on a string, enum or bool path or def, or on `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on a number or a bool.

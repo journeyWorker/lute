@@ -133,9 +133,9 @@ fn directive_hover(snapshot: &CapabilitySnapshot, tag: &str) -> Option<String> {
         return Some(
             "**::accept** — core\n\nThe player accepts an accept-driven quest (one without \
              `start`; a subquest child only with `activate=\"accept\"`) at this point; the engine \
-             activates it if it is `unset` and ignores it otherwise (dsl 0.21.0 §7a.3, 0.24.0 \
-             §2).\n\n**attributes:**\n- `quest`: quest id (required)\n- `at`: `\"nextRun\"` — \
-             queue the acceptance until after the next `newRun` reset (optional)"
+             activates it if it is `unset` and ignores it otherwise.\n\n**attributes:**\n\
+             - `quest`: quest id (required)\n- `at`: `\"nextRun\"` — queue the acceptance until \
+             after the next `newRun` reset (optional)"
                 .to_string(),
         );
     }
@@ -253,16 +253,11 @@ fn ref_hover(
 /// best-effort fn.
 fn event_hover(snapshot: &CapabilitySnapshot, event: &str) -> Option<String> {
     if lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&event) {
-        return Some(format!(
-            "**{event}** — built-in lifecycle event (dsl 0.2.0 §4.5)"
-        ));
+        return Some(format!("**{event}** — built-in lifecycle event"));
     }
-    snapshot.event(event).map(|d| {
-        format!(
-            "**{}** — capability-declared world event (dsl 0.2.0 §4.5)",
-            d.name
-        )
-    })
+    snapshot
+        .event(event)
+        .map(|d| format!("**{}** — capability-declared world event", d.name))
 }
 
 /// Render a keyword doc for the `<quest>`/`<on>`/`<objective>` construct (dsl
@@ -273,46 +268,47 @@ fn event_hover(snapshot: &CapabilitySnapshot, event: &str) -> Option<String> {
 fn construct_hover(construct: QuestConstruct) -> String {
     match construct {
         QuestConstruct::Quest => {
-            "**\\<quest>** — a top-level quest declaration (dsl 0.2.0 §6.3).\n\n\
+            "**\\<quest>** — a top-level quest declaration.\n\n\
              **attributes:**\n- `id` (required): string\n- `title`: string\n\
              - `start`: cel<bool>\n- `fail`: cel<bool>\n\
-             - `after`: prereq — `completed(q)`/`active(q)`/`visited(k)` gate\n\
+             - `follows`: prereq — the quest's place in the scene graph \
+             (`completed(q)`/`active(q)`/`visited(k)`); never gates activation\n\
              - `tier`: `\"user\"` (default, status persists across runs), `\"run\"` \
-             (status and objectives reset when a run starts) (dsl 0.22.0 §7), or \
-             `\"season:<name>\"` (reset when that declared season opens again, dsl 0.27.0 §5)\n\
+             (status and objectives reset when a run starts), or \
+             `\"season:<name>\"` (reset when that declared season opens again)\n\
              - `activate`: `\"accept\"` — a subquest child waits for `::accept` instead of \
-             activating with its parent (dsl 0.24.0 §2)\n\
+             activating with its parent\n\
              - `complete`: `\"all\"` (default) or `\"any\"` — `any` completes on the first \
-             required child done and fails the still-open rest as `superseded` (dsl 0.24.0 §2)\n\
+             required child done and fails the still-open rest as `superseded`\n\
              - `rearm`: cel<bool> — each time it turns from false to true the quest \
-             returns to `unset` and can be taken up again (dsl 0.27.0 §5)"
+             returns to `unset` and can be taken up again"
                 .to_string()
         }
         QuestConstruct::On => {
             "**\\<on>** — an ECA trigger fired by a lifecycle or \
-             capability-declared world event (dsl 0.2.0 §4).\n\n\
+             capability-declared world event.\n\n\
              **attributes:**\n- `event` (required): string\n- `when`: cel<bool>\n\
              - `target`: dotted id — fires only when the same-named occasion is raised \
-             for this target (dsl 0.24.0 §2)"
+             for this target"
                 .to_string()
         }
         QuestConstruct::Objective => {
-            "**\\<objective>** — a quest objective (dsl 0.2.0 §6.4); \
+            "**\\<objective>** — a quest objective; \
              self-closing or with a body.\n\n\
              **attributes:**\n- `id` (required): string\n- `done`: cel<bool> (required unless `quest`)\n\
              - `quest`: string — a child quest whose completion completes this objective\n\
-             - `when`: cel<bool>\n- `title`: string\n- `optional`: bool\n\
-             - `on`: ident — the occasion that judges this objective (dsl 0.21.0 §7a.2)\n\
+             - `visibleWhen`: cel<bool> — hides the objective while false; never gates `done`\n\
+             - `title`: string\n- `optional`: bool\n\
+             - `on`: ident — the occasion that judges this objective\n\
              - `target`: dotted id — narrows `on` to the occasion raised for this target\n\
-             - `by`: cel<bool> — deadline, judged at every settle; `done` wins a tie \
-             (dsl 0.24.0 §2.1)\n\
+             - `by`: cel<bool> — deadline, judged at every settle; `done` wins a tie\n\
              - `until`: cel<bool> — place-bound deadline, judged only when `on` \
-             (and `target`) is raised, after `done` (requires `on`; dsl 0.24.0 §2.1)"
+             (and `target`) is raised, after `done` (requires `on`)"
                 .to_string()
         }
         QuestConstruct::Entry => {
             "**\\<entry>** — a lore entry: text the engine looks up rather than \
-             plays (dsl 0.19.0 §3). Reading it the first time applies its \
+             plays. Reading it the first time applies its \
              `::set`/`::assert`/`::retract` and sets `entry.<id>.read` (run tier) and \
              `entry.<id>.everRead` (user tier).\n\n\
              **attributes:**\n\
@@ -323,22 +319,21 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `series`: ident — groups multi-part text\n\
              - `order`: non-negative integer — position within `series` (requires `series`)\n\
              - `when`: cel<bool> — eligibility; presented only while it holds\n\
-             - `on`: ident — the occasion this entry answers as a beat (dsl 0.21.0 §3.2)\n\
+             - `on`: ident — the occasion this entry answers as a beat\n\
              - `priority`: integer — beat priority, higher wins (requires `on`)\n\
              - `once`: `\"run\"`, `\"user\"`, `\"day\"`, `\"week\"`, `\"slot\"`, or \
              `\"season:<name>\"` — not eligible once read this run / ever / this clock day / \
              this clock week / this clock slot / until the season opens again (requires `on`; \
-             absent = repeatable; `day`/`slot` need a declared `clock:`, `week` its `week:`) \
-             (dsl 0.22.0 §7, 0.24.0 §1, 0.27.0 §5)\n\
-             - `spentBy`: cel<bool> — instead of `once`: repeatable until the condition \
-             holds (dsl 0.27.0 §5)\n\
+             absent = repeatable; `day`/`slot` need a declared `clock:`, `week` its `week:`)\n\
+             - `spentBy`: cel<bool> — spends the beat instead of a presentation: once the \
+             condition has held it stays spent for its `once` period (`run` unless written)\n\
              - `for`: `\"kind:<kind>\"` — on an untargeted `select: sequence` occasion, \
-             read once per member whose `when` holds, binding `occasion.target` (dsl 0.27.0 §3)"
+             read once per member whose `when` holds, binding `occasion.target`"
                 .to_string()
         }
         QuestConstruct::Beat => {
             "**\\<beat>** — a beat bundle: a scene-like beat declared inside a lore \
-             document (dsl 0.23.0 §4). Its body is a scene shot body; presenting it \
+             document. Its body is a scene shot body; presenting it \
              records `<document id>.<id>` in `visited`, and `scene.*` is fresh per \
              presentation.\n\n\
              **attributes:**\n\
@@ -351,28 +346,27 @@ fn construct_hover(construct: QuestConstruct) -> String {
              - `once`: `\"run\"` (default), `\"user\"`, `\"false\"`, `\"day\"`, `\"week\"`, \
              `\"slot\"`, or `\"season:<name>\"` — spent once presented this run / ever / never / \
              this clock day / this clock week / this clock slot / until the season opens again \
-             (`day`/`slot` need a declared `clock:`, `week` its `week:`, dsl 0.24.0 §1, \
-             0.27.0 §5)\n\
-             - `spentBy`: cel<bool> — instead of `once`: repeatable until the condition \
-             holds (dsl 0.27.0 §5)\n\
+             (`day`/`slot` need a declared `clock:`, `week` its `week:`)\n\
+             - `spentBy`: cel<bool> — spends the beat instead of a presentation: once the \
+             condition has held it stays spent for its `once` period (`run` unless written)\n\
              - `also`: bool flag — on a `select: first` occasion, presented after \
              the winner in addition to it\n\
-             - `use`: component — a beat template (dsl 0.27.0 §6): the component's \
+             - `use`: component — a beat template: the component's \
              `beat:` header supplies every attribute this `<beat>` does not write, its \
              body runs first, and every other attribute is one of its params\n\
              - `for`: `\"kind:<kind>\"` — on an untargeted `select: sequence` occasion, \
              presented once per member whose `when` holds, in member order, binding \
-             `occasion.target` (dsl 0.27.0 §3)"
+             `occasion.target`"
                 .to_string()
         }
         QuestConstruct::Hub => {
             "**\\<hub>** — a revisit conversation: its options are re-presented \
-             until an `exit` option is taken or none stays eligible (dsl §7.3.2).\n\n\
+             until an `exit` option is taken or none stays eligible.\n\n\
              **attributes:**\n\
              - `id` (required): ident — records `scene.choices.<id>` and \
              `scene.visited.<id>.<choice>`\n\
              - `prompt`: non-empty string — the prompt line shown with the \
-             hub's options (dsl 0.23.0 §4)"
+             hub's options"
                 .to_string()
         }
     }
@@ -817,6 +811,31 @@ mod tests {
             "entry", "target", "category", "series", "order", "when", "on", "priority", "once",
         ] {
             assert!(s.contains(k), "missing {k}: {s}");
+        }
+    }
+
+    /// Hover text is author-facing: it cites no spec sections.
+    #[test]
+    fn hover_text_cites_no_spec_sections() {
+        let mut texts: Vec<String> = [
+            QuestConstruct::Quest,
+            QuestConstruct::On,
+            QuestConstruct::Objective,
+            QuestConstruct::Entry,
+            QuestConstruct::Beat,
+            QuestConstruct::Hub,
+        ]
+        .into_iter()
+        .map(construct_hover)
+        .collect();
+        let snap = load_core_snapshot();
+        texts.extend(directive_hover(&snap, lute_syntax::ast::ACCEPT_DIRECTIVE));
+        texts.extend(event_hover(&snap, "questComplete"));
+        for s in &texts {
+            assert!(
+                !s.contains('§') && !s.contains("dsl 0.") && !s.contains("Appendix"),
+                "{s}"
+            );
         }
     }
 }

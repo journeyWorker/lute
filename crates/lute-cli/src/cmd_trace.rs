@@ -158,7 +158,7 @@ pub(crate) fn run_trace(
                     // position that does not exist, which is the exact defect
                     // §8 opens with. The subject arm above already renders
                     // this way; now the grammar arm does too.
-                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.message);
+                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.text());
                     return ExitCode::from(2);
                 }
             }

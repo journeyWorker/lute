@@ -18,11 +18,12 @@ use crate::project::gate::project_gate_result;
 /// ([`compile_all::run`]) path, rejecting every flag combination that means
 /// neither.
 ///
-/// `--all` REQUIRES `--project <dir>` (it has no other way to know which
-/// documents belong to the project, and the capability snapshot resolves per
-/// project) and `-o <dir>` (there is no single artifact to put on stdout). It
-/// also takes no `<file>`: naming one would imply the other documents are
-/// somehow secondary, which they are not. Every violation is exit `2`, the
+/// `--all` REQUIRES the project directory — `--project <dir>`, or the
+/// positional `<dir>` (it has no other way to know which documents belong
+/// to the project, and the capability snapshot resolves per project) — and
+/// `-o <dir>` (there is no single artifact to put on stdout). It takes no
+/// `<file>`: naming one would imply the other documents are somehow
+/// secondary, which they are not. Every violation is exit `2`, the
 /// usage tier — clap cannot express these dependencies itself, so they are
 /// checked here and reported in clap's own voice.
 #[allow(clippy::too_many_arguments)]
@@ -57,15 +58,25 @@ pub(crate) fn dispatch_compile(
         );
     }
 
-    let mut usage: Vec<&str> = Vec::new();
+    // T3-42: `lute compile --all <DIR>` names the project positionally, as
+    // `lute test` / `lute play` do.
+    let (project, file) = match (project, file) {
+        (None, Some(dir)) if dir.is_dir() => (Some(dir), None),
+        other => other,
+    };
+    let mut usage: Vec<String> = Vec::new();
     if project.is_none() {
-        usage.push("--all requires --project <DIR> (the document set and capability snapshot both resolve per project)");
+        usage.push("--all requires --project <DIR> (the document set and capability snapshot both resolve per project)".to_string());
     }
     if out.is_none() {
-        usage.push("--all requires -o <DIR>, an output DIRECTORY (there is no single artifact to write to stdout)");
+        usage.push("--all requires -o <DIR>, an output DIRECTORY (there is no single artifact to write to stdout)".to_string());
     }
-    if file.is_some() {
-        usage.push("--all takes no <FILE>: it compiles every document under --project");
+    if let Some(file) = file {
+        usage.push(format!(
+            "--all takes no <FILE> ({}): it compiles every document of the project — name the \
+             project directory, `--all <DIR>` or `--all --project <DIR>`",
+            file.display()
+        ));
     }
     if !usage.is_empty() {
         for message in usage {

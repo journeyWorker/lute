@@ -6,7 +6,7 @@
 # thing that will notice if somebody edits it.
 file: ../scenes/spine-a.lute
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "The rail went cold under your hands, and forty metres of ship stopped being ship."
     - "Allocation is short by two modules."

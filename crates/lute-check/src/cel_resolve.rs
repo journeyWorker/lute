@@ -295,7 +295,7 @@ fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec
     let mut marked = CelArena::default();
     if let Some(mh) = lute_cel::parse_slot_marked_refs(&mut marked, &slot.raw) {
         if let Some(mroot) = marked.get(mh) {
-            check_cel_profile(&mroot.expr, slot, &[], diags);
+            check_cel_profile(&mroot.expr, slot, &ProfileScope::of(ctx), diags);
             // 0.21.1 T1-1: `isSet(quest.<id>.state)` is always true.
             check_quest_state_isset(&mroot.expr, slot.span, diags);
             // Vocabulary-aware fact-query pass (dsl 0.3.0 §6/§8, T11):
@@ -316,6 +316,15 @@ fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec
             crate::temporal::check_temporal(&mroot.expr, slot, ctx, diags);
             // dsl 0.24.0 §1: both operands of `%` are integers.
             check_modulo_operands(&mroot.expr, slot.span, &ctx.env.state, diags);
+            // dsl 0.28.0 §1 (T1-4): comparisons, logical operands and the
+            // condition itself are typed.
+            crate::cel_types::check_types(
+                &mroot.expr,
+                slot.span,
+                slot.kind == CelKind::Condition,
+                &crate::cel_types::Typing::of(ctx, slot.kind != CelKind::SetExpr),
+                diags,
+            );
         }
     }
 }
@@ -329,8 +338,7 @@ fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec
 /// finding only one member hits names it (`… (for occasion.target =
 /// bram)`), since the beat is still raised for the others.
 fn check_per_member(slot: &CelSlot, ctx: &Ctx<'_>, members: &[String]) -> Vec<Diagnostic> {
-    let mut per: Vec<(&str, Vec<Diagnostic>)> = Vec::new();
-    for m in members {
+    group_per_member(members, |m| {
         let raw = crate::occasion_bind::instantiate_bound(&slot.raw, m);
         let inst = CelSlot::raw(slot.kind, raw, slot.span);
         let mut arena = CelArena::default();
@@ -340,8 +348,20 @@ fn check_per_member(slot: &CelSlot, ctx: &Ctx<'_>, members: &[String]) -> Vec<Di
                 check_parsed_slot(&root.expr, &inst, ctx, &mut ds);
             }
         }
-        per.push((m.as_str(), ds));
-    }
+        ds
+    })
+}
+
+/// dsl 0.27.0 §3: `judge` run once for each of `members` (a slot, write or
+/// argument reading `occasion.target`, instantiated for that member), its
+/// findings reported as [`check_per_member`] describes: shared ones once,
+/// the others naming the members that hit them.
+pub(crate) fn group_per_member(
+    members: &[String],
+    mut judge: impl FnMut(&str) -> Vec<Diagnostic>,
+) -> Vec<Diagnostic> {
+    let per: Vec<(&str, Vec<Diagnostic>)> =
+        members.iter().map(|m| (m.as_str(), judge(m))).collect();
     let key = |d: &Diagnostic| (d.code.clone(), d.message.clone());
     // Each finding with its members, in first-seen order: an exact message
     // every member shares keys on itself; any other keys on its message
@@ -488,8 +508,29 @@ pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
             for use_ in collect_path_uses(&root.expr) {
                 check_state_path(&use_.path, &slot, ctx, &mut diags);
             }
-            check_cel_profile(&root.expr, &slot, &[], &mut diags);
+            check_cel_profile(&root.expr, &slot, &ProfileScope::of(ctx), &mut diags);
             check_modulo_operands(&root.expr, rule.span, &ctx.env.state, &mut diags);
+            // dsl 0.28.0 §1: a rule guard's comparisons are typed too.
+            crate::cel_types::check_types(
+                &root.expr,
+                rule.span,
+                true,
+                &crate::cel_types::Typing::of(ctx, true),
+                &mut diags,
+            );
+            // dsl 0.28.0 §1 (T1-5): and the literal-domain checks every
+            // condition slot gets (the guard is already def-expanded).
+            let (bodies, params) = (Default::default(), Default::default());
+            diags.extend(crate::gates::condition_literals(
+                cel,
+                &crate::cel_expand::DefTable {
+                    bodies: &bodies,
+                    params: &params,
+                },
+                &ctx.env.state,
+                None,
+                rule.span,
+            ));
         }
         // dsl 0.24 T3-6: an imported rule's guard problems at the schema line.
         if let Some(origin) = vocab.origins.rules.get(&rule.raw) {
@@ -604,9 +645,33 @@ pub(crate) fn check_def_body(
     if let Some(root) =
         lute_cel::parse_slot_marked_refs(&mut marked, cel).and_then(|h| marked.get(h))
     {
-        check_cel_profile(&root.expr, &slot, params, &mut diags);
+        check_cel_profile(
+            &root.expr,
+            &slot,
+            &ProfileScope {
+                bound: params,
+                relations: None,
+                schema: Some(schema),
+            },
+            &mut diags,
+        );
         check_quest_state_isset(&root.expr, span, &mut diags);
         check_modulo_operands(&root.expr, span, schema, &mut diags);
+        // dsl 0.28.0 §1: a def body's comparisons are typed like an inline
+        // slot's (the body may be any type, so only its parts are judged).
+        crate::cel_types::check_types(
+            &root.expr,
+            span,
+            false,
+            &crate::cel_types::Typing {
+                schema,
+                defs: &crate::set_type::DefTypes::new(),
+                dollar: None,
+                clock: None,
+                arithmetic: true,
+            },
+            &mut diags,
+        );
     }
     for d in &mut diags {
         d.message = format!("def `{name}`: {}", d.message);
@@ -743,9 +808,14 @@ fn check_guard_fact_access(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>)
 ///   CEL expr, e.g. `now()`) is recursed into; the pattern itself is
 ///   validated by [`check_fact_queries`] instead.
 ///
-/// `bound` names the extra bare identifiers in scope — a def body's own
-/// `params:` (0.21.1 T1-6); empty for every ordinary slot.
-fn check_cel_profile(expr: &Expr, slot: &CelSlot, bound: &[String], diags: &mut Vec<Diagnostic>) {
+/// `scope` names the extra bare identifiers in scope and what the hints
+/// consult ([`ProfileScope`]).
+fn check_cel_profile(
+    expr: &Expr,
+    slot: &CelSlot,
+    scope: &ProfileScope<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
     match expr {
         Expr::Call(c) => {
             let name = c.func_name.as_str();
@@ -775,17 +845,17 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, bound: &[String], diags: &mut 
                     // the ordinary recursion.
                     if name == "validAt" {
                         if let Some(t) = c.args.get(1) {
-                            check_cel_profile(&t.expr, slot, bound, diags);
+                            check_cel_profile(&t.expr, slot, scope, diags);
                         }
                     }
                 } else {
                     // Structural — recurse into target + args to catch any
                     // nested out-of-profile call.
                     if let Some(t) = &c.target {
-                        check_cel_profile(&t.expr, slot, bound, diags);
+                        check_cel_profile(&t.expr, slot, scope, diags);
                     }
                     for a in &c.args {
-                        check_cel_profile(&a.expr, slot, bound, diags);
+                        check_cel_profile(&a.expr, slot, scope, diags);
                     }
                 }
             } else if name == VISITED_FN && slot.kind != CelKind::Condition {
@@ -806,11 +876,11 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, bound: &[String], diags: &mut 
                 diags.push(diag(
                     E_CEL_PROFILE,
                     format!(
-                        "`{name}(…)` is outside the Lute-CEL profile — only operators, \
-                         literals, lists, `?:`, `in`, `has()`, `isSet()`, `holds()`, \
+                        "`{name}(…)` is outside the Lute-CEL profile{} — the profile has \
+                         operators, literals, lists, `?:`, `in`, `has()`, `isSet()`, `holds()`, \
                          `count()`, `countDistinct(<pattern>, <Var>)`, `validAt()`, `now()`, and \
-                         `visited('<scene id>')` are permitted (dsl §8.4, 0.3.0 §8, 0.21.0 §7a.1, \
-                         0.24 T3-9)"
+                         `visited('<scene id>')`",
+                        call_hint(c, scope)
                     ),
                     slot.span,
                 ));
@@ -835,11 +905,11 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, bound: &[String], diags: &mut 
         // exprs; recurse so a call nested inside a list is still caught.
         Expr::List(list) => {
             for el in &list.elements {
-                check_cel_profile(&el.expr, slot, bound, diags);
+                check_cel_profile(&el.expr, slot, scope, diags);
             }
         }
         // A field selection: recurse into the operand (`foo().bar` hides a call).
-        Expr::Select(sel) => check_cel_profile(&sel.operand.expr, slot, bound, diags),
+        Expr::Select(sel) => check_cel_profile(&sel.operand.expr, slot, scope, diags),
         // A bare identifier is in profile ONLY as a legal expression root
         // ([`is_profile_ident_root`]): a state tier, the substituted `$` subject
         // `_`, or a marker-rewritten `@ref`. Every other bare name is a free
@@ -847,19 +917,113 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, bound: &[String], diags: &mut 
         // and is out of profile. Scalar literals are in profile; `Unspecified` is
         // inert.
         Expr::Ident(name) => {
-            if !is_profile_ident_root(name) && !bound.iter().any(|b| b == name) {
-                diags.push(diag(
-                    E_CEL_PROFILE,
-                    format!(
-                        "`{name}` is not a state path (`scene`/`run`/`user`/`app`), the \
-                         match subject `$`, or a def `@ref` — bare identifiers are \
-                         outside the Lute-CEL profile (dsl §8.4, §9.1)"
+            if !is_profile_ident_root(name) && !scope.bound.iter().any(|b| b == name) {
+                let message = match name.strip_prefix('_').filter(|n| !n.is_empty()) {
+                    // `$oil`: the `$` subject rewrite left `_oil`.
+                    Some(bare) => format!(
+                        "`${bare}`: a state path takes no `$` (`$` alone is the `<match>` \
+                         subject) — write the path with its tier{}",
+                        scope.path_ending_in(bare).map_or_else(
+                            || format!(", such as `run.{bare}`"),
+                            |p| format!(" — did you mean `{p}`?")
+                        )
                     ),
-                    slot.span,
-                ));
+                    // Yarn's `when: once` / `when: always`: how often a beat
+                    // plays is its `once` key, not a condition.
+                    None if matches!(name.as_str(), "once" | "always")
+                        && slot.raw.trim() == name.as_str() =>
+                    {
+                        format!(
+                            "`{name}` is not a condition: how often a beat plays is its own key, \
+                             `once` — `once: run` (once per run, the default), `once: user` \
+                             (once ever) or `once: false` (every time); on a `<beat>` or \
+                             `<entry>` it is `once=\"run\"` — drop this `when`"
+                        )
+                    }
+                    None => format!(
+                        "`{name}` is not a state path (`scene`/`run`/`user`/`app`), the match \
+                         subject `$`, or a def `@ref` — {}",
+                        scope.path_ending_in(name).map_or_else(
+                            || format!(
+                                "a string is quoted (`'{name}'`), and a `<when>` compares its \
+                                 `<match>` subject with `is=\"{name}\"`"
+                            ),
+                            |p| format!("did you mean `{p}`?")
+                        )
+                    ),
+                };
+                diags.push(diag(E_CEL_PROFILE, message, slot.span));
             }
         }
         Expr::Literal(_) | Expr::Unspecified => {}
+    }
+}
+
+/// What [`check_cel_profile`] admits beyond the profile's roots — a def
+/// body's own `params:` (0.21.1 T1-6), empty for every ordinary slot — and
+/// what its hints consult (dsl 0.28.0, T3-4): the relations a bare atom may
+/// name, and the declared paths a bare name may be the tail of.
+struct ProfileScope<'a> {
+    bound: &'a [String],
+    relations:
+        Option<&'a std::collections::BTreeMap<String, lute_manifest::relations::RelationDecl>>,
+    schema: Option<&'a crate::meta::StateSchema>,
+}
+
+impl<'a> ProfileScope<'a> {
+    fn of(ctx: &'a Ctx<'_>) -> Self {
+        ProfileScope {
+            bound: &[],
+            relations: Some(&ctx.env.rel_vocab.relations),
+            schema: Some(&ctx.env.state),
+        }
+    }
+
+    /// The first declared path whose last segment is `name` (any case).
+    fn path_ending_in(&self, name: &str) -> Option<&'a str> {
+        self.schema?.decls.keys().map(String::as_str).find(|k| {
+            !crate::cel_paths::is_engine_owned_path(k)
+                && k.rsplit_once('.')
+                    .is_some_and(|(_, last)| last.eq_ignore_ascii_case(name))
+        })
+    }
+}
+
+/// dsl 0.28.0 (T3-4): what an out-of-profile call was likely meant as — a
+/// relation atom asked with `holds(…)`, `completed()` / `active()` read as
+/// the quest's state, or an unquoted `visited()` id.
+fn call_hint(c: &cel_parser::ast::CallExpr, scope: &ProfileScope<'_>) -> String {
+    let name = c.func_name.as_str();
+    if c.target.is_none() && scope.relations.is_some_and(|r| r.contains_key(name)) {
+        let args: Vec<String> = c
+            .args
+            .iter()
+            .map(|a| crate::cel_types::show(&a.expr))
+            .collect();
+        let atom = format!("{name}({})", args.join(", "));
+        return format!(
+            " — `{name}` is a relation, and a fact is asked about with `holds({atom})`"
+        );
+    }
+    let id = match c.args.as_slice() {
+        [a] if c.target.is_none() => match &a.expr {
+            Expr::Literal(Val::String(s)) => Some(s.clone()),
+            e => crate::cel_paths::select_path(e),
+        },
+        _ => None,
+    };
+    match (name, id) {
+        ("completed" | "active", Some(id)) => format!(
+            " — `{name}()` belongs to `after:`; a condition reads the quest's state: \
+             `quest.{id}.state == '{}'`",
+            if name == "completed" {
+                "complete"
+            } else {
+                "active"
+            }
+        ),
+        (VISITED_FN, Some(id)) => format!(" — the scene id is quoted: `visited('{id}')`"),
+        _ => String::new(),
     }
 }
 
@@ -1486,35 +1650,50 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
                 && rest.as_bytes().get(name_len) == Some(&b']')
                 && !ctx.env.defs.contains(&rest[..name_len])
         });
-    if !param_indexed && !is_declared(path, ctx) {
+    // T3-1: a path whose own declaration was reported is judged no further.
+    if !param_indexed && !is_declared(path, ctx) && !ctx.env.state.is_faulty(path) {
         let mut msg = format!("state path `{path}` is not declared in `state:` (dsl §9.4)");
         // dsl 0.5.0 §2.2 "did you mean": suggest the nearest declared path
         // within a small edit distance, advisory text only (no new code).
         if let Some(kind) = ctx.env.rel_vocab.indexed_state.get(path) {
             // dsl 0.24.0 §3: the family itself is not a value.
             msg = format!(
-                "state path `{path}` is entity-indexed (`per: {kind}`): read one member by name, \
-                 `{path}.<member>`; `{path}[P]` reads a rule variable's member only inside a \
-                 rule `cel()` guard (dsl 0.24.0 §3)"
+                "state path `{path}` is entity-indexed (`per: {kind}`), so read one member: \
+                 `{path}.<member>` by name, `{path}[occasion.target]` for the beat's target, \
+                 `{path}[@param]` in a component or a beat template header, or `{path}[X]` \
+                 with a rule variable inside a rule `cel()` guard"
             );
         } else if let Some(field) = path
             .strip_prefix(crate::occasion_bind::OCCASION_PAYLOAD)
             .and_then(|f| f.strip_prefix('.'))
         {
-            // dsl 0.27.0 §3: payload fields come from the answered occasion.
+            // dsl 0.27.0 §3, 0.28.0 (T2-8): payload fields come from the
+            // occasion being raised.
             msg = format!(
-                "`{path}` is not a `payload:` field of any occasion this document's beats \
-                 answer — a beat reads the payload of the occasion it answers, so declare \
-                 `{field}` under that occasion's `payload:` (dsl 0.27.0 §3)"
+                "`{path}` is not a `payload:` field of any occasion this document answers — \
+                 `occasion.payload` is bound only while its occasion is raised, and a beat, an \
+                 `<objective on>` or an `<on event>` handler reads the payload of the occasion it \
+                 answers, so declare `{field}` under that occasion's `payload:` (dsl 0.27.0 §3)"
             );
             if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2)
                 .filter(|s| s.starts_with(crate::occasion_bind::OCCASION_PAYLOAD))
             {
                 msg.push_str(&format!(" — did you mean `{sugg}`?"));
             }
-        } else if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2)
-        {
-            msg.push_str(&format!(" — did you mean `{sugg}`?"));
+        } else {
+            // dsl 0.28.0 (T3-8): an engine namespace says what it holds —
+            // unless an authored `scene.*` path is the nearer reading.
+            let near = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2);
+            let engine = near
+                .filter(|_| path.starts_with("scene."))
+                .is_none()
+                .then(|| crate::cel_paths::engine_path_hint(path, &|p| is_declared(p, ctx)))
+                .flatten();
+            if let Some(hint) = engine {
+                msg = hint;
+            } else if let Some(sugg) = near {
+                msg.push_str(&format!(" — did you mean `{sugg}`?"));
+            }
         }
         diags.push(diag("E-UNDECLARED", msg, slot.span));
     }
@@ -1991,8 +2170,10 @@ mod tests {
             "run.day % 7 == 0",
             "(run.day - 1) % 7 == 3",
             "run.day % 7.0 == 0",
-            "run.day + 1",
-            "run.day - 1 * 2 / 3",
+            // dsl 0.28.0 §1: a whole condition must be a bool, so the
+            // arithmetic is compared rather than standing alone.
+            "run.day + 1 > 0",
+            "run.day - 1 * 2 / 3 > 0",
         ] {
             let c = codes(ok);
             assert!(

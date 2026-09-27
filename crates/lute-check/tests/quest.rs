@@ -399,6 +399,16 @@ fn quest_id_with_hyphen_errors() {
     assert!(cs.contains(&"E-PATH-IDENT".to_string()), "{cs:?}");
 }
 
+/// A `.` would split the quest id into more path segments, so no
+/// `quest.<id>.state` read could name it — rejected where it is declared.
+#[test]
+fn quest_id_with_dot_errors_at_declaration() {
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"isolation.hush\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+    );
+    assert!(cs.contains(&"E-PATH-IDENT".to_string()), "{cs:?}");
+}
+
 #[test]
 fn objective_id_with_hyphen_errors() {
     let cs = codes(
@@ -559,9 +569,9 @@ fn diagnostics(text: &str) -> Vec<(String, String)> {
 }
 
 /// #11 / T9.1: `after:` in QUEST frontmatter is `E-META-UNKNOWN-KEY` spanning
-/// the whole meta block at 1:1, while `after=` is legal two lines below in the
+/// the whole meta block at 1:1, while `follows=` is legal two lines below in the
 /// same file. The checker holds both candidates: `after` is a core key on the
-/// sibling kind, and a legal attribute in this one — so the generic
+/// sibling kind, and `follows` a legal attribute in this one — so the generic
 /// edit-distance suggestion (distance 0 against a key that is not in this
 /// kind's candidate set) says nothing at all. Name the attribute form.
 #[test]
@@ -574,7 +584,7 @@ fn meta_unknown_key_after_on_a_quest_suggests_the_attribute_form() {
         .find(|(c, _)| c == "E-META-UNKNOWN-KEY")
         .expect("`after:` is not a quest frontmatter key");
     assert!(
-        msg.contains("`after=`"),
+        msg.contains("`follows=`"),
         "the attribute form must be named: {}",
         msg
     );

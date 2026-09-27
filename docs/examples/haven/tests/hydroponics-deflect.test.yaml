@@ -5,7 +5,7 @@ file: ../scenes/hydroponics.lute
 choose:
   thePlainAnswer: deflect
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "It was. That isn't what I asked."
     - "Keep it, then. Everyone aboard is carrying something."

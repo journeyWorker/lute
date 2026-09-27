@@ -7,10 +7,12 @@ pub struct TextIndex<'a> {
     line_utf16: Vec<u32>,    // file-relative UTF-16 offset of each line start
 }
 
+/// Where a byte offset sits: every CLI surface prints `line:column`; the LSP
+/// speaks `utf16_col`.
 #[derive(Clone, Copy, Debug)]
 pub struct Position {
     pub line: u32,      // 1-based
-    pub column: u32,    // 1-based byte column within line
+    pub column: u32,    // 1-based CHARACTER (Unicode scalar) column within line
     pub utf16_col: u32, // 0-based UTF-16 column within line
 }
 
@@ -50,11 +52,12 @@ impl<'a> TextIndex<'a> {
         let line_ix = self.line_of(byte);
         let line_start = self.line_starts[line_ix];
         let slice = &self.text[line_start..byte];
-        let byte_col = (byte - line_start) as u32;
-        let utf16_col = slice.chars().map(|c| c.len_utf16() as u32).sum();
+        let (chars, utf16_col) = slice
+            .chars()
+            .fold((0u32, 0u32), |(n, u), c| (n + 1, u + c.len_utf16() as u32));
         Position {
             line: line_ix as u32 + 1,
-            column: byte_col + 1,
+            column: chars + 1,
             utf16_col,
         }
     }
@@ -77,7 +80,7 @@ pub struct Span {
     pub byte_start: usize,
     pub byte_end: usize,
     pub line: u32,               // 1-based, of byte_start
-    pub column: u32,             // 1-based byte column of byte_start
+    pub column: u32,             // 1-based character column of byte_start
     pub utf16_range: (u32, u32), // file-relative UTF-16 offsets
 }
 
@@ -263,7 +266,7 @@ struct CitationGroup {
 
 fn citation_groups(message: &str) -> Vec<CitationGroup> {
     let mut out = Vec::new();
-    if !message.contains('§') && !message.contains("dsl ") {
+    if !message.contains('§') && !message.contains("dsl ") && !message.contains("Appendix ") {
         return out;
     }
     let b = message.as_bytes();
@@ -337,39 +340,67 @@ fn split_parts(inner: &str) -> Vec<String> {
 
 /// Whether one parenthetical part cites the spec: `dsl 0.24.0 §4`,
 /// `0.26.0 §2.3`, `§7.6`, `dsl 0.24 T3-8`, `dsl 0.24.0`, a decision `D4` /
-/// `D-L` (bare or versioned, `dsl 0.9.0 D-C`), or a prerelease finding
-/// `prerelease N8`.
+/// `D-L` (bare or versioned, `dsl 0.9.0 D-C`), a prerelease finding
+/// `prerelease N8`, an appendix `Appendix C`, a dated design
+/// (`dsl 2026-08-31 §4`, `subquest design 2026-08-31 §4`) or another spec
+/// document's section (`plugin §7`).
 fn is_citation(part: &str) -> bool {
     let p = part.trim();
-    let p = p
-        .strip_prefix("dsl ")
-        .or_else(|| p.strip_prefix("spec "))
+    let (rest, named) = ["dsl ", "spec ", "plugin ", "subquest design "]
+        .iter()
+        .find_map(|prefix| p.strip_prefix(prefix))
         .map(|rest| (rest.trim_start(), true))
         .unwrap_or((p, false));
-    let (rest, dsl) = p;
-    if rest.starts_with('§') || rest.starts_with("prerelease N") {
+    if rest.starts_with('§') || rest.starts_with("prerelease N") || is_appendix(rest) {
         return true;
     }
     if is_decision(rest) {
         return true;
     }
-    let version_len = rest
-        .find(|c: char| !(c.is_ascii_digit() || c == '.'))
-        .unwrap_or(rest.len());
+    let version_len = if is_date(rest) {
+        "YYYY-MM-DD".len()
+    } else {
+        rest.find(|c: char| !(c.is_ascii_digit() || c == '.'))
+            .unwrap_or(rest.len())
+    };
     let version = &rest[..version_len];
     if version.is_empty()
-        || !version.contains('.')
+        || !(version.contains('.') || version.contains('-'))
         || !version.starts_with(|c: char| c.is_ascii_digit())
     {
         return false;
     }
     let after = rest[version_len..].trim_start();
-    (dsl && after.is_empty())
+    (named && after.is_empty())
         || after.starts_with('§')
+        || is_appendix(after)
         || is_decision(after)
         || (after.starts_with('T')
             && after[1..].starts_with(|c: char| c.is_ascii_digit())
             && after.contains('-'))
+}
+
+/// A dated design document's version: `2026-08-31`, at the start of `s`.
+fn is_date(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() >= 10
+        && b[..10].iter().enumerate().all(|(i, c)| {
+            if i == 4 || i == 7 {
+                *c == b'-'
+            } else {
+                c.is_ascii_digit()
+            }
+        })
+        && !b.get(10).is_some_and(u8::is_ascii_alphanumeric)
+}
+
+/// An appendix reference: `Appendix C`, `Appendix C1`.
+fn is_appendix(s: &str) -> bool {
+    s.strip_prefix("Appendix ").is_some_and(|rest| {
+        let mut cs = rest.chars();
+        cs.next().is_some_and(|c| c.is_ascii_uppercase())
+            && cs.all(|c| c.is_ascii_digit() || c == '.')
+    })
 }
 
 /// A design-decision reference: `D4`, `D12`, `D-L`, `D-C`.
@@ -412,10 +443,28 @@ mod tests {
         // byte 2 = start of line 2 ('s')
         let p2 = idx.position(2);
         assert_eq!((p2.line, p2.column), (2, 1));
-        // 'é' begins at byte 3; its UTF-16 column within line 2 is 1 (0-based), byte column 2
+        // 'é' begins at byte 3; its UTF-16 column within line 2 is 1 (0-based), char column 2
         let p3 = idx.position(3);
-        assert_eq!(p3.line, 2);
+        assert_eq!((p3.line, p3.column), (2, 2));
         assert_eq!(p3.utf16_col, 1);
+    }
+
+    /// The column counts characters, not bytes: Korean (3 bytes, 1 UTF-16
+    /// unit each) and an astral emoji (4 bytes, 2 units) before the span.
+    #[test]
+    fn column_counts_characters_after_a_multibyte_prefix() {
+        let text = "x\n@수아: 안녕 😀 {{run.x}}\n";
+        let idx = TextIndex::new(text);
+        let at = text.find("{{").unwrap();
+        let s = Span::from_bytes(&idx, at, at + 2);
+        assert_eq!(s.line, 2);
+        assert_eq!(s.column, 11, "`@수아: 안녕 😀 ` is 10 characters");
+        assert_eq!(
+            idx.position(at).utf16_col,
+            11,
+            "the emoji is two UTF-16 units"
+        );
+        assert_eq!(s.utf16_range, (13, 15));
     }
 
     #[test]
@@ -424,7 +473,7 @@ mod tests {
         let s = Span::from_bytes(&idx, 1, 4);
         assert_eq!((s.byte_start, s.byte_end), (1, 4));
         assert_eq!(s.line, 1);
-        assert_eq!(s.column, 2); // 1-based byte column
+        assert_eq!(s.column, 2); // 1-based character column
         assert_eq!(s.utf16_range, (1, 4));
     }
 
@@ -456,6 +505,23 @@ mod tests {
                 "write `holds(owned(occasion.target))` (a fact) (dsl §7.6)",
                 "write `holds(owned(occasion.target))` (a fact)",
             ),
+            (
+                "malformed fact pattern: expected `,` or `)` (dsl 0.3.0 §5, Appendix C)",
+                "malformed fact pattern: expected `,` or `)`",
+            ),
+            (
+                "the child can never complete (dsl 2026-08-31 §2.1): `quest.c.state` is never set",
+                "the child can never complete: `quest.c.state` is never set",
+            ),
+            (
+                "names its own quest (subquest design 2026-08-31 §4)",
+                "names its own quest",
+            ),
+            (
+                "segment admits only `enum` or `number` (plugin §7)",
+                "segment admits only `enum` or `number`",
+            ),
+            ("a draft from 2026-08-31 (2026-08-31)", "a draft from 2026-08-31 (2026-08-31)"),
             ("the `(` is never closed (since 0.24.0)", "the `(` is never closed (since 0.24.0)"),
         ];
         for (message, plain) in cases {

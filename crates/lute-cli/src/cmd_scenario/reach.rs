@@ -94,7 +94,7 @@ pub(crate) fn reach_verdict_text(
         }
         // Main review fix: an id referenced by a formula but never declared
         // anywhere in this root (E-CONN-UNKNOWN-NODE's own concern) must
-        // read Unknown -- checked BEFORE the "plain quest, no `after`"
+        // read Unknown -- checked BEFORE the "plain quest, no `follows`"
         // fallback below, since an undeclared id is trivially also absent
         // from `graph.nodes` and would otherwise be misreported Reachable.
         NodeId::Quest(id) if !scenario.quest_ids.contains(id) => {
@@ -102,7 +102,7 @@ pub(crate) fn reach_verdict_text(
              (E-CONN-UNKNOWN-NODE), under your declared routes."
                 .to_string()
         }
-        // dsl 0.21.0 §7a.5: a declared quest without `after=` is not a graph
+        // dsl 0.21.0 §7a.5: a declared quest without `follows=` is not a graph
         // node at all — UNANCHORED, available from the start of play.
         NodeId::Quest(id)
             if !scenario
@@ -127,17 +127,17 @@ pub(crate) fn reach_verdict_text(
     }
 }
 
-/// dsl 0.21.0 §7a.5: the reach verdict of a declared quest without `after=`.
+/// dsl 0.21.0 §7a.5: the reach verdict of a declared quest without `follows=`.
 /// Its leading word is the JSON/DOT `unanchored` token's source
 /// ([`scenario_fmt`]'s `reach_token` keys off it, like every other verdict).
 ///
 /// [`scenario_fmt`]: crate::scenario_fmt
-const UNANCHORED_VERDICT: &str = "Unanchored — a quest with no declared `after` prerequisite: \
+const UNANCHORED_VERDICT: &str = "Unanchored — a quest with no declared `follows` edge: \
      available from the start of play; the connectivity layer holds no prerequisites for it, so \
      only its quest lifecycle (`start`, or an accept) decides when it activates.";
 
 /// dsl 0.21.0 §7a.5: the declared quests the prerequisite graph does not
-/// hold (no `after=`, no `::accept` anchor — dsl 0.24.0 §2 — and no
+/// hold (no `follows=`, no `::accept` anchor — dsl 0.24.0 §2 — and no
 /// subquest tree or `start` anchor — dsl 0.25.0 §4), in id order — the
 /// `unanchored` list every `lute scenario` graph view prints beside the
 /// layers.
@@ -152,7 +152,7 @@ pub(crate) fn unanchored_quests(
         .collect()
 }
 
-/// Print `node`'s declared `after` STRUCTURE (dsl §5:575) — the raw formula
+/// Print `node`'s declared `after` (a quest's `follows`) STRUCTURE (dsl §5:575) — the raw formula
 /// shape, `&&`/`||` intact (Main review: never flattened into a
 /// predecessor list that could misrepresent a disjunction as a joint
 /// requirement), plus each directly-referenced node's own reachability as
@@ -163,44 +163,49 @@ fn print_prereq_structure(
     scenario: &RootScenario,
     node: &lute_check::connectivity::NodeId,
 ) {
-    use lute_check::connectivity::PrereqState;
+    use lute_check::connectivity::{NodeId, PrereqState};
+    // A quest declares its graph edge with `follows=`; scenes and beats with `after`.
+    let key = if matches!(node, NodeId::Quest(_)) {
+        "follows"
+    } else {
+        "after"
+    };
     match scenario.graph.nodes.get(node).map(|info| &info.prereq) {
-        None if matches!(node, lute_check::connectivity::NodeId::Quest(id) if scenario.quest_ids.contains(id)) =>
-        {
+        None if matches!(node, NodeId::Quest(id) if scenario.quest_ids.contains(id)) => {
             outln!(
                 out,
-                "  after: (none declared) — unanchored: this quest is in no prerequisite graph \
+                "  {key}: (none declared) — unanchored: this quest is in no prerequisite graph \
                  layer and on no edge; it is available from the start of play."
             );
         }
-        _ if matches!(node, lute_check::connectivity::NodeId::Beat(_)) => {
+        _ if matches!(node, NodeId::Beat(_)) => {
             print_bundle_beat_selection(out, scenario, node);
         }
         None | Some(PrereqState::Absent) => {
             outln!(
                 out,
-                "  after: (none declared) — this node is an entry point."
+                "  {key}: (none declared) — this node is an entry point."
             );
         }
         Some(PrereqState::Invalid) => {
             outln!(
                 out,
-                "  after: (malformed — E-CONN-PROFILE; structure unavailable)"
+                "  {key}: (malformed — E-CONN-PROFILE; structure unavailable)"
             );
         }
         Some(prereq @ PrereqState::Valid(f)) => {
-            outln!(out, "  after: {}", format_prereq(f));
+            outln!(out, "  {key}: {}", format_prereq(f));
             print_referenced(
                 out,
                 scenario,
                 prereq,
-                "`after` above for the && / || structure",
+                &format!("`{key}` above for the && / || structure"),
             );
         }
         Some(prereq @ PrereqState::Anchored(anchors)) => {
             outln!(
                 out,
-                "  after: (none declared) — anchored; each anchor \
+                "  {key}: (none declared) — anchored; each anchor \
                  holds before it activates, through any one of its sources:"
             );
             for a in anchors {

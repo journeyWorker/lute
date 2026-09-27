@@ -5,7 +5,7 @@
 # resolution would show here first.
 file: ../scenes/wake.lute
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Cryo's gone. We don't go back under."
     - "If the second pod's intact, I'm taking it."

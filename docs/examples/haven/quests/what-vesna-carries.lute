@@ -16,7 +16,7 @@ title: What Vesna Carries
   objective is exactly "she read the sequence aloud in the archive" — the derived
   relation doing the work a mirror flag would otherwise be doing by hand.
 */
-<quest id="whatVesnaCarries" tier="run" title="What Vesna Carries" start="run.vesnaTrust >= 2" after="visited('haven.s01ep04')">
+<quest id="whatVesnaCarries" tier="run" title="What Vesna Carries" start="run.vesnaTrust >= 2" follows="visited('haven.s01ep04')">
 <objective id="sheWillWorkWithYours" title="Be somebody she can work with" done="run.vesnaTrust >= 3"/>
 <objective id="sheCanStopIt" title="Have her know the halt condition well enough to use it" done="holds(can_halt(vesna))"/>
 <objective id="sheHasThePaper" title="Have her holding the manifest when it matters" done="@vesnaHasPaper" optional/>

@@ -3,7 +3,7 @@
 # a module with margin. The `::set` in the otherwise arm is the assertion.
 file: ../scenes/machine-deck.lute
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "There was nobody down here to tell you which of the four handles was the one."
     - "Coupling five-six remains outside tolerance. Release will be executed with margin. The schedule advances."

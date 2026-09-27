@@ -77,13 +77,14 @@ pub struct World {
     /// occasion's beats ([`run_deferred_handlers`](super::run_deferred_handlers)).
     pub defer_handlers: bool,
     pub deferred_handlers: Vec<(String, String)>,
-    /// dsl 0.27.0 §4 (T2-5): a finite clock raised its last `dayEnd` and
-    /// stopped — every later `advance:` is `E-CLOCK-END`. Cleared by a
-    /// `newRun`, which starts the clock over.
-    pub clock_ended: bool,
     /// dsl 0.27.0 §5: the seasons' and rearms' last observed conditions and
     /// the season-scoped spends.
     pub cadence: crate::exec::cadence::Cadence,
+    /// The script step running now (`Session::occasion` / `advance` set
+    /// it) and every decision the playthrough made so far — what a refused
+    /// pick names beside a premise's producers.
+    pub step: usize,
+    pub decisions: Vec<super::producers::Decision>,
 }
 
 impl World {
@@ -228,14 +229,54 @@ pub struct WorldSeed<'a> {
     pub derive: Option<bool>,
 }
 
+/// One seed of a save the project cannot take: the script key path it was
+/// written at (`["state", "run.day"]`; `["facts"]` with the list item) and
+/// why — a usage error the script locates there.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SeedError {
+    pub keys: Vec<String>,
+    pub item: Option<usize>,
+    pub msg: String,
+}
+
+impl SeedError {
+    fn at(keys: &[&str], msg: String) -> Self {
+        SeedError {
+            keys: keys.iter().map(|k| k.to_string()).collect(),
+            item: None,
+            msg,
+        }
+    }
+
+    fn item(keys: &[&str], item: usize, msg: String) -> Self {
+        SeedError {
+            item: Some(item),
+            ..SeedError::at(keys, msg)
+        }
+    }
+}
+
+impl std::fmt::Display for SeedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.msg)
+    }
+}
+
 /// The playthrough's starting world: every declared default (scene tier
 /// excluded; `entry.<id>.everRead` false for every entry), the script's
-/// `state:` over it, the save seeds (dsl 0.22.0 §3: `visited:`,
-/// `presented:`, `quests:`, `entriesRead:`), the project's seed facts plus
-/// the script's `facts:`. A `quest.<id>.state` seed is a `quests:` entry.
-/// A seed naming an undeclared path, id, quest or relation — or a value that
-/// does not fit — is a usage error, never a silent no-op.
-pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, String> {
+/// `state:` over it, the save seeds (`visited:`, `presented:`, `quests:`,
+/// `entriesRead:`), the project's seed facts plus the script's `facts:`. A
+/// `quest.<id>.state` seed is a `quests:` entry. A `visited:` scene was
+/// presented, so its `once: user` is spent — a save cannot hold one without
+/// the other. A seed naming an undeclared path, id, quest or relation — or a
+/// value that does not fit — is a usage error, never a silent no-op; every
+/// one is reported.
+pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, Vec<SeedError>> {
+    let mut errs: Vec<SeedError> = Vec::new();
+    let top_bridges = resolve_bridges(p, "top level", &seed.surfaces.bridges).unwrap_or_else(|e| {
+        errs.push(SeedError::at(&["bridges"], e));
+        BTreeMap::new()
+    });
     let mut w = World {
         state: BTreeMap::new(),
         facts: p.seed_facts.clone(),
@@ -252,14 +293,15 @@ pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, String
         derive: None,
         failed_objectives: BTreeSet::new(),
         bridges: BridgeQueues {
-            top: resolve_bridges(p, "top level", &seed.surfaces.bridges)?,
+            top: top_bridges,
             step: BTreeMap::new(),
         },
         defer_by: None,
         defer_handlers: false,
         deferred_handlers: Vec::new(),
-        clock_ended: false,
         cadence: Default::default(),
+        step: 0,
+        decisions: Vec::new(),
     };
     for (path, e) in &p.state_table {
         if path.starts_with("scene.") {
@@ -275,68 +317,99 @@ pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, String
     for (path, lit, _) in &seed.surfaces.state {
         let at = format!("`state.{path}`");
         if let Some(id) = quest_state_id(path) {
-            seed_quest(p, &mut w, &at, id, lit)?;
+            if let Err(e) = seed_quest(p, &mut w, &at, id, lit) {
+                errs.push(SeedError::at(&["state", path], e));
+            }
             continue;
         }
-        let v = resolve_state(p, path, lit).map_err(|e| format!("{at} {e}"))?;
-        w.state.insert(path.clone(), v);
+        match resolve_state(p, path, lit) {
+            Ok(v) => {
+                w.state.insert(path.clone(), v);
+            }
+            Err(e) => errs.push(SeedError::at(&["state", path], format!("{at} {e}"))),
+        }
     }
     let save = seed.save;
     for (id, status) in &save.quests {
-        seed_quest(p, &mut w, &format!("`quests.{id}`"), id, status)?;
-    }
-    for id in &save.visited {
-        if !p.scene_ids.contains(id) {
-            return Err(unknown_id(
-                "`visited:`",
-                id,
-                "scene",
-                p.scene_ids.iter().map(String::as_str),
-            ));
+        if let Err(e) = seed_quest(p, &mut w, &format!("`quests.{id}`"), id, status) {
+            errs.push(SeedError::at(&["quests", id], e));
         }
+    }
+    for (i, id) in save.visited.iter().enumerate() {
+        if !p.scene_ids.contains(id) {
+            errs.push(SeedError::item(
+                &["visited"],
+                i,
+                unknown_id(
+                    "`visited:`",
+                    id,
+                    "scene",
+                    p.scene_ids.iter().map(String::as_str),
+                ),
+            ));
+            continue;
+        }
+        // Visiting a scene presented it: its `once: user` (and its `share`
+        // key's) is spent, as a live presentation spends it.
+        spend_shared(p, &mut w, id, None, false);
         w.visited.insert(id.clone());
     }
     for (ids, tier) in [(&save.presented_run, "run"), (&save.presented_user, "user")] {
         let at = format!("`presented.{tier}`");
-        for id in ids {
+        for (i, id) in ids.iter().enumerate() {
             match p.index.beats.iter().find(|b| &b.id == id).map(|b| b.kind) {
                 Some(BeatKind::Scene | BeatKind::Bundle) => {}
                 Some(BeatKind::Entry) => {
-                    return Err(format!(
-                        "{at} names entry `{id}` — an entry's read history is `entriesRead:`"
-                    ))
+                    errs.push(SeedError::item(
+                        &["presented", tier],
+                        i,
+                        format!(
+                            "{at} names entry `{id}` — an entry's read history is `entriesRead:`"
+                        ),
+                    ));
+                    continue;
                 }
                 None => {
-                    return Err(unknown_id(
-                        &at,
-                        id,
-                        "scene beat",
-                        p.index
-                            .beats
-                            .iter()
-                            .filter(|b| matches!(b.kind, BeatKind::Scene | BeatKind::Bundle))
-                            .map(|b| b.id.as_str()),
-                    ))
+                    errs.push(SeedError::item(
+                        &["presented", tier],
+                        i,
+                        unknown_id(
+                            &at,
+                            id,
+                            "scene beat",
+                            p.index
+                                .beats
+                                .iter()
+                                .filter(|b| matches!(b.kind, BeatKind::Scene | BeatKind::Bundle))
+                                .map(|b| b.id.as_str()),
+                        ),
+                    ));
+                    continue;
                 }
             }
             // A beat presented this run was also presented ever, and a
             // presented scene is a visited one — as a live presentation
-            // records it (spending its `share` key, dsl 0.25.0 §2).
-            spend_shared(p, &mut w, id, tier == "run");
+            // records it (spending its `share` key).
+            spend_shared(p, &mut w, id, None, tier == "run");
             w.visited.insert(id.clone());
         }
     }
     for (ids, tier) in [(&save.entries_run, "run"), (&save.entries_user, "user")] {
-        for id in ids {
-            // dsl 0.26.0 §7 (T3-10): `<doc>.<entry>` names the entry too.
+        for (i, id) in ids.iter().enumerate() {
+            // `<doc>.<entry>` names the entry too.
             let id = &p.entry_id(id).to_string();
             if !p.entry_ids.contains(id) {
-                return Err(unknown_id(
-                    &format!("`entriesRead.{tier}`"),
-                    id,
-                    "entry",
-                    p.entry_ids.iter().map(String::as_str),
+                errs.push(SeedError::item(
+                    &["entriesRead", tier],
+                    i,
+                    unknown_id(
+                        &format!("`entriesRead.{tier}`"),
+                        id,
+                        "entry",
+                        p.entry_ids.iter().map(String::as_str),
+                    ),
                 ));
+                continue;
             }
             // Read this run ⇒ read ever.
             if tier == "run" {
@@ -345,16 +418,30 @@ pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, String
             }
             w.state.insert(ever_read_path(id), Value::Bool(true));
             if share_of(p, id).is_some() {
-                spend_shared(p, &mut w, id, tier == "run");
+                spend_shared(p, &mut w, id, None, tier == "run");
             }
         }
     }
-    for f in &seed.surfaces.facts {
-        let fact = resolve_fact(p, f).map_err(|e| format!("`facts:` entry `{f}` {e}"))?;
-        w.facts.insert(fact);
+    let facts = &seed.surfaces.facts;
+    for (i, f) in facts.iter().enumerate() {
+        let next = facts.get(i + 1).map(String::as_str);
+        match resolve_fact(p, f, next) {
+            Ok(fact) => {
+                w.facts.insert(fact);
+            }
+            Err(e) => errs.push(SeedError::item(
+                &["facts"],
+                i,
+                format!("`facts:` entry `{f}` {e}"),
+            )),
+        }
     }
     w.derive = seed.derive.filter(|d| !d);
-    Ok(w)
+    if errs.is_empty() {
+        Ok(w)
+    } else {
+        Err(errs)
+    }
 }
 
 /// `rel(a, b)` — the runner's rendering of a ground fact.
@@ -436,6 +523,8 @@ pub struct ClockView {
     pub weekday: Option<i64>,
     /// `clock.weekdayLabel` — `None` without week labels.
     pub weekday_label: Option<String>,
+    /// `clock.ended` — `None` on a clock that never ends.
+    pub ended: Option<bool>,
 }
 
 /// The world `w` as expectations judge it: the effective state, every
@@ -478,6 +567,7 @@ pub fn world_view(p: &ExecProject, w: &World, with_facts: bool) -> WorldView {
             slot: decl.slot_name(at.slot).map(str::to_string),
             weekday: decl.weekday(at.day),
             weekday_label: decl.weekday_label(at.day).map(str::to_string),
+            ended: decl.is_finite().then(|| crate::clock::ended(&w.state)),
         })
     });
     WorldView {

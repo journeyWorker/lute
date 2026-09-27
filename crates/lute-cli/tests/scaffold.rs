@@ -169,9 +169,9 @@ fn scene(proj: &Path, rel: &str) -> String {
     std::fs::read_to_string(proj.join("scenes").join(rel)).unwrap()
 }
 
-/// `lute new scene --on` writes a beat with an `id:`, omits what the
+/// `lute new scene --occasion` writes a beat with an `id:`, omits what the
 /// manifest's `defaults:` supplies, nests under `scenes/` by the name's `/`,
-/// and still checks clean.
+/// names the file after the id, and still checks clean.
 #[test]
 fn new_scene_on_writes_a_beat_that_respects_defaults() {
     let proj = init_beats("new-on");
@@ -179,7 +179,7 @@ fn new_scene_on_writes_a_beat_that_respects_defaults() {
         "new",
         "scene",
         "talk/tomas-first",
-        "--on",
+        "--occasion",
         "talk",
         "--target",
         "npc.tomas",
@@ -187,7 +187,8 @@ fn new_scene_on_writes_a_beat_that_respects_defaults() {
         proj.to_str().unwrap(),
     ]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
-    let beat = scene(&proj, "talk/tomas-first.lute");
+    assert!(!proj.join("scenes/talk/tomas-first.lute").exists());
+    let beat = scene(&proj, "talk/tomasFirst.lute");
     assert!(beat.contains("\nid: talk.tomasFirst\n"), "{beat}");
     assert!(beat.contains("\non: talk\ntarget: npc.tomas\n"), "{beat}");
     assert!(
@@ -203,9 +204,9 @@ fn new_scene_on_writes_a_beat_that_respects_defaults() {
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
 }
 
-/// dsl 0.27.0 (T3-11): `lute new scene --on` writes a `priority:` below every
-/// beat already on the occasion, so stubs scaffolded one after another rank
-/// in creation order and never tie.
+/// `lute new scene --occasion` writes a `priority:` below every beat already
+/// on the occasion, so stubs scaffolded one after another rank in creation
+/// order and never tie.
 #[test]
 fn new_scene_on_ranks_below_every_existing_beat_of_the_occasion() {
     let proj = init_beats("new-on-priority");
@@ -219,13 +220,23 @@ fn new_scene_on_ranks_below_every_existing_beat_of_the_occasion() {
         line.split_whitespace().next().unwrap().parse().unwrap()
     };
     for name in ["stub-a", "stub-b", "stub-c"] {
-        let out = lute(&["new", "scene", name, "--on", "talk", "--dir", d]);
+        let out = lute(&[
+            "new",
+            "scene",
+            name,
+            "--occasion",
+            "talk",
+            "--target",
+            "npc.mara",
+            "--dir",
+            d,
+        ]);
         assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     }
     let (a, b, c) = (
-        priority("stub-a.lute"),
-        priority("stub-b.lute"),
-        priority("stub-c.lute"),
+        priority("stubA.lute"),
+        priority("stubB.lute"),
+        priority("stubC.lute"),
     );
     assert!(a > b && b > c, "{a} {b} {c}");
     let check = lute(&["check-project", d]);
@@ -245,8 +256,10 @@ fn new_with_a_non_root_dir_inside_a_project_is_refused_with_the_nested_name() {
         "new",
         "scene",
         "tavi-shell",
-        "--on",
+        "--occasion",
         "talk",
+        "--target",
+        "npc.mara",
         "--dir",
         sub.to_str().unwrap(),
     ]);
@@ -291,7 +304,15 @@ fn new_from_a_subdirectory_without_dir_names_the_current_directory() {
     let proj = init_beats("new-subdir-cwd");
     let sub = proj.join("scenes/talk");
     let out = Command::new(BIN)
-        .args(["new", "scene", "tavi-shell", "--on", "talk"])
+        .args([
+            "new",
+            "scene",
+            "tavi-shell",
+            "--occasion",
+            "talk",
+            "--target",
+            "npc.mara",
+        ])
         .current_dir(&sub)
         .output()
         .unwrap();
@@ -313,9 +334,10 @@ fn new_from_a_subdirectory_without_dir_names_the_current_directory() {
     assert!(!sub.join("tavi-shell.lute").exists());
 }
 
-/// T3-14: a dotted name keeps its dots as the id (`isolde.night` →
-/// `id: isolde.night`, not the camelCase `isoldeNight`), the file keeps the
-/// typed name, and the document checks clean.
+/// A dotted name keeps its dots as the id (`isolde.night` → `id:
+/// isolde.night`, not the camelCase `isoldeNight`), the file is named after
+/// the id, a quest's document id gets no `quest.` prefix, and the document
+/// checks clean.
 #[test]
 fn new_scene_with_a_dotted_name_keeps_the_dotted_id() {
     let proj = init_beats("new-dotted");
@@ -327,8 +349,16 @@ fn new_scene_with_a_dotted_name_keeps_the_dotted_id() {
 
     let out = lute(&["new", "quest", "lamp.extra-oil", "--dir", d, "--start"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
-    let quest = std::fs::read_to_string(proj.join("quests/lamp.extra-oil.lute")).unwrap();
-    assert!(quest.contains("\nid: quest.lamp.extraOil\n"), "{quest}");
+    let quest = std::fs::read_to_string(proj.join("quests/lamp.extraOil.lute")).unwrap();
+    assert!(quest.contains("\nid: lamp.extraOil\n"), "{quest}");
+
+    // The case typed is kept: `harborNight` stays, a phrase joins in camel case.
+    let out = lute(&["new", "scene", "isles.harborNight", "--dir", d]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    assert!(scene(&proj, "isles.harborNight.lute").contains("\nid: isles.harborNight\n"));
+    let out = lute(&["new", "scene", "The Epilogue", "--dir", d]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    assert!(scene(&proj, "theEpilogue.lute").contains("\nid: theEpilogue\n"));
 
     let check = lute(&["check-project", d]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
@@ -345,7 +375,7 @@ fn new_quest_is_accept_driven_unless_start() {
     let d = proj.to_str().unwrap();
     let out = lute(&["new", "quest", "oil-run", "--dir", d]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
-    let stub = std::fs::read_to_string(proj.join("quests/oil-run.lute")).unwrap();
+    let stub = std::fs::read_to_string(proj.join("quests/oilRun.lute")).unwrap();
     assert!(
         stub.contains("<quest id=\"oilRun\" title=\"Oil Run\">"),
         "{stub}"
@@ -360,14 +390,14 @@ fn new_quest_is_accept_driven_unless_start() {
 
     let out = lute(&["new", "quest", "always-on", "--start", "--dir", d]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
-    let auto = std::fs::read_to_string(proj.join("quests/always-on.lute")).unwrap();
+    let auto = std::fs::read_to_string(proj.join("quests/alwaysOn.lute")).unwrap();
     assert!(
         auto.contains("<quest id=\"alwaysOn\" title=\"Always On\" start=\"true\">"),
         "{auto}"
     );
 
     // Accept the stub where the player takes it on: the project is clean.
-    let welcome = proj.join("scenes/hub/welcome.lute");
+    let welcome = proj.join("scenes/town/welcome.lute");
     let mut text_ = std::fs::read_to_string(&welcome).unwrap();
     text_.push_str("::accept{quest=\"oilRun\"}\n");
     std::fs::write(&welcome, text_).unwrap();
@@ -385,7 +415,9 @@ fn new_quest_is_accept_driven_unless_start() {
 /// `lute new scene` — the same `uses:` of the project schemas — invent no
 /// document-local state, and title the document in Title Case. The quest's
 /// objective reads the project (a scene it can see), and the project checks
-/// without error.
+/// without error. Document ids carry no `quest.`/`lore.` prefix, so they
+/// share one namespace with scenes: a name another document's id already
+/// takes is refused, and nothing is written.
 #[test]
 fn new_quest_and_lore_share_the_scene_head_and_invent_no_state() {
     let proj = temp_dir("new-agree").join("proj");
@@ -394,7 +426,7 @@ fn new_quest_and_lore_share_the_scene_head_and_invent_no_state() {
     let d = proj.to_str().unwrap();
     for (kind, name) in [
         ("scene", "the-cellar"),
-        ("quest", "the-cellar"),
+        ("quest", "cellar-key"),
         ("lore", "old-map"),
     ] {
         let out = lute(&["new", kind, name, "--dir", d]);
@@ -409,30 +441,49 @@ fn new_quest_and_lore_share_the_scene_head_and_invent_no_state() {
             .map(str::to_string)
             .collect::<Vec<_>>()
     };
-    let scene = read("scenes/the-cellar.lute");
-    let quest = read("quests/the-cellar.lute");
-    let lore = read("lore/old-map.lute");
+    let scene = read("scenes/theCellar.lute");
+    let quest = read("quests/cellarKey.lute");
+    let lore = read("lore/oldMap.lute");
     assert!(!uses(&scene).is_empty(), "{scene}");
     assert_eq!(uses(&quest), uses(&scene), "{quest}");
     assert_eq!(uses(&lore), uses(&scene), "{lore}");
     assert!(!quest.contains("state:"), "no invented counter: {quest}");
     assert!(scene.contains("\ntitle: The Cellar\n"), "{scene}");
-    assert!(quest.contains("\ntitle: The Cellar\n"), "{quest}");
-    assert!(quest.contains("title=\"The Cellar\""), "{quest}");
+    assert!(quest.contains("\ntitle: Cellar Key\n"), "{quest}");
+    assert!(quest.contains("title=\"Cellar Key\""), "{quest}");
     assert!(lore.contains("\ntitle: Old Map\n"), "{lore}");
+    assert!(
+        quest.contains("\nid: cellarKey\n"),
+        "no `quest.` prefix: {quest}"
+    );
+    assert!(lore.contains("\nid: oldMap\n"), "no `lore.` prefix: {lore}");
+
+    for (kind, name) in [("quest", "the-cellar"), ("lore", "cellar-key")] {
+        let out = lute(&["new", kind, name, "--dir", d]);
+        assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+        assert!(
+            text(&out).contains("already declares `id: "),
+            "{}",
+            text(&out)
+        );
+    }
+    assert!(!proj.join("quests/theCellar.lute").exists());
+    assert!(!proj.join("lore/cellarKey.lute").exists());
+    assert!(lore.contains("\nid: oldMap\n"), "no `lore.` prefix: {lore}");
 
     let check = lute(&["check-project", d]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
     assert!(!text(&check).contains("error ["), "{}", text(&check));
 }
 
-/// An undeclared occasion or an out-of-domain target is refused (exit 2)
-/// and leaves no file behind.
+/// An undeclared occasion, an out-of-domain target, a target on an occasion
+/// not raised for one, and a targeted occasion without `--target` are all
+/// refused (exit 2) and leave no file behind.
 #[test]
 fn new_scene_on_refuses_what_the_project_does_not_declare() {
     let proj = init_beats("new-refuse");
     let d = proj.to_str().unwrap();
-    let out = lute(&["new", "scene", "x", "--on", "tallk", "--dir", d]);
+    let out = lute(&["new", "scene", "x", "--occasion", "tallk", "--dir", d]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     assert!(
         text(&out).contains("did you mean `talk`?"),
@@ -445,7 +496,7 @@ fn new_scene_on_refuses_what_the_project_does_not_declare() {
         "new",
         "scene",
         "y",
-        "--on",
+        "--occasion",
         "talk",
         "--target",
         "npc.oskar",
@@ -457,19 +508,65 @@ fn new_scene_on_refuses_what_the_project_does_not_declare() {
     assert!(!proj.join("scenes/y.lute").exists());
 
     let out = lute(&[
-        "new", "scene", "z", "--on", "hubVisit", "--target", "npc.mara", "--dir", d,
+        "new",
+        "scene",
+        "z",
+        "--occasion",
+        "townVisit",
+        "--target",
+        "npc.mara",
+        "--dir",
+        d,
     ]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     assert!(!proj.join("scenes/z.lute").exists());
+
+    // `talk` is raised for a target: a scene without one would play for all.
+    let out = lute(&["new", "scene", "w", "--occasion", "talk", "--dir", d]);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(
+        text(&out).contains("occasion `talk` is raised for a target")
+            && text(&out).contains("pass `--target npc."),
+        "{}",
+        text(&out)
+    );
+    assert!(!proj.join("scenes/w.lute").exists());
+
+    // `--target` alone names no occasion.
+    let out = lute(&["new", "scene", "v", "--target", "npc.mara", "--dir", d]);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(
+        text(&out).contains("--occasion <OCCASION> --target npc.mara"),
+        "{}",
+        text(&out)
+    );
+    assert!(!proj.join("scenes/v.lute").exists());
 }
 
-/// Outside a project `lute new` says so; `--on` has nothing to answer there
-/// and is refused.
+/// The old `--on` spelling is refused, naming `--occasion`, and writes
+/// nothing.
+#[test]
+fn new_scene_refuses_the_old_on_flag() {
+    let proj = init_beats("new-old-on");
+    let d = proj.to_str().unwrap();
+    let out = lute(&["new", "scene", "x", "--on", "townVisit", "--dir", d]);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(
+        text(&out).contains("`--on` is now `--occasion`")
+            && text(&out).contains("lute new scene x --occasion townVisit"),
+        "{}",
+        text(&out)
+    );
+    assert!(!proj.join("scenes/x.lute").exists());
+}
+
+/// Outside a project `lute new` says so; `--occasion` has nothing to answer
+/// there and is refused.
 #[test]
 fn new_outside_a_project_says_so() {
     let dir = temp_dir("new-outside");
     let d = dir.to_str().unwrap();
-    let out = lute(&["new", "scene", "intro", "--on", "talk", "--dir", d]);
+    let out = lute(&["new", "scene", "intro", "--occasion", "talk", "--dir", d]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     assert!(
         text(&out).contains("not inside a Lute project"),

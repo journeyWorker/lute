@@ -493,7 +493,7 @@ options:
     expect(ok).toBe(false);
   });
 
-  test("good StampAttrsFile (plugin §14.1 `stampattrs/*.yaml`) validates", () => {
+  test("good StampAttrsFile (plugin §14.1 `stampAttrs` export) validates", () => {
     const { ajv, pluginSchema } = loadAjv();
     const doc = Bun.YAML.parse(
       "stampAttrs:\n  - { name: bonusId, type: string }\n  - { name: bonusScore, type: number }\n",
@@ -502,13 +502,25 @@ options:
     expect(ok, JSON.stringify(errors)).toBe(true);
   });
 
-  test("PluginManifest may declare the `stampattrs` export", () => {
+  test("PluginManifest may declare the `stampAttrs` export", () => {
     const { ajv, pluginSchema } = loadAjv();
     const doc = Bun.YAML.parse(
-      "id: demo.plugin\nversion: 0.1.0\nkind: capability\nexports:\n  stampattrs: stampattrs/\n",
+      "id: demo.plugin\nversion: 0.1.0\nkind: capability\nexports:\n  stampAttrs: stampattrs/\n",
     );
     const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, doc);
     expect(ok, JSON.stringify(errors)).toBe(true);
+  });
+
+  test("PluginManifest is closed: old export spelling, unknown key, other kind", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    for (const text of [
+      "id: p\nversion: 0.1.0\nkind: capability\nexports:\n  rewardkinds: rewardkinds/\n",
+      "id: p\nversion: 0.1.0\nkind: capability\ndependencies: []\nexports: {}\n",
+      "id: p\nversion: 0.1.0\nkind: plugin\nexports: {}\n",
+    ]) {
+      const { ok } = validateAgainst(ajv, pluginSchema.$id, Bun.YAML.parse(text));
+      expect(ok, text).toBe(false);
+    }
   });
 
   test("broken StampAttrsFile: entry missing required `type`", () => {

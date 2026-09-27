@@ -15,7 +15,7 @@ after: 'visited("elena.ep02") && (completed("sideQuestA") || completed("sideQues
 ```
 
 ```lute
-<quest id="riverDebt" after="visited('elena.ep02')" start="…" fail="…">
+<quest id="riverDebt" follows="visited('elena.ep02')" start="…" fail="…">
 ```
 
 The value is CEL under a maximally-restricted profile admitting exactly conjunction and disjunction over three opaque predicates — **no negation, no arithmetic, no state reads**:
@@ -77,7 +77,7 @@ project root: .
     quest(findkai) -> scene(narrator.s01ep03) [completed]
 ```
 
-A quest joins the graph by declaring `after` (even `after=""`), or, without one, through its anchors: the `::accept`s that take it up (`[accept]`, dsl 0.24.0 §2), its parent quest (`[subquest]`, dsl 0.25.0 §4), and the `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` conjuncts of its `start` (`[start]`, dsl 0.25.0 §4; an entry becomes the node `entry(X)`). See [Quests & scenes](/language/quests-and-scenes/#quest). A quest with none of these is listed as unanchored; it is still addressable by `lute scenario <dir> envelope quest:<id>`, but contributes no edges.
+A quest joins the graph by declaring `follows` (even `follows=""`; graph metadata only — it never gates the quest), or, without one, through its anchors: the `::accept`s that take it up (`[accept]`, dsl 0.24.0 §2), its parent quest (`[subquest]`, dsl 0.25.0 §4), and the `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` conjuncts of its `start` (`[start]`, dsl 0.25.0 §4; an entry becomes the node `entry(X)`). See [Quests & scenes](/language/quests-and-scenes/#quest). A quest with none of these is listed as unanchored; it is still addressable by `lute scenario <dir> envelope quest:<id>`, but contributes no edges.
 
 ### Edge kinds
 
@@ -112,8 +112,8 @@ project root: .
     scene(narrator.s01ep02) -> scene(narrator.s01ep03) [visited]
     quest(findkai) -> scene(narrator.s01ep02) [active]
     quest(findkai) -> scene(narrator.s01ep03) [completed]
-  unanchored (no `after` — available from the start of play; no prerequisites in this graph):
-    beat(harbor.porter) — its `when` reads visited('narrator.s01ep02'), which gates it but draws no edge; write `after="visited('narrator.s01ep02')"` to anchor it (dsl 0.25.0 §3)
+  unanchored (no `after` / `follows` — available from the start of play; no prerequisites in this graph):
+    beat(harbor.porter) — its `when` reads visited('narrator.s01ep02'), which gates it but draws no edge; write `after="visited('narrator.s01ep02')"` to anchor it
 ```
 
 The `visited()` in its `when` draws no edge: a `when` is a runtime condition, not a prerequisite. Since dsl 0.25.0 the bare view therefore lists the beat as unanchored, with the `after=` that would order it (`unanchoredHints` in `--format json`). In `--format json` the node's `kind` is `beat` (its `prereq` is `null`), and in `--format dot` it is drawn `shape=note`. `lute scenario <dir> reach` and `envelope` take its canonical id, bare or as `beat:<id>`, and `reach` names where the beat is declared and what selects it:

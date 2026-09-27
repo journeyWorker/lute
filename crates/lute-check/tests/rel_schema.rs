@@ -57,7 +57,7 @@ fn scene_with(front_extra: &str) -> String {
 #[test]
 fn relations_facts_rules_are_known_meta_keys() {
     let c = codes(&scene_with(
-        "entities:\n  character: { members: [ana] }\nrelations:\n  inParty: { args: [character] }\nfacts:\n  - \"inParty(ana)\"\nrules: []\n",
+        "entities:\n  character: { members: [ana] }\nrelations:\n  inParty: { args: [character], tier: run }\nfacts:\n  - \"inParty(ana)\"\nrules: []\n",
     ));
     assert!(!c.contains(&"E-META-UNKNOWN-KEY".to_string()), "{c:?}");
 }
@@ -85,7 +85,7 @@ fn function_term_in_rule_is_datalog_function() {
 
 #[test]
 fn hyphenated_relation_name_is_path_ident() {
-    let c = codes(&scene_with("relations:\n  in-party: { args: [character] }\nentities:\n  character: { members: [ana] }\n"));
+    let c = codes(&scene_with("relations:\n  in-party: { args: [character], tier: run }\nentities:\n  character: { members: [ana] }\n"));
     assert!(c.contains(&"E-PATH-IDENT".to_string()), "{c:?}");
 }
 
@@ -112,7 +112,7 @@ fn id_in_two_kinds_is_entity_kind_clash() {
 #[test]
 fn kind_colliding_with_relation_is_kind_name_clash() {
     let c = codes(&scene_with(
-        "entities:\n  inParty: { members: [x] }\nrelations:\n  inParty: { args: [inParty] }\n",
+        "entities:\n  inParty: { members: [x] }\nrelations:\n  inParty: { args: [inParty], tier: run }\n",
     ));
     assert!(c.contains(&"E-KIND-NAME-CLASH".to_string()), "{c:?}");
 }
@@ -120,7 +120,7 @@ fn kind_colliding_with_relation_is_kind_name_clash() {
 #[test]
 fn relation_shape_diagnostics() {
     let c = codes(&scene_with(
-        "entities:\n  c: { members: [x] }\nrelations:\n  empty: {}\n  badArg: { args: [nowhere] }\n  badKey: { args: [c], key: [3] }\n  dupKey: { args: [c, c], key: [0, 0] }\n  derived: { args: [c], derive: true, tier: run }\n  conflicted: { args: [c], derive: true, reserved: true }\n",
+        "entities:\n  c: { members: [x] }\nrelations:\n  empty: {}\n  badArg: { args: [nowhere], tier: run }\n  badKey: { args: [c], tier: run, key: [3] }\n  dupKey: { args: [c, c], key: [0, 0] }\n  derived: { args: [c], derive: true, tier: run }\n  conflicted: { args: [c], derive: true, reserved: true }\n",
     ));
     assert!(c.contains(&"E-RELATION-EMPTY".to_string()), "{c:?}");
     assert!(
@@ -138,14 +138,14 @@ fn relation_shape_diagnostics() {
 fn raw_duplicate_relation_key_is_relation_dup() {
     // serde_yaml collapses duplicate keys; the Task 5 raw-text scan preserves them.
     let c = codes(&scene_with(
-        "entities:\n  c: { members: [x] }\nrelations:\n  inParty: { args: [c] }\n  inParty: { args: [c, c] }\n",
+        "entities:\n  c: { members: [x] }\nrelations:\n  inParty: { args: [c], tier: run }\n  inParty: { args: [c, c], tier: run }\n",
     ));
     assert!(c.contains(&"E-RELATION-DUP".to_string()), "{c:?}");
 }
 
 #[test]
 fn seed_fact_validation() {
-    let front = "entities:\n  c: { members: [ana] }\n  npc: { open: engine }\nenums:\n  trust: [low, high]\nrelations:\n  knows: { args: [c, trust] }\n  met: { args: [c, npc] }\n";
+    let front = "entities:\n  c: { members: [ana] }\n  npc: { open: engine }\nenums:\n  trust: [low, high]\nrelations:\n  knows: { args: [c, trust], tier: run }\n  met: { args: [c, npc], tier: run }\n";
     // unknown relation
     let c = codes(&scene_with(&format!("{front}facts:\n  - \"ghost(ana)\"\n")));
     assert!(c.contains(&"E-RELATION-UNKNOWN".to_string()), "{c:?}");
@@ -239,7 +239,7 @@ fn inline_redeclaring_imported_relation_needs_matching_sig() {
 fn unknown_relation_near_a_declared_one_suggests_it() {
     let m = only(
         &scene_with(
-            "entities:\n  crew: { members: [toma] }\nrelations:\n  can_halt: { args: [crew] }\nfacts:\n  - \"can_hlat(toma)\"\n",
+            "entities:\n  crew: { members: [toma] }\nrelations:\n  can_halt: { args: [crew], tier: run }\nfacts:\n  - \"can_hlat(toma)\"\n",
         ),
         "E-RELATION-UNKNOWN",
     );
@@ -255,7 +255,7 @@ fn unknown_relation_near_a_declared_one_suggests_it() {
 fn unknown_relation_far_from_every_declared_one_suggests_nothing() {
     let m = only(
         &scene_with(
-            "entities:\n  crew: { members: [toma] }\nrelations:\n  can_halt: { args: [crew] }\nfacts:\n  - \"zzzzzzzz(toma)\"\n",
+            "entities:\n  crew: { members: [toma] }\nrelations:\n  can_halt: { args: [crew], tier: run }\nfacts:\n  - \"zzzzzzzz(toma)\"\n",
         ),
         "E-RELATION-UNKNOWN",
     );
@@ -271,7 +271,7 @@ fn unknown_relation_far_from_every_declared_one_suggests_nothing() {
 fn a_declared_kind_used_as_a_fact_gets_the_categorical_hint_not_a_guess() {
     let m = only(
         &scene_with(
-            "entities:\n  crew: { members: [toma] }\nrelations:\n  crow: { args: [crew] }\nfacts:\n  - \"crew(toma)\"\n",
+            "entities:\n  crew: { members: [toma] }\nrelations:\n  crow: { args: [crew], tier: run }\nfacts:\n  - \"crew(toma)\"\n",
         ),
         "E-RELATION-UNKNOWN",
     );
@@ -280,4 +280,125 @@ fn a_declared_kind_used_as_a_fact_gets_the_categorical_hint_not_a_guess() {
         !m.contains("did you mean"),
         "a declared kind is not a misspelling: {m}"
     );
+}
+
+/// Every `code` diagnostic resolving `files` (all imported) reports, as
+/// (file name, line, column, message) at its place in the schema file.
+fn imported_at(files: &[(&str, &str)], code: &str) -> Vec<(String, u32, u32, String)> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "lute_rs_at_{}_{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, body) in files {
+        std::fs::write(dir.join(name), body).unwrap();
+    }
+    let names: Vec<String> = files.iter().map(|(n, _)| n.to_string()).collect();
+    let at = lute_core_span::Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 1,
+        column: 1,
+        utf16_range: (0, 0),
+    };
+    let res = lute_check::resolve_imports(&dir, &names, &[], at);
+    let _ = std::fs::remove_dir_all(&dir);
+    res.diags
+        .iter()
+        .flat_map(|d| d.related.iter())
+        .filter(|r| r.diagnostic.code == code)
+        .map(|r| {
+            let file = std::path::Path::new(&r.file)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
+            let d = &r.diagnostic;
+            (file, d.span.line, d.span.column, d.message.clone())
+        })
+        .collect()
+}
+
+/// A label for a non-member, and an unknown key inside a kind, are reported
+/// at that key — in block and flow form — never at the kind's line.
+#[test]
+fn a_label_or_key_mistake_in_an_imported_kind_is_reported_at_the_key() {
+    let block = "entities:\n  place:\n    members: [council, musicRoom, roof]\n    labels:\n      \
+                 council: the council room\n      musicRom: the old music room\n";
+    let found = imported_at(&[("w.schema.yaml", block)], "E-ENTITY-KIND-SHAPE");
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!((found[0].1, found[0].2), (6, 7), "{found:#?}");
+    assert!(
+        found[0].3.contains("did you mean `musicRoom`?"),
+        "{}",
+        found[0].3
+    );
+
+    let flow = "entities:\n  place:\n    members: [council, musicRoom]\n    \
+                labels: { council: the council room, musicRom: the old music room }\n  \
+                cg: { members: [cgA], lables: { cgA: A } }\n";
+    let mut at: Vec<(u32, u32)> = imported_at(&[("w.schema.yaml", flow)], "E-ENTITY-KIND-SHAPE")
+        .iter()
+        .map(|(_, l, c, _)| (*l, *c))
+        .collect();
+    at.sort();
+    assert_eq!(at, [(4, 42), (5, 25)]);
+}
+
+/// `labels:` beside an `add:` covers only the members that `add:` brings: a
+/// label for the kind's own member is reported at that label, saying so.
+#[test]
+fn a_label_beside_add_for_a_declared_member_states_the_rule_at_the_label() {
+    let found = imported_at(
+        &[
+            (
+                "world.schema.yaml",
+                "entities:\n  town: { members: [hollowtown] }\n",
+            ),
+            (
+                "isles.schema.yaml",
+                "entities:\n  town:\n    add: [sunport]\n    \
+                 labels: { sunport: Sunport, hollowtown: Hollow Town }\n",
+            ),
+        ],
+        "E-ENTITY-KIND-SHAPE",
+    );
+    assert_eq!(found.len(), 1, "{found:#?}");
+    let (file, line, col, message) = &found[0];
+    assert_eq!((file.as_str(), *line, *col), ("isles.schema.yaml", 4, 33));
+    assert!(
+        message.contains("labels `hollowtown` beside its `add:`")
+            && message.contains("cover only the members that `add:` brings (`sunport`)"),
+        "{message}"
+    );
+}
+
+/// The same in a document's own frontmatter: the label key, not `entities:`.
+#[test]
+fn a_label_for_a_non_member_in_frontmatter_is_reported_at_the_label() {
+    let text = scene_with(
+        "entities:\n  place:\n    members: [council, musicRoom]\n    labels:\n      \
+         musicRom: the old music room\n",
+    );
+    let input = CheckInput {
+        text,
+        uri: "t".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+        defaults: Default::default(),
+    };
+    let at: Vec<(u32, u32)> = check(&input)
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E-ENTITY-KIND-SHAPE")
+        .map(|d| (d.span.line, d.span.column))
+        .collect();
+    assert_eq!(at, [(10, 7)]);
 }

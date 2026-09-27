@@ -90,10 +90,17 @@ order. Hub choices carry two extra boolean flags — **`once`** and **`exit`**:
 - **`once`** removes a choice from the eligible set after its first take. A choice without `once`
   stays selectable and may be re-taken.
 - **Recording.** *Every* selection sets `scene.visited.<hub>.<choice> = true` (default `false`),
-  regardless of `once`, so the engine can grey out an already-seen topic. The hub also folds
-  `scene.choices.<hubId>` (the last-selected enum) — both are readable in a `<match>`.
+  regardless of `once`, so the engine can grey out an already-seen topic. It is set when the
+  choice is picked, before its arm runs, so inside that arm it is always `true` (a `<match>` arm
+  needing it `false` there is `E-ARM-DEAD`). To tell the first pick from later ones, count picks
+  in a `scene.*` number the arm sets. The hub also folds `scene.choices.<hubId>` (the
+  last-selected enum) — both are readable in a `<match>`.
 - **Exit.** Taking an `exit` choice runs its arm and leaves the hub. If no choice is eligible at a
   presentation point, the hub auto-exits.
+- **Flags take no value.** `once` and `exit` are written bare (`exit="true"` / `exit="false"`
+  also read as written). Any other value is `E-FLAG-VALUE`, and so is a beat/entry period such as
+  `once="run"`: a choice's `once` means once per hub visit, nothing longer. The same rule covers
+  `<objective optional>` and `<beat also>`.
 
 ### Hub prompts
 
@@ -124,6 +131,41 @@ id: bar.marina
 The prompt compiles onto the hub record (`prompt` on `HubCmd`, omitted when unauthored), and
 `lute run` / `lute play` print it with every presentation of the hub. An empty prompt is
 `E-BRANCH-PROMPT`, as it is on a branch.
+
+### Coming back: `<return>`
+
+Text written before the `<hub>` runs once. For text that runs each time the player comes back to
+the hub, put a `<return>` block inside it (dsl 0.28.0). It runs after each non-`exit` arm, before
+the options are shown again. It does not run before the first menu or after an `exit` arm:
+
+```lute check
+---
+kind: scene
+id: lighthouse.lamp
+---
+
+# The lighthouse
+
+## Shot 1.
+
+@narrator: A lamp room, all brass and salt.
+<hub id="lamp">
+  <return>
+    @narrator: The lamp room again.
+  </return>
+  <choice id="ledger" label="Read the ledger">
+    @narrator: The last entry is smudged.
+  </choice>
+  <choice id="leave" label="Go down the stairs" exit>
+    @narrator: You leave the lamp burning.
+  </choice>
+</hub>
+```
+
+`lute trace` with `--choose lamp=ledger,ledger,leave` prints "The lamp room again." twice. A hub
+takes at most one `<return>` block, and the block takes no attributes. To vary the text, guard its
+lines with `when=` or wrap them in a `<match>`. [Coming from Ink or
+Yarn](/guides/coming-from-ink-yarn/) ports an Ink knot the player keeps returning to this way.
 
 ### No dead ends
 

@@ -223,8 +223,17 @@ pub fn for_kind_members(
     kinds: &Kinds,
 ) -> Result<(String, Vec<String>), String> {
     let Some(kind) = crate::kind_target(raw) else {
+        // `for="villager"`: the kind named without its `kind:` prefix.
+        let bare = raw.trim();
+        let near = kinds
+            .contains_key(bare)
+            .then_some(bare)
+            .or_else(|| lute_manifest::suggest::nearest(bare, kinds.keys().map(String::as_str), 2));
+        let hint = near.map_or_else(String::new, |k| {
+            format!(" — did you mean `for=\"kind:{k}\"`?")
+        });
         return Err(format!(
-            "`for=\"{raw}\"` must name a kind, `for=\"kind:<kind>\"` (dsl 0.27.0 §3)"
+            "`for=\"{raw}\"` must name a kind, `for=\"kind:<kind>\"`{hint}"
         ));
     };
     if has_target {
@@ -290,12 +299,21 @@ pub(crate) fn check_for_kinds(
             Some((on.as_ref()?.0.as_str(), for_kind.as_ref()?, has_target))
         });
     let mut out = Vec::new();
-    for (on, (raw, span), has_target) in scene.into_iter().chain(elements) {
+    let from_scene = usize::from(scene.is_some());
+    for (i, (on, (raw, span), has_target)) in scene.into_iter().chain(elements).enumerate() {
         if let Err(why) = for_kind_members(on, raw, has_target, occasions, kinds) {
+            // A scene writes these keys in its frontmatter: `for: "kind:K"`.
+            let message = if i < from_scene {
+                why.replace("`for=\"", "`for: \"")
+                    .replace("`target=\"", "`target: \"")
+                    .replace("a beat with `target`", "a scene with `target:`")
+            } else {
+                why
+            };
             out.push(lute_core_span::Diagnostic {
                 code: crate::beats::E_BEAT_ATTR.to_string(),
                 severity: lute_core_span::Severity::Error,
-                message: why,
+                message,
                 span: *span,
                 layer: lute_core_span::Layer::Logic,
                 fixits: Vec::new(),
@@ -316,6 +334,10 @@ pub const OCCASION_PAYLOAD: &str = "occasion.payload";
 /// own beat, each entry / bundle beat with `on`), first declaration wins —
 /// and an `E-UNDECLARED` for each condition reading a field the enclosing
 /// beat's occasion does not declare (a read outside any beat included).
+/// dsl 0.28.0 (T2-8): an `<objective on="O">` is judged at O's raise, and a
+/// raise fires the same-named world event, so the objective (but not its
+/// `by` / `visibleWhen`, judged between raises) and an `<on event="O">`
+/// handler read O's payload too.
 pub fn payload_decls(
     doc: &lute_syntax::ast::Document,
     beat: Option<&crate::beats::BeatMeta>,
@@ -337,6 +359,14 @@ pub fn payload_decls(
         if let Some((on, _)) = &b.on {
             regions.push((b.span.byte_start, b.span.byte_end, on));
         }
+    }
+    // Slots inside such a region the raise does not judge: (span, what).
+    let mut between: Vec<(lute_core_span::Span, &str)> = Vec::new();
+    for q in &doc.quests {
+        raised_regions(&q.body, occasions, &mut regions, &mut between);
+    }
+    for s in &doc.shots {
+        raised_regions(&s.body, occasions, &mut regions, &mut between);
     }
     let mut decls = std::collections::BTreeMap::new();
     for (_, _, on) in &regions {
@@ -365,6 +395,11 @@ pub fn payload_decls(
             if !decls.contains_key(&format!("{prefix}{field}")) {
                 continue; // undeclared anywhere: the ordinary `E-UNDECLARED`
             }
+            // dsl 0.28.0 (T2-8): an objective's `by` / `visibleWhen` is
+            // judged between raises, when no payload is bound.
+            let off = between.iter().find(|(s, _)| {
+                s.byte_start <= slot.span.byte_start && slot.span.byte_end <= s.byte_end
+            });
             let on = regions
                 .iter()
                 .filter(|(s, e, _)| *s <= slot.span.byte_start && slot.span.byte_end <= *e)
@@ -373,27 +408,37 @@ pub fn payload_decls(
             let declares = on
                 .and_then(|on| occasions.get(on))
                 .is_some_and(|d| d.payload.contains_key(&field));
-            if declares {
+            if declares && off.is_none() {
                 continue;
             }
-            let message =
-                match on {
-                    Some(on) => format!(
-                    "`{prefix}{field}` is not part of occasion `{on}`'s payload{}; a beat reads \
-                     the payload of the occasion it answers (dsl 0.27.0 §3)",
+            let message = match (off, on) {
+                (Some((_, what)), Some(on)) => format!(
+                    "`{prefix}{field}` is bound only while its occasion is raised, and {what} is \
+                     judged between raises of `{on}`, not at one — read the payload in the \
+                     objective's `done` or `until`, which `{on}`'s raise judges"
+                ),
+                (_, Some(on)) => format!(
+                    "`{prefix}{field}` is not part of occasion `{on}`'s payload{}; a beat, an \
+                     `<objective on>` or an `<on event>` handler reads the payload of the occasion \
+                     it answers (dsl 0.27.0 §3)",
                     match occasions.get(on).map(|d| &d.payload) {
                         Some(p) if !p.is_empty() => format!(
                             " (declared: {})",
-                            p.keys().map(|k| format!("`{k}`")).collect::<Vec<_>>().join(", ")
+                            p.keys()
+                                .map(|k| format!("`{k}`"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
                         ),
                         _ => " (it declares none)".to_string(),
                     }
                 ),
-                    None => format!(
-                        "`{prefix}{field}` is readable only in a beat answering an occasion that \
-                     declares it under `payload:` (dsl 0.27.0 §3)"
-                    ),
-                };
+                (_, None) => format!(
+                    "`{prefix}{field}` is bound only while its occasion is raised: it is readable \
+                     in a beat answering an occasion that declares it under `payload:`, in an \
+                     `<objective on>` of that occasion (`done`, `until`) and in an `<on event>` \
+                     handler of it (dsl 0.27.0 §3)"
+                ),
+            };
             diags.push(lute_core_span::Diagnostic {
                 code: "E-UNDECLARED".to_string(),
                 severity: lute_core_span::Severity::Error,
@@ -408,6 +453,59 @@ pub fn payload_decls(
         }
     });
     (decls, diags)
+}
+
+/// dsl 0.28.0 (T2-8): the parts of `nodes` a raise judges, with the
+/// occasion whose payload is bound there — each `<objective on="O">` and
+/// each `<on event="O">` handler of a declared occasion `O` — into
+/// `regions`; the objective slots judged between raises (`by`,
+/// `visibleWhen`) into `between`, named for the message.
+fn raised_regions<'d>(
+    nodes: &'d [lute_syntax::ast::Node],
+    occasions: &Occasions,
+    regions: &mut Vec<(usize, usize, &'d str)>,
+    between: &mut Vec<(lute_core_span::Span, &'static str)>,
+) {
+    use lute_syntax::ast::{Arm, Node};
+    for node in nodes {
+        match node {
+            Node::Objective(o) => {
+                if let Some((on, _)) = &o.on {
+                    regions.push((o.span.byte_start, o.span.byte_end, on));
+                    if let Some(by) = &o.by {
+                        between.push((by.span, "an objective's `by`"));
+                    }
+                    if let Some(when) = &o.visible_when {
+                        between.push((when.span, "an objective's `visibleWhen`"));
+                    }
+                }
+                raised_regions(&o.body, occasions, regions, between);
+            }
+            Node::On(h) => {
+                if occasions.contains_key(&h.event) {
+                    regions.push((h.span.byte_start, h.span.byte_end, h.event.as_str()));
+                }
+                raised_regions(&h.body, occasions, regions, between);
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    raised_regions(body, occasions, regions, between);
+                }
+            }
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    raised_regions(&c.body, occasions, regions, between);
+                }
+            }
+            Node::Hub(h) => {
+                for body in h.bodies() {
+                    raised_regions(body, occasions, regions, between);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// 0.27 prerelease G-6: a `payload:` field typed `{ domain: K }` /
@@ -496,9 +594,17 @@ pub fn occasion_scopes(
                 .filter(|ms| !ms.is_empty());
         }
         let kind = crate::kind_target(target?)?;
+        // A `target="kind:K"` its occasion refuses (not raised for a target,
+        // or for no entity kind) is already `E-BEAT-ATTR`; its reads of
+        // `occasion.target` still mean a member of K, so they are not
+        // reported again as undeclared.
         crate::beats::kind_target_members(occasions.get(on)?, kind, kinds)
             .ok()
             .map(|(_, ms)| ms)
+            .or_else(|| match &kinds.get(kind)?.shape {
+                lute_manifest::relations::KindShape::Members(ms) => Some(ms.clone()),
+                _ => None,
+            })
     };
     fn text(v: &Option<(String, lute_core_span::Span)>) -> Option<&str> {
         v.as_ref().map(|(s, _)| s.as_str())

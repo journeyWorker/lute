@@ -227,7 +227,7 @@ fn walk<'d>(nodes: &'d [Node], f: &mut dyn FnMut(Visit<'d>)) {
                 }
             }
             Node::Branch(b) => b.choices.iter().for_each(|c| walk(&c.body, f)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| walk(&c.body, f)),
+            Node::Hub(h) => h.bodies().for_each(|b| walk(b, f)),
             Node::On(o) => walk(&o.body, f),
             Node::Objective(o) => walk(&o.body, f),
             Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}

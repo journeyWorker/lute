@@ -7,7 +7,7 @@
 //! lifted onto [`Clip::at`] (the "`at` outside a timeline" rule is a §7.5 schema
 //! check, deferred to the checker).
 
-use super::attrs::{take_bool, take_cel, take_str, take_str_spanned};
+use super::attrs::{take_cel, take_flag, take_str, take_str_spanned};
 use super::{
     close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TAG_INLINE_BODY, E_TAG_NOT_ONE_LINE,
     E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
@@ -225,14 +225,16 @@ impl Parser<'_> {
         self.emit_line(E_UNCLOSED_TAG, &message, self.cursor, Layer::Logic);
     }
 
-    /// A `<choice>`, `<when>`, `<otherwise>`, `<track>` or `<reward>` outside
-    /// the block it belongs in: reported once, then parsed whole — body and
-    /// close — and dropped, so none of its lines raises anything further.
+    /// A `<choice>`, `<when>`, `<otherwise>`, `<track>`, `<reward>` or
+    /// `<return>` outside the block it belongs in: reported once, then parsed
+    /// whole — body and close — and dropped, so none of its lines raises
+    /// anything further.
     pub(super) fn parse_misplaced_child(&mut self, tag: &str) {
         let parents = match tag {
             "choice" => "a `<branch>` or `<hub>`",
             "when" | "otherwise" => "a `<match>`",
             "track" => "a `<timeline>`",
+            "return" => "a `<hub>` (beside its `<choice>`s, not inside one)",
             _ => "a `<quest>` or `<objective>`",
         };
         self.emit_line(
@@ -249,6 +251,7 @@ impl Parser<'_> {
             "when" => drop(self.parse_when()),
             "otherwise" => drop(self.parse_otherwise()),
             "track" => drop(self.parse_track()),
+            "return" => drop(self.parse_hub_return()),
             _ => drop(self.parse_reward()),
         }
     }
@@ -330,10 +333,11 @@ impl Parser<'_> {
         let title = take_str(&mut attrs, "title");
         let start = take_cel(&mut attrs, "start", CelKind::Condition);
         let fail = take_cel(&mut attrs, "fail", CelKind::Condition);
-        // `after` (connectivity layer, T2): kept as raw text + span, NEVER
+        // `follows` (connectivity layer): kept as raw text + span, NEVER
         // routed through `take_cel` — it is validated under the restricted
         // `prereq::parse_prereq` grammar (checker layer), not general CEL.
-        let (after, after_span) = take_str_spanned(&mut attrs, "after")
+        // A legacy `after=` stays residual: the checker names `follows=`.
+        let (follows, follows_span) = take_str_spanned(&mut attrs, "follows")
             .map(|(s, sp)| (Some(s), sp))
             .unwrap_or_else(|| (None, self.span_o(open.start_o, open.end_o)));
         let tier = take_str_spanned(&mut attrs, "tier");
@@ -350,8 +354,8 @@ impl Parser<'_> {
             title,
             start,
             fail,
-            after,
-            after_span,
+            follows,
+            follows_span,
             tier,
             activate,
             complete,
@@ -414,8 +418,8 @@ impl Parser<'_> {
     /// `BeatDecl ::= "<beat" Attrs ">" SceneBody "</beat>"` (dsl 0.23.0 §4).
     /// TOP-LEVEL ONLY, exactly like [`Parser::parse_entry`]; the body is the
     /// ordinary node stream and its admission is the checker's. `also` is a
-    /// bare flag, also accepted as `also="true"` / `also="false"`; any other
-    /// `also=` value stays residual (`E-BEAT-ATTR`).
+    /// flag read by [`AttrValue::flag`] (bare, `also="true"` / `also="false"`);
+    /// any other `also=` value stays residual (`E-FLAG-VALUE`).
     pub(super) fn parse_bundle_beat(&mut self) -> BundleBeat {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
@@ -428,18 +432,10 @@ impl Parser<'_> {
         let priority = take_str_spanned(&mut attrs, "priority");
         let once = take_str_spanned(&mut attrs, "once");
         let share = take_str_spanned(&mut attrs, "share");
-        // dsl 0.25.0 §3: raw text + span, like `<quest after>` — never
+        // dsl 0.25.0 §3: raw text + span, like `<quest follows>` — never
         // `take_cel`; the checker validates it under the prereq grammar.
         let after = take_str_spanned(&mut attrs, "after");
-        let also = attrs.iter().position(|a| a.key == "also").and_then(|pos| {
-            let flag = match &attrs[pos].value {
-                AttrValue::BoolTrue => Some(true),
-                AttrValue::Str(s) if s == "true" => Some(true),
-                AttrValue::Str(s) if s == "false" => Some(false),
-                _ => None,
-            };
-            flag.map(|f| (f, attrs.remove(pos).span))
-        });
+        let also = take_flag(&mut attrs, "also");
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let spent_by = take_cel(&mut attrs, "spentBy", CelKind::Condition);
         // dsl 0.27.0 §6: `use="<template>"`; its arguments stay in `attrs`.
@@ -448,6 +444,7 @@ impl Parser<'_> {
             span,
             expanded: false,
             failed: false,
+            replaced_when: None,
         });
         let outer = self.enter_top_block("beat", &id, &open);
         // dsl 0.27.0 §6: `<beat use="trainer" id="r3" who="joey"/>` is a
@@ -545,7 +542,7 @@ impl Parser<'_> {
     /// `E-OBJECTIVE-MISSING-DONE` / `E-OBJECTIVE-QUEST-DONE` are Plan C checker
     /// diagnostics, NOT parse errors. Mirrors `parse_when`/`parse_match`'s
     /// empty-slot idiom exactly. `quest=` is a plain string reference (a quest
-    /// id, never CEL), mirroring `<quest after=>`'s `take_str_spanned`
+    /// id, never CEL), mirroring `<quest follows=>`'s `take_str_spanned`
     /// treatment.
     pub(super) fn parse_objective(&mut self) -> Objective {
         let open = self.parse_open_tag();
@@ -563,9 +560,9 @@ impl Parser<'_> {
             Some((q, s)) => (Some(q), s),
             None => (None, self.span_o(open.start_o, open.end_o)),
         };
-        let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let visible_when = take_cel(&mut attrs, "visibleWhen", CelKind::Condition);
         let title = take_str(&mut attrs, "title");
-        let optional = take_bool(&mut attrs, "optional");
+        let optional = take_flag(&mut attrs, "optional").is_some_and(|(on, _)| on);
         let on = take_str_spanned(&mut attrs, "on");
         let by = take_cel(&mut attrs, "by", CelKind::Condition);
         let target = take_str_spanned(&mut attrs, "target");
@@ -581,7 +578,7 @@ impl Parser<'_> {
             done,
             quest,
             quest_span,
-            when,
+            visible_when,
             title,
             optional,
             on,
@@ -595,15 +592,18 @@ impl Parser<'_> {
         }
     }
 
-    /// `Hub ::= "<hub" Attrs ">" Choice+ "</hub>"` (§7.3.2). Mirrors
-    /// [`Parser::parse_branch`]: a `<hub>` body admits only `<choice>` children,
-    /// strays → [`E_LOGIC_CONTENT`], same [`Parser::consume_close`]. The `once` /
-    /// `exit` flags ride along as bare attrs on each [`Choice`] (Plan B extracts).
-    /// [`Hub`] carries no `id` field, so `id=` stays in `attrs`.
+    /// `Hub ::= "<hub" Attrs ">" (Choice | HubReturn)+ "</hub>"` (§7.3.2,
+    /// dsl 0.28.0 §5). Mirrors [`Parser::parse_branch`]: a `<hub>` body admits
+    /// only `<choice>` children and at most one `<return>`; strays and a
+    /// second `<return>` → [`E_LOGIC_CONTENT`], same [`Parser::consume_close`].
+    /// The `once` / `exit` flags ride along as bare attrs on each [`Choice`]
+    /// (Plan B extracts). [`Hub`] carries no `id` field, so `id=` stays in
+    /// `attrs`.
     pub(super) fn parse_hub(&mut self) -> Hub {
         let open = self.parse_open_tag();
         let attrs = open.attrs.clone();
         let mut choices = Vec::new();
+        let mut on_return: Option<HubReturn> = None;
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
@@ -617,27 +617,66 @@ impl Parser<'_> {
                 }
                 continue;
             }
-            if open_tag_name(&trimmed).as_deref() == Some("choice") {
-                let c = self.parse_choice();
-                last_end = c.span.byte_end;
-                choices.push(c);
-            } else {
-                // §7.3.2: a <hub> body admits only <choice> children. Report the
-                // stray line (mirroring <branch>/E-LOGIC-CONTENT) before skipping
-                // it, so the checker/editor sees it rather than a silent drop.
-                self.emit_line(
-                    E_LOGIC_CONTENT,
-                    "a <hub> body may contain only <choice> children (dsl §7.3.2)",
-                    self.cursor,
-                    Layer::Logic,
-                );
-                self.skip_stray();
+            match open_tag_name(&trimmed).as_deref() {
+                Some("choice") => {
+                    let c = self.parse_choice();
+                    last_end = c.span.byte_end;
+                    choices.push(c);
+                }
+                Some("return") => {
+                    let line = self.cursor;
+                    let r = self.parse_hub_return();
+                    last_end = r.span.byte_end;
+                    if on_return.is_some() {
+                        self.emit_line(
+                            E_LOGIC_CONTENT,
+                            "a `<hub>` takes at most one `<return>` block; this second one is \
+                             dropped — put all the revisit text in the first",
+                            line,
+                            Layer::Logic,
+                        );
+                    } else {
+                        on_return = Some(r);
+                    }
+                }
+                _ => {
+                    // §7.3.2: a <hub> body admits only <choice> children (and
+                    // one <return>). Report the stray line (mirroring
+                    // <branch>/E-LOGIC-CONTENT) before skipping it, so the
+                    // checker/editor sees it rather than a silent drop.
+                    self.emit_line(
+                        E_LOGIC_CONTENT,
+                        "a <hub> body may contain only <choice> children and one <return> \
+                         block (dsl §7.3.2)",
+                        self.cursor,
+                        Layer::Logic,
+                    );
+                    self.skip_stray();
+                }
             }
         }
         let end_o = self.consume_close("hub", &open, last_end);
         Hub {
             attrs,
             choices,
+            on_return,
+            span: self.span_o(open.start_o, end_o),
+        }
+    }
+
+    /// `HubReturn ::= "<return>" Node* "</return>"` (dsl 0.28.0 §5): the
+    /// hub's revisit text. Its body parses like a hub option body.
+    fn parse_hub_return(&mut self) -> HubReturn {
+        let open = self.parse_open_tag();
+        let attrs = open.attrs.clone();
+        let (body, end_o) = if open.self_closing {
+            (Vec::new(), open.end_o)
+        } else {
+            self.parse_block_body("return", &open)
+        };
+        HubReturn {
+            attrs,
+            body,
             span: self.span_o(open.start_o, end_o),
         }
     }
@@ -695,6 +734,36 @@ impl Parser<'_> {
                     let a = self.parse_otherwise();
                     last_end = arm_end(&a);
                     arms.push(a);
+                }
+                // A sibling spelling of the fallback arm (`<else>`, `<default>`):
+                // one report naming `<otherwise>`, and the mistaken block —
+                // its body and its close — is skipped whole, so it draws
+                // nothing more.
+                Some(tag @ ("else" | "default")) => {
+                    self.emit_line(
+                        E_LOGIC_CONTENT,
+                        &format!(
+                            "`<{tag}>` is no <match> arm — did you mean `<otherwise>`? A <match> \
+                             body holds only <when> and <otherwise> arms"
+                        ),
+                        self.cursor,
+                        Layer::Logic,
+                    );
+                    let tag = tag.to_string();
+                    let one_line =
+                        trimmed.ends_with("/>") || trimmed.contains(&format!("</{tag}>"));
+                    self.skip_stray();
+                    while !one_line {
+                        self.skip_blanks();
+                        if self.block_body_done(&open) || self.at_close("match") {
+                            break;
+                        }
+                        let at_end = self.at_close(&tag);
+                        self.skip_stray();
+                        if at_end {
+                            break;
+                        }
+                    }
                 }
                 _ => {
                     // §7.3: a <match> body admits only <when>/<otherwise> arms.
@@ -936,6 +1005,8 @@ impl Parser<'_> {
     fn at_sibling_arm(&self, name: &str) -> bool {
         let (arms, parents): (&[&str], &[&str]) = match name {
             "choice" => (&["choice"], &["branch", "hub"]),
+            // dsl 0.28.0 §5: a `<return>` left open ends at the hub's next option.
+            "return" => (&["choice"], &["hub"]),
             "when" | "otherwise" => (&["when", "otherwise"], &["match"]),
             _ => return false,
         };
@@ -991,7 +1062,7 @@ impl Parser<'_> {
         (body, rewards, end_o)
     }
 
-    /// Parse a self-closing `<reward kind= target= amount= when= on=/>`
+    /// Parse a self-closing `<reward kind= target= amount= when= outcome=/>`
     /// (dsl 0.16.0 §2). A non-self-closing form is a parse-layer error
     /// (reuses [`E_LOGIC_CONTENT`]: the closest "content on a construct that
     /// admits none" shape) and every downstream field is populated as if the
@@ -1048,7 +1119,7 @@ impl Parser<'_> {
             None => (None, None),
         };
         let when = take_cel(&mut attrs, "when", crate::ast::CelKind::Condition);
-        let (on, on_span) = match take_str_spanned(&mut attrs, "on") {
+        let (outcome, outcome_span) = match take_str_spanned(&mut attrs, "outcome") {
             Some((v, sp)) => (Some(v), Some(sp)),
             None => (None, None),
         };
@@ -1060,8 +1131,8 @@ impl Parser<'_> {
             amount,
             amount_span,
             when,
-            on,
-            on_span,
+            outcome,
+            outcome_span,
             attrs,
             span: self.span_o(open.start_o, open.end_o),
             self_closing: open.self_closing,
@@ -1249,6 +1320,7 @@ mod tests {
             ("<when is=\"1\">", "</when>", "`<match>`"),
             ("<otherwise>", "</otherwise>", "`<match>`"),
             ("<track channel=\"music\">", "</track>", "`<timeline>`"),
+            ("<return>", "</return>", "`<hub>`"),
         ] {
             let body_line = if open.starts_with("<track") {
                 "::sfx{assetId=\"a\"}"
@@ -1289,6 +1361,48 @@ mod tests {
         let src = "## Shot 1.\n<hub id=\"chat\">\n@narrator: stray\n</hub>\n";
         let (_, diags) = parse(src);
         assert!(diags.iter().any(|d| d.code == "E-LOGIC-CONTENT"));
+    }
+
+    /// dsl 0.28.0 §5: one `<return>` beside the options lands on the hub;
+    /// the options keep their order and bodies.
+    #[test]
+    fn hub_parses_its_return_block() {
+        let src = "## S\n<hub id=\"lamp\">\n<return>\n@narrator: The lamp room again.\n</return>\n<choice id=\"a\" label=\"A\">\n@narrator: a\n</choice>\n<choice id=\"b\" label=\"B\" exit>\n@narrator: b\n</choice>\n</hub>\n";
+        let (doc, diags) = parse(src);
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Hub(h) = &doc.shots[0].body[0] else {
+            panic!()
+        };
+        assert_eq!(h.choices.len(), 2);
+        let r = h.on_return.as_ref().expect("the <return> block");
+        assert_eq!(r.body.len(), 1);
+        assert!(matches!(&r.body[0], Node::Line(_)));
+        assert_eq!(r.span.line, 3);
+        assert_eq!(h.bodies().count(), 3);
+    }
+
+    /// A second `<return>` and one nested in an option body are errors, each
+    /// reported once at its own line; the first stays the hub's.
+    #[test]
+    fn hub_return_misplaced_is_reported() {
+        let src = "## S\n<hub id=\"lamp\">\n<return>\n@narrator: one\n</return>\n<return>\n@narrator: two\n</return>\n<choice id=\"a\" label=\"A\">\n<return>\n@narrator: three\n</return>\n</choice>\n<choice id=\"b\" label=\"B\" exit>\n@narrator: b\n</choice>\n</hub>\n";
+        let (doc, diags) = parse(src);
+        let lines: Vec<_> = diags
+            .iter()
+            .map(|d| (d.code.as_str(), d.span.line))
+            .collect();
+        assert_eq!(
+            lines,
+            [("E-LOGIC-CONTENT", 6), ("E-LOGIC-CONTENT", 10)],
+            "{diags:?}"
+        );
+        assert!(diags[0].message.contains("at most one `<return>`"));
+        let Node::Hub(h) = &doc.shots[0].body[0] else {
+            panic!()
+        };
+        let r = h.on_return.as_ref().expect("the first <return>");
+        assert_eq!(r.span.line, 3);
+        assert!(h.choices[0].body.is_empty(), "{:?}", h.choices[0].body);
     }
 
     #[test]
@@ -1353,6 +1467,32 @@ mod tests {
         assert!(o.optional);
     }
 
+    /// dsl 0.28.0 §1: `optional="true"` is optional — it used to read `false`
+    /// — and a non-flag value stays residual for the checker's
+    /// `E-FLAG-VALUE` instead of silently meaning "required".
+    #[test]
+    fn objective_optional_reads_through_the_flag_reader() {
+        let objective = |attr: &str| {
+            let (doc, _) = crate::parse(&format!(
+                "## Shot 1.\n<objective id=\"x\" done=\"a\" {attr}/>\n"
+            ));
+            let Node::Objective(o) = &doc.shots[0].body[0] else {
+                panic!()
+            };
+            o.clone()
+        };
+        assert!(objective("optional=\"true\"").optional);
+        let off = objective("optional=\"false\"");
+        assert!(!off.optional && off.attrs.is_empty());
+        let bad = objective("optional=\"yes\"");
+        assert!(!bad.optional);
+        assert!(
+            bad.attrs.iter().any(|a| a.key == "optional"),
+            "{:?}",
+            bad.attrs
+        );
+    }
+
     #[test]
     fn objective_long_form_body_emits() {
         let (doc, diags) = crate::parse(
@@ -1379,7 +1519,7 @@ mod tests {
         assert_eq!(r.target.as_deref(), Some("party"));
         assert_eq!(r.amount, Some(crate::ast::RewardAmount::Scalar(5)));
         assert!(r.when.is_none());
-        assert!(r.on.is_none());
+        assert!(r.outcome.is_none());
         assert!(r.self_closing);
     }
 

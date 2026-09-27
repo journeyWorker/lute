@@ -21,7 +21,7 @@ facts:
   - "knows(ottavio, manifest)"
   - "knows(vesna, manifest)"
 expect:
-  exit: complete
+  end: complete
   quests:
     manifestGap: complete
   transcriptContains:

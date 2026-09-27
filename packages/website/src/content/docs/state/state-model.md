@@ -18,6 +18,24 @@ A schema may add one more tier per declared **season** (dsl 0.27.0 §5): `season
 its defaults each time the season opens, and `prev.season.<name>.*` keeps the values its previous
 window ended with. See [Seasons](/state/schemas/#seasons).
 
+### Tiers at a glance
+
+The same lifetimes come back wherever something must be kept or forgotten. Each key takes its own
+subset of them:
+
+| Where | Key | Accepts |
+|---|---|---|
+| a state path | its root | `scene`, `run`, `user`, `app`, or `season.<name>` |
+| a relation | `tier:` | `scene`, `run`, `user`, `app`, `quest`, `season:<name>` |
+| a quest | `tier=` | `run`, `user` (the default), `season:<name>` |
+| every quest of the project | `defaults.questTier` | `run`, `user`, `season:<name>` |
+| a beat (scene, `<entry>`, `<beat>`) | `once` | `run`, `user`, `day`, `slot`, `week`, `season:<name>`, `false` |
+| a quest that comes back | `rearm=` | a condition, not a tier: the quest resets when it turns from false to true |
+
+`day`, `slot`, and `week` need a declared [clock](/language/clock/) (`week` its `week:`), and
+`season:<name>` a declared [season](/state/schemas/#seasons). A tier value is spelled
+`season:<name>`; the state namespace of the same season is `season.<name>.*`.
+
 ## Declaration
 
 Every path read *or written* MUST be declared with a `type` and an optional `default`. There are no bare, un-namespaced state names.
@@ -89,7 +107,13 @@ entities:
   companion: { subsetOf: person, members: [isolde, corvin] }
 ```
 
-This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: number, default: 0 }`, and the compiled state table carries one entry per member. Content addresses a member by name: `::set{run.approval.isolde += 1}`, `when="run.approval.corvin >= 3"`, `{{run.approval.isolde}}`. The family itself is not a path, so `when="run.approval > 1"` is `E-UNDECLARED`, and the message says the path is entity-indexed and asks for a member. Two places reach a member through something other than its name. A Datalog rule reads it through a variable, `cel("run.approval[P] >= 3")` (see [Facts and Datalog](/state/facts-and-datalog/#entity-indexed-state-in-a-rule-guard)). A component with `effects: true` writes it through a param, `::set{run.approval[@who] += @delta}`: each `::use` writes the member its argument names, and an argument outside the kind is `E-COMPONENT-ARG` (see [Components](/language/components-and-extends/)).
+This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: number, default: 0 }`, and the compiled state table carries one entry per member. Content addresses a member by name: `::set{run.approval.isolde += 1}`, `when="run.approval.corvin >= 3"`, `{{run.approval.isolde}}`. The family itself is not a path, so `when="run.approval > 1"` is `E-UNDECLARED`, and the message says the path is entity-indexed and asks for a member. Three places reach a member through something other than its name:
+
+- A Datalog rule reads it through a variable, `cel("run.approval[P] >= 3")` (see [Facts and Datalog](/state/facts-and-datalog/#entity-indexed-state-in-a-rule-guard)).
+- A component, or a beat template's header, names it through a param, `F[@param]`. A component with `effects: true` writes `::set{run.approval[@who] += @delta}`, and each `::use` writes the member its argument names; an argument outside the kind is `E-COMPONENT-ARG` (see [Components](/language/components-and-extends/)). A [beat template](/language/beats/#beat-templates-use) header reads `when: "run.approval[@who] >= 3"`; the dot form `run.approval.@who` also works there, with a `W-TEMPLATE-DOT-PARAM` hint toward the brackets.
+- A beat or entry that targets a kind (`target="kind:<kind>"`) or runs once for each member of one (`for="kind:<kind>"`) names the member it runs for as `occasion.target`: it reads `when="run.approval[occasion.target] >= 3"` and `{{run.approval[occasion.target]}}`, and writes `::set{run.approval[occasion.target] += 1}` (see [Kind targets](/language/beats/#kind-targets)). Anywhere else `occasion.target` is `E-UNDECLARED`.
+
+Nothing else indexes a family. A `::set` indexed by a state path is `E-SET-SHAPE`: `` `run.approval[run.fav]`: a `::set` path is indexed only by `[occasion.target]` (in a beat or entry that targets a kind or runs for each member of one) or a component's `[@param]` ``, and so is a read in `{{…}}` (`E-CEL-PROFILE`); pick the member with a `<match on="run.fav">` instead.
 
 `per:` names a **closed** entity kind, one with `members:`, declared in the same document as the path. A kind declared `open:`, a kind the document does not declare, or a malformed one is `E-STATE-DECL`, because the checker cannot list the paths it would declare. The kind may be a [sub-kind](/state/facts-and-datalog/#sub-kinds-subsetof). Indexing a path by a kind counts as reading the kind, so it draws no `W-DOMAIN-UNREAD`.
 
@@ -146,7 +170,7 @@ Some paths belong to the engine. Content reads them anywhere it reads state — 
 
 The quest and entry paths are reserved by name: every document may read them without declaring them, and declaring one in `state:` is `E-QUEST-RESERVED-DECL`. The two entry flags are `bool`s, `false` until the entry is first presented (see [Lore entries](/language/lore-entries/)). `entry.<id>.read` resets with the run, so a new run's first read applies the entry's effects again; `entry.<id>.everRead` (0.22.0) is set on the first read ever and no new run resets it.
 
-Two quest paths say why something failed. `quest.<id>.failedBy` reads `unset` until the quest fails, then names the cause: `fail` (its `fail` predicate), `by` or `until` (an objective's deadline), `cascade` (its parent failed), or `superseded` (its `complete="any"` parent completed through another alternative). `quest.<id>.objectives.<o>.failed` is `true` once the objective's `by` or `until` has failed it. An epilogue can therefore tell a missed deadline from a road not taken with `<match on="quest.hunt.failedBy">`. A run-tier quest's reset clears both.
+Two quest paths say why something failed. `quest.<id>.failedBy` reads `unset` until the quest fails, then names the cause: `fail` (its `fail` predicate), `by` or `until` (an objective's deadline), `subquest` (a required subquest failed), `cascade` (its parent failed), or `superseded` (its `complete="any"` parent completed through another alternative). `quest.<id>.objectives.<o>.failed` is `true` once the objective's `by` or `until` has failed it. An epilogue can therefore tell a missed deadline from a road not taken with `<match on="quest.hunt.failedBy">`. A run-tier quest's reset clears both.
 
 The `clock.*` paths exist only when a schema declares a `clock:`. Without one, reading `clock.index` is `E-UNDECLARED`. `clock.index` counts positions from the start of day 1 (slots, or whole days for a clock without slots), so it only ever grows, and `clock.weekday` / `clock.weekdayLabel` need the clock's `week:`. See [The clock](/language/clock/).
 
@@ -165,7 +189,7 @@ Reads are unrestricted: `when="run.day > 1"` and `{{run.day}}` are ordinary read
 
 <!-- lute-diagnostics -->
 ```
-./scenes/hub/day-end.lute:12:8: error [E-ENGINE-OWNED-WRITE] `::set` cannot write `run.day`: it is declared `owner: engine` — the engine writes it and content may only read it; in `lute play` write it with an `engine:` step, in a trace/test with a mock
+./scenes/town/day-end.lute:12:8: error [E-ENGINE-OWNED-WRITE] `::set` cannot write `run.day`: it is declared `owner: engine` — the engine writes it and content may only read it; in `lute play` write it with an `engine:` step, in a trace/test with a mock
 ```
 
 `engine` is the only owner a declaration can name: any other `owner:` value is `E-STATE-DECL`, and a path with no `owner:` stays content-written. The key changes who may write the path, not its type, tier, or default. It binds content, so the checker enforces it and it does not reach the compiled artifact: the path's state-table entry is the same with or without it. `lute context` marks such a path `(owner: engine)` in its state listing.

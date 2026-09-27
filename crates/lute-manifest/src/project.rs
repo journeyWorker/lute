@@ -65,12 +65,18 @@ pub struct ProjectConfig {
     /// `lute-cli`'s manifest pass (0.10.0 §7), never once per inheriting
     /// document (D-Z).
     pub defaults_diags: Vec<ResolveDiag>,
-    /// dsl 0.27.0 §8: `E-SEQUENCE` diagnostics of a malformed `sequence:`
-    /// (its shape; the ids are checked project-wide against the scenes).
-    /// Reported once per manifest, located: by `lute check-project` beside
-    /// the documents (never fatal to their check), by the commands that
-    /// build a project (`compile --all`, `play`) as a gate.
-    pub sequence_diags: Vec<SequenceDiag>,
+    /// dsl 0.28.0 §4: `E-CHAPTERS` diagnostics of a malformed `chapters:`
+    /// (its shape, or the retired `sequence:` key; the ids are checked
+    /// project-wide against the scenes). Reported once per manifest,
+    /// located: by `lute check-project` beside the documents (never fatal to
+    /// their check), by the commands that build a project (`compile --all`,
+    /// `play`) as a gate.
+    pub chapter_diags: Vec<ChapterDiag>,
+    /// dsl 0.28.0 §1 (T1-1): `E-MANIFEST-KEY` — every key of the manifest
+    /// outside the ones it defines (top level, a profile, `identity:`),
+    /// located. The key is dropped, so the rest of the manifest still loads;
+    /// the manifest is invalid.
+    pub key_diags: Vec<ResolveDiag>,
 }
 
 /// A resolution diagnostic surfaced to the caller (folded into the check
@@ -81,7 +87,74 @@ pub struct ProjectConfig {
 pub struct ResolveDiag {
     pub code: String,
     pub message: String,
+    /// The byte range in `lute.project.yaml` the diagnostic concerns — set
+    /// only for a manifest-scoped diagnostic (`E-MANIFEST-KEY`,
+    /// `E-DEFAULTS-KEY`, `E-IDENTITY-TEMPLATE`), `None` for the rest.
+    pub span: Option<std::ops::Range<usize>>,
 }
+
+impl ResolveDiag {
+    /// Whether this error leaves no snapshot worth checking documents
+    /// against. A name declared twice — within one plugin package, across
+    /// two plugins, or a domain two plugins declare — is resolved by keeping
+    /// the first declaration, so documents still check against what their
+    /// plugins declare; the error still fails the run.
+    pub fn stops_checking(&self) -> bool {
+        self.code.starts_with("E-")
+            && !matches!(
+                self.code.as_str(),
+                "E-PLUGIN-DUP-ID" | "E-PLUGIN-DUP-ACROSS" | "E-DOMAIN-DUP"
+            )
+    }
+}
+
+/// An unknown key of `lute.project.yaml` (dsl 0.28.0 §1): a top-level key,
+/// a profile's key or an `identity:` key outside the ones the manifest
+/// defines. The key's value never applied.
+pub const E_MANIFEST_KEY: &str = "E-MANIFEST-KEY";
+
+/// `lute.project.yaml` that cannot be read as a manifest at all: it does not
+/// parse, is not a mapping, lacks `defaultProfile:`, or a value has the wrong
+/// shape. The load fails.
+pub const E_MANIFEST: &str = "E-MANIFEST";
+
+/// The top-level keys of `lute.project.yaml`. `sequence` is retired
+/// (`chapters:`) and refused by [`resolve_chapters`], not here.
+pub const MANIFEST_KEYS: [&str; 9] = [
+    "defaultProfile",
+    "profiles",
+    "pluginsDir",
+    "catalogDir",
+    "identity",
+    "defaults",
+    "chapters",
+    "permissions",
+    "sequence",
+];
+
+/// The keys of one `profiles:` entry.
+const PROFILE_KEYS: [&str; 3] = ["extends", "plugins", "permissions"];
+
+/// The keys of `identity:`.
+const IDENTITY_KEYS: [&str; 2] = ["lineId", "voiceKey"];
+
+/// Keys a schema declares, which a manifest cannot (dsl 0.28.0 §1: "an
+/// engine-only key written in the wrong layer names the layer that owns
+/// it").
+const SCHEMA_ONLY_KEYS: [&str; 12] = [
+    "terminal",
+    "seasons",
+    "clock",
+    "cast",
+    "state",
+    "relations",
+    "rules",
+    "entities",
+    "enums",
+    "facts",
+    "defs",
+    "occasions",
+];
 
 /// Raw `lute.project.yaml` shape (plugin §11). `profiles` is a map of name →
 /// `{ extends?, plugins: map<id, true|options-map> }`.
@@ -99,6 +172,10 @@ struct RawProject {
     identity: Option<RawIdentity>,
     #[serde(default)]
     defaults: Option<serde_yaml::Mapping>,
+    #[serde(default)]
+    chapters: Option<serde_yaml::Value>,
+    /// Retired in dsl 0.28.0 for `chapters:`; read only to refuse it with
+    /// the new spelling.
     #[serde(default)]
     sequence: Option<serde_yaml::Value>,
     #[serde(default)]
@@ -196,11 +273,11 @@ pub const E_DEFAULTS_KEY: &str = "E-DEFAULTS-KEY";
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MetaDefaults {
     entries: std::collections::BTreeMap<String, serde_yaml::Value>,
-    /// dsl 0.27.0 §8: the manifest's `sequence:` — carried with the
+    /// dsl 0.28.0 §4: the manifest's `chapters:` — carried with the
     /// defaults because it is frontmatter the listed scenes did not have to
     /// write (`on:` / `after:` / `priority:`), applied by the same parse-time
-    /// pass that applies `questTier` (`lute_check::sequence::apply_sequence`).
-    sequence: Option<Sequence>,
+    /// pass that applies `questTier` (`lute_check::chapters::apply_chapters`).
+    chapters: Vec<Chain>,
 }
 
 impl MetaDefaults {
@@ -217,45 +294,65 @@ impl MetaDefaults {
     pub fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(|k| k.as_str())
     }
-    /// The manifest's resolved `sequence:` (dsl 0.27.0 §8), if any.
-    pub fn sequence(&self) -> Option<&Sequence> {
-        self.sequence.as_ref()
+    /// Every chain the manifest's `chapters:` declares, in order — the ones
+    /// a malformed block keeps unapplied ([`Chain::applied`]) included.
+    pub fn chapters(&self) -> &[Chain] {
+        &self.chapters
     }
-    /// These defaults with `sequence` attached — the manifest load's own
+    /// The chain that lists scene `id`, applied or not.
+    pub fn chain_of(&self, id: &str) -> Option<&Chain> {
+        self.chapters
+            .iter()
+            .find(|c| c.scenes.iter().any(|s| s == id))
+    }
+    /// These defaults with `chapters` attached — the manifest load's own
     /// step, and a unit test's way to stage one without a file.
-    pub fn with_sequence(mut self, sequence: Option<Sequence>) -> Self {
-        self.sequence = sequence;
+    pub fn with_chapters(mut self, chapters: Vec<Chain>) -> Self {
+        self.chapters = chapters;
         self
     }
 }
 
-/// dsl 0.27.0 §8: `sequence: { occasion: chapter, scenes: [a, b, c] }` — a
-/// linear chain of scenes answering one occasion. Each listed scene without
+/// dsl 0.28.0 §4: one chain of `chapters: [{ on: chapter, scenes: [a, b, c] }]`
+/// — scenes answering one occasion, in play order. Each listed scene without
 /// its own key gets `on: <occasion>`, `after: visited("<previous>")` (every
 /// scene but the first) and a descending `priority:` (`10 × (n − i)`). On a
 /// `select: sequence` occasion, which presents every eligible beat in one
-/// raise, the chain is the priority order alone: no `after:` (it would be
+/// raise, the chain is the order within that raise: no `after:` (it would be
 /// judged before the raise that plays the previous scene).
-/// `scenes` holds each id once, in order (a duplicate is [`E_SEQUENCE`] at
-/// load and dropped).
+/// `scenes` holds each id once across all chains, in order (a repeat is
+/// [`E_CHAPTERS`] at load and dropped).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Sequence {
-    pub occasion: String,
+pub struct Chain {
+    /// The occasion every listed scene answers; empty when the chain names
+    /// none it could read.
+    pub on: String,
     pub scenes: Vec<String>,
+    /// Whether the chain derives its scenes' keys. A malformed chain is
+    /// reported and NOT applied — a half-understood chain must not silently
+    /// reorder scenes — but its ids are kept, so a listed scene is never told
+    /// to list itself, and they are still checked against the scenes.
+    pub applied: bool,
+    /// Read from the retired `sequence:` key: never applied, and its ids are
+    /// not checked (the rename error is the one report).
+    pub retired: bool,
 }
 
-impl Sequence {
+impl Chain {
     /// The keys scene `id` derives, in `(key, YAML value)` form, or `None`
-    /// when `id` is not listed: `on`, then `after` (not for the first scene,
-    /// and only when `chained` — the occasion is not `select: sequence`),
-    /// then `priority`.
+    /// when `id` is not listed or the chain is not applied: `on`, then
+    /// `after` (not for the first scene, and only when `chained` — the
+    /// occasion is not `select: sequence`), then `priority`.
     pub fn derived(
         &self,
         id: &str,
         chained: bool,
     ) -> Option<Vec<(&'static str, serde_yaml::Value)>> {
+        if !self.applied {
+            return None;
+        }
         let i = self.scenes.iter().position(|s| s == id)?;
-        let mut out = vec![("on", serde_yaml::Value::String(self.occasion.clone()))];
+        let mut out = vec![("on", serde_yaml::Value::String(self.on.clone()))];
         if let Some(prev) = i
             .checked_sub(1)
             .map(|p| &self.scenes[p])
@@ -272,131 +369,289 @@ impl Sequence {
     }
 }
 
-/// Where an `E-SEQUENCE` shape diagnostic points in the manifest (a
-/// [`ResolveDiag`] has no span; `lute_check::sequence` locates it in the
-/// text).
+/// Where an `E-CHAPTERS` shape diagnostic points in the manifest (a
+/// [`ResolveDiag`] has no span; `lute_check::chapters` locates it in the
+/// text). Chain indexes count the `chapters:` list from 0.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SequenceAnchor {
-    /// The `sequence:` key itself.
-    Block,
-    /// The `<key>:` line inside the block.
-    Key(String),
-    /// The `nth` (0-based) occurrence of a `scenes:` entry's text.
-    Entry(String, usize),
+pub enum ChapterAnchor {
+    /// A top-level key: `chapters:` itself, or the retired `sequence:`.
+    Top(String),
+    /// The `n`th chain's list item.
+    Chain(usize),
+    /// The `<key>:` inside the `n`th chain.
+    Key(usize, String),
+    /// The `nth` (0-based) occurrence of a `scenes:` entry's text inside
+    /// the `n`th chain.
+    Entry(usize, String, usize),
 }
 
-/// A malformed `sequence:` (dsl 0.27.0 §8), with where it points.
+/// A malformed `chapters:` (dsl 0.28.0 §4), with where it points.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SequenceDiag {
+pub struct ChapterDiag {
     pub message: String,
-    pub anchor: SequenceAnchor,
+    pub anchor: ChapterAnchor,
 }
 
-/// A malformed `sequence:` (dsl 0.27.0 §8): not a `{ occasion, scenes }`
-/// mapping, an occasion or scene id that is no identifier, a scene listed
-/// twice, or (project-wide, `lute check-project`) a listed id no scene
-/// declares or a listed scene whose own `on:` names another occasion.
-pub const E_SEQUENCE: &str = "E-SEQUENCE";
+/// A malformed `chapters:` (dsl 0.28.0 §4) or the retired `sequence:`: not a
+/// list of `{ on, scenes }` chains, an occasion or entry that is no id, a
+/// scene listed twice, two chains on one occasion, or (project-wide, `lute
+/// check-project`) a listed id no scene declares, a listed scene whose own
+/// `on:` names another occasion, or a scene of a targeted chain with no
+/// `target:`.
+pub const E_CHAPTERS: &str = "E-CHAPTERS";
 
-/// Resolve the raw `sequence:` value. A malformed block is reported and NOT
-/// applied — a half-understood chain must not silently reorder scenes; a
-/// duplicate id alone is reported and its later occurrence dropped. Each
-/// diagnostic carries its [`SequenceAnchor`]; `lute check-project` reports
-/// them located, beside its checks of the documents.
-fn resolve_sequence(raw: Option<serde_yaml::Value>) -> (Option<Sequence>, Vec<SequenceDiag>) {
-    const KEYS: [&str; 2] = ["occasion", "scenes"];
-    let Some(raw) = raw else {
-        return (None, Vec::new());
-    };
+/// The label a chain goes by in a message: its occasion when it names one,
+/// else its 1-based place in the list.
+pub fn chain_label(index: usize, on: &str) -> String {
+    if on.is_empty() {
+        format!("chain {} of `chapters:`", index + 1)
+    } else {
+        format!("the chain on `{on}`")
+    }
+}
+
+/// Whether a `scenes:` entry can name a scene: one bare word (no spaces,
+/// quotes, parentheses or commas). Which scenes exist is the project-wide
+/// check's question.
+fn is_scene_word(s: &str) -> bool {
+    !s.is_empty()
+        && !s
+            .chars()
+            .any(|c| c.is_whitespace() || "\"'(),[]{}:".contains(c))
+}
+
+/// The scene id inside an entry written as a condition (`visited("x")`).
+fn entry_hint(text: &str) -> Option<&str> {
+    let inner = text.split_once('(')?.1.strip_suffix(')')?;
+    let inner = inner.trim().trim_matches(['"', '\'']);
+    is_scene_word(inner).then_some(inner)
+}
+
+/// Resolve the `chapters:` value (and refuse the retired `sequence:`). Each
+/// chain resolves on its own: a malformed one is reported and kept
+/// unapplied, the others still apply; a repeated id alone is reported and
+/// its later occurrence dropped. Each diagnostic carries its
+/// [`ChapterAnchor`]; `lute check-project` reports them located, beside its
+/// checks of the documents.
+fn resolve_chapters(
+    raw: Option<serde_yaml::Value>,
+    retired: Option<serde_yaml::Value>,
+) -> (Vec<Chain>, Vec<ChapterDiag>) {
     let mut diags = Vec::new();
-    let mut err =
-        |message: String, anchor: SequenceAnchor| diags.push(SequenceDiag { message, anchor });
-    let is_ident = |s: &str| {
-        s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
-            && s.chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
-    };
-    let serde_yaml::Value::Mapping(map) = raw else {
-        err(
-            "`sequence:` must be a mapping `{ occasion: <name>, scenes: [<scene id>, …] }` \
-             (dsl 0.27.0 §8)"
+    let mut chains: Vec<Chain> = Vec::new();
+    if let Some(old) = retired {
+        diags.push(ChapterDiag {
+            message: "`sequence:` is now `chapters:`, a list of chains, and its `occasion:` is \
+                      `on:` — write `chapters: [{ on: <occasion>, scenes: [<scene id>, …] }]`"
                 .to_string(),
-            SequenceAnchor::Block,
-        );
-        return (None, diags);
+            anchor: ChapterAnchor::Top("sequence".to_string()),
+        });
+        // Keep the old block's ids (unapplied, unchecked) so the scenes it
+        // lists hear about the rename, not that they are listed nowhere.
+        if raw.is_none() {
+            let on = ["on", "occasion"]
+                .iter()
+                .find_map(|k| old.get(k)?.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let scenes = ["scenes", "scene"]
+                .iter()
+                .find_map(|k| old.get(k)?.as_sequence())
+                .into_iter()
+                .flatten()
+                .filter_map(|s| s.as_str().filter(|s| is_scene_word(s)).map(str::to_string))
+                .collect();
+            chains.push(Chain {
+                on,
+                scenes,
+                applied: false,
+                retired: true,
+            });
+        }
+    }
+    let Some(raw) = raw else {
+        return (chains, diags);
     };
+    let items: Vec<serde_yaml::Value> = match raw {
+        serde_yaml::Value::Sequence(items) if !items.is_empty() => items,
+        serde_yaml::Value::Mapping(map) => {
+            diags.push(ChapterDiag {
+                message: "`chapters:` is a list of chains — write this chain as a list item, \
+                          `- on: …` in block style or `chapters: [{ on: <occasion>, scenes: \
+                          [<scene id>, …] }]`"
+                    .to_string(),
+                anchor: ChapterAnchor::Top("chapters".to_string()),
+            });
+            let mut chain = resolve_chain(0, &serde_yaml::Value::Mapping(map), &[], &mut diags);
+            chain.applied = false;
+            chains.push(chain);
+            return (chains, diags);
+        }
+        _ => {
+            diags.push(ChapterDiag {
+                message: "`chapters:` must be a non-empty list of chains `[{ on: <occasion>, \
+                          scenes: [<scene id>, …] }]`"
+                    .to_string(),
+                anchor: ChapterAnchor::Top("chapters".to_string()),
+            });
+            return (chains, diags);
+        }
+    };
+    for (i, item) in items.iter().enumerate() {
+        let chain = resolve_chain(i, item, &chains, &mut diags);
+        chains.push(chain);
+    }
+    (chains, diags)
+}
+
+/// One `chapters:` item, against the chains before it (a repeated occasion
+/// or scene).
+fn resolve_chain(
+    index: usize,
+    item: &serde_yaml::Value,
+    earlier: &[Chain],
+    diags: &mut Vec<ChapterDiag>,
+) -> Chain {
+    const KEYS: [&str; 2] = ["on", "scenes"];
+    let mut err = |message: String, anchor: ChapterAnchor| {
+        diags.push(ChapterDiag { message, anchor });
+    };
+    let mut chain = Chain::default();
+    let serde_yaml::Value::Mapping(map) = item else {
+        err(
+            format!(
+                "{} must be a mapping `{{ on: <occasion>, scenes: [<scene id>, …] }}`",
+                chain_label(index, "")
+            ),
+            ChapterAnchor::Chain(index),
+        );
+        return chain;
+    };
+    let mut ok = true;
     // A misspelt key stands for the key it is close to: that key's own
     // "missing" error would only repeat it.
     let mut meant: Vec<&str> = Vec::new();
+    let mut scenes_key = "scenes";
+    let mut written_on: Option<&serde_yaml::Value> = map.get("on");
     for key in map.keys() {
         let name = key.as_str().unwrap_or("");
-        if !KEYS.contains(&name) {
-            let near = crate::suggest::nearest(name, KEYS.iter().copied(), 2)
-                .filter(|n| !map.contains_key(*n));
-            meant.extend(near);
+        if KEYS.contains(&name) {
+            continue;
+        }
+        ok = false;
+        let near = crate::suggest::nearest(name, KEYS.iter().copied(), 2)
+            .filter(|n| !map.contains_key(*n));
+        meant.extend(near);
+        if near == Some("scenes") {
+            scenes_key = name;
+        }
+        let message = if near == Some("on") {
+            written_on = written_on.or_else(|| map.get(name));
+            let on = map.get(name).and_then(|v| v.as_str()).unwrap_or("");
+            format!(
+                "{} names its occasion with `{name}:`, but a chain says `on:`, as a scene's \
+                 frontmatter does — write `on: {}`",
+                chain_label(index, on),
+                if on.is_empty() { "<occasion>" } else { on }
+            )
+        } else {
             let why = near.map_or_else(
-                || " — a sequence declares `occasion:` and `scenes:`".to_string(),
+                || " — a chain declares `on:` and `scenes:`".to_string(),
                 |n| format!(" — did you mean `{n}`?"),
             );
-            err(
-                format!("`sequence.{name}` is not a sequence key{why} (dsl 0.27.0 §8)"),
-                SequenceAnchor::Key(name.to_string()),
-            );
-        }
+            format!("`{name}` is not a chain key{why}")
+        };
+        err(message, ChapterAnchor::Key(index, name.to_string()));
     }
-    let occasion = match map.get("occasion").map(|v| v.as_str()) {
-        Some(Some(o)) if is_ident(o) && !o.contains(['.', '-']) => Some(o.to_string()),
+    match written_on.map(|v| v.as_str()) {
+        Some(Some(o)) if is_scene_word(o) && !o.contains(['.', '-']) => {
+            chain.on = o.to_string();
+        }
         Some(_) => {
+            ok = false;
             err(
-                "`sequence.occasion` must name an occasion, e.g. `occasion: chapter` \
-                 (dsl 0.27.0 §8)"
-                    .to_string(),
-                SequenceAnchor::Key("occasion".to_string()),
+                format!(
+                    "`on:` of {} must name an occasion, e.g. `on: chapter`",
+                    chain_label(index, "")
+                ),
+                ChapterAnchor::Key(index, "on".to_string()),
             );
-            None
         }
         None => {
-            if !meant.contains(&"occasion") {
+            ok = false;
+            if !meant.contains(&"on") {
                 err(
-                    "`sequence:` needs `occasion:` — the occasion every listed scene answers, \
-                     e.g. `occasion: chapter` (dsl 0.27.0 §8)"
-                        .to_string(),
-                    SequenceAnchor::Block,
+                    format!(
+                        "{} needs `on:` — the occasion every listed scene answers, e.g. `on: \
+                         chapter`",
+                        chain_label(index, "")
+                    ),
+                    ChapterAnchor::Chain(index),
                 );
             }
-            None
         }
-    };
-    let mut scenes: Vec<String> = Vec::new();
-    let mut ok = true;
-    match map.get("scenes") {
+    }
+    let label = chain_label(index, &chain.on);
+    if let Some(j) = earlier
+        .iter()
+        .position(|c| !c.retired && !chain.on.is_empty() && c.on == chain.on)
+    {
+        ok = false;
+        err(
+            format!(
+                "{label} is the second chain on `{on}` (chain {} is the first) — one chain per \
+                 occasion; merge the two `scenes:` lists (this one is not applied)",
+                j + 1,
+                on = chain.on
+            ),
+            ChapterAnchor::Key(index, "on".to_string()),
+        );
+    }
+    match map.get(scenes_key) {
         Some(serde_yaml::Value::Sequence(items)) if !items.is_empty() => {
             for item in items {
-                match item.as_str() {
-                    Some(id) if is_ident(id) => {
-                        if scenes.iter().any(|s| s == id) {
+                match item.as_str().map(str::trim) {
+                    Some(id) if is_scene_word(id) => {
+                        let elsewhere = earlier
+                            .iter()
+                            .enumerate()
+                            .find(|(_, c)| !c.retired && c.scenes.iter().any(|s| s == id));
+                        if chain.scenes.iter().any(|s| s == id) {
                             err(
                                 format!(
-                                    "`sequence.scenes` lists `{id}` twice — a scene has one place \
-                                     in the chain; the later entry is ignored, remove it \
-                                     (dsl 0.27.0 §8)"
+                                    "{label} lists `{id}` twice — a scene has one place in the \
+                                     chapters; the later entry is ignored, remove it"
                                 ),
-                                SequenceAnchor::Entry(id.to_string(), 1),
+                                ChapterAnchor::Entry(index, id.to_string(), 1),
+                            );
+                        } else if let Some((j, other)) = elsewhere {
+                            err(
+                                format!(
+                                    "{label} lists `{id}`, which {} already lists — a scene has \
+                                     one place in the chapters; the later entry is ignored, \
+                                     remove it",
+                                    chain_label(j, &other.on)
+                                ),
+                                ChapterAnchor::Entry(index, id.to_string(), 0),
                             );
                         } else {
-                            scenes.push(id.to_string());
+                            chain.scenes.push(id.to_string());
                         }
                     }
                     _ => {
                         ok = false;
-                        let text = serde_yaml::to_string(item).unwrap_or_default();
-                        let text = text.trim();
+                        let rendered = serde_yaml::to_string(item).unwrap_or_default();
+                        let text = item.as_str().unwrap_or(rendered.trim());
+                        let hint = entry_hint(text).map_or_else(
+                            || "e.g. `prologue`".to_string(),
+                            |id| format!("here `{id}`"),
+                        );
                         err(
                             format!(
-                                "`sequence.scenes` entry `{text}` is not a scene id — list each \
-                                 scene's `id:`, e.g. `prologue` (dsl 0.27.0 §8)"
+                                "{label} lists `{text}`, which is not a scene id — list each \
+                                 scene's `id:`, {hint}"
                             ),
-                            SequenceAnchor::Entry(item.as_str().unwrap_or(text).to_string(), 0),
+                            ChapterAnchor::Entry(index, text.to_string(), 0),
                         );
                     }
                 }
@@ -406,21 +661,20 @@ fn resolve_sequence(raw: Option<serde_yaml::Value>) -> (Option<Sequence>, Vec<Se
         found => {
             ok = false;
             err(
-                "`sequence.scenes` must be a non-empty list of scene ids, in play order, e.g. \
-                 `scenes: [prologue, counter, kitchen]` (dsl 0.27.0 §8)"
-                    .to_string(),
+                format!(
+                    "`scenes:` of {label} must be a non-empty list of scene ids, in play order, \
+                     e.g. `scenes: [prologue, counter, kitchen]`"
+                ),
                 if found.is_some() {
-                    SequenceAnchor::Key("scenes".to_string())
+                    ChapterAnchor::Key(index, "scenes".to_string())
                 } else {
-                    SequenceAnchor::Block
+                    ChapterAnchor::Chain(index)
                 },
             );
         }
     }
-    let sequence = occasion
-        .filter(|_| ok)
-        .map(|occasion| Sequence { occasion, scenes });
-    (sequence, diags)
+    chain.applied = ok;
+    chain
 }
 
 /// Build a defaults set directly from `(key, YAML value)` pairs, without
@@ -431,7 +685,7 @@ impl FromIterator<(String, serde_yaml::Value)> for MetaDefaults {
     fn from_iter<I: IntoIterator<Item = (String, serde_yaml::Value)>>(iter: I) -> Self {
         Self {
             entries: iter.into_iter().collect(),
-            sequence: None,
+            chapters: Vec::new(),
         }
     }
 }
@@ -556,6 +810,7 @@ fn validate_template(template: &str, field: &str, diags: &mut Vec<ResolveDiag>) 
             if !IDENTITY_TOKENS.contains(&name) {
                 ok = false;
                 diags.push(ResolveDiag {
+                    span: None,
                     code: E_IDENTITY_TEMPLATE.to_string(),
                     message: format!(
                         "unknown token `{{{name}}}` in identity template `{field}`; \
@@ -568,6 +823,7 @@ fn validate_template(template: &str, field: &str, diags: &mut Vec<ResolveDiag>) 
     if ok && render_identity_template(template, "x", "x", "x").is_empty() {
         ok = false;
         diags.push(ResolveDiag {
+            span: None,
             code: E_IDENTITY_TEMPLATE.to_string(),
             message: format!("identity template `{field}` resolves to an empty string"),
         });
@@ -579,18 +835,24 @@ fn validate_template(template: &str, field: &str, diags: &mut Vec<ResolveDiag>) 
 /// independently, and a REJECTED key falls back to that same default (fail
 /// closed — a malformed template must never reach the artifact). Returns the
 /// resolved pair plus its `E-IDENTITY-TEMPLATE` diagnostics.
-fn resolve_identity(raw: Option<RawIdentity>) -> (IdentityTemplates, Vec<ResolveDiag>) {
+fn resolve_identity(
+    raw: Option<RawIdentity>,
+    locate: &dyn Fn(&[&str]) -> Option<std::ops::Range<usize>>,
+) -> (IdentityTemplates, Vec<ResolveDiag>) {
     let raw = raw.unwrap_or_default();
     let mut diags = Vec::new();
     let mut resolved = IdentityTemplates::default();
-    if let Some(t) = raw.line_id {
-        if validate_template(&t, "lineId", &mut diags) {
-            resolved.line_id = t;
+    for (field, t, into) in [
+        ("lineId", raw.line_id, &mut resolved.line_id),
+        ("voiceKey", raw.voice_key, &mut resolved.voice_key),
+    ] {
+        let Some(t) = t else { continue };
+        let before = diags.len();
+        if validate_template(&t, field, &mut diags) {
+            *into = t;
         }
-    }
-    if let Some(t) = raw.voice_key {
-        if validate_template(&t, "voiceKey", &mut diags) {
-            resolved.voice_key = t;
+        for d in &mut diags[before..] {
+            d.span = locate(&["identity", field]);
         }
     }
     (resolved, diags)
@@ -614,10 +876,15 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
         "character" | "pov" | "luteVersion" | "contentLang" => {
             v.as_str().map(|_| ()).ok_or("a string")
         }
-        // dsl 0.26.0 §2.4: the `tier=` a `<quest>` without one takes.
+        // dsl 0.26.0 §2.4: the `tier=` a `<quest>` without one takes;
+        // dsl 0.28.0 §5: any tier a `<quest tier=>` takes, `season:<name>`
+        // included (the season itself is checked at each quest).
         "questTier" => match v.as_str() {
             Some("run") | Some("user") => Ok(()),
-            _ => Err("`run` or `user`"),
+            Some(t) if crate::season::season_ref(t).is_some_and(crate::season::is_season_name) => {
+                Ok(())
+            }
+            _ => Err("`run`, `user` or `season:<name>`"),
         },
         // `uses`/`extends`/`components` take one string or a sequence of
         // strings, exactly as authored frontmatter does. A null or empty
@@ -643,6 +910,39 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
             _ => Err("a mapping"),
         },
         _ => Ok(()),
+    }
+}
+
+/// What a refused `defaults:` value most likely meant: a quest tier's
+/// nearest legal spelling (`Run` → `run`), a bare season name for
+/// `season:<name>`, and a season name in the legacy `season:` (the episode
+/// number) the way a scene is tied to a season instead. Empty otherwise.
+fn defaults_value_hint(key: &str, v: &serde_yaml::Value) -> String {
+    let Some(raw) = v.as_str() else {
+        return String::new();
+    };
+    let name = raw
+        .strip_prefix(crate::season::SEASON_PREFIX)
+        .or_else(|| raw.strip_prefix("season."))
+        .unwrap_or(raw);
+    match key {
+        "questTier" => {
+            let near = crate::suggest::did_you_mean(raw, ["run", "user"]);
+            // `scene` / `app` / `quest` are state tiers, not season names.
+            if !near.is_empty()
+                || !crate::season::is_season_name(name)
+                || ["scene", "app", "quest"].contains(&name)
+            {
+                return near;
+            }
+            format!(" — if `{name}` is a declared season, write `season:{name}`")
+        }
+        "season" if crate::season::is_season_name(name) => format!(
+            " — `season:` is the legacy episode number; to tie a scene to season `{name}`, \
+             write `once: season:{name}` on the scene and/or gate its `when:` on the season's \
+             `live:` condition"
+        ),
+        _ => String::new(),
     }
 }
 
@@ -800,6 +1100,7 @@ fn segment_matches(pattern: &str, name: &str) -> bool {
 fn resolve_defaults(
     manifest_dir: &Path,
     raw: Option<serde_yaml::Mapping>,
+    locate: &dyn Fn(&[&str]) -> Option<std::ops::Range<usize>>,
 ) -> (MetaDefaults, Vec<ResolveDiag>) {
     let mut out = MetaDefaults::default();
     let mut diags = Vec::new();
@@ -807,21 +1108,21 @@ fn resolve_defaults(
     for (k, v) in raw {
         let Some(key) = k.as_str() else {
             diags.push(ResolveDiag {
+                span: locate(&["defaults"]),
                 code: E_DEFAULTS_KEY.to_string(),
-                message: "every `defaults:` key must be a string (0.10.0 §6.1)".to_string(),
+                message: "every `defaults:` key must be a string".to_string(),
             });
             continue;
         };
+        let span = locate(&["defaults", key]);
         if !DEFAULTABLE_KEYS.contains(&key) {
-            let hint = match crate::suggest::nearest(key, DEFAULTABLE_KEYS, 3) {
-                Some(near) => format!(" — did you mean `{near}`?"),
-                None => String::new(),
-            };
+            let hint = crate::suggest::did_you_mean(key, DEFAULTABLE_KEYS);
             diags.push(ResolveDiag {
+                span,
                 code: E_DEFAULTS_KEY.to_string(),
                 message: format!(
-                    "`defaults.{key}` is not a defaultable frontmatter key{hint} \
-                     The defaultable set is closed: {} (0.10.0 §6.1)",
+                    "`defaults.{key}` is not a defaultable frontmatter key{hint}. \
+                     The defaultable set is closed: {}",
                     DEFAULTABLE_KEYS.join(", ")
                 ),
             });
@@ -829,8 +1130,12 @@ fn resolve_defaults(
         }
         if let Err(want) = defaults_shape_ok(key, &v) {
             diags.push(ResolveDiag {
+                span,
                 code: E_DEFAULTS_KEY.to_string(),
-                message: format!("`defaults.{key}` must be {want} (0.10.0 §6.1)"),
+                message: format!(
+                    "`defaults.{key}` must be {want}{}",
+                    defaults_value_hint(key, &v)
+                ),
             });
             continue;
         }
@@ -840,8 +1145,9 @@ fn resolve_defaults(
                     out.entries.insert(key.to_string(), resolved);
                 }
                 Err(why) => diags.push(ResolveDiag {
+                    span,
                     code: E_DEFAULTS_KEY.to_string(),
-                    message: format!("`defaults.{key}`: {why} (0.10.0 §6.1, D-Z)"),
+                    message: format!("`defaults.{key}`: {why}"),
                 }),
             }
             continue;
@@ -851,18 +1157,91 @@ fn resolve_defaults(
     (out, diags)
 }
 
+/// dsl 0.28.0 §1 (T1-1): the message for a top-level manifest key outside
+/// [`MANIFEST_KEYS`] — the layer that owns it when another layer does (a
+/// schema key, a document key that `defaults:` can supply, a profile key),
+/// otherwise the nearest manifest key.
+fn manifest_key_message(key: &str) -> String {
+    if SCHEMA_ONLY_KEYS.contains(&key) {
+        return format!(
+            "`{key}:` belongs in a schema (a `*.schema.yaml` your documents list in `uses:`), \
+             not in lute.project.yaml"
+        );
+    }
+    if DEFAULTABLE_KEYS.contains(&key) {
+        return format!(
+            "`{key}:` is a document key — to give it to every document, write it under \
+             `defaults:`"
+        );
+    }
+    if crate::suggest::nearest(key, ["sequence", "sequences"], 2).is_some() {
+        return format!(
+            "`{key}:` is not a manifest key — every chain goes in the one `chapters:` list"
+        );
+    }
+    if matches!(key, "plugins" | "extends") {
+        return format!("`{key}:` belongs to a profile — `profiles: {{ <name>: {{ {key}: … }} }}`");
+    }
+    // `sequence` (retired, the last key) is never suggested.
+    let current = &MANIFEST_KEYS[..MANIFEST_KEYS.len() - 1];
+    let hint = crate::suggest::did_you_mean(key, current.iter().copied());
+    format!(
+        "unknown key `{key}` in lute.project.yaml{hint} (it takes {})",
+        current
+            .iter()
+            .map(|k| format!("`{k}:`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+/// Remove every key of `map` outside `known` (so the rest still loads) and
+/// report each as [`E_MANIFEST_KEY`] at `path` + the key.
+fn drop_unknown_keys(
+    map: &mut serde_yaml::Mapping,
+    known: &[&str],
+    path: &[&str],
+    message: &dyn Fn(&str) -> String,
+    locate: &dyn Fn(&[&str]) -> Option<std::ops::Range<usize>>,
+    diags: &mut Vec<ResolveDiag>,
+) {
+    let unknown: Vec<serde_yaml::Value> = map
+        .keys()
+        .filter(|k| !k.as_str().is_some_and(|k| known.contains(&k)))
+        .cloned()
+        .collect();
+    for k in unknown {
+        map.remove(&k);
+        let key = match &k {
+            serde_yaml::Value::String(s) => s.clone(),
+            other => serde_yaml::to_string(other)
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+        };
+        let mut at: Vec<&str> = path.to_vec();
+        at.push(&key);
+        diags.push(ResolveDiag {
+            span: locate(&at).or_else(|| locate(path)),
+            code: E_MANIFEST_KEY.to_string(),
+            message: message(&key),
+        });
+    }
+}
+
 /// Read `<project_dir>/lute.project.yaml` into a [`ProjectConfig`].
 ///
 /// Distinguishes an absent config from a broken one (plugin §11): a missing
 /// file → `Ok(None)` (the document legitimately resolves core-only); a read
-/// error other than not-found or a YAML parse/deserialize error → `Err(msg)`
-/// so the caller can surface it instead of silently mis-validating; a valid
-/// file → `Ok(Some(cfg))`.
+/// error, a file that does not parse, is not a mapping or lacks
+/// `defaultProfile:` → `Err(msg)` so the caller can surface it instead of
+/// silently mis-validating (dsl 0.28.0: `<path>:<line>:<col>: error
+/// [E-MANIFEST] …`, in plain words); a valid file → `Ok(Some(cfg))`.
 ///
-/// A malformed `identity:` template is NOT a load failure: the offending key
-/// falls back to its default and the `E-IDENTITY-TEMPLATE` rides along
-/// in [`ProjectConfig::identity_diags`], so the project still resolves its
-/// plugins and both surfaces report the same diagnostic.
+/// An unknown key, a malformed `identity:` template and a bad `defaults:`
+/// entry are NOT load failures: each is dropped and reported (located) on
+/// the config, so the project still resolves its plugins and both surfaces
+/// report the same diagnostic.
 pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String> {
     let path = project_dir.join("lute.project.yaml");
     let text = match std::fs::read_to_string(&path) {
@@ -870,8 +1249,96 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
     };
-    let raw: RawProject =
-        serde_yaml::from_str(&text).map_err(|e| format!("invalid {}: {e}", path.display()))?;
+    let fail = |offset: usize, message: &str| {
+        let (line, col) = crate::yaml_text::line_col(&text, offset);
+        format!(
+            "{}:{line}:{col}: error [{E_MANIFEST}] {message}",
+            path.display()
+        )
+    };
+    let value: serde_yaml::Value = match serde_yaml::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            let fault = crate::yaml_text::yaml_fault(&text, &e);
+            return Err(fail(fault.offset, &fault.message));
+        }
+    };
+    let mut map = match value {
+        serde_yaml::Value::Mapping(m) => m,
+        serde_yaml::Value::Null => serde_yaml::Mapping::new(),
+        _ => {
+            return Err(fail(
+                0,
+                "lute.project.yaml must be a mapping of keys, starting with \
+                 `defaultProfile:` and `profiles:`",
+            ))
+        }
+    };
+    let locate = |at: &[&str]| crate::yaml_text::key_span(&text, at);
+    let mut key_diags = Vec::new();
+    drop_unknown_keys(
+        &mut map,
+        &MANIFEST_KEYS,
+        &[],
+        &manifest_key_message,
+        &locate,
+        &mut key_diags,
+    );
+    if let Some(serde_yaml::Value::Mapping(profiles)) = map.get_mut("profiles") {
+        for (name, profile) in profiles.iter_mut() {
+            let (Some(name), serde_yaml::Value::Mapping(profile)) = (name.as_str(), profile) else {
+                continue;
+            };
+            let message = |key: &str| {
+                format!(
+                    "profile `{name}`: unknown key `{key}`{} (a profile takes `extends:`, \
+                     `plugins:` and `permissions:`)",
+                    crate::suggest::did_you_mean(key, PROFILE_KEYS)
+                )
+            };
+            drop_unknown_keys(
+                profile,
+                &PROFILE_KEYS,
+                &["profiles", name],
+                &message,
+                &locate,
+                &mut key_diags,
+            );
+        }
+    }
+    if let Some(serde_yaml::Value::Mapping(identity)) = map.get_mut("identity") {
+        let message = |key: &str| {
+            format!(
+                "`identity:` has no key `{key}`{} (it takes `lineId:` and `voiceKey:`)",
+                crate::suggest::did_you_mean(key, IDENTITY_KEYS)
+            )
+        };
+        drop_unknown_keys(
+            identity,
+            &IDENTITY_KEYS,
+            &["identity"],
+            &message,
+            &locate,
+            &mut key_diags,
+        );
+    }
+    if !map.contains_key("defaultProfile") {
+        return Err(fail(
+            0,
+            "lute.project.yaml needs `defaultProfile:` naming the profile a document uses \
+             when it names none — e.g. `defaultProfile: core` with `profiles: { core: { \
+             plugins: {} } }`",
+        ));
+    }
+    // Through text, not `from_value`: `Value`'s deserializer reads a `null`
+    // as an empty mapping, which would accept `permissions: null`.
+    let cleaned = serde_yaml::to_string(&serde_yaml::Value::Mapping(map)).unwrap_or_default();
+    let raw: RawProject = serde_yaml::from_str(&cleaned).map_err(|e| {
+        fail(
+            0,
+            &format!("a value has the wrong shape: {}", plain_serde(&e)),
+        )
+    })?;
 
     let mut profiles = BTreeMap::new();
     let mut profile_permissions = BTreeMap::new();
@@ -897,10 +1364,10 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
     };
     let plugins_dir = project_dir.join(raw.plugins_dir.as_deref().unwrap_or("plugins/"));
     let catalog_dir = project_dir.join(raw.catalog_dir.as_deref().unwrap_or("catalog/"));
-    let (identity, identity_diags) = resolve_identity(raw.identity);
-    let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults);
-    let (sequence, sequence_diags) = resolve_sequence(raw.sequence);
-    let defaults = defaults.with_sequence(sequence);
+    let (identity, identity_diags) = resolve_identity(raw.identity, &locate);
+    let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults, &locate);
+    let (chapters, chapter_diags) = resolve_chapters(raw.chapters, raw.sequence);
+    let defaults = defaults.with_chapters(chapters);
 
     Ok(Some(ProjectConfig {
         graph,
@@ -912,8 +1379,20 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
         identity_diags,
         defaults,
         defaults_diags,
-        sequence_diags,
+        chapter_diags,
+        key_diags,
     }))
+}
+
+/// A `serde` deserialization error of a manifest value, without the
+/// library's line/column marks (the manifest's own key is named instead)
+/// and without a Rust type name.
+fn plain_serde(e: &serde_yaml::Error) -> String {
+    let s = e.to_string();
+    let s = s.split(" at line ").next().unwrap_or(&s);
+    s.replace("invalid type: ", "")
+        .replace("a map", "a mapping")
+        .replace("struct ", "")
 }
 
 /// The ONE catalog-loading path both surfaces use (plugin §10). Given a resolved
@@ -978,6 +1457,7 @@ pub fn resolve_document_snapshot(
     // 1. Load every installed plugin package; surface load errors.
     let (registry, load_errs) = load_plugins_dir(&project.plugins_dir);
     diags.extend(load_errs.into_iter().map(|e| ResolveDiag {
+        span: None,
         code: e.code().into(),
         message: format!("{e}"),
     }));
@@ -991,6 +1471,7 @@ pub fn resolve_document_snapshot(
         Ok(permissions) => permissions,
         Err(e) => {
             diags.push(ResolveDiag {
+                span: None,
                 code: e.code().into(),
                 message: e.to_string(),
             });
@@ -1009,6 +1490,7 @@ pub fn resolve_document_snapshot(
         Ok(active) => active,
         Err(e) => {
             diags.push(ResolveDiag {
+                span: None,
                 code: e.code().into(),
                 message: format!("{e}"),
             });
@@ -1030,6 +1512,7 @@ pub fn resolve_document_snapshot(
         validate_activation_options(&active, &registry)
             .into_iter()
             .map(|e| ResolveDiag {
+                span: None,
                 code: e.code().into(),
                 message: e.message(),
             }),
@@ -1038,6 +1521,7 @@ pub fn resolve_document_snapshot(
     // 5. Assemble the merged snapshot; surface assembly errors.
     let (mut snapshot, assemble_errs) = crate::assemble::assemble_snapshot(&active, &registry);
     diags.extend(assemble_errs.into_iter().map(|e| ResolveDiag {
+        span: None,
         code: e.code().into(),
         message: e.to_string(),
     }));

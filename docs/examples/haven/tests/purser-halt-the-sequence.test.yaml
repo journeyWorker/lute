@@ -33,7 +33,7 @@ facts:
 choose:
   theCorrection: haltTheSequence
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "It's a cabinet. Cabinets have a maintenance mode, and maintenance mode has a key, and I've had the key for twelve years."
     - "Halt condition, subsection four. This is your own page. I am reading you your own page."

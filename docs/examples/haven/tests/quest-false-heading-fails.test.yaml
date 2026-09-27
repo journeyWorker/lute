@@ -12,6 +12,6 @@ facts:
   - "knows(ilsabet, true_heading)"
   - "knows(vesna, manifest)"
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "The schedule got far enough ahead that where the ship was going stopped being the question."

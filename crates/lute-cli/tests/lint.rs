@@ -295,3 +295,42 @@ fn plugin_lint_export_fires_end_to_end() {
         .unwrap()
         .contains("only 1 shots"));
 }
+
+/// A scene that gets `on:` only from the manifest's `chapters:` lints as the
+/// beat it is — the same document `check-project` reads — so its bare shot
+/// draws no background finding; a scene no chain lists still does.
+#[test]
+fn chapters_listed_scene_lints_as_a_beat() {
+    let dir = temp_dir("chapters");
+    write(
+        &dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles: { core: { plugins: {} } }\n\
+         chapters:\n  - on: stageClear\n    scenes: [c1s1]\n",
+    );
+    write(
+        &dir.join("c1s1.lute"),
+        "---\nkind: scene\nid: c1s1\n---\n## After the fight\n@alice: hi\n",
+    );
+    write(
+        &dir.join("loose.lute"),
+        "---\nkind: scene\nid: loose\n---\n## Somewhere\n@alice: hi\n",
+    );
+
+    let out = run(&["lint", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
+        panic!(
+            "stdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    let bg: Vec<_> = v["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "L-SHOT-STARTS-WITH-BACKGROUND")
+        .map(|d| d["path"].as_str().unwrap_or_default().to_string())
+        .collect();
+    assert_eq!(bg.len(), 1, "{v}");
+    assert!(bg[0].ends_with("loose.lute"), "{v}");
+}

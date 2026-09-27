@@ -28,6 +28,12 @@ pub trait Driver {
     /// without effect (shapes in `exec/mod.rs`). Only `lute trace` reports
     /// them; the default ignores them.
     fn observe(&mut self, _rec: Json) {}
+    /// What changes one read of a scripted pick's closed guard, as the
+    /// refusal names it after the read (`guard_premise`). The default: the
+    /// mock entry ([`GuardRead::yaml_mock`]).
+    fn premise_hint(&self, read: &GuardRead) -> String {
+        format!("mock {}", read.yaml_mock())
+    }
 }
 
 impl<D: Driver + ?Sized> Driver for &mut D {
@@ -48,6 +54,9 @@ impl<D: Driver + ?Sized> Driver for &mut D {
     }
     fn observe(&mut self, rec: Json) {
         (**self).observe(rec)
+    }
+    fn premise_hint(&self, read: &GuardRead) -> String {
+        (**self).premise_hint(read)
     }
 }
 
@@ -107,10 +116,13 @@ pub enum GuardRead {
     Fact(String),
     /// HW27-10: a ground fact of a derived relation that does not hold,
     /// with every rule that could conclude it (as written) and the
-    /// premises that rule misses (`` `holding(brassKey)` does not hold ``).
+    /// premises that rule misses (`` `holding(brassKey)` does not hold ``);
+    /// `base`: the missing atoms no rule explains further — what has to be
+    /// asserted (or mocked) for a rule to fire.
     Derived {
         fact: String,
         rules: Vec<(String, Vec<String>)>,
+        base: Vec<String>,
     },
     Visited(String),
     /// OT-F-10: a ground fact that holds, read under a negation.
@@ -132,10 +144,10 @@ impl GuardRead {
                 None => format!("`{p}` is unset"),
             },
             GuardRead::Fact(f) => format!("`{f}` does not hold"),
-            GuardRead::Derived { fact, rules } if rules.is_empty() => {
+            GuardRead::Derived { fact, rules, .. } if rules.is_empty() => {
                 format!("`{fact}` does not hold")
             }
-            GuardRead::Derived { fact, rules } => format!(
+            GuardRead::Derived { fact, rules, .. } => format!(
                 "`{fact}` does not hold ({})",
                 rules
                     .iter()
@@ -150,13 +162,17 @@ impl GuardRead {
     }
 
     /// The mock entry that changes it, in the YAML key spelling a play
-    /// script, a `*.test.yaml` and a `--mock` file share.
+    /// script, a `*.test.yaml` and a `--mock` file share; a derived fact's
+    /// base premises, not the conclusion a rule would draw from them.
     pub fn yaml_mock(&self) -> String {
         match self {
             GuardRead::Path(p, _) => match crate::exec::session::quest_state_id(p) {
                 Some(q) => format!("`quests: {{ {q}: <state> }}`"),
                 None => format!("`state: {{ {p}: <value> }}`"),
             },
+            GuardRead::Derived { base, .. } if !base.is_empty() => {
+                format!("`facts: [{}]`", base.join(", "))
+            }
             GuardRead::Fact(f) | GuardRead::Derived { fact: f, .. } => format!("`facts: [{f}]`"),
             GuardRead::Visited(k) => format!("`visited: [{k}]`"),
             GuardRead::Holds(f) => format!("`facts:` without `{f}`"),
@@ -166,12 +182,16 @@ impl GuardRead {
 }
 
 /// The premise a refused pick of a guard-closed option names: every read
-/// the guard is false over with the mock that changes it (`hint`), `; `-
-/// joined — empty when the guard reads nothing a mock can change.
+/// the guard is false over followed by what changes it (`hint`, in
+/// parentheses; nothing when it is empty), `; `-joined — empty when the
+/// guard reads nothing.
 pub fn guard_premise(reads: &[GuardRead], hint: impl Fn(&GuardRead) -> String) -> String {
     reads
         .iter()
-        .map(|r| format!("{} (mock {})", r.found(), hint(r)))
+        .map(|r| match hint(r) {
+            h if h.is_empty() => r.found(),
+            h => format!("{} ({h})", r.found()),
+        })
         .collect::<Vec<_>>()
         .join("; ")
 }
@@ -191,10 +211,6 @@ pub enum Pick {
     /// is open and halts incomplete otherwise. `scripted` is how many
     /// decisions a scripted list held when it ran out (`0`: no list).
     Unscripted { scripted: usize },
-    /// A hub: end this visit and converge, whatever is still open (`lute
-    /// trace`'s scripted hub: the `choose:` list is the whole visit). A
-    /// branch treats it as [`Pick::Unscripted`].
-    Leave,
 }
 
 /// The driver's ruling on a picked option that is not [`Verdict::Open`].
@@ -264,6 +280,9 @@ pub enum SiteKind {
     OccasionTarget,
     EntryWhen,
     BeatWhen,
+    /// A line interpolating an `occasion.payload.<field>` the raise did not
+    /// carry (`id` is the path): the line would print its marker raw.
+    Payload,
 }
 
 /// Whether the walk halts (incomplete) at an [`UnknownSite`].
@@ -299,7 +318,9 @@ impl ScriptedChoices {
         match menu.construct {
             MenuKind::Hub => match list.get(menu.presentation) {
                 Some(id) => Pick::Option(id.clone()),
-                None => Pick::Unscripted { scripted: 0 },
+                None => Pick::Unscripted {
+                    scripted: list.len(),
+                },
             },
             MenuKind::Branch => match list {
                 [] => Pick::Unscripted { scripted: 0 },

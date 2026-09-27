@@ -63,7 +63,7 @@ heading, no `## ` shots, no `<quest>`.
 | `series` / `order` | multi-part text: `order` is the position within `series` (a document-level `series:` can supply both — see below) |
 | `when` | eligibility: the entry may be presented only while this holds |
 | `on` / `priority` / `once` | make the entry a [beat](/language/beats/) that answers an engine occasion; `once="run"` or `once="user"` stops it answering again after a read, and on a project with a [clock](/language/clock/), `once="day"`, `once="week"` (with the clock's `week:`), or `once="slot"` stops it until the clock's day, week, or slot changes; `once="season:<name>"` stops it until a declared [season](/state/schemas/#seasons) opens again |
-| `spentBy` | on an entry beat, instead of `once` (dsl 0.27.0 §5): the entry keeps answering until this condition holds. See [Until it is solved](/language/beats/#until-it-is-solved-spentby) |
+| `spentBy` | on an entry beat: the entry keeps answering until this condition holds, then stays spent for its `once` period (`run` unless written), even if it turns false again. See [Until it is solved](/language/beats/#until-it-is-solved-spentby) |
 | `for` | on an entry beat of an untargeted `select: sequence` occasion, `for="kind:<kind>"` (dsl 0.27.0 §3): the entry answers once per member whose `when` holds, reading it as `occasion.target`. See [Once per member](/language/beats/#once-per-member-for) |
 
 `target` and `category` are checked for shape only, so you can write lore before the engine's item
@@ -169,12 +169,40 @@ Afterwards the engine sets **`entry.<id>.read`** to `true`, and later readings s
 a `<match>` may pick a different arm by then, but nothing else changes. On a re-read, `lute trace`
 and `lute play` list the effects they did not apply as `skipped`.
 
-So an entry that is read again in the same run, a repeatable [entry beat](/language/beats/#entry-beats)
-above all, changes state only the first time. `lute check` warns `W-ENTRY-WRITE-REREAD` (dsl
-0.26.0 §8) at the `::set` or `::retract` of an entry beat without `once`; an `::assert` is exempt,
-because its fact holds for the rest of the run either way. A write meant to happen on every
-presentation belongs in a `<beat once="false">` ([below](#entries-and-beats-in-one-file)), whose
-effects apply every time.
+So an entry that is read again in the same run changes state only the first time. The rule
+follows the read, not the way the entry was reached, so it covers every entry that can be read
+more than once in a run:
+
+| Entry | Read again in a run | Its writes apply |
+|---|---|---|
+| a lookup entry (no `on=`): a codex page, an item description | each time the engine opens it | on the first read in the run |
+| an entry beat without `once` (or `once="false"`) | at every raise of its occasion | on the first read in the run |
+| `once="day"`, `"slot"`, `"week"`, or `"season:<name>"` | in each new period | on the first read in the run, not once per period |
+| `spentBy="…"` | until its condition has held | on the first read in the run |
+| `for="kind:<kind>"` without `once="run"` / `"user"` | per member, at every raise or period | on each member's first read in the run |
+
+An entry with `once="run"` or `once="user"` is read at most once per run (per member, with
+`for=`), so its writes always apply. For the others, `lute check` warns `W-ENTRY-WRITE-REREAD` at
+the first `::set`, `::retract`, or effect-only directive that writes, and names what works for
+that entry's shape. For an entry `greet` on `morning` with `for="kind:npc"` and no `once`:
+
+<!-- lute-diagnostics unverified="verbatim lute check output; the message joins its remedies at runtime (crates/lute-check/src/lore.rs Reread::message), so no single format! literal spans it" -->
+```
+./lore/barks.lute:9:3: warning [W-ENTRY-WRITE-REREAD] `<entry id="greet">` is read per member, and with no `once` every raise of `morning` can present a member again in a run, but its `::set` applies on each member's first read in a run only — later reads skip it; to apply it on every presentation, put the body in a `<beat on="morning" for="kind:npc" once="false">` — a beat's writes apply each time it is presented; for one application per member per run, write `once="run"` on the entry; to keep the write to the first read on purpose, guard it with `when="!entry.greet.read"`
+```
+
+An `::assert` is exempt: its fact holds for the rest of the run either way.
+
+- **The write should happen every time.** Put the body in a
+  [`<beat>`](#entries-and-beats-in-one-file) with the same `on`, `target`, `for`, and `once`: a
+  beat's writes apply on each presentation. Mind the defaults: an `<entry>` without `once` is
+  repeatable, but a `<beat>` without `once` is spent for the run, so a beat that repeats writes
+  `once="false"` (`<beat on="talk" target="npc.tomas" once="false">`,
+  `<beat on="morning" for="kind:npc" once="false">`).
+- **Once per run is what you meant.** Write `once="run"` on the entry.
+- **The write belongs to the first read on purpose.** Guard it with
+  `when="!entry.<id>.read"`, on the `::set` or on a `<match on="entry.<id>.read">` arm
+  `is="false"`. The guard says so to the reader and silences the warning.
 
 `entry.<id>.read` is a reserved `bool` any document can read: gate the next page of a series
 (`when="entry.scientistLog1.read"`), branch a scene on it, or complete a quest objective. Content
@@ -274,8 +302,8 @@ The two kinds of block share a file but keep their own rules:
 | Id | its own `id`, unique across the project | `<document id>.<beat id>`: `shipRecords.tomaAtTheLog` |
 | Body | content lines, `<match>`, `::set` / `::assert` / `::retract`, effect-only plugin directives | a scene body: lines, branches, hubs, `<match>`, directives |
 | Reached | looked up by the engine, or as an [entry beat](/language/beats/#entry-beats) | only as a beat answering its `on` occasion, once its `when` and (dsl 0.25.0) its `after=` hold |
-| Effects | on the first read in a run | on every presentation, as a scene's |
-| Spent | by `entry.<id>.read` / `everRead` when `once=` asks (by the clock for `once="day"` / `"slot"`) | by presentation; `once` defaults to `run` |
+| Effects | on the first read in a run (per member with `for=`; see [Reading twice](#reading-twice)) | on every presentation, as a scene's |
+| Spent | never, without `once`: repeatable by default. With `once=`, by `entry.<id>.read` / `everRead` (by the clock for `"day"` / `"week"` / `"slot"`, by the season for `"season:<name>"`), or by `spentBy=` | by presentation, or by `spentBy=`; `once` defaults to `run` |
 | Shared spend (dsl 0.25.0) | `share=` beside `once=`: reading it spends every beat of the key | `share=` beside `once`: presenting it spends every beat of the key |
 | Read by conditions | `entry.<id>.read`, `entry.<id>.everRead` | `visited('<document id>.<beat id>')` |
 

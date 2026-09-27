@@ -51,12 +51,16 @@ pub struct Seeds {
 
 /// A component `::use` boundary annotation (D8's `__component-begin`/`-end`
 /// sentinels, normalize.rs) — rendered so a trace reader can tell inlined
-/// component content apart from the authoring document's own.
+/// component content apart from the authoring document's own. A template's
+/// `::body` pauses the one expansion around the `<beat use>`'s own body
+/// (`body` … `bodyEnd`) rather than closing it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ComponentBoundary {
     Begin,
     End,
+    Body,
+    BodyEnd,
 }
 
 /// One entry of the linear, document-ordered transcript (§4.5 human form:
@@ -93,16 +97,31 @@ pub enum Step {
         /// `synth_into`) — rendered `(into sugar)` in the human form (D14's
         /// "`(persist sugar)`" precedent, §4.6, relabeled by 0.6.0 §2.1).
         sugar: bool,
+        /// The plugin directive whose declared effect this write is (T1-3:
+        /// rendered `(effect of ::tag)`, as `lute play` does).
+        #[serde(rename = "effectOf", skip_serializing_if = "Option::is_none")]
+        effect_of: Option<String>,
     },
     Assert {
         text: String,
+        #[serde(rename = "effectOf", skip_serializing_if = "Option::is_none")]
+        effect_of: Option<String>,
     },
     Retract {
         text: String,
+        #[serde(rename = "effectOf", skip_serializing_if = "Option::is_none")]
+        effect_of: Option<String>,
     },
     Directive {
         tag: String,
         component_boundary: Option<ComponentBoundary>,
+        /// The component a boundary step belongs to.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        component: Option<String>,
+        /// A plugin call as the walk made it (`::gift{from="maud"
+        /// item="kettleLid"}`), rendered in place of the bare tag.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call: Option<String>,
         /// `true` when this `::auto` ends a character's presence — its
         /// `action=` value is in the resolved `action` domain's `exits:`.
         /// The entrance and the exit are the same construct with the same
@@ -130,7 +149,7 @@ pub enum Step {
     /// (`Some` for an objective-level grant, `None` for a quest-level
     /// one), the reward's declaration data (`kind`/`target`/amount —
     /// range bounds are carried verbatim, spec D-C: never pre-rolled),
-    /// and `on_failed: true` when the grant was on a `<reward on="failed"/>`
+    /// and `on_failed: true` when the grant was on a `<reward outcome="failed"/>`
     /// entry firing at the fresh `failed` transition (authored fail OR
     /// §2.3 cascade). The reward's `when=` gate was already evaluated at
     /// the grant instant; a grant that fires is unconditionally true —
@@ -207,7 +226,7 @@ pub enum Step {
         text: String,
     },
     /// dsl 0.26.0 §7 (T1-4): a taken `::next{to}` — the walk continues at
-    /// the label `to`, as play's does.
+    /// the mark `to`, as play's does.
     Jump {
         to: String,
     },
@@ -215,8 +234,8 @@ pub enum Step {
 
 /// dsl 0.16.0 §3: the reward-declaration data carried by a fired [`Step::Grant`],
 /// mirroring `lute-compile`'s `RewardEntry` MINUS the `when` slot and the
-/// `on` marker. `when` was already evaluated at the grant instant (a fired
-/// grant is unconditionally true), and the `on="failed"` marker lifts to
+/// `outcome` marker. `when` was already evaluated at the grant instant (a fired
+/// grant is unconditionally true), and the `outcome="failed"` marker lifts to
 /// [`Step::Grant::on_failed`] on the outer transcript entry so a consumer
 /// reads the transition kind without unpacking the reward record.
 ///
@@ -248,9 +267,10 @@ pub struct GrantCredit {
 }
 
 /// One decision (§4.5: "the construct kind, its id/span, the outcome, and
-/// the evaluated guard bindings"). `construct` is `"match"` / `"branch"` /
-/// `"hub"`; `id` is the match subject's raw CEL text or the branch/hub's
-/// declared `id`.
+/// the evaluated guard bindings"). `construct` is `"match"` / `"guard"` /
+/// `"branch"` / `"hub"` (and the quest lifecycle kinds); `id` is the match
+/// subject's raw CEL text, a `when=` guard's text, or the branch/hub's
+/// declared `id`. A `guard`'s `outcome` is `taken` or `skipped`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Decision {
     pub construct: String,
@@ -286,6 +306,10 @@ pub struct Decision {
     /// The same for `guard`.
     #[serde(rename = "authoredGuard", skip_serializing_if = "Option::is_none")]
     pub authored_guard: Option<String>,
+    /// A construct a component `::use` expanded: `span` is in
+    /// `component.file`, not the traced document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<ComponentSite>,
 }
 
 /// Why a construct HALTED the walk (§4.4/§4.5: "unresolved\[\] carries the
@@ -347,6 +371,30 @@ pub struct CoverageCount {
     /// rewrote it (see [`Decision::authored_id`]).
     #[serde(rename = "authoredLabel", skip_serializing_if = "Option::is_none")]
     pub authored_label: Option<String>,
+    /// The site is a `when=` guard (a guarded line, write, directive,
+    /// `::next` or `::use`), not an authored `<match>`: its two outcomes are
+    /// taken and skipped.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub guard: bool,
+    /// The site was expanded from a component `::use` (see
+    /// [`Decision::component`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<ComponentSite>,
+}
+
+/// A construct expanded from a component `::use`: its span is in the
+/// component's own file, and each use of the component is its own site.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ComponentSite {
+    /// The component's name.
+    pub name: String,
+    /// The component's file, as the traced document's import resolved it.
+    pub file: String,
+    /// Which use: `{component}#{n}` (the n-th `::use` of that component in
+    /// its host), one segment per enclosing expansion, outermost first
+    /// (`outer#2.inner#1`).
+    #[serde(rename = "use")]
+    pub scope: String,
 }
 
 /// Coverage counters per construct. `choices` keys a `<branch>`/`<hub>` by its
@@ -366,6 +414,21 @@ pub struct Coverage {
 /// by construction — no two constructs open at one position.
 pub fn site_key(span: &Span) -> String {
     format!("{}:{}", span.line, span.column)
+}
+
+/// A `guard` decision's outcome when its `when=` held.
+pub const GUARD_TAKEN: &str = "taken";
+/// A `guard` decision's outcome when its `when=` was false.
+pub const GUARD_SKIPPED: &str = "skipped";
+
+/// [`site_key`], for a construct a component `::use` expanded:
+/// `"{component file}:{line}:{column} ({use})"`, so it never merges with a
+/// host construct at the same position, nor with another use's.
+pub fn site_key_in(span: &Span, component: Option<&ComponentSite>) -> String {
+    match component {
+        None => site_key(span),
+        Some(c) => format!("{}:{} ({})", c.file, site_key(span), c.scope),
+    }
 }
 
 /// The §4.5 output contract. Field order (declaration order = serde
@@ -456,11 +519,23 @@ pub struct TraceReport {
     /// serialized here.
     #[serde(skip)]
     pub not_raised: BTreeMap<String, NotRaised>,
+    /// dsl 0.28.0 (T1-25): every presented scene / entry / bundle beat
+    /// judged ineligible → which premise failed
+    /// ([`crate::exec::session::Premise::kind`]) — what `lute test`'s
+    /// `eligible: { <id>: { false: <reason> } }` judges. Never serialized.
+    #[serde(skip)]
+    pub ineligible_by: BTreeMap<String, &'static str>,
     /// Every content line the walk played, in order, in the one canonical
     /// transcript form ([`crate::exec::said_line`]: `@speaker{delivery}:
     /// text`) — what [`Self::said`] joins. Never serialized.
     #[serde(skip)]
     pub said: Vec<String>,
+    /// Whether the project's `terminal:` holds in the world the walk ended
+    /// in — `None` when the project declares none (or the walk was refused,
+    /// or the mocks leave it undecided). What a `*.test.yaml`'s `expect.end:
+    /// terminal` judges. Never serialized.
+    #[serde(skip)]
+    pub terminal: Option<bool>,
 }
 
 /// dsl 0.27.0 §4 (HW27-04): why the engine would not raise a presented
@@ -585,7 +660,14 @@ impl TraceReport {
                     (Some(a), false) => a,
                     _ => &c.label,
                 };
-                parts.push(format!("arms {}/{} ({label} @{site})", c.visited, c.total));
+                if c.guard {
+                    parts.push(format!(
+                        "guard `{label}` @{site}: {}",
+                        self.guard_outcomes(site)
+                    ));
+                } else {
+                    parts.push(format!("arms {}/{} ({label} @{site})", c.visited, c.total));
+                }
             }
             out.push_str(&format!("; {}", parts.join(", ")));
         }
@@ -594,6 +676,25 @@ impl TraceReport {
             out.push_str(&format!("  {}\n", u.render_forced()));
         }
         out
+    }
+
+    /// What the walk did at the `when=` guard at coverage `site`: `taken`,
+    /// `skipped`, or both (a guard in a hub body runs once per visit).
+    fn guard_outcomes(&self, site: &str) -> &'static str {
+        let mut taken = false;
+        let mut skipped = false;
+        for d in &self.decisions {
+            if d.construct == "guard" && site_key_in(&d.span, d.component.as_ref()) == site {
+                taken |= d.outcome == GUARD_TAKEN;
+                skipped |= d.outcome == GUARD_SKIPPED;
+            }
+        }
+        match (taken, skipped) {
+            (true, true) => "taken and skipped",
+            (true, false) => GUARD_TAKEN,
+            (false, true) => GUARD_SKIPPED,
+            (false, false) => "not decided",
+        }
     }
 
     /// The walk's presented content lines, one canonical
@@ -659,15 +760,30 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             Some(d) => out.push_str(&format!("    @{speaker}{{{d}}}  {text}\n")),
             None => out.push_str(&format!("    @{speaker}  {text}\n")),
         },
-        Step::Set { path, value, sugar } => {
+        Step::Set {
+            path,
+            value,
+            sugar,
+            effect_of,
+        } => {
             let annot = if *sugar { "  (into sugar)" } else { "" };
-            out.push_str(&format!("    ::set  {path} = {value}{annot}\n"));
+            out.push_str(&format!(
+                "    ::set  {path} = {value}{annot}{}\n",
+                effect_note(effect_of)
+            ));
         }
-        Step::Assert { text } => out.push_str(&format!("    ::assert  {text}\n")),
-        Step::Retract { text } => out.push_str(&format!("    ::retract  {text}\n")),
+        Step::Assert { text, effect_of } => {
+            out.push_str(&format!("    ::assert  {text}{}\n", effect_note(effect_of)))
+        }
+        Step::Retract { text, effect_of } => out.push_str(&format!(
+            "    ::retract  {text}{}\n",
+            effect_note(effect_of)
+        )),
         Step::Directive {
             tag,
             component_boundary,
+            component,
+            call,
             exit,
             reason,
         } => match component_boundary {
@@ -675,17 +791,30 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             // `__component-begin`/`-end` sentinel (`normalize.rs`'s
             // `COMPONENT_BEGIN`/`COMPONENT_END`) — never interpolated into
             // the human transcript (it would both leak the sentinel name
-            // and double the marker word, "begin begin"/"end end").
-            Some(ComponentBoundary::Begin) => out.push_str("    -- component begin --\n"),
-            Some(ComponentBoundary::End) => out.push_str("    -- component end --\n"),
-            None => {
-                let annot = match (exit, reason) {
-                    (true, _) => " exit".to_string(),
-                    (false, Some(r)) => format!(" reason={r}"),
-                    (false, None) => String::new(),
-                };
-                out.push_str(&format!("    <{tag}{annot}>\n"));
-            }
+            // and double the marker word, "begin begin"/"end end"). One
+            // frame per expansion, named; a template's `::body` is marked
+            // inside it.
+            Some(ComponentBoundary::Begin) => out.push_str(&format!(
+                "    -- component {}begin --\n",
+                component_name(component)
+            )),
+            Some(ComponentBoundary::End) => out.push_str(&format!(
+                "    -- component {}end --\n",
+                component_name(component)
+            )),
+            Some(ComponentBoundary::Body) => out.push_str("    -- body --\n"),
+            Some(ComponentBoundary::BodyEnd) => out.push_str("    -- body end --\n"),
+            None => match call {
+                Some(call) => out.push_str(&format!("    {call}\n")),
+                None => {
+                    let annot = match (exit, reason) {
+                        (true, _) => " exit".to_string(),
+                        (false, Some(r)) => format!(" reason={r}"),
+                        (false, None) => String::new(),
+                    };
+                    out.push_str(&format!("    <{tag}{annot}>\n"));
+                }
+            },
         },
         Step::Bridge { tag, answered } => match answered {
             Some(fields) => {
@@ -696,6 +825,15 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
                 "      (bridge unanswered: no `bridges.{tag}` answer — its results read unknown)\n"
             )),
         },
+        Step::Decision(d) if d.construct == "guard" => {
+            // T3-22: a `when=` guard, as the author wrote it — not the
+            // one-arm `<match>` it lowers to.
+            let id = match (&d.authored_id, expand) {
+                (Some(a), false) => a,
+                _ => &d.id,
+            };
+            out.push_str(&format!("  guard `{id}`: {}\n", d.outcome));
+        }
         Step::Decision(d) => {
             let annot = if d.forced {
                 " (forced)"
@@ -818,4 +956,20 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             ));
         }
     }
+}
+
+/// `"{name} "` for a named boundary step, else nothing.
+fn component_name(name: &Option<String>) -> String {
+    name.as_deref()
+        .filter(|n| !n.is_empty())
+        .map(|n| format!("{n} "))
+        .unwrap_or_default()
+}
+
+/// `"  (effect of ::tag)"` for a plugin directive's declared effect.
+fn effect_note(effect_of: &Option<String>) -> String {
+    effect_of
+        .as_deref()
+        .map(|tag| format!("  (effect of ::{tag})"))
+        .unwrap_or_default()
 }

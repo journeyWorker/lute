@@ -200,16 +200,25 @@ pub(crate) fn lift_scene_beat(
     };
 
     let on = match get("on") {
+        // T3-9: a scene that wrote `occasion:` / `event:` meant `on:` — the
+        // unknown key says so, once; "without `on:`" per beat key would
+        // repeat it.
+        None if get("occasion").or_else(|| get("event")).is_some() => return None,
         None => {
             for key in &BEAT_KEYS[1..] {
                 if get(key).is_some() {
+                    let fix = match crate::chapters::unapplied(meta) {
+                        Some(u) => crate::chapters::unapplied_note(u).to_string(),
+                        None => format!(
+                            "add `on: <occasion>` or list the scene in a chain of the \
+                             project's `chapters:`, or remove `{key}:` for a scene your engine \
+                             starts itself"
+                        ),
+                    };
                     push(
                         format!(
                             "`{key}:` without `on:`; `{key}` belongs to a beat, and a scene \
-                             becomes a beat by naming the occasion it answers — add \
-                             `on: <occasion>` or list the scene in the project's `sequence:`, \
-                             or remove `{key}:` for a scene your engine starts itself \
-                             (dsl 0.21.0 §3.1)"
+                             becomes a beat by naming the occasion it answers — {fix}"
                         ),
                         top_key_span(meta, key),
                     );
@@ -238,9 +247,8 @@ pub(crate) fn lift_scene_beat(
         None => {
             push(
                 format!(
-                    "`target:` must be a dotted id `Ident (\".\" Segment)*` with \
-                     `Segment ::= [A-Za-z0-9_-]+`, e.g. `npc.achilles`, or `kind:<entity kind>`, \
-                     got {} (dsl 0.21.0 §3.1, 0.26.0 §5)",
+                    "`target:` must be {TARGET_SHAPE}, or `kind:<entity kind>` for every member \
+                     of a kind; got {}",
                     describe(v)
                 ),
                 top_value_span(meta, "target"),
@@ -311,17 +319,14 @@ pub(crate) fn lift_scene_beat(
         },
     };
 
-    // dsl 0.27.0 §5: `spentBy:` replaces `once` — the beat repeats until
-    // the condition holds.
+    // `spentBy:` spends the beat by its condition instead of by being
+    // presented: once the condition has held, the beat stays spent for its
+    // `once` period (`run` unless written). `once: false` would never keep
+    // it spent, which is a `when: "!(…)"`.
     let spent_by = get("spentBy").and_then(|v| match v.as_str() {
         Some(raw) if !raw.trim().is_empty() => {
-            if get("once").is_some() {
-                push(
-                    "`spentBy:` replaces `once:` — the beat stays eligible until its condition \
-                     holds; remove `once:` (dsl 0.27.0 §5)"
-                        .to_string(),
-                    top_key_span(meta, "spentBy"),
-                );
+            if once == BeatOnce::None {
+                push(spent_by_once_false(raw), top_value_span(meta, "once"));
             }
             Some(CelSlot::raw(
                 CelKind::Condition,
@@ -332,8 +337,8 @@ pub(crate) fn lift_scene_beat(
         _ => {
             push(
                 format!(
-                    "`spentBy:` must be a CEL condition string — the beat stays eligible until \
-                     it holds, e.g. `spentBy: \"holds(solved(valves))\"`, got {} (dsl 0.27.0 §5)",
+                    "`spentBy:` must be a CEL condition string — the beat is spent once it has \
+                     held, e.g. `spentBy: \"holds(solved(valves))\"`, got {}",
                     describe(v)
                 ),
                 top_value_span(meta, "spentBy"),
@@ -341,11 +346,6 @@ pub(crate) fn lift_scene_beat(
             None
         }
     });
-    let once = if spent_by.is_some() {
-        BeatOnce::None
-    } else {
-        once
-    };
 
     let also = match get("also") {
         None | Some(serde_yaml::Value::Bool(false)) => false,
@@ -375,7 +375,9 @@ pub(crate) fn lift_scene_beat(
             );
             return None;
         };
-        if get("once").is_none() || once == BeatOnce::None {
+        if spent_by.is_some() {
+            push(share_with_spent_by(key), top_key_span(meta, "share"));
+        } else if get("once").is_none() || once == BeatOnce::None {
             push(share_without_once(key), top_key_span(meta, "share"));
         }
         Some(key.to_string())
@@ -404,15 +406,22 @@ pub(crate) fn lift_scene_beat(
     check_occasion(
         &on,
         top_value_span(meta, "on"),
-        target.as_ref().map(|_| top_value_span(meta, "target")),
+        target
+            .as_deref()
+            .map(|t| (t, top_value_span(meta, "target"))),
+        true,
         occasions,
         Layer::Content,
         &mut occasion_diags,
     );
-    // dsl 0.27.0 §8: an `on:` the manifest's `sequence:` derived is judged
-    // once, at `sequence.occasion` (`crate::sequence`), not in every scene.
-    if crate::sequence::derived(meta, "on") {
+    // dsl 0.28.0 §4: an `on:` the manifest's `chapters:` derived is judged
+    // once, at the chain's `on:` (`crate::chapters`), not in every scene;
+    // anything else said about it names where it came from.
+    if crate::chapters::derived(meta, "on") {
         occasion_diags.retain(|d| d.code != E_OCCASION_UNKNOWN);
+        for d in &mut occasion_diags {
+            d.message.push_str(crate::chapters::PROVENANCE);
+        }
     }
     diags.extend(occasion_diags);
     // dsl 0.23.0 §3: a side remark rides along a single winner — on a
@@ -476,9 +485,14 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
         {
             residual_on |= attr.key == "on";
             residual_once |= attr.key == "once";
+            let values = if attr.key == "once" {
+                format!(": `once=\"…\"` takes {ENTRY_ONCE_VALUES}")
+            } else {
+                String::new()
+            };
             push(
                 format!(
-                    "`<entry>` attribute `{}` must be a quoted string (dsl 0.21.0 §3.2)",
+                    "`<entry>` attribute `{}` must be a quoted string{values}",
                     attr.key
                 ),
                 attr.span,
@@ -523,15 +537,11 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
         }
     }
     if let Some((raw, span)) = &entry.once {
-        if BeatOnce::parse(raw).is_none() {
+        // `once="false"` is the omission's meaning (a repeatable entry beat),
+        // as on a scene or bundle beat.
+        if raw != "false" && BeatOnce::parse(raw).is_none() {
             push(
-                format!(
-                    "`<entry>` `once=\"{raw}\"` must be `run` (not eligible again this run once \
-                     read), `user` (never again once read), `day` / `slot` / `week` (not again \
-                     this clock day / slot / week once read), or `season:<name>` (not again \
-                     this season window); omit it for a repeatable entry beat \
-                     (dsl 0.22.0 §7, 0.24.0 §1, 0.27.0 §5)"
-                ),
+                format!("`<entry>` `once=\"{raw}\"` must be {ENTRY_ONCE_VALUES}"),
                 *span,
             );
         }
@@ -547,29 +557,32 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
     if let Some((key, span)) = &entry.share {
         if !is_entry_ident(key) {
             push(share_malformed("`<entry>`", key), *span);
-        } else if entry.once.is_none() && !residual_once {
+        } else if entry.spent_by.is_some() {
+            push(share_with_spent_by(key), *span);
+        } else if entry.once.as_ref().is_none_or(|(o, _)| o == "false") && !residual_once {
             push(share_without_once(key), *span);
         }
     }
     if let Some(spent_by) = &entry.spent_by {
-        if entry.once.is_some() || residual_once {
-            push(
-                "`<entry>` `spentBy` replaces `once` — the entry stays eligible until its \
-                 condition holds; remove `once` (dsl 0.27.0 §5)"
-                    .to_string(),
-                spent_by.span,
-            );
+        if let Some((_, span)) = entry.once.as_ref().filter(|(o, _)| o == "false") {
+            push(spent_by_once_false(spent_by.raw.trim()), *span);
         }
         if entry.on.is_none() && !residual_on {
             push(
-                "`<entry>` `spentBy` requires `on`; a repetition policy belongs to a beat \
-                 (dsl 0.27.0 §5)"
+                "`<entry>` `spentBy` requires `on`: an entry is spent only as a beat answering an \
+                 occasion"
                     .to_string(),
                 spent_by.span,
             );
         }
     }
 }
+
+/// The accepted `<entry once="…">` values, for messages.
+pub const ENTRY_ONCE_VALUES: &str = "`run` (not eligible again this run once read), `user` \
+     (never again once read), `day` / `slot` / `week` (not again this clock day / slot / week \
+     once read), `season:<name>` (not again this season window), or `false` (repeatable, the \
+     same as leaving `once` out)";
 
 /// The occasion vocabulary of every entry beat of one document (dsl 0.21.0
 /// §2): [`E_OCCASION_UNKNOWN`], exactly as a scene beat's. Shape-only while
@@ -586,7 +599,15 @@ pub(crate) fn check_entry_occasions(
         let Some((on, on_span)) = entry.on.as_ref().filter(|(on, _)| is_entry_ident(on)) else {
             continue;
         };
-        check_occasion(on, *on_span, None, occasions, Layer::Logic, &mut diags);
+        check_occasion(
+            on,
+            *on_span,
+            None,
+            false,
+            occasions,
+            Layer::Logic,
+            &mut diags,
+        );
     }
     diags
 }
@@ -639,10 +660,7 @@ pub(crate) fn check_objective_occasions(
                 diags.push(beat_diag(
                     E_BEAT_ATTR,
                     Severity::Error,
-                    format!(
-                        "`<objective>` `target=\"{t}\"` must be a dotted id `Ident (\".\" \
-                         Segment)*`, e.g. `npc.maud` (dsl 0.23.0 §2)"
-                    ),
+                    malformed_target("`<objective>`", t, false),
                     *span,
                     Layer::Logic,
                 ));
@@ -662,7 +680,7 @@ pub(crate) fn check_objective_occasions(
                 }
                 None
             }
-            Some((_, span)) => Some(*span),
+            Some((t, span)) => Some((t.as_str(), *span)),
             None => None,
         };
         // dsl 0.24.0 §2.1: `until` is the place-bound deadline — judged only
@@ -694,7 +712,15 @@ pub(crate) fn check_objective_occasions(
             ));
             continue;
         }
-        check_occasion(on, *span, target_span, occasions, Layer::Logic, &mut diags);
+        check_occasion(
+            on,
+            *span,
+            target_span,
+            false,
+            occasions,
+            Layer::Logic,
+            &mut diags,
+        );
     }
     diags
 }
@@ -702,10 +728,14 @@ pub(crate) fn check_objective_occasions(
 /// `on` against the resolved occasion vocabulary (dsl 0.21.0 §2): unknown is
 /// [`E_OCCASION_UNKNOWN`]; a `target` on an occasion declared without
 /// `target: true` is [`E_BEAT_ATTR`]. Silent when no occasion is declared.
+/// `target` is the value with its span; `beat`: the target is a beat's
+/// (not an objective's), so a `kind:<K>` value there points at `for`,
+/// spelled for the layer (frontmatter in [`Layer::Content`]).
 pub(crate) fn check_occasion(
     on: &str,
     on_span: Span,
-    target_span: Option<Span>,
+    target: Option<(&str, Span)>,
+    beat: bool,
     occasions: &BTreeMap<String, OccasionDecl>,
     layer: Layer,
     diags: &mut Vec<Diagnostic>,
@@ -733,13 +763,33 @@ pub(crate) fn check_occasion(
         ));
         return;
     };
-    if let (false, Some(span)) = (decl.target.takes_target(), target_span) {
+    if let (false, Some((value, span))) = (decl.target.takes_target(), target) {
+        let sequence = decl.select == lute_manifest::schema::OccasionSelect::Sequence;
+        let (key, spelled): (&str, fn(&str) -> String) = if layer == Layer::Content {
+            ("target:", |k: &str| format!("for: \"kind:{k}\""))
+        } else {
+            ("target", |k: &str| format!("for=\"kind:{k}\""))
+        };
+        let fix = match kind_target(value).filter(|_| beat) {
+            Some(kind) if sequence => format!(
+                "; to present this beat once for each member of `{kind}`, write `{}` instead \
+                 of `{key}`",
+                spelled(kind)
+            ),
+            Some(kind) => format!(
+                "; remove `{key}` (`{}` presents a beat once for each member, but only on a \
+                 `select: sequence` occasion, and `{on}` is `select: {}`)",
+                spelled(kind),
+                decl.select.as_str()
+            ),
+            None => format!("; remove `{key}`"),
+        };
         diags.push(beat_diag(
             E_BEAT_ATTR,
             Severity::Error,
             format!(
                 "occasion `{on}` is not raised for a target (declared without `target: true`), \
-                 so a beat on it cannot restrict itself to one; remove `target` (dsl 0.21.0 §2)"
+                 so a beat on it cannot restrict itself to one{fix}"
             ),
             span,
             layer,
@@ -778,7 +828,7 @@ pub fn occasion_target_ok(
     let Some(kind) = kinds.get(entity) else {
         return Err(format!(
             "occasion `{on}` draws its targets from entity kind `{entity}`, which the project \
-             does not declare under `entities:` (dsl 0.22.0 §8)"
+             does not declare under `entities:`"
         ));
     };
     // `open:` members are engine-populated: only the prefix is checked. An
@@ -793,7 +843,7 @@ pub fn occasion_target_ok(
                 .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
             return Err(format!(
                 "occasion `{on}` lists `{stray}` in its target `members:`, but `{stray}` is not \
-                 a member of entity kind `{entity}`{hint} (dsl 0.22.0 §8)"
+                 a member of entity kind `{entity}`{hint}"
             ));
         }
     }
@@ -806,7 +856,7 @@ pub fn occasion_target_ok(
             Some(_) => Ok(()),
             None => Err(format!(
                 "target `{target}` is outside occasion `{on}`'s domain: its targets are \
-                 `{prefix}.<{entity}>` (dsl 0.22.0 §8)"
+                 `{prefix}.<{entity}>`"
             )),
         };
     };
@@ -831,12 +881,12 @@ pub fn occasion_target_ok(
     Err(if subset.is_some() {
         format!(
             "target `{target}` is outside occasion `{on}`'s member list ({listed}), a subset of \
-             entity kind `{entity}`{hint} (dsl 0.22.0 §8)"
+             entity kind `{entity}`{hint}"
         )
     } else {
         format!(
             "target `{target}` is outside occasion `{on}`'s domain `{prefix}.<{entity}>` \
-             ({listed}){hint} (dsl 0.22.0 §8)"
+             ({listed}){hint}"
         )
     })
 }
@@ -1117,7 +1167,7 @@ pub(crate) fn check_occasion_target_scope(
             match n {
                 Node::Line(l) => f(l),
                 Node::Branch(b) => b.choices.iter().for_each(|c| lines(&c.body, f)),
-                Node::Hub(h) => h.choices.iter().for_each(|c| lines(&c.body, f)),
+                Node::Hub(h) => h.bodies().for_each(|b| lines(b, f)),
                 Node::Match(m) => m.arms.iter().for_each(|arm| match arm {
                     lute_syntax::ast::Arm::When { body, .. }
                     | lute_syntax::ast::Arm::Otherwise { body, .. } => lines(body, f),
@@ -1228,6 +1278,10 @@ pub struct ProjectBeat<'a> {
     /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat's `<prefix>.<member>`
     /// targets (`target` keeps the authored `kind:<kind>`).
     pub kind_targets: Option<Vec<String>>,
+    /// dsl 0.27.0 §3: the authored `for` (`kind:<kind>`) and, when the
+    /// checker accepts it ([`crate::occasion_bind::for_kind_members`]), its
+    /// kind and members — the beat is presented once per member.
+    pub for_kind: Option<(&'a str, Option<(String, Vec<String>)>)>,
     pub priority: i64,
     /// A scene's policy; an entry's authored `once` ([`BeatOnce::None`] when
     /// absent — an entry without `once` is repeatable).
@@ -1244,6 +1298,10 @@ pub struct ProjectBeat<'a> {
     pub when_slot: Option<&'a CelSlot>,
     /// The `when` after `@def` expansion in its own document.
     pub when: Option<String>,
+    /// A `<beat use>` whose own `when=` replaces its template's `when:`
+    /// (`W-TEMPLATE-OVERRIDE`): the template's name and that `when:` as its
+    /// header writes it.
+    pub replaces_when: Option<(&'a str, &'a str)>,
     /// dsl 0.27.0 §5: the `spentBy` condition after `@def` expansion — the
     /// beat is eligible only while it does not hold.
     pub spent_by: Option<String>,
@@ -1256,6 +1314,11 @@ pub struct ProjectBeat<'a> {
     /// its assert sites: `0` for a scene, else the entry's / bundle beat's
     /// span start.
     pub unit: usize,
+    /// The bytes of the beat's declaration in its document — the whole
+    /// document for a scene, the element for an entry or bundle beat. An
+    /// error reported inside it (or in the document's frontmatter) leaves
+    /// the beat out of the selection passes ([`check_project_beats`]).
+    pub extent: std::ops::Range<usize>,
 }
 
 impl ProjectBeat<'_> {
@@ -1425,6 +1488,18 @@ pub fn project_beats<'a>(
                 members.iter().map(|m| format!("{prefix}.{m}")).collect(),
             ))
         };
+        let for_cell = |on: &str, raw: Option<&'a str>, has_target: bool| {
+            raw.map(|raw| {
+                let kind = crate::occasion_bind::for_kind_members(
+                    on,
+                    raw,
+                    has_target,
+                    &folded.occasions,
+                    &folded.env.rel_vocab.kinds,
+                );
+                (raw, kind.ok())
+            })
+        };
         if let Some((beat, kind_targets)) = folded
             .typed
             .beat
@@ -1445,6 +1520,11 @@ pub fn project_beats<'a>(
                 on: &beat.on,
                 target: beat.target.as_deref(),
                 kind_targets,
+                for_kind: for_cell(
+                    &beat.on,
+                    beat.for_kind.as_ref().map(|(f, _)| f.as_str()),
+                    beat.target.is_some(),
+                ),
                 priority: beat.priority,
                 once: beat.once.clone(),
                 once_authored: beat.once_authored,
@@ -1463,11 +1543,13 @@ pub fn project_beats<'a>(
                     .map(|k| (k, top_value_span(&doc.meta, "share"))),
                 when_slot: beat.when.as_ref(),
                 when: expand(beat.when.as_ref()),
+                replaces_when: None,
                 spent_by: expand(beat.spent_by.as_ref()),
                 title,
                 anchor: top_key_span(&doc.meta, "on"),
                 folded,
                 unit: 0,
+                extent: 0..usize::MAX,
             });
         }
         // A lore document's entry beats and bundle beats, by source position.
@@ -1497,7 +1579,7 @@ pub fn project_beats<'a>(
                 continue;
             };
             let once = match entry.once.as_ref().map(|(o, _)| o.as_str()) {
-                None => BeatOnce::None,
+                None | Some("false") => BeatOnce::None,
                 Some(raw) => match BeatOnce::parse(raw) {
                     Some(once) => once,
                     None => continue,
@@ -1512,6 +1594,11 @@ pub fn project_beats<'a>(
                     on,
                     target,
                     kind_targets,
+                    for_kind: for_cell(
+                        on,
+                        entry.for_kind.as_ref().map(|(f, _)| f.as_str()),
+                        entry.target.is_some(),
+                    ),
                     priority,
                     once_authored: entry.once.is_some() || entry.spent_by.is_some(),
                     also: false,
@@ -1521,11 +1608,13 @@ pub fn project_beats<'a>(
                     once,
                     when_slot: entry.when.as_ref(),
                     when: expand(entry.when.as_ref()),
+                    replaces_when: None,
                     spent_by: expand(entry.spent_by.as_ref()),
                     title: entry.title.as_ref().map(|(t, _)| t.clone()),
                     anchor: *on_span,
                     folded,
                     unit: entry.span.byte_start,
+                    extent: entry.span.byte_start..entry.span.byte_end,
                 },
             ));
         }
@@ -1539,6 +1628,9 @@ pub fn project_beats<'a>(
                     continue;
                 };
                 if beat.id.is_empty()
+                    // A use of a faulty template derives only what is sound;
+                    // the header's one report stands for the beat.
+                    || beat.template.as_ref().is_some_and(|t| t.failed)
                     || beat
                         .target
                         .as_ref()
@@ -1567,6 +1659,11 @@ pub fn project_beats<'a>(
                         on,
                         target,
                         kind_targets,
+                        for_kind: for_cell(
+                            on,
+                            beat.for_kind.as_ref().map(|(f, _)| f.as_str()),
+                            beat.target.is_some(),
+                        ),
                         priority: crate::bundles::bundle_beat_priority(beat),
                         once: crate::bundles::bundle_beat_once(beat),
                         once_authored: beat.once.is_some() || beat.spent_by.is_some(),
@@ -1580,11 +1677,16 @@ pub fn project_beats<'a>(
                             .filter(|_| beat.once.as_ref().is_some_and(|(o, _)| o != "false")),
                         when_slot: beat.when.as_ref(),
                         when: expand(beat.when.as_ref()),
+                        replaces_when: beat
+                            .template
+                            .as_ref()
+                            .and_then(|t| t.replaced_when.as_deref().map(|w| (t.name.as_str(), w))),
                         spent_by: expand(beat.spent_by.as_ref()),
                         title: beat.title.as_ref().map(|(t, _)| t.clone()),
                         anchor: *on_span,
                         folded,
                         unit: beat.span.byte_start,
+                        extent: beat.span.byte_start..beat.span.byte_end,
                     },
                 ));
             }
@@ -1684,6 +1786,12 @@ struct Beat<'a> {
     /// document (a pure-schedule `holds(A)` contributing its rules' `cel()`
     /// guards).
     dnf: crate::reachability::Dnf,
+    /// The eligibility the author wrote — `when`, `once`, `spentBy` and
+    /// `after:`, without the facts the beat's own presentation asserts — and
+    /// its DNF when that differs from [`Self::dnf`]: what a tie message
+    /// explains, since only these are the author's to change.
+    stated: Option<String>,
+    stated_dnf: Option<crate::reachability::Dnf>,
     /// The facts the beat asserts that may hold before it plays, as
     /// `holds(rel(a,b))` pseudo-paths, each with why — what a tie message
     /// says when another beat reads one.
@@ -1709,6 +1817,11 @@ impl Beat<'_> {
     fn cells(&self) -> BeatCells<'_> {
         BeatCells::of(self.target, self.kind_targets.as_deref())
     }
+
+    /// [`Beat::stated`] in DNF.
+    fn stated_dnf(&self) -> &crate::reachability::Dnf {
+        self.stated_dnf.as_ref().unwrap_or(&self.dnf)
+    }
 }
 
 /// `W-BEAT-PRIORITY-TIE` (dsl 0.22.0 §13): two beats on one `select: first`
@@ -1718,6 +1831,29 @@ pub const W_BEAT_PRIORITY_TIE: &str = "W-BEAT-PRIORITY-TIE";
 /// spent once per run by DEFAULT whose `when` reads only user-tier state, so
 /// it replays every run. An authored `once: run` silences it.
 pub const W_BEAT_ONCE_RUN_USER: &str = "W-BEAT-ONCE-RUN-USER";
+
+/// The error-severity diagnostics the per-file `check()` reported, as byte
+/// ranges per document — what [`check_project_beats`] leaves out.
+pub type ReportedErrors = BTreeMap<PathBuf, Vec<std::ops::Range<usize>>>;
+
+/// Whether an error sits inside `pb`'s declaration ([`ProjectBeat::extent`])
+/// or its document's frontmatter.
+fn reported_in(
+    pb: &ProjectBeat<'_>,
+    docs: &[(PathBuf, Document)],
+    errors: &ReportedErrors,
+) -> bool {
+    let Some(spans) = errors.get(pb.path) else {
+        return false;
+    };
+    let meta = docs
+        .iter()
+        .find(|(p, _)| p == pb.path)
+        .map(|(_, d)| d.meta.span.byte_start..d.meta.span.byte_end);
+    spans.iter().any(|s| {
+        pb.extent.contains(&s.start) || meta.as_ref().is_some_and(|m| m.contains(&s.start))
+    })
+}
 
 /// The project beat passes over one resolved project root (dsl 0.21.0 §4,
 /// §5; dsl 0.22.0 §13). `docs` and `foldeds` are parallel and in
@@ -1754,11 +1890,18 @@ pub const W_BEAT_ONCE_RUN_USER: &str = "W-BEAT-ONCE-RUN-USER";
 ///   quest's `quest.<id>.*`, a `tier: user` relation's `holds`/`count`;
 ///   `prev.run.*` is run history, not user-tier): once true it stays true
 ///   across runs, so the beat plays again at the start of every run.
+///
+/// A beat with an error inside its declaration or its document's
+/// frontmatter (`errors`, what the per-file `check()` reported) is left out
+/// of every pass above: that error is the one report about it, and a
+/// ranking of a beat the checker rejected would be judged on text the author
+/// is about to change.
 pub fn check_project_beats(
     docs: &[(PathBuf, Document)],
     foldeds: &[&FoldedEnv],
     producers: &crate::cast::FactProducers,
     env: Option<&FactEnv>,
+    errors: &ReportedErrors,
 ) -> Vec<(PathBuf, Diagnostic)> {
     let params = BTreeMap::new();
     // dsl 0.23.0 §6: a quest's tier (`tier="run"`, else user) — project-wide,
@@ -1777,9 +1920,10 @@ pub fn check_project_beats(
             )
         })
         .collect();
-    let pbs = project_beats(docs, foldeds);
-    let groups = share_groups(&pbs);
+    let mut pbs = project_beats(docs, foldeds);
     let share_diags = check_share_once(&pbs);
+    pbs.retain(|pb| !reported_in(pb, docs, errors));
+    let groups = share_groups(&pbs);
     let guards: Vec<Option<String>> = pbs.iter().map(|pb| once_guard(pb, &pbs, &groups)).collect();
     // Visited key → `after:` text, for the tie check's after-closure (G-1);
     // a key two beats share is ambiguous and left out.
@@ -1826,7 +1970,12 @@ pub fn check_project_beats(
                 &folded.env.rel_vocab,
                 pb.path,
                 pb.unit,
-                &pb.once,
+                // A `spentBy` beat is not spent by being presented.
+                &if pb.spent_by.is_some() {
+                    BeatOnce::None
+                } else {
+                    pb.once.clone()
+                },
             ) {
                 match f.persists {
                     None => absent.push(format!("!{}", f.query)),
@@ -1837,7 +1986,7 @@ pub fn check_project_beats(
             // `once: user` beat `X` and one waiting on `visited('X')` are
             // never eligible together.
             let after = pb.after.and_then(|a| after_premise(a, &afters));
-            let eligible = pb
+            let stated = pb
                 .when
                 .as_deref()
                 .map(|w| format!("({w})"))
@@ -1846,6 +1995,10 @@ pub fn check_project_beats(
                 // dsl 0.27.0 §5: eligible only while `spentBy` does not hold.
                 .chain(pb.spent_by.as_deref().map(|s| format!("!({s})")))
                 .chain(after)
+                .reduce(|acc, c| format!("{acc} && {c}"));
+            let eligible = stated
+                .iter()
+                .cloned()
                 .chain(absent)
                 .reduce(|acc, c| format!("{acc} && {c}"));
             let user_tier = UserTier {
@@ -1866,6 +2019,17 @@ pub fn check_project_beats(
                     )
                 },
             );
+            let dnf_of = |e: Option<&str>| {
+                e.map_or_else(Default::default, |e| {
+                    crate::reachability::when_dnf(
+                        e,
+                        &defs,
+                        &folded.env.state,
+                        Some(&folded.env.rel_vocab),
+                    )
+                })
+            };
+            let dnf = dnf_of(eligible.as_deref());
             Beat {
                 path: pb.path,
                 name: pb.name(),
@@ -1883,14 +2047,9 @@ pub fn check_project_beats(
                         .when
                         .as_deref()
                         .is_some_and(|w| reads_only_user(w, &user_tier)),
-                dnf: eligible.as_deref().map_or_else(Default::default, |e| {
-                    crate::reachability::when_dnf(
-                        e,
-                        &defs,
-                        &folded.env.state,
-                        Some(&folded.env.rel_vocab),
-                    )
-                }),
+                stated_dnf: (stated != eligible).then(|| dnf_of(stated.as_deref())),
+                dnf,
+                stated,
                 eligible,
                 persists,
                 ever_flag: match pb.kind {
@@ -2095,7 +2254,7 @@ fn tie_warnings(beats: &[Beat<'_>], ties: &[(usize, usize)]) -> Vec<(PathBuf, Di
             let unconstrained: Vec<&Beat<'_>> = members
                 .iter()
                 .map(|&m| &beats[m])
-                .filter(|x| x.eligible.is_none())
+                .filter(|x| x.stated.is_none())
                 .collect();
             // A scene's or bundle beat's `once: run` sets no flag a `when`
             // can read.
@@ -2502,7 +2661,8 @@ enum Why {
 /// spend, a fact one asserts that may hold before it plays, or the paths
 /// the two alternatives that overlap constrain.
 fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> Why {
-    let Some((da, db)) = crate::reachability::non_exclusive_witness(&a.dnf, &b.dnf) else {
+    let Some((da, db)) = crate::reachability::non_exclusive_witness(a.stated_dnf(), b.stated_dnf())
+    else {
         return Why::Other("their conjunction does not decide `false`".to_string());
     };
     for (x, y, dy) in [(a, b, db), (b, a, da)] {
@@ -2520,7 +2680,7 @@ fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> Why {
             ));
         }
     }
-    if a.eligible.is_none() || b.eligible.is_none() {
+    if a.stated.is_none() || b.stated.is_none() {
         return Why::NoWhen;
     }
     let list = |d: &crate::reachability::Disjunct| {
@@ -2720,9 +2880,16 @@ fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
     walk(&ided.expr, tiers, &mut reads) && reads > 0
 }
 
-/// The YAML value an author wrote, for the "got …" half of a message.
+/// The YAML value an author wrote, for the "got …" half of a message. A
+/// quoted `"false"` / `"10"` is a string where a bool or number is meant:
+/// the message says so instead of printing `false` against `false`.
 fn describe(v: &serde_yaml::Value) -> String {
     match v {
+        serde_yaml::Value::String(s)
+            if s == "true" || s == "false" || s.trim().parse::<f64>().is_ok() =>
+        {
+            format!("the quoted string `\"{s}\"` — write it unquoted, `{s}`")
+        }
         serde_yaml::Value::String(s) => format!("`{s}`"),
         serde_yaml::Value::Bool(b) => format!("`{b}`"),
         serde_yaml::Value::Number(n) => format!("`{n}`"),
@@ -2751,12 +2918,13 @@ fn bare_span(byte_start: usize, byte_end: usize) -> Span {
     }
 }
 
-/// The TOP-LEVEL (unindented) `key:` line of the frontmatter: `(line start
-/// offset in raw_yaml, the text after the colon)`. A nested key of the same
-/// name (`extra: { on: … }`) never matches.
+/// The TOP-LEVEL (unindented) `key:` line of the AUTHORED frontmatter:
+/// `(line start offset in raw_yaml, the text after the colon)`. A nested key
+/// of the same name (`extra: { on: … }`) never matches, and neither does a
+/// key a `chapters:` chain derived — it has no text in the file (T3-18).
 fn top_key_line<'m>(meta: &'m Meta, key: &str) -> Option<(usize, &'m str)> {
     let mut line_start = 0usize;
-    for line in meta.raw_yaml.split_inclusive('\n') {
+    for line in crate::chapters::authored_yaml(&meta.raw_yaml).split_inclusive('\n') {
         if let Some(rest) = line.strip_prefix(key) {
             if let Some(after) = rest.trim_start_matches([' ', '\t']).strip_prefix(':') {
                 return Some((line_start, after));
@@ -2810,6 +2978,21 @@ pub(crate) fn top_value_span(meta: &Meta, key: &str) -> Span {
     bare_span(begin, begin + len)
 }
 
+/// A top-level frontmatter key's inline value text (unquoted) and its
+/// [`top_value_span`]; `None` for an absent key or a block value.
+pub(crate) fn top_value_text<'m>(meta: &'m Meta, key: &str) -> Option<(&'m str, Span)> {
+    let (at, _) = top_key_line(meta, key)?;
+    let span = top_value_span(meta, key);
+    let base = interior_base(meta);
+    if span.byte_start == base + at {
+        return None;
+    }
+    let text = meta
+        .raw_yaml
+        .get(span.byte_start.checked_sub(base)?..span.byte_end.checked_sub(base)?)?;
+    Some((text, span))
+}
+
 fn beat_diag(
     code: &str,
     severity: Severity,
@@ -2830,6 +3013,30 @@ fn beat_diag(
     }
 }
 
+/// What a target looks like, for messages: the shape `is_entry_target`
+/// accepts, in words.
+pub(crate) const TARGET_SHAPE: &str = "a dotted id such as `npc.maud` — an identifier, then one \
+     or more `.`-separated parts of letters, digits, `_` or `-`";
+
+/// Why `t` is no target of `what` (`` `<objective>` ``, `` `<beat>` `` …).
+/// `kind_ok`: `what` also takes `kind:<entity kind>` (beats and entries);
+/// one that takes a single member (an objective, an `<on>` handler) says so
+/// when handed a kind.
+pub(crate) fn malformed_target(what: &str, t: &str, kind_ok: bool) -> String {
+    if !kind_ok && t.starts_with("kind:") {
+        return format!(
+            "{what} `target=\"{t}\"` names a kind, but {what} takes one target — a single member \
+             such as `npc.maud`; kind targets are for beats and entries"
+        );
+    }
+    let kind = if kind_ok {
+        ", or `kind:<entity kind>` for every member of a kind"
+    } else {
+        ""
+    };
+    format!("{what} `target=\"{t}\"` must be {TARGET_SHAPE}{kind}")
+}
+
 /// dsl 0.25.0 §2: a `share` key that is no identifier (`what` names the
 /// construct: `` `<entry>` `` / `` `<beat>` ``).
 pub(crate) fn share_malformed(what: &str, key: &str) -> String {
@@ -2839,13 +3046,41 @@ pub(crate) fn share_malformed(what: &str, key: &str) -> String {
     )
 }
 
+/// The spending `once` periods — every value [`BeatOnce::parse`] accepts —
+/// in the order messages list them.
+pub const SPENDING_ONCE: [&str; 6] = ["run", "user", "day", "slot", "week", "season:<name>"];
+
 /// dsl 0.25.0 §2: `share` names a spend, and only a written, spending
 /// `once` is one.
 pub(crate) fn share_without_once(key: &str) -> String {
+    let periods: Vec<String> = SPENDING_ONCE.iter().map(|p| format!("`{p}`")).collect();
+    let (last, init) = periods.split_last().expect("SPENDING_ONCE is not empty");
     format!(
-        "`share` `{key}` without `once`; beats with one `share` key are spent together for their \
-         `once` period, so each one writes the same `once` (`run`, `user`, `day` or `slot`) — add \
-         it, or remove `share` (dsl 0.25.0 §2)"
+        "`share` `{key}` without `once`: a `share` key spends its beats together when one is \
+         presented, for their common `once` period, so each beat of the key writes the same \
+         `once` ({} or {last}) — add it, or remove `share`",
+        init.join(", ")
+    )
+}
+
+/// A `share` key beside `spentBy`: `share` spends its beats together when
+/// one is presented, and a `spentBy` beat is never spent by presenting it.
+pub(crate) fn share_with_spent_by(key: &str) -> String {
+    format!(
+        "`share` `{key}` beside `spentBy`: a `share` key spends its beats together when one is \
+         presented, but a `spentBy` beat is spent by its condition, not by being presented — \
+         remove `share`, or give each beat of the key the same `spentBy`"
+    )
+}
+
+/// `once: false` beside `spentBy`: a `spentBy` beat stays spent for its
+/// `once` period once the condition has held, and `false` is no period.
+pub(crate) fn spent_by_once_false(raw: &str) -> String {
+    format!(
+        "`once: false` beside `spentBy`: a `spentBy` beat stays spent once its condition has held, \
+         for its `once` period (`run` unless written: `user`, `day`, `slot`, `week` or \
+         `season:<name>`); to keep the beat eligible only while the condition is false, write \
+         `when: \"!({raw})\"` instead"
     )
 }
 

@@ -3,6 +3,6 @@
 # occasion is raised FOR something: `talk`'s targets are `npc.<member>` for a
 # member of the `npc` entity kind (world.schema.yaml, dsl 0.22.0 §8).
 occasions:
-  hubVisit: { select: first, description: The player arrives at the hub }
+  townVisit: { select: first, description: The player arrives in town }
   talk:     { select: first, target: { prefix: npc, entity: npc }, description: The player talks to someone (npc.<name>) }
   dayEnd:   { select: first, description: "The engine closed the day; run.day is already advanced" }

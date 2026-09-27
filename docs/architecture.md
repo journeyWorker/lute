@@ -45,7 +45,8 @@ target is the flat command-record format the engine consumes.
 > and `for="kind:<kind>"` presents a beat per member, the engine seam declares `raisedWhen:`
 > gates, a `terminal:` state, a finite clock and directive `asserts` / `retracts`, cadence
 > gains `once: week`, `seasons:`, quest `rearm=` and `spentBy:`, a component may be a beat
-> template, and the manifest's `sequence:` chains scenes into chapters.
+> template, and the manifest chains scenes into chapters (`chapters:`, one chain per occasion
+> since 0.28.0).
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -169,7 +170,7 @@ names stay.
 
 ### 1. `::camera` — net new (no camera in current format)
 
-`::camera{focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait}`.
+`::camera{focus, zoom, moveX, moveY, shake, reset, duration, easing, delay, wait}`.
 A single `::camera` with multiple attrs = **one combined transform** applied together over
 `duration` (covers "push in while drifting", the common case). A sequential move (zoom *then*
 pan) = two consecutive `::camera` directives.
@@ -753,8 +754,8 @@ above, never a rule-body dependency):
   compiler carries as `targetKind`; a directive's `when=` lowers to a one-arm match in
   `normalize` / `expand`, and the trace walk follows a taken `::next`.
 - **One runtime, seasons, templates (dsl 0.27.0).** `templates.rs` desugars a `<beat use=…>`
-  into an ordinary bundle beat from its component's `beat:` header and `sequence.rs` derives
-  `on:` / `after:` / `priority:` from the manifest's `sequence:`, both before any check, so
+  into an ordinary bundle beat from its component's `beat:` header and `chapters.rs` derives
+  `on:` / `after:` / `priority:` from the manifest's `chapters:` (dsl 0.28.0), both before any check, so
   every later pass sees plain beats. `gates.rs` judges a beat under its occasion's
   `raisedWhen:` gate and the project's `terminal:` condition; `season.rs` folds `seasons:`
   and checks `season.<name>.*`, `once: season:<name>` and `tier="season:<name>"`
@@ -1152,7 +1153,7 @@ under unknown eligibility, so halting honestly is the correct preview behavior.
 | Code | Status | Note |
 |---|---|---|
 | `E-TRACE-MOCK-UNDECLARED`, `E-TRACE-MOCK-TYPE`, `E-TRACE-MOCK-FACT`, `E-TRACE-CHOICE` | New | Trace-only mock validation (§4.3) and forced-choice refusal (§4.4); render exactly as check diagnostics in both output forms. |
-| `E-TRACE-EVENT`, `E-TRACE-ACCEPT` | New | Two-path quest activation (§4.4): `E-TRACE-EVENT` rejects a lifecycle name (`questActive`/`questComplete`/`questFailed`) in `--event`/`events:` — those are engine-derived, never user-fired; `E-TRACE-ACCEPT` rejects `--accept`/`accept:`/`accepts:` naming an unknown quest id or a `start`-having quest (declarative, needs no accept). |
+| `E-TRACE-EVENT`, `E-TRACE-ACCEPT` | New | Two-path quest activation (§4.4): `E-TRACE-EVENT` rejects a lifecycle name (`questActive`/`questComplete`/`questFailed`) in `--event`/`events:` — those are engine-derived, never user-fired; `E-TRACE-ACCEPT` rejects `--accept`/`accepts:` naming an unknown quest id or a `start`-having quest (declarative, needs no accept). |
 | `E-ARM-DEAD`, `E-WHEN-LITERAL-DOMAIN`, `W-OTHERWISE-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN` | New | §5 reachability — see the table above. |
 | `W-CHOICE-INTO-NO-PERSIST` | New | §7.3 bare-`into=` trap. |
 | `E-COMPONENT-STATE` | New | §6 component purity — see above. |

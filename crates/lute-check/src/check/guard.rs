@@ -76,8 +76,8 @@ pub(crate) fn directive_when_refused(
     let decl = snapshot.directive(&d.tag)?;
     if decl.attrs.iter().any(|a| a.name == "when") {
         return Some(format!(
-            "`::{}` declares an attribute named `when`, and since dsl 0.26.0 §4 `when=` on a \
-             directive is its guard — rename the attribute in the plugin",
+            "`::{}` declares an attribute named `when`, but `when=` on a directive is its guard \
+             (dsl 0.26.0 §4) — rename the attribute in the plugin",
             d.tag
         ));
     }

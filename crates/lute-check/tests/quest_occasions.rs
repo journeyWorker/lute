@@ -243,6 +243,22 @@ fn project_accepts_known_visited_ids() {
     assert!(unknown_nodes(&[("scene.lute", &scene)]).is_empty());
 }
 
+#[test]
+fn visited_on_a_quest_id_points_at_the_quest_read() {
+    let quest = quest_doc(
+        "<quest id=\"islesBeacons\" start=\"visited('islesBeacons')\">\n\
+         <objective id=\"o\" done=\"true\"/>\n</quest>\n",
+    );
+    let ds = unknown_nodes(&[("quest.lute", &quest)]);
+    let d = only(&ds, "E-CONN-UNKNOWN-NODE");
+    assert!(
+        d.message
+            .contains("`islesBeacons` is a quest — write `quest.islesBeacons.state == 'complete'`"),
+        "{}",
+        d.message
+    );
+}
+
 // --- §7a.2 `<objective on=>` ---------------------------------------------------
 
 #[test]

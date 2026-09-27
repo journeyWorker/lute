@@ -111,6 +111,14 @@ fn check_write(
     if pattern.relation.is_empty() {
         return Vec::new();
     }
+    // dsl 0.28.0 §3: `r(occasion.target)` writes the member the enclosing
+    // kind or `for=` beat runs for — judged once per member.
+    if crate::target_writes::has_target(pattern) {
+        return crate::target_writes::per_member(ctx, span, |m| {
+            let p = crate::target_writes::instantiate_pattern(pattern, m);
+            check_write(&p, span, wildcard_ok, reserved_ok, domains, ctx)
+        });
+    }
 
     let vocab: &RelVocab = &ctx.env.rel_vocab;
     let Some(decl) = vocab.relations.get(&pattern.relation) else {

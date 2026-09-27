@@ -6,5 +6,5 @@ depends:
 exports:
   directives: directives/
   providers: providers/
-  assetkinds: assetkinds/
+  assetKinds: assetkinds/
   enums: enums/

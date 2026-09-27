@@ -309,7 +309,9 @@ pub(crate) fn reconcile_collected(
         type Pass<'a> = Box<dyn Fn() -> Vec<(PathBuf, Diagnostic)> + Send + Sync + 'a>;
         let standalone: Vec<Pass<'_>> = vec![
             Box::new(|| check_project_quest_ids(group)),
-            Box::new(|| check_project_quest_refs(group)),
+            // A root with a manifest is a whole project (a root never ascends
+            // above the walk), so an unknown quest read is an error there.
+            Box::new(|| check_project_quest_refs(group, root.join("lute.project.yaml").is_file())),
             // dsl 0.21.0 §7a.3: every `::accept` names an accept-driven quest.
             Box::new(|| lute_check::check_project_accepts(group)),
             // dsl 0.24.0 §2: an accept-driven quest no `::accept`, mock, or test accepts.
@@ -330,16 +332,16 @@ pub(crate) fn reconcile_collected(
             // fail (project-wide: a parent in another file can cascade-fail it).
             Box::new(|| lute_check::check_project_quest_handlers(group)),
             Box::new(|| lute_check::connectivity::check_conn_episode_dup(group)),
-            // dsl 0.27.0 §8: the manifest's `sequence:` names this root's scenes.
-            Box::new(|| {
-                let occasions = beat_foldeds
-                    .first()
-                    .map(|f| f.occasions.clone())
-                    .unwrap_or_default();
-                lute_check::sequence::check_project_sequence(root, group, &occasions)
-            }),
+            // Two documents' menus answered by one `choose:` key.
+            Box::new(|| lute_check::check_project_branch_ids(root, group)),
+            // dsl 0.28.0 §4: the manifest's `chapters:` names this root's scenes.
+            Box::new(|| lute_check::chapters::check_project_chapters(root, group, &beat_foldeds)),
             // dsl 0.26.0 §2.1: every declaration of one state path agrees.
             Box::new(|| lute_check::state_decls::check_project_state_decls(group, &beat_foldeds)),
+            // An objective whose `done` can only hold once its deadline does.
+            Box::new(|| {
+                lute_check::clock_positions::check_project_deadline_windows(group, &beat_foldeds)
+            }),
             // dsl 0.26.0 §2.8: advisory — two speakers sharing a display name.
             Box::new(|| {
                 let casts: Vec<_> = beat_foldeds.iter().map(|f| &f.cast).collect();
@@ -483,11 +485,11 @@ pub(crate) fn reconcile_collected(
                 project_diags.extend(
                     lute_check::check_project_subquest_unsatisfiable(group, &pending)
                         .into_iter()
-                        .map(|(path, mut d)| {
-                            d.severity = Severity::Warning;
-                            d.message.push_str(
-                                " — a warning under `--wip`: the child is unreachable only for \
-                                 want of producers not written yet (dsl 0.26.0 §2.6)",
+                        .map(|(path, d)| {
+                            let d = lute_check::fact_check::wip_warning(
+                                d,
+                                "the child is unreachable only for want of producers not \
+                                 written yet (dsl 0.26.0 §2.6)",
                             );
                             (path, d)
                         }),
@@ -517,7 +519,31 @@ pub(crate) fn reconcile_collected(
                     })
                     .collect()
             },
-            || lute_check::check_project_beats(group, &beat_foldeds, &producers, Some(fact_env)),
+            || {
+                // T3-5: a beat the per-file check rejected is left out of the
+                // tie and shadow passes — its error is the one report.
+                let errors: lute_check::beats::ReportedErrors = group_full
+                    .iter()
+                    .filter_map(|(path, _, _)| {
+                        let &i = result_ix.get(path)?;
+                        let spans: Vec<_> = file_results[i]
+                            .1
+                            .diagnostics
+                            .iter()
+                            .filter(|d| d.severity == Severity::Error)
+                            .map(|d| d.span.byte_start..d.span.byte_end)
+                            .collect();
+                        (!spans.is_empty()).then(|| (path.clone(), spans))
+                    })
+                    .collect();
+                lute_check::check_project_beats(
+                    group,
+                    &beat_foldeds,
+                    &producers,
+                    Some(fact_env),
+                    &errors,
+                )
+            },
         );
         for ((path, _, _), diags) in group_full.iter().zip(guard_diags) {
             for d in diags {
@@ -548,6 +574,16 @@ pub(crate) fn reconcile_collected(
                     doc,
                     folded,
                     &project,
+                );
+                // dsl 0.28.0: a kind beat's `<match on="occasion.target">`
+                // needs no arm for a member its `when` never holds for with
+                // the facts in scope.
+                lute_check::fact_check::reconcile_member_matches(
+                    &mut r.diagnostics,
+                    path,
+                    doc,
+                    folded,
+                    fact_env,
                 );
                 if !added.is_empty() {
                     let text = std::fs::read_to_string(path).unwrap_or_default();
@@ -814,8 +850,9 @@ pub(crate) fn relocate_imported_diags(
         |file: &str| Path::new(file).extension().and_then(|e| e.to_str()) != Some("lute");
 
     let mut drop: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); file_results.len()];
-    // (schema file, code, byte_start, message) -> (diagnostic, importers).
-    let mut moved: BTreeMap<(String, String, usize, String), (Diagnostic, usize)> = BTreeMap::new();
+    // (schema file, byte_start, code, message) -> (diagnostic, importers):
+    // a schema's reports print in its own line order.
+    let mut moved: BTreeMap<(String, usize, String, String), (Diagnostic, usize)> = BTreeMap::new();
     for (fi, (_, result)) in file_results.iter().enumerate() {
         let here = &canon[fi];
         for (di, d) in result.diagnostics.iter().enumerate() {
@@ -833,8 +870,8 @@ pub(crate) fn relocate_imported_diags(
                 for r in foreign {
                     let key = (
                         r.file.clone(),
-                        r.diagnostic.code.clone(),
                         r.diagnostic.span.byte_start,
+                        r.diagnostic.code.clone(),
                         r.diagnostic.message.clone(),
                     );
                     moved

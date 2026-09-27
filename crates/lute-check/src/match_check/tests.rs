@@ -466,8 +466,12 @@ fn distinct_literal_arms_do_not_warn() {
 // ---- scene.choices.<id> domain ------------------------------------------
 
 #[test]
-fn scene_choices_full_coverage_still_needs_unset() {
+fn scene_choices_full_coverage_leaves_unset_to_definite_assignment() {
     // domain = {help, ignore} ∪ unset; cover both choice ids but not unset.
+    // dsl 0.28.0 (T3-61): whether the pick record can still be unset is
+    // path-sensitive (it is set once the branch picked), so the `unset` case
+    // is `check_definite_assignment`'s `E-MAYBE-UNSET` (tests/reachability.rs),
+    // never a path-blind `E-UNSET-UNCOVERED` here.
     let mut decls = BTreeMap::new();
     decls.insert(
         "scene.choices.couch".to_string(),
@@ -488,8 +492,8 @@ fn scene_choices_full_coverage_still_needs_unset() {
     );
     let errs = check_match(&m, &schema, &ctx());
     assert!(
-        errs.iter().any(|e| e.code == "E-UNSET-UNCOVERED"),
-        "got {errs:?}"
+        !errs.iter().any(|e| e.code == "E-UNSET-UNCOVERED"),
+        "the pick record's unset case is not judged here: {errs:?}"
     );
     assert!(
         !errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
@@ -768,39 +772,6 @@ fn single_otherwise_has_no_dup_diag() {
     );
     let errs = check_match(&m, &schema_enum_subject(), &ctx());
     assert!(errs.iter().all(|d| d.code != "E-MATCH-DUP-OTHERWISE"));
-}
-
-// ---- E-CHOICE-ID-RESERVED (dsl §11.1, reserved `unset`) -----------------
-
-#[test]
-fn choice_id_unset_flags_e_choice_id_reserved() {
-    let mut seen = BTreeSet::new();
-    let rec = check_branch(&branch("number", &["help", "unset"]), &mut seen);
-    let reserved: Vec<_> = rec
-        .diags
-        .iter()
-        .filter(|d| d.code == "E-CHOICE-ID-RESERVED")
-        .collect();
-    assert_eq!(
-        reserved.len(),
-        1,
-        "one E-CHOICE-ID-RESERVED for the reserved id, got {:?}",
-        rec.diags
-    );
-    assert_eq!(reserved[0].severity, Severity::Error);
-    assert_eq!(reserved[0].layer, Layer::Logic);
-    assert!(
-        reserved[0].message.contains("unset"),
-        "{}",
-        reserved[0].message
-    );
-}
-
-#[test]
-fn non_reserved_choice_ids_have_no_reserved_diag() {
-    let mut seen = BTreeSet::new();
-    let rec = check_branch(&branch("number", &["help", "ignore"]), &mut seen);
-    assert!(rec.diags.iter().all(|d| d.code != "E-CHOICE-ID-RESERVED"));
 }
 
 // ---- E-DUP-LINE-CODE (dsl §12, unique (speaker, code)) ------------------
@@ -1133,7 +1104,7 @@ fn objective(id: &str, done_raw: &str) -> lute_syntax::ast::Objective {
         done: CelSlot::raw(CelKind::Condition, done_raw.to_string(), span()),
         quest: None,
         quest_span: span(),
-        when: None,
+        visible_when: None,
         title: None,
         optional: false,
         on: None,
@@ -1154,8 +1125,8 @@ fn quest_with_body(id: &str, body: Vec<Node>) -> Quest {
         title: None,
         start: None,
         fail: None,
-        after: None,
-        after_span: span(),
+        follows: None,
+        follows_span: span(),
         tier: None,
         activate: None,
         complete: None,
@@ -1247,7 +1218,7 @@ fn subquest_objective(id: &str, quest: &str, done_raw: &str) -> lute_syntax::ast
         done: CelSlot::raw(CelKind::Condition, done_raw.to_string(), span()),
         quest: Some(quest.to_string()),
         quest_span: span(),
-        when: None,
+        visible_when: None,
         title: None,
         optional: false,
         on: None,

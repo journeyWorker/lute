@@ -58,9 +58,11 @@ pub struct FrontmatterDecl {
 /// One `enums:` entry. A bare sequence is shorthand for `{ members: […] }`
 /// (dsl 0.9.0 D-D), so every pre-0.9.0 `enums.yaml` keeps parsing byte-for-byte.
 /// The long form MAY carry `labels: { <member>: <display text> }` (dsl 0.24.0
-/// §1); a non-string label fails this deserialization.
+/// §1); a non-string label fails this deserialization. Deserialized through
+/// [`EnumDecl::try_from`], so a misshapen entry names its fault and the
+/// shapes an enum takes rather than serde's "did not match any variant".
 #[derive(Clone, Debug, Deserialize)]
-#[serde(untagged, deny_unknown_fields)]
+#[serde(try_from = "serde_yaml::Value")]
 pub enum EnumDecl {
     Members(Vec<String>),
     Long {
@@ -72,6 +74,62 @@ pub enum EnumDecl {
         #[serde(default)]
         labels: std::collections::BTreeMap<String, String>,
     },
+}
+
+impl TryFrom<serde_yaml::Value> for EnumDecl {
+    type Error = String;
+
+    fn try_from(v: serde_yaml::Value) -> Result<Self, String> {
+        use serde_yaml::Value;
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Long {
+            members: Vec<String>,
+            #[serde(default)]
+            default: Option<String>,
+            #[serde(default)]
+            exits: Vec<String>,
+            #[serde(default)]
+            labels: std::collections::BTreeMap<String, String>,
+        }
+        const SHAPES: &str = "an enum is a list of members `[calm, tense]` or \
+             `{ members: [calm, tense], default: calm, exits: [tense], labels: { calm: Calm } }`";
+        match &v {
+            Value::Sequence(_) => serde_yaml::from_value::<Vec<String>>(v)
+                .map(EnumDecl::Members)
+                .map_err(|_| format!("lists something that is not a member name; {SHAPES}")),
+            Value::Mapping(m) => {
+                let keys = crate::entities::ENUM_LONG_FORM_KEYS;
+                if let Some(key) = m
+                    .keys()
+                    .find(|k| !k.as_str().is_some_and(|k| keys.contains(&k)))
+                {
+                    let key = serde_yaml::to_string(key).unwrap_or_default();
+                    let key = key.trim();
+                    return Err(format!(
+                        "has no key `{key}`{}; {SHAPES}",
+                        crate::suggest::did_you_mean(key, keys)
+                    ));
+                }
+                if !m.contains_key("members") {
+                    return Err(format!("needs `members:`; {SHAPES}"));
+                }
+                let long = serde_yaml::from_value::<Long>(v).map_err(|_| {
+                    format!(
+                        "is misshapen: `members:` and `exits:` list member names and `labels:` \
+                         maps each member to its text; {SHAPES}"
+                    )
+                })?;
+                Ok(EnumDecl::Long {
+                    members: long.members,
+                    default: long.default,
+                    exits: long.exits,
+                    labels: long.labels,
+                })
+            }
+            _ => Err(format!("is not an enum; {SHAPES}")),
+        }
+    }
 }
 
 impl EnumDecl {
@@ -111,7 +169,7 @@ pub struct EventsFile {
 }
 
 /// plugin §14.1 cross-cutting stamp-attribute declaration file (export
-/// `stampattrs/*.yaml`).
+/// `stampAttrs/*.yaml`).
 ///
 /// Each entry is an ordinary [`AttrDecl`] — the SAME name/required/type/default
 /// surface a directive attr uses — but admissible on EVERY directive AND on
@@ -155,6 +213,8 @@ pub struct DirectiveDecl {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,
+    /// A directive without attributes may omit `attrs:`.
+    #[serde(default)]
     pub attrs: Vec<AttrDecl>,
     #[serde(default)]
     pub semantics: Vec<String>, // closed vocabulary; validated in Task 1.5
@@ -718,7 +778,7 @@ pub struct EventDecl {
 }
 
 /// plugin §14 / dsl 0.16.0 §4 reward-kind declaration file (export
-/// `rewardkinds/*.yaml`).
+/// `rewardKinds/*.yaml`).
 ///
 /// A `rewardKinds:` mapping keyed by the kind id; a bare `{}` value declares
 /// a shape-only kind (any `<reward kind>` name check passes without a
@@ -993,8 +1053,15 @@ pub struct OccasionBody {
     pub raised_when: Option<String>,
     /// dsl 0.27.0 §3 (T2-1): `payload: { copies: number }` — typed values the
     /// engine hands over with each raise. See [`OccasionDecl::payload`].
-    #[serde(default)]
+    /// Parsed by [`payload_fields`], so an unknown or incomplete type names
+    /// the forms a payload field takes instead of serde's variant wording.
+    #[serde(default, deserialize_with = "payload_fields")]
     pub payload: std::collections::BTreeMap<String, crate::types::Type>,
+    /// dsl 0.28.0 (T2-9): `outsideRun: true` — the occasion belongs outside
+    /// the run (a title screen, a gallery): the engine raises it even after
+    /// the project's `terminal:` holds. See [`OccasionDecl::outside_run`].
+    #[serde(default, rename = "outsideRun")]
+    pub outside_run: bool,
 }
 
 /// How the engine presents an occasion's eligible beats (dsl 0.21.0 §2):
@@ -1077,6 +1144,14 @@ pub struct OccasionDecl {
     /// `occasion.payload.<field>` (engine-owned, bound by each raise).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub payload: std::collections::BTreeMap<String, crate::types::Type>,
+    /// dsl 0.28.0 (T2-9): raised even after the project's `terminal:` holds —
+    /// the terminal condition ends the run, not what lies outside it.
+    #[serde(
+        default,
+        rename = "outsideRun",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub outside_run: bool,
 }
 
 impl std::fmt::Debug for OccasionDecl {
@@ -1098,6 +1173,10 @@ impl std::fmt::Debug for OccasionDecl {
         if !self.payload.is_empty() {
             s.field("payload", &self.payload);
         }
+        // dsl 0.28.0: only when declared (capabilityVersion stability).
+        if self.outside_run {
+            s.field("outside_run", &self.outside_run);
+        }
         s.finish()
     }
 }
@@ -1113,8 +1192,12 @@ impl std::fmt::Debug for OccasionDecl {
 /// its `capabilityVersion` (the hash folds `OccasionDecl`'s `Debug`); a
 /// domain without `members` prints exactly as the 0.22 `{ prefix, entity }`
 /// did, for the same reason.
+///
+/// Deserialized through [`OccasionTarget::try_from`] so a typo'd or
+/// misshapen target names the bad key and the legal shape, never serde's
+/// "did not match any variant".
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged, deny_unknown_fields)]
+#[serde(untagged, try_from = "serde_yaml::Value")]
 pub enum OccasionTarget {
     Shape(bool),
     Domain {
@@ -1135,6 +1218,256 @@ impl From<bool> for OccasionTarget {
     fn from(b: bool) -> Self {
         OccasionTarget::Shape(b)
     }
+}
+
+const OCCASION_TARGET_SHAPES: &str = "an occasion's `target:` is `true` (any dotted id), or a \
+     domain `{ prefix: <id prefix>, entity: <entity kind>, members: [<member>, …] }` \
+     (`members` optional)";
+
+impl TryFrom<serde_yaml::Value> for OccasionTarget {
+    type Error = String;
+
+    fn try_from(v: serde_yaml::Value) -> Result<Self, String> {
+        use serde_yaml::Value;
+        let shown = |v: &Value| {
+            serde_yaml::to_string(v)
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        };
+        let name = |key: &str| -> Result<String, String> {
+            match v.get(key) {
+                Some(Value::String(s)) if !s.trim().is_empty() => Ok(s.clone()),
+                None | Some(Value::Null) => Err(format!(
+                    "`target:` names no `{key}:`; {OCCASION_TARGET_SHAPES}"
+                )),
+                Some(other) => Err(format!(
+                    "`target.{key}: {}` is not a name; {OCCASION_TARGET_SHAPES}",
+                    shown(other)
+                )),
+            }
+        };
+        match &v {
+            Value::Bool(b) => Ok(OccasionTarget::Shape(*b)),
+            Value::Mapping(m) => {
+                const KEYS: [&str; 3] = ["prefix", "entity", "members"];
+                if let Some(key) = m
+                    .keys()
+                    .find(|k| !k.as_str().is_some_and(|k| KEYS.contains(&k)))
+                {
+                    let key = shown(key);
+                    return Err(format!(
+                        "`target:` has no key `{key}`{}; {OCCASION_TARGET_SHAPES}",
+                        crate::suggest::did_you_mean(&key, KEYS)
+                    ));
+                }
+                let members = match v.get("members") {
+                    None => None,
+                    Some(Value::Sequence(items)) => Some(
+                        items
+                            .iter()
+                            .map(|i| match i {
+                                Value::String(s) => Ok(s.clone()),
+                                other => Err(format!(
+                                    "`target.members` lists `{}`, which is not a member name",
+                                    shown(other)
+                                )),
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    ),
+                    Some(other) => {
+                        return Err(format!(
+                            "`target.members: {}` is not a list — write `members: [<member>, …]`",
+                            shown(other)
+                        ))
+                    }
+                };
+                Ok(OccasionTarget::Domain {
+                    prefix: name("prefix")?,
+                    entity: name("entity")?,
+                    members,
+                })
+            }
+            Value::Null => Err(format!("`target:` is empty; {OCCASION_TARGET_SHAPES}")),
+            other => Err(format!(
+                "`target: {}` is not a target; {OCCASION_TARGET_SHAPES}",
+                shown(other)
+            )),
+        }
+    }
+}
+
+const PAYLOAD_TYPE_FORMS: &str = "a payload field's type is `bool`, `number`, `string`, \
+     `{ enum: [<member>, …] }`, `{ domain: <enum or entity kind> }` or `{ entity: <entity kind> }` \
+     — a raise gives one value per field";
+
+/// dsl 0.27.0 §3, 0.28.0: an occasion's `payload:` — field -> type, each
+/// type one of [`PAYLOAD_TYPE_FORMS`]. A raise (a `lute play` step) gives
+/// one literal per field, so a list, record or map type is refused along
+/// with an unknown name (with a did-you-mean) or a form missing its
+/// argument (`copies: enum`). Each field's type is judged while its value
+/// is read, so the error sits at that field's line.
+fn payload_fields<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<std::collections::BTreeMap<String, Type>, D::Error> {
+    use serde::de::{DeserializeSeed, Error, MapAccess, Visitor};
+    use serde_yaml::Value;
+
+    /// One field's type, judged inside the value's own visit.
+    struct FieldType<'f>(&'f str);
+    impl<'de> DeserializeSeed<'de> for FieldType<'_> {
+        type Value = Type;
+        fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<Type, D::Error> {
+            d.deserialize_any(self)
+        }
+    }
+    impl<'de> Visitor<'de> for FieldType<'_> {
+        type Value = Type;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a payload field's type")
+        }
+        fn visit_str<E: Error>(self, s: &str) -> Result<Type, E> {
+            payload_type(self.0, &Value::String(s.to_string())).map_err(E::custom)
+        }
+        fn visit_unit<E: Error>(self) -> Result<Type, E> {
+            payload_type(self.0, &Value::Null).map_err(E::custom)
+        }
+        fn visit_bool<E: Error>(self, b: bool) -> Result<Type, E> {
+            payload_type(self.0, &Value::Bool(b)).map_err(E::custom)
+        }
+        fn visit_i64<E: Error>(self, n: i64) -> Result<Type, E> {
+            payload_type(self.0, &Value::Number(n.into())).map_err(E::custom)
+        }
+        fn visit_u64<E: Error>(self, n: u64) -> Result<Type, E> {
+            payload_type(self.0, &Value::Number(n.into())).map_err(E::custom)
+        }
+        fn visit_f64<E: Error>(self, n: f64) -> Result<Type, E> {
+            payload_type(self.0, &Value::Number(n.into())).map_err(E::custom)
+        }
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(self, seq: A) -> Result<Type, A::Error> {
+            let v = Value::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))?;
+            payload_type(self.0, &v).map_err(A::Error::custom)
+        }
+        fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Type, A::Error> {
+            let v = Value::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
+            payload_type(self.0, &v).map_err(A::Error::custom)
+        }
+    }
+
+    struct Fields;
+    impl<'de> Visitor<'de> for Fields {
+        type Value = std::collections::BTreeMap<String, Type>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a mapping of each payload field to its type")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut out = std::collections::BTreeMap::new();
+            while let Some(key) = map.next_key::<Value>()? {
+                let Some(field) = key.as_str() else {
+                    return Err(A::Error::custom(format!(
+                        "`payload:` has the key `{}`, which is not a field name",
+                        shown_yaml(&key)
+                    )));
+                };
+                let ty = map.next_value_seed(FieldType(field))?;
+                out.insert(field.to_string(), ty);
+            }
+            Ok(out)
+        }
+    }
+    d.deserialize_map(Fields)
+}
+
+/// One payload field's type; `Err` is the author-facing sentence.
+fn payload_type(field: &str, v: &serde_yaml::Value) -> Result<Type, String> {
+    use serde_yaml::Value;
+    const SCALARS: [&str; 3] = ["bool", "number", "string"];
+    const FORMS: [&str; 3] = ["enum", "domain", "entity"];
+    /// `Type` forms a single literal cannot carry.
+    const MULTI: [&str; 3] = ["list", "record", "map"];
+    let forms = SCALARS.iter().chain(FORMS.iter()).copied();
+    let refuse = |name: &str| -> String {
+        if FORMS.contains(&name) {
+            let arg = if name == "enum" {
+                "[<member>, …]"
+            } else {
+                "<kind>"
+            };
+            format!("payload field `{field}` is typed `{name}` without its argument — write `{field}: {{ {name}: {arg} }}`")
+        } else if MULTI.contains(&name) {
+            format!("payload field `{field}` cannot be a `{name}`; {PAYLOAD_TYPE_FORMS}")
+        } else {
+            format!(
+                "payload field `{field}` has the type `{name}`, which is not a payload type{}; \
+                 {PAYLOAD_TYPE_FORMS}",
+                crate::suggest::did_you_mean(name, forms.clone())
+            )
+        }
+    };
+    match v {
+        Value::String(s) => match s.as_str() {
+            "bool" => Ok(Type::Bool),
+            "number" => Ok(Type::Number),
+            "string" => Ok(Type::Str),
+            other => Err(refuse(other)),
+        },
+        Value::Mapping(m) if m.len() == 1 => {
+            let (k, arg) = m.iter().next().expect("one entry");
+            let Some(name) = k.as_str() else {
+                return Err(refuse(&shown_yaml(k)));
+            };
+            let kind = |form: &str| match arg {
+                Value::String(s) if !s.trim().is_empty() => Ok(s.clone()),
+                _ => Err(format!(
+                    "payload field `{field}`: `{{ {form}: {} }}` names no kind — write \
+                     `{{ {form}: <kind> }}`",
+                    shown_yaml(arg)
+                )),
+            };
+            match name {
+                "enum" => match arg {
+                    Value::Sequence(items) if !items.is_empty() => items
+                        .iter()
+                        .map(|i| match i {
+                            Value::String(s) => Ok(s.clone()),
+                            other => Err(format!(
+                                "payload field `{field}`'s `enum:` lists `{}`, which is not a \
+                                 member name",
+                                shown_yaml(other)
+                            )),
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                        .map(Type::Enum),
+                    _ => Err(format!(
+                        "payload field `{field}`'s `enum:` is not a list of members — write \
+                         `{field}: {{ enum: [<member>, …] }}`"
+                    )),
+                },
+                "domain" => kind("domain").map(Type::Domain),
+                "entity" => kind("entity").map(Type::Entity),
+                other if SCALARS.contains(&other) => Err(format!(
+                    "payload field `{field}` writes `{{ {other}: … }}` — a `{other}` takes no \
+                     argument: write `{field}: {other}`"
+                )),
+                other => Err(refuse(other)),
+            }
+        }
+        Value::Null => Err(format!(
+            "payload field `{field}` names no type; {PAYLOAD_TYPE_FORMS}"
+        )),
+        other => Err(format!(
+            "payload field `{field}: {}` is not a type; {PAYLOAD_TYPE_FORMS}",
+            shown_yaml(other)
+        )),
+    }
+}
+
+/// A YAML value as an author wrote it, on one line (`[a, b]`, `3`).
+fn shown_yaml(v: &serde_yaml::Value) -> String {
+    serde_yaml::to_string(v)
+        .unwrap_or_default()
+        .trim()
+        .replace('\n', " ")
 }
 
 impl OccasionTarget {
@@ -1196,19 +1529,14 @@ fn de_params<'de, D>(d: D) -> Result<Vec<DefParam>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
+    use serde::de::Error;
     use serde::Deserialize;
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum Raw {
-        Map(serde_yaml::Mapping),
-        Seq(Vec<serde_yaml::Value>),
-    }
-    Ok(match Raw::deserialize(d)? {
-        Raw::Seq(v) => v
+    Ok(match serde_yaml::Value::deserialize(d)? {
+        serde_yaml::Value::Sequence(v) => v
             .into_iter()
             .filter_map(|v| serde_yaml::from_value::<DefParam>(v).ok())
             .collect(),
-        Raw::Map(m) => m
+        serde_yaml::Value::Mapping(m) => m
             .into_iter()
             .filter_map(|(k, v)| {
                 let name = k.as_str()?.to_string();
@@ -1216,11 +1544,18 @@ where
                 Some(DefParam { name, ty })
             })
             .collect(),
+        _ => {
+            return Err(D::Error::custom(
+                "`params:` maps each parameter to its type (`params: { n: number }`) or lists \
+                 `{ name, type }` entries",
+            ))
+        }
     })
 }
 
 /// plugin §5 manifest entry.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PluginManifest {
     pub id: String,
     pub version: String,
@@ -1233,12 +1568,14 @@ pub struct PluginManifest {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Depends {
     pub id: String,
     pub range: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OptionDecl {
     pub name: String,
     #[serde(rename = "type")]
@@ -1247,7 +1584,7 @@ pub struct OptionDecl {
     pub default: Option<Literal>,
 }
 
-/// plugin §6.9 asset-kind declaration (export file `assetkinds/*.yaml`).
+/// plugin §6.9 asset-kind declaration (export file `assetKinds/*.yaml`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetKindDecl {

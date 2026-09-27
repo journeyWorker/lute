@@ -43,12 +43,9 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
         dir.to_str().unwrap(),
     ]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
-    let path = dir.join("lore/ship-records.lute");
+    let path = dir.join("lore/shipRecords.lute");
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(
-        text.contains("kind: lore\nid: lore.shipRecords\n"),
-        "{text}"
-    );
+    assert!(text.contains("kind: lore\nid: shipRecords\n"), "{text}");
     assert!(text.contains("<entry id=\"shipRecords\""), "{text}");
 
     let check = run(&["check", path.to_str().unwrap(), "--json"]);
@@ -77,11 +74,12 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
     assert_eq!(again.status.code(), Some(2));
 }
 
-/// dsl 0.19.0 §2.1: `lute new quest` scaffolds a document id too, and the two
-/// scaffolds for one name share a project without an id collision. The quest
-/// is `--start`ed: the default accept-driven stub carries the never-accepted
-/// advisory until content `::accept`s it, and this test pins "no diagnostics
-/// at all".
+/// dsl 0.19.0 §2.1: `lute new quest` scaffolds a document id too, and quest
+/// and lore scaffolds share a project cleanly. Document ids are one namespace
+/// (0.28: no `quest.`/`lore.` prefix), so the two get distinct names — the
+/// same-name refusal is pinned in `scaffold.rs`. The quest is `--start`ed:
+/// the default accept-driven stub carries the never-accepted advisory until
+/// content `::accept`s it, and this test pins "no diagnostics at all".
 #[test]
 fn new_quest_and_lore_scaffolds_check_clean_together() {
     let dir = temp_dir("new-quest");
@@ -98,16 +96,13 @@ fn new_quest_and_lore_scaffolds_check_clean_together() {
         Some(0)
     );
     assert_eq!(
-        run(&["new", "lore", "ship-records", "--dir", d])
-            .status
-            .code(),
+        run(&["new", "lore", "ship-logs", "--dir", d]).status.code(),
         Some(0)
     );
-    let quest = std::fs::read_to_string(dir.join("quests/ship-records.lute")).unwrap();
-    assert!(
-        quest.contains("kind: quest\nid: quest.shipRecords\n"),
-        "{quest}"
-    );
+    let quest = std::fs::read_to_string(dir.join("quests/shipRecords.lute")).unwrap();
+    assert!(quest.contains("kind: quest\nid: shipRecords\n"), "{quest}");
+    let lore = std::fs::read_to_string(dir.join("lore/shipLogs.lute")).unwrap();
+    assert!(lore.contains("kind: lore\nid: shipLogs\n"), "{lore}");
 
     let check = run(&["check-project", d, "--json"]);
     let result: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap_or_else(|e| {
@@ -306,7 +301,7 @@ fn lore_report_text_groups_entries_and_splits_fact_sources() {
     let out = run(&["lore", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let expected = "\
-Entries by target
+Entries and beats by target
   item.rusty_key
     rustyKey  [item]  lore/ship.lute
   item.torn_note_1
@@ -369,13 +364,13 @@ fn lore_report_json_carries_the_same_data() {
         "relations": [
             {"relation": "knows", "facts": [
                 {"fact": "knows(vesna, project_lumen)", "revealedBy": "both",
-                 "entries": ["log1"], "beats": [], "documents": ["scenes/lab.lute"]},
+                 "entries": ["log1"], "beats": [], "documents": ["scenes/lab.lute"], "components": []},
                 {"fact": "knows(vesna, reactor)", "revealedBy": "entries",
-                 "entries": ["log2"], "beats": [], "documents": []}
+                 "entries": ["log2"], "beats": [], "documents": [], "components": []}
             ]},
             {"relation": "met", "facts": [
                 {"fact": "met(vesna, orin)", "revealedBy": "scenes",
-                 "entries": [], "beats": [], "documents": ["scenes/lab.lute"]}
+                 "entries": [], "beats": [], "documents": ["scenes/lab.lute"], "components": []}
             ]}
         ]
     });
@@ -416,7 +411,7 @@ fn lore_report_lists_bundle_beats_by_target_and_as_fact_sources() {
     assert_eq!(
         reactor,
         &serde_json::json!({"fact": "knows(vesna, reactor)", "revealedBy": "both",
-            "entries": ["log2"], "beats": ["lore.dock.talk"], "documents": []})
+            "entries": ["log2"], "beats": ["lore.dock.talk"], "documents": [], "components": []})
     );
     assert_eq!(
         v["targets"][0],
@@ -462,4 +457,83 @@ fn lore_report_reports_unchecked_documents_and_fails_on_io() {
 
     let missing = run(&["lore", dir.join("nope").to_str().unwrap()]);
     assert_eq!(missing.status.code(), Some(2), "{missing:?}");
+}
+
+/// `lute lore` substitutes a rule's variables into its `cel()` premise as
+/// `scenario knowledge` does, names where each rule is declared, labels a
+/// scene beat `scene`, shows a `for` beat's members, and lists the facts a
+/// component asserts at each `::use` of it (params bound), never on its own.
+#[test]
+fn lore_report_binds_rules_components_and_labels_beats() {
+    let dir = temp_dir("lore-bind");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.aff: { type: number, default: 0, per: suitor }\n\
+         entities:\n  suitor: { members: [ren, mika] }\n\
+         relations:\n  locked: { args: [suitor], tier: run }\n  \
+         gifted: { args: [suitor], tier: run }\n  routeOpen: { args: [suitor], derive: true }\n\
+         rules:\n  - \"routeOpen(S) :- suitor(S), not locked(S), cel(\\\"run.aff[S] >= 3\\\")\"\n",
+    );
+    write(
+        &dir,
+        "components/keepsake.component.lute",
+        "---\ncomponent: keepsake\neffects: true\nparams:\n  who: suitor\n---\n\n## Keepsake\n\n\
+         ::assert{gifted(@who)}\n@narrator: A keepsake.\n",
+    );
+    write(
+        &dir,
+        "scenes/clash.lute",
+        "---\nkind: scene\nid: clash\ntitle: Clash\non: evening\n---\n\n## Clash\n\n\
+         @narrator: Ren storms off.\n::assert{locked(ren)}\n::use{component=\"keepsake\" who=\"mika\"}\n",
+    );
+    write(
+        &dir,
+        "lore/fest.lute",
+        "---\nkind: lore\nid: fest\ntitle: Festival\n---\n\n\
+         <entry id=\"renOpen\" on=\"talk\" when=\"holds(routeOpen(ren))\">\n  @narrator: Lit.\n</entry>\n\n\
+         <beat id=\"word\" on=\"evening\" for=\"kind:suitor\">\n  @narrator: A word.\n</beat>\n",
+    );
+    let d = dir.to_str().unwrap();
+    let s = stdout(&run(&["lore", d]));
+    assert!(s.starts_with("Entries and beats by target\n"), "{s}");
+    assert!(
+        s.contains("    scene  clash  \"Clash\"  scenes/clash.lute  (on evening)"),
+        "{s}"
+    );
+    assert!(
+        s.contains("    beat  fest.word (for kind:suitor)  lore/fest.lute"),
+        "{s}"
+    );
+    assert!(
+        s.contains(
+            "    gifted(mika)  components\n      components: keepsake (via scene `clash`)\n"
+        ),
+        "{s}"
+    );
+    assert!(!s.contains("gifted(ren)"), "{s}");
+    assert!(
+        s.contains(
+            "⇐ suitor(ren), not locked(ren), cel(\"run.aff.ren >= 3\")  (rule at world.schema.yaml:"
+        ),
+        "{s}"
+    );
+    let v: serde_json::Value = serde_json::from_str(&stdout(&run(&["lore", d, "--json"]))).unwrap();
+    let rows = v["targets"][0]["entries"].as_array().unwrap();
+    assert!(
+        rows.iter()
+            .any(|r| r["id"] == "fest.word" && r["for"] == "kind:suitor"),
+        "{v}"
+    );
+    assert!(
+        rows.iter()
+            .any(|r| r["id"] == "clash" && r["kind"] == "scene"),
+        "{v}"
+    );
 }

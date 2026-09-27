@@ -298,11 +298,236 @@ fn quest_objective_on_close_their_attrs_with_did_you_mean() {
 fn quest_objective_on_permitted_keys_are_clean() {
     let t = format!(
         "{QUEST_HDR}<quest id=\"p\" title=\"P\" start=\"run.flag\" fail=\"run.flag\">\n\
-         <objective id=\"o\" title=\"O\" done=\"run.flag\" when=\"run.flag\" optional/>\n\
+         <objective id=\"o\" title=\"O\" done=\"run.flag\" visibleWhen=\"run.flag\" optional/>\n\
          <objective id=\"c\" quest=\"child\"/>\n\
          <on event=\"questComplete\" when=\"run.flag\">\n@x: done\n</on>\n</quest>\n\
-         <quest id=\"child\" after=\"active(p)\" start=\"run.flag\">\n\
+         <quest id=\"child\" follows=\"active(p)\" start=\"run.flag\">\n\
          <objective id=\"v\" on=\"visit\"/>\n</quest>\n"
     );
     assert!(unknown_attr_messages(&t).is_empty(), "{:?}", codes(&t));
+}
+
+/// Round-6 R-10/R-21/R-22: the three renamed quest-layer attributes. The old
+/// spelling is `E-UNKNOWN-ATTR` at that attribute, and the message names the
+/// new one (clean cutover: the old key is never read).
+#[test]
+fn renamed_quest_layer_attrs_name_their_new_spelling() {
+    let t = format!(
+        "{QUEST_HDR}<quest id=\"q\" start=\"true\" after=\"active(p)\">\n\
+         <reward kind=\"gold\" on=\"failed\"/>\n\
+         <objective id=\"o\" done=\"run.flag\" when=\"run.flag\"/>\n</quest>\n\
+         <quest id=\"p\" start=\"true\">\n<objective id=\"d\" done=\"true\"/>\n</quest>\n"
+    );
+    let diags: Vec<_> = run(&t)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "E-UNKNOWN-ATTR")
+        .collect();
+    for (old, new) in [
+        ("after", "follows="),
+        ("on", "outcome="),
+        ("when", "visibleWhen="),
+    ] {
+        let d = diags
+            .iter()
+            .find(|d| t[d.span.byte_start..d.span.byte_end].starts_with(&format!("{old}=")))
+            .unwrap_or_else(|| panic!("no E-UNKNOWN-ATTR at `{old}=`: {diags:?}"));
+        assert!(
+            d.message.contains(&format!("is now `{new}`")),
+            "{}",
+            d.message
+        );
+    }
+    assert_eq!(diags.len(), 3, "{diags:?}");
+}
+
+const LORE_HDR: &str =
+    "---\nkind: lore\nid: lr\nstate:\n  run.flag: { type: bool, default: false }\n---\n";
+
+/// A key another construct or layer owns names where it lives (`occasion=`
+/// on a beat is `on=`, `rearm=` is a quest's, `spentBy=` a beat's), once:
+/// the construct's own "names no occasion" / "has no `event`" does not
+/// repeat it.
+#[test]
+fn a_key_of_another_construct_names_where_it_lives() {
+    let entry =
+        |attr: &str| format!("{LORE_HDR}<entry id=\"e\" {attr} title=\"E\">\n@x: e\n</entry>\n");
+    let beat = |attr: &str| format!("{LORE_HDR}<beat id=\"b\" {attr}>\n@x: b\n</beat>\n");
+    let quest = |attr: &str, body: &str| {
+        format!("{QUEST_HDR}<quest id=\"q\" start=\"true\" {attr}>\n{body}</quest>\n")
+    };
+    let done = "<objective id=\"d\" done=\"run.flag\"/>\n";
+    for (text, needle) in [
+        (
+            entry("occasion=\"dusk\""),
+            "names the occasion it answers with `on=`",
+        ),
+        (
+            entry("event=\"dusk\" when=\"run.flag\""),
+            "names the occasion it answers with `on=`",
+        ),
+        (
+            entry("on=\"dusk\" rearm=\"run.flag\""),
+            "`rearm=` is an attribute of a `<quest>`",
+        ),
+        (
+            entry("on=\"dusk\" tier=\"run\""),
+            "`tier=` is an attribute of a `<quest>`",
+        ),
+        (
+            beat("occasion=\"dusk\""),
+            "names the occasion it answers with `on=`",
+        ),
+        (
+            beat("event=\"dusk\" when=\"run.flag\""),
+            "names the occasion it answers with `on=`",
+        ),
+        (
+            beat("on=\"dusk\" rearm=\"run.flag\""),
+            "`rearm=` is an attribute of a `<quest>`",
+        ),
+        (
+            beat("on=\"dusk\" tier=\"run\""),
+            "`tier=` is an attribute of a `<quest>`",
+        ),
+        (
+            quest("spentBy=\"run.flag\"", done),
+            "`spentBy=` is a beat attribute",
+        ),
+        (
+            quest("on=\"dusk\"", done),
+            "an objective does, `<objective on=\"<occasion>\">`",
+        ),
+        (
+            quest("occasion=\"dusk\"", done),
+            "an objective does, `<objective on=\"<occasion>\">`",
+        ),
+        (
+            quest(
+                "",
+                "<objective id=\"o\" occasion=\"dusk\" done=\"run.flag\"/>\n",
+            ),
+            "names the occasion that judges it with `on=`",
+        ),
+        (
+            quest(
+                "",
+                "<objective id=\"o\" event=\"dusk\" done=\"run.flag\"/>\n",
+            ),
+            "names the occasion that judges it with `on=`",
+        ),
+        (
+            quest(
+                "",
+                &format!("{done}<on occasion=\"questComplete\">\n@x: y\n</on>\n"),
+            ),
+            "names what it answers with `event=`",
+        ),
+    ] {
+        let diags = run(&text).diagnostics;
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == lute_core_span::Severity::Error)
+            .collect();
+        assert_eq!(errors.len(), 1, "{text}\n{errors:?}");
+        assert_eq!(errors[0].code, "E-UNKNOWN-ATTR", "{text}\n{errors:?}");
+        assert!(
+            errors[0].message.contains(needle),
+            "{text}\n{}",
+            errors[0].message
+        );
+    }
+}
+
+fn flag_values(text: &str) -> Vec<(String, String)> {
+    run(text)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "E-FLAG-VALUE")
+        .map(|d| {
+            (
+                text[d.span.byte_start..d.span.byte_end].to_string(),
+                d.message,
+            )
+        })
+        .collect()
+}
+
+/// dsl 0.28.0 §1 (round-6 T1-3): a flag given a value that is not
+/// `true`/`false` read as `false` without a word — `optional="yes"` made the
+/// objective required, `exit="yes"` left the choice a non-exit. Every flag is
+/// now `E-FLAG-VALUE` at the attribute, naming the bare form.
+#[test]
+fn a_flag_with_a_non_flag_value_is_flag_value_at_the_attribute() {
+    let quest = format!(
+        "{QUEST_HDR}<quest id=\"q\" start=\"run.flag\">\n\
+         <objective id=\"o\" done=\"run.flag\" optional=\"yes\"/>\n</quest>\n"
+    );
+    let fv = flag_values(&quest);
+    assert_eq!(fv.len(), 1, "{:?}", codes(&quest));
+    assert_eq!(fv[0].0, "optional=\"yes\"");
+    assert!(
+        fv[0].1.contains("write it bare (`<objective … optional>`)")
+            && fv[0].1.contains("`optional=\"false\"`"),
+        "{}",
+        fv[0].1
+    );
+
+    let hub = format!(
+        "{HDR}<hub id=\"h\">\n<choice id=\"a\" label=\"A\" exit=\"yes\">\n@x: a\n</choice>\n\
+         <choice id=\"b\" label=\"B\" exit>\n@x: b\n</choice>\n</hub>\n"
+    );
+    let fv = flag_values(&hub);
+    assert_eq!(fv.len(), 1, "{:?}", codes(&hub));
+    assert_eq!(fv[0].0, "exit=\"yes\"");
+    assert!(fv[0].1.contains("`exit` is a flag"), "{}", fv[0].1);
+
+    let beat =
+        "---\nkind: lore\nid: l\n---\n<beat id=\"b\" on=\"talk\" also=\"yes\">\n@n: hi\n</beat>\n";
+    let fv = flag_values(beat);
+    assert_eq!(fv.len(), 1, "{:?}", codes(beat));
+    assert_eq!(fv[0].0, "also=\"yes\"");
+    assert!(!codes(beat).contains(&"E-BEAT-ATTR".to_string()));
+}
+
+/// R-6: a beat/entry repetition period on a hub choice read as `false` (not
+/// once at all). A choice's `once` has one meaning; the period is refused.
+#[test]
+fn a_period_on_a_choice_once_says_it_is_a_beat_key() {
+    for period in ["run", "user", "day", "week", "slot", "season:harvest"] {
+        let t = format!(
+            "{HDR}<hub id=\"h\">\n<choice id=\"a\" label=\"A\" once=\"{period}\">\n@x: a\n</choice>\n\
+             <choice id=\"b\" label=\"B\" exit>\n@x: b\n</choice>\n</hub>\n"
+        );
+        let fv = flag_values(&t);
+        assert_eq!(fv.len(), 1, "{period}: {:?}", codes(&t));
+        assert_eq!(fv[0].0, format!("once=\"{period}\""));
+        assert!(
+            fv[0].1.contains("is a beat/entry `once` key")
+                && fv[0].1.contains("once per hub visit — write it bare"),
+            "{}",
+            fv[0].1
+        );
+    }
+}
+
+/// `="true"` really is true and `="false"` really is false: `exit="true"`
+/// is an exit (it used to draw `E-HUB-NO-EXIT`), `once="false"` is not
+/// `once`, and none of the three spellings is `E-FLAG-VALUE`.
+#[test]
+fn true_and_false_flag_values_mean_what_they_say() {
+    let hub = |a: &str, b: &str| {
+        format!(
+            "{HDR}<hub id=\"h\">\n<choice id=\"a\" label=\"A\" {a}>\n@x: a\n</choice>\n\
+             <choice id=\"b\" label=\"B\" {b}>\n@x: b\n</choice>\n</hub>\n"
+        )
+    };
+    let exit_true = hub("once=\"true\"", "exit=\"true\"");
+    assert!(run(&exit_true).ok, "{:?}", codes(&exit_true));
+    let all_once = hub("once", "once=\"true\"");
+    assert!(run(&all_once).ok, "{:?}", codes(&all_once));
+    let once_off = hub("once", "once=\"false\"");
+    let cs = codes(&once_off);
+    assert!(cs.contains(&"E-HUB-NO-EXIT".to_string()), "{cs:?}");
+    assert!(!cs.contains(&"E-FLAG-VALUE".to_string()), "{cs:?}");
 }

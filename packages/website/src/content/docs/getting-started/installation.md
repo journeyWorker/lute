@@ -65,19 +65,11 @@ language      0.27.0
 IR schema     0.27.0
 ```
 
-Those are three independent axes, and you will see all three again elsewhere: the **toolchain**
-version is this CLI, the **language** version is the grammar and semantics the checker enforces,
-and the **IR schema** version is what `lute compile` stamps into every artifact as `irVersion`.
-They mean different things, but a release always **re-aligns all three visible numbers** to that
-release's number, so you never reconcile three
-([versioning policy](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)).
-At `0.11.0` only the **toolchain** substantively moved — a new `schedule.yaml` layer and
-`lute play` command (the layer was removed again in `0.21.0`, when `lute play` moved to
-occasions), plus two reference-runner fixes. The IR carries no shape or content change at
-all, but its `major.minor` still moves (`0.10` → `0.11`, because a release re-aligns every visible
-number whether or not its contract changed), and engines still gate on `irVersion` by
-major.minor — so an engine implementing IR `0.10` must widen its gate to `0.11` before it accepts
-a `0.11.0` artifact, even though nothing inside it is different.
+The three lines are the **toolchain** (this CLI), the **language** the checker enforces, and the
+**IR schema** that `lute compile` stamps into every artifact as `irVersion`. A release sets all
+three to its own number, so you should see the same version on each line. Why there are three, and
+how an engine gates on `irVersion`, is in the
+[versioning policy](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md).
 
 For scripts and CI, `--json` prints the same three axes as one object:
 
@@ -89,9 +81,11 @@ $ lute version --json
 (`lute --version` also works and prints just `lute 0.27.0` — the toolchain axis alone.)
 
 If your editor runs the language server, check that it is the same build: `lute-lsp --version`
-prints `lute-lsp <version>`, and `lute doctor` compares the `lute-lsp` first on your `PATH` against
-this CLI, flagging an older server (one that predates the flag reports no version at all) with how
-to reinstall it.
+prints `lute-lsp <version>`, and `lute doctor` compares the `lute-lsp` first on your `PATH` with
+the one beside this CLI, flagging an older server (one that predates the flag reports no version at
+all) with how to reinstall it. When that `lute-lsp` is the npm launcher, `lute doctor` compares the
+binary the launcher starts; if it cannot tell which one that is, the line ends
+`(compared by reported version only)`.
 
 **If your editor and the terminal disagree** about a file — red underlines on a file `lute check`
 calls `ok`, or the other way round — trust the terminal and run `lute doctor .` in the project: the

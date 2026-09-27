@@ -212,18 +212,13 @@ pub fn check_entries(
     let mut positions: BTreeMap<(&str, u32), &str> = BTreeMap::new();
     for (entry, resolved) in entries.iter().zip(&resolved) {
         check_entry_shape(entry, doc_series, &mut record.diags);
-        if entry.on.is_some() && entry.once.is_none() {
-            if let Some((what, span)) = first_write(&entry.body, snapshot) {
+        if let Some(reread) = Reread::of(entry) {
+            let guard = format!("!entry.{}.read", entry.id);
+            if let Some((what, span)) = first_write(&entry.body, snapshot, &guard, false) {
                 record.diags.push(diag(
                     W_ENTRY_WRITE_REREAD,
                     Severity::Warning,
-                    format!(
-                        "`<entry id=\"{}\">` has no `once`, so it can be presented again in a \
-                         run, but its `{what}` applies on the first read in a run only (dsl \
-                         0.19.0 §6); a write meant to repeat belongs in a `<beat once=\"false\">`, \
-                         and an entry read once per run says so with `once=\"run\"`",
-                        entry.id
-                    ),
+                    reread.message(entry, &what),
                     span,
                 ));
             }
@@ -274,17 +269,26 @@ pub(crate) fn series_order_message(series: &str, order: u32, first: &str, id: &s
 /// same way — in document order, descending into `<match>` arms and
 /// `<branch>` / `<hub>` choices: the directive's name and span. `::assert`
 /// (and an `asserts`-only effect) is idempotent within a run and is not a
-/// write that could be lost (see [`W_ENTRY_WRITE_REREAD`]).
+/// write that could be lost (see [`W_ENTRY_WRITE_REREAD`]). dsl 0.28.0
+/// (T1-6): a write under `guard` (`!entry.<id>.read`) — in its own `when=`,
+/// an enclosing `<when test>` / `<choice when>`, or a `<match
+/// on="entry.<id>.read">` arm `is="false"` — applies on the first read on
+/// purpose (`guarded`) and is skipped.
 fn first_write(
     nodes: &[lute_syntax::ast::Node],
     snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
+    guard: &str,
+    guarded: bool,
 ) -> Option<(String, Span)> {
-    use lute_syntax::ast::{Arm, Node};
+    use lute_syntax::ast::{Arm, CelSlot, Node};
+    let under =
+        |slot: Option<&CelSlot>| guarded || slot.is_some_and(|s| reads_guard(&s.raw, guard));
     nodes.iter().find_map(|node| match node {
-        Node::Set(s) => Some(("::set".to_string(), s.span)),
-        Node::Retract(r) => Some(("::retract".to_string(), r.span)),
+        Node::Set(s) if !under(s.when.as_ref()) => Some(("::set".to_string(), s.span)),
+        Node::Retract(r) if !under(r.when.as_ref()) => Some(("::retract".to_string(), r.span)),
         Node::Directive(d)
-            if crate::directive_facts::is_effect_only(snapshot, &d.tag)
+            if !under(d.when.as_ref())
+                && crate::directive_facts::is_effect_only(snapshot, &d.tag)
                 && snapshot
                     .directive(&d.tag)
                     .and_then(|decl| decl.effects.as_ref())
@@ -292,19 +296,195 @@ fn first_write(
         {
             Some((format!("::{}", d.tag), d.span))
         }
-        Node::Match(m) => m.arms.iter().find_map(|arm| match arm {
-            Arm::When { body, .. } | Arm::Otherwise { body, .. } => first_write(body, snapshot),
-        }),
+        Node::Match(m) => {
+            let on_read = m.subject.raw.replace(char::is_whitespace, "") == guard[1..];
+            m.arms.iter().find_map(|arm| match arm {
+                Arm::When { is, test, body, .. } => {
+                    let first_only =
+                        on_read && is.as_ref().is_some_and(|p| p.raw.trim() == "false");
+                    first_write(body, snapshot, guard, first_only || under(Some(test)))
+                }
+                Arm::Otherwise { body, .. } => first_write(body, snapshot, guard, guarded),
+            })
+        }
         Node::Branch(b) => b
             .choices
             .iter()
-            .find_map(|c| first_write(&c.body, snapshot)),
-        Node::Hub(h) => h
-            .choices
-            .iter()
-            .find_map(|c| first_write(&c.body, snapshot)),
+            .find_map(|c| first_write(&c.body, snapshot, guard, under(c.when.as_ref()))),
+        Node::Hub(h) => {
+            let options = h
+                .choices
+                .iter()
+                .find_map(|c| first_write(&c.body, snapshot, guard, under(c.when.as_ref())));
+            options.or_else(|| {
+                h.bodies()
+                    .skip(h.choices.len())
+                    .find_map(|b| first_write(b, snapshot, guard, guarded))
+            })
+        }
         _ => None,
     })
+}
+
+/// Whether condition `raw` reads `guard` (`!entry.<id>.read`), spaces
+/// ignored — and not a longer path starting with it.
+fn reads_guard(raw: &str, guard: &str) -> bool {
+    let text: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+    text.match_indices(guard).any(|(at, _)| {
+        !text[at + guard.len()..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+    })
+}
+
+/// dsl 0.28.0 (T1-6): why an entry can be read more than once in a run —
+/// its writes apply on the first read only ([`W_ENTRY_WRITE_REREAD`]).
+enum Reread<'e> {
+    /// No `on=`: a lookup entry, read whenever it is opened.
+    Lookup,
+    /// `on=` without `once`: every raise may present it again.
+    NoOnce,
+    /// A `once` shorter than the run (`day`, `slot`, `week`, `season:<n>`).
+    Shorter(&'e str),
+    /// `spentBy`: presented until the condition holds.
+    SpentBy,
+    /// `for=` without `once: run|user`: each member is presented again —
+    /// every raise, or each `once` period.
+    Members(Option<&'e str>),
+}
+
+impl<'e> Reread<'e> {
+    /// How `entry` can be re-read in a run, or `None` when it is read at
+    /// most once per run (per member, for a `for=` entry).
+    fn of(entry: &'e Entry) -> Option<Self> {
+        let once = entry
+            .once
+            .as_ref()
+            .map(|(v, _)| v.trim())
+            .filter(|v| *v != "false");
+        let per_run = once.is_some_and(|o| o == "run" || o == "user");
+        if entry.on.is_none() {
+            Some(Self::Lookup)
+        } else if entry.spent_by.is_some() {
+            Some(Self::SpentBy)
+        } else if entry.for_kind.is_some() {
+            (!per_run).then_some(Self::Members(once))
+        } else {
+            match once {
+                None => Some(Self::NoOnce),
+                Some(_) if per_run => None,
+                Some(o) => Some(Self::Shorter(o)),
+            }
+        }
+    }
+
+    /// The warning for `entry`'s first write `what` (`::set`, `::retract`,
+    /// `::<directive>`): why it is read again, what that does to the write,
+    /// and the remedies that work for this shape.
+    fn message(&self, entry: &Entry, what: &str) -> String {
+        let id = &entry.id;
+        let text = |v: &Option<(String, Span)>| v.as_ref().map(|(s, _)| s.trim().to_string());
+        let on = text(&entry.on).unwrap_or_default();
+        let period = |o: &str| match o.strip_prefix("season:") {
+            Some(n) => format!("`{n}` season"),
+            None => o.to_string(),
+        };
+        let (why, lost) = match self {
+            Self::Lookup => (
+                "answers no occasion, so it is read whenever it is opened".to_string(),
+                format!("its `{what}` applies on the first read in a run only"),
+            ),
+            Self::NoOnce => (
+                format!("has no `once`, so every raise of `{on}` can present it again in a run"),
+                format!("its `{what}` applies on the first read in a run only"),
+            ),
+            Self::Shorter(o) => (
+                format!(
+                    "has `once=\"{o}\"`, so it is presented again each {}",
+                    period(o)
+                ),
+                format!(
+                    "its `{what}` applies on the first {} only (an entry's writes apply on its \
+                     first read in a run)",
+                    period(o)
+                ),
+            ),
+            Self::SpentBy => (
+                "stays eligible until its `spentBy` holds, so it can be read again in a run"
+                    .to_string(),
+                format!("its `{what}` applies on the first read in a run only"),
+            ),
+            Self::Members(once) => (
+                match once {
+                    None => format!(
+                        "is read per member, and with no `once` every raise of `{on}` can \
+                         present a member again in a run"
+                    ),
+                    Some(o) => format!(
+                        "is read per member, and `once=\"{o}\"` presents each member again each {}",
+                        period(o)
+                    ),
+                },
+                format!("its `{what}` applies on each member's first read in a run only"),
+            ),
+        };
+        let guard = format!(
+            "to keep the write to the first read on purpose, guard it with \
+             `when=\"!entry.{id}.read\"`"
+        );
+        let remedies = match self {
+            Self::Lookup => vec![
+                guard,
+                "a write that must apply every time belongs in a `<beat>` answering an occasion"
+                    .to_string(),
+            ],
+            _ => {
+                // An entry without `once` is repeatable, a `<beat>` without
+                // `once` is spent for the run: the beat that repeats the
+                // entry says `once="false"` (not beside `spentBy`, whose
+                // unwritten period is `run` for both).
+                let once = match text(&entry.once) {
+                    Some(o) if o != "false" => Some(o),
+                    _ if entry.spent_by.is_some() => None,
+                    _ => Some("false".to_string()),
+                };
+                let mut attrs = format!("on=\"{on}\"");
+                for (key, value) in [
+                    ("target", text(&entry.target)),
+                    ("for", text(&entry.for_kind)),
+                    ("once", once),
+                    (
+                        "spentBy",
+                        entry.spent_by.as_ref().map(|s| s.raw.trim().to_string()),
+                    ),
+                ] {
+                    if let Some(v) = value {
+                        attrs.push_str(&format!(" {key}=\"{v}\""));
+                    }
+                }
+                let mut out = vec![format!(
+                    "to apply it on every presentation, put the body in a `<beat {attrs}>` — a \
+                     beat's writes apply each time it is presented"
+                )];
+                if !matches!(self, Self::SpentBy) {
+                    out.push(match self {
+                        Self::Members(_) => "for one application per member per run, write \
+                                             `once=\"run\"` on the entry"
+                            .to_string(),
+                        _ => "for one application per run, write `once=\"run\"` on the entry"
+                            .to_string(),
+                    });
+                }
+                out.push(guard);
+                out
+            }
+        };
+        format!(
+            "`<entry id=\"{id}\">` {why}, but {lost} — later reads skip it; {}",
+            remedies.join("; ")
+        )
+    }
 }
 
 /// One entry's attribute shape (`E-ENTRY-ATTR`, `E-PATH-IDENT`) and closure
@@ -381,11 +561,7 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
             ));
         } else if !is_beat_target(target) {
             diags.push(attr_diag(
-                format!(
-                    "`<entry>` `target=\"{target}\"` is malformed; a target is a dotted id \
-                     `Ident (\".\" Segment)*` with `Segment ::= [A-Za-z0-9_-]+`, e.g. \
-                     `item.rusty_key`, or `kind:<entity kind>` (dsl 0.19.0 §3, 0.26.0 §5)"
-                ),
+                crate::beats::malformed_target("`<entry>`", target, true),
                 *span,
             ));
         }

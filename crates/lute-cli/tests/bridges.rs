@@ -71,7 +71,7 @@ fn trace(mock: Option<&str>) -> Output {
 
 #[test]
 fn play_halts_at_an_unanswered_call_before_the_default_arm() {
-    let o = play("unanswered", "steps:\n  - occasion: hubVisit\n");
+    let o = play("unanswered", "steps:\n  - occasion: townVisit\n");
     let text = out(&o);
     assert_eq!(o.status.code(), Some(3), "{text}");
     assert!(
@@ -94,7 +94,7 @@ fn play_consumes_top_level_answers_in_call_order() {
     let o = play(
         "top",
         "bridges:\n  check:\n    - { passed: true, margin: 3 }\n    - { passed: false, margin: -2 }\n\
-         steps:\n  - occasion: hubVisit\n",
+         steps:\n  - occasion: townVisit\n",
     );
     let text = out(&o);
     assert_eq!(o.status.code(), Some(0), "{text}");
@@ -120,7 +120,7 @@ fn play_step_answers_come_before_the_top_level_ones() {
     let o = play(
         "step",
         "bridges:\n  check:\n    - { passed: false, margin: 0 }\n\
-         steps:\n  - occasion: hubVisit\n    bridges:\n      check:\n        - { passed: true, margin: 1 }\n",
+         steps:\n  - occasion: townVisit\n    bridges:\n      check:\n        - { passed: true, margin: 1 }\n",
     );
     let text = out(&o);
     assert_eq!(o.status.code(), Some(0), "{text}");
@@ -135,7 +135,7 @@ fn play_step_answers_come_before_the_top_level_ones() {
 fn play_fails_a_step_that_leaves_its_own_answers_unconsumed() {
     let o = play(
         "leftover",
-        "steps:\n  - occasion: hubVisit\n    bridges:\n      check:\n        - { passed: true, margin: 1 }\n\
+        "steps:\n  - occasion: townVisit\n    bridges:\n      check:\n        - { passed: true, margin: 1 }\n\
          \x20       - { passed: true, margin: 1 }\n        - { passed: false, margin: 9 }\n",
     );
     let text = out(&o);
@@ -160,7 +160,7 @@ fn play_include_answers_are_local_to_each_repetition() {
     let steps = write(
         &temp_dir("include-steps"),
         "v.steps.yaml",
-        "- newRun: true\n- occasion: hubVisit\n",
+        "- newRun: true\n- occasion: townVisit\n",
     );
     let o = play(
         "include",
@@ -168,7 +168,7 @@ fn play_include_answers_are_local_to_each_repetition() {
             "bridges:\n  check:\n    - {{ passed: false, margin: 0 }}\n    - {{ passed: true, margin: 2 }}\n\
              steps:\n  - include: {}\n    repeat: 2\n    bridges:\n      check:\n        \
              - {{ passed: true, margin: 1 }}\n        - {{ passed: false, margin: 0 }}\n        \
-             - {{ passed: false, margin: 7 }}\n  - newRun: true\n  - occasion: hubVisit\n",
+             - {{ passed: false, margin: 7 }}\n  - newRun: true\n  - occasion: townVisit\n",
             steps.display()
         ),
     );
@@ -191,19 +191,19 @@ fn play_include_answers_are_local_to_each_repetition() {
 fn play_refuses_a_bad_field_or_a_misfit_value_at_load() {
     for (script, want) in [
         (
-            "bridges:\n  check:\n    - { passed: true, margn: 3 }\nsteps:\n  - occasion: hubVisit\n",
+            "bridges:\n  check:\n    - { passed: true, margn: 3 }\nsteps:\n  - occasion: townVisit\n",
             "gives `margn`, which no effect of the `::check` calls reads",
         ),
         (
-            "bridges:\n  check:\n    - { passed: maybe, margin: 3 }\nsteps:\n  - occasion: hubVisit\n",
+            "bridges:\n  check:\n    - { passed: maybe, margin: 3 }\nsteps:\n  - occasion: townVisit\n",
             "`passed: maybe` does not fit `scene.check.",
         ),
         (
-            "bridges:\n  check:\n    - { passed: true }\nsteps:\n  - occasion: hubVisit\n",
+            "bridges:\n  check:\n    - { passed: true }\nsteps:\n  - occasion: townVisit\n",
             "lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }`",
         ),
         (
-            "bridges:\n  chek:\n    - { passed: true, margin: 1 }\nsteps:\n  - occasion: hubVisit\n",
+            "bridges:\n  chek:\n    - { passed: true, margin: 1 }\nsteps:\n  - occasion: townVisit\n",
             "did you mean `check`?",
         ),
     ] {
@@ -223,7 +223,7 @@ fn a_missing_bridge_field_reads_the_same_in_play_and_trace() {
                 content reads: `{ passed: <bool>, margin: <number> }`";
     let played = out(&play(
         "lacks-same",
-        "bridges:\n  check:\n    - { passed: true }\nsteps:\n  - occasion: hubVisit\n",
+        "bridges:\n  check:\n    - { passed: true }\nsteps:\n  - occasion: townVisit\n",
     ));
     let traced = out(&trace(Some("bridges:\n  check:\n    - { passed: true }\n")));
     assert!(played.contains(want), "{played}");
@@ -380,7 +380,7 @@ fn assert_anchored(text: &str, file: &str) {
 fn a_bridges_mock_error_is_anchored_at_its_entry_in_the_mock() {
     let (t, o) = scenario(
         "bridge-anchored",
-        &format!("file: ../scenes/probe/c.lute\n{BAD_BRIDGES}expect:\n  exit: complete\n"),
+        &format!("file: ../scenes/probe/c.lute\n{BAD_BRIDGES}expect:\n  end: complete\n"),
     );
     assert_eq!(o.status.code(), Some(1), "{}", out(&o));
     assert_anchored(&out(&o), &t.display().to_string());
@@ -464,7 +464,7 @@ fn an_unread_bridge_result_field_may_be_left_out() {
     let script = write(
         &dir,
         "s.play.yaml",
-        &format!("{answers}steps:\n  - occasion: hubVisit\n"),
+        &format!("{answers}steps:\n  - occasion: townVisit\n"),
     );
     let run_play = |script: &Path| {
         Command::new(BIN)
@@ -489,7 +489,7 @@ fn an_unread_bridge_result_field_may_be_left_out() {
         "{}",
         out(&o)
     );
-    let bare = write(&dir, "bare.play.yaml", "steps:\n  - occasion: hubVisit\n");
+    let bare = write(&dir, "bare.play.yaml", "steps:\n  - occasion: townVisit\n");
     let o = run_play(&bare);
     assert_eq!(o.status.code(), Some(3), "{}", out(&o));
     assert!(

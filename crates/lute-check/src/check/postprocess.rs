@@ -3,6 +3,36 @@
 
 use super::*;
 
+/// Diagnostics that only ever follow from something else being wrong: a
+/// guard that can never hold, a dead arm, a match left uncovered, a read
+/// that may be unset. On one position the cause prints first.
+const CONSEQUENCE_CODES: &[&str] = &[
+    "E-BEAT-UNREACHABLE",
+    "E-ENTRY-UNREACHABLE",
+    "E-ARM-DEAD",
+    "E-NONEXHAUSTIVE",
+    "E-UNSET-UNCOVERED",
+    "E-MAYBE-UNSET",
+    "E-STATE-MAYBE-UNAVAILABLE",
+    "E-OBJECTIVE-UNSATISFIABLE",
+];
+
+/// The order diagnostics of one file print in: by position, and on one
+/// position the cause before what it causes (an error before a
+/// consequence, a consequence before a warning), then by code.
+pub fn diagnostic_order(a: &Diagnostic, b: &Diagnostic) -> std::cmp::Ordering {
+    let rank = |d: &Diagnostic| match d.severity {
+        Severity::Error if CONSEQUENCE_CODES.contains(&d.code.as_str()) => 1u8,
+        Severity::Error => 0,
+        _ => 2,
+    };
+    a.span
+        .byte_start
+        .cmp(&b.span.byte_start)
+        .then_with(|| rank(a).cmp(&rank(b)))
+        .then_with(|| a.code.cmp(&b.code))
+}
+
 /// Drop `E-MAYBE-UNSET` diagnostics whose span is a domain-exhaustive `<match>`
 /// subject (T4.6 x T4.4 carry-forward). A subject read that maybe-unset on entry
 /// is nonetheless safe when the match's arms cover every case (the join is an

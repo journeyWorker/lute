@@ -320,9 +320,11 @@ fn component_expansion_transcript_has_no_sentinel_leak() {
         "a doubled marker word must never appear: {stdout}"
     );
     // The boundary is still visible in some clean form (a trace reader can
-    // still tell inlined component content apart from the document's own).
+    // still tell inlined component content apart from the document's own):
+    // dsl 0.28.0 frames it once, named.
     assert!(
-        stdout.contains("component begin") && stdout.contains("component end"),
+        stdout.contains("-- component greet begin --")
+            && stdout.contains("-- component greet end --"),
         "the component boundary itself should still be signposted, just cleanly: {stdout}"
     );
 }

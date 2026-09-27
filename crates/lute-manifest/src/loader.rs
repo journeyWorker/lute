@@ -22,11 +22,11 @@ pub struct LoadedPlugin {
     pub frontmatter: BTreeMap<String, Type>,
     pub asset_kinds: Vec<AssetKindDecl>,
     pub events: Vec<EventDecl>,
-    /// plugin §14.1 `stampattrs/*.yaml`: CROSS-CUTTING attrs admissible on
+    /// plugin §14.1 `stampAttrs` export: CROSS-CUTTING attrs admissible on
     /// every directive and content line, lowered into the record's stamp
     /// rather than its own fields.
     pub stamp_attrs: Vec<AttrDecl>,
-    /// dsl 0.16.0 §4 `rewardkinds/*.yaml`: capability-declared reward
+    /// dsl 0.16.0 §4 `rewardKinds` export: capability-declared reward
     /// vocabulary. Each entry carries the id (map key), optional `target`
     /// (`providerRef` pattern — assembly rejects a kind whose provider is
     /// absent), and optional extra `attrs` for game-specific slots. Folded
@@ -51,21 +51,146 @@ pub struct LoadedPlugin {
     /// names. Folded into [`crate::snapshot::CapabilitySnapshot::cast`] at
     /// assembly as a guarded `capabilityVersion` section.
     pub cast: Vec<CastMember>,
+    /// Where each named declaration sits in the package's files — kind
+    /// (`directive`, `event`, `occasion`, `rewardKind`, `cast`, …) → name →
+    /// `path:line:column` of its FIRST declaration — so an error assembly
+    /// raises about ONE declaration points at its line ([`LoadedPlugin::site`]).
+    pub sites: Sites,
 }
+
+/// [`LoadedPlugin::sites`]: kind → name → `path:line:column`.
+pub type Sites = BTreeMap<&'static str, BTreeMap<String, String>>;
+
+impl LoadedPlugin {
+    /// `path:line:column` of the `kind` declaration `name`, when it came from
+    /// a file.
+    pub fn site(&self, kind: &str, name: &str) -> Option<&str> {
+        self.sites.get(kind)?.get(name).map(String::as_str)
+    }
+}
+
+/// One export file being merged into its package.
+struct Source<'a> {
+    /// The package directory: a duplicate names its earlier declaration
+    /// relative to it.
+    pkg: &'a Path,
+    file: &'a Path,
+    text: &'a str,
+}
+
+impl Source<'_> {
+    /// The `kind` declaration `name` at byte `at` of this file: when `new`,
+    /// record its site (when its place is known) and return `true`; else it
+    /// is a [`LoadError::DuplicateId`] naming the first declaration as
+    /// `file:line` relative to the package, and `false`.
+    fn admit(
+        &self,
+        sites: &mut Sites,
+        kind: &'static str,
+        name: String,
+        at: Option<usize>,
+        new: bool,
+        errs: &mut Vec<LoadError>,
+    ) -> bool {
+        let at = at.map(|o| crate::yaml_text::line_col(self.text, o));
+        if new {
+            if let Some((line, col)) = at {
+                let site = format!("{}:{line}:{col}", self.file.display());
+                sites.entry(kind).or_default().insert(name, site);
+            }
+            return true;
+        }
+        let first = sites.get(kind).and_then(|m| m.get(&name)).map(|site| {
+            let site = site.rsplit_once(':').map_or(site.as_str(), |(s, _)| s);
+            let (path, line) = site.rsplit_once(':').unwrap_or((site, ""));
+            let rel = Path::new(path).strip_prefix(self.pkg).map_or_else(
+                |_| path.to_string(),
+                |rel| {
+                    rel.components()
+                        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                        .collect::<Vec<_>>()
+                        .join("/")
+                },
+            );
+            format!("{rel}:{line}")
+        });
+        errs.push(LoadError::DuplicateId {
+            kind: kind.into(),
+            id: name,
+            file: self.file.display().to_string(),
+            at,
+            first,
+        });
+        false
+    }
+}
+
+/// The keys `plugin.yaml` takes (plugin §5).
+const MANIFEST_KEYS: &[&str] = &["id", "version", "kind", "depends", "exports", "options"];
+
+/// The export kinds a manifest's `exports:` may name (plugin §4).
+pub const EXPORT_KINDS: &[&str] = &[
+    "directives",
+    "state",
+    "providers",
+    "bridge",
+    "defs",
+    "enums",
+    "frontmatter",
+    "docs",
+    "assetKinds",
+    "events",
+    "stampAttrs",
+    "rewardKinds",
+    "occasions",
+    "lints",
+    "cast",
+];
+
+/// Export keys renamed in 0.28 (old → new); the old spelling is refused with
+/// the new one.
+const RENAMED_EXPORTS: &[(&str, &str)] = &[
+    ("assetkinds", "assetKinds"),
+    ("stampattrs", "stampAttrs"),
+    ("rewardkinds", "rewardKinds"),
+];
+
+/// A (line, column) in a file, both 1-based, the column in characters.
+pub type At = Option<(usize, usize)>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LoadError {
+    /// `plugin.yaml` is missing, unreadable, not YAML, or lacks a required
+    /// key. `file` is its path; `at`, where in it.
     Manifest {
-        dir: String,
+        file: String,
+        at: At,
         msg: String,
     },
+    /// An export file does not parse or declares something inconsistent.
     Parse {
         file: String,
+        at: At,
         msg: String,
     },
+    /// A key `plugin.yaml` or an export file does not take (unknown, or an
+    /// old spelling), or a `kind:` other than `capability`.
+    Key {
+        file: String,
+        at: At,
+        msg: String,
+    },
+    /// A name declared twice within one package, or two packages with one
+    /// id. The first declaration is kept and the later one ignored, so the
+    /// package still loads. `file`/`at` locate the later declaration;
+    /// `first` names the earlier one as `file:line`, relative to the package
+    /// (for a package id, to the plugins directory).
     DuplicateId {
         kind: String,
         id: String,
+        file: String,
+        at: At,
+        first: Option<String>,
     },
     MissingExportDir {
         export: String,
@@ -76,11 +201,14 @@ pub enum LoadError {
         path: String,
         msg: String,
     },
-    /// An export key outside the closed set (plugin §4).
+    /// An export key outside [`EXPORT_KINDS`] (plugin §4), at its place in
+    /// `plugin.yaml` (`file`).
     UnknownExport {
+        file: String,
+        at: At,
         export: String,
     },
-    /// plugin §7: an asset-kind segment (`assetkinds/*.yaml`, `AssetSegment.ty`)
+    /// plugin §7: an asset-kind segment (`assetKinds` export, `AssetSegment.ty`)
     /// declared a `Type` outside the closed set a segment position admits.
     /// `AssetSegment.ty` is the SAME shared `Type` enum every other typed
     /// position uses (`crates/lute-manifest/src/schema.rs`), so every `Type`
@@ -110,6 +238,7 @@ impl LoadError {
         match self {
             LoadError::Manifest { .. } => "E-PLUGIN-MANIFEST",
             LoadError::Parse { .. } => "E-PLUGIN-PARSE",
+            LoadError::Key { .. } => "E-PLUGIN-KEY",
             LoadError::DuplicateId { .. } => "E-PLUGIN-DUP-ID",
             LoadError::MissingExportDir { .. } => "E-PLUGIN-MISSING-EXPORT",
             LoadError::Io { .. } => "E-PLUGIN-IO",
@@ -119,36 +248,64 @@ impl LoadError {
     }
 }
 
+/// `path:line:column: ` when the place is known, else `path: `.
+fn place(f: &mut std::fmt::Formatter<'_>, file: &str, at: At) -> std::fmt::Result {
+    match at {
+        Some((line, col)) => write!(f, "{file}:{line}:{col}: "),
+        None => write!(f, "{file}: "),
+    }
+}
+
 impl std::fmt::Display for LoadError {
     /// Human-readable rendering, surfaced by `project.rs` as the resolver's
     /// `ResolveDiag` message. Mirrors [`crate::assemble::AssembleError`]'s
     /// `Display` (`assemble.rs`), which made the identical argument when
     /// assembly errors stopped leaking `Debug` prose: since an `E-`-severity
     /// diagnostic here gates the CLI exit code, this text is the whole of
-    /// what a failing plugin author sees — a Rust struct dump is not an
-    /// acceptable answer (0.10.1: the toolchain says what it knows).
+    /// what a failing plugin author sees — a Rust struct dump or serde's own
+    /// wording is not an acceptable answer. A located error leads with
+    /// `path:line:column:`, as a document diagnostic does.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LoadError::Manifest { dir, msg } => {
-                write!(
-                    f,
-                    "plugin package `{dir}` has no readable `plugin.yaml`: {msg}"
-                )
+            LoadError::Manifest { file, at, msg }
+            | LoadError::Parse { file, at, msg }
+            | LoadError::Key { file, at, msg } => {
+                place(f, file, *at)?;
+                f.write_str(msg)
             }
-            LoadError::Parse { file, msg } => write!(f, "`{file}` failed to parse: {msg}"),
-            LoadError::DuplicateId { kind, id } => {
-                write!(f, "{kind} `{id}` is declared more than once")
+            LoadError::DuplicateId {
+                kind,
+                id,
+                file,
+                at,
+                first,
+            } => {
+                place(f, file, *at)?;
+                match first {
+                    Some(first) => write!(f, "{kind} `{id}` is already declared at {first}")?,
+                    None => write!(f, "{kind} `{id}` is declared more than once")?,
+                }
+                f.write_str("; this declaration is ignored — rename or remove one")
             }
             LoadError::MissingExportDir { export, path } => {
                 write!(f, "export `{export}` names `{path}`, which does not exist")
             }
             LoadError::Io { path, msg } => write!(f, "`{path}` could not be read: {msg}"),
-            LoadError::UnknownExport { export } => write!(
-                f,
-                "export `{export}` is not one of the plugin manifest's known kinds \
-                 (directives, state, providers, bridge, defs, enums, frontmatter, docs, \
-                 assetkinds, events, stampattrs, rewardkinds, occasions, lints, cast)"
-            ),
+            LoadError::UnknownExport { file, at, export } => {
+                place(f, file, *at)?;
+                match RENAMED_EXPORTS.iter().find(|(old, _)| old == export) {
+                    Some((_, new)) => write!(
+                        f,
+                        "export `{export}` is now spelled `{new}` — write `{new}:` in `exports:`"
+                    ),
+                    None => write!(
+                        f,
+                        "export `{export}` is not an export kind{} (kinds: {})",
+                        crate::suggest::did_you_mean(export, EXPORT_KINDS.iter().copied()),
+                        EXPORT_KINDS.join(", ")
+                    ),
+                }
+            }
             LoadError::AssetSegmentType {
                 file,
                 kind,
@@ -158,46 +315,34 @@ impl std::fmt::Display for LoadError {
                 f,
                 "`{file}`: assetKind `{kind}` segment `{segment}` declares type `{found}`, \
                  but a segment position admits only `enum`, `number`, `string`, or \
-                 `providerRef` (plugin §7)"
+                 `providerRef`"
             ),
         }
     }
 }
 
-/// Read one plugin package. `dir` MUST contain `plugin.yaml`.
+/// Read one plugin package. `dir` MUST contain `plugin.yaml`. Any error —
+/// even a duplicate name [`load_plugins_dir`] loads past — is `Err`.
 pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
-    load_package(dir).map_err(|(_, errs)| errs)
+    match load_package(dir) {
+        Ok((loaded, dups)) if dups.is_empty() => Ok(loaded),
+        Ok((_, dups)) => Err(dups),
+        Err((_, errs)) => Err(errs),
+    }
 }
 
-/// [`load_plugin_dir`], but a failure also carries the manifest id when the
-/// manifest itself parsed (only an export failed).
-fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadError>)> {
+/// [`load_plugin_dir`], but a package whose only faults are duplicate names
+/// still loads — the first declaration of each is kept — with the
+/// [`LoadError::DuplicateId`]s beside it; and a failure also carries the
+/// manifest id when the manifest named one (so assembly says the plugin
+/// failed to load rather than that it is not installed).
+#[allow(clippy::type_complexity)]
+fn load_package(
+    dir: &Path,
+) -> Result<(LoadedPlugin, Vec<LoadError>), (Option<String>, Vec<LoadError>)> {
     let mut errs = Vec::new();
-
     let manifest_path = dir.join("plugin.yaml");
-    let manifest: PluginManifest = match std::fs::read_to_string(&manifest_path) {
-        Ok(s) => match serde_yaml::from_str(&s) {
-            Ok(m) => m,
-            Err(e) => {
-                return Err((
-                    None,
-                    vec![LoadError::Manifest {
-                        dir: dir.display().to_string(),
-                        msg: e.to_string(),
-                    }],
-                ))
-            }
-        },
-        Err(e) => {
-            return Err((
-                None,
-                vec![LoadError::Manifest {
-                    dir: dir.display().to_string(),
-                    msg: e.to_string(),
-                }],
-            ))
-        }
-    };
+    let (manifest, manifest_text) = read_manifest(&manifest_path)?;
 
     let mut out = LoadedPlugin {
         manifest: manifest.clone(),
@@ -216,10 +361,19 @@ fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadErr
         occasions: Vec::new(),
         lints: Vec::new(),
         cast: Vec::new(),
+        sites: BTreeMap::new(),
     };
 
     // Read each declared export. A relative export path resolves under `dir`.
     for (export, rel) in &manifest.exports {
+        if !EXPORT_KINDS.contains(&export.as_str()) {
+            errs.push(LoadError::UnknownExport {
+                file: manifest_path.display().to_string(),
+                at: key_at(&manifest_text, &["exports", export]),
+                export: export.clone(),
+            });
+            continue;
+        }
         let path = dir.join(rel);
         if !path.exists() {
             errs.push(LoadError::MissingExportDir {
@@ -228,91 +382,191 @@ fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadErr
             });
             continue;
         }
+        // Where the `n`th entry declaring `id` sits in a file: by its
+        // `name:` (or other id field) value in a list, by its key in a map.
+        let field = |field: &'static str| {
+            move |src: &Source, id: &str, n: usize| field_value_at(src.text, field, id, n)
+        };
+        let keyed = |section: &'static str| {
+            move |src: &Source, id: &str, _: usize| key_offset(src.text, &[section, id])
+        };
+        let sites = &mut out.sites;
         match export.as_str() {
-            "directives" => read_kind::<DirectivesFile, _>(&path, &mut errs, |f, file, e| {
-                // dsl 0.26.0 §4: `when=` is the core directive condition on
-                // every plugin passthrough directive; an attribute of that
-                // name could never be written.
+            "directives" => read_kind::<DirectivesFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let (file, text) = (src.file, src.text);
                 for d in &f.directives {
+                    // dsl 0.26.0 §4: `when=` is the core directive condition on
+                    // every plugin passthrough directive; an attribute of that
+                    // name could never be written.
                     if d.attrs.iter().any(|a| a.name == "when") {
                         e.push(LoadError::Parse {
                             file: file.display().to_string(),
+                            at: field_value_at(text, "name", &d.name, 0)
+                                .map(|o| crate::yaml_text::line_col(text, o)),
                             msg: format!(
                                 "directive `{}` declares an attribute `when`, which is reserved: \
                                  `when=\"<condition>\"` is the core condition every directive \
-                                 takes (dsl 0.26.0 §4) — rename the attribute",
+                                 takes — rename the attribute",
                                 d.name
                             ),
                         });
                     }
-                }
-                // dsl 0.27.0 §4: a declared effect that reads an attr the
-                // directive lacks is this file's fault, at its line.
-                let text = std::fs::read_to_string(file).unwrap_or_default();
-                for d in &f.directives {
+                    // dsl 0.27.0 §4: a declared effect that reads an attr the
+                    // directive lacks is this file's fault, at its line.
                     for me in crate::validate::validate_effects(d) {
-                        let at = effect_error_line(&text, &d.name, &me.message());
                         e.push(LoadError::Parse {
                             file: file.display().to_string(),
-                            msg: match at {
-                                Some((line, col)) => {
-                                    format!("{} at line {line} column {col}", me.message())
-                                }
-                                None => me.message(),
-                            },
+                            at: effect_error_line(text, &d.name, &me.message()),
+                            msg: me.message(),
                         });
                     }
                 }
-                merge_directives(&mut out.directives, f.directives, e)
-            }),
-            "state" => read_state(&path, &mut out, &mut errs),
-            "providers" => read_kind::<ProvidersFile, _>(&path, &mut errs, |f, _file, e| {
+                let (dst, key) = (&mut out.directives, |d: &DirectiveDecl| d.name.clone());
                 merge_named(
-                    &mut out.providers,
-                    f.providers,
-                    "provider",
-                    |p| p.name.clone(),
+                    dst,
+                    sites,
+                    f.directives,
+                    "directive",
+                    key,
+                    field("name"),
+                    src,
                     e,
                 )
             }),
-            "bridge" => read_kind::<BridgeFile, _>(&path, &mut errs, |f, _file, e| {
-                merge_bridge(&mut out.bridge, f.bridge, e)
+            "state" => read_kind::<StateFile, _>(dir, &path, &mut errs, |f, src, e| {
+                if f.state_shapes.is_none() && f.state_templates.is_none() {
+                    e.push(LoadError::Parse {
+                        file: src.file.display().to_string(),
+                        at: None,
+                        msg: "not a state file: declare `stateShapes:` and/or `stateTemplates:`"
+                            .into(),
+                    });
+                }
+                let shapes = f.state_shapes.unwrap_or_default();
+                let key = |s: &StateShape| s.name.clone();
+                merge_named(
+                    &mut out.state_shapes,
+                    sites,
+                    shapes,
+                    "shape",
+                    key,
+                    field("name"),
+                    src,
+                    e,
+                );
+                let templates = f.state_templates.unwrap_or_default();
+                let key = |t: &StateTemplate| t.name.clone();
+                let dst = &mut out.state_templates;
+                merge_named(
+                    dst,
+                    sites,
+                    templates,
+                    "template",
+                    key,
+                    field("name"),
+                    src,
+                    e,
+                );
             }),
-            "defs" => read_kind::<DefsFile, _>(&path, &mut errs, |f, _file, e| {
-                merge_named(&mut out.defs, f.defs, "def", |d| d.name.clone(), e)
+            "providers" => read_kind::<ProvidersFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let key = |p: &ProviderDecl| p.name.clone();
+                merge_named(
+                    &mut out.providers,
+                    sites,
+                    f.providers,
+                    "provider",
+                    key,
+                    field("name"),
+                    src,
+                    e,
+                )
             }),
-            "enums" => read_enums(&path, &mut out.enums, &mut errs),
-            "frontmatter" => read_kind::<FrontmatterFile, _>(&path, &mut errs, |f, _file, e| {
-                merge_frontmatter(&mut out.frontmatter, f.frontmatter, e)
+            // One operation of one service; located by its `operation:`.
+            "bridge" => read_kind::<BridgeFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let key = |b: &BridgeCapability| format!("{}.{}", b.service, b.operation);
+                let at = |src: &Source, id: &str, n: usize| {
+                    let op = id.rsplit_once('.').map_or(id, |(_, op)| op);
+                    field_value_at(src.text, "operation", op, n)
+                };
+                merge_named(&mut out.bridge, sites, f.bridge, "bridge", key, at, src, e)
+            }),
+            "defs" => read_kind::<DefsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let key = |d: &DefDecl| d.name.clone();
+                merge_named(
+                    &mut out.defs,
+                    sites,
+                    f.defs,
+                    "def",
+                    key,
+                    field("name"),
+                    src,
+                    e,
+                )
+            }),
+            "enums" => read_kind::<EnumsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let items = f.enums.into_iter().map(|(k, v)| (k, v.into_domain()));
+                merge_keyed(&mut out.enums, sites, items, "enum", keyed("enums"), src, e)
+            }),
+            "frontmatter" => read_kind::<FrontmatterFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let items = f.frontmatter.into_iter().map(|d| (d.key, d.schema));
+                merge_keyed(
+                    &mut out.frontmatter,
+                    sites,
+                    items,
+                    "frontmatter",
+                    field("key"),
+                    src,
+                    e,
+                )
             }),
             "docs" => { /* non-normative (plugin §6.7); skip */ }
             // Anchored at the INDIVIDUAL declaration file `read_kind` just
-            // parsed `f` from, not the `assetkinds/` export dir `path` names
-            // — the same anchor `LoadError::Parse` already uses for a sibling
-            // failure in the same file (plugin §7 fix, defect 2).
-            "assetkinds" => read_kind::<AssetKindsFile, _>(&path, &mut errs, |f, file, e| {
-                check_asset_segment_types(&f.asset_kinds, &file.display().to_string(), e);
+            // parsed `f` from, not the export dir `path` names — the same
+            // anchor `LoadError::Parse` already uses for a sibling failure in
+            // the same file (plugin §7 fix, defect 2).
+            "assetKinds" => read_kind::<AssetKindsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                check_asset_segment_types(&f.asset_kinds, &src.file.display().to_string(), e);
+                let key = |k: &AssetKindDecl| k.kind.clone();
+                let dst = &mut out.asset_kinds;
                 merge_named(
-                    &mut out.asset_kinds,
+                    dst,
+                    sites,
                     f.asset_kinds,
                     "assetKind",
-                    |k| k.kind.clone(),
+                    key,
+                    field("kind"),
+                    src,
                     e,
                 )
             }),
-            "events" => read_kind::<EventsFile, _>(&path, &mut errs, |f, _file, e| {
-                merge_named(&mut out.events, f.events, "event", |ev| ev.name.clone(), e)
-            }),
-            "stampattrs" => read_kind::<StampAttrsFile, _>(&path, &mut errs, |f, _file, e| {
+            "events" => read_kind::<EventsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let key = |ev: &EventDecl| ev.name.clone();
                 merge_named(
-                    &mut out.stamp_attrs,
+                    &mut out.events,
+                    sites,
+                    f.events,
+                    "event",
+                    key,
+                    field("name"),
+                    src,
+                    e,
+                )
+            }),
+            "stampAttrs" => read_kind::<StampAttrsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let key = |a: &AttrDecl| a.name.clone();
+                let dst = &mut out.stamp_attrs;
+                merge_named(
+                    dst,
+                    sites,
                     f.stamp_attrs,
                     "stampAttr",
-                    |a| a.name.clone(),
+                    key,
+                    field("name"),
+                    src,
                     e,
                 )
             }),
-            "rewardkinds" => read_kind::<RewardKindsFile, _>(&path, &mut errs, |f, _file, e| {
+            "rewardKinds" => read_kind::<RewardKindsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let decls: Vec<RewardKindDecl> = f
                     .reward_kinds
                     .into_iter()
@@ -323,21 +577,22 @@ fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadErr
                         credits: body.credits,
                     })
                     .collect();
+                let key = |r: &RewardKindDecl| r.name.clone();
+                let at = keyed("rewardKinds");
                 merge_named(
                     &mut out.reward_kinds,
+                    sites,
                     decls,
                     "rewardKind",
-                    |r| r.name.clone(),
+                    key,
+                    at,
+                    src,
                     e,
                 )
             }),
-            "occasions" => read_kind::<OccasionsFile, _>(&path, &mut errs, |f, file, e| {
-                check_occasion_members(&f.occasions, &file.display().to_string(), e);
-                check_gate_types(
-                    &std::fs::read_to_string(file).unwrap_or_default(),
-                    &file.display().to_string(),
-                    e,
-                );
+            "occasions" => read_kind::<OccasionsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                check_occasion_members(&f.occasions, src.file, src.text, e);
+                check_gate_types(src.text, src.file, e);
                 let decls: Vec<OccasionDecl> = f
                     .occasions
                     .into_iter()
@@ -349,29 +604,62 @@ fn load_package(dir: &Path) -> Result<LoadedPlugin, (Option<String>, Vec<LoadErr
                         judge: body.judge,
                         raised_when: body.raised_when,
                         payload: body.payload,
+                        outside_run: body.outside_run,
                     })
                     .collect();
-                merge_named(&mut out.occasions, decls, "occasion", |o| o.name.clone(), e)
+                let key = |o: &OccasionDecl| o.name.clone();
+                let at = keyed("occasions");
+                merge_named(
+                    &mut out.occasions,
+                    sites,
+                    decls,
+                    "occasion",
+                    key,
+                    at,
+                    src,
+                    e,
+                )
             }),
-            "lints" => read_kind::<LintsFile, _>(&path, &mut errs, |f, _file, e| {
-                merge_named(&mut out.lints, f.lints, "lint", |r| r.id.clone(), e)
+            "lints" => read_kind::<LintsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                let key = |r: &crate::lint::LintRuleDecl| r.id.clone();
+                merge_named(
+                    &mut out.lints,
+                    sites,
+                    f.lints,
+                    "lint",
+                    key,
+                    field("id"),
+                    src,
+                    e,
+                )
             }),
-            "cast" => read_kind::<CastFile, _>(&path, &mut errs, |f, _file, e| {
+            "cast" => read_kind::<CastFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let decls: Vec<CastMember> = f
                     .cast
                     .into_iter()
                     .map(|(id, body)| body.into_member(id))
                     .collect();
-                merge_named(&mut out.cast, decls, "cast", |c| c.id.clone(), e)
+                let key = |c: &CastMember| c.id.clone();
+                merge_named(
+                    &mut out.cast,
+                    sites,
+                    decls,
+                    "cast",
+                    key,
+                    keyed("cast"),
+                    src,
+                    e,
+                )
             }),
-            other => errs.push(LoadError::UnknownExport {
-                export: other.to_string(),
-            }),
+            _ => unreachable!("every EXPORT_KINDS entry has an arm"),
         }
     }
 
-    if errs.is_empty() {
-        Ok(out)
+    if errs
+        .iter()
+        .all(|e| matches!(e, LoadError::DuplicateId { .. }))
+    {
+        Ok((out, errs))
     } else {
         Err((Some(out.manifest.id), errs))
     }
@@ -458,10 +746,11 @@ fn check_asset_segment_types(kinds: &[AssetKindDecl], file: &str, errs: &mut Vec
 /// at least one member, each once. Whether each listed member belongs to the
 /// domain's entity kind is the checker's to judge: entity kinds are project
 /// vocabulary (`entities:`), unknown to a plugin package. Reported as a
-/// [`LoadError::Parse`] of `file`, the declaration file the list came from.
+/// [`LoadError::Parse`] at the list in `file` (whose text is `text`).
 fn check_occasion_members(
     occasions: &BTreeMap<String, OccasionBody>,
-    file: &str,
+    file: &Path,
+    text: &str,
     errs: &mut Vec<LoadError>,
 ) {
     for (name, body) in occasions {
@@ -488,7 +777,8 @@ fn check_occasion_members(
             continue;
         };
         errs.push(LoadError::Parse {
-            file: file.to_string(),
+            file: file.display().to_string(),
+            at: key_at(text, &["occasions", name, "target", "members"]),
             msg,
         });
     }
@@ -497,7 +787,7 @@ fn check_occasion_members(
 /// dsl 0.27.0 §4: an occasion's `raisedWhen:` is a condition string. A YAML
 /// scalar that is not a string (`raisedWhen: true`, a number) would be read
 /// as its text; it is refused like a non-string `terminal:`.
-fn check_gate_types(text: &str, file: &str, errs: &mut Vec<LoadError>) {
+fn check_gate_types(text: &str, file: &Path, errs: &mut Vec<LoadError>) {
     let Ok(doc) = serde_yaml::from_str::<serde_yaml::Value>(text) else {
         return;
     };
@@ -511,18 +801,70 @@ fn check_gate_types(text: &str, file: &str, errs: &mut Vec<LoadError>) {
         if gate.is_string() || gate.is_null() {
             continue;
         }
+        let name = name.as_str().unwrap_or_default();
         let shown = serde_yaml::to_string(gate).unwrap_or_default();
         let shown = shown.trim();
         errs.push(LoadError::Parse {
-            file: file.to_string(),
+            file: file.display().to_string(),
+            at: key_at(text, &["occasions", name, "raisedWhen"]),
             msg: format!(
-                "occasion `{}`'s `raisedWhen: {shown}` is not a condition string — quote it \
+                "occasion `{name}`'s `raisedWhen: {shown}` is not a condition string — quote it \
                  (`raisedWhen: \"{shown}\"`), or drop `raisedWhen` for an occasion the engine \
-                 may always raise",
-                name.as_str().unwrap_or_default()
+                 may always raise"
             ),
         });
     }
+}
+
+/// Byte offset of the mapping key at `path` in YAML `text`.
+fn key_offset(text: &str, path: &[&str]) -> Option<usize> {
+    crate::yaml_text::key_span(text, path).map(|r| r.start)
+}
+
+/// (line, column) of the mapping key at `path` in YAML `text`.
+fn key_at(text: &str, path: &[&str]) -> At {
+    key_offset(text, path).map(|o| crate::yaml_text::line_col(text, o))
+}
+
+/// Byte offset of the value `value` of the `n`th (0-based) `field:` key
+/// holding it in `text` — a list entry `- name: use` or a flow entry
+/// `{ name: use, … }`, quoted or not.
+fn field_value_at(text: &str, field: &str, value: &str, n: usize) -> Option<usize> {
+    let key = format!("{field}:");
+    let mut from = 0;
+    let mut seen = 0;
+    while let Some(i) = text[from..].find(&key) {
+        let at = from + i;
+        from = at + key.len();
+        if text[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            continue;
+        }
+        let rest = &text[from..];
+        let pad = rest.len() - rest.trim_start_matches([' ', '\t']).len();
+        let v = &rest[pad..];
+        let quote = v.chars().next().filter(|c| *c == '"' || *c == '\'');
+        let body = if quote.is_some() { &v[1..] } else { v };
+        let Some(after) = body.strip_prefix(value) else {
+            continue;
+        };
+        let closed = match quote {
+            Some(q) => after.starts_with(q),
+            None => {
+                after.is_empty() || after.starts_with([',', '}', ']', ' ', '\t', '\r', '\n', '#'])
+            }
+        };
+        if closed {
+            if seen == n {
+                return Some(from + pad + usize::from(quote.is_some()));
+            }
+            seen += 1;
+        }
+    }
+    None
 }
 
 /// `(line, column)` (1-based) of what an effect error names — its first
@@ -546,18 +888,18 @@ fn effect_error_line(text: &str, directive: &str, message: &str) -> Option<(usiz
     let detail = message.split_once(": ").map_or(message, |(_, d)| d);
     let needle = detail.split('`').nth(1).filter(|n| !n.is_empty())?;
     let at = from + text[from..].find(needle)?;
-    let line = text[..at].matches('\n').count() + 1;
-    let col = at - text[..at].rfind('\n').map_or(0, |n| n + 1) + 1;
-    Some((line, col))
+    Some(crate::yaml_text::line_col(text, at))
 }
 
 /// Scan `dir` for plugin packages (each immediate subdirectory containing a
 /// `plugin.yaml`), in sorted order, and index by manifest id. A duplicate id
 /// across packages is a `LoadError::DuplicateId { kind: "plugin", .. }` (the
-/// later package is dropped). A package whose manifest parsed but whose
-/// exports failed lands in [`crate::resolve::InstalledPlugins::failed`], so
-/// assembly can say it failed to load rather than that it is not installed.
-/// A missing `dir` yields an empty registry.
+/// later package is dropped); a duplicate name within a package is reported
+/// and the package still installed, its first declaration kept. A package
+/// whose manifest parsed but whose exports failed lands in
+/// [`crate::resolve::InstalledPlugins::failed`], so assembly can say it
+/// failed to load rather than that it is not installed. A missing `dir`
+/// yields an empty registry.
 pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<LoadError>) {
     use crate::resolve::{InstalledPlugin, InstalledPlugins};
     let mut reg = InstalledPlugins::default();
@@ -570,21 +912,38 @@ pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<Lo
         Err(_) => return (reg, errs),
     };
     subs.sort();
+    // The manifest each installed id came from, for a later duplicate.
+    let mut homes: BTreeMap<String, std::path::PathBuf> = BTreeMap::new();
     for sub in subs {
         if !sub.join("plugin.yaml").is_file() {
             continue;
         }
         match load_package(&sub) {
-            Ok(loaded) => {
+            Ok((loaded, mut dups)) => {
+                errs.append(&mut dups);
                 let id = loaded.manifest.id.clone();
+                let manifest = sub.join("plugin.yaml");
+                let id_at = |file: &Path| {
+                    let text = std::fs::read_to_string(file).unwrap_or_default();
+                    key_at(&text, &["id"])
+                };
                 match reg.by_id.entry(id) {
                     std::collections::btree_map::Entry::Occupied(e) => {
+                        let first = homes.get(e.key()).map(|home| {
+                            let line = id_at(home).map_or(String::new(), |(l, _)| format!(":{l}"));
+                            let rel = home.strip_prefix(dir).unwrap_or(home);
+                            format!("{}{line}", rel.display())
+                        });
                         errs.push(LoadError::DuplicateId {
                             kind: "plugin".into(),
                             id: e.key().clone(),
+                            at: id_at(&manifest),
+                            file: manifest.display().to_string(),
+                            first,
                         });
                     }
                     std::collections::btree_map::Entry::Vacant(e) => {
+                        homes.insert(e.key().clone(), manifest);
                         e.insert(InstalledPlugin { loaded });
                     }
                 }
@@ -605,12 +964,138 @@ pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<Lo
     (reg, errs)
 }
 
+/// Read `plugin.yaml` at `path`: every key it holds is one it takes, its
+/// `kind:` is `capability`, and each `depends:`/`options:` entry holds only
+/// its own keys. Returns the manifest and its text; a failure carries the
+/// manifest id when the file names one.
+fn read_manifest(
+    path: &Path,
+) -> Result<(PluginManifest, String), (Option<String>, Vec<LoadError>)> {
+    use serde_yaml::Value;
+    let file = path.display().to_string();
+    let fail = |at: At, msg: String| {
+        vec![LoadError::Manifest {
+            file: file.clone(),
+            at,
+            msg,
+        }]
+    };
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        (
+            None,
+            fail(None, format!("`plugin.yaml` could not be read: {e}")),
+        )
+    })?;
+    let doc: Value = serde_yaml::from_str(&text).map_err(|e| {
+        let fault = crate::yaml_text::yaml_fault(&text, &e);
+        let at = crate::yaml_text::line_col(&text, fault.offset);
+        (None, fail(Some(at), fault.message))
+    })?;
+    let shape = "`plugin.yaml` declares `id: <plugin id>`, `version: <version>`, \
+                 `kind: capability` and `exports: { <kind>: <path> }`";
+    let Some(map) = doc.as_mapping() else {
+        return Err((None, fail(None, shape.to_string())));
+    };
+    let id = map.get("id").and_then(Value::as_str).map(str::to_string);
+    let shown = |v: &Value| {
+        serde_yaml::to_string(v)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let mut errs = Vec::new();
+    let mut key_error = |at: At, msg: String| {
+        errs.push(LoadError::Key {
+            file: file.clone(),
+            at,
+            msg,
+        })
+    };
+    for k in map.keys() {
+        let key = shown(k);
+        if !MANIFEST_KEYS.contains(&key.as_str()) {
+            key_error(
+                key_at(&text, &[&key]),
+                format!(
+                    "`plugin.yaml` has no key `{key}`{} (its keys: {})",
+                    crate::suggest::did_you_mean(&key, MANIFEST_KEYS.iter().copied()),
+                    MANIFEST_KEYS.join(", ")
+                ),
+            );
+        }
+    }
+    if let Some(kind) = map.get("kind").filter(|k| k.as_str() != Some("capability")) {
+        key_error(
+            key_at(&text, &["kind"]),
+            format!(
+                "`kind: {}` is not a plugin kind — a plugin package declares `kind: capability`",
+                shown(kind)
+            ),
+        );
+    }
+    for (list, keys, entry) in [
+        (
+            "depends",
+            &["id", "range"][..],
+            "`{ id: <plugin id>, range: <version range> }`",
+        ),
+        (
+            "options",
+            &["name", "type", "default"][..],
+            "`{ name: <option>, type: <type>, default: <value> }`",
+        ),
+    ] {
+        let items = map.get(list).and_then(Value::as_sequence);
+        for item in items.into_iter().flatten().filter_map(Value::as_mapping) {
+            for k in item.keys() {
+                let key = shown(k);
+                if !keys.contains(&key.as_str()) {
+                    key_error(
+                        key_at(&text, &[list, &key]),
+                        format!(
+                            "a `{list}:` entry has no key `{key}`{} — an entry is {entry}",
+                            crate::suggest::did_you_mean(&key, keys.iter().copied())
+                        ),
+                    );
+                }
+            }
+        }
+    }
+    if !errs.is_empty() {
+        return Err((id, errs));
+    }
+    for (key, example) in [
+        ("id", "id: <plugin id>"),
+        ("version", "version: 0.1.0"),
+        ("kind", "kind: capability"),
+        ("exports", "exports: { directives: directives/ }"),
+    ] {
+        if map.get(key).is_none() {
+            errs.extend(fail(
+                None,
+                format!("`plugin.yaml` names no `{key}:` — add `{example}`"),
+            ));
+        }
+    }
+    if !errs.is_empty() {
+        return Err((id, errs));
+    }
+    match serde_yaml::from_str::<PluginManifest>(&text) {
+        Ok(m) => Ok((m, text)),
+        Err(e) => {
+            let (at, msg) = data_error(&text, &e);
+            Err((id, fail(at, format!("`plugin.yaml`: {msg}"))))
+        }
+    }
+}
+
 /// Read a single YAML file OR every `*.yaml`/`*.yml` in a dir (sorted byte-wise),
-/// deserialize each to `F`, and hand it to `merge`.
-fn read_kind<F, M>(path: &Path, errs: &mut Vec<LoadError>, mut merge: M)
+/// deserialize each to `F`, and hand it — with its [`Source`] in package `pkg` —
+/// to `merge`.
+fn read_kind<F, M>(pkg: &Path, path: &Path, errs: &mut Vec<LoadError>, mut merge: M)
 where
     F: serde::de::DeserializeOwned,
-    M: FnMut(F, &Path, &mut Vec<LoadError>),
+    M: FnMut(F, &Source, &mut Vec<LoadError>),
 {
     for file in yaml_files(path, errs) {
         let s = match std::fs::read_to_string(&file) {
@@ -624,49 +1109,241 @@ where
             }
         };
         match serde_yaml::from_str::<F>(&s) {
-            Ok(f) => merge(f, &file, errs),
-            Err(e) => errs.push(LoadError::Parse {
-                file: file.display().to_string(),
-                msg: parse_error_msg(&s, &e),
-            }),
+            Ok(f) => {
+                let src = Source {
+                    pkg,
+                    file: &file,
+                    text: &s,
+                };
+                merge(f, &src, errs)
+            }
+            Err(e) => errs.push(export_error(&file.display().to_string(), &s, &e)),
         }
     }
 }
 
-/// The `E-PLUGIN-PARSE` message for a failed export file: serde's own text,
-/// plus — for an unknown key — a did-you-mean against the accepted keys, and,
-/// when the offending mapping holds a key with no value, the hint that an
-/// unquoted flow-map value ended at a comma (`{ description: Pick one, the
-/// player picks one }` parses as `description: Pick one` plus a null-valued
-/// key `the player picks one`).
-fn parse_error_msg(src: &str, e: &serde_yaml::Error) -> String {
-    let mut msg = e.to_string();
-    let Some((key, expected)) = unknown_field(&msg) else {
-        return msg;
+/// The load error for an export file `src` that failed to deserialize: a
+/// YAML syntax fault in plain words ([`crate::yaml_text::yaml_fault`]); an
+/// unknown key as [`LoadError::Key`] with a did-you-mean and — when the
+/// offending mapping holds a key with no value — the hint that an unquoted
+/// flow-map value ended at a comma (`{ description: Pick one, the player
+/// picks one }` parses as `description: Pick one` plus a null-valued key `the
+/// player picks one`); anything else as [`LoadError::Parse`], reworded by
+/// [`data_error`].
+fn export_error(file: &str, src: &str, e: &serde_yaml::Error) -> LoadError {
+    let file = file.to_string();
+    let doc = match serde_yaml::from_str::<serde_yaml::Value>(src) {
+        Ok(doc) => doc,
+        Err(syntax) => {
+            let fault = crate::yaml_text::yaml_fault(src, &syntax);
+            return LoadError::Parse {
+                file,
+                at: Some(crate::yaml_text::line_col(src, fault.offset)),
+                msg: fault.message,
+            };
+        }
     };
-    let max = (key.chars().count() / 3).clamp(1, 2);
-    if let Some(s) = crate::suggest::nearest(&key, expected.iter().map(String::as_str), max) {
-        msg.push_str(&format!("; did you mean `{s}`?"));
+    let at = e
+        .location()
+        .map(|l| crate::yaml_text::line_col(src, l.index()));
+    let (path, detail) = serde_parts(e);
+    if let Some((key, expected)) = unknown_field(&detail) {
+        let owner = match &path {
+            Some(p) => format!("`{p}`"),
+            None => "this file".to_string(),
+        };
+        let mut msg = format!(
+            "{owner} has no {}key `{key}`{}",
+            if path.is_none() { "top-level " } else { "" },
+            crate::suggest::did_you_mean(&key, expected.iter().map(String::as_str))
+        );
+        if !expected.is_empty() {
+            msg.push_str(&format!(" (its keys: {})", expected.join(", ")));
+        }
+        if let Some(hint) = null_key_hint(&doc, &key, &expected) {
+            msg.push_str("; ");
+            msg.push_str(&hint);
+        }
+        return LoadError::Key { file, at, msg };
     }
-    if let Some(hint) = serde_yaml::from_str::<serde_yaml::Value>(src)
-        .ok()
-        .and_then(|doc| null_key_hint(&doc, &key, &expected))
+    LoadError::Parse {
+        file,
+        at,
+        msg: plain_data_error(path.as_deref(), &detail),
+    }
+}
+
+/// A `serde_yaml` data error (the text parsed as YAML) of `src`, reworded:
+/// its place and [`plain_data_error`]'s sentence.
+fn data_error(src: &str, e: &serde_yaml::Error) -> (At, String) {
+    let at = e
+        .location()
+        .map(|l| crate::yaml_text::line_col(src, l.index()));
+    let (path, detail) = serde_parts(e);
+    (at, plain_data_error(path.as_deref(), &detail))
+}
+
+/// serde_yaml's error text split into the key path it names (`occasions.talk`,
+/// `directives[0]`; `None` at the top level) and the problem, without the
+/// ` at line N column M` mark (the location carries it).
+fn serde_parts(e: &serde_yaml::Error) -> (Option<String>, String) {
+    let mut text = e.to_string();
+    if let Some(l) = e.location() {
+        let mark = format!(" at line {} column {}", l.line(), l.column());
+        if let Some(i) = text.rfind(&mark) {
+            text.replace_range(i..i + mark.len(), "");
+        }
+    }
+    match text.split_once(": ") {
+        Some((path, rest)) if !path.is_empty() && !path.contains(' ') => {
+            (Some(path.to_string()), rest.to_string())
+        }
+        _ => (None, text),
+    }
+}
+
+/// serde's data-error sentence in an author's words: no Rust type names
+/// (`untagged enum Literal`, `struct AttrDecl`), YAML's own vocabulary (a
+/// list, a mapping), and — for a top-level key of the wrong shape — what
+/// that key holds. Messages Lute itself raised while parsing (a write
+/// value's shape, a `target:`) pass through after the path.
+fn plain_data_error(path: Option<&str>, detail: &str) -> String {
+    let at = |s: String| match path {
+        Some(p) => format!("`{p}` {s}"),
+        None => format!("this file {s}"),
+    };
+    let example = path
+        .and_then(top_level_shape)
+        .map_or(String::new(), |ex| format!(" — {ex}"));
+    if let Some(rest) = detail.strip_prefix("invalid type: ") {
+        let (found, expected) = rest
+            .split_once(", expected ")
+            .unwrap_or((rest, "another shape"));
+        return at(format!(
+            "is {}, where {} is expected{example}",
+            plain_found(found),
+            plain_expected(expected)
+        ));
+    }
+    if let Some(rest) = detail.strip_prefix("invalid value: ") {
+        let (found, expected) = rest
+            .split_once(", expected ")
+            .unwrap_or((rest, "another value"));
+        return at(format!(
+            "is {}, where {} is expected",
+            plain_found(found),
+            plain_expected(expected)
+        ));
+    }
+    if let Some(rest) = detail.strip_prefix("unknown variant `") {
+        if let Some((value, tail)) = rest.split_once('`') {
+            let legal: Vec<&str> = tail.split('`').skip(1).step_by(2).collect();
+            return at(format!(
+                "is `{value}`, which is not one of {}{}",
+                legal.join(", "),
+                crate::suggest::did_you_mean(value, legal.iter().copied())
+            ));
+        }
+    }
+    if let Some(field) = detail
+        .strip_prefix("missing field `")
+        .and_then(|r| r.strip_suffix('`'))
     {
-        msg.push_str("; ");
-        msg.push_str(&hint);
+        return at(format!("needs `{field}:`"));
     }
-    msg
+    if let Some(field) = detail
+        .strip_prefix("duplicate field `")
+        .and_then(|r| r.strip_suffix('`'))
+    {
+        return at(format!("writes `{field}:` twice — keep one"));
+    }
+    if let Some(name) = detail.strip_prefix("data did not match any variant of untagged enum ") {
+        let shapes = match name {
+            "Literal" => "a value: `true`/`false`, a number, text, a list or a mapping",
+            "PathSegment" => "a path segment: a name, or `{ fromAttr: { name: <attr> } }`",
+            _ => "one of the shapes this key takes",
+        };
+        return at(format!("is not {shapes}"));
+    }
+    match path {
+        Some(p) => format!("{p}: {detail}"),
+        None => detail.to_string(),
+    }
+}
+
+/// What a top-level key of an export file holds, for a wrong-shape error.
+fn top_level_shape(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "occasions" => "`occasions:` maps each occasion name to its declaration: `occasions: { talk: { select: first } }`",
+        "rewardKinds" => "`rewardKinds:` maps each kind to its declaration: `rewardKinds: { GOLD: {} }`",
+        "cast" => "`cast:` maps each speaker id to its declaration: `cast: { mira: { name: Mira } }`",
+        "enums" => "`enums:` maps each enum name to its members: `enums: { mood: [calm, tense] }`",
+        "events" => "`events:` is a list: `events: [ { name: combatEnd } ]`",
+        "directives" => "`directives:` is a list: `directives: [ { name: give, attrs: [ { name: item, type: string } ] } ]`",
+        "stampAttrs" => "`stampAttrs:` is a list: `stampAttrs: [ { name: bonusId, type: string } ]`",
+        "assetKinds" => "`assetKinds:` is a list of asset-kind declarations",
+        "providers" | "bridge" | "defs" | "frontmatter" | "lints" | "stateShapes" | "stateTemplates" => {
+            "this key holds a list of declarations"
+        }
+        _ => return None,
+    })
+}
+
+/// serde's "found" half (`sequence`, `string "x"`, `unit value`) in YAML words.
+fn plain_found(found: &str) -> String {
+    match found {
+        "sequence" => "a list".into(),
+        "map" => "a mapping".into(),
+        "unit value" => "empty".into(),
+        _ => {
+            for (prefix, word) in [
+                ("string ", "the text"),
+                ("boolean ", ""),
+                ("integer ", "the number"),
+                ("floating point ", "the number"),
+            ] {
+                if let Some(v) = found.strip_prefix(prefix) {
+                    let v = v.trim_matches(['"', '`']);
+                    return if word.is_empty() {
+                        format!("`{v}`")
+                    } else {
+                        format!("{word} `{v}`")
+                    };
+                }
+            }
+            found.to_string()
+        }
+    }
+}
+
+/// serde's "expected" half (`a sequence`, `struct AttrDecl`, `u32`) in YAML
+/// words — never a Rust type name.
+fn plain_expected(expected: &str) -> String {
+    match expected {
+        "a sequence" => "a list".into(),
+        "a map" | "a mapping" => "a mapping".into(),
+        "a boolean" => "`true` or `false`".into(),
+        "a string" => "text".into(),
+        e if e.starts_with("struct ") || e.starts_with("a map ") => "a mapping".into(),
+        e if e.starts_with("enum ") => "one of its names".into(),
+        e if matches!(
+            e,
+            "f64" | "f32" | "u8" | "u16" | "u32" | "u64" | "usize" | "i32" | "i64"
+        ) || e.starts_with("a number") =>
+        {
+            "a number".into()
+        }
+        e => e.to_string(),
+    }
 }
 
 /// Split serde's "unknown field `k`, expected one of `a`, `b`" (or "expected
 /// `a`", or "there are no fields") into the key and the accepted names.
 fn unknown_field(msg: &str) -> Option<(String, Vec<String>)> {
-    let rest = &msg[msg.find("unknown field `")? + "unknown field `".len()..];
+    let rest = msg.strip_prefix("unknown field `")?;
     let end = rest.find('`')?;
     let key = rest[..end].to_string();
-    let tail = &rest[end + 1..];
-    let tail = tail.find(" at line ").map_or(tail, |i| &tail[..i]);
-    let expected = tail
+    let expected = rest[end + 1..]
         .split('`')
         .skip(1)
         .step_by(2)
@@ -718,49 +1395,6 @@ fn null_key_hint(doc: &serde_yaml::Value, key: &str, expected: &[String]) -> Opt
     ))
 }
 
-/// `state/` holds `stateShapes:` and/or `stateTemplates:` files.
-fn read_state(path: &Path, out: &mut LoadedPlugin, errs: &mut Vec<LoadError>) {
-    read_kind::<StateFile, _>(path, errs, |f, file, e| {
-        if f.state_shapes.is_none() && f.state_templates.is_none() {
-            e.push(LoadError::Parse {
-                file: file.display().to_string(),
-                msg: "not a state file: declare `stateShapes:` and/or `stateTemplates:`".into(),
-            });
-        }
-        merge_named(
-            &mut out.state_shapes,
-            f.state_shapes.unwrap_or_default(),
-            "shape",
-            |s| s.name.clone(),
-            e,
-        );
-        merge_named(
-            &mut out.state_templates,
-            f.state_templates.unwrap_or_default(),
-            "template",
-            |t| t.name.clone(),
-            e,
-        );
-    })
-}
-
-fn read_enums(
-    path: &Path,
-    dst: &mut BTreeMap<String, crate::snapshot::Domain>,
-    errs: &mut Vec<LoadError>,
-) {
-    read_kind::<EnumsFile, _>(path, errs, |f, _file, e| {
-        for (k, v) in f.enums {
-            if dst.insert(k.clone(), v.into_domain()).is_some() {
-                e.push(LoadError::DuplicateId {
-                    kind: "enum".into(),
-                    id: k,
-                });
-            }
-        }
-    })
-}
-
 /// Every `*.yaml`/`*.yml` under `path` (a dir), sorted byte-wise; or `[path]`
 /// itself if `path` is a file (plugin §4 sort determinism). A `read_dir` failure
 /// or any per-entry error is surfaced as `LoadError::Io` rather than silently
@@ -808,68 +1442,53 @@ fn yaml_files(path: &Path, errs: &mut Vec<LoadError>) -> Vec<std::path::PathBuf>
     v
 }
 
-fn merge_named<T, K: Fn(&T) -> String>(
+/// Merge `items` — `kind` declarations from `src`, named by `key` — into
+/// `dst`, first declaration kept. `at(src, id, n)` is the byte offset of the
+/// `n`th declaration of `id` in `src`, for [`Source::admit`].
+#[allow(clippy::too_many_arguments)]
+fn merge_named<T>(
     dst: &mut Vec<T>,
+    sites: &mut Sites,
     items: Vec<T>,
-    kind: &str,
-    key: K,
+    kind: &'static str,
+    key: impl Fn(&T) -> String,
+    at: impl Fn(&Source, &str, usize) -> Option<usize>,
+    src: &Source,
     errs: &mut Vec<LoadError>,
 ) {
     let mut seen: BTreeSet<String> = dst.iter().map(&key).collect();
+    let mut nth: BTreeMap<String, usize> = BTreeMap::new();
     for it in items {
         let id = key(&it);
-        if !seen.insert(id.clone()) {
-            errs.push(LoadError::DuplicateId {
-                kind: kind.into(),
-                id,
-            });
-        } else {
+        let n = nth.entry(id.clone()).or_default();
+        let offset = at(src, &id, *n);
+        *n += 1;
+        let new = seen.insert(id.clone());
+        if src.admit(sites, kind, id, offset, new, errs) {
             dst.push(it);
         }
     }
 }
 
-fn merge_directives(
-    dst: &mut Vec<DirectiveDecl>,
-    items: Vec<DirectiveDecl>,
+/// [`merge_named`] into a keyed map.
+fn merge_keyed<V>(
+    dst: &mut BTreeMap<String, V>,
+    sites: &mut Sites,
+    items: impl Iterator<Item = (String, V)>,
+    kind: &'static str,
+    at: impl Fn(&Source, &str, usize) -> Option<usize>,
+    src: &Source,
     errs: &mut Vec<LoadError>,
 ) {
-    merge_named(dst, items, "directive", |d| d.name.clone(), errs);
-}
-
-fn merge_bridge(
-    dst: &mut Vec<BridgeCapability>,
-    items: Vec<BridgeCapability>,
-    errs: &mut Vec<LoadError>,
-) {
-    let mut seen: BTreeSet<(String, String)> = dst
-        .iter()
-        .map(|b| (b.service.clone(), b.operation.clone()))
-        .collect();
-    for b in items {
-        let k = (b.service.clone(), b.operation.clone());
-        if !seen.insert(k) {
-            errs.push(LoadError::DuplicateId {
-                kind: "bridge".into(),
-                id: format!("{}.{}", b.service, b.operation),
-            });
-        } else {
-            dst.push(b);
+    let mut nth: BTreeMap<String, usize> = BTreeMap::new();
+    for (id, v) in items {
+        let n = nth.entry(id.clone()).or_default();
+        let offset = at(src, &id, *n);
+        *n += 1;
+        let new = !dst.contains_key(&id);
+        if new {
+            dst.insert(id.clone(), v);
         }
-    }
-}
-
-fn merge_frontmatter(
-    dst: &mut BTreeMap<String, Type>,
-    items: Vec<FrontmatterDecl>,
-    errs: &mut Vec<LoadError>,
-) {
-    for f in items {
-        if dst.insert(f.key.clone(), f.schema).is_some() {
-            errs.push(LoadError::DuplicateId {
-                kind: "frontmatter".into(),
-                id: f.key,
-            });
-        }
+        src.admit(sites, kind, id, offset, new, errs);
     }
 }

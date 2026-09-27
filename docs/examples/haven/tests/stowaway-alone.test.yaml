@@ -6,7 +6,7 @@ file: ../scenes/stowaway.lute
 facts:
   - "awake(vesna)"
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "I'm not on the manifest. That isn't an accident, that's a career."
     - "When it takes this module it won't subtract me from the total. It'll just take me."

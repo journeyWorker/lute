@@ -35,9 +35,9 @@ entities:
   person: { members: [ada, bo] }
   place:  { members: [inn, dock] }
 relations:
-  works:   { args: [person, place] }
-  met:     { args: [person] }
-  rumor:   { args: [person] }
+  works:   { args: [person, place], tier: run }
+  met:     { args: [person], tier: run }
+  rumor:   { args: [person], tier: run }
   arrived: { args: [place], tier: run, reserved: true }
   present: { args: [person, place], derive: true }
   trusted: { args: [person], derive: true }
@@ -219,23 +219,23 @@ lute beats: `--occasion daystart` is not an occasion of this project (known: boa
 }
 ```
 
-**Defs as written** (dsl 0.24.0). The `when` column shows a def reference the way the author wrote it; `--expand` prints the expansion instead. In the [`beats` scaffold](/tooling/play/#worked-example), `hub.morning` is gated on `!@firstDay`:
+**Defs as written** (dsl 0.24.0). The `when` column shows a def reference the way the author wrote it; `--expand` prints the expansion instead. In the [`beats` scaffold](/tooling/play/#worked-example), `town.morning` is gated on `!@firstDay`:
 
 ```console
-$ lute beats . --occasion hubVisit
+$ lute beats . --occasion townVisit
 project root: .
 
-  hubVisit — select: first
-    #  priority  beat                           kind   once  verdict  after  when
-    1  10        hub.welcome "First arrival"    scene  user  -        -      -
-    2  0         hub.morning "Another morning"  scene  no    -        -      !@firstDay
-$ lute beats . --occasion hubVisit --expand
+  townVisit — select: first
+    #  priority  beat                            kind   once  verdict  after  when
+    1  10        town.welcome "First arrival"    scene  user  -        -      -
+    2  0         town.morning "Another morning"  scene  no    -        -      !@firstDay
+$ lute beats . --occasion townVisit --expand
 project root: .
 
-  hubVisit — select: first
-    #  priority  beat                           kind   once  verdict  after  when
-    1  10        hub.welcome "First arrival"    scene  user  -        -      -
-    2  0         hub.morning "Another morning"  scene  no    -        -      !(run.day == 1)
+  townVisit — select: first
+    #  priority  beat                            kind   once  verdict  after  when
+    1  10        town.welcome "First arrival"    scene  user  -        -      -
+    2  0         town.morning "Another morning"  scene  no    -        -      !(run.day == 1)
 ```
 
 Exit **0** on success, **2** on an I/O failure or an unknown `--occasion`.
@@ -640,7 +640,7 @@ $ lute calendar . --axis run.day=1..3
 ./scenes/dock/storm.lute:7:8: error [E-BEAT-UNREACHABLE] beat `dock.storm` is never eligible: its `when` `run.slot == 'morning' && run.slot == 'evening'` is provably false
 ```
 
-Standard error adds `lute play: 1 of 9 document(s) failed to compile; refusing to play`, and the exit is **1**.
+Standard error adds `lute calendar: 1 of 9 document(s) failed to compile; refusing to evaluate the calendar`, and the exit is **1**.
 
 Every axis is validated before a cell is evaluated. An undeclared path, a value outside the path's type, an empty or non-integer range, an axis given twice, a quest path other than a status or an objective's `done`, an undeclared quest, a `holds(…)` over a derived or undeclared relation (or with a value other than `true`/`false`), a `--target` that none of the listed occasions takes, and a grid of more than **10,000 cells** are usage errors, as are an `--until` that names no step, a replay that halts, and a `--where` that does not parse or is unknown at some cell:
 
@@ -808,7 +808,7 @@ Exit **0** on success, **2** on an I/O failure or an unmatched `--for`.
 
 ### What the scenario graph leaves out
 
-The [scenario graph](/connectivity/scene-graph/) draws only prerequisites that connectivity analyzes. A quest's edges come from its `after=`, its subquest tree, the anchoring conjuncts of its `start`, and the `::accept`s that take it up (dsl 0.24.0 §2, 0.25.0 §4); see [Quests & scenes](/language/quests-and-scenes/#quest). The bare `lute scenario` view says what it therefore did not draw. Take a lighthouse: a quest `relight` with `start="entry.keeperLog.everRead && visited('arrival')"` and two subquests, `oil` and `wick`; a `salvage` quest the engine accepts from a board (`accept="external"`); a `lostDog` quest only a test accepts; two keeper beats, `greeting` with `after="visited('arrival')"` and `warning` gated by `when="visited('keeper.greeting')"`; and a scene `farewell` with `after: completed("salvage")`:
+The [scenario graph](/connectivity/scene-graph/) draws only prerequisites that connectivity analyzes. A quest's edges come from its `follows=`, its subquest tree, the anchoring conjuncts of its `start`, and the `::accept`s that take it up (dsl 0.24.0 §2, 0.25.0 §4); see [Quests & scenes](/language/quests-and-scenes/#quest). The bare `lute scenario` view says what it therefore did not draw. Take a lighthouse: a quest `relight` with `start="entry.keeperLog.everRead && visited('arrival')"` and two subquests, `oil` and `wick`; a `salvage` quest the engine accepts from a board (`accept="external"`); a `lostDog` quest only a test accepts; two keeper beats, `greeting` with `after="visited('arrival')"` and `warning` gated by `when="visited('keeper.greeting')"`; and a scene `farewell` with `after: completed("salvage")`:
 
 ```console
 $ lute scenario .
@@ -823,12 +823,12 @@ project root: .
     quest(relight) -> quest(oil) [subquest]
     quest(relight) -> quest(wick) [subquest]
     entry(keeperLog) -> quest(relight) [start]
-  unanchored (no `after` — available from the start of play; no prerequisites in this graph):
+  unanchored (no `after` / `follows` — available from the start of play; no prerequisites in this graph):
     quest(lostDog)
     quest(salvage)
-    beat(keeper.warning) — its `when` reads visited('keeper.greeting'), which gates it but draws no edge; write `after="visited('keeper.greeting')"` to anchor it (dsl 0.25.0 §3)
-  note: 6 `visited()`/`completed()`/`active()` reference(s) not drawn — a quest's edges come from its `after`, its subquest tree, its `start` conjuncts and its `::accept`s:
-    scene(farewell) -> completed("salvage") — quest(salvage) is on no edge (no `after`, tree, `start` anchor or `::accept`)
+    beat(keeper.warning) — its `when` reads visited('keeper.greeting'), which gates it but draws no edge; write `after="visited('keeper.greeting')"` to anchor it
+  note: 6 `visited()`/`completed()`/`active()` reference(s) not drawn — a quest's edges come from its `follows`, its subquest tree, its `start` conjuncts and its `::accept`s:
+    scene(farewell) -> completed("salvage") — quest(salvage) is on no edge (no `follows`, tree, `start` anchor or `::accept`)
     quest(relight) reads visited('keeper.warning') in its objective climb done — a condition read, not an anchor
     quest(oil) reads visited('arrival') in its objective fetch done — a condition read, not an anchor
     quest(wick) reads visited('arrival') in its objective trim done — a condition read, not an anchor
@@ -836,7 +836,7 @@ project root: .
     quest(lostDog) reads visited('arrival') in its objective find done — a condition read, not an anchor
 ```
 
-`relight` is anchored by its `start` conjuncts, so it needs no `after=`, and `oil` and `wick` hang off it by `[subquest]` edges. `keeper.greeting` is ordered by its own `after=`; `keeper.warning` reads the same kind of fact in its `when`, which gates it but orders nothing, so it is listed with the `after=` to write. `salvage` and `lostDog` are on no edge, so the `completed("salvage")` in `farewell`'s `after:` is not drawn either, and an objective's `visited()` read is a condition, never an anchor.
+`relight` is anchored by its `start` conjuncts, so it needs no `follows=`, and `oil` and `wick` hang off it by `[subquest]` edges. `keeper.greeting` is ordered by its own `after=`; `keeper.warning` reads the same kind of fact in its `when`, which gates it but orders nothing, so it is listed with the `after=` to write. `salvage` and `lostDog` are on no edge, so the `completed("salvage")` in `farewell`'s `after:` is not drawn either, and an objective's `visited()` read is a condition, never an anchor.
 
 `--format json` carries the unanchored nodes as `unanchored` on the root, the beat hints as `unanchoredHints` (node → hint), and the undrawn references as `omitted`, each `{ from, kind, quest }` for a `completed`/`active` reference or `{ from, kind: "visited", scene, slot }` for a quest's `visited()` read. `lute scenario . reach quest:relight` lists the quest's anchors (`anchors`, each `{ kind, from }`, in JSON):
 
@@ -845,7 +845,7 @@ $ lute scenario . reach quest:relight
 project root: .
 reach quest(relight):
   verdict: Reachable — a satisfiable route exists under your declared routes.
-  after: (none declared) — anchored (dsl 0.24.0 §2, 0.25.0 §4); each anchor holds before it activates, through any one of its sources:
+  follows: (none declared) — anchored; each anchor holds before it activates, through any one of its sources:
     [start] entry(keeperLog)
     [start] scene(arrival)
   referenced node(s) (see the anchors above — this is NOT a flat requirement list):

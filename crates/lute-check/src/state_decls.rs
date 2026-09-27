@@ -238,3 +238,41 @@ fn declared_extends(file: &Path) -> Vec<PathBuf> {
         .filter_map(|e| std::fs::canonicalize(dir.join(e)).ok())
         .collect()
 }
+
+/// dsl 0.28.0 (T3-45): a declared path that is both a value and the prefix of
+/// another declared path — `run.lanterns` beside `run.lanterns.gold`, or a
+/// `scene.date` a directive's result state fills as `scene.date.stars.*`.
+/// Stored state cannot hold a value and fields under one name, so the pair is
+/// an `E-STATE-DECL`, reported once per value path — `locate(path, message)`
+/// builds it at `path`'s declaration (the value's, else the longer path's).
+pub(crate) fn check_value_prefix(
+    schema: &crate::meta::StateSchema,
+    locate: &dyn Fn(&str, &str) -> Option<Diagnostic>,
+) -> Vec<Diagnostic> {
+    let keys: Vec<&str> = schema.decls.keys().map(String::as_str).collect();
+    let mut out = Vec::new();
+    for (i, value) in keys.iter().enumerate() {
+        // A container type legitimately has fields.
+        let container = matches!(
+            schema.decls[*value].ty,
+            Type::Record(_) | Type::Map { .. } | Type::List(_)
+        );
+        if container || crate::cel_paths::is_engine_owned_path(value) {
+            continue;
+        }
+        let prefix = format!("{value}.");
+        let Some(field) = keys[i + 1..]
+            .iter()
+            .take_while(|k| k.starts_with(value))
+            .find(|k| k.starts_with(&prefix))
+        else {
+            continue;
+        };
+        let message = format!(
+            "`{value}` is declared as a value and is also the prefix of `{field}` — stored \
+             state cannot hold a value and fields under one name; rename one of them"
+        );
+        out.extend(locate(value, &message).or_else(|| locate(field, &message)));
+    }
+    out
+}

@@ -369,10 +369,7 @@ fn for_each_directive<'n>(nodes: &'n [Node], f: &mut dyn FnMut(&'n Directive)) {
                 .choices
                 .iter()
                 .for_each(|c| for_each_directive(&c.body, f)),
-            Node::Hub(h) => h
-                .choices
-                .iter()
-                .for_each(|c| for_each_directive(&c.body, f)),
+            Node::Hub(h) => h.bodies().for_each(|b| for_each_directive(b, f)),
             Node::On(o) => for_each_directive(&o.body, f),
             Node::Objective(o) => for_each_directive(&o.body, f),
             Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}

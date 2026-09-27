@@ -62,7 +62,7 @@ struct Obj {
 }
 
 /// One `RewardEntry` (`ir.rs`, dsl 0.16.0 §3) parsed straight off the
-/// artifact JSON, with `on` normalized to `Option<String>` (only ever
+/// artifact JSON, with `outcome` normalized to `Option<String>` (only ever
 /// `Some("failed")` after the checker's `E-REWARD-ATTR` gate — the runner
 /// filters strictly on that value). `when` is the raw CEL fragment
 /// evaluated at the grant instant via [`Machine::truthy`]; `None` here
@@ -74,7 +74,7 @@ struct RewardRec {
     amount_min: Option<i64>,
     amount_max: Option<i64>,
     when: Option<String>,
-    on: Option<String>,
+    outcome: Option<String>,
     /// dsl 0.23.0 §8: `RewardEntry.credits` — the state path a grant adds
     /// its (scalar) amount to.
     credits: Option<String>,
@@ -82,10 +82,10 @@ struct RewardRec {
 
 /// dsl 0.16.0 §3 D-D: which lifecycle transition is firing declarative
 /// rewards. [`GrantEvent::Objective`] fires every objective-level reward
-/// (objective entries never carry `on=`, spec §2); [`GrantEvent::Complete`]
-/// fires quest-level rewards whose `on=` is unset (the default
+/// (objective entries never carry `outcome=`, spec §2); [`GrantEvent::Complete`]
+/// fires quest-level rewards whose `outcome=` is unset (the default
 /// "on complete"); [`GrantEvent::Failed`] fires quest-level rewards whose
-/// `on == "failed"` (both authored-`fail` and §2.3 cascade paths hit this
+/// `outcome == "failed"` (both authored-`fail` and §2.3 cascade paths hit this
 /// arm, with the transcript's `onFailed: true` marking the transition kind).
 #[derive(Clone, Copy)]
 enum GrantEvent {
@@ -526,9 +526,10 @@ impl<D: Driver> Machine<D> {
                         return;
                     }
                 }
-                // 2. fail BEFORE derived completion (§6.3 precedence): an
-                // authored `fail`, or a required objective whose `by`
-                // failed it (in this settle or at the raise before it).
+                // 2. fail BEFORE derived completion (§6.3 precedence): a
+                // required objective whose `by` failed it (in this settle or
+                // at the raise before it), a required subquest that failed
+                // (dsl 0.28.0: `failedBy: subquest`), or an authored `fail`.
                 // dsl 0.24.0 §2: a `complete="any"` quest is not failed by
                 // one missed alternative — its synthesized `fail` fails it
                 // once every required objective has failed.
@@ -536,8 +537,18 @@ impl<D: Driver> Machine<D> {
                     None
                 } else {
                     q.objectives.iter().find_map(|o| {
+                        if o.optional {
+                            return None;
+                        }
+                        if let Some(child) = &o.quest {
+                            let failed =
+                                self.quest_status.get(child).map(String::as_str) == Some("failed");
+                            return failed.then(|| {
+                                ("subquest", Some(format!("quest.{child}.state == 'failed'")))
+                            });
+                        }
                         let key = format!("{}.{}", q.id, o.id);
-                        (!o.optional && self.failed_objectives.contains(&key)).then(|| {
+                        self.failed_objectives.contains(&key).then(|| {
                             let kind = self.objective_failed_by.get(&key).copied().unwrap_or("by");
                             let text = if kind == "until" { &o.until } else { &o.by };
                             (kind, text.clone())
@@ -562,7 +573,7 @@ impl<D: Driver> Machine<D> {
                     self.observe_quest(&q.id, "failed", guard.as_deref());
                     self.set_quest_failed(&q.id, reason);
                     // dsl 0.16.0 §3 D-D: fresh `failed` → grant
-                    // `on="failed"` quest rewards BEFORE `questFailed`
+                    // `outcome="failed"` quest rewards BEFORE `questFailed`
                     // handlers and BEFORE the §2.3 downward cascade.
                     self.emit_grants(&q.id, None, &q.rewards, GrantEvent::Failed);
                     self.fire_event("questFailed", Some(&q.id), None, handlers, seg_starts);
@@ -589,7 +600,7 @@ impl<D: Driver> Machine<D> {
                     self.observe_quest(&q.id, "complete", None);
                     self.set_quest_state(&q.id, "complete", None);
                     // dsl 0.16.0 §3 D-D: fresh `complete` → grant this
-                    // quest's default-on rewards BEFORE `questComplete`
+                    // quest's outcome-less rewards BEFORE `questComplete`
                     // handlers play.
                     self.emit_grants(&q.id, None, &q.rewards, GrantEvent::Complete);
                     self.fire_event("questComplete", Some(&q.id), None, handlers, seg_starts);
@@ -885,7 +896,7 @@ impl<D: Driver> Machine<D> {
                 .collect();
             for child in children {
                 // dsl 0.16.0 §3 D-D: cascade-fail IS a fresh `failed`
-                // transition (§2.3). Grant `on="failed"` rewards on the
+                // transition (§2.3). Grant `outcome="failed"` rewards on the
                 // cascaded child before firing its own `questFailed` — same
                 // ordering as an authored `fail`, so a consumer reads no
                 // structural difference.
@@ -937,7 +948,7 @@ impl<D: Driver> Machine<D> {
     }
 
     /// dsl 0.16.0 §3 D-D: emit a `grant` transcript record for every
-    /// entry in `rewards` (declaration order) whose `on=` filter matches
+    /// entry in `rewards` (declaration order) whose `outcome=` filter matches
     /// `event` AND whose `when=` gate is `Some(true)` against the LIVE
     /// state at the grant instant. `objective_id: Some(oid)` marks an
     /// objective-level grant (the checker rejects `on=` on those, so the
@@ -956,7 +967,7 @@ impl<D: Driver> Machine<D> {
             if r.kind.trim().is_empty() {
                 continue;
             }
-            let on_failed = matches!(r.on.as_deref(), Some("failed"));
+            let on_failed = matches!(r.outcome.as_deref(), Some("failed"));
             let matches = match event {
                 GrantEvent::Objective => true,
                 GrantEvent::Complete => !on_failed,
@@ -1157,7 +1168,7 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
 /// side, so a rewardless owner has no `rewards` key at all; this
 /// gracefully returns an empty vector in that case. Fields map directly
 /// from the wire (`kind`/`target`/`amount`/`amountMin`/`amountMax`/
-/// `when.raw`/`on`); a malformed entry keeps default values (empty
+/// `when.raw`/`outcome`); a malformed entry keeps default values (empty
 /// `kind` filters at grant time via [`Machine::emit_grants`]).
 fn parse_rewards(owner: &Json) -> Vec<RewardRec> {
     owner
@@ -1179,7 +1190,7 @@ fn parse_reward(r: &Json) -> RewardRec {
         amount_min: r.get("amountMin").and_then(Json::as_i64),
         amount_max: r.get("amountMax").and_then(Json::as_i64),
         when: cel_raw(r.get("when")),
-        on: r.get("on").and_then(Json::as_str).map(str::to_string),
+        outcome: r.get("outcome").and_then(Json::as_str).map(str::to_string),
         credits: r.get("credits").and_then(Json::as_str).map(str::to_string),
     }
 }

@@ -1,5 +1,5 @@
 # Parent's authored `fail = run.giveUp` (default true) fires on its first
 # settle: parent activates → same-pass fail → cascade fails the referenced
-# no-start child. Each terminal transition fires its `on="failed"` reward
+# no-start child. Each terminal transition fires its `outcome="failed"` reward
 # BEFORE its own `questFailed` handler (dsl 0.16.0 §3 D-D).
 state: {}

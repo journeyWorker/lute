@@ -93,11 +93,14 @@ pub struct ExecProject {
     /// may name — the union of every document's vocabulary. Empty (every
     /// value legal, stamps unknown) unless the caller fills it.
     pub needles: crate::exec::record::NeedleVocab,
-    /// dsl 0.27.0 §8: scene id -> the `after:` the manifest's `sequence:`
-    /// derives for it (`visited("<previous>")`), so a reason can say where
-    /// an `after:` the scene never wrote comes from. Empty unless the
+    /// dsl 0.28.0 §4: the scene ids whose `after:` a chain of the manifest's
+    /// `chapters:` derived (never one the scene wrote, whatever its text), so
+    /// a reason can say where that `after:` comes from. Empty unless the
     /// caller fills it.
-    pub sequence_after: BTreeMap<String, String>,
+    pub chapter_afters: std::collections::BTreeSet<String>,
+    /// Every asserting site of the compiled project — what a play's refused
+    /// pick names for a fact its guard misses.
+    pub producers: std::sync::Arc<super::producers::Producers>,
 }
 
 impl ExecProject {
@@ -370,7 +373,19 @@ impl ExecProject {
                     EntityKindDecl {
                         shape,
                         subset_of: None,
-                        labels: k.labels.clone(),
+                        labels: k
+                            .labels
+                            .iter()
+                            .map(|(m, text)| {
+                                let forms = k.label_forms.get(m);
+                                let label = lute_manifest::relations::KindLabel {
+                                    text: text.clone(),
+                                    start: forms.and_then(|f| f.start.clone()),
+                                    indefinite: forms.and_then(|f| f.indefinite.clone()),
+                                };
+                                (m.clone(), label)
+                            })
+                            .collect(),
                     },
                 )
             })
@@ -393,6 +408,13 @@ impl ExecProject {
         });
         let cadence =
             crate::exec::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table);
+        let reserved = index
+            .relations
+            .iter()
+            .filter(|r| r.reserved)
+            .map(|r| r.name.clone())
+            .collect();
+        let producers = std::sync::Arc::new(super::producers::Producers::of(&artifacts, reserved));
         Ok(ExecProject {
             artifacts,
             authored,
@@ -419,7 +441,8 @@ impl ExecProject {
             display_names,
             cadence,
             needles: Default::default(),
-            sequence_after: BTreeMap::new(),
+            chapter_afters: Default::default(),
+            producers,
         })
     }
 

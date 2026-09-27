@@ -71,7 +71,7 @@ use std::sync::Arc;
 use cel_parser::ast::{operators as op, Expr};
 use lute_core_span::Span;
 use lute_syntax::ast::{
-    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Document, Match, Node, Retract,
+    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Document, Hub, Match, Node, Retract,
 };
 use lute_syntax::datalog::{FactPattern, FactTerm};
 
@@ -618,7 +618,7 @@ fn scan<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
         f(node);
         match node {
             Node::Branch(b) => b.choices.iter().for_each(|c| scan(&c.body, f)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| scan(&c.body, f)),
+            Node::Hub(h) => h.bodies().for_each(|b| scan(b, f)),
             Node::Match(m) => {
                 for arm in &m.arms {
                     let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
@@ -926,7 +926,7 @@ impl<'a> Walk<'a> {
                     self.retract(r, flow)
                 }
                 Node::Branch(b) => self.branch(&b.choices, flow),
-                Node::Hub(h) => self.hub(&h.choices, flow),
+                Node::Hub(h) => self.hub(h, flow),
                 Node::Match(m) => self.match_arms(m, flow),
                 Node::On(o) => {
                     let mut body = Some(self.body_base.clone());
@@ -938,7 +938,7 @@ impl<'a> Walk<'a> {
                 Node::Objective(o) => {
                     let base = Some(self.body_base.clone());
                     self.record(&o.done, &base);
-                    if let Some(when) = &o.when {
+                    if let Some(when) = &o.visible_when {
                         self.record(when, &base);
                     }
                     for deadline in o.by.iter().chain(&o.until) {
@@ -1095,19 +1095,29 @@ impl<'a> Walk<'a> {
     }
 
     /// Zero or more rounds of the hub body: the greatest fixpoint
-    /// `X = pre ∩ ⋂ arm_out(X)`. Every transfer function is monotone and the
-    /// sets finite, so the descending sequence converges.
-    fn hub(&mut self, choices: &[Choice], flow: &mut Flow) {
+    /// `X = pre ∩ ⋂ arm_out(X)`, where a non-`exit` arm's out runs on
+    /// through the hub's `<return>` block (dsl 0.28.0 §5) before the next
+    /// round. Every transfer function is monotone and the sets finite, so
+    /// the descending sequence converges.
+    fn hub(&mut self, h: &Hub, flow: &mut Flow) {
         let pre = flow.clone();
         let mut x = pre.clone();
         loop {
             let mut next = pre.clone();
-            for c in choices {
+            for c in &h.choices {
                 let mut arm = x.clone();
                 if let Some(when) = &c.when {
                     self.guard(when, &mut arm);
                 }
                 self.walk(&c.body, &mut arm);
+                let exit = c
+                    .attrs
+                    .iter()
+                    .find(|a| a.key == "exit")
+                    .and_then(|a| a.value.flag());
+                if let (Some(r), false) = (&h.on_return, exit.unwrap_or(false)) {
+                    self.walk(&r.body, &mut arm);
+                }
                 meet(&mut next, arm);
             }
             if same(&next, &x) {

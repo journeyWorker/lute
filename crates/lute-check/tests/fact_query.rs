@@ -23,7 +23,7 @@ fn codes(text: &str) -> Vec<String> {
         .collect()
 }
 
-const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  loc: { members: [grove] }\nrelations:\n  inParty: { args: [c] }\n  atLoc: { args: [c, loc], key: [0] }\n  buddy: { args: [c, c], derive: true }\n  gated: { args: [c], derive: true }\nstate:\n  run.act: { type: number, default: 1 }\nrules:\n  - \"buddy(A, B) :- inParty(A), inParty(B), A != B\"\n  - \"gated(X) :- inParty(X), cel(\\\"run.act == 1\\\")\"\n";
+const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  loc: { members: [grove] }\nrelations:\n  inParty: { args: [c], tier: run }\n  atLoc: { args: [c, loc], tier: run, key: [0] }\n  buddy: { args: [c, c], derive: true }\n  gated: { args: [c], derive: true }\nstate:\n  run.act: { type: number, default: 1 }\nrules:\n  - \"buddy(A, B) :- inParty(A), inParty(B), A != B\"\n  - \"gated(X) :- inParty(X), cel(\\\"run.act == 1\\\")\"\n";
 
 fn scene_when(cond: &str) -> String {
     // A second, unguarded `<choice>` keeps the branch out of the unrelated
@@ -168,7 +168,7 @@ fn quest_lifecycle_guards_admit_fact_queries() {
 /// vocabulary, NOT by this fixture's frontmatter, which names no
 /// `entities:`/`enums:` at all. That is exactly what proves the arg resolves
 /// via the merged `domains` map rather than a RelVocab kind/enum.
-const DOMAIN_VOCAB: &str = "relations:\n  felt: { args: [emotion] }\n";
+const DOMAIN_VOCAB: &str = "relations:\n  felt: { args: [emotion], tier: run }\n";
 
 fn scene_when_domain(cond: &str) -> String {
     format!(

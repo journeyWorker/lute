@@ -45,10 +45,14 @@ pub(super) fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
 /// * every remaining attr is a NAMED arg bound to a param by name — an unknown
 ///   arg, a missing required param, or a value incompatible with its param's
 ///   declared type is `E-COMPONENT-ARG`.
+///
+/// `enclosing` is the params of the component whose body holds the `::use`
+/// (empty outside one): a bare `@p` naming one passes that argument through.
 pub(super) fn check_use(
     dir: &Directive,
     components: &ComponentSet,
     ctx: &Ctx<'_>,
+    enclosing: &std::collections::BTreeMap<String, DomainInfo>,
     diags: &mut Vec<Diagnostic>,
 ) {
     // E-AT-CONTEXT (dsl §7.5): a reserved `at` on a `::use` OUTSIDE a <track>
@@ -168,7 +172,13 @@ pub(super) fn check_use(
     let mut args = crate::component_effects::use_args_for(dir, def);
     let mut defaulted: Vec<Attr> = Vec::new();
     for (p, pty) in &def.params {
-        if dir.attrs.iter().any(|a| &a.key == p) || misspelt.contains(&p.as_str()) {
+        // A param named like a key of the use itself (`when`, a header key
+        // of a beat template) can never be passed: refused at its
+        // declaration (`templates::check_param_names`), never again here.
+        if dir.attrs.iter().any(|a| &a.key == p)
+            || misspelt.contains(&p.as_str())
+            || crate::templates::reserved_param(p, def.beat.is_some())
+        {
             continue;
         }
         let Some(value) = args.remove(p) else {
@@ -228,9 +238,10 @@ pub(super) fn check_use(
     // argument, or a `::set` uses as a `per:` member index
     // (`run.approval[@who]`), is bound to its `::use` argument, which must be
     // a constant — and, for an index, a member of the family's kind. A bare
-    // `@name` that is no def is an enclosing component's param passed
-    // through — judged where the outer `::use` binds it.
-    let (fact_params, index_params) = component_bound_params(&def.body);
+    // `@name` that is an enclosing component's param (or no def at all, as
+    // the host sees a nested body) passes through — judged where the outer
+    // `::use` binds it.
+    let (fact_params, index_params) = component_bound_params(&def.body, components);
     for attr in dir
         .attrs
         .iter()
@@ -238,11 +249,8 @@ pub(super) fn check_use(
         .filter(|a| fact_params.contains_key(&a.key) || index_params.contains_key(&a.key))
     {
         let pass_through = matches!(&attr.value, AttrValue::Ref(s)
-        if s.raw.trim().strip_prefix('@').is_some_and(|p| {
-            !p.is_empty()
-                && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                && !ctx.env.defs.contains(p)
-        }));
+            if bare_param_ref(&s.raw)
+                .is_some_and(|p| enclosing.contains_key(&p) || !ctx.env.defs.contains(&p)));
         if pass_through {
             continue;
         }
@@ -310,15 +318,23 @@ pub(super) fn check_use(
 /// The params a component body binds at each `::use` (at any depth): those
 /// an `::assert` / `::retract` passes as a fact argument (with the first such
 /// atom's text), and those a `::set` uses as a `per:` member index (with the
-/// family path).
+/// family path) — through a nested `::use` too, when it passes `@p` whole to
+/// a param the inner component binds so.
 fn component_bound_params(
     body: &Document,
+    components: &ComponentSet,
 ) -> (
     std::collections::BTreeMap<String, String>,
     std::collections::BTreeMap<String, String>,
 ) {
     type Out = std::collections::BTreeMap<String, String>;
-    fn walk(nodes: &[Node], facts: &mut Out, index: &mut Out) {
+    fn walk(
+        nodes: &[Node],
+        components: &ComponentSet,
+        stack: &mut Vec<String>,
+        facts: &mut Out,
+        index: &mut Out,
+    ) {
         for node in nodes {
             match node {
                 Node::Assert(lute_syntax::ast::Assert { pattern, raw, .. })
@@ -336,10 +352,47 @@ fn component_bound_params(
                             .or_insert_with(|| family.to_string());
                     }
                 }
+                Node::Directive(d) if d.tag == "use" => {
+                    let Some((name, def)) =
+                        use_target(d).and_then(|n| components.table.get(n).map(|def| (n, def)))
+                    else {
+                        continue;
+                    };
+                    // A cycle is `E-COMPONENT-CYCLE`'s.
+                    if stack.iter().any(|s| s == name) {
+                        continue;
+                    }
+                    stack.push(name.to_string());
+                    let (mut inner_facts, mut inner_index) = (Out::new(), Out::new());
+                    for shot in &def.body.shots {
+                        walk(
+                            &shot.body,
+                            components,
+                            stack,
+                            &mut inner_facts,
+                            &mut inner_index,
+                        );
+                    }
+                    stack.pop();
+                    for a in &d.attrs {
+                        let AttrValue::Ref(slot) = &a.value else {
+                            continue;
+                        };
+                        let Some(p) = bare_param_ref(&slot.raw) else {
+                            continue;
+                        };
+                        if let Some(atom) = inner_facts.get(&a.key) {
+                            facts.entry(p.clone()).or_insert_with(|| atom.clone());
+                        }
+                        if let Some(family) = inner_index.get(&a.key) {
+                            index.entry(p).or_insert_with(|| family.clone());
+                        }
+                    }
+                }
                 Node::Match(m) => {
                     for arm in &m.arms {
                         let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
-                        walk(body, facts, index);
+                        walk(body, components, stack, facts, index);
                     }
                 }
                 _ => {}
@@ -348,17 +401,25 @@ fn component_bound_params(
     }
     let (mut facts, mut index) = (Out::new(), Out::new());
     for shot in &body.shots {
-        walk(&shot.body, &mut facts, &mut index);
+        walk(
+            &shot.body,
+            components,
+            &mut Vec::new(),
+            &mut facts,
+            &mut index,
+        );
     }
     (facts, index)
 }
 
-/// dsl 0.24.0 §4: every `speaker` argument of every scene-level `::use` in
-/// `doc` ([`check_speaker_args`] with no enclosing speaker params).
+/// dsl 0.24.0 §4: every `speaker` argument of every `::use` in `doc`
+/// ([`check_speaker_args`]); `enclosing` is the document's own `speaker`
+/// params when it is a component (a `who=@who` passes its id through).
 pub(super) fn check_use_speaker_args(
     doc: &Document,
     components: &ComponentSet,
     cast: &std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
+    enclosing: &[String],
 ) -> Vec<Diagnostic> {
     let mut dirs = Vec::new();
     for body in doc
@@ -373,7 +434,7 @@ pub(super) fn check_use_speaker_args(
     }
     let mut diags = Vec::new();
     for dir in dirs {
-        check_speaker_args(dir, components, cast, &[], &mut diags);
+        check_speaker_args(dir, components, cast, enclosing, &mut diags);
     }
     diags
 }
@@ -416,6 +477,9 @@ pub(super) fn check_speaker_args(
         .filter(|a| def.speakers.contains(&a.key))
     {
         let literal = match &attr.value {
+            // dsl 0.28.0 §3: the member the enclosing kind or `for=` beat
+            // runs for — the walk judges it per member (`Walker::check_use_node`).
+            v if crate::target_writes::is_target_value(v) => continue,
             AttrValue::Str(id) => Some(id.as_str()),
             AttrValue::Ref(slot)
                 if bare_param_ref(&slot.raw).is_some_and(|p| enclosing.contains(&p)) =>
@@ -526,7 +590,7 @@ pub(super) fn check_param_literal_defaults(
 }
 
 /// A literal `::use` argument (or `default:`) the param type accepts.
-fn literal_arg_ok(ty: &Type, value: &AttrValue) -> bool {
+pub(crate) fn literal_arg_ok(ty: &Type, value: &AttrValue) -> bool {
     match ty {
         Type::ProviderRef(_) => matches!(value, AttrValue::Str(_)),
         _ => into_literal(ty, value).is_some_and(|lit| type_accepts(ty, &lit)),
@@ -638,7 +702,7 @@ pub(super) fn check_use_typed_args(
         let mut sinks: Vec<(String, lute_manifest::schema::AttrDecl)> = Vec::new();
         if is_member_typed(pty) {
             sinks.push((
-                format!("::use{{component=\"{name}\"}}"),
+                crate::templates::use_label(dir, name),
                 lute_manifest::schema::AttrDecl {
                     name: param.clone(),
                     required: false,
@@ -776,7 +840,7 @@ fn typed_param_sinks(
                     }
                 }
                 Node::Branch(b) => b.choices.iter().for_each(|c| walk(&c.body, f, out)),
-                Node::Hub(h) => h.choices.iter().for_each(|c| walk(&c.body, f, out)),
+                Node::Hub(h) => h.bodies().for_each(|b| walk(b, f, out)),
                 Node::On(o) => walk(&o.body, f, out),
                 Node::Objective(o) => walk(&o.body, f, out),
                 Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
@@ -952,10 +1016,7 @@ pub(super) fn collect_use_directives<'a>(nodes: &'a [Node], out: &mut Vec<&'a Di
                 .choices
                 .iter()
                 .for_each(|c| collect_use_directives(&c.body, out)),
-            Node::Hub(h) => h
-                .choices
-                .iter()
-                .for_each(|c| collect_use_directives(&c.body, out)),
+            Node::Hub(h) => h.bodies().for_each(|b| collect_use_directives(b, out)),
             Node::On(o) => collect_use_directives(&o.body, out),
             Node::Objective(o) => collect_use_directives(&o.body, out),
             Node::Match(m) => {

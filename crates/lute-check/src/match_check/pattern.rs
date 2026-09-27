@@ -201,20 +201,20 @@ pub fn is_pattern_literals(raw: &str, span: Span) -> Vec<(String, Span)> {
         if !trimmed.is_empty() {
             let lead = part.len() - part.trim_start().len();
             let rel = offset + lead;
-            let rel_u32 = rel as u32;
             let start = span.byte_start + rel;
             let end = start + trimmed.len();
+            // `raw` is one line: the prefix advances the character column and
+            // the UTF-16 offset by its own count, never by its byte length.
+            let prefix = &raw[..rel];
+            let u16_start = span.utf16_range.0 + prefix.encode_utf16().count() as u32;
             out.push((
                 trimmed.to_string(),
                 Span {
                     byte_start: start,
                     byte_end: end,
                     line: span.line,
-                    column: span.column + rel_u32,
-                    utf16_range: (
-                        span.utf16_range.0 + rel_u32,
-                        span.utf16_range.0 + rel_u32 + trimmed.encode_utf16().count() as u32,
-                    ),
+                    column: span.column + prefix.chars().count() as u32,
+                    utf16_range: (u16_start, u16_start + trimmed.encode_utf16().count() as u32),
                 },
             ));
         }
@@ -254,6 +254,9 @@ pub(crate) fn literal_is_foreign(lit: &IsLiteral, dom: &DomainInfo) -> bool {
         // `Domain::Finite` is always bool/enum; a Num never fits.
         (IsLiteral::Num(_), Domain::Finite(_)) => true,
         (IsLiteral::Bool(_) | IsLiteral::Str(_), Domain::IntRange { .. }) => true,
+        // dsl 0.28.0 §1 (T1-4): a number subject is matched by numbers and
+        // ranges; `<=3` or `high` is compared as text and never matches.
+        (IsLiteral::Bool(_) | IsLiteral::Str(_), Domain::Number) => true,
         (_, Domain::Number | Domain::Infinite) => false,
     }
 }
@@ -277,18 +280,43 @@ pub(super) fn foreign_literal_message(
             "`{lit_display}` matches none of the subject's values, the whole numbers {lo}..{hi} \
              (dsl 0.24.0 §1)"
         ),
+        (IsLiteral::Bool(_) | IsLiteral::Str(_), Domain::Number) => {
+            let bound = |p: &str| lit_display.strip_prefix(p).map(str::trim);
+            let hint = if let Some(n) = bound("<=") {
+                format!(" — write `..{n}`")
+            } else if let Some(n) = bound(">=") {
+                format!(" — write `{n}..`")
+            } else if let Some((sym, n)) = bound("<")
+                .map(|n| ("<", n))
+                .or(bound(">").map(|n| (">", n)))
+            {
+                format!(" — a range includes its bounds; write `test=\"$ {sym} {n}\"`")
+            } else {
+                String::new()
+            };
+            format!(
+                "`{lit_display}` is not a number or a range, so it never matches this number \
+                 subject — `is=` on a number takes numbers and ranges (`3`, `1..3`, `..3`, \
+                 `4..`){hint} (dsl 0.28.0 §1)"
+            )
+        }
         (IsLiteral::Range(_), _) => format!(
             "`{lit_display}` is a numeric range, which cannot match a non-numeric subject \
              (dsl 0.18.0 §2)"
         ),
         (_, Domain::Finite(vals)) => {
             let display = domain_members_display(vals);
-            let hint = lute_manifest::suggest::nearest(
-                lit_display,
-                display.split(", ").filter(|m| !m.is_empty()),
-                2,
-            )
-            .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
+            let members = || display.split(", ").filter(|m| !m.is_empty());
+            let parts: Vec<&str> = lit_display.split(',').map(str::trim).collect();
+            let hint = if parts.len() > 1 && parts.iter().all(|p| members().any(|m| m == *p)) {
+                format!(
+                    " — separate alternatives with `|`: `is=\"{}\"`",
+                    parts.join("|")
+                )
+            } else {
+                lute_manifest::suggest::nearest(lit_display, members(), 2)
+                    .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"))
+            };
             format!(
                 "`{lit_display}` is not a member of the subject's domain [{display}]{hint} \
                  (dsl 0.4 §5.2)"

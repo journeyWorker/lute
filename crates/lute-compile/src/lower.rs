@@ -81,7 +81,8 @@ pub fn lower_set(set: &Set) -> Command {
 /// A [`FactTerm`] as its ground string (dsl 0.3.0 §5): `Ident` verbatim,
 /// `Bool` as `"true"`/`"false"`, `Wildcard` as `"_"` (retract-pattern-only —
 /// never emitted from an `::assert`, checker-enforced `E-RETRACT-WILDCARD-
-/// ASSERT`).
+/// ASSERT`). dsl 0.28.0 §3: `occasion.target` as written — the engine binds
+/// the member the beat runs for when it applies the write.
 fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
     use lute_syntax::datalog::FactTerm;
     match t {
@@ -89,6 +90,7 @@ fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
+        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
     }
 }
 
@@ -230,8 +232,8 @@ pub fn lower_directive(
             addr: String::new(),
             focus: get("focus"),
             zoom: get_f64("zoom"),
-            move_x: get_f64("move-x"),
-            move_y: get_f64("move-y"),
+            move_x: get_f64("moveX"),
+            move_y: get_f64("moveY"),
             shake: get_f64("shake"),
             reset: get_bool("reset"),
             easing: get("easing"),
@@ -633,19 +635,11 @@ fn time_attr_seconds(attrs: &[Attr], key: &str) -> Option<f64> {
     }
 }
 
+/// A boolean attr (a hub choice's `once`/`exit`, a directive's bool field),
+/// read through the language's one flag reader, [`AttrValue::flag`]
+/// (dsl 0.28.0 §1), so the compiler and the checker agree on every value.
 pub(crate) fn attr_bool(attrs: &[Attr], key: &str) -> Option<bool> {
-    attrs
-        .iter()
-        .find(|a| a.key == key)
-        .and_then(|a| match &a.value {
-            AttrValue::BoolTrue => Some(true),
-            AttrValue::Str(s) => match s.as_str() {
-                "true" => Some(true),
-                "false" => Some(false),
-                _ => None,
-            },
-            AttrValue::Ref(_) => None,
-        })
+    attrs.iter().find(|a| a.key == key)?.value.flag()
 }
 
 /// Whether `decl` declares `key` as one of the directive's OWN attributes.
@@ -734,7 +728,7 @@ pub fn effect_path(w: &WriteDecl, dir: &Directive) -> String {
             }
         }
     }
-    segments.join(".")
+    lute_check::target_writes::join_path(&segments)
 }
 
 /// Resolve one manifest `WriteDecl` into an artifact-local [`Effect`] (IR A12)
@@ -865,7 +859,7 @@ mod tests {
         assert_eq!(v["assetId"], "BG.x");
         assert_eq!(v["wait"], true);
         let v = lower_first(
-            "::camera{focus=\"marina\" zoom=\"1.1\" move-x=\"0.2\" duration=\"0.5\" easing=\"ease-out\"}",
+            "::camera{focus=\"marina\" zoom=\"1.1\" moveX=\"0.2\" duration=\"0.5\" easing=\"ease-out\"}",
         );
         assert_eq!(v["kind"], "camera");
         assert_eq!(v["zoom"], 1.1);

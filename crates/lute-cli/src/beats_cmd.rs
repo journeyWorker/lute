@@ -26,7 +26,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_check::{BeatOnce, ProjectBeat, ProjectBeatKind};
+use lute_check::{ProjectBeat, ProjectBeatKind};
 use lute_core_span::Diagnostic;
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use serde_json::{json, Value as Json};
@@ -181,13 +181,6 @@ fn kind_label(kind: ProjectBeatKind) -> &'static str {
     }
 }
 
-fn once_label(once: &BeatOnce) -> std::borrow::Cow<'static, str> {
-    match once {
-        BeatOnce::None => "no".into(),
-        other => other.as_str(),
-    }
-}
-
 /// `when` as one line (a multi-line frontmatter scalar folds to spaces).
 fn one_line(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -278,9 +271,21 @@ pub(crate) fn run_beats(
         }
     }
     if let Some(o) = occasions.iter().find(|o| !known_occasions.contains(*o)) {
+        // The target is its own flag here, as in a play step.
+        if let Some((name, target)) = o
+            .split_once('@')
+            .filter(|(name, _)| known_occasions.contains(*name))
+        {
+            eprintln!(
+                "lute beats: `--occasion {o}`: give the target on its own — `--occasion {name} \
+                 --target {target}`"
+            );
+            return ExitCode::from(2);
+        }
         let known: Vec<&str> = known_occasions.iter().map(String::as_str).collect();
         eprintln!(
-            "lute beats: `--occasion {o}` is not an occasion of this project (known: {})",
+            "lute beats: `--occasion {o}` is not an occasion of this project{} (known: {})",
+            lute_manifest::suggest::did_you_mean(o, known.iter().copied()),
             known.join(", ")
         );
         return ExitCode::from(2);
@@ -456,15 +461,17 @@ fn render_root(
             None if ladder.targeted => " (any target)".to_string(),
             None => String::new(),
         };
-        // dsl 0.27.0 §4: the targets the occasion's gate never lets play.
+        // dsl 0.27.0 §4: the occasion's gate, and the targets it never
+        // lets play.
         let gate = match &ladder.gate {
-            Some(g) if g.never => format!(" · gate never holds: `raisedWhen: {}`", g.raised_when),
+            Some(g) if g.never => format!(" · raisedWhen: {} · gate never holds", g.raised_when),
             Some(g) if !g.never_for.is_empty() => format!(
-                " · gate never holds for {}: `raisedWhen: {}`",
-                g.never_for.join(", "),
-                g.raised_when
+                " · raisedWhen: {} · gate never holds for {}",
+                g.raised_when,
+                g.never_for.join(", ")
             ),
-            _ => String::new(),
+            Some(g) => format!(" · raisedWhen: {}", g.raised_when),
+            None => String::new(),
         };
         let _ = writeln!(
             out,
@@ -484,10 +491,14 @@ fn render_root(
         ]];
         for (rank, &i) in ladder.beats.iter().enumerate() {
             let b = &beats[i];
-            // dsl 0.27.0 §5: a `spentBy` beat repeats until its condition holds.
+            // A `spentBy` beat is spent once its condition has held, for its
+            // `once` period (`run` unless written — then it is named).
             let mut once = match &b.spent_by {
-                Some(by) => format!("spentBy: {}", one_line(by)),
-                None => once_label(&b.once).to_string(),
+                Some(by) if b.once == lute_check::BeatOnce::Run => {
+                    format!("spentBy: {}", one_line(by))
+                }
+                Some(by) => format!("spentBy: {}, {}", one_line(by), b.once.as_str()),
+                None => b.once.as_str().into_owned(),
             };
             if b.also {
                 once.push_str(", also");
@@ -502,10 +513,23 @@ fn render_root(
             if let (Some(t), lute_check::beats::BeatCells::Kind(_)) = (b.target, b.cells()) {
                 let _ = write!(id, " ({t})");
             }
+            // A `for` beat is presented once per member of its kind.
+            if let Some((raw, _)) = b.for_kind {
+                let _ = write!(id, " (for {raw})");
+            }
             if let Some(t) = &b.title {
                 let _ = write!(id, " \"{t}\"");
             }
             let shadowed_by = cells.shadowed_by(ladder, i);
+            // A use's own `when=` replaces its template's `when:` whole.
+            let mut when = when_text(b, expand).unwrap_or_else(|| "-".to_string());
+            if let Some((template, dropped)) = b.replaces_when {
+                let _ = write!(
+                    when,
+                    " (replaces template `{template}`'s `when: {}`)",
+                    one_line(dropped)
+                );
+            }
             rows.push([
                 (rank + 1).to_string(),
                 b.priority.to_string(),
@@ -514,7 +538,7 @@ fn render_root(
                 once,
                 verdict_words(&cells.verdicts[i], cells.covered[i], shadowed_by.as_deref()),
                 b.after.map_or_else(|| "-".to_string(), one_line),
-                when_text(b, expand).unwrap_or_else(|| "-".to_string()),
+                when,
             ]);
         }
         let widths: Vec<usize> = (0..8)
@@ -566,6 +590,16 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                     if let Some(t) = b.target {
                         m.insert("target".into(), json!(t));
                     }
+                    // The compiled index's `forKind`, beside the authored `for`.
+                    if let Some((raw, kind)) = &b.for_kind {
+                        m.insert("for".into(), json!(raw));
+                        if let Some((kind, members)) = kind {
+                            m.insert(
+                                "forKind".into(),
+                                json!({ "kind": kind, "members": members }),
+                            );
+                        }
+                    }
                     if let Some(a) = b.after {
                         m.insert("after".into(), json!(a));
                     }
@@ -575,6 +609,12 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                     // T3-12: the author's text beside the expansion.
                     if let Some(w) = when_text(b, false) {
                         m.insert("whenAuthored".into(), json!(w));
+                    }
+                    if let Some((template, dropped)) = b.replaces_when {
+                        m.insert(
+                            "replacesTemplateWhen".into(),
+                            json!({ "template": template, "when": one_line(dropped) }),
+                        );
                     }
                     if let Some(t) = &b.title {
                         m.insert("title".into(), json!(t));

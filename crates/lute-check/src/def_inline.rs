@@ -192,6 +192,9 @@ impl Cx<'_> {
                         self.interps(&lute_syntax::scan_label_interps(&c.label, c.span));
                         self.nodes(&c.body);
                     }
+                    if let Some(r) = &h.on_return {
+                        self.nodes(&r.body);
+                    }
                 }
                 Node::Match(m) => {
                     for arm in &m.arms {

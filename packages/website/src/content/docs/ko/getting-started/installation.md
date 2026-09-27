@@ -66,18 +66,10 @@ language      0.27.0
 IR schema     0.27.0
 ```
 
-이 셋은 서로 독립적인 축이며, 다른 곳에서도 다시 마주치게 됩니다: **toolchain** 버전은 이 CLI
-자체이고, **language** 버전은 체커가 강제하는 문법과 의미론이며, **IR schema** 버전은
-`lute compile`이 모든 산출물에 `irVersion`으로 새겨 넣는 값입니다. 축은 의미상 독립적이지만,
-**릴리스는 언제나 세 축의 보이는 숫자를 그 릴리스 번호로 맞춥니다**
-([버전 정책](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)).
-`0.11.0`에서는 **toolchain**만 실질적으로 움직였습니다 — 새로운 `schedule.yaml` 레이어와
-`lute play` 명령(이 레이어는 `0.21.0`에서 `lute play`가 계기 기반으로 바뀌며 다시 제거되었습니다),
-그리고 공유 참조 러너의 버그 수정 두 건입니다. IR은 모양도 내용도 전혀
-바뀌지 않았지만, major.minor는 그래도 움직입니다(`0.10` → `0.11` — 릴리스는 실질 변경 여부와
-무관하게 보이는 모든 숫자를 맞추기 때문입니다). 엔진은 여전히 `irVersion`을 major.minor로
-게이팅하므로, IR `0.10`을 구현한 엔진은 `0.11.0` 산출물을 받아들이려면 게이트를 `0.11`까지
-넓혀야 합니다 — 안에 읽을 것이 새로 생기지 않았는데도 그렇습니다.
+세 줄은 **toolchain**(이 CLI), 체커가 강제하는 **language**, 그리고 `lute compile`이 모든 산출물에
+`irVersion`으로 새겨 넣는 **IR schema**입니다. 릴리스는 세 줄을 모두 그 릴리스 번호로 맞추므로
+세 줄에 같은 버전이 보여야 합니다. 축이 왜 셋인지, 엔진이 `irVersion`으로 어떻게 게이팅하는지는
+[버전 정책](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)에 있습니다.
 
 스크립트와 CI에서는 `--json`이 같은 세 축을 하나의 객체로 출력합니다:
 
@@ -89,9 +81,10 @@ $ lute version --json
 (`lute --version`도 동작하며 `lute 0.27.0`만 출력합니다 — toolchain 축 하나뿐입니다.)
 
 에디터에서 언어 서버를 쓴다면 같은 빌드인지 확인하세요: `lute-lsp --version`은
-`lute-lsp <version>`을 출력하고, `lute doctor`는 `PATH`에서 가장 먼저 찾은 `lute-lsp`를 이 CLI와
-비교해 더 오래된 서버(이 플래그 이전 빌드는 버전을 아예 보고하지 못합니다)를 재설치 방법과 함께
-알려 줍니다.
+`lute-lsp <version>`을 출력하고, `lute doctor`는 `PATH`에서 가장 먼저 찾은 `lute-lsp`를 이 CLI 옆의
+것과 비교해 더 오래된 서버(이 플래그 이전 빌드는 버전을 아예 보고하지 못합니다)를 재설치 방법과 함께
+알려 줍니다. 그 `lute-lsp`가 npm 런처라면 `lute doctor`는 런처가 띄우는 바이너리를 비교하고, 어느
+바이너리인지 알 수 없으면 그 줄 끝에 `(compared by reported version only)`를 붙입니다.
 
 **편집기와 터미널이 파일에 대해 다르게 말하면** — `lute check`가 `ok`라고 하는 파일에 빨간 밑줄이
 있거나 그 반대라면 — 터미널을 믿고 프로젝트에서 `lute doctor .`를 실행하세요: 흔한 원인은

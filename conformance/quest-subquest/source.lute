@@ -6,11 +6,11 @@ title: Subquest cascade fail
 ---
 
 <quest id="parentQ" title="Find the key" start="true" fail="run.giveUp">
-  <reward kind="CONSOLE" amount="1" on="failed"/>
+  <reward kind="CONSOLE" amount="1" outcome="failed"/>
   <objective id="delegate" title="Get the key" quest="findKey"/>
 </quest>
 
 <quest id="findKey" title="Find the key">
-  <reward kind="CHILD_CONSOLE" amount="1" on="failed"/>
+  <reward kind="CHILD_CONSOLE" amount="1" outcome="failed"/>
   <objective id="found" title="Found the key" done="run.gotKey"/>
 </quest>

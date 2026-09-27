@@ -92,7 +92,7 @@ use lute_syntax::ast::{
 
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::cel_paths::{
-    collect_path_uses, is_entry_path, is_reserved_entry_read, is_reserved_quest_activated_at,
+    collect_path_uses, is_reserved_entry_read, is_reserved_quest_activated_at,
     is_reserved_quest_objective_done, is_reserved_quest_path, is_reserved_quest_state,
     is_state_path, PathRole,
 };
@@ -151,6 +151,21 @@ impl<'a> Scope<'a> {
             components: None,
         }
     }
+
+    /// This scope over `schema` — a kind beat's own environment
+    /// ([`crate::check::FoldedEnv::env_at`]).
+    pub fn with_schema(&self, schema: &'a StateSchema) -> Self {
+        Self {
+            schema,
+            defs: DefTable {
+                bodies: self.defs.bodies,
+                params: self.defs.params,
+            },
+            def_types: self.def_types,
+            preceded: self.preceded,
+            components: self.components,
+        }
+    }
 }
 
 /// Set of provably-assigned state paths on the current execution path.
@@ -207,6 +222,7 @@ pub fn check_definite_assignment(
         writes: Assigned::new(),
     };
     walk_nodes(nodes, cx, &mut flow, &mut diags, &mut reads);
+    hint_choice_records(nodes, &reads, &mut diags);
     if cx.preceded {
         hint_other_scenes(nodes, &reads, &mut diags);
     }
@@ -291,8 +307,8 @@ fn collect_exhaustive_spans(nodes: &[Node], cx: &Scope<'_>, spans: &mut Vec<Span
                 }
             }
             Node::Hub(h) => {
-                for choice in &h.choices {
-                    collect_exhaustive_spans(&choice.body, cx, spans);
+                for b in h.bodies() {
+                    collect_exhaustive_spans(b, cx, spans);
                 }
             }
             Node::On(o) => collect_exhaustive_spans(&o.body, cx, spans),
@@ -304,7 +320,8 @@ fn collect_exhaustive_spans(nodes: &[Node], cx: &Scope<'_>, spans: &mut Vec<Span
                     subject.as_deref(),
                     &info,
                     cx.schema,
-                ) {
+                ) || crate::match_check::handles_unset_resolved(m, subject.as_deref(), cx.schema)
+                {
                     spans.push(m.subject.span);
                 }
                 for arm in &m.arms {
@@ -534,7 +551,11 @@ fn walk_set(
     let target = &set.path;
     // dsl 0.24.0 §3/§4: `run.approval[@who]` in a component body names no
     // member until a `::use` binds it; each `::use` checks the bound member.
-    if crate::component_effects::set_path_index(target).is_some() {
+    // dsl 0.28.0 §3: `run.approval[occasion.target]` names the member the
+    // beat runs for; the walker judges the write once per member.
+    if crate::component_effects::set_path_index(target).is_some()
+        || crate::target_writes::indexed_family(target).is_some()
+    {
         return;
     }
     if is_state_path(target) {
@@ -549,10 +570,15 @@ fn walk_set(
             );
         }
         // The write target itself must be declared (T4.3 covers read sites; the
-        // `::set` LHS path is this pass's responsibility). An `entry.*` target
-        // is not "undeclared" but unwritable — `set_op`'s reserved-write
-        // rejection (dsl 0.19.0 §5) is its one report.
-        if !is_declared(target, cx.schema) && !is_entry_path(target) {
+        // `::set` LHS path is this pass's responsibility). A path the engine
+        // records (`entry.*`, `scene.choices.*`, `occasion.*`, …) is not
+        // "undeclared" but unwritable — `set_op`'s reserved-write rejection is
+        // its one report.
+        if !is_declared(target, cx.schema)
+            && crate::set_op::classify_write(target, cx.schema)
+                == crate::set_op::WriteOwner::Content
+            && !cx.schema.is_faulty(target)
+        {
             let mut msg = format!("state path `{target}` is not declared in `state:` (dsl §9.4)");
             if let Some(sugg) = crate::cel_paths::nearest_declared_path(target, cx.schema, 2) {
                 msg.push_str(&format!(" — did you mean `{sugg}`?"));
@@ -600,6 +626,11 @@ fn apply_choice_record(choice: &Choice, flow: &mut Flow) {
 
 /// A `<branch>`: each `<choice>` forks the incoming set; join = intersection when
 /// some choice is unconditional (one arm always runs), else the pre-block set.
+/// dsl 0.28.0 (T3-61): the pick record `scene.choices.<id>` is written when a
+/// choice is picked, before its arm runs — set in every arm, so after a
+/// branch that always picks it is set. A `timeout` can end the branch
+/// without a pick (its expiry is the engine's), so the record stays
+/// unproven after one.
 fn walk_branch(
     branch: &Branch,
     cx: &Scope<'_>,
@@ -607,6 +638,8 @@ fn walk_branch(
     diags: &mut Vec<Diagnostic>,
     reads: &mut Vec<(String, Span)>,
 ) {
+    let record = format!("scene.choices.{}", branch.id);
+    let had_record = flow.available.contains(&record);
     let mut arm_finals: Vec<Flow> = Vec::new();
     let mut has_unconditional = false;
     for choice in &branch.choices {
@@ -619,12 +652,18 @@ fn walk_branch(
         // is OFFERED — after its own `when` guard proves (a guarded choice's label
         // shows only when the guard holds), so check against the post-guard arm.
         check_label_reads(&choice.label, cx, &arm.available, choice.span, diags, reads);
+        if !branch.id.is_empty() {
+            arm.available.insert(record.clone());
+        }
         walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
         arm_finals.push(arm);
     }
     if has_unconditional && !arm_finals.is_empty() {
         *flow = intersect_flows(arm_finals);
+        if !had_record && branch.attrs.iter().any(|a| a.key == "timeout") {
+            flow.available.remove(&record);
+        }
     }
     // else: a guarded-only branch may fall through — keep the pre-block set.
 }
@@ -654,9 +693,84 @@ fn walk_hub(
         // Label reads (§7.6): checked against the post-guard arm, then discarded
         // with the rest of the fork.
         check_label_reads(&choice.label, cx, &arm.available, choice.span, diags, reads);
+        // dsl 0.28.0 (T1-23, T3-61): the option's pick is recorded before its arm.
+        if let Some(id) = hub_id(hub) {
+            arm.available.insert(format!("scene.choices.{id}"));
+            arm.available
+                .insert(format!("scene.visited.{id}.{}", choice.id));
+        }
         walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
         // arm (and any record write) discarded — a hub never folds back.
+    }
+    // dsl 0.28.0 §5: the `<return>` block runs after some non-`exit` arm, so
+    // what held at hub entry still holds there (the arms' own writes are
+    // may-writes); walked on its own discarded fork, like an arm.
+    if let Some(r) = &hub.on_return {
+        let mut back = flow.clone();
+        walk_nodes(&r.body, cx, &mut back, diags, reads);
+    }
+}
+
+/// A hub's `id`, when written.
+fn hub_id(hub: &Hub) -> Option<&str> {
+    hub.attrs
+        .iter()
+        .find(|a| a.key == "id")
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) if !s.is_empty() => Some(s.as_str()),
+            _ => None,
+        })
+}
+
+/// dsl 0.28.0 (T3-61): an `E-MAYBE-UNSET` on a pick record
+/// `scene.choices.<id>` names the menu that can leave it unset and why.
+/// `reads[i]` is the path of the i-th `E-MAYBE-UNSET` in `diags`.
+fn hint_choice_records(nodes: &[Node], reads: &[(String, Span)], diags: &mut [Diagnostic]) {
+    fn find<'n>(nodes: &'n [Node], id: &str) -> Option<&'n Node> {
+        nodes.iter().find_map(|n| {
+            let inner: Vec<&[Node]> = match n {
+                Node::Branch(b) if b.id == id => return Some(n),
+                Node::Hub(h) if hub_id(h) == Some(id) => return Some(n),
+                Node::Branch(b) => b.choices.iter().map(|c| c.body.as_slice()).collect(),
+                Node::Hub(h) => h.bodies().map(Vec::as_slice).collect(),
+                Node::Match(m) => m
+                    .arms
+                    .iter()
+                    .map(|a| match a {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => body.as_slice(),
+                    })
+                    .collect(),
+                Node::On(o) => vec![o.body.as_slice()],
+                Node::Objective(o) => vec![o.body.as_slice()],
+                _ => Vec::new(),
+            };
+            inner.into_iter().find_map(|b| find(b, id))
+        })
+    }
+    let maybe_unset = diags.iter_mut().filter(|d| d.code == "E-MAYBE-UNSET");
+    for (d, (path, _)) in maybe_unset.zip(reads) {
+        let Some(id) = path.strip_prefix("scene.choices.") else {
+            continue;
+        };
+        let why = match find(nodes, id) {
+            Some(Node::Branch(b)) if b.attrs.iter().any(|a| a.key == "timeout") => format!(
+                "`<branch id=\"{id}\">` has a `timeout`, and its expiry can end it without a pick"
+            ),
+            Some(Node::Branch(b)) if b.choices.iter().all(|c| c.when.is_some()) => format!(
+                "every choice of `<branch id=\"{id}\">` is guarded, so it can end without a pick"
+            ),
+            Some(Node::Branch(_)) => format!(
+                "`<branch id=\"{id}\">` records its pick when a choice is picked, and this read \
+                 can run where that branch has not"
+            ),
+            Some(Node::Hub(_)) => format!(
+                "`<hub id=\"{id}\">` records a pick inside its options only; after the hub it may \
+                 have picked nothing"
+            ),
+            _ => continue,
+        };
+        d.message.push_str(&format!("; {why}"));
     }
 }
 
@@ -715,7 +829,7 @@ fn walk_objective(
         let mut deadline_assigned = arm.available.clone();
         apply_condition(deadline, cx, &mut deadline_assigned, diags, reads);
     }
-    if let Some(cond) = &o.when {
+    if let Some(cond) = &o.visible_when {
         apply_condition(cond, cx, &mut arm.available, diags, reads);
     }
     walk_nodes(&o.body, cx, &mut arm, diags, reads);
@@ -774,7 +888,15 @@ fn walk_match(
     // Subject is a value-read check only; subject-position guards do NOT prove.
     check_reads(&m.subject, cx, &flow.available, diags, reads);
 
-    let (resolved, info) = resolve_subject(m, cx);
+    let (resolved, mut info) = resolve_subject(m, cx);
+    // dsl 0.28.0 (T3-61): a subject set on this path (a branch's pick
+    // record after it) needs no `unset` arm to make the match exhaustive.
+    if resolved
+        .as_deref()
+        .is_some_and(|p| proven(p, &flow.available, &[], cx.schema))
+    {
+        info.maybe_unset = false;
+    }
     let exhaustive =
         crate::match_check::is_exhaustive_resolved(m, resolved.as_deref(), &info, cx.schema);
     let subject = resolved.filter(|p| is_declared(p, cx.schema) && !is_choicelog(p));
@@ -913,7 +1035,13 @@ fn check_read(
     // `quest.<id>.*` read is always declared (dsl 0.2.0 §5.2, mirrors
     // `is_declared` below), so it falls through to `has_default`, which
     // treats every reserved quest shape as definite.
-    if is_choicelog(path) || !is_declared(path, cx.schema) {
+    // T3-1: a path whose own declaration was reported is judged no further
+    // (it may lack the default the reported row meant to give it).
+    if is_choicelog(path) || cx.schema.is_faulty(path) {
+        return;
+    }
+    if !is_declared(path, cx.schema) {
+        undeclared_through_def(u, cx.schema, diags);
         return;
     }
     if has_default(path, cx.schema) || proven(path, assigned, &u.local, cx.schema) {
@@ -941,6 +1069,38 @@ fn check_read(
         ),
         u.span,
     ));
+}
+
+/// dsl 0.28.0 §1 (T1-17): a def body is checked where it is expanded, like
+/// the site's own text — a path it reads that no declaration covers is
+/// `E-UNDECLARED` at the use, naming the def. The site's own reads are the
+/// cel-layer resolver's; a family read by index (`user.bond[…]`) and
+/// `occasion.*` (typed per beat) are judged there too. One report per def,
+/// path and place.
+fn undeclared_through_def(u: &Use, schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+    let Some(def) = u.via.as_deref() else {
+        return;
+    };
+    let path = u.path.as_str();
+    let family = format!("{path}.");
+    if path.split('.').next() == Some("occasion")
+        || schema.decls.keys().any(|k| k.starts_with(&family))
+    {
+        return;
+    }
+    let hint = crate::cel_paths::nearest_declared_path(path, schema, 2)
+        .map(|s| format!(" — did you mean `{s}`?"))
+        .unwrap_or_default();
+    let message = format!(
+        "`@{def}` reads state path `{path}`, which is not declared in `state:`{hint} (dsl §9.4)"
+    );
+    if diags
+        .iter()
+        .any(|d| d.span == u.span && d.message == message)
+    {
+        return;
+    }
+    diags.push(diag("E-UNDECLARED", message, u.span));
 }
 
 /// One state-path use at a use site: its role, the paths its enclosing

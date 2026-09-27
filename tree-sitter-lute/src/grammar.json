@@ -430,13 +430,53 @@
         {
           "type": "REPEAT",
           "content": {
-            "type": "SYMBOL",
-            "name": "hub_choice"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "hub_choice"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "hub_return"
+              }
+            ]
           }
         },
         {
           "type": "STRING",
           "value": "</hub>"
+        }
+      ]
+    },
+    "hub_return": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "<return"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_tag_attr"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ">"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_node"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "</return>"
         }
       ]
     },
@@ -1071,6 +1111,10 @@
         {
           "type": "STRING",
           "value": "when"
+        },
+        {
+          "type": "STRING",
+          "value": "visibleWhen"
         },
         {
           "type": "STRING",

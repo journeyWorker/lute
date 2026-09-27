@@ -26,7 +26,7 @@ fn project() -> PathBuf {
         &dir,
         "plugins/game.v/plugin.yaml",
         "id: game.v\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
-         exports:\n  occasions: occasions/\n  rewardkinds: rewardkinds/\n",
+         exports:\n  occasions: occasions/\n  rewardKinds: rewardkinds/\n",
     );
     write(
         &dir,

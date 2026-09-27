@@ -107,7 +107,7 @@ fn ward(tag: &str, relation: &str) -> PathBuf {
 
 /// The ward whose office the engine may open (`canEnter` reserved).
 fn open_ward(tag: &str) -> PathBuf {
-    ward(tag, "{ args: [room], reserved: true }")
+    ward(tag, "{ args: [room], tier: run, reserved: true }")
 }
 
 fn play(dir: &Path, script: &str, json: bool) -> Output {
@@ -432,14 +432,52 @@ fn the_game_over_ends_the_play_in_the_terminal_state() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["end"], "terminal", "{}", text(&out));
     assert_eq!(v["exit"], "complete", "{}", text(&out));
-    // A play that never reaches it has no `end`.
+    // A play that never reaches it ended `complete`, not `terminal`.
     let out = play(
         &dir,
         "steps:\n  - occasion: enter\n    target: room.lobby\n",
         true,
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert!(v.get("end").is_none(), "{}", text(&out));
+    assert_eq!(v["end"], "complete", "{}", text(&out));
+}
+
+/// `expect.end` tells the two apart: a play that reached `terminal:` fails
+/// `end: complete` and passes `end: terminal`, and one that did not fails
+/// `end: terminal` — `exit:` used to pass both as `complete`.
+#[test]
+fn expect_end_tells_terminal_from_complete() {
+    let dir = open_ward("expect-end");
+    let over = "steps:\n  - occasion: knock\n";
+    let out = play(&dir, &format!("{over}expect: {{ end: terminal }}\n"), false);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let out = play(&dir, &format!("{over}expect: {{ end: complete }}\n"), false);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(
+        text(&out).contains("end of play: expect end: expected complete, actual terminal"),
+        "{}",
+        text(&out)
+    );
+    let open = "steps:\n  - occasion: enter\n    target: room.lobby\nexpect: { end: terminal }\n";
+    let out = play(&dir, open, false);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(
+        text(&out).contains("expect end: expected terminal, actual complete"),
+        "{}",
+        text(&out)
+    );
+    // The old key is refused, located, naming the new one.
+    let out = play(
+        &dir,
+        &format!("{over}expect: {{ exit: complete }}\n"),
+        false,
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    assert!(
+        text(&out).contains(":3:11: `expect.exit` is now `expect.end`"),
+        "{}",
+        text(&out)
+    );
 }
 
 /// After the game is over an `occasion:` or `advance:` step is refused
@@ -500,14 +538,14 @@ fn raising_after_the_game_is_over_is_refused_and_a_new_run_continues() {
 /// project's fact envelope, in text and JSON.
 #[test]
 fn lute_beats_marks_a_target_whose_gate_never_holds() {
-    let dir = ward("beats", "{ args: [room] }");
+    let dir = ward("beats", "{ args: [room], tier: run }");
     let out = Command::new(BIN).arg("beats").arg(&dir).output().unwrap();
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     assert!(
         t.contains(
-            "enter @ room.office — select: first · gate never holds: \
-             `raisedWhen: holds(canEnter(occasion.target))`"
+            "enter @ room.office — select: first · raisedWhen: \
+             holds(canEnter(occasion.target)) · gate never holds"
         ),
         "{t}"
     );
@@ -558,7 +596,7 @@ fn lute_beats_marks_a_target_whose_gate_never_holds() {
 /// The office door, whose `canEnter` nothing produces, stays live.
 #[test]
 fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
-    let dir = ward("locked", "{ args: [room] }");
+    let dir = ward("locked", "{ args: [room], tier: run }");
     write(
         &dir,
         "plugins/ward/occasions/locked.yaml",
@@ -591,8 +629,8 @@ fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
     let t = text(&Command::new(BIN).arg("beats").arg(&dir).output().unwrap());
     assert!(
         t.contains(
-            "lockedDoor @ room.lobby — select: first · gate never holds: \
-             `raisedWhen: !holds(canEnter(occasion.target))`"
+            "lockedDoor @ room.lobby — select: first · raisedWhen: \
+             !holds(canEnter(occasion.target)) · gate never holds"
         ),
         "{t}"
     );
@@ -603,5 +641,273 @@ fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
     assert!(
         !office.is_empty() && !office.contains("gate never holds"),
         "{t}"
+    );
+}
+
+/// `lute beats` always shows a ladder's gate and a `for` beat's kind (text
+/// and JSON, as the compiled index has them), spells an unspent `once` one
+/// way; `lute calendar` names the member each `for` presentation is for;
+/// `reach --endings` counts a beat whose writes can make `terminal:` hold,
+/// carries the occasion's gate on a `gate:` line, and its JSON writers are
+/// records.
+#[test]
+fn tools_show_gates_for_beats_terminal_endings_and_structured_writers() {
+    let dir = open_ward("tools-views");
+    write(
+        &dir,
+        "plugins/ward/occasions/extra.yaml",
+        "occasions:\n  evening: { select: sequence }\n",
+    );
+    write(
+        &dir,
+        "lore/end.lute",
+        "---\nkind: lore\nid: end\ntitle: End\n---\n\n\
+         <beat id=\"each\" on=\"evening\" for=\"kind:room\" once=\"false\">\n  @narrator: Each.\n</beat>\n\n\
+         <beat id=\"alive\" on=\"knock\" when=\"run.fate == 'alive'\">\n  @narrator: Still here.\n</beat>\n",
+    );
+    let d = dir.to_str().unwrap();
+    let lute = |args: &[&str]| text(&Command::new(BIN).args(args).output().unwrap());
+
+    let t = lute(&["beats", d, "--occasion", "hourStrikes"]);
+    assert!(
+        t.contains("  hourStrikes — select: first · raisedWhen: run.hp > 1\n"),
+        "{t}"
+    );
+    assert!(t.contains(" strike ") && t.contains(" none "), "{t}");
+    assert!(!t.contains(" no "), "{t}");
+    let t = lute(&["beats", d, "--occasion", "evening"]);
+    assert!(t.contains("end.each (for kind:room)"), "{t}");
+    let v: serde_json::Value =
+        serde_json::from_str(&lute(&["beats", d, "--occasion", "evening", "--json"])).unwrap();
+    let row = &v["roots"][0]["ladders"][0]["beats"][0];
+    assert_eq!(row["for"], "kind:room", "{v}");
+    assert_eq!(row["forKind"]["kind"], "room", "{v}");
+
+    let t = lute(&["calendar", d, "--occasion", "evening"]);
+    assert!(t.contains("end.each for "), "{t}");
+    assert!(!t.contains("end.each, end.each"), "{t}");
+
+    let t = lute(&["scenario", d, "reach", "--endings"]);
+    assert!(
+        t.contains(
+            "  taken (scene, scenes/taken.lute): reachable\n    ends: writes `run.fate`, which \
+             `terminal: run.fate == 'taken'` reads\n"
+        ),
+        "{t}"
+    );
+    let t = lute(&["scenario", d, "reach", "--endings=hourStrikes"]);
+    assert!(
+        t.contains(
+            "    gate: `raisedWhen: run.hp > 1` — it needs:\n      run.hp — the engine (`owner: engine`)\n    \
+             when: no `when` — holds whenever its gate lets the occasion be raised\n"
+        ),
+        "{t}"
+    );
+    let v: serde_json::Value = serde_json::from_str(&lute(&[
+        "scenario",
+        d,
+        "--format",
+        "json",
+        "reach",
+        "--endings=knock",
+    ]))
+    .unwrap();
+    let alive = v["roots"][0]["endings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == "end.alive")
+        .unwrap_or_else(|| panic!("{v}"));
+    assert_eq!(
+        alive["needs"][0]["writers"][0],
+        serde_json::json!({ "kind": "scene", "id": "taken", "file": "scenes/taken.lute",
+            "how": "set", "via": null, "text": "scene `taken`" }),
+        "{v}"
+    );
+}
+
+/// A calendar cell whose occasion's `raisedWhen` is false reads `gate false`
+/// (not `-`, which is "raised, nothing eligible"); `--json` marks it
+/// `gated: true`, a cell whose gate holds carries no such mark.
+#[test]
+fn a_calendar_cell_whose_gate_is_false_says_so() {
+    let dir = open_ward("calendar-gate");
+    let calendar = |extra: &[&str]| {
+        let out = Command::new(BIN)
+            .args(["calendar", &dir.display().to_string()])
+            .args([
+                "--occasion",
+                "enter",
+                "--target",
+                "room.office",
+                "--target",
+                "room.lobby",
+            ])
+            .args(extra)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", text(&out));
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let t = calendar(&[]);
+    let row = t
+        .lines()
+        .find(|l| l.contains("lobby") && !l.contains("room."))
+        .unwrap_or_else(|| panic!("{t}"));
+    assert!(row.starts_with("gate false"), "{t}");
+    let csv = calendar(&["--csv"]);
+    assert!(
+        csv.contains("enter,room.office,first,,,,,gate false"),
+        "{csv}"
+    );
+    let v: serde_json::Value = serde_json::from_str(&calendar(&["--json"])).unwrap();
+    let results = v["cells"][0]["results"].as_array().unwrap();
+    let at = |t: &str| results.iter().find(|r| r["target"] == t).unwrap();
+    assert_eq!(at("room.office")["gated"], true, "{v}");
+    assert!(at("room.lobby").get("gated").is_none(), "{v}");
+    assert_eq!(at("room.lobby")["winner"], "lobby", "{v}");
+}
+
+/// A play usage error is plain text: no spec section, no ticket id.
+#[test]
+fn a_play_usage_error_cites_no_spec_section() {
+    let dir = open_ward("usage-plain");
+    let out = play(
+        &dir,
+        "steps:\n  - occasion: enter\n    target: room.offce\n",
+        false,
+    );
+    let t = text(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(
+        t.contains("target `room.offce` is outside occasion `enter`'s domain")
+            && t.contains("did you mean `room.office`?"),
+        "{t}"
+    );
+    assert!(!t.contains('§') && !t.contains("dsl "), "{t}");
+}
+
+/// Two villagers and one targeted `talk` occasion whose declaration (after
+/// the occasion name) is `talk`; `schema_extra` is appended to the schema.
+fn villagers(tag: &str, talk: &str, schema_extra: &str) -> PathBuf {
+    let dir = temp_dir(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: g\nprofiles: { g: { plugins: { p: true } } }\n\
+         defaults: { uses: [w.schema.yaml] }\n",
+    );
+    write(
+        &dir,
+        "plugins/p/plugin.yaml",
+        "id: p\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
+         exports: { occasions: occasions/ }\n",
+    );
+    write(
+        &dir,
+        "plugins/p/occasions/o.yaml",
+        &format!("occasions:\n  talk: {{ select: first, target: {{ prefix: npc, entity: villager }}, {talk} }}\n"),
+    );
+    write(
+        &dir,
+        "w.schema.yaml",
+        &format!(
+            "state:\n  user.bond: {{ type: number, default: 0, per: villager }}\n\
+             entities:\n  villager: {{ members: [mara, ines] }}\n{schema_extra}"
+        ),
+    );
+    write(
+        &dir,
+        "lore/a.lute",
+        "---\nkind: lore\nid: a\n---\n\n<beat id=\"hi\" on=\"talk\" target=\"kind:villager\" once=\"false\">\n  \
+         @narrator: Hi.\n</beat>\n",
+    );
+    dir
+}
+
+/// A family read by the raised member names the member path and its value
+/// (it used to say the family was unset), and the refused raise's step says
+/// it was not raised — not that nothing answered it (`--json`: `notRaised`).
+#[test]
+fn a_gate_over_a_member_family_names_the_member_path_and_is_not_raised() {
+    let dir = villagers(
+        "gate-member",
+        "raisedWhen: \"user.bond[occasion.target] >= 1\"",
+        "",
+    );
+    let script = "steps:\n  - occasion: talk\n    target: npc.ines\n";
+    let t = text(&play(&dir, script, false));
+    assert!(
+        t.contains("which is false here since `user.bond.ines` is 0 —"),
+        "{t}"
+    );
+    assert!(!t.contains("`user.bond` is unset"), "{t}");
+    assert!(t.contains("  (not raised: gate false)"), "{t}");
+    assert!(!t.contains("(no candidates)"), "{t}");
+    let v: serde_json::Value = serde_json::from_slice(&play(&dir, script, true).stdout).unwrap();
+    assert_eq!(v["steps"][0]["notRaised"], "gate false", "{v}");
+}
+
+/// A gate over the raise's payload is fixed by the step's own `payload:`,
+/// not by an earlier write.
+#[test]
+fn a_payload_gate_refusal_points_at_the_steps_payload() {
+    let dir = villagers(
+        "gate-payload",
+        "payload: { weight: number }, raisedWhen: \"occasion.payload.weight > 0\"",
+        "",
+    );
+    let t = text(&play(
+        &dir,
+        "steps:\n  - occasion: talk\n    target: npc.ines\n    payload: { weight: 0 }\n",
+        false,
+    ));
+    assert!(
+        t.contains(
+            "since `occasion.payload.weight` is 0 — raise it with a payload that satisfies it \
+             (`payload:` on this step), or drop the step"
+        ),
+        "{t}"
+    );
+    assert!(!t.contains("an `engine:` write"), "{t}");
+}
+
+/// A gate written as a `@def` over a negated fact is quoted as written and
+/// names the fact that holds; the compiled gate keeps the author's text
+/// beside the expansion an engine evaluates.
+#[test]
+fn a_def_gate_over_a_negated_fact_is_quoted_as_written_and_names_the_fact() {
+    let dir = villagers(
+        "gate-def",
+        "raisedWhen: \"@standing\"",
+        "relations:\n  fell: { args: [villager], tier: run }\ndefs:\n  standing: \"!holds(fell(occasion.target))\"\n",
+    );
+    let t = text(&play(
+        &dir,
+        "facts: [fell(ines)]\nsteps:\n  - occasion: talk\n    target: npc.ines\n",
+        false,
+    ));
+    assert!(
+        t.contains("only when `@standing` (its `raisedWhen`), which is false here since `fell(ines)` holds"),
+        "{t}"
+    );
+    let out = Command::new(BIN)
+        .args(["compile", "--project", &dir.display().to_string()])
+        .arg(dir.join("lore/a.lute"))
+        .arg("-o")
+        .arg(dir.join("a.json"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out));
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("a.json")).unwrap()).unwrap();
+    let gate = &v["gates"][0]["raisedWhen"];
+    assert_eq!(gate["authored"], "@standing", "{v}");
+    assert!(
+        gate["raw"]
+            .as_str()
+            .unwrap()
+            .contains("holds(fell(occasion.target))"),
+        "{v}"
     );
 }

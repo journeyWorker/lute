@@ -191,13 +191,48 @@ pub struct Match {
     pub span: Span,
 }
 
-/// `<hub id> HubChoice+ </hub>` (dsl §7.3.2). Choices reuse [`Choice`];
-/// the `once` / `exit` flags arrive as bare attrs on each choice.
+/// `<hub id> HubReturn? HubChoice+ </hub>` (dsl §7.3.2). Choices reuse
+/// [`Choice`]; the `once` / `exit` flags arrive as bare attrs on each choice.
+/// `on_return` is the hub's `<return>` block (dsl 0.28.0 §5).
 #[derive(Clone, Debug)]
 pub struct Hub {
     pub attrs: Vec<Attr>,
     pub choices: Vec<Choice>,
+    pub on_return: Option<HubReturn>,
     pub span: Span,
+}
+
+/// `<return> Node* </return>` (dsl 0.28.0 §5): the hub's revisit text. It
+/// runs each time a non-`exit` option's arm hands control back to the hub,
+/// before the menu is judged and presented again — never before the first
+/// presentation, never after an `exit` option. Its body admits what a hub
+/// option body admits. `attrs` is the residual list (the tag takes none —
+/// the checker's attribute closure reports any).
+#[derive(Clone, Debug)]
+pub struct HubReturn {
+    pub attrs: Vec<Attr>,
+    pub body: Vec<Node>,
+    pub span: Span,
+}
+
+impl Hub {
+    /// Every node sequence the hub owns: each option body in order, then
+    /// the `<return>` body. For walks that visit bodies without modelling
+    /// the hub's control flow.
+    pub fn bodies(&self) -> impl Iterator<Item = &Vec<Node>> {
+        self.choices
+            .iter()
+            .map(|c| &c.body)
+            .chain(self.on_return.iter().map(|r| &r.body))
+    }
+
+    /// [`Hub::bodies`], mutably.
+    pub fn bodies_mut(&mut self) -> impl Iterator<Item = &mut Vec<Node>> {
+        self.choices
+            .iter_mut()
+            .map(|c| &mut c.body)
+            .chain(self.on_return.iter_mut().map(|r| &mut r.body))
+    }
 }
 
 /// `<quest id …> QuestBody </quest>` (dsl 0.2.0 §6.3). A TOP-LEVEL declaration
@@ -216,13 +251,14 @@ pub struct Quest {
     pub title: Option<String>,
     pub start: Option<CelSlot>,
     pub fail: Option<CelSlot>,
-    /// The prerequisite `after` attribute (connectivity layer, T2): raw CEL
-    /// text validated under the restricted `prereq::parse_prereq` grammar
-    /// (never the general CEL pipeline — mirrors `<when is="…">`'s
-    /// `take_str_spanned` treatment). `after_span` is meaningful only when
-    /// `after` is `Some`; it defaults to the quest's open-tag span otherwise.
-    pub after: Option<String>,
-    pub after_span: Span,
+    /// `follows=` — the quest-graph edge (connectivity layer): raw text
+    /// validated under the restricted `prereq::parse_prereq` grammar (never
+    /// the general CEL pipeline — mirrors `<when is="…">`'s
+    /// `take_str_spanned` treatment). Graph metadata only: it never gates
+    /// the quest (`start=` does). `follows_span` is meaningful only when
+    /// `follows` is `Some`; it defaults to the quest's open-tag span otherwise.
+    pub follows: Option<String>,
+    pub follows_span: Span,
     /// dsl 0.22.0 §7: the quest's lifetime tier, raw text + value span
     /// (`"run"` resets at `newRun`; absent = `user`). The checker validates
     /// the value (`E-ATTR-TYPE`).
@@ -329,8 +365,8 @@ pub struct Entry {
 /// quoted string (checker: `E-BEAT-ATTR`); `id_span` then falls back to the
 /// open tag. The string attrs keep their value span so the checker can
 /// anchor `E-BEAT-ATTR` at the value; `priority` / `once` stay raw text.
-/// `also` is the bare flag (or `also="true"` / `"false"`) with its span; any
-/// other `also=` value stays residual in `attrs`.
+/// `also` is the flag read by [`AttrValue::flag`], with its span; any other
+/// `also=` value stays residual in `attrs` (`E-FLAG-VALUE`).
 #[derive(Clone, Debug)]
 pub struct BundleBeat {
     pub id: String,
@@ -350,7 +386,7 @@ pub struct BundleBeat {
     /// dsl 0.25.0 §3: the prerequisite, raw text + value span — a scene's
     /// `after:` on a bundle beat (an eligibility conjunct and a scenario
     /// edge), validated under the restricted `prereq::parse_prereq`
-    /// grammar like [`Quest::after`], never routed through general CEL.
+    /// grammar like [`Quest::follows`], never routed through general CEL.
     pub after: Option<(String, Span)>,
     pub also: Option<(bool, Span)>,
     pub when: Option<CelSlot>,
@@ -372,13 +408,16 @@ pub struct BundleBeat {
 /// `failed` marks a use whose template could not be applied whole (no such
 /// component, no `beat:` header, or a faulty header, reported once at the
 /// header): the checker then says nothing about what the template would
-/// have supplied (a missing `on=`).
+/// have supplied (a missing `on=`). `replaced_when` is the template's
+/// `when:` as its header writes it, when the use's own `when=` replaces it
+/// (`W-TEMPLATE-OVERRIDE`) — what `lute beats` notes beside the guard.
 #[derive(Clone, Debug)]
 pub struct TemplateUse {
     pub name: String,
     pub span: Span,
     pub expanded: bool,
     pub failed: bool,
+    pub replaced_when: Option<String>,
 }
 
 /// `<objective id done …> Node* </objective>` or self-closing
@@ -387,7 +426,9 @@ pub struct TemplateUse {
 /// `quest` (subquest design, 2026-08-31) references a child quest whose
 /// completion IS this objective's completion (the predicate is synthesized
 /// downstream — `quest.<child>.state == 'complete'` — never authored).
-/// `when` gates visibility; `optional` is a bare boolean flag. `rewards`
+/// `visible_when` (`visibleWhen=`) controls visibility only — it never gates
+/// `done`; `optional` is a flag read by [`AttrValue::flag`] (a non-flag value
+/// stays residual in `attrs`, `E-FLAG-VALUE`). `rewards`
 /// collects every self-closing `<reward/>` (dsl 0.16.0 §2) child, folded
 /// out of the shared `body` stream by the parse loop.
 #[derive(Clone, Debug)]
@@ -400,9 +441,11 @@ pub struct Objective {
     pub quest: Option<String>,
     /// Span of the `quest=` attribute value; meaningful only when `quest` is
     /// `Some` (defaults to the open-tag span otherwise, mirroring
-    /// [`Quest::after_span`]).
+    /// [`Quest::follows_span`]).
     pub quest_span: Span,
-    pub when: Option<CelSlot>,
+    /// `visibleWhen=`: the objective is shown only while this holds. It
+    /// never gates `done` (put the condition in `done=` for that).
+    pub visible_when: Option<CelSlot>,
     pub title: Option<String>,
     pub optional: bool,
     /// The occasion at which this objective's `done`/`fail` is judged (dsl
@@ -429,7 +472,7 @@ pub struct Objective {
     pub span: Span,
 }
 
-/// A `<reward kind= target= amount= when= on=/>` element (dsl 0.16.0 §2) —
+/// A `<reward kind= target= amount= when= outcome=/>` element (dsl 0.16.0 §2) —
 /// an OWNER FIELD of the enclosing [`Quest`] / [`Objective`], NEVER a
 /// [`Node`] variant. The parser accepts only the self-closing form
 /// (`self_closing == true`); a body-form `<reward>…</reward>` draws a
@@ -458,12 +501,12 @@ pub struct Reward {
     /// Optional `when=` CEL guard (dsl 0.16.0 §2) — evaluated at the grant
     /// instant; joins the canonical [`CelSlot`] walk.
     pub when: Option<CelSlot>,
-    /// Raw `on=` attribute value (only `"failed"` is legal, and only on a
+    /// Raw `outcome=` attribute value (only `"failed"` is legal, and only on a
     /// quest-level reward per dsl 0.16.0 §2); the checker validates the enum
     /// and the position.
-    pub on: Option<String>,
-    /// Span of `on`'s value when present.
-    pub on_span: Option<Span>,
+    pub outcome: Option<String>,
+    /// Span of `outcome`'s value when present.
+    pub outcome_span: Option<Span>,
     /// Residual attrs (post-extraction) for the D-J per-tag attribute
     /// closure check. A malformed `amount=` is preserved here so the checker
     /// can anchor `E-REWARD-ATTR` at the original value span.
@@ -575,20 +618,57 @@ pub const INTERP_FORMAT_ORDINAL_WORD: &str = "ordinalWord";
 /// placeholder carries the forms so an engine can localize.
 pub const INTERP_FORMAT_PLURAL: &str = "plural";
 
-/// Every interpolation format hint the language defines; the checker
-/// rejects any other. Each formats a number ([`format_number`]).
-pub const INTERP_FORMATS: [&str; 3] = [
+/// `{{run.wagons:cardinalWord}}` renders the number as an English cardinal
+/// word ([`english_cardinal_word`]): `one` … `twenty`, then digits.
+pub const INTERP_FORMAT_CARDINAL_WORD: &str = "cardinalWord";
+
+/// `{{run.rival:capitalize}}` renders the text with its first letter in
+/// upper case ([`format_text`]).
+pub const INTERP_FORMAT_CAPITALIZE: &str = "capitalize";
+
+/// `{{occasion.target:start}}` renders a member's sentence-start label form
+/// (`start:` of a kind's `labels:` entry), else the text capitalized.
+pub const INTERP_FORMAT_START: &str = "start";
+
+/// `{{occasion.target:indefinite}}` renders a member's label with its
+/// indefinite article (`indefinite:` of a kind's `labels:` entry), else
+/// `a` / `an` by the text's first letter.
+pub const INTERP_FORMAT_INDEFINITE: &str = "indefinite";
+
+/// The hints that format a number ([`format_number`]).
+pub const INTERP_NUMBER_FORMATS: [&str; 4] = [
     INTERP_FORMAT_ORDINAL,
     INTERP_FORMAT_ORDINAL_WORD,
+    INTERP_FORMAT_CARDINAL_WORD,
     INTERP_FORMAT_PLURAL,
 ];
 
-/// `n` rendered in format hint `format` ([`INTERP_FORMATS`]) with the
+/// The hints that format text — a string, an enum or entity label, a cast
+/// display name ([`format_text`]).
+pub const INTERP_TEXT_FORMATS: [&str; 3] = [
+    INTERP_FORMAT_CAPITALIZE,
+    INTERP_FORMAT_START,
+    INTERP_FORMAT_INDEFINITE,
+];
+
+/// Every interpolation format hint the language defines; the checker
+/// rejects any other.
+pub const INTERP_FORMATS: [&str; 7] = [
+    INTERP_FORMAT_ORDINAL,
+    INTERP_FORMAT_ORDINAL_WORD,
+    INTERP_FORMAT_CARDINAL_WORD,
+    INTERP_FORMAT_PLURAL,
+    INTERP_FORMAT_CAPITALIZE,
+    INTERP_FORMAT_START,
+    INTERP_FORMAT_INDEFINITE,
+];
+
+/// `n` rendered in number hint `format` ([`INTERP_NUMBER_FORMATS`]) with the
 /// hint's `forms` — the one rule the reference runner, `lute trace` and a
 /// component's compile-time literal splice all render with. `shown` is the
 /// number as it renders unformatted (what a `#` in a plural form becomes).
-/// `None` for an unknown hint, malformed forms, or a number the hint does
-/// not cover: the renderer then shows the number unchanged.
+/// `None` for a text or unknown hint, malformed forms, or a number the hint
+/// does not cover: the renderer then shows the number unchanged.
 pub fn format_number(
     format: &str,
     forms: Option<&[String]>,
@@ -598,21 +678,86 @@ pub fn format_number(
     match format {
         INTERP_FORMAT_ORDINAL => english_ordinal(n),
         INTERP_FORMAT_ORDINAL_WORD => english_ordinal_word(n),
+        INTERP_FORMAT_CARDINAL_WORD => english_cardinal_word(n),
         INTERP_FORMAT_PLURAL => english_plural(forms?, n, shown),
         _ => None,
     }
 }
 
+/// `text` rendered in text hint `format` ([`INTERP_TEXT_FORMATS`]):
+/// `capitalize` upper-cases the first letter; `start` is the declared
+/// sentence-start form `start` when there is one, else `capitalize`;
+/// `indefinite` is the declared form `indefinite` when there is one, else
+/// `an` before a text whose first letter is a vowel (`a e i o u`) and `a`
+/// before any other (`an ashwraith`, `a wagon`) — declare `indefinite:` for
+/// the words that rule gets wrong (`an hour`, `a unicorn`) or for a label
+/// that already carries an article. `None` for a number or unknown hint.
+pub fn format_text(
+    format: &str,
+    text: &str,
+    start: Option<&str>,
+    indefinite: Option<&str>,
+) -> Option<String> {
+    match format {
+        INTERP_FORMAT_CAPITALIZE => Some(capitalize(text)),
+        INTERP_FORMAT_START => Some(start.map_or_else(|| capitalize(text), str::to_string)),
+        INTERP_FORMAT_INDEFINITE => Some(indefinite.map_or_else(
+            || {
+                let vowel = text
+                    .chars()
+                    .find(|c| c.is_alphanumeric())
+                    .is_some_and(|c| matches!(c.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'));
+                format!("{} {text}", if vowel { "an" } else { "a" })
+            },
+            str::to_string,
+        )),
+        _ => None,
+    }
+}
+
+/// `text` with its first character in upper case (`the cut` → `The cut`).
+pub fn capitalize(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 /// dsl 0.27.0 §7: the English form of `forms` (`[singular, plural]`) for
-/// `n` — the singular exactly when `n` is 1 — with every `#` in it replaced
-/// by `shown` (`plural(# lantern|# lanterns)` → `3 lanterns`). `None` unless
-/// there are exactly two forms.
+/// `n` — the singular exactly when `n` is 1 — with the number written into
+/// it: `#word` is the number as a cardinal word ([`english_cardinal_word`],
+/// digits outside `one` … `twenty`), `#Word` the same word capitalized, and
+/// any other `#` is `shown` (`plural(# lantern|# lanterns)` → `3 lanterns`,
+/// `plural(One wagon|#Word wagons)` → `Eleven wagons`). `None` unless there
+/// are exactly two forms.
 pub fn english_plural(forms: &[String], n: f64, shown: &str) -> Option<String> {
     let [one, other] = forms else {
         return None;
     };
-    let form = if n == 1.0 { one } else { other };
-    Some(form.replace('#', shown))
+    let mut rest = if n == 1.0 {
+        one.as_str()
+    } else {
+        other.as_str()
+    };
+    let word = || english_cardinal_word(n).unwrap_or_else(|| shown.to_string());
+    let mut out = String::with_capacity(rest.len() + shown.len());
+    while let Some(at) = rest.find('#') {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + 1..];
+        rest = if let Some(r) = after.strip_prefix("word") {
+            out.push_str(&word());
+            r
+        } else if let Some(r) = after.strip_prefix("Word") {
+            out.push_str(&capitalize(&word()));
+            r
+        } else {
+            out.push_str(shown);
+            after
+        };
+    }
+    out.push_str(rest);
+    Some(out)
 }
 
 /// Build the [`Interp`] for one `{{…}}` interior (untrimmed `inner`),
@@ -742,6 +887,40 @@ pub fn english_ordinal_word(n: f64) -> Option<String> {
     Some(match n as usize {
         i @ 1..=20 => WORDS[i - 1].to_string(),
         _ => digits,
+    })
+}
+
+/// `n` as an English cardinal word — `one` … `twenty` for 1–20, and its
+/// digits (`0`, `21`, `101`) otherwise; `None` exactly where
+/// [`english_ordinal`] is (a fraction, a negative number), and the renderer
+/// then shows the number unchanged.
+pub fn english_cardinal_word(n: f64) -> Option<String> {
+    const WORDS: [&str; 20] = [
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
+        "twenty",
+    ];
+    english_ordinal(n)?;
+    Some(match n as u64 {
+        i @ 1..=20 => WORDS[i as usize - 1].to_string(),
+        i => i.to_string(),
     })
 }
 
@@ -883,6 +1062,22 @@ pub enum AttrValue {
     BoolTrue,
 } // bare ident => true; @ref becomes a CelSlot
 
+impl AttrValue {
+    /// dsl 0.28.0 §1: the ONE reader of a flag attribute (`<choice once>`,
+    /// `<choice exit>`, `<objective optional>`, `<beat also>`). A flag is bare
+    /// (`once`, true), `="true"` or `="false"`; any other value — `once="run"`,
+    /// `optional="yes"`, an `@ref` — is `None`, which the checker reports as
+    /// `E-FLAG-VALUE` and no reader may take as `false`.
+    pub fn flag(&self) -> Option<bool> {
+        match self {
+            AttrValue::BoolTrue => Some(true),
+            AttrValue::Str(s) if s == "true" => Some(true),
+            AttrValue::Str(s) if s == "false" => Some(false),
+            AttrValue::Str(_) | AttrValue::Ref(_) => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CelKind {
     Condition,
@@ -985,6 +1180,66 @@ mod tests {
             assert_eq!(english_ordinal_word(n), None, "{n}");
         }
     }
+
+    #[test]
+    fn cardinal_words_and_plural_word_forms() {
+        for (n, want) in [
+            (1.0, "one"),
+            (11.0, "eleven"),
+            (20.0, "twenty"),
+            (0.0, "0"),
+            (21.0, "21"),
+        ] {
+            assert_eq!(english_cardinal_word(n).as_deref(), Some(want), "{n}");
+        }
+        assert_eq!(english_cardinal_word(2.5), None);
+        let forms = [
+            "One wagon".to_string(),
+            "#Word wagons, #word in all (#)".to_string(),
+        ];
+        assert_eq!(
+            english_plural(&forms, 11.0, "11").as_deref(),
+            Some("Eleven wagons, eleven in all (11)")
+        );
+        assert_eq!(
+            english_plural(&forms, 1.0, "1").as_deref(),
+            Some("One wagon")
+        );
+        assert_eq!(
+            english_plural(&forms, 30.0, "30").as_deref(),
+            Some("30 wagons, 30 in all (30)")
+        );
+    }
+
+    #[test]
+    fn text_hints_use_declared_forms_then_fall_back() {
+        assert_eq!(
+            format_text("capitalize", "the cut", None, None).as_deref(),
+            Some("The cut")
+        );
+        assert_eq!(
+            format_text("start", "the cut", Some("The smugglers' cut"), None).as_deref(),
+            Some("The smugglers' cut")
+        );
+        assert_eq!(
+            format_text("start", "élan", None, None).as_deref(),
+            Some("Élan")
+        );
+        assert_eq!(
+            format_text("indefinite", "ashwraith", None, None).as_deref(),
+            Some("an ashwraith")
+        );
+        assert_eq!(
+            format_text("indefinite", "wagon", None, None).as_deref(),
+            Some("a wagon")
+        );
+        assert_eq!(
+            format_text("indefinite", "hour", None, Some("an hour")).as_deref(),
+            Some("an hour")
+        );
+        assert_eq!(format_text("ordinal", "x", None, None), None);
+    }
+
     fn test_span() -> lute_core_span::Span {
         lute_core_span::Span {
             byte_start: 0,

@@ -38,6 +38,508 @@ table.
 
 ## [Unreleased]
 
+### Added
+
+- The clock reads by name: `clock.day` and `clock.slot` are read-only aliases
+  of the clock's day and slot paths, and a finite clock (`last:` / `days:`)
+  has `clock.ended` — `false` until the `advance:` that ends the clock, true
+  from that advance's settle (so `by="clock.ended"` fails a deadline at the
+  moment the clock ends, and `terminal: "clock.ended"` ends the game there)
+  until a `newRun` starts a run-tier clock over. All three are `owner:
+  engine`, typed (`clock.slot` is the slot enum) and in `lute context`. A
+  `lute play` step checks the moment with `expect: { clock: { ended: true } }`
+  (a usage error on a clock that never ends).
+- A relation's `tier:` and the manifest's `defaults.questTier` accept
+  `season:<name>`, like a quest's `tier=` and a beat's `once:`. A
+  season-tier relation's facts go back to the seed facts each time the
+  season opens (the play's `season … opens` line names those relations); an
+  undeclared season is `E-SEASON-DECL`.
+- An occasion may declare `outsideRun: true` (a title screen, a gallery
+  between runs): the engine raises it even after the project's `terminal:`
+  holds, and the checker does not judge its beats under `!terminal`. The IR
+  lists such occasions in `outsideRun`.
+- Text that is another language's markup warns instead of shipping silently:
+  `W-TEXT-SINGLE-BRACE` for a single-brace `{run.oil}`, `{@def}`, Yarn
+  `{$oil}`, Ink conditional text `{run.oil > 0: …}` and alternatives
+  `{~Fog|Mist}` in line text or a choice label (interpolation is `{{…}}`;
+  conditional text is a guarded line or a `<match>`); `W-TEXT-COMMENT-LIKE`
+  for a ` // note` or a trailing Ink `# tag` inside text; and
+  `W-TEXT-BRACKET-LABEL` for a choice `label="[Go inside]"`, whose brackets
+  show on the button.
+- `W-SEASON-UNGATED`: a beat with `once: season:<name>` (scene, `<entry>`,
+  `<beat>`) or a `tier="season:<name>"` quest whose `when` / `start` does not
+  imply the season's `live` condition warns, naming the condition to add —
+  `once` only sets how long the beat stays spent, so such a beat played while
+  the season had never opened.
+- `E-BEAT-ID-DUP`: an `<entry>` and a `<beat>` of one lore document with the
+  same id is an error at the later one — the beat's canonical
+  `<document id>.<id>` was also the entry's alias, so `visited()` and a play's
+  `expect.winner` named both. A repeated `<beat id>` moves to this code too
+  (it was `E-BEAT-ATTR`).
+- A hub can say something each time the player comes back to it: a
+  `<return>` block inside `<hub>` runs after every non-`exit` option's arm,
+  before the options are judged and shown again (never before the first menu,
+  never after an `exit`). It is checked like an option body, compiles to its
+  own segment named by the hub record's `return` field, and runs the same in
+  `trace`, `run`, `play` and `test`. A second `<return>`, one outside a hub
+  or inside an option is `E-LOGIC-CONTENT`; an attribute on it is
+  `E-UNKNOWN-ATTR`.
+- Label forms and number words. A kind's `labels:` entry may be `{ text, start, indefinite }`
+  besides a string; `{{…:start}}` renders the `start` form (else the text capitalized) and
+  `{{…:indefinite}}` the `indefinite` form (else `a` / `an` by the first letter, then the text).
+  `:capitalize` upper-cases the first letter of any text placeholder, `:cardinalWord` spells
+  `one` … `twenty` (digits above), and in a `plural(…)` form `#word` / `#Word` is the number as a
+  word. The IR placeholder carries the new `format` values (also on `occasionTarget` and
+  `reserved` placeholders), and `entities[]` / `state[]` entries carry `labelForms`; `lute play`
+  and `lute trace` render them alike.
+- `W-QUEST-REARM-CONSTANT`: a `rearm=` that folds to a constant never turns from false to true,
+  so the quest never rearms.
+- `W-BRANCH-ID-SHARED` (`lute check-project`): two documents declare a `<branch>` or `<hub>`
+  with the same id, so one `choose:` key in a play or test answers both menus.
+- A type may name the clock's enums: `{ domain: clock.slot }` and
+  `{ domain: clock.weekdayLabel }`. A component that shows the weekday takes a
+  param of that type instead of copying the labels into an enum, and its
+  `<match>` arms and literal arguments are checked against the clock's labels.
+  A component param of any closed `{ domain: K }` is now judged over K's
+  members too (it was treated as open text: a misspelt `<when is>` passed).
+- `occasion.target` can be written, not only read, in a beat or entry that targets a kind or runs for each member of one: `::set{run.count[occasion.target] += 1}`, `::assert{caught(occasion.target)}` / `::retract`, a directive attribute typed by an entity kind or domain (`::haul{fish=occasion.target}`, its declared effects included) and a component argument (`::use{component="reaction" who=occasion.target}`, a `speaker` param speaking as the member). Each write is checked once per member, and `lute play` writes only the member the beat ran for. Outside such a beat the write is one `E-UNDECLARED`. In the artifact a `set` path keeps `F[occasion.target]`, an `assert`/`retract` argument and a plugin field keep `occasion.target` for the engine to bind; a component argument expands to one `match` arm per member. A `::set` path indexed by a literal (`run.count[cod]`) is one `E-SET-SHAPE` naming `run.count.cod`, instead of three errors and a did-you-mean that made no sense.
+- A relation declared without `tier:` warns, `W-RELATION-TIER-IMPLICIT`: its
+  facts silently reset every run. Write `tier: run` to keep that, or the tier
+  the facts should outlive.
+- An enum and an entity kind with the same name are `E-DOMAIN-NAME-CLASH`,
+  whether declared in one document or merged from several schemas.
+
+### Changed
+
+- Messages and docs call a `::next` target a **mark** (the target is declared
+  with `::mark{id}` or a content line's `id=`), no longer a "label", which
+  kept meaning `<choice label>`, `labels:` and a play step's `label:` too.
+  `E-NEXT-UNDEFINED` now reads ``::next` targets `x`, which no `::mark` or
+  line `id=` in this document declares`` and names the document's closest mark
+  when one is near (``did you mean `ending`?``); `E-NEXT-BACKWARD` and
+  `E-MARK-DUP` say "mark" too.
+- The `lute init` project and the docs' examples name their place occasion
+  `townVisit` (scenes `town.welcome`, `town.morning`, `town.dayEnd` under
+  `scenes/town/`) instead of `hubVisit` / `hub.*`, which read as the `<hub>`
+  element.
+- A test's menu-choice expectation is `expect.options: { <branch or hub id>:
+  [option ids] }`, the name a play step already uses; in both files `options`
+  are a branch/hub's menu choices and a play's `offered` lists beat
+  candidates. A test's top-level quest list is only `accepts:` (the `accept:`
+  spelling is gone, in `--mock` files too). A key written in the wrong file
+  says which file reads it: a test's `payload:` or `winner:` names the play
+  step, a play's `accepts:` or `file:` names the `*.test.yaml`, and a play's
+  `expect.offered: { br: [a] }` map says menu choices are `options:`.
+- `::camera`'s pan attributes are `moveX` / `moveY`, camelCase like every
+  other core attribute. An unknown directive attribute now suggests the
+  nearest declared one (`move-x` → ``did you mean `moveX`?``).
+- Did-you-mean is one helper everywhere: it ignores case and `_`/`-`
+  (`kind="gold"` → `GOLD`, `changed_on` → `changedOn`, `kind: Scene` →
+  `scene`, `tier: Run` → `run`) and knows neighbouring words that are not
+  typos (`complete=` → `done=`, `questTier=` → `tier=`, `test=` → `when=`,
+  occasion `when:` → `raisedWhen:`, `rearm` ↔ `spentBy`, `<else>` →
+  `<otherwise>`). `E-UNKNOWN-ATTR` lists the element's attributes, an unknown
+  content-line attribute lists the line's, `E-UNKNOWN-EVENT` names the events
+  and the nearest one (`questCompleted` → `questComplete`), and a relation's
+  unknown key names the relation keys (`derived` → `derive`).
+- `<else>` / `<default>` inside a `<match>` is one error naming `<otherwise>`;
+  its body and close tag no longer add two more.
+- A target that is not an id no longer quotes a grammar
+  (`Ident ("." Segment)*`): the message says what an id looks like, and an
+  `<objective>` or `<on>` handed `target="kind:crew"` says it takes one
+  target — kind targets are for beats and entries.
+- The `share` without `once` message lists every spending period (`week`
+  and `season:<name>` were missing).
+- `check-project` leaves a beat the per-file check rejected (an error in its
+  declaration, or a template use whose header is faulty) out of
+  `W-BEAT-PRIORITY-TIE` and `W-BEAT-SHADOWED`: the error is the one report.
+  A tie's reason comes from what the author wrote (`when`, `once`,
+  `spentBy`, `after:`), never from a fact the beat's own body asserts.
+- Three quest-layer attributes are renamed so each word keeps the meaning it
+  has elsewhere: `<quest after=>` is `<quest follows=>` (quest-graph metadata;
+  it never gates the quest — to wait, write `start="visited('…')"`),
+  `<reward on=>` is `<reward outcome=>`, and `<objective when=>` is
+  `<objective visibleWhen=>` (it only hides the objective; it never gates
+  `done`). The IR follows: `ObjectiveEntry.visibleWhen`, `RewardEntry.outcome`,
+  and a quest's `prereqEdges` row carries `follows` instead of `after`.
+- The seam — the project's `terminal:` and an occasion's `raisedWhen` gate —
+  is decided when the occasion is raised. A `judge: before` judgement that
+  makes `terminal:` hold no longer closes the occasion's own beats (the
+  epilogue plays; the game is over after the step).
+- A `select: sequence` raise judges each beat again just before its turn,
+  once an earlier beat of the raise has played: a beat whose `when` an
+  earlier beat made false is skipped (and one it made true plays). `lute play`
+  marks such a candidate "(judged at its turn, after an earlier beat of this
+  raise)".
+- A `for="kind:<kind>"` beat is spent per member: its `once` (run, user, day,
+  slot, week, season) counts each member's presentation separately. A `for`
+  entry's writes apply on each member's first read in the run (the engine
+  keeps `entry.<id>.readFor.<member>`; `entry.<id>.read` holds once any member
+  was read).
+- `check-project --wip` reports a dead guard it spares as the warning `W-WIP` instead of printing the error code at warning severity (`warning [E-ARM-DEAD]`); the message names the code the guard has without the flag (`… — \`E-ENTRY-UNREACHABLE\` without \`--wip\`: …`). The diagnostics reference documents the rendering.
+- An unrecognized body line written in Ink or Yarn says what Lute writes
+  instead: `-> knot` names `::next{to}`/`<hub>`/occasions (`-> END` names
+  `::end`), `~ x = …`, `VAR`, `CONST`, `<<set>>` and `<<declare>>` name
+  `::set{…}` and `state:`, `* [..]`/`+ [..]` and Yarn `-> option` name
+  `<choice>` in a `<branch>`/`<hub>` (`once` for `*`), and `- gather`,
+  `=== knot ===`, `= stitch`, `<<if>>`, `<<jump>>` and Yarn headers name their
+  Lute forms; prose with no speaker says "a content line needs a speaker". The
+  "cannot span multiple physical lines" note appears only for a line that
+  continues the one above. `::goto`/`::jump`/`::divert` (and other misspelled
+  directives) get a did-you-mean, `::greet{…}` for a component names
+  `::use{component="greet"}`, a `::next` target that is a heading, a choice
+  or a menu id says so, and a backward `::next` names `<hub>` for loops.
+- In text, a kind's `labels:` entry wins over a cast `name:`:
+  `{{occasion.target}}` and a component argument typed `{ entity: K }` /
+  `{ domain: K }` render the label (a speaker head keeps the cast name).
+  `W-LABEL-CAST-SHADOWED` is retired: the label it said was never shown is
+  now shown.
+
+- `spentBy` latches: a beat is spent by its condition instead of by being presented, and once the condition has held (at any settle, or when the beat is judged; per member for a kind or `for=` beat) the beat stays spent for its `once` period even if the condition turns false again. `once` beside `spentBy` is now legal and sets that period (`run` unless written; `user`, `day`, `slot`, `week`, `season:<name>`); a presentation of a `spentBy` beat spends nothing. `lute play` / `lute calendar` / `lute test` name the latch (``spentBy: `run.solved` held — spent this run``) and a kind beat's member (``… holds for cod``); a scene or bundle `spentBy` beat's IR `once` is its period (`run` when unwritten) instead of `none`. `W-BEAT-SPENT-AT-START` judges the condition at the start of play — every state path at its declared default, the seeds, no scene visited, every quest `unset`, no entry read — so `spentBy: "!run.balloonUp"` is caught, and its hint offers `when:` for a beat meant to repeat while something holds; a `spentBy` whose literal comparison is already reported draws neither spentBy verdict.
+- `<entry once="false">` is accepted as the omission's meaning (a repeatable entry beat); a bare `<entry once>` / `<beat once>` names the accepted values; a quoted frontmatter scalar where a bool or number is meant (`once: "false"`, `priority: "10"`, `also: "true"`) says "the quoted string … — write it unquoted".
+- The manifest's `sequence: { occasion, scenes }` is now **`chapters:`**, a list of chains `[{ on, scenes }]` — one chain per occasion, so a project can chain several. A malformed chain is reported (`E-CHAPTERS`, located at its line) and not applied; the other chains still are, and a scene a rejected chain lists is told so instead of "list the scene in `chapters:`". A chain on an occasion raised for a target requires every listed scene to declare `target:` (one without would play for every target). A listed id that names a bundle beat, a lore entry or a document says so; a bare last segment suggests the scene (`c4s1` → `main.c4s1`). `W-SEQUENCE-STALL` is now `W-CHAPTER-STALL` and fires only on a `when:` that can stay false for good — one over the clock alone only delays the chain — judged on the next scene's effective `after:` whoever wrote it, with advice that changes the outcome. `W-SEQUENCE-ORDER` is `W-CHAPTER-ORDER`. A derived key's diagnostics point at the scene's `id:` (never into the body) and say "(written by `chapters:` in lute.project.yaml)"; play/trace reasons credit an `after:` to `chapters:` only when the chain wrote it, never by comparing text.
+- `lute new` names the file after the id and keeps the case typed (`isles.harborNight` → `id: isles.harborNight`; `The Epilogue` → `theEpilogue.lute`); quest and lore document ids get no `quest.`/`lore.` prefix; `--on` is now `--occasion`; an occasion raised for a target requires `--target`; a scene for a chain's occasion says how to list it, in the words of that occasion's `select:`.
+- A frontmatter key that belongs to another layer names that layer (`rearm`/`tier` → the `<quest>` attribute, `raisedWhen`/`select` → an occasion's declaration, `sequence`/`chapters`/`questTier` → lute.project.yaml, `terminal`/`clock`/`seasons`/`cast` → a schema, `use` → `uses:` or `<beat use>`, `tags` → `extra:`); a scene's `occasion:`/`event:` says the key is `on:`, once, without a "without `on:`" error per beat key.
+- An attribute that another construct or layer owns names where it lives: `<entry occasion=>`/`<beat event=>`/`<objective occasion=>` say the attribute is `on=`, `<on occasion=>` says `event=`, `<quest on=>` points at `<objective on=>` and `<on event=>`, `<beat rearm=>`/`<beat tier=>` say they are `<quest>` attributes (a beat comes back with `once=` or `spentBy=`), and `<quest spentBy=>` says `spentBy` is a beat attribute. A beat or handler that wrote its occasion under another name gets that one error, not a second "names no occasion" / "has no `event`". A play step's `on:` says the step key is `occasion:`, and `for:` says it is `target:`.
+- `lute play` and `lute test` report every usage error of a play script at once, one per line, in the order they were written (a step spliced in by `include:` at its `include:` line); each list entry (`facts:`, `visited:`, `presented:`, `expect.facts`, …) is located at the entry. `lute play --json` always carries `end` (`complete`, `terminal`, `incomplete` or `error`); `lute test` compares a `*.test.yaml` walk's `end` too (`terminal` when the project's `terminal:` holds where it ended).
+- `lute beats` shows every ladder's gate in its header (`sluice — select: first · raisedWhen: run.depth >= 3`, then `· gate never holds` when it never does), a `for` beat as `sendoff.word (for kind:bonded)` (`--json` rows carry `for` and `forKind`), an unspent `once` as `none` in text and JSON alike, and `--occasion talk@npc.mira` says to write `--occasion talk --target npc.mira`. `lute calendar` names the member each `for` presentation is for (`days.note for npc.mira`, text, CSV and JSON), and `--occasion talk@npc.maud` where `npc.maud` is a target of `talk` says to use `--target` (`@` there names axes).
+- `lute scenario reach --endings` also lists the beats whose writes can make the project's `terminal:` hold (`ends: writes `user.crowned`, which `terminal: user.crowned` reads`), and carries an occasion's `raisedWhen` on a `gate:` line with what it needs, so a gated beat without `when` no longer reads "always holds".
+- `lute lore` substitutes a rule's variables in its `cel()` premise (`cel("run.aff.ren >= 3")`, as `lute scenario knowledge` does) and names where each rule is declared (`(rule at world.schema.yaml:8)`; `scenario knowledge` prints it after the rule); its first section is "Entries and beats by target", a scene beat is labelled `scene`, a `for` beat shows `(for kind:<kind>)`, and a fact a component asserts is listed where it is used, its params bound (`components: keepsake (via scene `talk.sefa.gift`)`), instead of missing (`lute lore`) or as a nameless `scene` matching every fact (`scenario knowledge`).
+- `lute calendar` and `lute test` name themselves when the project does not compile (`lute calendar: 1 of 2 document(s) failed to compile; refusing to evaluate the calendar`), not `lute play`.
+- Plugin load errors are located and plainly worded: every `E-PLUGIN-*`
+  line from `plugin.yaml` or an export file leads with `path:line:column:`,
+  and no serde or Rust wording reaches the author (`data did not match any
+  variant of untagged enum OccasionTarget`, `invalid type: sequence,
+  expected a map`, `struct AttrDecl`, `String("lantern-fest")`). An occasion
+  `target:` names its bad key and the key meant (`kind`/`domain` →
+  `entity`, `member` → `members`); a top-level key of the wrong shape says
+  what it holds (`occasions:` is a map, `events:` a list); a YAML slip gets
+  the plain sentence with its fix. `E-PLUGIN-RESERVED-NAME` points at the
+  declaration's file and line and says what the name already is.
+- A season may map straight to its condition: `seasons: { harvest:
+  "@harvestLive" }` is `{ live: "@harvestLive" }`. A season named
+  `lantern-fest` says why a name is an identifier and offers `lanternFest`.
+- Beat templates: a `<beat use=…>` that writes its own `when=` still replaces the template's `when:`, and now says so — `W-TEMPLATE-OVERRIDE` at the use's `when=` names the template, the dropped condition, the arguments only that condition read, and both ways to keep it (write both conditions, or conjoin a template param such as `@only`).
+- Beat template headers accept `F[@param]`, the spelling a component body uses: `when: "user.bond[@who] >= @need"` reads `user.bond.<who>`. The dot form `user.bond.@who` still works in a header and gets `W-TEMPLATE-DOT-PARAM` pointing at the bracket form.
+- A beat template header may declare `also: true` (every use rides along after the winner), and a header `title: "{{@who}}"` renders the argument — a `speaker`'s cast name — instead of copying `{{isolde}}` into the artifact.
+- A misspelt engine path names the shapes its namespace holds and the one
+  meant: `quest.q1.status` → `quest.q1.state`, `entry.e1.seen` →
+  `entry.e1.read`, `objectives.o.complete` → `objectives.o.done`.
+- A refused CEL-profile call says what to write instead: a bare relation atom
+  → `holds(knows(x))`, `completed(q)` in a condition →
+  `quest.q.state == 'complete'`, `$oil` → `run.oil`, an unquoted
+  `visited(a.b)` → `visited('a.b')`. An `after:` outside its profile quotes the
+  subexpression as written.
+- A `per:` may name a kind another schema declares; it expands against the
+  merged kinds. A path declared both as a value and as a prefix of other rows
+  (`run.lanterns` and `run.lanterns.gold`) is `E-STATE-DECL`.
+
+### Fixed
+
+- `lute.project.yaml` no longer drops an unknown key silently (`terminal:`, `sequnce:`, `defualts:`, a profile or `identity:` typo): each is `E-MANIFEST-KEY` at its line, with a did-you-mean or the layer that owns it, and the documents are not checked under an invalid manifest. A manifest that does not parse or lacks `defaultProfile:` is one located `E-MANIFEST` in plain words. `E-DEFAULTS-KEY` is located too.
+- A `state:` row with an unknown key (`defualt:`, `ownr:`, `reserved:`, `tier:`) or an inline enum `default:` that is no member is `E-STATE-DECL` at the key; an `enums:` long form with an unknown key or no `members:` is `E-META-VALUE` at the key. Engine-owned namespaces (`scene.choices.*`, `scene.visited.*`, `occasion.*`, `quest.<x>` and `season.<x>` without a field) cannot be declared (`E-STATE-NAMESPACE`, at the path), and `::set` of `scene.choices.*`, `scene.visited.*` or `occasion.*` is `E-QUEST-RESERVED-WRITE` alone, without an `E-UNDECLARED` beside it. A `lute play` `engine:` or `newRun:` write to one of them is refused before anything plays, naming what the script writes instead: the `occasion:` step's `target:`/`payload:`, `choose:`, or top-level `visited:`.
+- A frontmatter opened with `---` and never closed is one `E-META-PARSE` naming the line to close it after (with a fix), not seven unrelated errors; a frontmatter value holding `: ` gets the quoted fix instead of YAML's "mapping values are not allowed". An unknown frontmatter key (`E-META-UNKNOWN-KEY`) is reported at the key, not at `1:1`.
+- A flag attribute given a value no longer turns silently false. Every flag —
+  `<choice once>`, `<choice exit>`, `<objective optional>`, `<beat also>` —
+  reads through one reader in the parser, the checker and the compiler: bare,
+  `="true"` and `="false"` mean what they say (`optional="true"` is optional,
+  `exit="true"` is an exit and no longer draws `E-HUB-NO-EXIT`), and any other
+  value is the new `E-FLAG-VALUE` at the attribute, naming the bare form. A
+  beat/entry period on a choice (`<choice once="run">`) says a choice's `once`
+  means once per hub visit. `<beat also="maybe">` moves from `E-BEAT-ATTR` to
+  `E-FLAG-VALUE`.
+- On a finite clock that starts and ends on the same day, the slot path (and
+  `clock.slot`) only holds the slots the clock reaches: `run.hour == 'h05'`
+  past `last: { day: 1, slot: h03 }` is `E-BEAT-UNREACHABLE`, a `<when
+  is="h05">` arm is `E-ARM-DEAD`, and a `<match>` needs no arm for it. The
+  reasons name the clock's end, as a dead `clock.index` guard's now does too.
+- A clock whose day path outlives the run (`user.*`, `app.*`) keeps its
+  `once: day` / `once: slot` / `once: week` spends and its end across a
+  `newRun`: they used to be cleared, so a beat came back the same week. The
+  play's new-run step says so (``the clock is kept: its day `user.dive`
+  outlives the run, …``).
+- A clock's day path defaulting below day 1 is `E-CLOCK-DECL` (it used to
+  play a day 0). `last: { days: N }` says `days:` is the clock's own key;
+  `week.labels` written as a map says it is a list, one label per weekday.
+- `::set` of the clock's day or slot path says to move the clock with an
+  `advance:` step (an `engine:` write moves it without raising anything).
+- `W-QUEST-TIER-IMPLICIT` suggests `tier="season:<name>"` for a quest whose
+  conditions read one season's state, instead of `tier="run"`.
+- A diagnostic's column counts characters, not UTF-8 bytes, on every surface:
+  `lute check`, `check-project`, `compile`, `lint`, `--json` `span.column` and
+  `lute scenario … reach` `causes[].column` used to put an error after Korean
+  text or an em dash several columns too far right (a line of 72 characters
+  reported column 82). YAML files already counted characters; the language
+  server keeps UTF-16. The diagnostics reference states the unit.
+- `E-WHEN-LITERAL-DOMAIN` and `E-UNSET-LITERAL` on a condition point at the
+  offending quoted literal (`'rne'` in `when="run.route == 'rne' && …"`), not
+  at the start of the attribute value.
+- The language server attaches `relatedInformation` to a diagnostic about an
+  imported schema's or plugin file's declaration (a schema `terminal:` fault,
+  say): the file and its range, where the diagnostic used to sit at the
+  importer's `1:0` with no pointer. While that file is open in the editor it
+  shows the fault too, pointing back at the importer.
+- `lute trace` and `lute test` halt incomplete when a hub's scripted
+  `choose:` list runs out while the hub is still open, as `lute play` does;
+  they used to leave the hub and pass on a path no player can take. The
+  unresolved line names the longer list (`choose: { askCook: [scullery,
+  <oven|leave>] }`); `lute play`'s halt says the hub is still open after its
+  scripted picks.
+- A lore test that presents no entry (judging `eligible:` by id) asserts
+  `facts:` / `notFacts:` on the seeded world — the mock's facts, the
+  project's seeds and what the rules derive — instead of an empty one, where
+  every fact "did not hold" (a 0.27.0 regression). A lore test may now carry
+  `facts:` / `notFacts:` alone.
+- `E-OCCASION-GATE` names what the gate read: a family read by the raised
+  member says ``since `user.bond.ines` is 0`` (it said `user.bond` was unset),
+  a negated fact gate names the fact that holds (``since `fell(isolde)`
+  holds``), and a gate over `occasion.payload.*` says to raise it with a
+  payload that satisfies it (`payload:` on this step). The gate is quoted as
+  written (`@stageReleased`), not expanded; the IR's `gates[].raisedWhen`,
+  `terminal` and `seasons[].live` carry that text as `authored` beside the
+  expanded `raw`. A refused raise's step says `(not raised: gate false)`
+  instead of `(no candidates)` (`--json`: `notRaised`).
+- A refused scripted pick whose guard reads a derived fact suggests mocking
+  the base premises its rules miss (`facts: ["recruited(wren)"]`), not the
+  derived conclusion.
+- Spec section numbers and ticket ids no longer reach a reader: `--help` of every command is free of `(dsl … §…)`, `(spec §5)`, `(T6)`, `(T3-20)` and `round-5` notes, and diagnostics drop the citation forms the output filter missed (`(Appendix C)` on `E-DATALOG-PARSE`, dated designs such as `(dsl 2026-08-31 §4)`, `(plugin §7)`, and prose-embedded ones like `since dsl 0.26.0 §4`); `--json` still carries them in `spec`.
+- A `kind: lore` document accepts `pov:` in its frontmatter (its `<beat>` bundles are scene bodies) instead of `E-META-UNKNOWN-KEY`.
+- Schema diagnostics point at the key at fault: an entity-kind label for a non-member (`musicRom:`), an `enums:` label for a non-member (now with a did-you-mean), an unknown entity-kind key (`lables:`), and each `seasons:` entry problem are reported at that key instead of the kind, enum or `seasons:` line; a `labels:` problem beside an `add:` is no longer reported at `1:1`, and the entity-kind shape error states that `labels:` may sit beside `add:`.
+- `E-ENTITY-KIND-CLASH` is reported where the clash was made — the `add:` (or this document, or the later schema) that lists the id a second time — and names both places with their lines.
+- `check-project` over a whole project (a `lute.project.yaml` root) reports a `quest.<id>…` read no quest defines as `E-QUEST-REF-UNKNOWN`, with a did-you-mean; when `<id>` is a quest document's `id:` it names the quest that document declares.
+- A quest or objective id with a `.` (`isolation.hush`) is `E-PATH-IDENT` where it is declared, instead of every read failing `E-UNDECLARED`.
+- A kind read only by a `for="kind:<kind>"` beat (scene `for:`, `<beat for>`,
+  `<entry for>`) no longer draws `W-DOMAIN-UNREAD`; it is read like
+  `target="kind:<kind>"`.
+
+- Comparisons are typed at check time (`E-CEL-TYPE`): `visited('gallery') > 2`, `run.oil == true`, `run.day == 'monday'`, `clock.weekday == 'Wednesday'`, `run.hour >= 'h03'` on an enum, a number or string operand of `&&`/`||`/`!`, and arithmetic on a bool used to check clean and then halt play or stay silently false. Each message names the fix (`clock.weekdayLabel == 'Wednesday'` or `clock.weekday == 2`; `run.hour in ['h03', 'h04']`; `visited()` is a bool, not a count). A mistyped comparison is the one report — the guard it makes false is no longer also `E-ARM-DEAD`/`E-BEAT-UNREACHABLE`. `<when is="<=3">` on a number subject is `E-WHEN-LITERAL-DOMAIN` naming `..3`.
+- Every condition slot runs the literal-domain checks a `when` gets: quest `rearm=`, an entry's `when=` (now `E-WHEN-LITERAL-DOMAIN` with a did-you-mean instead of only `E-ENTRY-UNREACHABLE`), `spentBy`, a season's `live:`, a rule `cel()` guard, and an occasion's `raisedWhen:` comparing `occasion.target` with a typo or a prefixed member (`'place.village'` → did you mean `'village'`?). A beat whose `when` is false only because of such a literal gets the literal error alone. `terminal:` and a season's `live:` reading `occasion.*` are one `E-UNDECLARED` (they are judged outside any occasion) instead of per-document errors.
+- A path a def body reads is checked where the def is used: `@a` whose body reads an undeclared `run.nmae` is `E-UNDECLARED` naming the def, with a did-you-mean, instead of checking clean and halting play.
+- A def whose body is one indexed family read (`bondNow: "user.bond[occasion.target]"`) takes the family's type instead of `E-DEF-DECL … cannot be inferred`.
+- `lute context` now says what the checker enforces. `quest.<id>.state` lists `unset`; `reservedQuestPaths` lists every reserved path of every quest in the project (`state`, `failedBy`, `activatedAt`, `objectives.<o>.done` / `.failed`), not only those the document reads; a new `enginePaths` section names every engine-owned shape (`entry.<id>.read` / `everRead`, `occasion.target`, `occasion.payload.<field>`, `scene.choices.*`, `scene.visited.*`, `clock.*`, `prev.*`), and `scene.choices.*` rows are marked `owner: engine`. `occasion.payload.<field>` shows on its occasion, no longer as state. `builtinDirectives` adds `::body`, `::next{to=…}`, `::mark`, `::end`, `::clear` and `::accept{… at="nextRun"}`, and a `directiveAttrs` section lists `when=`, `duration=`/`delay=`/`wait=` and `at=` (a `<track>` clip only). Directives show attribute types and `effects:` (writes, asserts, retracts); occasions show `judge:` and `outsideRun`; a `speaker` param prints `speaker`; a component with a `beat:` header is marked a template. Quest, objective and reward keys print in attribute spelling (`start="<condition>"`) from the checker's own lists (`follows=`, `visibleWhen=`, `outcome=`), and `chapters:` chains say what they derive.
+- `lute trace` frames a component expansion once, named: `-- component bondStory begin --` … `-- component bondStory end --`, with a template's `::body` marked `-- body --` … `-- body end --` inside it — no empty begin/end pair, and a beat ending in a `::use` closes its frame. A plugin call reads `::gift{from="maud" item="kettleLid"}` instead of a bare `<gift>`, and its declared effects say `(effect of ::gift)`, as `lute play` does.
+- `lute trace` and `lute test --coverage` call a line `when=` guard a guard: ``guard `holds(owned(nyx))`: skipped``, and a coverage row ``guard `…` (file:line:col): taken; never skipped`` instead of ``match … 1/2 arm(s) executed [otherwise]``. A `<match>` expanded from a component `::use` is its own coverage row at the component's `file:line:column`, naming the use (`card#1 in scenes/s.lute`), instead of merging into the host construct at the same position. Coverage paths are relative to the directory `lute test` runs in (no absolute project paths), a test that resolved no document prints no empty `()`, each JSON unit carries `doc` and `local`, and the JSON `notPresentedByPlay` no longer repeats the units already `untested`.
+- `{{n:plural("One morning"|"# mornings")}}` printed its quotes; quoted forms and a `,`
+  separator (`plural(coin,coins)`) are now `E-PLURAL-FORM`, whose message shows the bare
+  `|`-separated rewrite. An unknown hint names the nearest one and lists every hint.
+- `<quest repeatable="true">` (or `repeat=`, `once=`, …) now points at `rearm="<condition>"`.
+- A subquest's `rearm=` was accepted though the child, once its parent ended, stayed `unset`
+  for good; it is now `E-SUBQUEST-REARM` (per document and across documents).
+- A play's `visited:` seed now spends that scene's `once: user` (and its `share` key), as a presentation does: a save cannot hold a visited scene that is still unspent.
+- An atom with unbalanced parentheses no longer blames YAML's comma split when it is a lone quoted entry (`"empty(ada"`); the quoting hint appears only when the next entry closes it.
+- Reserved names are refused where they are declared (`E-RESERVED-NAME`),
+  each message naming what the word already means and a name to use instead.
+  They used to be accepted there and misread where they were used: an entity
+  member or def named like a state root (`clock`, `run`) read as state in
+  `holds(found(clock))` / `@run`; an enum or entity member `unset`, `true`,
+  `false`, `null` or `_` could never be matched; a number, boolean or `null`
+  in a member list vanished silently; a scene, beat, entry or choice id
+  `none` shadowed play's `pick: none` / `winner: none`, and a choice id
+  `true` drew a self-contradictory `E-WHEN-LITERAL-DOMAIN`; a CEL keyword in a
+  state path or quest/objective/entry/branch/hub id (`quest.in.state`) could
+  not be parsed; a season named `run`, `user`, `week`, `day` … sat beside the
+  `once` period of the same name; a cast entry for `narrator` was never shown
+  and gated every narrated line. Relations also refuse `completed`/`active`
+  (the `after:` calls) and `cel`/`not` (rule words), and a plugin occasion
+  named like an engine lifecycle event (`questComplete`) or a play step
+  (`newRun`, `end`, `advance`) is `E-PLUGIN-RESERVED-NAME`. The one list
+  (`lute_manifest::reserved`) is what `lute --explain E-RESERVED-NAME` prints
+  and the new reference page *Reserved names* shows.
+- A plugin directive may omit `attrs:` (a directive without attributes
+  failed the whole plugin with `missing field attrs`).
+- `lute play` (and `lute test`/`lute calendar`) print a plugin load error
+  once, not once per document, and then refuse with the usual line instead
+  of exiting 1 without a word.
+- One mistake in one template argument is one report: a header key that reads a missing param or an argument the use-site checks refuse is not derived, so a missing `need` no longer adds `E-UNDECLARED-REF @need`, `need="lots"` no longer adds `E-CEL-PROFILE`, a missing `season` no longer adds `E-BEAT-ATTR`/`E-SEASON-DECL` for `once: "season:@season"`, and a mistyped `speaker`/member argument no longer adds target and fact errors. `E-BAD-ENUM` now carries a did-you-mean, and names a template use `<beat use="…">` instead of `::use{…}`.
+- A condition a template header derived is reported at the use with the header key it came from ("template `x`'s `beat.when: …`") and its location in the component file; the entity-indexed `E-UNDECLARED` message lists the reads that work (`F.<member>`, `F[occasion.target]`, `F[@param]`, a rule variable).
+- A component used only through `<beat use=…>` counts as used: `lute check` on it no longer reports `W-COMPONENT-UNVERIFIED`.
+- `<entry use=…>` is one `E-TEMPLATE` ("beat templates apply to `<beat>` only") instead of an `E-UNKNOWN-ATTR` per attribute.
+
+- A `<match>` inside a hub option's own arm that needs `scene.visited.<hub>.<option>` (or `scene.choices.<menu>`) to be anything but the value that pick records is `E-ARM-DEAD`: the record is set when the choice is picked, before its arm runs. A `<match>` right after a `<branch>` that always picks (an unguarded choice, no `timeout`) no longer demands an `unset` arm for `scene.choices.<branch>`; where the record can still be unset, one `E-MAYBE-UNSET` names the branch and why.
+- `occasion.payload.<field>` is readable in an `<objective on="O">`'s `done` / `until` / body and in an `<on event="O">` handler of a declared occasion `O`; a read in an objective's `by` / `visibleWhen` says the payload is bound only while its occasion is raised.
+- After the game is over, a `terminal:` that reads state a new run keeps (`visited(…)`, `user.*`, …) is refused with "it still holds after a new run: it reads …" instead of advising `newRun: true`.
+- `lute doctor` compares the `lute-lsp` an npm/bun launcher on `PATH` starts with the one beside `lute`, byte for byte, instead of trusting the version the launcher reports; when it cannot tell which binary the launcher starts, the line says `(compared by reported version only)`.
+- `lute scenario … reach --endings` reads an ending whose `when` never holds because of a literal (`run.route == 'rne'`) as `never holds — caused by E-WHEN-LITERAL-DOMAIN at …` again, and fails the command, now that the literal error is that `when`'s one report.
+- An illegal `once` / `tier` value that names a declared season (`once="neap"`, `once: season.neap`, a near miss, a relation `tier:`) now suggests `season:<name>`, and a quest `tier="Run"` suggests `run`; a scene whose legacy `season:` key holds a declared season's name is an `E-SEASON-DECL` error saying to write `once: season:<name>` and/or the season's `live:` as `when:`, and `defaults: { season: <name> }` / `defaults: { questTier: <name> }` say the same; an undeclared `once: season:<x>` is reported at the value, not column 1.
+- A document that writes its own `components:` or `uses:` still replaces `defaults.components` / `defaults.uses`, but the errors that causes now say so: `<beat use>` of a component only the defaults import, and an unknown relation, kind, def, state path or cast member only a default schema declares, name the replaced list and the file to add.
+- `visited('<id>')` on a quest id says `<id>` is a quest and to write `quest.<id>.state == 'complete'` (`completed('<id>')` in an `after:`); a label beside an `add:` for a member the `add:` does not bring says labels there cover only the added members, instead of "not one of its members"; the `beats` and `investigation` templates name their quest documents `lamp.quests` / `case.quests`, so the document id no longer reads like a `quest.<id>` path.
+- `lute test --json` rows carry `end` — `complete`, `terminal`, `incomplete` or `error`, the values `expect.end` names (`null` when nothing was walked); `exit` stays the exit class.
+- Test and play hints name canonical ids. The ineligible-walk hint suggests `eligible: { ending.lit: false }`, not the bare `lit`. The mock hint is an instruction ("add `visited: [keeper]` to the mocks"). A bare id that is the last segment of exactly one known dotted id gets a did-you-mean everywhere suggestions are made (`winner: edith` → `isolation.edith`). A test's `file:` that resolves from a directory above the test says so: "`file:` is relative to the test file; did you mean `../scenes/garden.lute`?".
+- Play scripts: an `include:` may carry a `label:`, which labels every step it splices in that has no label of its own. A step's own `choose:` key that none of its presentations presented gets the same "never used" note an `include:`'s does. A halt at a choice with no scripted decision names the ended `include:` that carried that decision unused.
+- `lute test` prints a halted play's halt first (`halted: …`) and folds the end-of-play misses it caused into one line.
+- `occasion@target` spellings: a play step's `occasion: talk@npc.mira` says to write `occasion: talk` + `target: npc.mira`. `lute trace --target t` is refused with the `--occasion <occasion>@t` spelling trace takes. A map entry in a test's or mock's `occasions:` names the joined string (`talk@npc.mira`). `lute compile --all <DIR>` takes the project directory positionally.
+- One cause, one report. A schema import whose YAML does not parse is its importers' only report (one `clock: { day: 1 }` duplicate key gave 198 errors, now 1). A rejected `clock:` no longer adds `once: day`/`week` "declares no `clock:`" errors or `clock.*` reads. A state row that was itself reported (a `default:` outside its enum, an unknown row key, a refused member) is not judged again at its reads: no `E-UNDECLARED`, `E-MAYBE-UNSET`, `E-STATE-MAYBE-UNAVAILABLE`, `E-NONEXHAUSTIVE`, `E-UNSET-UNCOVERED` or literal-domain error follows it. A `<match>` with an `unset` arm that misses a member is `E-NONEXHAUSTIVE` alone, without `E-STATE-MAYBE-UNAVAILABLE`. Content before the first `##` (or between lore and quest blocks) is one `E-CONTENT-OUTSIDE-SHOT` naming the lines it covers, not one per line and per close tag. On one position the cause prints before what it causes, and a schema's own reports print in line order.
+- `lute play`: a scripted choice refused because its guard misses a fact names what in the project asserts that fact (the scene or entry and the choice option) and what the play chose there, or says nothing asserts it, instead of suggesting a mock.
+- `lute calendar`: a cell whose occasion's `raisedWhen` is false reads `gate false` instead of `-` (CSV `notes`, JSON `gated: true`).
+- `lute play`, `lute calendar`, `lute run`, `lute test` and `lute trace` usage errors and play halt messages no longer carry spec section citations; a play usage error inside `lute test` prints one `error:` line per error.
+- **A raise without its declared payload is caught**: a `lute play` step raising an occasion whose `payload:` declares a field it leaves out is a usage error naming the field (`add \`payload: { seconds: <number> }\` to the step`); `lute trace` / `lute test` halt incomplete on a line reading an unseeded `occasion.payload.<field>` (supply `--state occasion.payload.<field>=…`) instead of printing the placeholder raw; a clock `raise` naming an occasion with a payload is `E-CLOCK-DECL`.
+- **Vacuous test assertions are refused**: a quest test raising a mocked occasion the engine would not raise (its `raisedWhen` is false, or `terminal:` holds) is refused with `E-OCCASION-GATE`; a `transcriptContains` / `transcriptLacks` needle shaped like a report line (`quest wire -> failed`, `wire.sent failed (by)`, `set run.x = 1`, `→ h`) is `E-TEST-NEEDLE` in tests and plays; `eligible: { <id>: { false: <reason> } }` names the premise that must close it (`once`, `after`, `spentBy`, `when`, `gate`, `terminal`).
+- **`failedBy: subquest`**: a quest failed by a required subquest's failure now reads `quest.<id>.failedBy == 'subquest'` (was `fail`) and prints `quest X -> failed (subquest)`.
+- **`lute test` reads a quest's reserved paths before any write** as `lute play` does: `quest.<id>.objectives.<o>.failed` / `.done` read `false`, `quest.<id>.state` / `.failedBy` read `unset`.
+- A name a plugin package declares twice (`E-PLUGIN-DUP-ID`) or two plugins declare (`E-PLUGIN-DUP-ACROSS`) is reported at the later declaration's file and line, naming the earlier one; the first declaration is used and `check-project` still checks every document. A state path two imports declare (`E-USES-DUP-STATE`, and the other `E-USES-DUP-*`) is reported at the later import in `uses:` order with project-relative paths, and no longer drags in errors that follow from the conflicting type.
+- `lute lint` (and the LSP's opt-in lint) reads each scene with the keys the manifest's `chapters:` derives, as `check-project` does: a scene that gets its `on:` from a chain is a beat, so `L-SHOT-STARTS-WITH-BACKGROUND` and `L-SCENE-LENGTH-SPREAD` no longer treat it as a linear scene. That includes a scene that continues the one before it in the same raise of a `select: sequence` occasion, which plays on the stage that scene set and needs no `::bg` of its own.
+- `<when is="dawn,dusk">` whose comma-separated parts are each members says to separate alternatives with `|` (`is="dawn|dusk"`) instead of only "not a member".
+- `E-HUB-NO-EXIT` on a hub with a choice named `exit` that lacks the flag points at that choice: "choice `exit` is not an exit — add the `exit` flag".
+- `W-CAST-ABSENT` treats a beat's or entry's occasion gate (`raisedWhen:`) and `!terminal` as guards, like its `when`: a line on a `shower` beat raised only while Sol is on the roof no longer warns that Sol may be absent.
+- Editor hovers and the project-resolution errors the LSP publishes no longer cite spec sections.
+- A `target="kind:<kind>"` on an occasion raised for no target says to write `for="kind:<kind>"` instead when the occasion is `select: sequence` (in a scene, `for: "kind:<kind>"`), and why not otherwise; the beat's reads of `occasion.target` are no longer reported again as undeclared. A `for=` naming a kind without its `kind:` prefix gets a did-you-mean, and a scene's `for:` messages use the frontmatter spelling.
+- A scene or beat `when: once` / `when: always` (Yarn's spelling) says that how often a beat plays is its `once` key, with its values, instead of calling `once` an unknown name.
+- A `for` beat's members spent for the same reason print as one `lute play` line (`✗ id for ren, mika … — reason`), a closed season window is named as the last one, and a season opening again makes every member of a `for` beat with `once: season:<name>` eligible again (before, only a beat without `for` was).
+- `lute new` refuses a name whose id another scene, quest or lore document already declares (exit 2, nothing written), naming that file — document ids are one namespace, now that quest and lore ids get no `quest.`/`lore.` prefix; a lore entry listed by its document-qualified id (`codex.page`) in `chapters:` is named a lore entry, as its bare id already was.
+- A component with a `beat:` header writes its body without a `## ` heading, like a bundle beat:
+  its content no longer draws `E-CONTENT-OUTSIDE-SHOT`, and `<beat use>` expands it (`::body`
+  included). An ordinary component still needs the heading.
+- A component may pass its own `speaker` param on to a nested component (`::use{component="inner"
+  who=@who}`): no more "must be a literal cast id", "`@who` is an expression" or a false "`run.aff`
+  is not a `per:` state family here". The host judges the id where it binds it, through the
+  nested component (`who="narrator"` for a `run.aff[@who]` write is `E-COMPONENT-ARG` at the host's
+  `::use`).
+- A component body that reads a def (`@narrator{when="@late"}`) is one `E-COMPONENT-STATE` at the
+  read, naming the param to declare (`late: { type: bool, default: "@late" }`). The component's own
+  check reports it (it used to pass), and a host's `::use` gives the same report, so
+  `check-project` shows it once instead of "`@late` is not a declared def" per use. `lute beats`
+  notes a template use whose `when=` replaces its template's `when:` — ``(replaces template
+  `gift`'s `when: …`)`` beside the guard, and `replacesTemplateWhen` in `--json`.
+- A lore document with kind beats of different kinds (`target="kind:villager"` beside
+  `target="kind:fish"`, or `for=`) types `occasion.target` in each beat by that beat's own kind:
+  a `<match on="occasion.target">` in the fish beat needs arms only for fish (it used to demand
+  `mara` and `tomas` too), and `occasion.target == 'ada'` in a place beat is an
+  `E-WHEN-LITERAL-DOMAIN` naming only the places, no longer an `E-BEAT-UNREACHABLE` blaming the
+  occasion's gate.
+- A kind or `for=` beat's `when` is judged once for each member it runs for. A member it can
+  never hold for (`holds(at(sol, occasion.target))` where no rule puts Sol on the deck) needs no
+  `<match on="occasion.target">` arm, and an arm only for such members is `E-ARM-DEAD`; a beat
+  whose `when` holds for none of its members is `E-BEAT-UNREACHABLE` (an entry,
+  `E-ENTRY-UNREACHABLE`) naming the members, the way a beat for one member already was. Before,
+  a `for=` beat was never reported and a kind beat only once a `terminal:` was declared, with a
+  reason naming that `terminal:`.
+- `lute play`: an `advance:` that passes positions without raising the
+  clock's `slot` occasion (raised once, where the clock stops) says so in a
+  note naming them by day and how many beats answer the occasion —
+  `` passed day 1 (Mon) afternoon, night without raising `slotStart` (2 beats
+  answer it; …) ``; `--json` lists them under `advance.passed`. An `advance:`
+  step's `presented:` may be keyed by occasion (`presented: { dayStart: [a],
+  slotStart: [b] }`), judging only the named raises; a miss names the
+  occasion, and a key the clock does not raise is a usage error with a
+  did-you-mean. `lute calendar --axis clock` follows the clock's raise map:
+  `dayStart` only at a day's first slot and never on the day the run starts,
+  `dayEnd` only at a day's last slot, the slot occasion anywhere but where
+  the run starts; every other cell reads `not raised` (`notRaised` in
+  `--json`) with no eligible or shadowed verdicts, and a beat only such cells
+  would take is listed as never eligible. `--occasion dayEnd@clock.day`
+  holds the slot at the day's last.
+- The checker reads a guard's clock conditions together: a conjunction of
+  the day path, the slot path, `clock.index`, `clock.day`, `clock.slot` and
+  `clock.weekday` that no clock position satisfies is provably false
+  (`E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-ARM-DEAD`,
+  `W-DEADLINE-NEVER`), naming why — ``no clock position has `run.day == 3`,
+  `run.slot == 'afternoon'` and `clock.index > 7` ``. On a finite clock of
+  several days the slot path is narrowed on the last day: ``the clock ends
+  at its last position, so on day 2 `run.hour` only holds h23, h00, h01,
+  h02``. New `W-DEADLINE-BEFORE-WINDOW`: an objective whose `done` can only
+  hold once its `by=` deadline already does (a `visited('<beat>')` whose
+  beat's `when`, directly or through a derived relation's `cel()` rules,
+  opens after the deadline) fails before it can be done; the warning names
+  the first position `done` can hold and where the deadline already holds.
+- An occasion `payload:` field type that is unknown (`nubmer`), incomplete
+  (`enum` without members) or takes more than one value (`list`, `record`,
+  `map`) is `E-PLUGIN-PARSE` at the field, naming the forms a payload field
+  takes (`bool`, `number`, `string`, `{ enum: […] }`, `{ domain: K }`,
+  `{ entity: K }`) with a did-you-mean, instead of serde's `unit variant,
+  where newtype variant is expected`.
+
+### Compatibility
+
+- **Stricter manifest and state rows.** `lute.project.yaml`, `state:` rows and `enums:` long forms now refuse unknown keys; state paths under `scene.choices.`, `scene.visited.`, `occasion.` and a bare `quest.<x>`/`season.<x>` are no longer declarable.
+- **`::next` diagnostics say "mark".** Tools matching the old
+  `E-NEXT-UNDEFINED` / `E-NEXT-BACKWARD` / `E-MARK-DUP` message text ("undefined
+  label", "targets label", "label `x` is already declared") must match the new
+  wording; the codes are unchanged. Authored files need no change.
+- **`lute init` writes `townVisit`.** A new project's occasion is `townVisit`
+  and its scenes `town.*` in `scenes/town/`; existing projects are unaffected.
+- **Flag values are checked.** `optional="yes"`, `exit="yes"`,
+  `<choice once="run">` (or `user`/`day`/`week`/`slot`/`season:…`) and
+  `also="yes"` used to compile as `false`; they are now `E-FLAG-VALUE` errors —
+  write the flag bare, or `="false"` to turn it off. `optional="true"` and
+  `exit="true"`, previously read as false, now read as true.
+- **Test `expect.offered` is `expect.options`.** `offered:` in a test's
+  `expect:` is `E-TEST-KEY` naming `options`; rename the key (the value is
+  unchanged). `lute test --json` reports those expectations with kind
+  `options`, and a miss line reads `options <id>: expected …`.
+- **Test and mock `accept:` is gone.** Write `accepts:`; `accept:` is
+  `E-TEST-KEY` in a test and `E-TRACE-MOCK-PARSE` in a mock, both naming
+  `accepts`. A play's `engine: { accept: [...] }` is unchanged.
+- **`::camera{move-x move-y}` is `moveX` / `moveY`.** The kebab spellings
+  are `E-UNKNOWN-ATTR` naming the new ones; the IR fields (`moveX` / `moveY`)
+  are unchanged. The core capability version changes with the vocabulary.
+- **Stricter clock declarations.** A clock day path with a default below 1
+  (or not a whole number) is now `E-CLOCK-DECL`; give it `default: 1`.
+- **Finite-clock slot narrowing.** On a clock that ends on its first day, a
+  guard or `<when is>` naming a slot after the last one is now an error
+  (`E-BEAT-UNREACHABLE` / `E-ARM-DEAD`), and such a slot's arm can be
+  dropped from an exhaustive `<match>`.
+- **Columns count characters.** A tool that reads `line:column` or `--json`
+  `span.column` as a byte offset must count characters instead; columns on
+  lines that are all ASCII are unchanged.
+- **Quest attributes renamed.** `<quest after=>`, `<reward on=>` and
+  `<objective when=>` are `E-UNKNOWN-ATTR` errors whose message names the new
+  spelling; write `follows=`, `outcome=` and `visibleWhen=`. Engines reading the
+  IR read `visibleWhen` on an objective entry, `outcome` on a reward entry, and
+  `follows` (not `after`) on a quest's `prereqEdges` row.
+- **Hub scripts that run out fail.** A `lute test` whose hub `choose:` list
+  ends before the hub's `exit` option now fails incomplete; add the remaining
+  picks.
+- **`select: sequence` re-judges at each turn**, and **`for` beats spend
+  `once` per member**: a sequence can present fewer (or more) beats than in
+  0.27 when an earlier beat changes a later beat's `when`.
+- `check-project --wip`: the downgraded dead-guard diagnostics now carry code `W-WIP` (was the `E-` code with `severity: warning`); a tool filtering `--wip` output by `E-ARM-DEAD`/`E-BEAT-UNREACHABLE`/`E-ENTRY-UNREACHABLE`/`E-OBJECTIVE-UNSATISFIABLE` reads the named code from the message, or matches `W-WIP`.
+- **Unknown quest reads are errors over a whole project.** `check-project` on a directory with a `lute.project.yaml` now fails on a `quest.<id>.state` (or `.objectives.<oid>.done`) read no quest in the project defines (`E-QUEST-REF-UNKNOWN`, was `W-QUEST-REF-UNKNOWN`); a walk without a manifest keeps the warning.
+- **Quest and objective ids must be one name.** An id that is not `[A-Za-z_][A-Za-z0-9_]*` — notably one with a `.` — is now `E-PATH-IDENT` at its declaration.
+- **New text warnings.** `W-TEXT-SINGLE-BRACE`, `W-TEXT-COMMENT-LIKE` and
+  `W-TEXT-BRACKET-LABEL` can appear on documents that checked clean in 0.27
+  (`--deny` turns them into errors).
+- **Kind labels win in text.** An engine rendering an `occasionTarget`
+  placeholder renders `entities[].labels[member]` first, then the cast
+  `name:`, then the id. `W-LABEL-CAST-SHADOWED` no longer exists.
+- **One id per lore declaration.** An `<entry>` and a `<beat>` sharing an id in
+  one document is now `E-BEAT-ID-DUP`; rename one. A duplicate `<beat id>` is
+  reported as `E-BEAT-ID-DUP` instead of `E-BEAT-ATTR`.
+- **New warning `W-SEASON-UNGATED`** on season-spent beats and season-tier
+  quests not gated on the season's `live` condition.
+- **`sequence:` is now `chapters:`.** Rewrite `sequence: { occasion: X, scenes: [...] }` as `chapters: [{ on: X, scenes: [...] }]`; the old key is `E-CHAPTERS` naming the new one and is not applied. `E-SEQUENCE`, `W-SEQUENCE-ORDER`, `W-SEQUENCE-STALL` are now `E-CHAPTERS`, `W-CHAPTER-ORDER`, `W-CHAPTER-STALL`. A chain on a targeted occasion listing a scene without `target:` is now an error.
+- **`lute new --on` is now `--occasion`** (`--on` is refused naming it); new files are named after their id, and quest/lore document ids lose the `quest.`/`lore.` prefix.
+
+- **Typed comparisons and literal checks in every condition slot.** Conditions that compare a bool, a number and a string, order enums or strings, or compare an enum or `occasion.target` with a non-member in `rearm=`, `spentBy`, an entry `when=`, a season `live:`, a rule `cel()` or a `raisedWhen:` gate used to check clean; they are now `E-CEL-TYPE` / `E-WHEN-LITERAL-DOMAIN` errors. A def reading an undeclared path is `E-UNDECLARED` at its use.
+
+- `spentBy` changed meaning: it latches (see Changed). A beat relying on the condition turning false again to become eligible again must use `when: "!(…)"` instead; a weekly reset writes `once: week` beside `spentBy`. `once: false` or a `share` key beside `spentBy` is `E-BEAT-ATTR`; `once` with any other value beside `spentBy` is no longer an error. The IR `once` of a `spentBy` scene or bundle beat is its period (`run` unless written), not `none`: an engine must not spend a `spentBy` beat on presentation.
+- `lute trace --json`: a guard's decision is `"construct": "guard"` with outcome `taken`/`skipped` (was a `match` with `arm 1`/`otherwise`); component boundary steps carry `component` and the new `body`/`bodyEnd` boundaries; set/assert/retract steps from a plugin call carry `effectOf`, the call step `call`. `lute test --coverage` paths are relative to the working directory, and its JSON `notPresentedByPlay` lists only tested beats.
+- A malformed `plural(…)` hint is `E-PLURAL-FORM` (was `E-CEL-PROFILE`); a subquest's `rearm=`
+  is `E-SUBQUEST-REARM`; a constant `rearm=` warns (`W-QUEST-REARM-CONSTANT`). Kind label
+  entries are a string or `{ text, start, indefinite }` (any other key is
+  `E-ENTITY-KIND-SHAPE`).
+- Play and test `expect.exit` is now `expect.end: complete | terminal | incomplete | error` (`terminal`: every step played and the project's `terminal:` holds; `complete` no longer passes a play that should have ended the game). The old key is an error naming the new one.
+- `lute scenario reach --endings --format json`: each need's `writers` are records `{ kind, id, file, how, via, text }` (`how`: `set`, `choice into`, `directive` with `directive`, or `reward` with `reward`; `via`: the `::use`d component), not pre-rendered strings; endings carry `runsEnd`, `writesTerminal` and `gate`, and each root `terminal`. `lute lore --json`: a scene beat row's `kind` is `scene` (was `beat`), fact rows carry `components`, rows carry `for`.
+- **Reserved names are one code.** `E-CHOICE-ID-RESERVED` (a choice id
+  `unset`) and `E-RELATION-RESERVED-NAME` are now `E-RESERVED-NAME`, which
+  also refuses the names listed on the *Reserved names* page — a project with
+  an entity member `clock`, an enum member `unset`, a season `week`, a cast
+  `narrator` or an occasion `end` must rename it (the message suggests one).
+- `plugin.yaml` rejects unknown keys (`dependencies:` → did you mean
+  `depends`) and a `kind:` other than `capability`, as `E-PLUGIN-KEY`; an
+  unknown key in an export file is `E-PLUGIN-KEY` too (was
+  `E-PLUGIN-PARSE`).
+- Plugin export keys are camelCase: `rewardkinds`/`assetkinds`/`stampattrs`
+  are now `rewardKinds`/`assetKinds`/`stampAttrs`; the old spelling is
+  `E-PLUGIN-UNKNOWN-EXPORT` naming the new one.
+- A plugin directive named like a core statement (`set`, `assert`,
+  `retract`, `accept`, `use`, `body`), a core block tag (`match`, `branch`,
+  `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, …) or a `lute.core`
+  directive (`end`, `mark`, `bg`, …), and a plugin occasion named like a
+  lifecycle event (`questComplete`) are `E-PLUGIN-RESERVED-NAME` (a core
+  directive name was `E-PLUGIN-DUP-ACROSS`).
+- A component param named `component` or `when`, and a beat template param named like a `<beat>` header key (`id use on target for title priority once share after when spentBy also`), is now `E-TEMPLATE` at its declaration: no use could ever pass it (the attribute set the use's own key). Rename it (e.g. `title` → `heading`).
+- `W-ENTRY-WRITE-REREAD` covers every entry that can be read again in a run and writes: lookup entries, `once` shorter than the run (`day`, `slot`, `week`, `season:<n>`), `spentBy` entries and `for=` entries without `once: run|user`. A write guarded by `!entry.<id>.read` is intentional and not warned. New warning `W-TERMINAL-PERSISTENT` for a `terminal:` reading state a new run keeps. `E-UNSET-UNCOVERED` no longer fires for `scene.*` subjects; a maybe-unset `scene.choices.*` read is one `E-MAYBE-UNSET`.
+
 ## [0.27.0] - 2026-09-27
 
 **One runtime, seasons, templates.**

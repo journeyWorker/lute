@@ -167,8 +167,8 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
         }
         scan.declared_occasions
             .extend(built.input.snapshot.occasions.keys().cloned());
-        // The desugared document (dsl 0.27.0 §8 `sequence:`, §6 templates):
-        // a scene whose `on:` the manifest's `sequence:` derives answers it
+        // The desugared document (`chapters:`, beat templates):
+        // a scene whose `on:` the manifest's `chapters:` derives answers it
         // too (round-5 First N1).
         let (mut doc, _) = lute_syntax::parse(&built.input.text);
         let _ = lute_check::desugar_document(&mut doc, &built.input);
@@ -361,9 +361,9 @@ fn language_server_check() -> Check {
 /// the `PATH` check passes while the editor runs another build. Compare the
 /// `lute-lsp` beside the running `lute` with the one on `PATH` as files —
 /// the same file or identical bytes is the same build. The npm/bun package
-/// puts its `lsp-bin.js` launcher on `PATH`, which runs the native binary
-/// its platform package ships beside `lute`: there, bytes cannot match, so
-/// the version the launcher reports decides (round-5 OT-F5).
+/// puts its `lsp-bin.js` launcher on `PATH`: there the binary the launcher
+/// starts ([`launcher_binary`]) is compared instead, and only when that
+/// cannot be found does the version the launcher reports decide — saying so.
 fn sibling_language_server_check() -> Check {
     const KEY: &str = "siblingLanguageServer";
     const LABEL: &str = "lute-lsp beside lute";
@@ -404,35 +404,54 @@ fn sibling_language_server_check() -> Check {
         );
     };
     if is_package_launcher(&on_path) {
-        return match lsp_reported_version(&on_path) {
-            Some(v) if v == ours => Check::pass(
+        let launcher = on_path.display();
+        let Some(started) = launcher_binary(&on_path, exe) else {
+            return match lsp_reported_version(&on_path) {
+                Some(v) if v == ours => Check::pass(
+                    KEY,
+                    LABEL,
+                    format!(
+                        "{ours} at {at} — {launcher} on PATH is the npm launcher and reports {v} \
+                         (compared by reported version only)"
+                    ),
+                ),
+                other => Check::fail(
+                    KEY,
+                    LABEL,
+                    format!(
+                        "{launcher} on PATH is the npm launcher of lute-lsp {} — differs from lute {ours}",
+                        other.as_deref().unwrap_or("with no version")
+                    ),
+                    "reinstall the package (`npm i -g @lute-lang/lute` or `bun add -g @lute-lang/lute`) \
+                     and restart the editor",
+                ),
+            };
+        };
+        return if same_build(&sibling, &started) {
+            Check::pass(
                 KEY,
                 LABEL,
                 format!(
-                    "{ours} at {at} — {} on PATH is the npm launcher and reports {v}",
-                    on_path.display()
+                    "{ours} at {at} — {launcher} on PATH is the npm launcher and starts the same build ({})",
+                    started.display()
                 ),
-            ),
-            other => Check::fail(
+            )
+        } else {
+            Check::fail(
                 KEY,
                 LABEL,
                 format!(
-                    "{} on PATH is the npm launcher of lute-lsp {} — differs from lute {ours}",
-                    on_path.display(),
-                    other.as_deref().unwrap_or("with no version")
+                    "{launcher} on PATH is the npm launcher of {}, another build than {at}",
+                    started.display()
                 ),
-                "reinstall the package (`npm i -g @lute-lang/lute` or `bun add -g @lute-lang/lute`) \
-                 and restart the editor",
-            ),
+                &format!(
+                    "reinstall the package (`npm i -g @lute-lang/lute` or `bun add -g @lute-lang/lute`), \
+                     or point the editor's language server at {at}"
+                ),
+            )
         };
     }
-    let same_file = matches!(
-        (sibling.canonicalize(), on_path.canonicalize()),
-        (Ok(a), Ok(b)) if a == b
-    );
-    let same_build = same_file
-        || matches!((std::fs::read(&sibling), std::fs::read(&on_path)), (Ok(a), Ok(b)) if a == b);
-    if same_build {
+    if same_build(&sibling, &on_path) {
         Check::pass(KEY, LABEL, format!("{ours} at {at} — the build on PATH"))
     } else {
         Check::fail(
@@ -447,6 +466,106 @@ fn sibling_language_server_check() -> Check {
                 dir.display()
             ),
         )
+    }
+}
+
+/// Whether two executables are one build: the same file, or identical bytes.
+fn same_build(a: &Path, b: &Path) -> bool {
+    matches!((a.canonicalize(), b.canonicalize()), (Ok(a), Ok(b)) if a == b)
+        || matches!((std::fs::read(a), std::fs::read(b)), (Ok(a), Ok(b)) if a == b)
+}
+
+/// The native binary the npm/bun package's launcher on `PATH` starts: the
+/// first existing path of the launcher's own search order
+/// (`packages/cli/src/index.ts`) — the workspace release build, the
+/// package's own `bin/`, then the platform package
+/// `@lute-lang/lute-core-<platform>` wherever a package manager put it.
+/// `None` when the launcher script cannot be located or none of those
+/// exists (a launcher that starts nothing, or an unfamiliar layout).
+fn launcher_binary(on_path: &Path, exe: &str) -> Option<PathBuf> {
+    let script = launcher_script(on_path)?;
+    let cli = script.parent()?;
+    let scope = cli.parent()?;
+    let root = scope.parent()?;
+    let mut candidates = Vec::new();
+    if let Some(triple) = rust_target_triple() {
+        candidates.push(root.join("target").join(triple).join("release").join(exe));
+    }
+    candidates.push(root.join("target").join("release").join(exe));
+    candidates.push(cli.join("bin").join(exe));
+    if let Some(platform) = platform_package() {
+        let pkg = format!("lute-{platform}");
+        candidates.push(root.join("packages").join(platform).join("bin").join(exe));
+        candidates.push(scope.join(&pkg).join("bin").join(exe));
+        for modules in [cli.join("node_modules"), root.join("node_modules")] {
+            candidates.push(modules.join("@lute-lang").join(&pkg).join("bin").join(exe));
+        }
+    }
+    candidates
+        .into_iter()
+        .find(|p| p.is_file() && p.canonicalize().ok().as_deref() != Some(script.as_path()))
+}
+
+/// The `lsp-bin.js` a `PATH` entry runs: the entry itself (through its
+/// symlinks), or the script a package-manager shell shim names
+/// (`"$basedir/../@lute-lang/lute/lsp-bin.js"`).
+fn launcher_script(on_path: &Path) -> Option<PathBuf> {
+    use std::io::Read;
+    let target = on_path.canonicalize().ok()?;
+    if target
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e, "js" | "mjs" | "cjs"))
+    {
+        return Some(target);
+    }
+    let mut head = Vec::with_capacity(4096);
+    std::fs::File::open(&target)
+        .ok()?
+        .take(4096)
+        .read_to_end(&mut head)
+        .ok()?;
+    let text = String::from_utf8_lossy(&head);
+    let named = text
+        .split(|c: char| c.is_whitespace() || matches!(c, '"' | '\''))
+        .find(|t| t.ends_with("lsp-bin.js"))?;
+    let rel = named
+        .strip_prefix("$basedir/")
+        .or_else(|| named.strip_prefix("${basedir}/"))
+        .unwrap_or(named);
+    let base = on_path.parent()?;
+    base.join(rel).canonicalize().ok()
+}
+
+/// The Rust target triple the launcher looks for a workspace build under.
+fn rust_target_triple() -> Option<String> {
+    let arch = std::env::consts::ARCH;
+    if !matches!(arch, "aarch64" | "x86_64") {
+        return None;
+    }
+    match std::env::consts::OS {
+        "macos" => Some(format!("{arch}-apple-darwin")),
+        "linux" => Some(format!(
+            "{arch}-unknown-linux-{}",
+            if cfg!(target_env = "musl") {
+                "musl"
+            } else {
+                "gnu"
+            }
+        )),
+        "windows" => Some(format!("{arch}-pc-windows-msvc")),
+        _ => None,
+    }
+}
+
+/// The platform package suffix the launcher resolves (`core-<platform>`),
+/// `None` on a platform no package ships for.
+fn platform_package() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("core-darwin-arm64"),
+        ("linux", "x86_64") if !cfg!(target_env = "musl") => Some("core-linux-x64"),
+        ("windows", "x86_64") => Some("core-win32-x64"),
+        _ => None,
     }
 }
 

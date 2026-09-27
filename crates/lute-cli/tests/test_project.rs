@@ -79,7 +79,7 @@ fn write_manifest_dependent_project(dir: &std::path::Path) {
     write_at(
         dir,
         "tests/t.test.yaml",
-        "file: ../scene.lute\nexpect:\n  exit: complete\n  state:\n    run.mood: happy\n  \
+        "file: ../scene.lute\nexpect:\n  end: complete\n  state:\n    run.mood: happy\n  \
          transcriptContains: [\"Hello there.\"]\n",
     );
 }
@@ -155,7 +155,7 @@ fn explicit_providers_flag_wins_over_the_projects_pinned_catalog() {
         // `rank` match would halt the trace incomplete — answer the call.
         &format!(
             "file: {}\nbridges:\n  minigame:\n    - {{ score: 90, rank: gold, cleared: true }}\n\
-             expect:\n  exit: complete\n",
+             expect:\n  end: complete\n",
             scene.display()
         ),
     );
@@ -224,7 +224,7 @@ fn project_resolution_error_gates_the_exit_code() {
     write_at(
         &dir,
         "tests/t.test.yaml",
-        "file: ../scene.lute\nexpect:\n  exit: complete\n",
+        "file: ../scene.lute\nexpect:\n  end: complete\n",
     );
 
     let out = Command::new(BIN)
@@ -314,7 +314,7 @@ fn expect_quests_passes_when_visited_and_occasions_drive_the_lifecycle() {
     let (code, text) = run_quest_test(
         "quests-pass",
         "file: ../quests/hold.lute\nvisited: [haven.shed]\noccasions: [runEnd]\n\
-         accepts: [sideJob]\nexpect:\n  exit: complete\n  quests:\n    \
+         accepts: [sideJob]\nexpect:\n  end: complete\n  quests:\n    \
          holdLine: complete\n    sideJob: active\n",
         &[],
     );
@@ -437,7 +437,7 @@ fn expect_quests_with_an_unknown_state_name_fails() {
 fn a_misspelt_visited_key_is_refused_and_suggests_the_real_one() {
     let (code, text) = run_quest_test(
         "quests-key-typo",
-        "file: ../quests/hold.lute\nvisitd: [haven.shed]\nexpect:\n  exit: complete\n",
+        "file: ../quests/hold.lute\nvisitd: [haven.shed]\nexpect:\n  end: complete\n",
         &[],
     );
     assert_eq!(code, Some(1), "{text}");

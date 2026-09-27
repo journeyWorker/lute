@@ -6,9 +6,11 @@ description: "Every diagnostic code Lute reports: what raises it, and the spec s
 <!-- Generated from crates/lute-cli/src/codes.rs. Edit the registry, then run
      LUTE_BLESS_DIAGNOSTICS=1 cargo test -p lute-cli --bins codes -->
 
-Every diagnostic Lute prints carries a code. `E-` codes are errors: the document fails the check and `lute check` exits 1. `W-` codes are warnings: the document passes, unless `--deny <CODE>` or `--deny-warnings` promotes them. `lute --explain <CODE>` prints a code's entry below in the terminal, and an editor links each code to its section here.
+Every diagnostic Lute prints carries a code. `E-` codes are errors: the document fails the check and `lute check` exits 1. `W-` codes are warnings: the document passes, unless `--deny <CODE>` or `--deny-warnings` promotes them. An `E-` code is never printed as a warning: `check-project --wip` reports the dead guards it spares as `W-WIP`, and the message names the error code the same guard has without the flag. `lute --explain <CODE>` prints a code's entry below in the terminal, and an editor links each code to its section here.
 
 A message says what is wrong in plain words. The spec sections behind a code are listed under it, each linked to its proposal, and `--json` output carries them in each diagnostic's `spec` field.
+
+A position `file:line:column` counts lines and columns from 1, and the column counts characters, not bytes: a Korean syllable or an emoji before the error is one column. `--json` `span.column` and `lute scenario … reach` `causes[].column` are the same number. The language server reports UTF-16 positions, as LSP requires.
 
 ## Errors
 
@@ -90,9 +92,15 @@ Spec: [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-BEAT-ATTR
 
-A beat's `on`, `target`, `priority`, or `once` attribute is malformed — a non-identifier `on`, a `target` on an occasion not declared `target: true`, a non-integer `priority`, a `once` outside `run`/`user`/`false`, a beat key with no `on`, or a `when` reading the scene's own not-yet-existing `scene.*` state.
+A beat's `on`, `target`, `priority`, or `once` attribute is malformed — a non-identifier `on`, a `target` on an occasion not declared `target: true`, a non-integer `priority`, a `once` outside `run`/`user`/`false`, a beat key with no `on`, a `when` reading the scene's own not-yet-existing `scene.*` state, or a `spentBy` beside `once: false` or a `share` key.
 
-Spec: [dsl 0.21.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.21.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md)
+Spec: [dsl 0.21.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.21.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### E-BEAT-ID-DUP
+
+Two declarations of one lore document share an id: a bundle `<beat>` id repeated, or an `<entry>` whose id is a `<beat>`'s — the beat's canonical id `<document id>.<id>` is also the entry's alias, so `visited()` or a play's `expect.winner` would name both.
+
+Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### E-BEAT-UNREACHABLE
 
@@ -150,19 +158,19 @@ Spec: [dsl §8.4](/spec/), [dsl 0.21.0 §7a.1](https://github.com/journeyWorker/
 
 ### E-CEL-TYPE
 
-An operand of the integer modulo operator `%` is not an integer — a non-`number` operand or a fractional literal.
+A condition's types cannot mean what is written: a comparison between a bool, a number and a string (`visited('x') > 2`, `run.oil == true`, `run.day == 'monday'`), an ordering of anything but numbers (`run.hour >= 'h03'`), a non-bool operand of `&&` / `||` / `!` / `?:` or condition, arithmetic that cannot be computed, or an operand of the integer modulo operator `%` that is not an integer.
 
-Spec: [dsl 0.24.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
+Spec: [dsl 0.24.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### E-CHAPTERS
+
+The project's `chapters:` is malformed — not a list of `{ on, scenes }` chains, a key that is neither (a chain names its occasion with `on:`, not `occasion:`), an entry that is no scene id, a scene listed twice, two chains on one occasion — or the manifest still uses the retired `sequence:` key; or a chain names an occasion no plugin declares (or, shape-only, a near-miss of one other beats answer), lists an id no scene declares (a bundle beat, lore entry or document is named as such), lists a scene whose own `on:` answers another occasion, or, on an occasion raised for a target, lists a scene with no `target:` (it would play for every target). A malformed chain is not applied; the other chains are. Reported at the manifest line — a missing `target:` at the scene's `id:` — and the documents are still checked.
+
+Spec: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### E-CHOICE-DUP
 
 A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub.
-
-Spec: [dsl §11.1](/spec/)
-
-### E-CHOICE-ID-RESERVED
-
-A `<choice id="unset">` collides with `unset`, which is reserved as the implicit default sentinel for the branch's or hub's recorded choice state.
 
 Spec: [dsl §11.1](/spec/)
 
@@ -402,6 +410,10 @@ A project's own `enums:`/`entities:` declaration (inline or reached through `use
 
 Spec: [dsl 0.3.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md), [dsl 0.9.0 D-D](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md)
 
+### E-DOMAIN-NAME-CLASH
+
+One name is declared both as an `enums:` domain and as an entity kind — in one document or across the schemas a document merges. Enums and entity kinds share one domain namespace, so the kind's members would silently replace the enum's wherever the name types a value.
+
 ### E-DOMAIN-UNKNOWN
 
 A content-line `emotion`/`action` slot, an entity attribute, or an implicit `anchor` read names a domain that no `enums:`/`entities:` declaration defines.
@@ -530,6 +542,12 @@ Content asserts or retracts an `app`-tier base relation, though it is engine-own
 
 Spec: [dsl 0.3.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md), [dsl 0.3.0 §9.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
+### E-FLAG-VALUE
+
+A flag attribute (`<choice once>`/`exit`, `<objective optional>`, `<beat also>`) is given a value other than `true`/`false`; a flag is written bare, and a beat/entry `once` period on a choice is refused.
+
+Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### E-FRONTMATTER-SCHEMA
 
 A document's frontmatter key, declared by an active plugin, holds a value whose shape does not match the plugin's declared type for that key.
@@ -628,9 +646,21 @@ A directive's declarative `lower: { record, fields }` mapping names a target fie
 
 A directive's `lower: { record: … }` names something outside the closed set of staging record kinds declarative lowering supports.
 
+### E-MANIFEST
+
+`lute.project.yaml` cannot be read as a manifest: it does not parse, is not a mapping, lacks `defaultProfile:`, or a value has the wrong shape.
+
+Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### E-MANIFEST-KEY
+
+`lute.project.yaml` has a key it does not define — at the top level, in a profile, or in `identity:` — or a key another layer owns (a schema key such as `terminal:`, a document key that belongs under `defaults:`).
+
+Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### E-MARK-DUP
 
-A label or mark id is declared more than once anywhere in the document — labels and marks share one id namespace.
+A mark id — a `::mark{id}` or a content line's `id=` — is declared more than once anywhere in the document; both share one namespace.
 
 Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
@@ -688,13 +718,13 @@ Spec: [dsl 0.10.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-NEXT-BACKWARD
 
-A `::next{to}` names a label that is not forward of the `::next` in document order — jumps must go forward only.
+A `::next{to}` names a mark that is not forward of the `::next` in document order — jumps must go forward only.
 
 Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
 ### E-NEXT-UNDEFINED
 
-A `::next{to}` names a label that no `::mark` anywhere in the document defines.
+A `::next{to}` names a mark that no `::mark` (or content line `id=`) anywhere in the document declares.
 
 Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
@@ -792,15 +822,15 @@ Spec: [dsl 0.6.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-PLUGIN-ASSET-SEGMENT-TYPE
 
-A plugin's `assetkinds/*.yaml` segment declares a type outside the four a segment position admits — `enum`, `number`, `string`, or `providerRef`.
+A plugin's `assetKinds` export declares a segment type outside the four a segment position admits — `enum`, `number`, `string`, or `providerRef`.
 
 ### E-PLUGIN-DUP-ACROSS
 
-Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation.
+Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation; the first plugin's declaration is used.
 
 ### E-PLUGIN-DUP-ID
 
-A plugin package declares the same id more than once within one export kind.
+A plugin package declares the same id more than once within one export kind; the first declaration is used and the rest of the project is still checked.
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
@@ -810,9 +840,15 @@ A plugin directive declaration uses a `semantics:` flag outside the closed vocab
 
 A plugin export file or directory could not be read due to an I/O or encoding failure.
 
+### E-PLUGIN-KEY
+
+A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`.
+
+Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### E-PLUGIN-MANIFEST
 
-A plugin package's `plugin.yaml` manifest is missing or fails to parse.
+A plugin package's `plugin.yaml` manifest is missing, is not valid YAML, or names no `id`/`version`/`kind`/`exports`.
 
 ### E-PLUGIN-MISSING-ACTIVE
 
@@ -840,15 +876,17 @@ Spec: [plugin Appendix C1](/spec/)
 
 ### E-PLUGIN-PARSE
 
-A plugin export file failed to parse, or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`).
+A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`).
 
-Spec: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+Spec: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### E-PLUGIN-RESERVED-NAME
 
-A non-core plugin declares a directive named `scene`, `cut`, `on`, `quest`, or `objective`, which the core vocabulary reserves.
+A plugin declares a name the core language owns: a directive named like a core statement (`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), a core block tag (`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`) or a `lute.core` directive (`end`, `mark`, `bg`, …); an event or occasion named like an engine lifecycle event (`questComplete`, …) or a play step key; a cast id `narrator`. Reported at the declaration's file and line.
 
-Spec: [dsl §10](/spec/)
+Every reserved name, where it is refused and what to write instead: [Reserved names](/reference/reserved-names/).
+
+Spec: [dsl §10](/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 
@@ -864,15 +902,21 @@ Spec: [plugin §7](/spec/)
 
 ### E-PLUGIN-UNKNOWN-EXPORT
 
-A plugin manifest's `exports:` key is not one of the closed set of known export kinds.
+A plugin manifest's `exports:` key is not one of the export kinds (with a did-you-mean); the old spellings `rewardkinds`/`assetkinds`/`stampattrs` name `rewardKinds`/`assetKinds`/`stampAttrs`.
 
-Spec: [plugin §4](/spec/)
+Spec: [plugin §4](/spec/), [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### E-PLUGIN-UNKNOWN-REWARD-TARGET
 
 A `rewardKinds:` entry pins `target: { provider: <name> }` to a provider no active plugin declares.
 
 Spec: [dsl 0.16.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md)
+
+### E-PLURAL-FORM
+
+A `{{n:plural(…)}}` hint whose forms are not a bare singular and a bare plural separated by `|` — quoted forms, a `,` separator, a missing or empty form.
+
+Spec: [dsl 0.27.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### E-PROFILE-EXTENDS-CYCLE
 
@@ -986,10 +1030,6 @@ A relation declares no `args:`.
 
 Spec: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
-### E-RELATION-RESERVED-NAME
-
-A relation is named after a reserved CEL call, macro, or keyword, so it could never be queried with `holds(...)`.
-
 ### E-RELATION-RESERVED-WRITE
 
 A relation is declared both `derive: true` and `reserved: true`, giving it two conflicting write owners.
@@ -1002,6 +1042,14 @@ A fact atom (a seed, rule, `::assert`/`::retract`, or CEL fact query) names a re
 
 Spec: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
+### E-RESERVED-NAME
+
+A declared name is one the language keeps for itself — a state root naming an entity member, def or season, `unset`/`true`/`false`/`null`/`_` naming a member, `none` or a CEL literal naming an id, a CEL keyword in a state path or id that becomes one, a CEL call or rule word naming a relation, `narrator` in `cast:`, or a number in a member list — so the name would be read as that word where it is used. The message names a replacement; `lute --explain E-RESERVED-NAME` lists every reserved name.
+
+Every reserved name, where it is refused and what to write instead: [Reserved names](/reference/reserved-names/).
+
+Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### E-RETRACT-WILDCARD-ASSERT
 
 A relation argument is `_` in a context other than a `::retract` pattern, which alone may contain wildcards.
@@ -1010,7 +1058,7 @@ Spec: [dsl 0.3.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/propo
 
 ### E-REWARD-ATTR
 
-A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, or an `on=` used on an objective-level reward or with a value other than `"failed"`.
+A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, or an `outcome=` used on an objective-level reward or with a value other than `"failed"`.
 
 Spec: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md)
 
@@ -1044,15 +1092,9 @@ A rule's `cel("...")` guard cannot expand its `@def`/`@def(args)` references —
 
 ### E-SEASON-DECL
 
-A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead.
+A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead.
 
 Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
-
-### E-SEQUENCE
-
-The project's `sequence:` is malformed (not `{ occasion, scenes }`, a key that is neither, an id listed twice), names an occasion no plugin declares (or, shape-only, a near-miss of one other beats answer), lists an id no scene declares, or lists a scene whose own `on:` answers another occasion. Reported at the manifest line; the documents are still checked.
-
-Spec: [dsl 0.27.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
 
 ### E-SET-OP-TYPE
 
@@ -1132,6 +1174,12 @@ A quoted attribute value uses a backslash escape other than the four defined one
 
 Spec: [dsl §4.4](/spec/)
 
+### E-SUBQUEST-REARM
+
+A quest that an `<objective quest=…>` names as a subquest declares `rearm=`; a subquest activates with its parent, so once the parent has ended a rearmed child stays `unset`.
+
+Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### E-TAG-INLINE-BODY
 
 A block's body, and often its close, is written on the opener's own line; the opener, each body line and the `</tag>` close each need a line of their own.
@@ -1146,9 +1194,9 @@ Spec: [dsl §2.3](/spec/)
 
 ### E-TEMPLATE
 
-A beat template is misused: `<beat use=>` names no component or one without a `beat:` header, a template `beat:` header is malformed or gives a header param a value it cannot take, or `::body` appears outside a template's top level.
+A beat template is misused: `<beat use=>` names no component or one without a `beat:` header, a template `beat:` header is malformed or gives a header param a value it cannot take, a component declares a param named like a key of its use (`component` or `when`, or for a beat template a `<beat>` header key such as `title`, `once` or `id`) that no use could ever pass, or `::body` appears outside a template's top level.
 
-Spec: [dsl 0.27.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+Spec: [dsl 0.27.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### E-TEMPORAL-ARG
 
@@ -1320,7 +1368,7 @@ Spec: [dsl 0.5.2 §2](https://github.com/journeyWorker/lute/blob/main/docs/propo
 
 ### E-UNSET-UNCOVERED
 
-A `<match>` subject that may be unset (an unset-able `scene.choices.*` path, or a `run.`/`user.`/`app.` path with no schema `default`) is not covered by an `unset`-matching arm or an `<otherwise>`.
+A `<match>` subject that may be unset (a `run.`/`user.`/`app.` path with no schema `default`; a `scene.*` path, including a branch's `scene.choices.*` record, is judged per path as `E-MAYBE-UNSET`) is not covered by an `unset`-matching arm or an `<otherwise>`.
 
 Spec: [dsl §11.2](/spec/)
 
@@ -1410,9 +1458,15 @@ Spec: [dsl 0.21.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-BEAT-SPENT-AT-START
 
-A beat's `spentBy` already holds at the start of a run (often an inverted `!holds(…)` copied from an old `when`), so the beat is not eligible until that stops holding.
+A beat's `spentBy` already holds at the start of play (every state path at its default, only the seed facts) — often `spentBy` read as "repeat while", or an inverted `!holds(…)` copied from an old `when` — so the beat is spent before it can play: a `spentBy` beat stays spent once its condition has held.
 
-Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-BRANCH-ID-SHARED
+
+Two documents of one project each declare a `<branch>` or `<hub>` with the same id. Ids need only be unique within a document, but a play's or test's `choose:` names a menu by its id alone, so one key answers both menus (and a list of decisions is consumed across both).
+
+Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-CAST-ABSENT
 
@@ -1425,6 +1479,18 @@ Spec: [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 A `providerRef` id is not found in the pinned provider catalog, which may mean the snapshot is stale or offline rather than the id being wrong.
 
 Spec: [dsl §7.2](/spec/)
+
+### W-CHAPTER-ORDER
+
+On a `select: sequence` occasion, where a chain of the project's `chapters:` is the order within one raise, a listed scene writes its own `priority:`, which places it out of the order the chain lists. Remove the scene's `priority:`, or move it in the chain's `scenes:`.
+
+Spec: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-CHAPTER-STALL
+
+A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, not only the clock — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A condition over the clock alone only delays the chain and is not reported. If the scene may be skipped, let the next one follow the scene before it (`after: visited("<previous>")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true.
+
+Spec: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-CODE-AFTER-END
 
@@ -1449,6 +1515,12 @@ Spec: [dsl 0.10.0 §9](https://github.com/journeyWorker/lute/blob/main/docs/prop
 An `on=` objective's `by=` deadline (with no `until=`) provably implies before its `done` predicate can ever be judged, so the deadline fails the objective before it can complete.
 
 Spec: [dsl 0.24.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
+
+### W-DEADLINE-BEFORE-WINDOW
+
+An objective's `done` can only hold at clock positions where its `by=` deadline already holds — typically a `visited` beat whose `when` opens after the deadline — so the deadline fails the objective before it can be done.
+
+Spec: [dsl 0.28.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-DEADLINE-NEVER
 
@@ -1488,7 +1560,7 @@ Spec: [dsl 0.19.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-ENTRY-WRITE-REREAD
 
-A repeatable entry beat (answers an occasion, has no `once`) writes state with `::set` or `::retract`, but such effects apply only on the first read in a run, so a write meant to repeat is silently skipped on later reads.
+An entry that can be read again in a run (a lookup entry, an entry beat without `once`, a `once` shorter than the run, a `spentBy` entry, a `for=` entry without `once: run|user`) writes state, but an entry's writes apply on its first read in a run only; the message names the remedy for its shape (a `<beat>` with the same attributes, `once="run"`, or a `when="!entry.<id>.read"` guard, which also silences it).
 
 Spec: [dsl 0.26.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.19.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
 
@@ -1516,12 +1588,6 @@ A compiled line record is missing text for a locale its localization bundle decl
 
 Spec: [dsl 0.8.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
 
-### W-LABEL-CAST-SHADOWED
-
-An entity kind's `labels:` entry names a cast member whose cast `name:` is what text renders, so the label is never shown.
-
-Spec: [dsl 0.27.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
-
 ### W-LUTE-VERSION-STALE
 
 A document's `luteVersion` frontmatter stamp is present but differs from the toolchain's current DSL version, suggesting it was copied from an older example.
@@ -1536,7 +1602,7 @@ Spec: [dsl 0.15.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-OBJECTIVE-HIDDEN
 
-A required (`!optional`) objective's `when` visibility gate provably never holds, so it can never be visible or tracked even though it still gates quest completion.
+A required (`!optional`) objective's `visibleWhen` visibility gate provably never holds, so it can never be visible or tracked even though it still gates quest completion.
 
 Spec: [dsl 0.4.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
 
@@ -1568,6 +1634,12 @@ An accept-driven quest is never named by any `::accept{quest=…}` and is not `a
 
 Spec: [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
 
+### W-QUEST-REARM-CONSTANT
+
+A quest's `rearm=` condition is constant (`"true"`, `"false"`, or a def or comparison that folds to one), so it never turns from false to true and the quest never rearms.
+
+Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### W-QUEST-REF-UNKNOWN
 
 A reserved `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` reference (or similar) names a quest id or objective id no quest document in the project defines.
@@ -1582,6 +1654,12 @@ An `isSet(quest.<id>.state)` guard is always true, since a quest's state is alwa
 
 A quest with no `tier=` (so it defaults to user-tier, persisting across runs) reads only run-tier state in its conditions — `run.*`, `clock.*` over a `run.*` day, run-tier facts, or subquests that are run-tier or flagged too, but not `visited()`, which a new run keeps — suggesting it (and its quest tree) was meant to reset each run.
 
+### W-RELATION-TIER-IMPLICIT
+
+A stored (not `derive: true`) relation declares no `tier:`, so it is run-tier: its facts — the engine's too, on a `reserved: true` relation — are cleared at every new run. Write `tier: run` to keep that, or `user`, `app` or `season:<name>` for facts that outlive the run.
+
+Spec: [dsl 0.28.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### W-RELATION-UNREAD
 
 A declared, non-reserved relation is written (asserted, seeded, or derived) but never read by any condition, rule body, or def — the facts it records change nothing.
@@ -1594,17 +1672,11 @@ A quest handler's `::set` writes the same path a `<reward kind="…" credits=…
 
 Spec: [dsl 0.23.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
 
-### W-SEQUENCE-ORDER
+### W-SEASON-UNGATED
 
-On a `select: sequence` occasion, a scene listed in the project's `sequence:` writes its own `priority:`, which places it out of the order the list gives — the list's order is the priority the sequence derives. Remove the scene's `priority:`, or move it in `sequence.scenes`.
+A beat with `once: season:<name>` (or a `tier="season:<name>"` quest with a `start`) whose `when` (or `start`) does not imply the season's `live` condition: `once` only sets how long the beat stays spent, so it plays even while the season has never opened. Add the season's `live` condition (or a def that reads it) to the `when`.
 
-Spec: [dsl 0.27.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
-
-### W-SEQUENCE-STALL
-
-A scene listed in the project's `sequence:` has its own `when:`, and the next listed scene waits on it through the `after:` the sequence writes — when the first does not play, the chain stalls. Give the next scene its own `after:`, or take the optional scene out of the list.
-
-Spec: [dsl 0.27.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-STAGE-ABSENT
 
@@ -1612,11 +1684,47 @@ A content line or `::auto` targets a character who already left the stage (via a
 
 Spec: [dsl 0.22.0 §12](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
 
+### W-TEMPLATE-DOT-PARAM
+
+A beat template's `when:` or `spentBy:` header reads a member as a path segment spelled with a param (`user.bond.@who`). It works in a header, but a component body refuses that spelling; write `user.bond[@who]`, which both accept.
+
+Spec: [dsl 0.28.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-TEMPLATE-OVERRIDE
+
+A `<beat use=…>` writes its own `when=`, which replaces the template's `when:` whole, so the template's condition no longer gates the beat (and an argument only that condition read is unused). Write both conditions in the use's `when=`, or give the template a param to conjoin (`when: "<condition> && (@only)"`) and pass it instead.
+
+Spec: [dsl 0.28.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-TERMINAL-PERSISTENT
+
+The schema's `terminal:` reads state a new run keeps (`visited(…)`, `user.*`, `app.*`, `entry.<id>.everRead`, a user-tier quest or relation), so once it holds no new run can play on.
+
+Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-TEXT-BRACKET-LABEL
+
+A `<choice>` label is wrapped in `[…]`, Ink's bracket suppression. Lute shows a label exactly as written, so the brackets appear on the button; write the label without them.
+
+Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-TEXT-COMMENT-LIKE
+
+Line text or a choice label holds a ` // …` comment or ends in an Ink `#tag`. Text after `: ` is literal, so the player sees it; a comment is `// …` on a line of its own, and Lute has no line tags.
+
+Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### W-TEXT-LOOKS-LIKE-REF
 
 A content line's whole text is exactly `@<name>` for a declared def or component param, which ships as the literal string `"@<name>"` instead of being resolved.
 
 Spec: [dsl §7.6](/spec/)
+
+### W-TEXT-SINGLE-BRACE
+
+Line text or a choice label holds a single-brace group that reads as another language's markup: a state path or def (`{run.oil}`), a Yarn `{$var}`, Ink conditional text (`{cond: text}`) or alternatives (`{~a|b}`). Single braces are literal; interpolation is `{{run.oil}}`, and conditional text is a guarded line or a `<match>`.
+
+Spec: [dsl 0.28.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### W-TIMELINE-CLIPS
 
@@ -1647,3 +1755,9 @@ Spec: [dsl 0.6.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/propo
 A `<when test="…">` arm is written as a CEL literal comparison that the `is=` pattern form would say more clearly and that the checker can reason about directly.
 
 Spec: [dsl 0.18.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md), [dsl §7.3.1](/spec/)
+
+### W-WIP
+
+Under `check-project --wip`, a guard or objective is dead only because a relation it needs has no producer written yet (no seed, `::assert`, rule, or reserved declaration, or only a component `::assert` with an unbound `@param`); the message names the error code it is without `--wip`: `E-ARM-DEAD`, `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, or `E-OBJECTIVE-UNSATISFIABLE`.
+
+Spec: [dsl 0.23.0 §10](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.26.0 §2.6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)

@@ -39,9 +39,9 @@ pub(crate) enum Command {
         #[arg(long, value_name = "DIR")]
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose installed
-        /// plugins resolve the document's activated capability snapshot (plugin
-        /// §4/§11). Omit for the nearest `lute.project.yaml` above the file, or
-        /// a core-only (`lute.core`) check when there is none.
+        /// plugins resolve the document's activated capability snapshot. Omit
+        /// for the nearest `lute.project.yaml` above the file, or a core-only
+        /// (`lute.core`) check when there is none.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
         /// Trusted project profile whose permissions apply as an additional host
@@ -49,24 +49,22 @@ pub(crate) enum Command {
         #[arg(long = "permission-profile", value_name = "NAME")]
         permission_profile: Option<String>,
         /// Promote every diagnostic with EXACTLY this code to an error for the
-        /// verdict and exit code (repeatable) — rustc/clippy `-D` precedent
-        /// (spec §5). An unknown code is a usage error (exit 2). Errors are
-        /// never demotable (spec §6).
+        /// verdict and exit code (repeatable), like rustc/clippy `-D`. An
+        /// unknown code is a usage error (exit 2). Errors are never
+        /// demotable.
         #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
         deny: Vec<String>,
-        /// Promote EVERY warning to an error for the verdict and exit code
-        /// (spec §5).
+        /// Promote EVERY warning to an error for the verdict and exit code.
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
     },
     /// Statically validate EVERY `.lute` document under a directory
     /// (recursively, deterministic sorted order), like `check` on each file,
-    /// PLUS project-wide `<quest id>` uniqueness (dsl 0.2.0 §6.3) for quest
-    /// docs `check`'s own import-graph-scoped `E-QUEST-ID-DUP` (0.2.0 F4)
-    /// cannot see.
+    /// PLUS project-wide `<quest id>` uniqueness for quest docs `check`'s
+    /// own import-graph-scoped `E-QUEST-ID-DUP` cannot see.
     CheckProject {
         /// Directory to walk recursively for `*.lute` files; also the
-        /// project root passed to `load_project` (plugin §4/§11), so every
+        /// project root whose plugins resolve every file, so every
         /// file's capability resolution matches `lute check <file> --project
         /// <dir>`.
         dir: PathBuf,
@@ -78,19 +76,19 @@ pub(crate) enum Command {
         providers: Option<PathBuf>,
         /// Promote every diagnostic with EXACTLY this code to an error for the
         /// verdict and exit code (repeatable) — applies to per-file AND
-        /// project-wide diagnostics (spec §5). An unknown code is a usage error
-        /// (exit 2). Errors are never demotable (spec §6).
+        /// project-wide diagnostics. An unknown code is a usage error (exit
+        /// 2). Errors are never demotable.
         #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
         deny: Vec<String>,
-        /// Promote EVERY warning to an error for the verdict and exit code
-        /// (spec §5).
+        /// Promote EVERY warning to an error for the verdict and exit code.
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
-        /// Work in progress (dsl 0.23.0 §10): report `E-ENTRY-UNREACHABLE`,
-        /// `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings
-        /// when only relations nothing produces yet (no seed, assert, rule,
-        /// or reserved declaration) make the guard dead. dsl 0.26.0 §2.6: a
-        /// relation only a component `::assert` with an unbound `@param`
+        /// Work in progress: a guard dead only because relations nothing
+        /// produces yet (no seed, assert, rule, or reserved declaration)
+        /// kill it is the warning `W-WIP`, whose message names the error
+        /// (`E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`,
+        /// `E-OBJECTIVE-UNSATISFIABLE`, `E-ARM-DEAD`) it is without the flag.
+        /// A relation only a component `::assert` with an unbound `@param`
         /// writes counts as unproduced for specific arguments, and a
         /// required `<objective quest=…>` on a child dead only for that
         /// reason is a warning too. A relation with no such component
@@ -119,11 +117,11 @@ pub(crate) enum Command {
         /// (repeatable). Lint codes are dynamic (`L-*` from plugin/custom
         /// rule ids), so this accepts any `L-<CODE>` plus
         /// `E-LINT-CONFIG`/`E-LINT-EXPR`/`E-LINT-RULE`; a typo is a
-        /// clap usage error (exit 2), never a silent no-op (spec §5).
+        /// clap usage error (exit 2), never a silent no-op.
         #[arg(long = "deny", value_name = "CODE", value_parser = lint::parse_lint_deny_code)]
         deny: Vec<String>,
         /// Promote EVERY warning to an error for the verdict and exit
-        /// code (spec §5).
+        /// code.
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
         /// Use this `lute.lint.yaml` instead of the per-root default
@@ -172,17 +170,16 @@ pub(crate) enum Command {
         all: bool,
         /// Merge a locale bundle (`lute loc import`) into the artifact:
         /// `texts` on every line, `labels` on every choice/hub option, keyed by
-        /// `lineId` (dsl 0.8.0 §7). `text`/`label` stay the source language.
+        /// `lineId`. `text`/`label` stay the source language.
         /// A record missing a declared locale is `W-L10N-MISSING`.
         #[arg(long, value_name = "FILE")]
         locales: Option<PathBuf>,
         /// Promote every diagnostic with EXACTLY this code to an error for the
-        /// verdict and exit code (repeatable) — the same §5 policy `check`
+        /// verdict and exit code (repeatable) — the same policy `check`
         /// applies, over the warnings compile itself emits (`W-L10N-MISSING`).
         #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
         deny: Vec<String>,
-        /// Promote EVERY warning to an error for the verdict and exit code
-        /// (spec §5).
+        /// Promote EVERY warning to an error for the verdict and exit code.
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
     },
@@ -204,9 +201,9 @@ pub(crate) enum Command {
         #[arg(long = "permission-profile", value_name = "NAME")]
         permission_profile: Option<String>,
     },
-    /// Back-fill a stable `code` into every untagged `:line` (dsl §12),
-    /// rewriting the file in place — or every `.lute` file under a directory
-    /// (recursive, sorted; dsl 0.22.0 §13).
+    /// Back-fill a stable `code` into every untagged `:line`, rewriting the
+    /// file in place — or every `.lute` file under a directory (recursive,
+    /// sorted).
     Tag {
         /// The `.lute` file to tag, or a directory to tag recursively.
         path: PathBuf,
@@ -220,10 +217,9 @@ pub(crate) enum Command {
     },
     /// Apply the mechanical, meaning-preserving migrations in place —
     /// `:line[speaker]{…}: text` → `@speaker{…}: text`, any other content
-    /// line's leading `:` sigil → `@` (dsl §7.1, foundation C1),
-    /// `<choice>`/`<hub>` choice `as="…"` → `into="…"` (dsl §7.3), and a
-    /// literal-comparison `<when test="$ == …">` → `<when is="…">` (dsl
-    /// 0.18.0 §3). Byte-exact and comment-preserving; writes back only when
+    /// line's leading `:` sigil → `@`, `<choice>`/`<hub>` choice `as="…"` →
+    /// `into="…"`, and a literal-comparison `<when test="$ == …">` →
+    /// `<when is="…">`. Byte-exact and comment-preserving; writes back only when
     /// something changed. Exit `0` on success, `2` on an I/O failure. A
     /// directory migrates every `.lute` file under it (recursive, sorted).
     Fix {
@@ -246,9 +242,9 @@ pub(crate) enum Command {
         #[arg(long, value_name = "DIR")]
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose installed
-        /// plugins resolve the document's activated capability snapshot (plugin
-        /// §4/§11). Omit for the nearest `lute.project.yaml` above the file, or
-        /// a core-only (`lute.core`) surface when there is none.
+        /// plugins resolve the document's activated capability snapshot. Omit
+        /// for the nearest `lute.project.yaml` above the file, or a core-only
+        /// (`lute.core`) surface when there is none.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
         /// Trusted project profile whose permissions restrict the reported
@@ -257,13 +253,13 @@ pub(crate) enum Command {
         permission_profile: Option<String>,
     },
     /// Preview a `.lute` document's behavior against author-supplied mocks —
-    /// the D1-quarantined authoring evaluator (dsl 0.4.0 §4). Resolves the
-    /// document identically to `check` (`build_input`), refuses (exit 1) a
+    /// an authoring evaluator, not the runtime. Resolves the document
+    /// identically to `check`, refuses (exit 1) a
     /// document with check errors OR invalid mocks (`E-TRACE-*`, rendered
     /// exactly like check diagnostics — run `check` first), then walks it
     /// once, deterministically, reporting every decision and why. Exit `0`
     /// complete, `1` refused, `2` I/O, `3` incomplete (an `unknown` guard
-    /// halted the walk, dsl 0.4.0 §4.4/§4.5).
+    /// halted the walk).
     Trace {
         /// Path to the `.lute` file to trace.
         file: PathBuf,
@@ -283,24 +279,28 @@ pub(crate) enum Command {
         /// Fire a quest capability/world event, in CLI order (repeatable).
         /// A built-in lifecycle event name (`questActive`/`questComplete`/
         /// `questFailed`) is `E-TRACE-EVENT` — those are engine-derived
-        /// transitions, never user-fired (dsl 0.4.0 §4.3/§4.4).
+        /// transitions, never user-fired.
         #[arg(long = "event", value_name = "NAME")]
         event: Vec<String>,
         /// Simulate accepting a `start`-less (accept-driven) quest, by id
         /// (repeatable). An unknown quest id, or one that carries a
         /// `start` predicate (declarative — needs no accept), is
-        /// `E-TRACE-ACCEPT` (dsl 0.4.0 §4.3/§4.4).
+        /// `E-TRACE-ACCEPT`.
         #[arg(long = "accept", value_name = "QUESTID")]
         accept: Vec<String>,
         /// Raise an occasion after the quest walk settles, in CLI order
         /// (repeatable): each raise judges the `<objective on="<occasion>">`
-        /// objectives of every active quest (dsl 0.21.0 §7a.2).
-        #[arg(long = "occasion", value_name = "OCCASION")]
+        /// objectives of every active quest. A raise for a target is
+        /// `<occasion>@<target>`.
+        #[arg(long = "occasion", value_name = "OCCASION[@TARGET]")]
         occasion: Vec<String>,
+        /// Refused: trace names a raise's target in `--occasion
+        /// <occasion>@<target>`.
+        #[arg(long, hide = true, value_name = "TARGET")]
+        target: Vec<String>,
         /// A YAML document carrying the same surfaces (`state:`/`facts:`/
-        /// `choose:`/`events:`/`accepts:`/`visited:`/`occasions:`, dsl 0.4.0
-        /// §4.3, 0.21.0 §7a); CLI flags compose with it, the flag winning on
-        /// a conflict.
+        /// `choose:`/`events:`/`accepts:`/`visited:`/`occasions:`); CLI flags
+        /// compose with it, the flag winning on a conflict.
         #[arg(long, value_name = "FILE")]
         mock: Option<PathBuf>,
         /// Emit the machine-readable `TraceReport` as JSON instead of the
@@ -312,30 +312,30 @@ pub(crate) enum Command {
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose
         /// installed plugins resolve the document's activated capability
-        /// snapshot (plugin §4/§11). Omit for the nearest `lute.project.yaml`
+        /// snapshot. Omit for the nearest `lute.project.yaml`
         /// above the file (as `lute check`), or a core-only (`lute.core`)
         /// trace when there is none; only an explicit `--project` gates on
         /// the reconciled project verdict.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
-        /// Present ONE `<entry>` of a `kind: lore` document by id (dsl
-        /// 0.19.0 §8): its lines, the `<match>` arm taken, and the
+        /// Present ONE `<entry>` of a `kind: lore` document by id: its
+        /// lines, the `<match>` arm taken, and the
         /// `::set`/`::assert`/`::retract` a first read applies — or skips,
         /// when the mock seeds `entry.<id>.read: true`. REQUIRED for a lore
         /// document without `--beat` (it has no sequence to walk);
         /// `E-TRACE-ENTRY` (exit 1) on a non-lore document or an unknown id.
         #[arg(long, value_name = "ID")]
         entry: Option<String>,
-        /// Present ONE bundle `<beat>` of a `kind: lore` document (dsl
-        /// 0.23.0 §4), by its local id or its canonical `<document id>.<beat
-        /// id>`: its body walked like a scene shot body (`--choose` picks),
+        /// Present ONE bundle `<beat>` of a `kind: lore` document, by its
+        /// local id or its canonical `<document id>.<beat id>`: its body
+        /// walked like a scene shot body (`--choose` picks),
         /// every effect applied, its `when` shown, not enforced.
         /// `E-TRACE-BEAT` (exit 1) on a non-lore document or an unknown id.
         #[arg(long, value_name = "ID", conflicts_with = "entry")]
         beat: Option<String>,
-        /// Do not apply the project's seed facts and Datalog rules (dsl
-        /// 0.22.0 §6): an unmocked derived atom is unknown and each derived
-        /// read is noted, as in 0.21. Overrides the mock's `derive:`.
+        /// Do not apply the project's seed facts and Datalog rules: an
+        /// unmocked derived atom is unknown and each derived read is noted.
+        /// Overrides the mock's `derive:`.
         #[arg(long)]
         no_derive: bool,
         /// Show every `<match>` subject and guard with its `@def`/`$`
@@ -358,35 +358,39 @@ pub(crate) enum Command {
         /// whodunit on the `beats` skeleton: `examine`/`interview`
         /// occasions, evidence lore, a negated derived rule, an accusation
         /// guarded by derived facts), or `beats` (an occasions plugin, beats
-        /// with `id:`, a quest, lore, a play script and scenario tests, dsl
-        /// 0.22.0 §13).
+        /// with `id:`, a quest, lore, a play script and scenario tests).
         #[arg(long, value_name = "NAME")]
         template: Option<String>,
     },
     /// Scaffold one new document into an existing project: `lute new scene
-    /// <name> [--on <occasion> [--target <target>]]` / `lute new quest
+    /// <name> [--occasion <occasion> [--target <target>]]` / `lute new quest
     /// <name> [--start]` / `lute new lore <name>` / `lute new schema <name>`.
-    /// Documents carry an `id:` (a dotted name keeps its dots: `isolde.night`
-    /// → `id: isolde.night`) and omit what the manifest's `defaults:`
-    /// supplies; outside a project `lute new` says so (and `--on` is
-    /// refused).
+    /// The id comes from the name as typed (`isles.harborNight` → `id:
+    /// isles.harborNight`; words of a phrase join in camel case, `The
+    /// Epilogue` → `theEpilogue`) and the file is named after the id; a
+    /// document omits what the manifest's `defaults:` supplies. Outside a
+    /// project `lute new` says so (and `--occasion` is refused).
     New {
         /// Document kind: `scene`, `quest`, `lore`, or `schema`.
         kind: String,
-        /// The new document's name (file stem; `/` nests it in a subfolder:
-        /// `lute new scene talk/tomas-evening`).
+        /// The new document's name (`/` nests it in a subfolder: `lute new
+        /// scene talk/tomas-evening` → `scenes/talk/tomasEvening.lute`).
         name: String,
         /// The PROJECT directory (default: current directory) — not the
         /// destination folder. A directory inside a project that is not its
         /// root is refused with the `<sub>/<name>` spelling to use instead.
         #[arg(long, value_name = "PROJECT")]
         dir: Option<PathBuf>,
-        /// Make the scene a beat answering this occasion (dsl 0.21.0 §3).
+        /// Make the scene a beat answering this occasion. An occasion raised
+        /// for a target needs `--target`.
         #[arg(long, value_name = "OCCASION")]
-        on: Option<String>,
+        occasion: Option<String>,
+        /// Renamed `--occasion`; refused with the new spelling.
+        #[arg(long = "on", value_name = "OCCASION", hide = true)]
+        retired_on: Option<String>,
         /// The target the beat answers for (a targeted occasion's
         /// `<prefix>.<member>`).
-        #[arg(long, value_name = "TARGET", requires = "on")]
+        #[arg(long, value_name = "TARGET")]
         target: Option<String>,
         /// `new quest` only: scaffold an auto-starting quest (`start="true"`)
         /// instead of the default accept-driven stub.
@@ -405,7 +409,7 @@ pub(crate) enum Command {
         json: bool,
         /// Exit `1` when any check fails (a `✗`) — a stale running
         /// `lute-lsp`, another build beside `lute`, a stale snapshot, … — so
-        /// a harness can refuse to start on a broken setup (dsl 0.26.0 §8).
+        /// a harness can refuse to start on a broken setup.
         #[arg(long)]
         strict: bool,
     },
@@ -422,28 +426,27 @@ pub(crate) enum Command {
         mock: Option<PathBuf>,
         /// Raise an occasion after a quest artifact's walk settles, after
         /// the mock's own `occasions:`, in CLI order (repeatable): each raise
-        /// judges the `on="<occasion>"` objectives of every active quest
-        /// (dsl 0.21.0 §7a.2).
+        /// judges the `on="<occasion>"` objectives of every active quest.
         #[arg(long = "occasion", value_name = "OCCASION")]
         occasion: Vec<String>,
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,
-        /// Present ONE `entry` record of a lore artifact by id (dsl 0.19.0
-        /// §8, docs/runtime/lore-entries.md). A lore artifact needs exactly
+        /// Present ONE `entry` record of a lore artifact by id
+        /// (docs/runtime/lore-entries.md). A lore artifact needs exactly
         /// one of `--entry`/`--beat` (exit 2 otherwise); refused (exit 2) on
         /// any other artifact kind.
         #[arg(long, value_name = "ID")]
         entry: Option<String>,
-        /// Present ONE bundle `beat` record of a lore artifact (dsl 0.23.0
-        /// §4) by canonical id `<document id>.<beat id>` (or the bare beat id
+        /// Present ONE bundle `beat` record of a lore artifact by canonical
+        /// id `<document id>.<beat id>` (or the bare beat id
         /// when unambiguous): its body segment runs like a scene, every
         /// effect applied. Refused (exit 2) on any other artifact kind.
         #[arg(long, value_name = "ID", conflicts_with = "entry")]
         beat: Option<String>,
     },
     /// Play a story through a whole project as a sequence of raised
-    /// occasions (dsl 0.21.0 §6). Compiles the WHOLE project in memory
+    /// occasions. Compiles the WHOLE project in memory
     /// (scene, quest and lore documents — the gate and declaration union
     /// `compile --all` uses), then for every script step computes the beats
     /// answering the occasion, each candidate's verdict (`once` spending,
@@ -470,14 +473,14 @@ pub(crate) enum Command {
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,
-        /// Do not apply the project's Datalog rules (dsl 0.22.0 §6): an
-        /// unmocked derived atom is unknown and halts the walk incomplete.
+        /// Do not apply the project's Datalog rules: an unmocked derived
+        /// atom is unknown and halts the walk incomplete.
         #[arg(long)]
         no_derive: bool,
         /// After the play, print the derivation tree of a ground atom — the
         /// rule used and each premise's own support, negated premises shown
         /// absent — or, when it does not hold, the failing premises of every
-        /// rule that could conclude it (repeatable, dsl 0.22.0 §6).
+        /// rule that could conclude it (repeatable).
         #[arg(long, value_name = "ATOM")]
         explain: Vec<String>,
         /// Print staging as the lowered IR records (`::background`,
@@ -487,7 +490,7 @@ pub(crate) enum Command {
         ir: bool,
         /// Leave out the candidates that were not eligible at each raise:
         /// the transcript keeps the winners, the lines, the quests and the
-        /// expectations (round-5 T3-16). Without it, five or more `when:
+        /// expectations. Without it, five or more `when:
         /// false` candidates at one raise fold into one count line.
         #[arg(long)]
         quiet: bool,
@@ -497,15 +500,13 @@ pub(crate) enum Command {
     /// entries) against the declared mocks and asserts the declared
     /// expectations (transcript, offered options, state, quest status); every
     /// `*.play.yaml` under `dir` that carries an `expect:` is played and
-    /// judged as `lute play` does (dsl 0.22.0 §4). Resolves each traced
-    /// document identically to `lute trace` ([`build_input`]): against
+    /// judged as `lute play` does. Resolves each traced document
+    /// identically to `lute trace`: against
     /// `--project`, else the nearest `lute.project.yaml` above the document
     /// (as `lute check`), so the document's `profile:`/`plugins:` frontmatter
     /// and the manifest's `defaults: uses:` hoist are both applied before
     /// tracing. A play runs `--project`, else the nearest `lute.project.yaml`
     /// above it.
-    ///
-    /// [`build_input`]: crate::input::build_input
     Test {
         /// Directory to walk for `*.test.yaml` scenario tests and
         /// expect-carrying `*.play.yaml` plays (default: `.`).
@@ -519,7 +520,7 @@ pub(crate) enum Command {
         providers: Option<PathBuf>,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose
         /// installed plugins resolve each traced document's activated
-        /// capability snapshot (plugin §4/§11). Omit for each document's
+        /// capability snapshot. Omit for each document's
         /// nearest `lute.project.yaml`, or a core-only (`lute.core`) test.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
@@ -527,16 +528,16 @@ pub(crate) enum Command {
         /// the project's documents no test traced and no play presented.
         #[arg(long)]
         coverage: bool,
-        /// Do not apply the project's seed facts and Datalog rules (dsl
-        /// 0.22.0 §6): an unmocked derived atom is unknown, as in 0.21.
-        /// Overrides every test's and play script's own `derive:`.
+        /// Do not apply the project's seed facts and Datalog rules: an
+        /// unmocked derived atom is unknown. Overrides every test's and play
+        /// script's own `derive:`.
         #[arg(long)]
         no_derive: bool,
     },
     /// Localization & production reporting over a project's content lines.
     #[command(subcommand)]
     Loc(LocCommand),
-    /// The project's world-narrative map (dsl 0.19.0 §8): lore entries
+    /// The project's world-narrative map: lore entries
     /// grouped by `target` and by `series` (in `order`), and for every
     /// relation asserted anywhere, which ground facts lore entries reveal,
     /// which scenes/quests reveal, and which both. Read-only; documents need
@@ -548,7 +549,7 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Who uses which engine content id (dsl 0.26.0 §2.5): every value of a
+    /// Who uses which engine content id: every value of a
     /// directive attribute (`--attr give.item`) or every target of a reward
     /// kind (`--reward ITEM`), with the documents and lines using it — so a
     /// lead sees "who gives what" before a merge. Read-only; documents need
@@ -568,11 +569,11 @@ pub(crate) enum Command {
         json: bool,
     },
     /// Project-wide, read-only reporting surface over everything the
-    /// connectivity layer computes (dsl §5:571-584): the assembled node/edge
+    /// connectivity layer computes: the assembled node/edge
     /// graph, per-node reachability plus its declared `after` structure, and
     /// the Guaranteed/Possible envelope tables — including the
     /// `Possible \ Guaranteed` warning-grade reads `check-project` computes
-    /// and drops by default (dsl §6). Evaluates no CEL, runs no Datalog,
+    /// and drops by default. Evaluates no CEL, runs no Datalog,
     /// takes no mocks — pure graph math over declared structure, reusing the
     /// SAME per-root project-doc collection `check-project` builds (never a
     /// second file-walk/parse). Exit `0` on success, `2` on an I/O failure or
@@ -589,7 +590,7 @@ pub(crate) enum Command {
         /// Accepted before or after the sub-view (`reach … --format json`).
         #[arg(long, value_name = "FORMAT", global = true)]
         format: Option<String>,
-        /// Graph view: also draw fact-producer edges (dsl 0.26.0 §8) —
+        /// Graph view: also draw fact-producer edges —
         /// `scene(A) -> scene(B) [hasItem(x)]` when B's gate (`when:` /
         /// `start=`) reads `holds(F)` and A asserts `F` (or a fact the rules
         /// deriving `F` need) — and layer over them where they close no
@@ -597,7 +598,7 @@ pub(crate) enum Command {
         #[arg(long)]
         facts: bool,
         /// `reach`/`envelope` sub-view; omitted -> prints the assembled
-        /// topological graph (dsl §5:574).
+        /// topological graph.
         #[command(subcommand)]
         command: Option<ScenarioCommand>,
     },
@@ -605,7 +606,7 @@ pub(crate) enum Command {
     /// order (priority descending, then project order) with its priority,
     /// `once`, `after:`, `when` and the static verdicts `check-project`
     /// reaches about it — unreachable, shadowed, tied, once-per-run over
-    /// user state (dsl 0.23.0 §1). Read-only; documents need not check
+    /// user state. Read-only; documents need not check
     /// clean. Exit `0` on success, `2` on an I/O failure or an unknown
     /// `--occasion`.
     Beats {
@@ -625,8 +626,8 @@ pub(crate) enum Command {
         #[arg(long)]
         expand: bool,
     },
-    /// Evaluate beat eligibility over a grid of state values (dsl 0.23.0
-    /// §1): for every cell of the `--axis` product, starting from the
+    /// Evaluate beat eligibility over a grid of state values: for every
+    /// cell of the `--axis` product, starting from the
     /// `--script` (its save, then its steps replayed) or the declared
     /// defaults, the winner and the eligible beats it shadows for every
     /// listed occasion — play's own eligibility, no presentation. Beats
@@ -671,7 +672,7 @@ pub(crate) enum Command {
         target: Vec<String>,
         /// A play script: every cell starts from its save
         /// (`state:`/`facts:`/`visited:`/`presented:`/`quests:`/
-        /// `entriesRead:`, dsl 0.22.0 §3) with its `steps:` replayed as
+        /// `entriesRead:`) with its `steps:` replayed as
         /// `lute play` plays them.
         #[arg(long, value_name = "FILE")]
         script: Option<PathBuf>,
@@ -709,14 +710,13 @@ pub(crate) enum Command {
 /// See [`Command::Scenario`].
 #[derive(Subcommand)]
 pub(crate) enum ScenarioCommand {
-    /// Report a node's reachability verdict (Reachable/Unreachable/Unknown,
-    /// T6) plus its declared `after` prerequisite structure (dsl §5:575) —
-    /// or, with `--endings`, one row per ending (T3-20).
+    /// Report a node's reachability verdict (Reachable/Unreachable/Unknown)
+    /// plus its declared `after` prerequisite structure — or, with
+    /// `--endings`, one row per ending.
     Reach {
         /// A scene's canonical key (e.g. `marina.s01ep02`), a bundle beat's
-        /// `<document id>.<beat id>`, or `quest:<id>` for a quest (dsl
-        /// §4.4's `envelope quest:<id>` syntax); `scene:`/`beat:` prefixes
-        /// disambiguate.
+        /// `<document id>.<beat id>`, or `quest:<id>` for a quest (as
+        /// `envelope quest:<id>`); `scene:`/`beat:` prefixes disambiguate.
         #[arg(required_unless_present = "endings", conflicts_with = "endings")]
         node_id: Option<String>,
         /// Every ending instead of one node: with `=<occasion>`, every beat
@@ -728,11 +728,11 @@ pub(crate) enum ScenarioCommand {
         #[arg(long, value_name = "OCCASION", num_args = 0..=1, default_missing_value = "", require_equals = true)]
         endings: Option<String>,
     },
-    /// Report the Guaranteed/Possible envelope tables for a node (T10) —
-    /// full tables for a scene or an `after`-opted-in quest; defaults-only
-    /// `D` plus an enrichment note for a bare quest (T12, dsl §4.4). Also
-    /// prints the `Possible \ Guaranteed` warning-grade reads for the node
-    /// (dsl §6) — suppressed by default in `check-project`, surfaced here.
+    /// Report the Guaranteed/Possible envelope tables for a node — full
+    /// tables for a scene or a quest with `follows=`; defaults-only `D`
+    /// plus an enrichment note for a bare quest. Also prints the
+    /// `Possible \ Guaranteed` warning-grade reads for the node —
+    /// suppressed by default in `check-project`, surfaced here.
     Envelope {
         /// A scene's canonical key, a bundle beat's `<document id>.<beat
         /// id>`, or `quest:<id>` for a quest.
@@ -741,8 +741,7 @@ pub(crate) enum ScenarioCommand {
     /// Trace every fact-guarded condition — beat, entry, quest, objective,
     /// line, choice, arm, handler — grouped by document, to the relations it
     /// reads, and each relation to its producers through the rules:
-    /// asserting documents, seed facts, the engine (reserved), or nothing
-    /// (dsl 0.23.0 §1, 0.24.0 T3-1).
+    /// asserting documents, seed facts, the engine (reserved), or nothing.
     Knowledge {
         /// Only this node: a scene key (every guard in the scene), a bundle
         /// beat key, an entry id, `<scene>#<branch>.<choice>` for one
@@ -768,7 +767,7 @@ pub(crate) enum LocCommand {
         out: Option<PathBuf>,
     },
     /// Canonicalize translated `loc export` files into ONE locale bundle —
-    /// the reverse direction (dsl 0.8.0 §7), consumed by
+    /// the reverse direction, consumed by
     /// `lute compile --locales <bundle.json>`.
     ///
     /// Accepts exactly what `export` writes, in either format (`.csv` → CSV,
@@ -806,7 +805,7 @@ pub(crate) enum CatalogCommand {
         dir: PathBuf,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose resolved
         /// multi-plugin `capabilityVersion` stamps each snapshot instead of the
-        /// core-only version (plugin §10/§13). Omit for the core baseline.
+        /// core-only version. Omit for the core baseline.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
     },

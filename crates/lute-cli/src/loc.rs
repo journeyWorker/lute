@@ -319,6 +319,9 @@ fn walk_nodes<'a>(
                 for choice in &h.choices {
                     walk_choice(cx, id, choice, region, out);
                 }
+                if let Some(r) = &h.on_return {
+                    walk_nodes(cx, &r.body, region, prefix, out);
+                }
             }
             Node::Match(m) => {
                 for arm in &m.arms {
@@ -537,6 +540,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
             &cast,
             &folded.env.domains,
             &folded.env.state,
+            &folded.env.occasion_scopes,
         );
         let ident = templates_for(&root, &mut templates).clone();
         document_units(

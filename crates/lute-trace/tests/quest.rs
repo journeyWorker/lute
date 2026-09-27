@@ -91,13 +91,13 @@ fn quest_decision<'a>(decisions: &'a [Decision], outcome: &str) -> Option<&'a De
 fn has_step_assert(steps: &[Step], text: &str) -> bool {
     steps
         .iter()
-        .any(|s| matches!(s, Step::Assert { text: t } if t == text))
+        .any(|s| matches!(s, Step::Assert { text: t, .. } if t == text))
 }
 
 fn count_step_assert(steps: &[Step], text: &str) -> usize {
     steps
         .iter()
-        .filter(|s| matches!(s, Step::Assert { text: t } if t == text))
+        .filter(|s| matches!(s, Step::Assert { text: t, .. } if t == text))
         .count()
 }
 
@@ -111,7 +111,7 @@ fn count_quest_decisions(decisions: &[Decision], id: &str, outcome: &str) -> usi
 fn has_step_retract(steps: &[Step], text: &str) -> bool {
     steps
         .iter()
-        .any(|s| matches!(s, Step::Retract { text: t } if t == text))
+        .any(|s| matches!(s, Step::Retract { text: t, .. } if t == text))
 }
 
 fn has_step_set(steps: &[Step], path: &str, value: &str) -> bool {
@@ -884,7 +884,7 @@ state:
 // Task 5: <reward/> grants (dsl 0.16.0 §3 D-D). Fresh transitions:
 // objective grants at first `done` (once), quest grants at `complete`/
 // `failed` (§2.3 cascade included, once). `when=` gates each grant at
-// the transition instant. `on="failed"` fires on fail AND cascade-fail,
+// the transition instant. `outcome="failed"` fires on fail AND cascade-fail,
 // never on complete. Ranges are carried verbatim (D-C: never pre-rolled).
 // ---------------------------------------------------------------------
 
@@ -1029,13 +1029,13 @@ state:
     );
 }
 
-/// (Task 5 c) An `on="failed"` quest reward grants on an authored `fail`
+/// (Task 5 c) An `outcome="failed"` quest reward grants on an authored `fail`
 /// AND on a §2.3 cascade-fail, but never on a plain `complete`. A
 /// sibling default-on reward grants ONLY on complete.
 #[test]
 fn on_failed_grants_on_fail_and_cascade_never_on_complete() {
     // Parent fails via authored `fail` → cascades to still-Active child.
-    // Parent has an `on="failed"` reward, child has an `on="failed"`
+    // Parent has an `outcome="failed"` reward, child has an `outcome="failed"`
     // reward. Neither owner ever reaches `complete`.
     let text = r#"---
 kind: quest
@@ -1047,13 +1047,13 @@ state:
 ---
 
 <quest id="parentQ" title="Parent" start="true" fail="run.explode">
-  <reward kind="CONSOLE" amount="1" on="failed"/>
+  <reward kind="CONSOLE" amount="1" outcome="failed"/>
   <reward kind="WINXP" amount="99"/>
   <objective id="delegate" quest="childQ"/>
 </quest>
 
 <quest id="childQ" title="Child">
-  <reward kind="CHILD_CONSOLE" amount="1" on="failed"/>
+  <reward kind="CHILD_CONSOLE" amount="1" outcome="failed"/>
   <objective id="win" done="run.win"/>
 </quest>
 "#;
@@ -1118,7 +1118,7 @@ state:
 ---
 
 <quest id="q" title="Q" start="true">
-  <reward kind="CONSOLE" amount="1" on="failed"/>
+  <reward kind="CONSOLE" amount="1" outcome="failed"/>
   <reward kind="WIN" amount="10"/>
   <objective id="arrive" done="run.atGoal"/>
 </quest>

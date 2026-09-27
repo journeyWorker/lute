@@ -180,7 +180,7 @@ pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) 
 
 /// §3.3 rules 1–8 over one expression node. Total: every shape the rules do
 /// not name is [`Decision::Undecidable`].
-fn decide(expr: &Expr, schema: &StateSchema, defs: &DefTypes) -> Decision {
+pub(crate) fn decide(expr: &Expr, schema: &StateSchema, defs: &DefTypes) -> Decision {
     match expr {
         // Rule 1: a literal.
         Expr::Literal(v) => match v {
@@ -308,6 +308,15 @@ fn decide_call(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision 
                 _ => Decision::Undecidable,
             }
         }
+        // dsl 0.28.0 (T3-39): `family[i]` reads one member of an
+        // entity-indexed family (`user.bond[occasion.target]`) or one value
+        // of a declared map — the member's (the value's) declared type.
+        op::INDEX => c
+            .args
+            .first()
+            .and_then(|family| select_path(&family.expr))
+            .and_then(|family| indexed_type(&family, schema))
+            .map_or(Decision::Undecidable, Decision::Ty),
         // Rule 4's `isSet(p)`: matched case-insensitively, exactly as
         // `cel_resolve::is_profile_isset_call` matches it, so the two passes
         // can never disagree about which calls are `isSet`.
@@ -318,6 +327,23 @@ fn decide_call(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision 
         }
         _ => Decision::Undecidable,
     }
+}
+
+/// The type one element of `family` has: a declared map's value type, or —
+/// for an entity-indexed family (`per: <kind>`, declared as one path per
+/// member) — the members' declared type when they all agree.
+fn indexed_type(family: &str, schema: &StateSchema) -> Option<Type> {
+    if let Some(Type::Map { value, .. }) = resolve_type(family, schema) {
+        return Some((**value).clone());
+    }
+    let prefix = format!("{family}.");
+    let mut members = schema
+        .decls
+        .iter()
+        .filter(|(k, _)| k.strip_prefix(&prefix).is_some_and(|m| !m.contains('.')))
+        .map(|(_, d)| &d.ty);
+    let first = members.next()?;
+    members.all(|t| t == first).then(|| first.clone())
 }
 
 /// Rule 6: `+` is `number + number` or `string + string`. Two DECIDED sides

@@ -32,7 +32,7 @@ Content writes **deltas** with the leaf directives `::assert` and `::retract`; t
 
 A reserved relation may also say *when* the engine changes it: `changedOn: [battleEnd]` names the occasions whose raise may write it (dsl 0.25.0 §6). It is a checker input, not an IR field, and it matters to cast presence: see [Presence after engine events](/language/dialogue-and-cast/#presence-after-engine-events-changedon). `changedOn` on a relation that is not `reserved: true`, or naming an occasion no plugin declares, is `E-RELATION-DECL`.
 
-A relation cannot take the name of a CEL call, macro or keyword — `has`, `holds`, `count`, `isSet`, `now`, and the like. `holds(has(lamp))` could never be written, so declaring such a relation is `E-RELATION-RESERVED-NAME` at its declaration (dsl 0.24.0).
+A relation cannot take the name of a CEL call, macro or keyword — `has`, `holds`, `count`, `isSet`, `now`, and the like — nor of an `after:` call (`completed`, `active`) or a rule word (`cel`, `not`). `holds(has(lamp))` could never be written, so declaring such a relation is `E-RESERVED-NAME` at its declaration, with a name to use instead (`visited` → `wasAt`). Every reserved name is on the [Reserved names](/reference/reserved-names/) page.
 
 ### Sub-kinds: `subsetOf:`
 
@@ -330,7 +330,7 @@ state:
 entities:
   room: { members: [lobby, morgue, chapel] }
 relations:
-  adjacent: { args: [room, room] }
+  adjacent: { args: [room, room], tier: run }
   close:    { args: [room], derive: true }
 facts:
   - "adjacent(lobby, chapel)"
@@ -387,7 +387,7 @@ explain canMend(lamp): does not hold
 
 ## How `check-project` analyzes relational guards
 
-A guard that presumes knowledge is the right tool — `@eris{when="holds(knows(player, lumen))"}` shows the line only once the player knows. Since 0.20.0, `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::next` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`when` — as one of three verdicts:
+A guard that presumes knowledge is the right tool — `@eris{when="holds(knows(player, lumen))"}` shows the line only once the player knows. Since 0.20.0, `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::next` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`visibleWhen` — as one of three verdicts:
 
 - **impossible** — no seed, assert, rule, or engine relation anywhere in the project can produce a matching fact;
 - **guaranteed** — a matching fact holds on **every** declared route reaching the guard;
@@ -442,7 +442,7 @@ The verdict feeds the same decision procedure that already reports dead scalar g
 | `<when test>`, `<choice when>`, content line `when=`, `::next` guard | `E-ARM-DEAD` | `W-FACT-GUARANTEED` (not `::next`) |
 | lore entry `when` | `E-ENTRY-UNREACHABLE` | `W-FACT-GUARANTEED` |
 | objective `done` | `E-OBJECTIVE-UNSATISFIABLE` | — (a predicate, not a guard) |
-| required objective `when` | `W-OBJECTIVE-HIDDEN` | — |
+| required objective `visibleWhen` | `W-OBJECTIVE-HIDDEN` | — |
 | quest `start` / `fail` | `E-QUEST-UNREACHABLE` (`fail` also when it always holds) | — |
 
 A query the document cannot even state — an undeclared relation, a wrong arity, an argument outside a closed domain — stays undecided; its own error (`E-RELATION-UNKNOWN`, `E-RELATION-ARITY`, `E-FACT-DOMAIN`) owns it. `E-ENTRY-UNREACHABLE` is new with this analysis, and also fires in single-file `lute check` for an entry `when` that decides false on scalars alone. `W-UNPROVEN-RELATIONAL`, which used to mark every relational gate as "not proven", is gone: its premise no longer holds, and naming it in `--deny` is a usage error.

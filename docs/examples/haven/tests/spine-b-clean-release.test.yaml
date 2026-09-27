@@ -13,7 +13,7 @@ facts:
 choose:
   whatsLeft: readTheRecord
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Quarter turn, and it sat down. It's been sitting ever since."
     - "Clean. That's what clean sounds like. Learn it \u2014 there's one more coming."

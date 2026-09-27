@@ -2,7 +2,7 @@
 //!
 //! A play step MAY carry `expect: { winner, offered, notOffered, presented,
 //! quests, state, facts, notFacts }` and a script MAY carry a top-level
-//! `expect: { exit, quests, state, facts, notFacts, transcriptContains,
+//! `expect: { end, quests, state, facts, notFacts, transcriptContains,
 //! transcriptLacks }`. The first four step keys judge a step's selection:
 //! an `occasion` step's, or what an `advance:` step raised — `presented`
 //! every raise in order (each midnight's `dayEnd` / `dayStart`, then the
@@ -52,7 +52,7 @@ const OCCASION_STEP_KEYS: &[&str] = &["notOffered", "offered", "presented", "win
 const WORLD_KEYS: &[&str] = &["clock", "facts", "notFacts", "quests", "state"];
 
 /// The keys a step `expect.clock` may name (dsl 0.26.0 §7, T2-5).
-const CLOCK_KEYS: &[&str] = &["day", "slot", "weekday"];
+const CLOCK_KEYS: &[&str] = &["day", "ended", "slot", "weekday"];
 
 /// The first occasion-only key a step `expect:` carries — a usage error on a
 /// step that raises no occasion.
@@ -85,7 +85,7 @@ pub(crate) use lute_trace::exec::session::{ClockView, WorldView};
 
 /// The complete legal key set of the top-level (end-of-play) `expect:`.
 pub(crate) const PLAY_EXPECT_KEYS: &[&str] = &[
-    "exit",
+    "end",
     "facts",
     "notFacts",
     "quests",
@@ -94,8 +94,14 @@ pub(crate) const PLAY_EXPECT_KEYS: &[&str] = &[
     "transcriptLacks",
 ];
 
-/// The exits a top-level `expect.exit` may name.
-const EXITS: &[&str] = &["complete", "incomplete", "error"];
+/// How a playthrough ended — what a top-level `expect.end` names (and a
+/// `*.test.yaml`'s): every step played (`complete`), every step played and
+/// the project's `terminal:` holds (`terminal`), an unknown halted it
+/// (`incomplete`), or an error did (`error`).
+pub(crate) const ENDS: &[&str] = &["complete", "terminal", "incomplete", "error"];
+
+/// The key `expect.end` replaced; naming it is a usage error that says so.
+pub(crate) const OLD_END_KEY: &str = "exit";
 
 /// The quest lifecycle states `expect.quests` may name (dsl 0.21.0 §7a.4).
 const QUEST_STATES: &[&str] = &["unset", "active", "complete", "failed"];
@@ -127,6 +133,10 @@ pub(crate) struct StepOutcome {
     /// dsl 0.27.0 (T3-8): on an `advance:` step, per presented beat the
     /// raise that presented it (`dayEnd at day 3 night`); empty otherwise.
     pub presented_from: Vec<String>,
+    /// On an `advance:` step, per presented beat the occasion of the raise
+    /// that presented it — what a keyed `presented: { <occasion>: [...] }`
+    /// judges; empty otherwise.
+    pub presented_occasion: Vec<String>,
     /// The world right after the step settled — captured only when the
     /// step's `expect:` judges it ([`wants_world`]).
     pub world: Option<WorldView>,
@@ -153,8 +163,9 @@ pub(crate) struct PlayOutcome {
     /// line prefers the step the needle's other lines were said in (round-5
     /// T3-16).
     pub said_steps: Vec<usize>,
-    /// `complete | incomplete | error`.
-    pub exit: &'static str,
+    /// How the play ended ([`ENDS`]): `complete`, `terminal`, `incomplete`
+    /// or `error`.
+    pub ended: &'static str,
     /// The last step the play ran (or halted in); `None` when it stopped
     /// before step 1.
     pub last_step: Option<usize>,
@@ -234,164 +245,309 @@ impl fmt::Display for ExpectMiss {
 // Parse-time validation.
 // ===========================================================================
 
+/// One malformed `expect:` entry: the key path inside the `expect:` block it
+/// is about (`["state", "run.day"]`; empty for the block itself), the list
+/// item when it is about one, and why. The script locates it at that node.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ExpectError {
+    pub keys: Vec<String>,
+    pub item: Option<usize>,
+    pub msg: String,
+}
+
+impl ExpectError {
+    fn at(keys: &[&str], msg: String) -> Self {
+        ExpectError {
+            keys: keys.iter().map(|k| k.to_string()).collect(),
+            item: None,
+            msg,
+        }
+    }
+
+    fn item(keys: &[&str], item: usize, msg: String) -> Self {
+        ExpectError {
+            item: Some(item),
+            ..ExpectError::at(keys, msg)
+        }
+    }
+}
+
 /// Validate one `expect:` block. `top_level` selects the end-of-play key set
-/// ([`PLAY_EXPECT_KEYS`]) over the step set ([`STEP_EXPECT_KEYS`]). `Err`
-/// is a usage error naming the key and the legal list.
-pub(crate) fn validate(expect: &Yaml, top_level: bool) -> Result<(), String> {
+/// ([`PLAY_EXPECT_KEYS`]) over the step set ([`STEP_EXPECT_KEYS`]). Every
+/// malformed key is reported, in the block's order — each a usage error
+/// naming the key (and the legal list for an unknown one); empty when the
+/// block is well-formed.
+pub(crate) fn validate(expect: &Yaml, top_level: bool) -> Vec<ExpectError> {
     let (legal, where_) = if top_level {
         (PLAY_EXPECT_KEYS, "top-level `expect:`")
     } else {
         (STEP_EXPECT_KEYS, "step `expect:`")
     };
     let Yaml::Mapping(m) = expect else {
-        return Err(format!(
-            "a {where_} must be a mapping (legal keys: {})",
-            legal.join(", ")
-        ));
+        return vec![ExpectError::at(
+            &[],
+            format!(
+                "a {where_} must be a mapping (legal keys: {})",
+                legal.join(", ")
+            ),
+        )];
     };
+    let mut out = Vec::new();
     for (k, v) in m {
         let Some(key) = k.as_str() else {
-            return Err(format!("a {where_} key must be a string"));
+            out.push(ExpectError::at(
+                &[],
+                format!("a {where_} key must be a string"),
+            ));
+            continue;
         };
+        if key == OLD_END_KEY {
+            let place = if top_level {
+                ""
+            } else {
+                " in the top-level `expect:`"
+            };
+            out.push(ExpectError::at(
+                &[key],
+                format!(
+                    "`expect.{OLD_END_KEY}` is now `expect.end`{place} — write `end: <how the \
+                     play ended>`, one of: {}",
+                    ENDS.join(", ")
+                ),
+            ));
+            continue;
+        }
         if !legal.contains(&key) {
-            let sugg = lute_manifest::suggest::nearest(key, legal.iter().copied(), 2)
-                .map(|k| format!(" — did you mean `{k}`?"))
-                .unwrap_or_default();
+            let sugg = lute_manifest::suggest::did_you_mean(key, legal.iter().copied());
             let other = if top_level {
                 STEP_EXPECT_KEYS.contains(&key).then_some("a step")
             } else {
                 PLAY_EXPECT_KEYS.contains(&key).then_some("the top-level")
             };
-            let hint = other
-                .map(|o| format!(" (`{key}` belongs in {o} `expect:`)"))
-                .unwrap_or_default();
-            return Err(format!(
-                "unknown {where_} key `{key}`{sugg}{hint} (legal: {})",
-                legal.join(", ")
+            let hint = match other {
+                Some(o) => format!(" (`{key}` belongs in {o} `expect:`)"),
+                None if crate::testcmd::TEST_EXPECT_KEYS.contains(&key) => {
+                    format!(" (`{key}` is a `*.test.yaml` expectation, not a play's)")
+                }
+                None => String::new(),
+            };
+            out.push(ExpectError::at(
+                &[key],
+                format!(
+                    "unknown {where_} key `{key}`{sugg}{hint} (legal: {})",
+                    legal.join(", ")
+                ),
             ));
+            continue;
         }
-        validate_value(key, v)?;
+        out.extend(validate_value(key, v));
     }
-    Ok(())
+    out
 }
 
-/// The value shape of one known key.
-fn validate_value(key: &str, v: &Yaml) -> Result<(), String> {
+/// The value shape of one known key — every malformed entry of it.
+fn validate_value(key: &str, v: &Yaml) -> Vec<ExpectError> {
+    let one = |msg: String| vec![ExpectError::at(&[key], msg)];
     match key {
-        "winner" => scalar_text(v)
-            .map(|_| ())
-            .ok_or_else(|| format!("`expect.winner` must be a beat id or `{NO_WINNER}`")),
+        "winner" => match scalar_text(v) {
+            Some(_) => Vec::new(),
+            None => one(format!(
+                "`expect.winner` must be a beat id or `{NO_WINNER}`"
+            )),
+        },
+        // A test's menu-choice map, written in a play: here `offered` is the
+        // occasion's beat candidates and `options` is the menu choices.
+        "offered" if v.is_mapping() => one(
+            "`expect.offered` must be a list of beat ids — in a play, menu choices are \
+             `options: { <branch or hub id>: [option ids] }`; `offered` lists beat candidates"
+                .into(),
+        ),
+        // On an `advance:` step, `presented` may be keyed by the occasion
+        // of the raise: `{ dayStart: [a], slotStart: [b] }`.
+        "presented" if v.is_mapping() => {
+            let Yaml::Mapping(m) = v else { unreachable!() };
+            let mut out = Vec::new();
+            for (occasion, ids) in m {
+                match occasion.as_str() {
+                    Some(o) => out.extend(list_errors(&[key, o], ids)),
+                    None => {
+                        out.extend(one("`expect.presented` keys must be occasion names".into()))
+                    }
+                }
+            }
+            out
+        }
         "offered" | "notOffered" | "presented" | "transcriptContains" | "transcriptLacks" => {
-            string_list(key, v).map(|_| ())
+            list_errors(&[key], v)
         }
         "options" => {
             let Yaml::Mapping(m) = v else {
-                return Err(
+                return one(
                     "`expect.options` must be a mapping `{ <branch or hub id>: [option ids] }`"
                         .into(),
                 );
             };
+            let mut out = Vec::new();
             for (id, opts) in m {
-                let id = id
-                    .as_str()
-                    .ok_or("`expect.options` keys must be branch or hub ids")?;
-                string_list(&format!("options.{id}"), opts)?;
-            }
-            Ok(())
-        }
-        "facts" | "notFacts" => {
-            for atom in string_list(key, v)? {
-                parse_atom(&atom).ok_or_else(|| {
-                    let hint = if atom.matches('(').count() != atom.matches(')').count() {
-                        " — quote the atom: YAML splits an unquoted `[a(b, c)]` at the comma"
-                    } else {
-                        ""
-                    };
-                    format!("`expect.{key}` entry `{atom}` is not a ground atom `rel(a, b)`{hint}")
-                })?;
-            }
-            Ok(())
-        }
-        "exit" => match scalar_text(v) {
-            Some(e) if EXITS.contains(&e.as_str()) => Ok(()),
-            _ => Err(format!(
-                "`expect.exit` must be one of: {}",
-                EXITS.join(", ")
-            )),
-        },
-        "quests" => {
-            let Yaml::Mapping(m) = v else {
-                return Err("`expect.quests` must be a mapping `{ <quest id>: <state> }`".into());
-            };
-            for (id, st) in m {
-                let id = id
-                    .as_str()
-                    .ok_or("`expect.quests` keys must be quest ids")?;
-                match scalar_text(st) {
-                    Some(s) if QUEST_STATES.contains(&s.as_str()) => {}
-                    _ => {
-                        return Err(format!(
-                            "`expect.quests.{id}` must be one of: {}",
-                            QUEST_STATES.join(", ")
-                        ))
+                match id.as_str() {
+                    Some(id) => out.extend(list_errors(&[key, id], opts)),
+                    None => {
+                        out.extend(one("`expect.options` keys must be branch or hub ids".into()))
                     }
                 }
             }
-            Ok(())
+            out
         }
-        "state" => {
-            let Yaml::Mapping(m) = v else {
-                return Err("`expect.state` must be a mapping `{ <state path>: <value> }`".into());
+        "facts" | "notFacts" => {
+            let Yaml::Sequence(items) = v else {
+                return list_errors(&[key], v);
             };
-            for (path, want) in m {
-                let path = path
-                    .as_str()
-                    .ok_or("`expect.state` keys must be state paths")?;
-                if scalar_text(want).is_none() {
-                    return Err(format!(
-                        "`expect.state.{path}` must be a bool, number or string"
+            let texts: Vec<Option<String>> = items.iter().map(scalar_text).collect();
+            let mut out = Vec::new();
+            for (i, atom) in texts.iter().enumerate() {
+                let Some(atom) = atom else {
+                    out.push(ExpectError::item(
+                        &[key],
+                        i,
+                        format!("`expect.{key}` entries must be strings"),
+                    ));
+                    continue;
+                };
+                if parse_atom(atom).is_none() {
+                    let next = texts.get(i + 1).cloned().flatten();
+                    out.push(ExpectError::item(
+                        &[key],
+                        i,
+                        format!(
+                            "`expect.{key}` entry `{atom}` is not a ground atom `rel(a, b)`{}",
+                            lute_trace::exec::session::split_atom_hint(atom, next.as_deref())
+                        ),
                     ));
                 }
             }
-            Ok(())
+            out
+        }
+        "end" => match scalar_text(v) {
+            Some(e) if ENDS.contains(&e.as_str()) => Vec::new(),
+            Some(e) => one(format!(
+                "`expect.end: {e}` names no way a play ends{} (one of: {})",
+                lute_manifest::suggest::did_you_mean(&e, ENDS.iter().copied()),
+                ENDS.join(", ")
+            )),
+            None => one(format!("`expect.end` must be one of: {}", ENDS.join(", "))),
+        },
+        "quests" => {
+            let Yaml::Mapping(m) = v else {
+                return one("`expect.quests` must be a mapping `{ <quest id>: <state> }`".into());
+            };
+            let mut out = Vec::new();
+            for (id, st) in m {
+                let Some(id) = id.as_str() else {
+                    out.extend(one("`expect.quests` keys must be quest ids".into()));
+                    continue;
+                };
+                match scalar_text(st) {
+                    Some(s) if QUEST_STATES.contains(&s.as_str()) => {}
+                    got => out.push(ExpectError::at(
+                        &[key, id],
+                        format!(
+                            "`expect.quests.{id}` must be one of: {}{}",
+                            QUEST_STATES.join(", "),
+                            got.map(|s| {
+                                lute_manifest::suggest::did_you_mean(
+                                    &s,
+                                    QUEST_STATES.iter().copied(),
+                                )
+                            })
+                            .unwrap_or_default()
+                        ),
+                    )),
+                }
+            }
+            out
+        }
+        "state" => {
+            let Yaml::Mapping(m) = v else {
+                return one("`expect.state` must be a mapping `{ <state path>: <value> }`".into());
+            };
+            let mut out = Vec::new();
+            for (path, want) in m {
+                let Some(path) = path.as_str() else {
+                    out.extend(one("`expect.state` keys must be state paths".into()));
+                    continue;
+                };
+                if scalar_text(want).is_none() {
+                    out.push(ExpectError::at(
+                        &[key, path],
+                        format!("`expect.state.{path}` must be a bool, number or string"),
+                    ));
+                }
+            }
+            out
         }
         "clock" => {
             let shape = "`expect.clock` must be a mapping `{ weekday: <label or number>, slot: \
-                         <slot>, day: <whole number> }` (any of them)";
+                         <slot>, day: <whole number>, ended: <bool> }` (any of them)";
             let Yaml::Mapping(m) = v else {
-                return Err(shape.into());
+                return one(shape.into());
             };
             if m.is_empty() {
-                return Err(shape.into());
+                return one(shape.into());
             }
+            let mut out = Vec::new();
             for (k, want) in m {
-                let k = k.as_str().ok_or(shape)?;
+                let Some(k) = k.as_str() else {
+                    out.extend(one(shape.into()));
+                    continue;
+                };
                 let ok = match k {
                     "day" => want.as_i64().is_some_and(|d| d >= 1),
+                    "ended" => want.as_bool().is_some(),
                     "slot" => want.as_str().is_some_and(|s| !s.trim().is_empty()),
                     "weekday" => {
                         want.as_i64().is_some_and(|d| d >= 0)
                             || want.as_str().is_some_and(|s| !s.trim().is_empty())
                     }
                     _ => {
-                        let sugg =
-                            lute_manifest::suggest::nearest(k, CLOCK_KEYS.iter().copied(), 2)
-                                .map(|k| format!(" — did you mean `{k}`?"))
-                                .unwrap_or_default();
-                        return Err(format!(
-                            "unknown `expect.clock` key `{k}`{sugg} (legal: {})",
-                            CLOCK_KEYS.join(", ")
+                        out.push(ExpectError::at(
+                            &[key, k],
+                            format!(
+                                "unknown `expect.clock` key `{k}`{} (legal: {})",
+                                lute_manifest::suggest::did_you_mean(k, CLOCK_KEYS.iter().copied()),
+                                CLOCK_KEYS.join(", ")
+                            ),
                         ));
+                        continue;
                     }
                 };
                 if !ok {
-                    return Err(shape.into());
+                    out.push(ExpectError::at(&[key, k], shape.into()));
                 }
             }
-            Ok(())
+            out
         }
         _ => unreachable!("validate() filtered to the legal key sets"),
     }
+}
+
+/// A list of strings: an error for a non-list, else one per entry that is
+/// not a string.
+fn list_errors(keys: &[&str], v: &Yaml) -> Vec<ExpectError> {
+    let name = keys.join(".");
+    let Yaml::Sequence(items) = v else {
+        return vec![ExpectError::at(
+            keys,
+            format!("`expect.{name}` must be a list"),
+        )];
+    };
+    items
+        .iter()
+        .enumerate()
+        .filter(|(_, i)| scalar_text(i).is_none())
+        .map(|(i, _)| {
+            ExpectError::item(keys, i, format!("`expect.{name}` entries must be strings"))
+        })
+        .collect()
 }
 
 /// A list of strings (scalars rendered to text).
@@ -515,8 +671,8 @@ fn unreached_miss(
             format!("steps {} to run ({k} expectations)", ns.join(", "))
         }
     };
-    let how = match outcome.exit {
-        "complete" => "ended (`end: true`)",
+    let how = match outcome.ended {
+        "complete" | "terminal" => "ended (`end: true`)",
         "incomplete" => "stopped incomplete",
         _ => "halted with an error",
     };
@@ -628,6 +784,29 @@ fn check_step(
             miss("presented".into(), list(&want), actual);
         }
     }
+    // An `advance:` step's `presented: { <occasion>: [...] }`: per named
+    // occasion, the exact order its raises in this step presented.
+    if let Some(Yaml::Mapping(keyed)) = m.get("presented") {
+        for (occasion, ids) in keyed {
+            let (Some(occasion), Ok(want)) = (occasion.as_str(), string_list("presented", ids))
+            else {
+                continue;
+            };
+            let want: Vec<String> = want.into_iter().map(resolve).collect();
+            let (got, tagged): (Vec<&String>, Vec<String>) = row
+                .presented
+                .iter()
+                .zip(&row.presented_from)
+                .zip(&row.presented_occasion)
+                .filter(|(_, o)| o.as_str() == occasion)
+                .map(|((id, from), _)| (id, format!("{id} ({from})")))
+                .unzip();
+            let holds = want.len() == got.len() && want.iter().zip(&got).all(|(w, a)| names(w, a));
+            if !holds {
+                miss(format!("presented {occasion}"), list(&want), list(&tagged));
+            }
+        }
+    }
     // dsl 0.24.0 (T3-10): the options a branch/hub offered in this step, as
     // a set — `lute test`'s `offered:` for a play step.
     if let Some(Yaml::Mapping(want)) = m.get("options") {
@@ -736,7 +915,8 @@ fn check_world(
 
 /// dsl 0.26.0 §7 (T2-5): judge a step `expect.clock` — the `day`, `slot`
 /// name and `weekday` (a `week.labels` label or a `clock.weekday` number)
-/// where the clock stands after the step. An `include:`d steps file states
+/// where the clock stands after the step, and whether a clock that ends has
+/// ended (`ended`, the `clock.ended` content reads). An `include:`d steps file states
 /// the time it assumes, so a clock another area's steps pushed on fails at
 /// the boundary instead of silently skipping time-gated beats.
 fn check_clock(
@@ -781,6 +961,13 @@ fn check_clock(
                 };
                 (held, actual)
             }
+            "ended" => match c.ended {
+                Some(ended) => (want.as_bool() == Some(ended), ended.to_string()),
+                None => (
+                    false,
+                    "none (the clock never ends: it declares no `last:` or `days:`)".to_string(),
+                ),
+            },
             _ => continue,
         };
         if !held {
@@ -802,9 +989,9 @@ fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
             actual,
         })
     };
-    if let Some(want) = m.get("exit").and_then(scalar_text) {
-        if want != outcome.exit {
-            miss("exit".into(), want, outcome.exit.to_string());
+    if let Some(want) = m.get("end").and_then(scalar_text) {
+        if want != outcome.ended {
+            miss("end".into(), want, outcome.ended.to_string());
         }
     }
     check_world(&outcome.end, m, &mut miss);
@@ -882,6 +1069,7 @@ mod tests {
             offered: offered.iter().map(|s| s.to_string()).collect(),
             presented: winner.into_iter().map(str::to_string).collect(),
             presented_from: Vec::new(),
+            presented_occasion: Vec::new(),
             world: None,
             options: BTreeMap::new(),
         }
@@ -909,7 +1097,7 @@ mod tests {
             },
             said: "@oskar: Welcome back.\n".into(),
             said_steps: vec![0, 1],
-            exit: "complete",
+            ended: "complete",
             last_step: Some(3),
             entry_aliases: BTreeMap::new(),
         }
@@ -926,7 +1114,7 @@ mod tests {
             (3, None, y("{winner: none, notOffered: [hub.welcome]}")),
         ];
         let top = y(r#"
-exit: complete
+end: complete
 quests: { caseClosed: complete, side: unset }
 state: { run.day: 3, run.outcome: fell, user.met: true }
 facts: ['knows(player,"oskar")', slew(warden)]
@@ -981,7 +1169,7 @@ transcriptLacks: ["Goodbye"]
     #[test]
     fn steps_the_play_never_reached_are_one_summary_miss() {
         let o = PlayOutcome {
-            exit: "error",
+            ended: "error",
             ..outcome()
         };
         let misses = check(&o, &[(2, None, y("{winner: none}"))], None);
@@ -1040,9 +1228,9 @@ transcriptLacks: ["Goodbye"]
     }
 
     #[test]
-    fn end_misses_cover_exit_quests_facts_and_transcript() {
+    fn end_misses_cover_end_quests_facts_and_transcript() {
         let top = y(r#"
-exit: incomplete
+end: incomplete
 quests: { caseClosed: failed, ghost: active }
 facts: [slew(oskar)]
 notFacts: [slew(warden)]
@@ -1054,7 +1242,7 @@ transcriptLacks: ["Welcome"]
         assert_eq!(
             keys,
             [
-                "exit",
+                "end",
                 "quests caseClosed",
                 "quests ghost",
                 "facts",
@@ -1068,31 +1256,94 @@ transcriptLacks: ["Welcome"]
         assert_eq!(misses[1].actual, "complete");
         assert_eq!(
             misses[0].to_string(),
-            "end of play: expect exit: expected incomplete, actual complete"
+            "end of play: expect end: expected incomplete, actual complete"
         );
+    }
+
+    /// A play that ran every step without reaching the project's
+    /// `terminal:` is `complete`, never `terminal` — and the reverse.
+    #[test]
+    fn end_tells_a_terminal_ending_from_a_complete_one() {
+        let terminal = PlayOutcome {
+            ended: "terminal",
+            ..outcome()
+        };
+        let misses = check(&outcome(), &[], Some(&y("{end: terminal}")));
+        assert_eq!(misses.len(), 1, "{misses:?}");
+        assert_eq!(misses[0].actual, "complete");
+        let misses = check(&terminal, &[], Some(&y("{end: complete}")));
+        assert_eq!(misses[0].actual, "terminal");
+        assert!(check(&terminal, &[], Some(&y("{end: terminal}"))).is_empty());
+    }
+
+    fn messages(errs: Vec<ExpectError>) -> Vec<String> {
+        errs.into_iter().map(|e| e.msg).collect()
     }
 
     #[test]
     fn validate_rejects_unknown_keys_with_the_legal_list() {
-        let e = validate(&y("{winer: hub.a}"), false).unwrap_err();
+        let e = &messages(validate(&y("{winer: hub.a}"), false))[0];
         assert!(e.contains("`winer`"), "{e}");
         assert!(e.contains("did you mean `winner`"), "{e}");
         assert!(
             e.contains("legal: clock, facts, notFacts, notOffered, offered, options, presented, quests, state, winner"),
             "{e}"
         );
-        let e = validate(&y("{transcriptContains: [x]}"), false).unwrap_err();
+        let e = &messages(validate(&y("{transcriptContains: [x]}"), false))[0];
         assert!(e.contains("belongs in the top-level"), "{e}");
-        let e = validate(&y("{winner: a}"), true).unwrap_err();
+        let e = &messages(validate(&y("{winner: a}"), true))[0];
         assert!(e.contains("belongs in a step"), "{e}");
-        assert!(validate(&y("{winner: a, offered: [a], notOffered: [b]}"), false).is_ok());
+        assert!(validate(&y("{winner: a, offered: [a], notOffered: [b]}"), false).is_empty());
+    }
+
+    /// `expect.exit` became `expect.end`: the old key is refused, naming the
+    /// new one and its values; a mistyped value gets a did-you-mean.
+    #[test]
+    fn exit_is_refused_naming_end() {
+        let e = messages(validate(&y("{exit: terminal}"), true));
+        assert_eq!(e.len(), 1, "{e:?}");
+        assert!(e[0].contains("`expect.exit` is now `expect.end`"), "{e:?}");
+        assert!(
+            e[0].contains("complete, terminal, incomplete, error"),
+            "{e:?}"
+        );
+        let e = messages(validate(&y("{end: completed}"), true));
+        assert!(e[0].contains("did you mean `complete`?"), "{e:?}");
+        assert!(validate(&y("{end: terminal}"), true).is_empty());
+    }
+
+    /// Every malformed entry is reported, each at its key (and list item).
+    #[test]
+    fn validate_reports_every_malformed_entry_where_it_is() {
+        let errs = validate(
+            &y("{facts: ['knows(a', ok(b)], state: {run.day: [1], run.ok: 2}, bogus: 1}"),
+            true,
+        );
+        let at: Vec<(Vec<String>, Option<usize>)> =
+            errs.iter().map(|e| (e.keys.clone(), e.item)).collect();
+        assert_eq!(
+            at,
+            [
+                (vec!["facts".to_string()], Some(0)),
+                (vec!["state".to_string(), "run.day".to_string()], None),
+                (vec!["bogus".to_string()], None),
+            ],
+            "{errs:?}"
+        );
+        // A lone unbalanced atom is not blamed on YAML's comma split.
+        assert!(
+            errs[0].msg.contains("parentheses do not balance"),
+            "{errs:?}"
+        );
+        let split = validate(&y("{facts: [knows(a, b)]}"), true);
+        assert!(split[0].msg.contains("quote the atom"), "{split:?}");
     }
 
     #[test]
     fn validate_rejects_malformed_values() {
         for (text, top) in [
             ("{offered: a}", false),
-            ("{exit: done}", true),
+            ("{end: done}", true),
             ("{quests: {q: started}}", true),
             ("{state: {run.day: [1]}}", true),
             ("{facts: ['knows(a']}", true),
@@ -1104,7 +1355,7 @@ transcriptLacks: ["Welcome"]
             ("{clock: {day: 2}}", true),
         ] {
             assert!(
-                validate(&y(text), top).is_err(),
+                !validate(&y(text), top).is_empty(),
                 "{text} should be rejected"
             );
         }
@@ -1150,6 +1401,7 @@ transcriptLacks: ["Welcome"]
                 slot: Some("morning".into()),
                 weekday: Some(5),
                 weekday_label: Some("Fri".into()),
+                ended: None,
             }),
             ..WorldView::default()
         });

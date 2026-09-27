@@ -819,12 +819,15 @@ fn eval_call(c: &CallExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAto
 
 /// One read of a guard (round-5 T3-12): a dotted state path, a fact pattern
 /// `holds`/`count`/`countDistinct` queries (rendered `rel(a, _)`), a scene
-/// id `visited(…)` asks about.
+/// id `visited(…)` asks about — or a family read by the bound member,
+/// `user.bond[occasion.target]` (the family), which reads
+/// `user.bond.<member>`.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum GuardAtom {
     Path(String),
     Fact(String),
     Visited(String),
+    Indexed(String),
 }
 
 /// Every read of `expr`, in document order, once each — the premises a
@@ -845,6 +848,16 @@ pub(crate) fn guard_atoms(expr: &Expr, out: &mut Vec<GuardAtom>) {
             }
         }
         Expr::Call(c) => match (c.func_name.as_str(), c.args.as_slice()) {
+            // dsl 0.27.0 §3: the member path the family read resolves to,
+            // never the family (a `per:` family has no value of its own).
+            (op::INDEX, [target, idx])
+                if expr_path(&idx.expr).as_deref() == Some(lute_check::beats::OCCASION_TARGET) =>
+            {
+                match expr_path(&target.expr) {
+                    Some(family) => push(out, GuardAtom::Indexed(family)),
+                    None => guard_atoms(&target.expr, out),
+                }
+            }
             ("holds" | "count" | "countDistinct", [pattern, rest @ ..]) => {
                 if let Expr::Call(p) = &pattern.expr {
                     // `countDistinct`'s column variable matches anything.

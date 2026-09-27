@@ -58,8 +58,8 @@ use serde_json::{json, Value as Json};
 
 use lute_trace::exec::session::{
     advance_quests, clock_at, deciding_unknown, describe_atoms, eligible_at, presented,
-    quest_state_id, refresh_clock, render_fact, seed_quest, seed_world, unknown_id, Session,
-    WorldSeed, QUEST_STATES,
+    quest_state_id, refresh_clock, render_fact, seed_quest, seed_world, unknown_id, Candidate,
+    Session, WorldSeed, QUEST_STATES,
 };
 
 use super::{
@@ -345,7 +345,7 @@ fn resolve_axis(
         .strip_prefix("holds(")
         .and_then(|s| s.strip_suffix(')'))
     {
-        Apply::Fact(resolve_fact(p, inner).map_err(|e| at(format!("`{inner}` {e}")))?)
+        Apply::Fact(resolve_fact(p, inner, None).map_err(|e| at(format!("`{inner}` {e}")))?)
     } else if let Some(id) = visited_id(path) {
         if !p.scene_ids.contains(id) {
             return Err(at(unknown_id(
@@ -751,17 +751,22 @@ enum Pin {
         slot: Option<String>,
         /// The clock has a slot part (not a day-granular clock).
         slotted: bool,
+        /// The `@` list holds the slot at a value it names
+        /// (`clock.slot=afternoon`), not at the default.
+        slot_named: bool,
     },
 }
 
 /// Resolve an [`OccasionSpec`]'s `@` list against the axes into
 /// [`Column::pins`]. With a `clock` axis, its parts are named `clock.day` /
 /// `clock.slot` or by the clock's own day / slot paths (`run.day`); an
-/// unnamed part is held at its first value.
+/// unnamed part is held at its first value — an unnamed slot of the clock's
+/// `raise.dayEnd` occasion at the day's last slot, where the clock raises it.
 fn occasion_pins(
     spec: &OccasionSpec<'_>,
     axes: &[Axis],
     clock: Option<&lute_manifest::clock::ClockDecl>,
+    is_target: &dyn Fn(&str) -> bool,
 ) -> Result<Option<Vec<Pin>>, String> {
     let Some(only) = &spec.only else {
         return Ok(None);
@@ -794,6 +799,15 @@ fn occasion_pins(
                     }
                     continue;
                 }
+            }
+            // `@` here names axes; a target is `--target`'s, as in `lute beats`.
+            if value.is_none() && is_target(path) {
+                return Err(format!(
+                    "`--occasion {raw}`: `@` names the axes `{0}` varies over, and `{path}` is a \
+                     target of `{0}` — raise it for that target with `--occasion {0} --target \
+                     {path}`",
+                    spec.name
+                ));
             }
             let mut paths: Vec<&str> = axes.iter().map(|a| a.path.as_str()).collect();
             if clock_axis.is_some() {
@@ -850,6 +864,9 @@ fn occasion_pins(
                 ),
             };
             let slot = match slot_part {
+                None if clock.raises().day_end.as_deref() == Some(spec.name) => {
+                    Some(clock.slot_count() - 1)
+                }
                 None => Some(first.slot),
                 Some(None) => None,
                 Some(Some(v)) => Some(clock.slot_index(v).ok_or_else(|| {
@@ -872,6 +889,7 @@ fn occasion_pins(
                 day,
                 slot: slot.and_then(|s| clock.slot_name(s)).map(str::to_string),
                 slotted: clock.slot.is_some(),
+                slot_named: matches!(slot_part, Some(Some(_))),
             };
         }
     }
@@ -892,6 +910,96 @@ struct Outcome {
     unknown: Vec<(String, String)>,
     /// An unknown `when` decides this outcome — play would halt here.
     undecided: bool,
+    /// The occasion's `raisedWhen` gate is false here: the engine would not
+    /// raise it, so nothing is presented.
+    gated: bool,
+    /// With `--axis clock`: the clock's `raise:` map never raises the
+    /// occasion at this position, so nothing is judged here.
+    not_raised: bool,
+}
+
+impl Outcome {
+    /// The outcome where the clock does not raise the occasion.
+    fn not_raised() -> Self {
+        Outcome {
+            winner: None,
+            presented: Vec::new(),
+            shadowed: Vec::new(),
+            unknown: Vec::new(),
+            undecided: false,
+            gated: false,
+            not_raised: true,
+        }
+    }
+}
+
+/// Where the clock's `raise:` map raises one occasion, as `lute play`'s
+/// `advance:` does: the `slot` occasion where an advance stops, `dayStart`
+/// at a day's first slot of each day an advance enters, `dayEnd` at a
+/// day's last slot (and at the last position of a clock that ends). The
+/// run starts at `start` with no raise, so nothing is raised there and
+/// `dayStart` is never raised on its day.
+struct RaiseRule {
+    slot: bool,
+    day_start: bool,
+    day_end: bool,
+    start: lute_manifest::clock::ClockAt,
+}
+
+impl RaiseRule {
+    /// The rule of `occasion`; `None` when the clock does not raise it.
+    fn of(
+        clock: &lute_manifest::clock::ClockDecl,
+        occasion: &str,
+        start: lute_manifest::clock::ClockAt,
+    ) -> Option<Self> {
+        let m = clock.raises();
+        let is = |o: &Option<String>| o.as_deref() == Some(occasion);
+        let rule = RaiseRule {
+            slot: is(&m.slot),
+            day_start: is(&m.day_start),
+            day_end: is(&m.day_end),
+            start,
+        };
+        (rule.slot || rule.day_start || rule.day_end).then_some(rule)
+    }
+
+    /// Whether the clock raises the occasion at `at`. `slot_named`: the
+    /// column holds the slot the user named — an `advance: day` raises
+    /// `dayEnd` at whatever slot the clock stands.
+    fn raises(
+        &self,
+        clock: &lute_manifest::clock::ClockDecl,
+        at: lute_manifest::clock::ClockAt,
+        slot_named: bool,
+    ) -> bool {
+        (self.slot && at > self.start)
+            || (self.day_start && at.slot == 0 && at.day > self.start.day)
+            || (self.day_end
+                && at >= self.start
+                && (slot_named || at.slot + 1 == clock.slot_count() || clock.last_at() == Some(at)))
+    }
+
+    /// Where the clock raises `occasion`, in words.
+    fn describe(&self, clock: &lute_manifest::clock::ClockDecl, occasion: &str) -> String {
+        let mut parts = Vec::new();
+        if self.slot {
+            parts.push(format!(
+                "where an `advance:` stops (not at {}, where the run starts)",
+                clock.describe(self.start)
+            ));
+        }
+        if self.day_start {
+            parts.push(format!(
+                "at a day's first slot (not on day {}, the day the run starts)",
+                self.start.day
+            ));
+        }
+        if self.day_end {
+            parts.push("at a day's last slot".to_string());
+        }
+        format!("the clock raises `{occasion}` only {}", parts.join(", or "))
+    }
 }
 
 /// One cell: its values, quest-settle notes, one outcome per column (`None`
@@ -945,6 +1053,9 @@ struct Origin {
     replayed: usize,
     /// The `--until` step, not played: `(n, label)`.
     until: Option<(usize, Option<String>)>,
+    /// Where the run starts on the declared clock: the save's position,
+    /// before any replayed step (`None` without a clock).
+    clock_start: Option<lute_manifest::clock::ClockAt>,
 }
 
 impl Origin {
@@ -1009,7 +1120,7 @@ fn start_world(
             derive: save.derive,
         },
     )
-    .map_err(at)?;
+    .map_err(|errs| super::plan::seed_errors(save, &errs).join("\n"))?;
     let stop = match until {
         Some(u) => until_index(&save.steps, u).map_err(at)?,
         None => save.steps.len(),
@@ -1018,12 +1129,17 @@ fn start_world(
         script: script.map(|s| s.display().to_string()),
         replayed: stop,
         until: until.map(|_| (save.steps[stop].n, save.steps[stop].label.clone())),
+        clock_start: clock_at(p, &w),
     };
     if stop == 0 {
         return Ok((w, origin));
     }
-    let plan = plan_steps(p, &save.steps[..stop])
-        .map_err(|e| super::locate_step_error(&save.steps, &e).unwrap_or_else(|| at(e)))?;
+    let plan = plan_steps(p, &save.steps[..stop]).map_err(|errs| {
+        errs.into_iter()
+            .map(|e| super::locate_step_error(&save.steps, &e).unwrap_or_else(|| at(e)))
+            .collect::<Vec<_>>()
+            .join("\n")
+    })?;
     let play = execute(save, &plan, Session::resume(p, w));
     match play.outcome {
         Ok(_) => Ok((play.world, origin)),
@@ -1043,8 +1159,11 @@ fn holds_at(p: &ExecProject, w: &World, cel: &str) -> Result<bool, String> {
 
 /// See [`crate::Command::Calendar`].
 pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
+    // One line per usage error, each plain text.
     let usage = |msg: String| {
-        eprintln!("lute calendar: {msg}");
+        for line in msg.lines() {
+            eprintln!("lute calendar: {}", lute_core_span::plain_message(line));
+        }
         ExitCode::from(2)
     };
     let save = match args.script {
@@ -1083,7 +1202,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     if !dir.is_dir() {
         return usage(format!("{} is not a project directory", dir.display()));
     }
-    let p = match compile_project(dir) {
+    let p = match compile_project(dir, super::project::CALENDAR) {
         Ok(p) => p,
         Err(code) => return code,
     };
@@ -1156,7 +1275,13 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         Err(e) => return usage(e),
     };
     for spec in &specs {
-        let pins = match occasion_pins(spec, &resolved, p.index.clock.as_ref()) {
+        let decl = p.occasions.get(spec.name);
+        let is_target = |t: &str| {
+            decl.is_some_and(|d| {
+                d.target.takes_target() && lute_check::occasion_target_ok(d, t, &p.kinds).is_ok()
+            })
+        };
+        let pins = match occasion_pins(spec, &resolved, p.index.clock.as_ref(), &is_target) {
             Ok(p) => p,
             Err(e) => return usage(e),
         };
@@ -1192,6 +1317,19 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         Ok(b) => b,
         Err(e) => return usage(e),
     };
+    // With `--axis clock`, a column of an occasion the clock's `raise:` map
+    // raises is judged only where the clock raises it.
+    let clock_axis = resolved
+        .iter()
+        .position(|a| matches!(a.apply, Apply::Clock));
+    let rules: Vec<Option<RaiseRule>> = columns
+        .iter()
+        .map(|c| match (clock_axis, &p.index.clock, origin.clock_start) {
+            (Some(_), Some(clock), Some(start)) => RaiseRule::of(clock, &c.occasion, start),
+            _ => None,
+        })
+        .collect();
+    let mut unraised: Vec<(String, String)> = Vec::new();
 
     let mut seen: BTreeMap<usize, Seen> = BTreeMap::new();
     let mut cells = Vec::with_capacity(cell_count);
@@ -1266,9 +1404,45 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         }
         let outcomes = columns
             .iter()
-            .map(|col| {
-                col.applies(&picks)
-                    .then(|| evaluate(&p, &w, col, &mut seen))
+            .zip(&rules)
+            .map(|(col, rule)| {
+                col.applies(&picks).then(|| {
+                    let (Some(rule), Some(ci), Some(clock)) = (rule, clock_axis, &p.index.clock)
+                    else {
+                        return evaluate(&p, &w, col, &mut seen);
+                    };
+                    let here = clock_axis_at(clock, &resolved[ci].values[picks[ci]].1);
+                    let slot_named = matches!(
+                        col.pins.as_ref().map(|pins| &pins[ci]),
+                        Some(Pin::Clock {
+                            slot_named: true,
+                            ..
+                        })
+                    );
+                    if rule.raises(clock, here, slot_named) {
+                        return evaluate(&p, &w, col, &mut seen);
+                    }
+                    // Judged all the same, into a scratch record: a beat
+                    // eligible only here is never presented, and says why.
+                    let mut here_seen = BTreeMap::new();
+                    evaluate(&p, &w, col, &mut here_seen);
+                    for (row, s) in here_seen {
+                        let into = seen.entry(row).or_default();
+                        into.reasons.extend(s.reasons);
+                        if s.eligible {
+                            into.reasons.insert(format!(
+                                "eligible at {}, where the clock does not raise `{}`",
+                                clock.describe(here),
+                                col.occasion
+                            ));
+                        }
+                    }
+                    let why = rule.describe(clock, &col.occasion);
+                    if !unraised.iter().any(|(o, _)| *o == col.occasion) {
+                        unraised.push((col.occasion.clone(), why));
+                    }
+                    Outcome::not_raised()
+                })
             })
             .collect();
         let facts = cell_facts(&p, &w, &rels);
@@ -1294,6 +1468,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         rels: &rels,
         never_eligible: listed(|s| !s.eligible),
         never_presented: listed(|s| s.eligible && !s.presented),
+        unraised: &unraised,
     };
     let out = if args.json {
         let mut s = serde_json::to_string_pretty(&render_json(&report)).unwrap_or_default();
@@ -1324,6 +1499,9 @@ struct Report<'a> {
     never_eligible: Vec<(&'a IndexBeat, &'a Seen)>,
     /// Eligible in some cell, presented in none.
     never_presented: Vec<(&'a IndexBeat, &'a Seen)>,
+    /// With `--axis clock`: `(occasion, where the clock raises it)` of every
+    /// column some cell shows `not raised`.
+    unraised: &'a [(String, String)],
 }
 
 /// Per `--facts` relation, the facts of it that hold over the settled
@@ -1442,6 +1620,12 @@ fn columns(
 /// (keyed by its `ProjectIndex.beats` row).
 fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTreeMap<usize, Seen>) -> Outcome {
     let cands = eligible_at(p, w, &col.occasion, col.target.as_deref());
+    // A `for` beat is judged (and presented) once per member: its cell
+    // names the member, as play's transcript does.
+    let label = |c: &Candidate| match &c.for_member {
+        Some(m) => format!("{} for {m}", c.id),
+        None => c.id.clone(),
+    };
     let rows: Vec<Option<usize>> = cands
         .iter()
         .map(|c| {
@@ -1470,7 +1654,7 @@ fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTreeMap<usize,
     let unknown: Vec<(String, String)> = cands
         .iter()
         .filter_map(|c| match &c.verdict {
-            Verdict::Unknown(why) => Some((c.id.clone(), why.clone())),
+            Verdict::Unknown(why) => Some((label(c), why.clone())),
             _ => None,
         })
         .collect();
@@ -1486,10 +1670,10 @@ fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTreeMap<usize,
                 .iter()
                 .map(|&i| &cands[i])
                 .find(|c| !c.also)
-                .map(|c| c.id.clone())
+                .map(label)
         })
         .flatten();
-    let presented: Vec<String> = shown.iter().map(|&i| cands[i].id.clone()).collect();
+    let presented: Vec<String> = shown.iter().map(|&i| label(&cands[i])).collect();
     // What a shadowed beat lost to: the winner, else the presented list.
     let beater = if undecided {
         format!("an undecided cell ({})", undecided_why(&unknown))
@@ -1507,18 +1691,24 @@ fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTreeMap<usize,
                 s.presented = true;
             }
         } else {
-            shadowed.push(c.id.clone());
+            shadowed.push(label(c));
             if let Some(s) = s {
                 s.beaten_by.insert(beater.clone());
             }
         }
     }
+    let gated = matches!(
+        lute_trace::exec::seam::closed(p, w, &col.occasion, col.target.as_deref()),
+        Some(lute_trace::exec::seam::Closed::Gate { .. })
+    );
     Outcome {
         winner,
         presented,
         shadowed,
         unknown,
         undecided,
+        gated,
+        not_raised: false,
     }
 }
 
@@ -1533,11 +1723,17 @@ fn undecided_why(unknown: &[(String, String)]) -> String {
 }
 
 /// The grid's cell text: the winner (or the offered list), `?` when an
-/// unknown `when` decides it, `-` when nothing is presented; `+N` counts
-/// the eligible beats it shadows.
+/// unknown `when` decides it, `not raised` where the clock's `raise:` map
+/// never raises the occasion, `gate false` when the occasion's `raisedWhen`
+/// is false there, `-` when nothing is presented; `+N` counts the eligible
+/// beats it shadows.
 fn cell_text(o: &Outcome) -> String {
-    let mut s = if o.undecided {
+    let mut s = if o.not_raised {
+        "not raised".to_string()
+    } else if o.undecided {
         "?".to_string()
+    } else if o.presented.is_empty() && o.gated {
+        "gate false".to_string()
     } else if o.presented.is_empty() {
         "-".to_string()
     } else {
@@ -1721,6 +1917,9 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
             c.occasion
         );
     }
+    for (_, why) in r.unraised {
+        let _ = writeln!(out, "  {why}; `not raised` elsewhere");
+    }
     out.push('\n');
     // Two header rows: the axis paths and occasions, then the targets.
     let mut rows: Vec<Vec<String>> = Vec::with_capacity(cells.len() + 2);
@@ -1873,7 +2072,7 @@ fn render_json(r: &Report<'_>) -> Json {
         }
         m
     };
-    json!({
+    let mut out = json!({
         "from": r.from,
         "pruned": r.pruned,
         "axes": r.axes.iter().map(|a| json!({
@@ -1913,6 +2112,12 @@ fn render_json(r: &Report<'_>) -> Json {
                 if o.undecided {
                     r.insert("undecided".into(), json!(true));
                 }
+                if o.gated {
+                    r.insert("gated".into(), json!(true));
+                }
+                if o.not_raised {
+                    r.insert("notRaised".into(), json!(true));
+                }
                 Some(Json::Object(r))
             }).collect()));
             if !r.rels.is_empty() {
@@ -1932,7 +2137,18 @@ fn render_json(r: &Report<'_>) -> Json {
             m.insert("beatenBy".into(), json!(s.beaten_by));
             Json::Object(m)
         }).collect::<Vec<_>>(),
-    })
+    });
+    // With `--axis clock`: where the clock raises each column shown
+    // `notRaised` in some cell.
+    if !r.unraised.is_empty() {
+        out["notRaised"] = Json::Array(
+            r.unraised
+                .iter()
+                .map(|(o, why)| json!({ "occasion": o, "reason": why }))
+                .collect(),
+        );
+    }
+    out
 }
 
 /// RFC 4180 field: quoted when it holds a comma, quote or newline.
@@ -2003,7 +2219,13 @@ fn render_csv(r: &Report<'_>) -> String {
                 o.presented.join(";"),
                 o.shadowed.join(";"),
                 unknown.join(";"),
-                cell.notes.join(";"),
+                o.not_raised
+                    .then(|| "not raised".to_string())
+                    .into_iter()
+                    .chain(o.gated.then(|| "gate false".to_string()))
+                    .chain(cell.notes.iter().cloned())
+                    .collect::<Vec<_>>()
+                    .join(";"),
             ]);
         }
         if rows.is_empty() && !r.rels.is_empty() {

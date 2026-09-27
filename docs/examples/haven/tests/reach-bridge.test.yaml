@@ -8,6 +8,6 @@ file: ../scenes/bridge.lute
 state:
   run.vesnaTrust: 1
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Whatever's left of the ship, it's steering."

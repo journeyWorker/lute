@@ -125,6 +125,29 @@ hub choice with when guard beside once flag
       (line (speaker) (text)))))
 
 ==================
+hub return block (dsl 0.28.0)
+==================
+<hub id="lamp">
+  <return>
+    @narrator: The lamp room again.
+  </return>
+  <choice id="leave" label="Leave" exit>
+    @narrator: Out.
+  </choice>
+</hub>
+---
+(source_file
+  (hub
+    (attr (key) (string))
+    (hub_return
+      (line (speaker) (text)))
+    (hub_choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (attr (key))
+      (line (speaker) (text)))))
+
+==================
 when is literal-pattern alternation (structured when_pattern)
 ==================
 <match on="scene.emotion">

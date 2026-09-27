@@ -3,7 +3,7 @@ title: Playing a story
 description: "Occasions and beats (dsl 0.21.0) — how a project says which piece of story answers which engine moment — and `lute play`, the reference player that walks a scripted playthrough through a whole project: raised occasions, the engine's own writes, a save to start from, and assertions `lute test` runs (dsl 0.22.0); occasions that play a whole sequence, side remarks, deadlines, targeted objectives, and beat bundles (dsl 0.23.0); a clock the script advances, answers for plugin bridge calls, and quest structure in the transcript (dsl 0.24.0); a clock advanced to a named slot or weekday, quests the engine accepts, and beats that answer a whole kind (dsl 0.26.0)."
 ---
 
-A narrative game picks its next piece of story at moments of its own: a hub visit, entering a room, talking to an NPC, a new day, the start of a run. Lute calls those moments **occasions** and the pieces of story that answer them **beats** (dsl 0.21.0). The engine raises occasions; Lute defines which beats are eligible and which one wins. `lute play` is the reference player for that contract: give it a script of raised occasions and it walks the whole project, printing every candidate beat, its verdict, and the winner, and playing the winner through the same reference runner as `lute run`.
+A narrative game picks its next piece of story at moments of its own: a visit to town, entering a room, talking to an NPC, a new day, the start of a run. Lute calls those moments **occasions** and the pieces of story that answer them **beats** (dsl 0.21.0). The engine raises occasions; Lute defines which beats are eligible and which one wins. `lute play` is the reference player for that contract: give it a script of raised occasions and it walks the whole project, printing every candidate beat, its verdict, and the winner, and playing the winner through the same reference runner as `lute run`.
 
 Since 0.22.0 a play script also stands in for the rest of the engine. An `engine:` step writes the state and facts the engine owns — a day advancing, a run counter, a kill — a script can start from a save, decisions can differ per step, a step can fire a world event, and `expect:` turns a playthrough into an assertion that [`lute test`](/tooling/cli/#test) runs beside the scenario tests. A project no longer needs scenes, occasions, or plugins that exist only to fake the engine.
 
@@ -13,7 +13,7 @@ Since 0.24.0 a script moves a declared [clock](/language/clock/) forward (`advan
 
 Since dsl 0.26.0 a script advances the clock to the next named slot or weekday (`advance: { to: night }`) and asserts where it stands (`expect: { clock: … }`), so a shared steps file states the time it expects; an `engine:` step accepts an accept-driven quest mid-play; one beat can answer every member of an entity kind (`target="kind:trainer"`); a guarded directive that did not run is shown as skipped; an entry may be named `<document id>.<entry id>`; a bridge answer is typed by its result slot even when a component makes the call; and a transcript needle may keep the line attributes it was copied with.
 
-The normative text is the [0.21.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), extended by the [0.22.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md) (the play and test harness), the [0.23.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md) (composing occasions, deadlines, bundles), the [0.24.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md) (the clock, quest structure, bridge answers), the [0.26.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md) (clock targets, engine accepts, kind targets, test and play parity), and the [0.27.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md) (one runtime, engine gates and terminal states, finite clocks, seasons, beat templates, `sequence:`); the engine-side contract (the IR fields and the selection algorithm an engine implements) is [`docs/runtime/beats-and-occasions.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/beats-and-occasions.md). Before 0.21.0, `lute play` walked a tick-clock schedule file; that layer, its clock/lane/placement model, and its flags are removed. Time is now one input to a beat's condition, not the frame.
+The normative text is the [0.21.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), extended by the [0.22.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md) (the play and test harness), the [0.23.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md) (composing occasions, deadlines, bundles), the [0.24.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md) (the clock, quest structure, bridge answers), the [0.26.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md) (clock targets, engine accepts, kind targets, test and play parity), and the [0.27.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md) (one runtime, engine gates and terminal states, finite clocks, seasons, beat templates, the manifest's scene chain, now `chapters:`); the engine-side contract (the IR fields and the selection algorithm an engine implements) is [`docs/runtime/beats-and-occasions.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/beats-and-occasions.md). Before 0.21.0, `lute play` walked a tick-clock schedule file; that layer, its clock/lane/placement model, and its flags are removed. Time is now one input to a beat's condition, not the frame.
 
 ## Occasions
 
@@ -21,7 +21,7 @@ An occasion is **engine vocabulary**: a named moment the engine raises, optional
 
 ```yaml
 occasions:
-  hubVisit:  { select: first }
+  townVisit: { select: first }
   talk:      { select: first, target: { prefix: npc, entity: person } }
   roomEnter: { select: first, target: true }
   inbox:     { select: all, description: Letters waiting at the fountain }
@@ -117,7 +117,7 @@ entities:
 </beat>
 ```
 
-At equal priority a kind beat ranks after the other candidates, so Gus's own beat wins at `npc.gus` — with no `W-BEAT-PRIORITY-TIE` between them — and the kind beat answers every other trainer. `lute play` renders `{{occasion.target}}` as the member's cast `name:` when the member is a cast id, else as the id; the compiled placeholder is `{"kind": "occasionTarget", "entityKind": "trainer"}`, so an engine renders its own display name. With `r16Gus` cast as "Hiker Brom", in the lore document `trainers`:
+At equal priority a kind beat ranks after the other candidates, so Gus's own beat wins at `npc.gus` — with no `W-BEAT-PRIORITY-TIE` between them — and the kind beat answers every other trainer. `lute play` renders `{{occasion.target}}` as the kind's label for the member, else as its cast `name:` when the member is a cast id, else as the id; the compiled placeholder is `{"kind": "occasionTarget", "entityKind": "trainer"}`, so an engine renders its own display name. With `r16Gus` cast as "Hiker Brom", in the lore document `trainers`:
 
 ```
 ── step 1 · talk → npc.r16Gus ──────────────
@@ -146,6 +146,18 @@ On an untargeted `select: sequence` occasion, `for="kind:<kind>"` (dsl 0.27.0 §
 @narrator: Happy birthday, cyra!
 ```
 
+A step's `winner`, `offered`, `notOffered` and `presented` name one member's presentation the way the transcript does, `<beat id> for <member>`. With a beat `wave` in the lore document `greet`, `for="kind:npc"` over `mara` and `tomas`, `once="run"`:
+
+```yaml
+steps:
+  - occasion: morning
+    expect: { presented: [greet.wave for mara, greet.wave for tomas] }
+  - occasion: morning
+    expect: { notOffered: [greet.wave for mara], winner: none }
+```
+
+A member the beat is not presented for is a usage error with a did-you-mean: `` `expect.notOffered` names `greet.wave for mra`, and `mra` is no member `greet.wave` is presented for — did you mean `mara`? (members: mara, tomas) ``. `once` counts each member separately, so a `once: run` beat that played for Mara can still play for Tomas; members spent for the same reason print as one line (`✗ greet.wave for mara, tomas [beat, priority 0] — once: run — already presented this run`).
+
 See [Once per member](/language/beats/#once-per-member-for).
 
 ## Selection
@@ -160,7 +172,7 @@ When the engine raises occasion `O`, optionally for target `T`:
 
 Selection is deterministic: the same state, facts, and presentation history pick the same beat in every engine. Weighted randomness or cooldowns are engine policy layered on top; the reference tooling implements exactly this order. When file order is what decides a `select: first` winner — two beats with equal priority whose `when`s are not provably exclusive — `check-project` warns `W-BEAT-PRIORITY-TIE`; see [Beats](/language/beats/) for it and the other beat advisories.
 
-For `select: sequence` and `also`, eligibility is decided **once, when the occasion is raised**: presenting the first beat does not make a later one eligible or ineligible. The quest lifecycles settle after each presentation, so a [deadline](#deadlines-and-targeted-objectives) is judged between beats. `W-BEAT-SHADOWED` and `W-BEAT-PRIORITY-TIE` ignore `also` beats, which never compete for the win.
+For `select: sequence`, the candidates are listed when the occasion is raised, and once a beat of the raise has played, each later beat is judged again just before its turn: a beat whose `when` an earlier beat made false is skipped, and one it made true plays. Such a candidate's line ends `(judged at its turn, after an earlier beat of this raise)`. `also` beats are judged once, when the occasion is raised. The quest lifecycles settle after each presentation, so a [deadline](#deadlines-and-targeted-objectives) is judged between beats, and the `<on event>` handlers the raise answers run after all of its beats. `W-BEAT-SHADOWED` and `W-BEAT-PRIORITY-TIE` ignore `also` beats, which never compete for the win.
 
 ## `lute play`
 
@@ -182,10 +194,10 @@ The examples in this section play a small roguelike project: a tower the player 
 
 ```yaml
 occasions:
-  hubVisit: { select: first }
-  talk:     { select: first, target: { prefix: npc, entity: person } }
-  board:    { select: all, description: Notices pinned by the stair }
-  runStart: { select: sequence, description: A run begins at the foot of the stair }
+  townVisit: { select: first }
+  talk:      { select: first, target: { prefix: npc, entity: person } }
+  board:     { select: all, description: Notices pinned by the stair }
+  runStart:  { select: sequence, description: A run begins at the foot of the stair }
 ```
 
 ```yaml
@@ -209,7 +221,7 @@ entities:
   person: { members: [maud, oskar] }
   foe:    { members: [warden, hound] }
 relations:
-  boss:   { args: [foe] }
+  boss:   { args: [foe], tier: run }
   slew:   { args: [foe], tier: run, reserved: true }
   threat: { args: [foe], derive: true }
 facts:
@@ -218,7 +230,7 @@ rules:
   - "threat(F) :- boss(F), not slew(F)"
 ```
 
-The beats: `hub.idle` answers `hubVisit` every time (`once: false`); `hub.victory` (priority 10, `when: "!holds(threat(warden))"`, also `once: false`) outranks it as soon as the warden is no longer a threat; `maud.talk` answers `talk` for `npc.maud`; Oskar's two [bundle beats](#bundle-beats), `oskar.hunt` and the side remark `oskar.rumor`, answer `talk` for `npc.oskar`; `start.gear` (priority 10, `once: false`) and `start.recap` (`once: false`, `when: "isSet(prev.run.floor)"`, the [previous run's](#run-boundaries) floor) answer `runStart`; and three entries answer `board` — `notice` (`once="user"`), `memo` (`once="run"`), and `old` (`when="entry.notice.everRead"`). One quest document holds three quests, all `start="true"`:
+The beats: `town.idle` answers `townVisit` every time (`once: false`); `town.victory` (priority 10, `when: "!holds(threat(warden))"`, also `once: false`) outranks it as soon as the warden is no longer a threat; `maud.talk` answers `talk` for `npc.maud`; Oskar's two [bundle beats](#bundle-beats), `oskar.hunt` and the side remark `oskar.rumor`, answer `talk` for `npc.oskar`; `start.gear` (priority 10, `once: false`) and `start.recap` (`once: false`, `when: "isSet(prev.run.floor)"`, the [previous run's](#run-boundaries) floor) answer `runStart`; and three entries answer `board` — `notice` (`once="user"`), `memo` (`once="run"`), and `old` (`when="entry.notice.everRead"`). One quest document holds three quests, all `start="true"`:
 
 ```lute
 <quest id="climb" title="Reach the fifth floor" start="true" tier="run">
@@ -272,8 +284,8 @@ state: { user.runs: 2 }                   # path -> scalar literal, over the dec
 facts: ["slew(hound)"]                    # ground facts, added to the project's seed facts
 entriesRead: { user: [notice] }           # the save this play starts from
 steps:                                    # required, non-empty
-  - occasion: hubVisit                    # raise an occasion
-    expect: { winner: hub.idle }          # assert what this step did
+  - occasion: townVisit                   # raise an occasion
+    expect: { winner: town.idle }         # assert what this step did
   - occasion: talk
     target: npc.maud                      # a targeted occasion: a target in its domain
   - occasion: board
@@ -284,7 +296,7 @@ steps:                                    # required, non-empty
       state: { run.floor: 6, user.runs: { add: 1 } }
       facts: [slew(warden)]
   - newRun: { state: { run.floor: 1 } }   # start a new run (`newRun: true` without a seed)
-  - occasion: hubVisit
+  - occasion: townVisit
     repeat: 2                             # the same step, twice
 expect:                                   # assert the end of the play
   quests: { climb: active, veteran: complete }
@@ -304,7 +316,7 @@ Its transcript is the example in [The transcript](#the-transcript).
 
 `{ occasion, target?, payload?, engine?, pick?, choose?, expect?, bridges? }` raises an occasion, exactly as the engine would.
 
-- `target` — required on an occasion declared with a target, refused on one without. With a target domain, the target must be `<prefix>.<member>` of it; outside it is a usage error with a did-you-mean (`` target `npc.mawd` is outside occasion `talk`'s domain `npc.<person>` (`npc.maud`, `npc.oskar`) — did you mean `npc.maud`? (dsl 0.22.0 §8) ``). A member that no beat answers is legal: the occasion passes. The target also decides which [targeted objectives](#deadlines-and-targeted-objectives) the step judges.
+- `target` — required on an occasion declared with a target, refused on one without. With a target domain, the target must be `<prefix>.<member>` of it; outside it is a usage error with a did-you-mean (`` target `npc.mawd` is outside occasion `talk`'s domain `npc.<person>` (`npc.maud`, `npc.oskar`) — did you mean `npc.maud`? ``). A member that no beat answers is legal: the occasion passes. The target also decides which [targeted objectives](#deadlines-and-targeted-objectives) the step judges.
 - `payload` — the raise's typed values, on an occasion that declares `payload:` (dsl 0.27.0 §3): `payload: { copies: 2 }`. The beats of this raise read them as `occasion.payload.copies`; the next raise starts without them. A field the occasion does not declare, a value its type refuses, or a payload on an occasion that declares none is a usage error (`` step 1: `payload.copy` — occasion `summon` declares no payload field `copy` (declared: `copies`) ``). See [Occasion payloads](/language/beats/#occasion-payloads).
 - `engine` — the engine's writes of the same moment (dsl 0.27.0 §4), the same `{ state?, facts?, retract?, accept? }` as an [engine step](#engine-steps): they land first, as their own `· engine` record of the step, the quests settle, and then the occasion is raised, so its beats and its gate see them. `- occasion: enter` with `target: room.office` and `engine: { facts: [canEnter(office)] }` opens the door and walks in, in one step.
 - An occasion that declares a [`raisedWhen:` gate](/plugins/manifests/) is raised only while the gate holds (dsl 0.27.0 §4). A step raising it while the gate is false halts the play, exit 1: `` step 1: E-OCCASION-GATE: the engine raises `enter` for `room.office` only when `holds(canEnter(occasion.target))` (its `raisedWhen`), which is false here since `canEnter(office)` does not hold — make it hold first (an `engine:` write, an earlier step), or drop the step ``. The halt is located at the step as written (`plays/locked.play.yaml:2:5: step 1: …`), and names the reads the gate is false over — a derived fact with the rule premise it misses. `lute test` judges a beat of a gated occasion by the same seam: `eligible: true` on it misses naming the gate and its false reads, or the holding `terminal:` (`--json`: the expectation carries `notRaised: { occasion, reason: "gate" | "terminal", condition, falseReads }`). After the game is over (the schema's [`terminal:`](#the-game-is-over) holds) every `occasion:` step is refused the same way.
@@ -347,15 +359,15 @@ Writes apply in that order — state, then facts, then retractions, then accepts
 
 ```yaml
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
   - label: the warden falls on floor six
     engine:
       state: { run.floor: 6 }
       facts: [slew(warden)]
-  - occasion: hubVisit
+  - occasion: townVisit
   - engine:
       retract: [slew(warden), slew(hound)]
-  - occasion: hubVisit
+  - occasion: townVisit
 ```
 
 ```
@@ -363,39 +375,39 @@ steps:
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── step 2 (the warden falls on floor six) · engine ──────────────
   set run.floor = 6
   assert slew(warden)
   climb.high done
   quest climb -> complete
-── step 3 · hubVisit ──────────────
-  ✓ hub.victory [scene, priority 10]
-  ✓ hub.idle [scene, priority 0]
-  → hub.victory
+── step 3 · townVisit ──────────────
+  ✓ town.victory [scene, priority 10]
+  ✓ town.idle [scene, priority 0]
+  → town.victory
 @maud: The warden is dead. I never thought I'd say it.
 ── step 4 · engine ──────────────
   retract slew(warden)
   retract slew(hound) (did not hold)
-── step 5 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 5 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── end: complete (5 steps) ──────────────
 ```
 
-The kill makes `threat(warden)` stop deriving, so `hub.victory` becomes eligible at step 3; the retraction closes it again.
+The kill makes `threat(warden)` stop deriving, so `town.victory` becomes eligible at step 3; the retraction closes it again.
 
 An accept is the engine's too. Add to the [worked example](#worked-example)'s town a notice-board quest, `parcel`, declared `accept="external"` with one objective `on="talk" target="npc.tomas"`; the player takes the notice mid-play:
 
 ```yaml
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
   - label: the player takes a notice from the board
     engine: { accept: [parcel] }
     expect: { quests: { parcel: active } }
@@ -406,11 +418,11 @@ expect:
 ```
 
 ```
-── step 1 · hubVisit ──────────────
-  ✓ hub.welcome [scene, priority 10]
-  ✗ hub.morning [scene, priority 0] — when: false
-  → hub.welcome
-::bg{location="hub" time="day"}
+── step 1 · townVisit ──────────────
+  ✓ town.welcome [scene, priority 10]
+  ✗ town.morning [scene, priority 0] — when: false
+  → town.welcome
+::bg{location="town" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 (the player takes a notice from the board) · engine ──────────────
   quest parcel accepted (engine)
@@ -464,10 +476,10 @@ An occasion and a world event can share a name — `bossDefeated` declared both 
 
 ```yaml
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
   - end: true
   - label: never reached
-    occasion: hubVisit
+    occasion: townVisit
 ```
 
 ```
@@ -475,10 +487,10 @@ steps:
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── step 2 · end (the playthrough ends) ──────────────
 ── step 3 (never reached) · skipped (the playthrough ended) ──────────────
@@ -503,7 +515,32 @@ A schema may declare when the game is over: `terminal: "run.fate == 'taken'"` (d
 ── end: terminal — `terminal: run.fate == 'taken'` holds ──────────────
 ```
 
-In `--json` the root carries `"end": "terminal"` beside `"exit": "complete"`. A later `occasion:` step is `E-OCCASION-GATE` (exit 1: `` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on ``), and so is a later `advance:` — the clock does not move on either. `newRun: true` starts a new run, which resets what `terminal:` reads when it is run state, and the play goes on. An `engine:` step is still accepted: it is the engine's own write.
+In `--json` the root carries `"end": "terminal"` beside `"exit": "complete"`, and a top-level `expect: { end: terminal }` asserts it. A later `occasion:` step is `E-OCCASION-GATE` (exit 1: `` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on ``), and so is a later `advance:` — the clock does not move on either. An `engine:` step is still accepted: it is the engine's own write. An occasion declared [`outsideRun: true`](/plugins/manifests/) (a title screen, a gallery between runs) is raised anyway.
+
+`newRun: true` starts a new run, and the play goes on only if the new run makes `terminal:` false. A `terminal:` over run state (`run.*`, a run-tier quest or relation) is reset by it. One that reads what a new run keeps (`user.*`, `visited(…)`) still holds, `check-project` warns `W-TERMINAL-PERSISTENT` at the schema, and the next raise halts: `` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
+
+`terminal:` is judged when an occasion is raised, so the raise that makes it hold finishes: the beat whose write ends the game plays to its last line, the rest of a `select: sequence` raise plays, and the `questComplete` / `questFailed` handlers the raise settles run after them. An epilogue therefore goes in one of two places: after the write in the beat that makes `terminal:` hold, or in the `<on event="questComplete">` handler of the quest whose completion it reads:
+
+```
+── step 5 · dayEnd ──────────────
+  ✓ town.dayEnd [scene, priority 0]
+  → town.dayEnd
+@narrator: One by one, the lamps go out.
+  note: the game is over — `terminal: quest.lampOut.state == 'complete'` holds, so the engine raises no occasion from here (`occasion:` / `advance:` steps are refused; `newRun: true` starts a new run)
+  lampOut.wait done
+  quest lampOut -> complete
+@narrator: By morning the lamp by the door is burning again.
+```
+
+"End" means five things in a playthrough, and only `terminal:` ends the game:
+
+| Written | Ends | Play goes on? |
+|---|---|---|
+| `::end` in content | the presentation it runs in (in a quest handler, that quest document's advance) | yes, with the next step |
+| `- end: true` in a script | the playthrough, at that step; later steps are skipped | no — `end: complete` |
+| `terminal:` in a schema | the game: the engine raises no occasion (but `outsideRun` ones) until a new run makes it false | only after a `newRun` that resets it — `end: terminal` |
+| `last:` / `days:` on the clock | the clock: `clock.ended` turns true, and an `advance:` past the last position halts the play (`E-CLOCK-END`) | yes, with steps that do not move the clock; write `terminal: "clock.ended"` to end the game there |
+| `expect: { end: … }` | nothing: it asserts how the walk ended (`complete`, `terminal`, `incomplete`, `error`) | — |
 
 ### Advancing the clock
 
@@ -515,6 +552,8 @@ When a schema declares a [clock](/language/clock/) (dsl 0.24.0 §1), `advance: s
 ```
 
 is one `- advance: slot` (from the afternoon). An advance step's `choose:` answers every occasion it raises, its `pick:` the `slot` occasion it raises where the clock stops, and its `expect:` may judge the selection: `winner`, `offered` and `notOffered` judge the step's last raise — the `slot` occasion where the clock stops, or, on a clock that raises only `dayStart` / `dayEnd`, the last midnight's — while `presented` lists every beat the step presented — each midnight raise's (below), then the final raise's, in order — and `options` unions them all. Since dsl 0.27.0 (round-5 T3-8) a miss places the step at its last raise, and a `presented` miss tags each beat with the raise that presented it: `` ✗ step 1 at advance day → slotStart: expect presented: expected [day.slot], actual [day.close (dayEnd at day 1 (Mon) morning), day.slot (slotStart at day 2 (Tue) morning)] ``. `pick` on a clock whose `raise:` names no `slot` occasion is a usage error (`` step 1: `pick` answers the slot occasion an `advance:` raises where the clock stops, and the clock declares no `raise.slot` occasion ``), and so are `choose` and the selection keys on a clock that raises nothing (`` step 1: `expect.winner` judges what an `advance:` raises, and the clock declares no `raise:` occasion — the advance presents nothing ``).
+
+When an advance passes positions without raising the `slot` occasion — `advance: 2`, or `{ to: night }` from the morning — and some beat answers that occasion, the step says so in a note naming them by day: `` note: passed day 1 (Mon) afternoon without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops) ``. The position it started at and the one it stopped at are not listed, and `advance: day` passes none: it sleeps through the rest of the day. The count is of the beats that answer the occasion, eligible there or not. `--json` carries the note in the step's `notes` and the positions under `advance.passed`.
 
 The examples here use a small day-clock project rather than the tower. The engine owns the day and the slot, and the clock raises `slotStart` (a `select: sequence` occasion) after every advance:
 
@@ -608,6 +647,8 @@ In `--json` an advance step carries `advance: { by, from, to, writes, quests }` 
 }
 ```
 
+An advance that passed positions without its `slot` raise adds `"passed": { "occasion": "slotStart", "beats": 2, "at": [ { "day": 1, "slot": "afternoon" } ] }` to `advance` (`slot` left out on a clock without slots).
+
 **Midnight: `dayEnd` and `dayStart`.** `raise:` may also be a map naming the occasion for each moment, every key optional — `raise: { slot, dayStart, dayEnd }`; the scalar `raise: slotStart` is the `slot` form. An advance raises `dayEnd` at every midnight it crosses, at the day's last slot with the day not yet advanced, then `dayStart` at the next day's first slot, then `slot` once where it stops. Each midnight is a stop: the clock moves there, the quests settle, then the occasion is raised. `advance: <n>` never skips a day's close — it walks to each day's last slot to raise `dayEnd` — and `advance: day` closes the day where the clock stands, skipping the rest of it. An `engine:` write to the clock's paths raises none of the three. Give the day clock the map — the plugin declares `dayEnd` and `dayStart` as two more `select: first` occasions — with `day.close` answering `dayEnd` (`Day {{run.day}} closes.`) and `day.open` answering `dayStart` (`{{clock.weekdayLabel}} begins.`), both `once: false`:
 
 ```yaml
@@ -657,6 +698,7 @@ expect:
   ✗ routine.night [scene, priority 5] — when: false
   → routine.morning
 @narrator: Tue morning. The kettle sings.
+  note: passed day 1 (Mon) night without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops)
 ── step 3 · advance day: day 2 (Tue) morning → day 3 (Wed) morning ──────────────
 ── step 3 · day 2 (Tue) morning · dayEnd ──────────────
   ✓ day.close [scene, priority 0]
@@ -678,9 +720,10 @@ expect:
 ── expect: every expectation held ──────────────
 ```
 
-- **Step 2** — `advance: 2` from the afternoon stops at the night to close day 1 (`── step 2 · day 1 (Mon) night · dayEnd`), crosses midnight to open day 2, and raises `slotStart` once, in the morning where it ends: the night routine is not raised on the way. Each move's writes and settle print just before the stop they lead to.
+- **Step 2** — `advance: 2` from the afternoon stops at the night to close day 1 (`── step 2 · day 1 (Mon) night · dayEnd`), crosses midnight to open day 2, and raises `slotStart` once, in the morning where it ends: the night routine is not raised on the way, and the note under the step says so. Each move's writes and settle print just before the stop they lead to.
 - **Step 3** — `advance: day` from the morning closes day 2 where the clock stands; the move to day 3 fails `fest` in the settle before `dayStart`.
 - A midnight raise plays content like any other step: `transcriptContains` / `transcriptLacks` match its lines, [`--explain`](#derivation-and---explain) names a fact asserted there (`asserted by scene `day.close`, step 3`), and under `lute test --coverage` a document it presented counts as covered. On step 2, `expect: { presented: [day.close, day.open, routine.morning] }` holds, and `winner: routine.morning` judges the final raise.
+- An advance that raises several occasions may key `presented` by occasion: on step 2, `expect: { presented: { dayStart: [day.open], slotStart: [routine.morning] } }` judges only those two raises, each in order, and leaves `dayEnd` unjudged. A miss names the occasion, `` expect presented dayEnd: expected [day.open], actual [day.close (dayEnd at day 1 (Mon) night)] ``, and a key the clock does not raise is a usage error with a suggestion (`` `expect.presented` names `dayStrat`, which the clock's `advance:` does not raise — did you mean `dayStart`? (it raises: slotStart, dayStart, dayEnd) ``). The list form still judges every beat of the step; an `occasion:` step raises one occasion, so its `presented` is always the list.
 
 The clock raises `dayEnd` and `dayStart` itself, so an `occasion:` step that raises one of them again plays that moment twice once an advance passes it. The step still plays, with a note:
 
@@ -810,6 +853,7 @@ steps:
   ✗ routine.morning [scene, priority 5] — when: false
   → routine.night
 @narrator: The lamps go out on day 1.
+  note: passed day 1 (Mon) afternoon without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops)
 ── step 3 · advance to night: day 1 (Mon) night → day 2 (Tue) night ──────────────
   set run.day = 2
 ── step 3 · slotStart (select: sequence) ──────────────
@@ -817,6 +861,7 @@ steps:
   ✗ routine.morning [scene, priority 5] — when: false
   → routine.night
 @narrator: The lamps go out on day 2.
+  note: passed day 2 (Tue) morning, afternoon without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops)
 ── step 4 · advance to Fri morning: day 2 (Tue) night → day 5 (Fri) morning ──────────────
   set run.day = 3
   set run.slot = "morning"
@@ -828,6 +873,7 @@ steps:
   ✗ routine.night [scene, priority 5] — when: false
   → routine.morning
 @narrator: Fri morning. The kettle sings.
+  note: passed day 3 (Wed) to day 4 (Thu), every slot without raising `slotStart` (2 beats answer it; an `advance:` raises it only where the clock stops)
 ── end: complete (4 steps) ──────────────
 ── expect: every expectation held ──────────────
 ```
@@ -874,9 +920,19 @@ steps:
   - include: routes/day.yaml
 ```
 
-Steps are numbered after the splice, so this plays as seven steps — the label lands on step 4 (`── step 4 (the next morning) · advance slot: day 1 (Mon) night → day 2 (Tue) morning`), and an expectation miss names the spliced step's number. An unreadable file, one of the wrong shape, an `include:` beside a key other than `repeat`, `choose` and `bridges`, and a file already being included are usage errors: `` plays/routes/loop.yaml: `include: ../loop.play.yaml` is a cycle — plays/routes/../loop.play.yaml is already being included ``.
+Steps are numbered after the splice, so this plays as seven steps — the label lands on step 4 (`── step 4 (the next morning) · advance slot: day 1 (Mon) night → day 2 (Tue) morning`), and an expectation miss names the spliced step's number. An unreadable file, one of the wrong shape, an `include:` beside a key other than `label`, `repeat`, `choose` and `bridges`, and a file already being included are usage errors: `` plays/routes/loop.yaml: `include: ../loop.play.yaml` is a cycle — plays/routes/../loop.play.yaml is already being included ``.
 
-When an `include:` item ends — over every repetition of a `repeat:` — and none of its steps presented a `choose:` key of its own, or no call took an answer of one of its own `bridges:` tags, a note under its last step names the `include:` line and the unused keys (a decision written on the wrong `include:`); the decisions and answers are dropped with it.
+A `label:` on the `include:` labels every step it splices in that has no label of its own, the steps of a nested include too, so `- include: routes/day.yaml` with `label: first day` prints `── step 1 (first day) · townVisit`, while a spliced step that says `label: own label` keeps it.
+
+When an `include:` item ends — over every repetition of a `repeat:` — and none of its steps presented a `choose:` key of its own, or no call took an answer of one of its own `bridges:` tags, a note under its last step names the `include:` line and the unused keys (a decision written on the wrong `include:`); the decisions and answers are dropped with it. A step's own `choose:` gets the same note when none of the step's presentations presented the key:
+
+```
+  note: `include: routes/day.yaml` at plays/inc.play.yaml:3:5 never used its own `choose: maraAsk` (no step of the include presented `maraAsk`) — a decision or answer for a step outside the include belongs on that step, or on the script
+  …
+  note: step 3 never used its own `choose: maraAsk` (no presentation of the step presented `maraAsk`) — a decision for a later step belongs on that step, or on the script
+```
+
+A play that halts at a choice with no scripted decision names the ended `include:` that carried that decision unused.
 
 **A steps file as an interface.** When several writers share one playthrough — each area owns an `include:`d steps file, and the lead's script includes them in map order — a steps file states its own contract, so a change upstream fails at the file it broke rather than three files later at a missing beat. Its first step's `expect: { clock: … }` states the time it expects to arrive at (dsl 0.26.0 §7), and its last step's `expect:` is the hand-off: the facts, state, quest statuses and clock the next file relies on. Give its plugin calls a step-level `bridges:` and its decisions a step-level `choose:`, so its answers are never consumed by another file's steps. See the [multi-author guide](/guides/multi-author/). A market that expects Wednesday morning, included after a route that advanced only one day:
 
@@ -899,7 +955,7 @@ steps:
 
 ### Labels and repetition
 
-`label: <text>` names a step: it is printed in the step header (`── step 4 (the engine closes the day) · engine`), carried in `--json`, and named by every expectation miss on the step. `repeat: <n>` (a whole number ≥ 1) runs the step `n` times — `── step 7 [1/2] · hubVisit`, `── step 7 [2/2] · hubVisit` — and each repetition is its own step record, settles the quest lifecycle on its own, and counts in `── end: complete (<n> steps)`. `repeat` suits the engine's routine: three runs ending (`engine: { state: { user.runs: { add: 1 } } }`, `repeat: 3`), or a visit the player makes every day.
+`label: <text>` names a step: it is printed in the step header (`── step 4 (the engine closes the day) · engine`), carried in `--json`, and named by every expectation miss on the step. `repeat: <n>` (a whole number ≥ 1) runs the step `n` times — `── step 7 [1/2] · townVisit`, `── step 7 [2/2] · townVisit` — and each repetition is its own step record, settles the quest lifecycle on its own, and counts in `── end: complete (<n> steps)`. `repeat` suits the engine's routine: three runs ending (`engine: { state: { user.runs: { add: 1 } } }`, `repeat: 3`), or a visit the player makes every day.
 
 ### Starting from a save
 
@@ -907,12 +963,12 @@ Four top-level keys seed the playthrough's history before step 1, so a script ca
 
 | Key | Meaning |
 |---|---|
-| `visited: [scene ids]` | Scenes presented in this save — read by `visited('<id>')` and `after: visited(…)`. |
+| `visited: [scene ids]` | Scenes presented in this save — read by `visited('<id>')` and `after: visited(…)`. A scene visited in the save was presented, so its `once: user` is spent (and its `share` key with it); `once: run` is not, since the visit may be from an earlier run — list it under `presented: { run: […] }` for that. |
 | `presented: { run: [beat ids], user: [beat ids] }` | Scene beats already presented: `user` — in an earlier run, so a `once: user` beat is spent; `run` — in the current run, so `once: run` and `once: user` are both spent. Every listed scene also counts as visited. |
 | `quests: { <id>: unset \| active \| complete \| failed }` | Quest lifecycle status. The start settle resumes it rather than starting the quest over. Every objective starts undone — seed objective progress under `state:` (below). |
 | `entriesRead: { run: [entry ids], user: [entry ids] }` | `run` — read in the current run: `entry.<id>.read` and `entry.<id>.everRead`; `user` — read in an earlier run: `entry.<id>.everRead` only. |
 
-An id the project does not declare is a usage error with a did-you-mean (`` `visited:` names `hub.welcom`, which is no scene in this project — did you mean `hub.welcome`? ``), and so is an entry under `presented:` (an entry's read history is `entriesRead:`) or a status outside the four.
+An id the project does not declare is a usage error with a did-you-mean (`` `visited:` names `town.welcom`, which is no scene in this project — did you mean `town.welcome`? ``), and so is an entry under `presented:` (an entry's read history is `entriesRead:`) or a status outside the four.
 
 ```yaml
 quests: { veteran: complete }
@@ -971,7 +1027,7 @@ steps:
       state: { run.floor: 6, user.runs: { add: 1 } }
       facts: [slew(warden)]
   - newRun: { state: { run.floor: 1 } }
-  - occasion: hubVisit
+  - occasion: townVisit
   - label: a run ends
     engine:
       state: { user.runs: { add: 1 } }
@@ -995,10 +1051,10 @@ steps:
   quest climb -> unset (tier: run; was complete)
   set run.floor = 1
   quest climb -> active
-── step 3 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 3 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── step 4 (a run ends) [1/2] · engine ──────────────
   set user.runs = 2
@@ -1009,7 +1065,7 @@ steps:
 ── end: complete (5 steps) ──────────────
 ```
 
-`slew` is a run-tier relation, so the kill does not survive the new run and `hub.victory` is closed again; `climb` (`tier="run"`) starts over, while `veteran` keeps counting.
+`slew` is a run-tier relation, so the kill does not survive the new run and `town.victory` is closed again; `climb` (`tier="run"`) starts over, while `veteran` keeps counting.
 
 [`prev.run.<path>`](/state/state-model/#the-previous-run) is read-only and `unset` until a run has ended, so content must guard it (`isSet(prev.run.floor)`); the tower's `start.recap` does, and [Composing occasions](#composing-occasions) shows it after a `newRun`. A script that starts mid-save seeds it like any path — `state: { prev.run.floor: 5 }` — and the first `runStart` then plays the recap with `Floor 5 last time.`
 
@@ -1088,7 +1144,9 @@ returns to `unset` each time its condition turns true after the first settle, pr
 settle. One `advance:` that crosses several days watches both at every position it passes: a window
 that opens and closes on the way starts and fails its quests there, and a rearm fires on the day its
 condition turns true, each printed after the clock's move to that position. A beat spent by its [`spentBy`](/language/beats/#until-it-is-solved-spentby) condition is
-listed with the reason ``spentBy: `run.solved` holds``, and a spent `once: week` beat with
+listed with the reason ``spentBy: `run.solved` holds`` while the condition holds and
+``spentBy: `run.solved` held — spent this run`` once it has held (it stays spent for its `once`
+period when the condition turns false again), and a spent `once: week` beat with
 `once: week — already presented this week`.
 
 ### Composing occasions
@@ -1140,7 +1198,7 @@ steps:
 - **Step 3** — the `newRun` snapshots `run.floor` (3) into `prev.run.floor` before resetting it, and prints it; `climb` starts over, as in [Run boundaries](#run-boundaries).
 - **Step 4** — both beats are eligible: each gets its own `→` line, and each plays in turn and spends its own `once`. The step's `presented:` expectation asserts the whole list, in order.
 
-Which beats play is decided when the occasion is raised: a beat that becomes eligible because an earlier beat in the list changed the state does not join, and one that stops being eligible still plays. The quest lifecycles settle after **each** presentation, so an objective — or a deadline — is judged between two beats of one step. There is nothing to pick, so `pick:` on a `sequence` occasion is a usage error.
+Once a beat of the list has played, each later beat is judged again just before its turn: a supper beat that moves `run.day` to 2 lets a `when: 'run.day >= 2'` letter later in the same raise play, and a beat whose `when` an earlier beat made false is skipped. The candidate line of a beat judged that way ends `(judged at its turn, after an earlier beat of this raise)`. The quest lifecycles settle after **each** presentation, so an objective — or a deadline — is judged between two beats of one step, and the raise's `<on event>` handlers run after all of its beats. There is nothing to pick, so `pick:` on a `sequence` occasion is a usage error.
 
 **`also: true`** makes a beat a side remark on a `select: first` occasion. It never wins, whatever its priority; when it is eligible it is presented **after** the winner — or on its own, when no main beat is eligible. Oskar's `rumor` bundle beat is one:
 
@@ -1276,9 +1334,9 @@ Four quest and occasion attributes (dsl 0.24.0 §2) change how a lifecycle moves
 - `judge: before` on an occasion — the occasion judges its `on=` objectives and settles the quests **before** its beats are decided. Those transitions print right under the step header, before the candidates (`--json`: the step's `judgedBefore`; its `quests` are the ones after, with the handler bodies). Only the judging moves: the handlers the raise answers — its same-named `<on event>` handlers, and the `questComplete` / `questFailed` handlers of the quests it settles — run after the beats, so their narration follows the scene.
 - `<on event="E" target="…">` — the handler runs only when the occasion `E` is raised for that target: never for a plain `event:` step, another target, or a lifecycle transition.
 
-Every failure names its reason: `quest X -> failed (by)` or `(until)` for a deadline, `(fail)` when its own `fail=` held, `(cascade)` when its parent failed, and `(superseded)`. The `quest` record in `--json` carries the same `failedBy`, and content reads it as `quest.<id>.failedBy` (`unset` until the quest fails).
+Every failure names its reason: `quest X -> failed (by)` or `(until)` for a deadline, `(fail)` when its own `fail=` held, `(subquest)` when a required subquest failed, `(cascade)` when its parent failed, and `(superseded)`. The `quest` record in `--json` carries the same `failedBy`, and content reads it as `quest.<id>.failedBy` (`unset` until the quest fails).
 
-A river crossing puts them together. The plugin declares `chapterEnd: { select: first, judge: before }`; `road` completes on either of two children, each taken at the hub, `toll` has a `questFailed` handler, and `purse` fails when the engine writes `run.robbed`:
+A river crossing puts them together. The plugin declares `chapterEnd: { select: first, judge: before }`; `road` completes on either of two children, each taken in town, `toll` has a `questFailed` handler, and `purse` fails when the engine writes `run.robbed`:
 
 ```lute
 <quest id="road" title="Cross the river" start="true" complete="any">
@@ -1306,7 +1364,7 @@ A river crossing puts them together. The plugin declares `chapterEnd: { select: 
 </quest>
 ```
 
-The hub's branch `offer` accepts `toll` (`silver`) or `parley` (`words`, which also sets `run.talked`), and the scene answering `chapterEnd` reads why `toll` ended:
+The town scene's branch `offer` accepts `toll` (`silver`) or `parley` (`words`, which also sets `run.talked`), and the scene answering `chapterEnd` reads why `toll` ended:
 
 ```lute
 <match on="quest.toll.failedBy">
@@ -1322,8 +1380,8 @@ The hub's branch `offer` accepts `toll` (`silver`) or `parley` (`words`, which a
 ```yaml
 choose: { offer: [silver, words] }
 steps:
-  - occasion: hubVisit
-  - occasion: hubVisit
+  - occasion: townVisit
+  - occasion: townVisit
   - label: robbers on the road
     engine: { state: { run.robbed: true } }
   - occasion: chapterEnd
@@ -1336,17 +1394,17 @@ expect:
   quest road -> active
   quest purse -> active
   quest coin -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.offer [scene, priority 0]
-  → hub.offer
+── step 1 · townVisit ──────────────
+  ✓ town.offer [scene, priority 0]
+  → town.offer
 @maud: Two ways across.
 ▷ choice offer: words [silver]        ← chosen: silver
 @maud: Pay, then.
   quest toll accepted
   quest toll -> active
-── step 2 · hubVisit ──────────────
-  ✓ hub.offer [scene, priority 0]
-  → hub.offer
+── step 2 · townVisit ──────────────
+  ✓ town.offer [scene, priority 0]
+  → town.offer
 @maud: Two ways across.
 ▷ choice offer: [words] silver        ← chosen: words
 @maud: Talk, then.
@@ -1436,7 +1494,7 @@ Without `at="nextRun"` the accept activates `relic` in the run that is ending, a
 
 A plugin directive that calls a host service — a skill check, a minigame — writes the service's answer into `scene.*` result slots through its `bridgeResult` effects (see [Manifests](/plugins/manifests/)). The reference player invokes no service, so the script answers the calls itself (dsl 0.24.0 §5): `bridges: { <tag>: [ {<field>: value}, … ] }`, where `<tag>` is the directive's name and each list item answers one call of that tag, in call order.
 
-The examples add a skill check to the [worked example](#worked-example)'s town: the plugin declares `::check{skill dc resultKey}`, whose effects write `scene.check.<key>.passed` and `.margin` from the `dice` service's `passed` and `margin`, and a scene `gate.guards` answering `hubVisit` at priority 50 makes two checks, each followed by a `<match>` over its result; a gated line also reads the first check's margin:
+The examples add a skill check to the [worked example](#worked-example)'s town: the plugin declares `::check{skill dc resultKey}`, whose effects write `scene.check.<key>.passed` and `.margin` from the `dice` service's `passed` and `margin`, and a scene `gate.guards` answering `townVisit` at priority 50 makes two checks, each followed by a `<match>` over its result; a gated line also reads the first check's margin:
 
 ```lute
 ::check{skill="persuasion" dc="12" resultKey="guards"}
@@ -1468,14 +1526,14 @@ bridges:
     - { passed: true, margin: 3 }
     - { passed: false, margin: -2 }
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
 ```
 
 ```
-── step 1 · hubVisit ──────────────
+── step 1 · townVisit ──────────────
   ✓ gate.guards [scene, priority 50]
-  ✓ hub.welcome [scene, priority 10]
-  ✗ hub.morning [scene, priority 0] — when: false
+  ✓ town.welcome [scene, priority 10]
+  ✗ town.morning [scene, priority 0] — when: false
   → gate.guards
 ::check{skill="persuasion" dc="12" resultKey="guards"}        (bridge answered: passed=true, margin=3)
   match -> arm 1
@@ -1516,6 +1574,7 @@ A step may carry `expect:`, judged against what that step did. Four keys judge a
 | `offered: [beat ids]` | every listed beat was eligible at the step — a subset, in any order |
 | `notOffered: [beat ids]` | none of the listed beats was eligible |
 | `presented: [beat ids]` | exactly these beats were presented, in this order (dsl 0.23.0): the whole list of a [`select: sequence`](#composing-occasions) step, or a winner followed by its `also` beats; `[]` — nothing was |
+| `presented: { <occasion>: [beat ids] }` | on an `advance` step: for each named occasion the clock raises, exactly these beats were presented by its raises in this step, in this order; occasions not named are not judged ([Advancing the clock](#advancing-the-clock)) |
 
 Five more judge the world **right after the step settled** — for an occasion step, after its presentations, its occasion's objective judging, and the settle that follows — and are legal on any step kind (not beside `end`). Each but `clock` means what it means at the top level, below, at that moment:
 
@@ -1524,7 +1583,7 @@ Five more judge the world **right after the step settled** — for an occasion s
 | `quests: { <id>: <status> }` | the quest is in that status after the step |
 | `state: { <path>: <value> }` | the path's effective value after the step equals the value, compared typed |
 | `facts: [atoms]` / `notFacts: [atoms]` | each atom holds / does not hold after the step, **after derivation** |
-| `clock: { weekday, slot, day }` | the clock stands there after the step (dsl 0.26.0 §7): `weekday` a `week.labels` label or a `clock.weekday` number, `slot` a declared slot, `day` the day number — any of the three |
+| `clock: { weekday, slot, day, ended }` | the clock stands there after the step (dsl 0.26.0 §7): `weekday` a `week.labels` label or a `clock.weekday` number, `slot` a declared slot, `day` the day number, `ended` whether a clock that ends has ended (`clock.ended`; a usage error on a clock that never ends) — any of them |
 
 So an `engine:` step can assert what its write did — `expect: { quests: { houndHunt: failed } }` in the [deadline example](#deadlines-and-targeted-objectives) — and an occasion step can check its quest progress without waiting for the end. `winner`, `offered`, `notOffered`, or `presented` on any other step is a usage error (exit 2): `` step 2: `expect.winner` applies only to an `occasion` or `advance` step, not `engine` (a `engine` step may expect quests, state, facts, notFacts) ``.
 
@@ -1536,11 +1595,11 @@ A top-level `expect:` judges the end of the play:
 
 | Key | Holds when |
 |---|---|
-| `exit: complete \| incomplete \| error` | the walk ended that way |
+| `end: complete \| terminal \| incomplete \| error` | the walk ended that way: `complete` — every step played; `terminal` — the project's [`terminal:`](#the-game-is-over) held where it ended; `incomplete` — it halted on an undecided choice or `when`; `error` — it stopped on an error. `exit:` is the old name and says so |
 | `quests: { <id>: <status> }` | the quest ended in that status (`unset` for one nothing activated) |
 | `state: { <path>: <value> }` | the path's final **effective** value — the last write, else the seed, else the declared default — equals the value, compared typed (`1` is not `"1"`) |
 | `facts: [atoms]` / `notFacts: [atoms]` | each atom holds / does not hold at the end, **after derivation** |
-| `transcriptContains: [text]` / `transcriptLacks: [text]` | each text is / is not a substring of the content lines that played, each in one form, `@speaker: text` (dsl 0.24.0). A needle with no attribute block matches a line whatever its delivery attributes, so `"@mara: Any luck with the lamp?"` matches the line printed `@mara{emotion="shy"}: Any luck with the lamp?`; a needle line that carries a block matches only a line carrying those attributes (see below). Step headers, candidates, staging, notes and `skip` lines are never matched — a guarded line that did not play satisfies no `transcriptContains`. `lute test` matches the same form, whatever `--ir` prints |
+| `transcriptContains: [text]` / `transcriptLacks: [text]` | each text is / is not a substring of the content lines that played, each in one form, `@speaker: text` (dsl 0.24.0). A needle with no attribute block matches a line whatever its delivery attributes, so `"@mara: Any luck with the lamp?"` matches the line printed `@mara{emotion="shy"}: Any luck with the lamp?`; a needle line that carries a block matches only a line carrying those attributes (see below). Step headers, candidates, staging, notes and `skip` lines are never matched — a guarded line that did not play satisfies no `transcriptContains`. A report line is asserted with its own key: `quests: { wire: failed }` for `quest wire -> failed`, `state: { quest.wire.objectives.sent.failed: true }` for a missed deadline, `state:` for a `set` line. A needle shaped like a report line can never match and is a usage error (`` `expect.transcriptContains` needle "quest lampOut -> active" is the shape of a line the engine's report prints, not of a content line — needles judge only what is said, so this one can never match; assert the quest with `quests: { <id>: <state> }` ``). `lute test` matches the same form, whatever `--ir` prints |
 
 An expectation on a `repeat:` step is judged at every repetition; one on a step the walk never reached is itself a miss. Each `expect:` is validated before anything plays — an unknown key is a usage error (exit 2) listing the legal keys, with a did-you-mean, and saying when the key belongs at the other level (`` unknown top-level `expect:` key `winner` (`winner` belongs in a step `expect:`) ``).
 
@@ -1571,7 +1630,7 @@ The nearest line is chosen for the needle's first line no presented line contain
 
 A miss makes `lute play` exit 1, unless the walk itself already ended in an error (exit 1) or a runner failure on a malformed artifact (exit 2). A walk that halted incomplete (3) with every expectation holding still exits 3.
 
-`lute test` runs every `*.play.yaml` under its directory that carries an `expect:` — on a step or at the top — alongside the `*.test.yaml` scenario tests, against `--project` or else the nearest `lute.project.yaml` above the play, with a `PASS` / `FAIL` line each (`--json`: entries with `"kind": "play"` and their `misses`). A play without `expect:` is not a test and is skipped. A play that halts fails unless its top-level `expect:` declares the exit (`expect: { exit: incomplete }`). With `--coverage`, every document a play presented — through an `occasion:` step or through the occasions an `advance:` raises — and every quest document whose lifecycle it moved, counts as covered — at beat granularity since 0.27.0, each bundle beat and entry its own unit; the options a play picks count in the branch/hub rows beside the ones traced paths chose, and the arm rows come from traced paths alone. The report ends with the beats no play presented. Since dsl 0.26.0 `lute test` compiles a play project once for all its plays — its compile diagnostics print once, not once per play — and runs the plays in parallel on every logical core (`RAYON_NUM_THREADS` respected), reporting them in file order. See [`lute test`](/tooling/cli/#test).
+`lute test` runs every `*.play.yaml` under its directory that carries an `expect:` — on a step or at the top — alongside the `*.test.yaml` scenario tests, against `--project` or else the nearest `lute.project.yaml` above the play, with a `PASS` / `FAIL` line each (`--json`: entries with `"kind": "play"` and their `misses`). A play without `expect:` is not a test and is skipped. A play that halts fails unless its top-level `expect:` declares the exit (`expect: { end: incomplete }`). With `--coverage`, every document a play presented — through an `occasion:` step or through the occasions an `advance:` raises — and every quest document whose lifecycle it moved, counts as covered — at beat granularity since 0.27.0, each bundle beat and entry its own unit; the options a play picks count in the branch/hub rows beside the ones traced paths chose, and the arm rows come from traced paths alone. The report ends with the beats no play presented. Since dsl 0.26.0 `lute test` compiles a play project once for all its plays — its compile diagnostics print once, not once per play — and runs the plays in parallel on every logical core (`RAYON_NUM_THREADS` respected), reporting them in file order. See [`lute test`](/tooling/cli/#test).
 
 ### Derivation and `--explain`
 
@@ -1588,13 +1647,13 @@ $ lute play tower --script tower/plays/night.play.yaml --no-derive
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ? hub.victory [scene, priority 10] — when: unknown (`!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined)
-── halted: step 1: the `when` of scene `hub.victory` (scenes/hub-victory.lute) decides the hubVisit outcome but `!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ? town.victory [scene, priority 10] — when: unknown (`!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined)
+── halted: step 1: the `when` of scene `town.victory` (scenes/town-victory.lute) decides the townVisit outcome but `!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
 ```
 
-`--explain <atom>` (repeatable) prints, after the play, why a ground atom holds at the end or why it does not. When it holds: the rule used, and each premise's own support — a `seed fact`, `asserted` during the play (naming who asserted it, below), or derived in turn, indented beneath it — with a negated premise shown `(absent)`. When it does not: every rule that could conclude it, with its premises marked — `✗ <atom>  (absent)` for a missing base fact, `✗ <atom>  (not derived)` for a missing derived one (explained in turn), `✗ not <atom>  (but it holds: …)` for a negated premise that is present, `✗ <test>  (false)` / `? <test>  (undecided)` for a comparison or guard, and `· <premise>  (not reached)` for premises after the first failure. With `plays/night.play.yaml` a single `hubVisit` step:
+`--explain <atom>` (repeatable) prints, after the play, why a ground atom holds at the end or why it does not. When it holds: the rule used, and each premise's own support — a `seed fact`, `asserted` during the play (naming who asserted it, below), or derived in turn, indented beneath it — with a negated premise shown `(absent)`. When it does not: every rule that could conclude it, with its premises marked — `✗ <atom>  (absent)` for a missing base fact, `✗ <atom>  (not derived)` for a missing derived one (explained in turn), `✗ not <atom>  (but it holds: …)` for a negated premise that is present, `✗ <test>  (false)` / `? <test>  (undecided)` for a comparison or guard, and `· <premise>  (not reached)` for premises after the first failure. With `plays/night.play.yaml` a single `townVisit` step:
 
 ```console
 $ lute play tower --script tower/plays/night.play.yaml --explain "threat(warden)" --explain "threat(hound)"
@@ -1605,10 +1664,10 @@ $ lute play tower --script tower/plays/night.play.yaml --explain "threat(warden)
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── end: complete (1 step) ──────────────
 explain threat(warden): holds
@@ -1621,7 +1680,7 @@ explain threat(hound): does not hold
   └─ · not slew(hound)  (not reached)
 ```
 
-An asserted fact names who asserted it and when (dsl 0.24.0). After `plays/kill.play.yaml` — a `hubVisit`, then the step `label: the warden falls on floor six` with `engine: { state: { run.floor: 6 }, facts: [slew(warden)] }` — the same atom reads:
+An asserted fact names who asserted it and when (dsl 0.24.0). After `plays/kill.play.yaml` — a `townVisit`, then the step `label: the warden falls on floor six` with `engine: { state: { run.floor: 6 }, facts: [slew(warden)] }` — the same atom reads:
 
 ```
 explain threat(warden): does not hold
@@ -1713,10 +1772,10 @@ The human transcript names every step, lists its candidates with their verdicts,
   quest climb -> active
   quest veteran -> active
   quest notices -> active
-── step 1 · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 1 · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── step 2 · talk → npc.maud ──────────────
   ✓ maud.talk [scene, priority 0]
@@ -1745,15 +1804,15 @@ The human transcript names every step, lists its candidates with their verdicts,
   quest climb -> unset (tier: run; was complete)
   set run.floor = 1
   quest climb -> active
-── step 7 [1/2] · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 7 [1/2] · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
-── step 7 [2/2] · hubVisit ──────────────
-  ✓ hub.idle [scene, priority 0]
-  ✗ hub.victory [scene, priority 10] — when: false
-  → hub.idle
+── step 7 [2/2] · townVisit ──────────────
+  ✓ town.idle [scene, priority 0]
+  ✗ town.victory [scene, priority 10] — when: false
+  → town.idle
 @maud: Quiet night.
 ── end: complete (8 steps) ──────────────
 ── expect: every expectation held ──────────────
@@ -1771,9 +1830,9 @@ The human transcript names every step, lists its candidates with their verdicts,
 - In `--json`, a line record in `presented.commands` carries `role`, `lineId`, `voiceKey`, `as`, and `emotion` where they apply, and a choice or hub record lists the options not offered under `ineligible` and the taken `once` options under `spent`.
 - The walk ends with `── end: complete (<n> steps)` — every repetition counted — or ``── end: `end: true` at step <n> (<k> later steps skipped)`` after an `end` step, or ``── end: terminal — `terminal: <condition>` holds`` when the game is over after the last step (dsl 0.27.0 §4), or `── halted: <message>` when it stops early. Then the `--explain` trees, then the `── expect:` block.
 
-A shape-only project (no plugins) with a hub scene that offers a side job, and a quest whose `calm` objective is judged at `runEnd`:
+A shape-only project (no plugins) with a town scene that offers a side job, and a quest whose `calm` objective is judged at `runEnd`:
 
-```lute unverified="one file of a multi-file project: the scene answering hubVisit and a world schema declaring run.pressure sit beside it"
+```lute unverified="one file of a multi-file project: the scene answering townVisit and a world schema declaring run.pressure sit beside it"
 <quest id="holdLine" title="Hold the line" start="true">
   <objective id="sawShed" title="See the shed" done="visited('haven.shed')"/>
   <objective id="calm" title="Keep it calm" on="runEnd" done="run.pressure < 2"/>
@@ -1784,12 +1843,12 @@ A shape-only project (no plugins) with a hub scene that offers a side job, and a
 </quest>
 ```
 
-With `steps: [{occasion: hubVisit}, {occasion: runEnd}]` and `choose: { offer: take }` — the choice whose body is `::accept{quest="sideJob"}` — the playthrough accepts the side job during the presentation, activates it right after, and completes `holdLine` only when `runEnd` is raised:
+With `steps: [{occasion: townVisit}, {occasion: runEnd}]` and `choose: { offer: take }` — the choice whose body is `::accept{quest="sideJob"}` — the playthrough accepts the side job during the presentation, activates it right after, and completes `holdLine` only when `runEnd` is raised:
 
 ```
 ── start ──────────────
   quest holdLine -> active
-── step 1 · hubVisit ──────────────
+── step 1 · townVisit ──────────────
   ✓ haven.shed [scene, priority 0]
   → haven.shed
 @vesna: Somebody has to mind the shed.
@@ -1817,7 +1876,7 @@ type PlayTranscript = {
   steps: Step[];                           // one record per repetition
   skipped?: { step: number; label?: string }[]; // the steps an `end: true` step left unplayed
   endReason?: string;                      // "complete (8 steps)", or "`end: true` at step 2 (1 later step skipped)"
-  end?: "terminal";                        // dsl 0.27.0 §4: the play ended with the schema's `terminal:` holding
+  end: "complete" | "terminal" | "incomplete" | "error"; // how the walk ended — the values `expect.end` names; `terminal`: the schema's `terminal:` held
   error?: { message: string };
   expect?: { misses: ExpectMiss[] };       // when the script carries an `expect:`
   explain?: Explanation[];                 // one per `--explain` atom
@@ -1883,6 +1942,11 @@ type AdvanceStep = {
     to: string;
     days?: DayStop[];                      // each midnight stop, in order, when `raise:` names `dayEnd` / `dayStart`
     ended?: true;                          // 0.27.0: the advance reached a finite clock's end (its last `dayEnd` is in `days`; no slot raise)
+    passed?: {                             // the positions it passed without raising its `raise.slot` occasion (neither start nor stop)
+      occasion: string;
+      beats: number;                       // how many beats answer that occasion
+      at: { day: number; slot?: string }[];
+    };
     writes: WriteRecord[];                 // the last move, to where the clock stops, then an `engine:` beside the advance
     quests: QuestGroup[];                  // the settle right after that move
   };
@@ -1951,9 +2015,9 @@ town/
 │   ├── plugin.yaml
 │   └── occasions/game.yaml
 ├── scenes/
-│   ├── hub/welcome.lute
-│   ├── hub/morning.lute
-│   ├── hub/day-end.lute
+│   ├── town/welcome.lute
+│   ├── town/morning.lute
+│   ├── town/day-end.lute
 │   ├── talk/mara-first.lute
 │   └── talk/mara-idle.lute
 ├── quests/lamp.lute
@@ -1969,9 +2033,9 @@ The manifest activates one plugin whose only export is the engine's occasions, a
 
 ```yaml
 occasions:
-  hubVisit: { select: first, description: The player arrives at the hub }
-  talk:     { select: first, target: { prefix: npc, entity: npc }, description: The player talks to someone (npc.<name>) }
-  dayEnd:   { select: first, description: "The engine closed the day; run.day is already advanced" }
+  townVisit: { select: first, description: The player arrives in town }
+  talk:      { select: first, target: { prefix: npc, entity: npc }, description: The player talks to someone (npc.<name>) }
+  dayEnd:    { select: first, description: "The engine closed the day; run.day is already advanced" }
 ```
 
 The shared state, `world.schema.yaml`. The day is the engine's: content reads `run.day`, but only the engine — and so only an `engine:` step — writes it:
@@ -1997,9 +2061,9 @@ The beats:
 
 | Beat | Document | Answers | Conditions | `once` |
 |---|---|---|---|---|
-| `hub.welcome` | `scenes/hub/welcome.lute` | `hubVisit` | priority 10 | `user` |
-| `hub.morning` | `scenes/hub/morning.lute` | `hubVisit` | `when: '!@firstDay'` — prints `Day {{run.day}}.` | `false` |
-| `hub.dayEnd` | `scenes/hub/day-end.lute` | `dayEnd` | — | `false` |
+| `town.welcome` | `scenes/town/welcome.lute` | `townVisit` | priority 10 | `user` |
+| `town.morning` | `scenes/town/morning.lute` | `townVisit` | `when: '!@firstDay'` — prints `Day {{run.day}}.` | `false` |
+| `town.dayEnd` | `scenes/town/day-end.lute` | `dayEnd` | — | `false` |
 | `mara.first` | `scenes/talk/mara-first.lute` | `talk` → `npc.mara` | priority 10 | `user` |
 | `mara.idle` | `scenes/talk/mara-idle.lute` | `talk` → `npc.mara` | — | `false` |
 | `tomasOil` (entry) | `lore/tomas.lute` | `talk` → `npc.tomas` | priority 10, `when="quest.lampOut.state == 'active'"`; asserts `knows(lamp)` | — |
@@ -2040,8 +2104,8 @@ The scaffold's play script, `plays/first-day.play.yaml`, plays the day and asser
 choose:
   maraAsk: lamp
 steps:
-  - occasion: hubVisit
-    expect: { winner: hub.welcome }
+  - occasion: townVisit
+    expect: { winner: town.welcome }
   - occasion: talk
     target: npc.mara
     expect: { winner: mara.first }
@@ -2052,10 +2116,10 @@ steps:
     engine:
       state: { run.day: { add: 1 } }
   - occasion: dayEnd
-  - occasion: hubVisit
-    expect: { winner: hub.morning, notOffered: [hub.welcome] }
+  - occasion: townVisit
+    expect: { winner: town.morning, notOffered: [town.welcome] }
 expect:
-  exit: complete
+  end: complete
   quests: { lampOut: complete }
   state: { run.day: 2, user.bond.mara: 1 }
   facts: [knows(lamp)]
@@ -2068,11 +2132,11 @@ $ lute play . --script plays/first-day.play.yaml
 ```
 
 ```
-── step 1 · hubVisit ──────────────
-  ✓ hub.welcome [scene, priority 10]
-  ✗ hub.morning [scene, priority 0] — when: false
-  → hub.welcome
-::bg{location="hub" time="day"}
+── step 1 · townVisit ──────────────
+  ✓ town.welcome [scene, priority 10]
+  ✗ town.morning [scene, priority 0] — when: false
+  → town.welcome
+::bg{location="town" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 · talk → npc.mara ──────────────
   ✓ mara.first [scene, priority 10]
@@ -2095,16 +2159,16 @@ $ lute play . --script plays/first-day.play.yaml
 ── step 4 (the engine closes the day) · engine ──────────────
   set run.day = 2
 ── step 5 · dayEnd ──────────────
-  ✓ hub.dayEnd [scene, priority 0]
-  → hub.dayEnd
+  ✓ town.dayEnd [scene, priority 0]
+  → town.dayEnd
 @narrator: One by one, the lamps go out.
   lampOut.wait done
   quest lampOut -> complete
 @narrator: By morning the lamp by the door is burning again.
-── step 6 · hubVisit ──────────────
-  ✓ hub.morning [scene, priority 0]
-  ✗ hub.welcome [scene, priority 10] — once: user — already presented
-  → hub.morning
+── step 6 · townVisit ──────────────
+  ✓ town.morning [scene, priority 0]
+  ✗ town.welcome [scene, priority 10] — once: user — already presented
+  → town.morning
 @narrator: Day 2. The square is already awake.
 ── end: complete (6 steps) ──────────────
 ── expect: every expectation held ──────────────
@@ -2113,12 +2177,12 @@ $ lute play . --script plays/first-day.play.yaml
 Reading it step by step:
 
 - **Start** — `lampOut` has no `start`, so nothing activates before the first step and there is no `── start` block.
-- **Step 1** — it is day 1, so `hub.morning`'s `@firstDay` guard keeps it out and the welcome plays.
+- **Step 1** — it is day 1, so `town.morning`'s `@firstDay` guard keeps it out and the welcome plays.
 - **Step 2** — `talk` is raised for `npc.mara`, a member of the `npc` kind; both of Mara's scenes are candidates and the first meeting outranks the fallback. Choosing `lamp` raises the bond and accepts the quest, which activates right after the presentation.
 - **Step 3** — with the quest active, Tomas's oil entry is eligible and outranks his bark. Its first read asserts `knows(lamp)`, which completes the first objective.
 - **Step 4** — the engine closes the day. An `engine:` step writes `run.day`, which content may not (`owner: engine`); nothing is presented and no occasion is raised.
 - **Step 5** — `dayEnd` presents the night scene, then judges `lampOut.wait` (`on="dayEnd"`), and the quest completes; its `questComplete` handler plays.
-- **Step 6** — `hub.welcome` is spent for good (`once: user`), and `run.day` is 2, so the morning plays.
+- **Step 6** — `town.welcome` is spent for good (`once: user`), and `run.day` is 2, so the morning plays.
 
 ### One step decided the other way
 
@@ -2128,7 +2192,7 @@ A step's own `choose:` changes one presentation and nothing else. Here the playe
 choose:
   maraAsk: lamp
 steps:
-  - occasion: hubVisit
+  - occasion: townVisit
   - occasion: talk
     target: npc.mara
     choose: { maraAsk: leave }
@@ -2142,11 +2206,11 @@ expect:
 ```
 
 ```
-── step 1 · hubVisit ──────────────
-  ✓ hub.welcome [scene, priority 10]
-  ✗ hub.morning [scene, priority 0] — when: false
-  → hub.welcome
-::bg{location="hub" time="day"}
+── step 1 · townVisit ──────────────
+  ✓ town.welcome [scene, priority 10]
+  ✗ town.morning [scene, priority 0] — when: false
+  → town.welcome
+::bg{location="town" time="day"}
 @narrator: The lamps along the square are lit — all but the one by the door.
 ── step 2 · talk → npc.mara ──────────────
   ✓ mara.first [scene, priority 10]
@@ -2176,13 +2240,13 @@ A later session does not replay the first day: the script starts from the save a
 
 ```yaml
 state: { user.bond.mara: 1 }
-presented: { user: [hub.welcome, mara.first] }
+presented: { user: [town.welcome, mara.first] }
 quests: { lampOut: complete }
 steps:
   - label: the engine starts run two on day 3
     newRun: { state: { run.day: 3 } }
-  - occasion: hubVisit
-    expect: { winner: hub.morning, notOffered: [hub.welcome] }
+  - occasion: townVisit
+    expect: { winner: town.morning, notOffered: [town.welcome] }
   - occasion: talk
     target: npc.mara
     expect: { winner: mara.idle }
@@ -2194,9 +2258,9 @@ steps:
       state: { run.day: { add: 1 } }
     repeat: 2
   - occasion: dayEnd
-    expect: { winner: hub.dayEnd }
+    expect: { winner: town.dayEnd }
 expect:
-  exit: complete
+  end: complete
   state: { run.day: 5 }
   transcriptContains: ["Any luck with the lamp?", "Day 3."]
   transcriptLacks: ["You're new."]
@@ -2207,10 +2271,10 @@ expect:
   run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
   prev.run.day = 1
   set run.day = 3
-── step 2 · hubVisit ──────────────
-  ✓ hub.morning [scene, priority 0]
-  ✗ hub.welcome [scene, priority 10] — once: user — already presented
-  → hub.morning
+── step 2 · townVisit ──────────────
+  ✓ town.morning [scene, priority 0]
+  ✗ town.welcome [scene, priority 10] — once: user — already presented
+  → town.morning
 @narrator: Day 3. The square is already awake.
 ── step 3 · talk → npc.mara ──────────────
   ✓ mara.idle [scene, priority 0]
@@ -2229,8 +2293,8 @@ expect:
 ── step 5 (a quiet day passes) [2/2] · engine ──────────────
   set run.day = 5
 ── step 6 · dayEnd ──────────────
-  ✓ hub.dayEnd [scene, priority 0]
-  → hub.dayEnd
+  ✓ town.dayEnd [scene, priority 0]
+  → town.dayEnd
 @narrator: One by one, the lamps go out.
 ── end: complete (7 steps) ──────────────
 ── expect: every expectation held ──────────────
@@ -2271,9 +2335,9 @@ PASS  ./plays/first-day.play.yaml  (play of .)
 3 passed, 0 failed
 
 coverage over 2 traced path(s) and 1 play(s) (plays count toward what they presented and the choices they picked, not match arms):
-  branch/hub maraAsk (./tests/../scenes/talk/mara-first.lute:maraAsk): 1/2 chosen [lamp]; never chosen [leave]
+  branch/hub maraAsk (scenes/talk/mara-first.lute:maraAsk): 1/2 chosen [lamp]; never chosen [leave]
   1 untested unit(s) under . — no *.test.yaml presents them and no play presents them:
-    ./scenes/talk/mara-idle.lute
+    scenes/talk/mara-idle.lute
 ```
 
 The play presented the welcome, the morning, the night scene, Mara's first meeting, and Tomas's entries, so only `mara-idle.lute` is left — the scene `plays/returning.play.yaml` covers.

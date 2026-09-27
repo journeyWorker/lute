@@ -22,7 +22,7 @@ fn codes(text: &str) -> Vec<String> {
         .collect()
 }
 
-const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  f: { members: [reds] }\nenums:\n  trust: [low, high]\nrelations:\n  inParty: { args: [c] }\n  topo: { args: [c, c], tier: app }\n  vibe: { args: [c, trust], derive: true }\n  sensed: { args: [c], reserved: true }\nrules:\n  - \"vibe(X, low) :- inParty(X)\"\n";
+const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  f: { members: [reds] }\nenums:\n  trust: [low, high]\nrelations:\n  inParty: { args: [c], tier: run }\n  topo: { args: [c, c], tier: app }\n  vibe: { args: [c, trust], derive: true }\n  sensed: { args: [c], tier: run, reserved: true }\nrules:\n  - \"vibe(X, low) :- inParty(X)\"\n";
 
 fn scene_body(body: &str) -> String {
     format!(

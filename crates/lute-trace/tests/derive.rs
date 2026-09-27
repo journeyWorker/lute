@@ -118,8 +118,8 @@ episode: 1
 entities:
   person: { members: [ann] }
 relations:
-  suspect: { args: [person] }
-  alibi: { args: [person] }
+  suspect: { args: [person], tier: run }
+  alibi: { args: [person], tier: run }
   culprit: { args: [person], derive: true }
 facts:
   - "suspect(ann)"
@@ -182,6 +182,56 @@ fn negated_premise_present_makes_the_conclusion_definitely_false() {
     );
 }
 
+/// A refused pick whose guard reads a derived fact names the rule's missing
+/// base premise as the mock to add — mocking the conclusion itself is not
+/// what the author wants (it is re-derived from the premises).
+#[test]
+fn a_refused_derived_guard_suggests_mocking_its_base_premise() {
+    let text = r#"---
+kind: scene
+character: x
+season: 1
+episode: 1
+entities:
+  person: { members: [wren] }
+relations:
+  recruited: { args: [person], tier: run }
+  inParty: { args: [person], derive: true }
+rules:
+  - "inParty(P) :- recruited(P)"
+---
+## Shot 1.
+<branch id="tunnel">
+<choice id="river" label="River" when="holds(inParty(wren))">
+@narrator: river
+</choice>
+<choice id="road" label="Road">
+@narrator: road
+</choice>
+</branch>
+"#;
+    let input = input_for(text, "party.lute", Path::new("."));
+    let mocks = MockSet {
+        choose: [("tunnel".to_string(), vec!["river".to_string()])].into(),
+        ..Default::default()
+    };
+    let (_report, exit) = trace_document(&input, mocks);
+    let TraceExit::Refused(diags) = exit else {
+        panic!("expected E-TRACE-CHOICE refusal, got {exit:?}");
+    };
+    let d = diags
+        .iter()
+        .find(|d| d.code == lute_trace::E_TRACE_CHOICE)
+        .unwrap_or_else(|| panic!("{diags:?}"));
+    assert!(
+        d.message.contains("`recruited(wren)` does not hold")
+            && d.message.contains("(mock `--fact \"recruited(wren)\"`)")
+            && !d.message.contains("--fact \"inParty(wren)\""),
+        "{}",
+        d.message
+    );
+}
+
 /// A rule guard over undecided state decides nothing: the conclusion is
 /// unknown and the report names the state path that would decide it.
 #[test]
@@ -196,7 +246,7 @@ state:
 entities:
   person: { members: [ann] }
 relations:
-  suspect: { args: [person] }
+  suspect: { args: [person], tier: run }
   ready: { args: [person], derive: true }
 facts:
   - "suspect(ann)"
@@ -259,8 +309,8 @@ entities:
   person: { members: [ann, bob, cy] }
   place: { members: [dock, pier] }
 relations:
-  listed: { args: [person] }
-  sawAt: { args: [person, place] }
+  listed: { args: [person], tier: run }
+  sawAt: { args: [person, place], tier: run }
   testified: { args: [person], derive: true }
   quiet: { args: [person], derive: true }
   early: { args: [person], derive: true }
@@ -446,9 +496,9 @@ entities:
   town: { members: [t1, t2] }
   door: { members: [earth] }
 relations:
-  hasBadge: { args: [badge] }
-  toured: { args: [person, town, badge] }
-  listed: { args: [person] }
+  hasBadge: { args: [badge], tier: run }
+  toured: { args: [person, town, badge], tier: run }
+  listed: { args: [person], tier: run }
   open: { args: [door], derive: true }
   traveled: { args: [person], derive: true }
 facts:

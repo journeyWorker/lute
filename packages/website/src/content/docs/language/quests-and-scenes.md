@@ -129,52 +129,58 @@ defaults:
 ```
 
 Every `<quest>` that writes no `tier=` then takes `run`, and one that writes `tier="user"` keeps it.
-`questTier` takes `run` or `user`; without it the default stays `user`. See
+`questTier` takes `run`, `user` or `season:<name>`; without it the default stays `user`. See
 [Project defaults](/language/imports/#project-defaults).
 
-A quest declares its own prerequisite as an **attribute** on the element, not as
-a frontmatter key — the one place this page's opening heading, "Scenes and
-`after:`", does not apply:
+A quest declares its place in the scenario graph as an **attribute** on the element, `follows=`,
+not as a frontmatter key — the one place this page's opening heading, "Scenes and `after:`", does
+not apply:
 
 ```lute
-<quest id="manifestGap" tier="run" title="The Manifest Gap" start="true" after="visited('haven.s01ep06') && completed('whoWakes')">
+<quest id="manifestGap" tier="run" title="The Manifest Gap" start="true" follows="visited('haven.s01ep06') && completed('whoWakes')">
   <objective id="reconcile" title="Reconcile the count" done="true"/>
 </quest>
 ```
 
-`after=` takes the same restricted prerequisite profile as a scene's `after:`
+`follows=` is **graph metadata only**: it records the edges `lute scenario` draws and never gates
+the quest. The quest above activates as soon as its `start` holds, whether or not
+`haven.s01ep06` was played. To make a quest wait for a scene, put the condition in `start`:
+`start="visited('haven.s01ep06')"`. (Before 0.28.0 the attribute was spelled `after=`; that
+spelling is now `E-UNKNOWN-ATTR`, and the message names `follows=`.)
+
+`follows=` takes the same restricted prerequisite profile as a scene's `after:`
 key — `visited("id")`, `completed("id")`, `active("id")`, `&&`, `||`, and
-nothing else (`E-CONN-PROFILE`). Writing `after:` in a quest's *frontmatter* is
+nothing else (`E-CONN-PROFILE`). Writing `after:` or `follows:` in a quest's *frontmatter* is
 `E-META-UNKNOWN-KEY`, and the diagnostic names the attribute form:
 
 <!-- lute-diagnostics -->
 ```
-error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin) — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, not a frontmatter key
+error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin) — a quest's graph edge is the `follows=` ATTRIBUTE on its `<quest>` element, not a frontmatter key; it does not gate the quest (to wait, write `start="visited('<scene id>')"`)
 ```
 
-A `visited()` in `after=` (or in a scene's `after:`) may name a [bundle beat](/language/beats/#beat-bundles)
-by its canonical id, `after="visited('talks.maud')"` (dsl 0.24.0 §2). Before 0.24.0 that was
+A `visited()` in `follows=` (or in a scene's `after:`) may name a [bundle beat](/language/beats/#beat-bundles)
+by its canonical id, `follows="visited('talks.maud')"` (dsl 0.24.0 §2). Before 0.24.0 that was
 `E-CONN-UNKNOWN-NODE`, "a bundle beat, not a scene".
 
 An accept-driven quest (no `start`, see [below](#quests-meet-scenes-and-occasions)) usually needs
-no `after=` at all. Without one, it is anchored at every scene, bundle beat, and quest body that
+no `follows=` at all. Without one, it is anchored at every scene, bundle beat, and quest body that
 `::accept`s it: `lute scenario` draws an `accept` edge from each of them (`beat(talks.maud) ->
 quest(salvage) [accept]`), and the quest no longer counts as unanchored.
 
-Two more kinds of anchor need no `after=` either (dsl 0.25.0 §4):
+Two more kinds of anchor need no `follows=` either (dsl 0.25.0 §4):
 
 - **Subquests.** Every nested quest hangs off its parent: `quest(relight) -> quest(oil)
   [subquest]`. A parent with children is no longer listed as unanchored, and neither is a child.
-- **`start` conjuncts.** A quest without `after=` is anchored by the top-level `&&` conjuncts of
+- **`start` conjuncts.** A quest without `follows=` is anchored by the top-level `&&` conjuncts of
   its `start` that read `visited('…')`, `entry.X.everRead`, or `quest.Y.state == '…'` (any status
   but `unset`). `start="entry.keeperLog.everRead && visited('arrival')"` draws
   `entry(keeperLog) -> quest(relight) [start]` and `scene(arrival) -> quest(relight) [start]`; an
   entry joins the graph as the node `entry(<id>)`. An `||` of such reads is one anchor with several
-  sources. A `start`-driven quest therefore no longer needs a copy of its `start` in `after=`.
+  sources. A `start`-driven quest therefore needs no copy of its `start` in `follows=`.
 
 `lute scenario <dir> reach quest:<id>` lists a quest's anchors (`anchors` in `--format json`).
 Anchors never prove a quest unreachable, and an anchor that would close a cycle is not drawn. An
-explicit `after=` keeps only the edges it declares, in place of the `start` and `accept` anchors;
+explicit `follows=` keeps only the edges it declares, in place of the `start` and `accept` anchors;
 the subquest edge stays.
 
 #### Quests that come back: season tiers and `rearm`
@@ -216,10 +222,18 @@ the condition turns true (in a play script, an `engine:` step before the `advanc
 that moment; an advance's own `engine:` writes land where it stops), or a `season.<name>.*` path
 under `tier="season:<name>"`. The checker does not warn about this.
 
+Because only the false→true turn rearms, a constant condition never does: `rearm="true"`,
+`rearm="false"`, or a def or comparison that folds to a constant is `W-QUEST-REARM-CONSTANT`. There
+is no `repeatable=` or `repeat=`; writing one is `E-UNKNOWN-ATTR`, and the message points at
+`rearm="<condition>"`. A subquest (a quest an `<objective quest=…>` names) cannot rearm: it
+activates with its parent, so once the parent has ended a rearmed child would stay `unset` for good.
+Its `rearm=` is `E-SUBQUEST-REARM`; put the condition on the parent, whose rearm starts a new round.
+
 ### `<objective>`
 
-An `<objective id done>` requires a `done` completion predicate over declared state. `when` gates
-only the objective's visibility/tracking, not the completion obligation; `optional` excludes it from
+An `<objective id done>` requires a `done` completion predicate over declared state.
+`visibleWhen` controls only whether the objective is shown and tracked — it never gates `done` (to
+make completion wait for a condition, put it in `done`). `optional` excludes it from
 completion; `by` and `until` set a [deadline](#deadlines). An empty-body objective should be written
 self-closing (`<objective …/>`); a body — a log line, a per-objective `::set` reward — emits
 **once**, when the objective first becomes `done`.
@@ -356,7 +370,7 @@ right after the next `newRun` reset, so the quest activates in the new run's fir
 ```lute check
 ---
 kind: scene
-id: hub.board
+id: town.board
 title: The bounty board
 ---
 
@@ -501,7 +515,7 @@ cascades to its still-active subquests. A failed `optional` objective leaves its
 `lute trace` records the objective's decision as `failed`, and `lute run` / `lute play` print
 `letter.thank failed (by)` or `failed (until)`; all three judge `done` and the deadlines in the
 same order. The quest transition names its [`failedBy`](#why-a-quest-failed) the same way:
-`quest letter -> failed (by)`, and likewise `(until)`, `(fail)`, `(cascade)` and `(superseded)`.
+`quest letter -> failed (by)`, and likewise `(until)`, `(fail)`, `(subquest)`, `(cascade)` and `(superseded)`.
 See [Playing a story](/tooling/play/#deadlines-and-targeted-objectives).
 
 An `on=` objective with `by=` (and no `until=`) whose `done` provably implies its `by` can
@@ -519,7 +533,7 @@ state:
   run.verdict: { type: { enum: [undecided, guilty, acquitted] }, default: undecided }
 ---
 
-<quest id="hearing" title="See the hearing through" start="true">
+<quest id="hearing" title="See the hearing through" tier="run" start="true">
   <objective id="verdict" title="Hear the verdict" on="hearing" done="run.verdict == 'guilty'" by="run.verdict != 'undecided'"/>
 </quest>
 ```
@@ -558,7 +572,7 @@ surfaces plus two engine-derived rules:
 | Direction | Rule |
 | --- | --- |
 | Objective completion | Compiler synthesizes `done = "quest.<child>.state == 'complete'"`. Derived parent completion — "all non-`optional` objectives `done`" — is unchanged; `optional` on a subquest objective means the child's outcome does not gate the parent. A [`complete="any"`](#alternatives-completeany) parent needs only one. |
-| Upward failure | Compiler synthesizes the parent's `fail` as the disjunction of the authored `fail` (if any) and one `quest.<c>.state == 'failed'` test per **required** child, in document order. `fail`'s precedence over completion is unchanged, so a required child failing resolves the parent to `failed` even if the remaining objectives could otherwise complete. Under `complete="any"` the synthesized part is a conjunction instead. |
+| Upward failure | Compiler synthesizes the parent's `fail` as the disjunction of the authored `fail` (if any) and one `quest.<c>.state == 'failed'` test per **required** child, in document order. `fail`'s precedence over completion is unchanged, so a required child failing resolves the parent to `failed` (`failedBy: subquest`) even if the remaining objectives could otherwise complete. Under `complete="any"` the synthesized part is a conjunction instead. |
 | Downward cascade | Engine rule: on a parent's terminal transition (`failed` or `complete`) every child still `active` transitions to `failed` (`failedBy: cascade`). A required child cannot be `active` at parent completion — its `complete` is part of the derived completion — so the `complete` arm only fails still-running **optional** children; under `complete="any"` it fails every other running child, as `superseded`. Recursive. |
 | Activation | Engine rule: a referenced child with no `start` activates when its parent activates (replacing the accept-driven default), unless it declares [`activate="accept"`](#taken-up-in-dialogue-activateaccept); one with `start` evaluates the predicate only while the parent is `active` (effective gate is the conjunction). Unreferenced quests keep today's semantics exactly. |
 
@@ -789,7 +803,7 @@ Quests can gate on relational facts too — `start="holds(inParty(shadowheart))"
 
 - **`quest.<id>.failedBy`** reads `unset` until the quest fails, then one of `fail` (its `fail`
   condition held), `by` or `until` (a required objective missed that [deadline](#deadlines)),
-  `cascade` (its parent ended while it was active), or `superseded` (its
+  `subquest` (a required subquest failed), `cascade` (its parent ended while it was active), or `superseded` (its
   [`complete="any"`](#alternatives-completeany) parent completed through another route).
 - **`quest.<id>.objectives.<oid>.failed`** reads `true` once the objective's `by` or `until` failed
   it, and `false` before.
@@ -813,7 +827,7 @@ title: Across the river
   <when is="by|until">
     @narrator: You reached the ferry too late.
   </when>
-  <when is="fail|cascade">
+  <when is="fail|subquest|cascade">
     @narrator: The ferry burned before you could pay.
   </when>
   <when is="unset">
@@ -824,7 +838,7 @@ title: Across the river
 @narrator{when="quest.letter.objectives.thank.failed"}: Maud's letter is still in your coat.
 ```
 
-`failedBy` is an enum of those six values, so the match above is exhaustive without
+`failedBy` is an enum of those seven values, so the match above is exhaustive without
 `<otherwise>`, and a misspelled arm (`is="superceded"`) is `E-WHEN-LITERAL-DOMAIN`. When a missed
 objective and `fail` fail a quest in the same settle, the objective's kind wins. Declaring either
 path in `state:` is `E-QUEST-RESERVED-DECL`, and writing one with `::set` is

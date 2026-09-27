@@ -70,12 +70,16 @@ Everything wrong with a clock is `E-CLOCK-DECL`:
 - a malformed declaration: a missing `day`, an unknown key, a `raise` that is neither an occasion
   name nor a `{ slot, dayStart, dayEnd }` map, `slot` without `slots` or `slots` without `slot`, an empty or
   repeated `slots` list, a `week.length` of 0, a `week.first` outside `0..length-1`, or a
-  `week.labels` list whose length is not `week.length`;
+  `week.labels` list whose length is not `week.length` (`week.labels` is a list, one label per
+  weekday; an enum's or entity kind's `labels:` is the map);
 - a `day` or `slot` path that is not declared, not of the right type (`day` a `number`, `slot` an
-  enum), the same path twice, or not `owner: engine`;
+  enum), the same path twice, or not `owner: engine`; a `day` path whose default is below 1 (the
+  clock counts from day 1);
 - `slots` that are not exactly the slot enum's members;
 - a `raise` occasion, or any occasion of a `raise` map, that no plugin declares (with a
-  did-you-mean);
+  did-you-mean). While no plugin of the project declares occasions, any name passes, as for `on:`;
+- a `raise` occasion that declares a `payload:`: an advance has no payload to give it, so raise
+  that occasion from the engine instead;
 - a `last` / `days` that names no position: both keys at once, `days: 0`, a `last.day` below 1, a
   `last.slot` that is not one of `slots` (or any `last.slot` on a clock without slots), or a clock
   whose `day` / `slot` defaults already stand past its last position (dsl 0.27.0 §4);
@@ -96,21 +100,29 @@ world.schema.yaml:4:1: error [E-CLOCK-DECL] `clock:` `day: run.day` must be decl
 
 ## Reading the clock
 
-A declared clock adds three reserved, read-only paths. Content reads them anywhere a CEL condition
+A declared clock adds reserved, read-only paths. Content reads them anywhere a CEL condition
 or an interpolation is legal: a beat's `when`, a line's `when=`, a `<match>` subject, a quest
 deadline, `{{…}}`.
 
 | Path | Type | Value |
 |---|---|---|
+| `clock.day` | number | the day path's value (`run.day` above) |
+| `clock.slot` | enum of `slots` | the slot path's value. Only on a clock with slots |
 | `clock.index` | number | `(day - 1) * len(slots) + ` the slot's position in `slots` (from 0); `day - 1` on a clock without slots. It only grows: day 1 morning is 0, day 1 night is 2, day 2 morning is 3 |
 | `clock.weekday` | whole number `0..length-1` | `(week.first + day - 1) mod week.length`. Only with a `week:` |
 | `clock.weekdayLabel` | enum of `week.labels` | `week.labels[clock.weekday]`, renderable in `{{…}}`. Only with `week.labels` |
+| `clock.ended` | bool | `true` once a finite clock has ended ([A clock that ends](#a-clock-that-ends)). Only with `last:` / `days:` |
 
 The engine derives them from the live `day` and `slot`. They are not state rows, and content never
-writes them: `::set{clock.index = 3}` is `E-QUEST-RESERVED-WRITE`, and the message points to the
-engine as the one that moves the clock. Without a clock, `clock.index` is simply undeclared
-(`E-UNDECLARED`), and so are `clock.weekday` without a `week:` and `clock.weekdayLabel` without
-`week.labels`.
+writes them: `::set{clock.index = 3}` is `E-QUEST-RESERVED-WRITE`, and a `::set` of the day or slot
+path itself is `E-ENGINE-OWNED-WRITE`; both messages say to move the clock with an `advance:` step.
+Without a clock, `clock.*` is simply undeclared (`E-UNDECLARED`), and so are `clock.slot` on a clock
+without slots, `clock.weekday` without a `week:`, `clock.weekdayLabel` without `week.labels` and
+`clock.ended` on a clock that never ends.
+
+Three "day" words mean three things: `day:` in the declaration names the state path that counts
+days; `clock.day` reads that path's value; `days: N` (or `last.day: N`) is the last day of a clock
+that ends.
 
 With the clock above, day 1 is a Monday, so `clock.weekday == 5` is every Saturday:
 
@@ -152,6 +164,13 @@ naming the nearest label (`` did you mean `'Sun'`? ``):
   </when>
 </match>
 ```
+
+A component body reads only its params, so a component that shows the weekday takes it as a
+param. Type the param `{ domain: clock.weekdayLabel }` (or `{ domain: clock.slot }` for a slot)
+instead of copying the labels into an enum. The host passes the live value (`day=@today`, with
+`today: "clock.weekdayLabel"` in `defs:`) or a literal label, and the checker judges the body's
+`<match>` arms and every literal argument against the clock's own labels: a misspelled
+`<when is="Wednesdy">` is one `E-WHEN-LITERAL-DOMAIN` at the component, naming the nearest label.
 
 ## Once a day, once a week, once a slot
 
@@ -254,7 +273,7 @@ once: week
 ---
 kind: scene
 id: square.bell
-on: hubVisit
+on: townVisit
 once: day
 ---
 
@@ -277,7 +296,7 @@ their tier like any other state, so a clock over `run.day` and `run.slot` starts
 morning with every new run.
 
 A single `raise: slotStart` is raised once per advance, where the clock stops, never at the slots
-it passes. The quests, though, settle at every slot an advance passes, raised there or not: a
+it passes; `lute play` notes the slots an advance passed without it. The quests, though, settle at every slot an advance passes, raised there or not: a
 [season](/state/schemas/#seasons) that opens and closes on the way starts its quests and fails
 their deadlines where it does, and a [`rearm=`](/language/quests-and-scenes/#quests-that-come-back-season-tiers-and-rearm)
 fires on the day its condition turns true, so one long advance ends in the same quest states as
@@ -325,6 +344,7 @@ steps:
   ✓ square.market [scene, priority 0]
   → square.market
 @narrator: Sat, day 6. The market is up before the bells.
+  note: passed day 1 (Mon) afternoon, night; day 2 (Tue) to day 5 (Fri), every slot without raising `slotStart` (1 beat answers it; an `advance:` raises it only where the clock stops)
 ```
 
 With the `raise` map above and a scene on `dayEnd`, going from Monday afternoon two slots on stops
@@ -345,6 +365,7 @@ at Monday night for the day's close, then at Tuesday morning:
 ── step 2 · slotStart (select: sequence) ──────────────
   ✗ square.market [scene, priority 0] — when: false
   → (no eligible beat — the occasion passes)
+  note: passed day 1 (Mon) night without raising `slotStart` (1 beat answers it; an `advance:` raises it only where the clock stops)
 ```
 
 On such a step a selection `expect:` reads the whole step: `presented` lists every beat it
@@ -383,9 +404,14 @@ clock            slotStart (sequence)
 6 Sat night      -
 ```
 
-An occasion raised once a day should be read once a day, not in every slot row.
-`--occasion dayEnd@clock.day,clock.slot=night` evaluates `dayEnd` once per day, at the night slot
-(`@run.day,run.slot=night`, the clock's own paths, works too), and leaves the other rows blank.
+An occasion raised once a day should be read once a day, not in every slot row. The calendar
+follows the clock's raise map: a cell where no advance would raise the occasion reads `not raised`
+— `dayStart` anywhere but a day's first slot, and never on the day the run starts; `dayEnd`
+anywhere but a day's last slot; the `slot` occasion at the position the run starts at. A beat
+only such cells would take is listed as never eligible. `--occasion dayEnd@clock.day` evaluates
+`dayEnd` once per day, at the day's last slot where the clock raises it (`@run.day`, the clock's
+own path, works too), and leaves the other rows blank; `,clock.slot=afternoon` reads it where an
+`advance: day` taken in the afternoon would close the day.
 
 See [Overviews](/tooling/overviews/) for the rest of the calendar.
 
@@ -419,6 +445,7 @@ the hour again. With it:
   ✓ ward.strike [scene, priority 0]
   → ward.strike
 @narrator: The clock strikes at h05.
+  note: passed day 1 h00, h01, h02, h03, h04 without raising `hourStrikes` (1 beat answers it; an `advance:` raises it only where the clock stops)
 ── step 2 · advance slot: day 1 h05 → day 1 h05 · the clock ends (its last position) ──────────────
 ── step 2 · day 1 h05 · dawn ──────────────
   ✓ ward.dawn [scene, priority 0]
@@ -430,20 +457,38 @@ the hour again. With it:
 
 Any `advance:` after the end is `E-CLOCK-END` (exit 1), and so is one that starts past the end
 because an `engine:` step moved the day on. A `newRun` resets the day and slot paths and starts the
-clock over.
+clock over — when they are run-tier. A clock whose day path is `user.*` keeps its position across
+runs, and with it its `once: day` / `once: slot` / `once: week` spends and its end. The play's
+new-run step says which: ``the clock is kept: its day `user.dive` outlives the run, so its position,
+its once: day / slot / week spends and its end stay``.
 
 The checker knows the end too. `clock.index` ranges over the whole numbers from where the clock
-starts to its last position, and the day path from its default day to the last day. A `when` that
-needs a later position can never hold:
+starts to its last position, and the day path and `clock.day` from its default day to the last day.
+On a clock that starts and ends on the same day, the slot path and `clock.slot` hold only the slots
+from the starting one to the last one. A `when` that needs a later position can never hold:
 
 <!-- lute-diagnostics -->
 ```
 scenes/second.lute:6:8: error [E-BEAT-UNREACHABLE] beat `ward.second` is never eligible: its `when` `run.night == 2` is provably false — the clock ends at its last position, so `run.night` only ranges over 1..1
 ```
 
-An entry's `when` gets `E-ENTRY-UNREACHABLE` and a line or arm guard `E-ARM-DEAD`, and a `<match>`
-on either path is exhaustive once it covers every value in range. `lute calendar --axis clock`
-stops at the last position.
+An entry's `when` gets `E-ENTRY-UNREACHABLE` and a line or arm guard `E-ARM-DEAD`, each naming the
+clock's end. A `<match>` on the day path or `clock.index` is exhaustive once it covers every value
+in range, and one on the slot path of a one-day clock once it covers every slot the clock reaches:
+an arm for a slot past the end is `E-ARM-DEAD`. On a clock of several days every slot comes round,
+so the slot path alone is not narrowed, but on the last day it is: with `last: { day: 2, slot: h02 }`,
+a `when` of `run.night == 2 && run.hour == 'h04'` is unreachable because on day 2 `run.hour` only
+holds h23, h00, h01 and h02. `lute calendar --axis clock` stops at the last position.
+
+The checker also reads a guard's clock conditions together. A guard whose reads of the day path,
+the slot path, `clock.index`, `clock.day`, `clock.slot` and `clock.weekday` no position of the clock
+satisfies at once is provably false, on a clock that ends or one that never does. Night 1 at `h01` is
+`clock.index` 2, so this guard can never hold:
+
+<!-- lute-diagnostics -->
+```
+scenes/over.lute:7:8: error [E-BEAT-UNREACHABLE] beat `ward.over` is never eligible: its `when` `run.night == 1 && run.hour == 'h01' && clock.index > 2` is provably false — no clock position has `run.night == 1`, `run.hour == 'h01'` and `clock.index > 2`
+```
 
 A quest objective's `by=` deadline is judged over the same range. On the one-night clock a
 deadline for night 2 can never hold, so it never fails the objective, and the checker warns at the
@@ -454,10 +499,51 @@ deadline for night 2 can never hold, so it never fails the objective, and the ch
 quests/q.lute:5:59: warning [W-DEADLINE-NEVER] objective `leave` never fails: its deadline `by: run.night >= 2` can never hold (the clock ends at its last position, so `run.night` only ranges over 1..1) — write a deadline the clock can reach, or drop it
 ```
 
-A deadline that falls when time runs out names the last position: `by="clock.index >= 6"` holds
-from `h05` on (`clock.index` counts the slots from `h23`), so the advance that reaches `h05`, or
-walks to it on its way past the end, fails the objective in its settle, before the last `dawn` is
-raised.
+A deadline can also come too early. When an objective's `done` can only hold at positions where
+its `by=` has already passed, the objective fails before it can be done. The checker reads `done`
+over the clock directly, and a `visited('<beat>')` from the first position where that beat's `when`
+can hold, including through a derived relation whose rules are `cel()` guards over the clock. A
+deadline holding on arrival at a position fails the objective before any beat of that position
+plays. The checker warns at the `by`:
+
+<!-- lute-diagnostics -->
+```
+quests/q.lute:8:69: warning [W-DEADLINE-BEFORE-WINDOW] objective `lamp` fails before it can be done: its `done` `visited('ward.lamp')` can first hold at day 2 h03, but its deadline `by: clock.index > 8` already holds at day 2 h01 — move the deadline after that window
+```
+
+Here `ward.lamp` is eligible only while `holds(lit(hall))`, and the one rule for `lit(hall)` is
+`cel("run.night == 2 && run.hour == 'h03'")`. A `done` that comes true on the same arrival as the
+deadline is not a problem, because `done` wins the tie.
+
+### A deadline at the end of time
+
+"Fail if the player is still here at dawn" is `by="clock.ended"`. `clock.ended` turns true in the
+settle of the `advance:` that ends the clock, before the last `dawn` is raised, and stays true until
+a `newRun`. The objective still completes the moment its `done` holds, at any hour before:
+
+```lute unverified="needs the one-night clock from world.schema.yaml above; checked by hand in a scratch project"
+<quest id="escape" title="Out before dawn" tier="run">
+  <objective id="out" title="Leave the ward" done="visited('ward.exit')" by="clock.ended"/>
+</quest>
+```
+
+A play step checks the moment with `expect: { clock: { ended: true } }` (a clock that never ends
+has no `ended` to check, and saying so is a usage error).
+
+Two spellings look close and are not the same:
+
+- `by="clock.index >= 6"` names the last position, and the last position is not the end: the
+  advance that *reaches* `h05` fails the objective, one slot before the clock ends. Use it for "by
+  the last hour", not "at dawn".
+- `on="dawn" until="true"` also fails at dawn, but `on=` moves the whole objective to that raise:
+  its `done` is judged only at dawn too, so a player who escapes at `h01` stays `active` until
+  dawn and a `questComplete` handler fires there. Use it only when that is what you want.
+
+`terminal: "clock.ended"` ends the game when the clock does. The `dayStart` of the day the run starts
+on is never raised: an advance raises `dayStart` on each day it *enters*, and the run starts inside
+day 1. Put a first-morning beat on the occasion your play starts with instead.
+`lute calendar --axis clock` shows day 1's `dayStart` cells as `not raised`, and a beat only day
+1's `dayStart` would take as never eligible.
 
 ## Shipped alongside
 
@@ -536,7 +622,7 @@ seventh day" is now a condition, and a def over it is typed `number` by inferenc
 ---
 kind: scene
 id: square.restDay
-on: hubVisit
+on: townVisit
 when: "@restDay"
 once: false
 state:
@@ -559,7 +645,7 @@ literal is `E-CEL-TYPE`:
 ---
 kind: scene
 id: square.restDay
-on: hubVisit
+on: townVisit
 when: "run.day % 2.5 == 0"
 state:
   run.day: { type: number, default: 1 }

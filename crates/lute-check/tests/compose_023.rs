@@ -309,6 +309,7 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
         &refs,
         &lute_check::cast::fact_producers(&docs, &Default::default()),
         None,
+        &Default::default(),
     )
 }
 

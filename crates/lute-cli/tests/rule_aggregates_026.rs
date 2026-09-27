@@ -73,7 +73,7 @@ fn project(tag: &str, extra_rules: &str) -> PathBuf {
              person: {{ members: [ann, bob] }}\n  town: {{ members: [t1, t2, t3] }}\n  \
              door: {{ members: [earth] }}\n\
              relations:\n  hasBadge: {{ args: [badge], tier: run }}\n  \
-             toured: {{ args: [person, town], tier: run }}\n  listed: {{ args: [person] }}\n  \
+             toured: {{ args: [person, town], tier: run }}\n  listed: {{ args: [person], tier: run }}\n  \
              open: {{ args: [door], derive: true }}\n  traveled: {{ args: [person], derive: true }}\n\
              facts:\n  - \"listed(ann)\"\n  - \"listed(bob)\"\n{RULES}{extra_rules}"
         ),
@@ -104,7 +104,7 @@ fn project(tag: &str, extra_rules: &str) -> PathBuf {
          <branch id=\"who\" prompt=\"Who?\">\n  \
          <choice id=\"ann\" label=\"Ann\" when=\"holds(traveled(ann))\">\n    @narrator: Ann.\n  </choice>\n  \
          <choice id=\"bob\" label=\"Bob\" when=\"holds(traveled(bob))\">\n    @narrator: Bob.\n  </choice>\n  \
-         <choice id=\"none\" label=\"Nobody\">\n    @narrator: Nobody.\n  </choice>\n\
+         <choice id=\"nobody\" label=\"Nobody\">\n    @narrator: Nobody.\n  </choice>\n\
          </branch>\n",
     );
     write(
@@ -221,11 +221,11 @@ fn knowledge_traces_the_counted_facts_under_the_premise() {
     let s = text(&out);
     assert_eq!(out.status.code(), Some(0), "{s}");
     assert!(
-        s.contains(
-            "        rule: open(earth) :- count(hasBadge(_)) >= 5\n\
-             \x20         count(hasBadge(_)) >= 5 — counts:\n\
+        s.contains("        rule: open(earth) :- count(hasBadge(_)) >= 5 (world.schema.yaml:")
+            && s.contains(
+                "\x20         count(hasBadge(_)) >= 5 — counts:\n\
              \x20           hasBadge(_) — asserted by scene `gym` (scenes/gym.lute)\n"
-        ),
+            ),
         "{s}"
     );
     // The bound group variable is substituted; the counted one stays.

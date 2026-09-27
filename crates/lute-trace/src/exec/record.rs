@@ -435,6 +435,40 @@ fn head_speaker(line: &str) -> Option<&str> {
     (!name.is_empty() && (after.starts_with(':') || after.starts_with('{'))).then_some(name)
 }
 
+/// dsl 0.28.0 (T1-25): what to assert instead when a needle line has the
+/// shape of a report record the transcript prints around content — a quest
+/// transition (`quest wire -> failed`), an objective's (`wire.sent failed
+/// (by)`), a write (`set run.x = 1`), a selection or section line (`✓ h`,
+/// `→ h`, `── end`). No content line has that shape, so a
+/// `transcriptLacks` of it would hold vacuously. `None` for anything else.
+fn record_shape(line: &str) -> Option<&'static str> {
+    let ident = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+            && !s.starts_with('.')
+            && !s.ends_with('.')
+    };
+    let words: Vec<&str> = line.split_whitespace().collect();
+    const QUEST_STATES: [&str; 4] = ["unset", "active", "complete", "failed"];
+    match words.as_slice() {
+        ["quest", id, "->", state, ..] if ident(id) && QUEST_STATES.contains(state) => {
+            Some("assert the quest with `quests: { <id>: <state> }`")
+        }
+        [obj, "failed" | "done", ..] if ident(obj) && obj.contains('.') => Some(
+            "assert the objective with `state: { quest.<id>.objectives.<o>.done: … }` (or \
+             `.failed`)",
+        ),
+        ["set", path, "=", ..] if ident(path) && path.contains('.') => {
+            Some("assert the value with `state: { <path>: … }`")
+        }
+        ["✓" | "✗" | "→" | "──", ..] => {
+            Some("assert what was presented with a step's `expect: { winner / presented }`")
+        }
+        _ => None,
+    }
+}
+
 /// Why `needle` can never match a presented line, as a usage error with a
 /// did-you-mean — `None` when every head names a speaker of the project
 /// (its cast or `narrator`; any id while speakers are shape-only), every
@@ -448,6 +482,13 @@ pub fn needle_problem(needle: &str, vocab: &NeedleVocab) -> Option<String> {
     };
     let keys = vocab.keys();
     for line in needle.split('\n') {
+        if let Some(instead) = record_shape(line.trim()) {
+            return Some(format!(
+                "needle {needle:?} is the shape of a line the engine's report prints, not of a \
+                 content line — needles judge only what is said, so this one can never match; \
+                 {instead}"
+            ));
+        }
         if let (Some(who), Some(speakers)) = (head_speaker(line), &vocab.speakers) {
             if !speakers.contains(who) {
                 let known: Vec<&str> = speakers.iter().map(String::as_str).collect();

@@ -7,6 +7,6 @@ file: ../scenes/shed.lute
 state:
   run.shedPressure: 1
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Module released. Allocation is satisfied."

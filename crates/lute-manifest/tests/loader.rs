@@ -35,9 +35,15 @@ fn rejects_duplicate_directive_id() {
     let _ = fs::remove_dir_all(&tmp);
     write_pkg(&tmp, true);
     let errs = load_plugin_dir(&tmp).unwrap_err();
-    assert!(errs.iter().any(
-        |e| matches!(e, LoadError::DuplicateId { kind, id } if kind == "directive" && id == "foo")
-    ));
+    // Located at the SECOND entry of the one file, naming the first.
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            LoadError::DuplicateId { kind, id, at: Some((3, 13)), first: Some(first), .. }
+                if kind == "directive" && id == "foo" && first == "directives/a.yaml:2"
+        )),
+        "{errs:?}"
+    );
     fs::remove_dir_all(&tmp).ok();
 }
 
@@ -126,7 +132,7 @@ fn write_asset_pkg(root: &std::path::Path, dup: bool) {
     fs::create_dir_all(root.join("assetkinds")).unwrap();
     fs::write(
         root.join("plugin.yaml"),
-        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetkinds: assetkinds/\n",
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetKinds: assetkinds/\n",
     )
     .unwrap();
     let content = if dup {
@@ -157,7 +163,7 @@ fn loads_asset_kinds_rejects_dup() {
     assert!(
         errs.iter().any(|e| matches!(
             e,
-            LoadError::DuplicateId { kind, id } if kind == "assetKind" && id == "CH"
+            LoadError::DuplicateId { kind, id, .. } if kind == "assetKind" && id == "CH"
         )),
         "dup asset kind must be DuplicateId{{kind:\"assetKind\"}}, got {errs:?}"
     );
@@ -194,7 +200,7 @@ fn write_stamp_attrs_pkg(root: &std::path::Path, dup: bool) {
     fs::create_dir_all(root.join("stampattrs")).unwrap();
     fs::write(
         root.join("plugin.yaml"),
-        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  stampattrs: stampattrs/\n",
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  stampAttrs: stampattrs/\n",
     )
     .unwrap();
     let second = if dup { "bonusId" } else { "bonusScore" };
@@ -235,7 +241,7 @@ fn loads_stamp_attrs_rejects_dup() {
     assert!(
         errs.iter().any(|e| matches!(
             e,
-            lute_manifest::loader::LoadError::DuplicateId { kind, id }
+            lute_manifest::loader::LoadError::DuplicateId { kind, id, .. }
                 if kind == "stampAttr" && id == "bonusId"
         )),
         "{errs:?}"
@@ -250,7 +256,7 @@ fn write_asset_pkg_with_segment_type(root: &std::path::Path, type_yaml: &str) {
     fs::create_dir_all(root.join("assetkinds")).unwrap();
     fs::write(
         root.join("plugin.yaml"),
-        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetkinds: assetkinds/\n",
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetKinds: assetkinds/\n",
     )
     .unwrap();
     let content = format!(
@@ -367,7 +373,7 @@ fn admits_enum_number_string_provider_ref_segments() {
     fs::create_dir_all(tmp.join("assetkinds")).unwrap();
     fs::write(
         tmp.join("plugin.yaml"),
-        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetkinds: assetkinds/\n",
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetKinds: assetkinds/\n",
     )
     .unwrap();
     fs::write(
@@ -417,7 +423,7 @@ fn domain_segment_plugin_never_reaches_installed_registry() {
     fs::create_dir_all(pkg.join("assetkinds")).unwrap();
     fs::write(
         pkg.join("plugin.yaml"),
-        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetkinds: assetkinds/\n",
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetKinds: assetkinds/\n",
     )
     .unwrap();
     fs::write(
@@ -600,7 +606,7 @@ fn loads_lints_rejects_dup_id() {
     assert!(
         errs.iter().any(|e| matches!(
             e,
-            LoadError::DuplicateId { kind, id }
+            LoadError::DuplicateId { kind, id, .. }
                 if kind == "lint" && id == "too-many-choices"
         )),
         "duplicate rule id must surface DuplicateId{{kind:\"lint\"}}, got {errs:?}"
@@ -778,7 +784,7 @@ fn write_reward_kinds_pkg(root: &std::path::Path, dup_across_files: bool) {
     fs::create_dir_all(root.join("rewardkinds")).unwrap();
     fs::write(
         root.join("plugin.yaml"),
-        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  rewardkinds: rewardkinds/\n",
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  rewardKinds: rewardkinds/\n",
     )
     .unwrap();
     fs::write(
@@ -840,7 +846,7 @@ fn loads_reward_kinds_rejects_dup() {
     assert!(
         errs.iter().any(|e| matches!(
             e,
-            lute_manifest::loader::LoadError::DuplicateId { kind, id }
+            lute_manifest::loader::LoadError::DuplicateId { kind, id, .. }
                 if kind == "rewardKind" && id == "SHARD"
         )),
         "per-package duplicate must surface as DuplicateId {{ kind: \"rewardKind\" }}, got {errs:?}"
@@ -858,7 +864,7 @@ fn reward_kind_target_takes_entity_and_required_but_not_both_sources() {
         fs::create_dir_all(tmp.join("rewardkinds")).unwrap();
         fs::write(
             tmp.join("plugin.yaml"),
-            "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  rewardkinds: rewardkinds/\n",
+            "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  rewardKinds: rewardkinds/\n",
         )
         .unwrap();
         fs::write(tmp.join("rewardkinds/a.yaml"), body).unwrap();
@@ -893,19 +899,41 @@ fn reward_kind_target_takes_entity_and_required_but_not_both_sources() {
     fs::remove_dir_all(&both).ok();
 }
 
+/// dsl 0.28.0 §6: the export keys are camelCase (`rewardKinds`, `assetKinds`,
+/// `stampAttrs`, like the files' own top-level keys); the old lowercase
+/// spelling is refused, naming the new one at its line in `plugin.yaml`, and
+/// any other near miss gets a did-you-mean that ignores case.
 #[test]
-fn unknown_export_message_lists_rewardkinds() {
-    // The `UnknownExport` message enumerates the closed set of export kinds;
-    // adding `rewardkinds` must land there so a fix-it hint names it as a
-    // legal key rather than pretending it does not exist.
-    let e = lute_manifest::loader::LoadError::UnknownExport {
-        export: "typo".into(),
-    };
-    let msg = format!("{e}");
-    assert!(
-        msg.contains("rewardkinds"),
-        "closed export list must include `rewardkinds`: {msg}"
-    );
+fn old_export_spelling_names_the_new_one() {
+    for (key, says) in [
+        (
+            "rewardkinds",
+            "plugin.yaml:5:3: export `rewardkinds` is now spelled `rewardKinds` — write \
+             `rewardKinds:` in `exports:`",
+        ),
+        ("assetkinds", "is now spelled `assetKinds`"),
+        ("stampattrs", "is now spelled `stampAttrs`"),
+        (
+            "Occasions",
+            "export `Occasions` is not an export kind — did you mean `occasions`?",
+        ),
+    ] {
+        let tmp =
+            std::env::temp_dir().join(format!("lute_pkg_oldexp_{key}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("x")).unwrap();
+        fs::write(
+            tmp.join("plugin.yaml"),
+            format!("id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  {key}: x/\n"),
+        )
+        .unwrap();
+        let errs = load_plugin_dir(&tmp).unwrap_err();
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert_eq!(errs[0].code(), "E-PLUGIN-UNKNOWN-EXPORT");
+        let msg = errs[0].to_string();
+        assert!(msg.contains(says), "{key}: {msg}");
+        fs::remove_dir_all(&tmp).ok();
+    }
 }
 
 /// dsl 0.21.0 §2: the `occasions` export loads like `rewardkinds` — the map
@@ -963,7 +991,7 @@ fn loads_occasions_export() {
     assert!(
         errs.iter().any(|e| matches!(
             e,
-            lute_manifest::loader::LoadError::DuplicateId { kind, id }
+            lute_manifest::loader::LoadError::DuplicateId { kind, id, .. }
                 if kind == "occasion" && id == "talk"
         )),
         "{errs:?}"
@@ -1061,6 +1089,13 @@ fn only_parse_msg(errs: &[LoadError]) -> &str {
     }
 }
 
+fn only_key_msg(errs: &[LoadError]) -> String {
+    match errs {
+        [e @ LoadError::Key { .. }] => e.to_string(),
+        other => panic!("expected one E-PLUGIN-KEY, got {other:?}"),
+    }
+}
+
 /// dsl 0.24.0 T1-3: `selct: all` used to load silently as `select: first`.
 #[test]
 fn unknown_occasion_key_is_rejected_with_did_you_mean() {
@@ -1070,10 +1105,12 @@ fn unknown_occasion_key_is_rejected_with_did_you_mean() {
         "occasions:\n  report: { selct: all, description: Pick one }\n",
     );
     let errs = load_plugin_dir(&tmp).unwrap_err();
-    assert_eq!(errs[0].code(), "E-PLUGIN-PARSE");
-    let msg = only_parse_msg(&errs);
-    assert!(msg.contains("unknown field `selct`"), "{msg}");
-    assert!(msg.contains("did you mean `select`?"), "{msg}");
+    assert_eq!(errs[0].code(), "E-PLUGIN-KEY");
+    let msg = only_key_msg(&errs);
+    assert!(
+        msg.contains("a.yaml:2:13: `occasions.report` has no key `selct` — did you mean `select`?"),
+        "{msg}"
+    );
     fs::remove_dir_all(&tmp).ok();
 }
 
@@ -1082,7 +1119,7 @@ fn unknown_key_in_other_export_bodies_is_rejected() {
     for (tag, export, body, key, suggestion) in [
         (
             "rk_typo",
-            "rewardkinds",
+            "rewardKinds",
             "rewardKinds:\n  gold: { credit: run.gold }\n",
             "credit",
             "credits",
@@ -1104,13 +1141,13 @@ fn unknown_key_in_other_export_bodies_is_rejected() {
     ] {
         let tmp = one_export_pkg(tag, export, body);
         let errs = load_plugin_dir(&tmp).unwrap_err();
-        let msg = only_parse_msg(&errs);
+        let msg = only_key_msg(&errs);
         assert!(
-            msg.contains(&format!("unknown field `{key}`")),
+            msg.contains(&format!("has no key `{key}`")),
             "{export}: {msg}"
         );
         assert!(
-            msg.contains(&format!("did you mean `{suggestion}`?")),
+            msg.contains(&format!("— did you mean `{suggestion}`?")),
             "{export}: {msg}"
         );
         fs::remove_dir_all(&tmp).ok();
@@ -1127,11 +1164,8 @@ fn null_valued_key_hints_to_quote_the_description() {
         "occasions:\n  report: { select: all, description: Pick one, the player picks one }\n",
     );
     let errs = load_plugin_dir(&tmp).unwrap_err();
-    let msg = only_parse_msg(&errs);
-    assert!(
-        msg.contains("unknown field `the player picks one`"),
-        "{msg}"
-    );
+    let msg = only_key_msg(&errs);
+    assert!(msg.contains("has no key `the player picks one`"), "{msg}");
     assert!(msg.contains("`the player picks one` has no value"), "{msg}");
     assert!(
         msg.contains(r#"quote the description: `description: "Pick one, the player picks one"`"#),
@@ -1202,7 +1236,7 @@ fn failed_export_plugin_is_reported_as_failed_not_missing() {
     assert_eq!(aerrs[0].code(), "E-PLUGIN-MISSING-ACTIVE");
     let msg = aerrs[0].to_string();
     assert!(
-        msg.contains("failed to load (see E-PLUGIN-PARSE above)"),
+        msg.contains("failed to load (see E-PLUGIN-KEY above)"),
         "{msg}"
     );
     assert!(!msg.contains("not installed"), "{msg}");
@@ -1221,8 +1255,70 @@ fn failed_export_plugin_is_reported_as_failed_not_missing() {
     fs::remove_dir_all(&root).ok();
 }
 
+/// A cast id two files of one package declare is reported at the later
+/// declaration, naming the first by its package-relative `file:line`; the
+/// package still installs with the first declaration and the rest of the
+/// later file, so assembly sees it instead of a plugin that failed to load.
+#[test]
+fn duplicate_cast_id_is_located_and_the_package_still_loads() {
+    use lute_manifest::assemble::assemble_snapshot;
+    use lute_manifest::resolve::ActivePlugin;
+    let root = std::env::temp_dir().join(format!("lute_plugins_dupcast_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).unwrap();
+    let pkg = one_export_pkg(
+        "dup_cast",
+        "cast",
+        "cast:\n  maud: { name: Maud }\n  orla: { name: Captain Orla }\n",
+    );
+    fs::write(
+        pkg.join("cast/b.yaml"),
+        "cast:\n  wren: { name: Wren }\n  orla: { name: Orla Again }\n",
+    )
+    .unwrap();
+    fs::rename(&pkg, root.join("t.plug")).unwrap();
+    let (reg, errs) = lute_manifest::loader::load_plugins_dir(&root);
+    let [err] = errs.as_slice() else {
+        panic!("expected one duplicate, got {errs:?}");
+    };
+    let shown = err.to_string();
+    assert_eq!(err.code(), "E-PLUGIN-DUP-ID");
+    assert!(
+        shown.ends_with(
+            "t.plug/cast/b.yaml:3:3: cast `orla` is already declared at cast/a.yaml:3; \
+             this declaration is ignored — rename or remove one"
+        ),
+        "{shown}"
+    );
+    let loaded = &reg
+        .get("t.plug")
+        .expect("installed despite the duplicate")
+        .loaded;
+    let names: Vec<(&str, Option<&str>)> = loaded
+        .cast
+        .iter()
+        .map(|c| (c.id.as_str(), c.name.as_deref()))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("maud", Some("Maud")),
+            ("orla", Some("Captain Orla")),
+            ("wren", Some("Wren"))
+        ]
+    );
+    let active = [ActivePlugin {
+        id: "t.plug".into(),
+        options: Default::default(),
+    }];
+    let (snap, aerrs) = assemble_snapshot(&active, &reg);
+    assert!(aerrs.is_empty(), "{aerrs:?}");
+    assert!(snap.cast.contains_key("wren"));
+    fs::remove_dir_all(&root).ok();
+}
+
 /// dsl 0.24.0 §4: a plugin cast entry carries `present:` and `emotions:`
-/// through to the loaded member; any other key is still `E-PLUGIN-PARSE`.
+/// through to the loaded member; any other key is `E-PLUGIN-KEY`.
 #[test]
 fn cast_export_carries_present_and_emotions_and_rejects_unknown_keys() {
     let tmp = one_export_pkg(
@@ -1252,8 +1348,279 @@ fn cast_export_carries_present_and_emotions_and_rejects_unknown_keys() {
         "cast:\n  isolde: { name: Isolde, presnt: \"holds(inParty(isolde))\" }\n",
     );
     let errs = load_plugin_dir(&tmp).unwrap_err();
-    let msg = only_parse_msg(&errs);
-    assert!(msg.contains("unknown field `presnt`"), "{msg}");
-    assert!(msg.contains("did you mean `present`?"), "{msg}");
+    let msg = only_key_msg(&errs);
+    assert!(
+        msg.contains("has no key `presnt` — did you mean `present`?"),
+        "{msg}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// A package whose `plugin.yaml` is `manifest` and exports nothing but an
+/// empty `occasions/`.
+fn manifest_pkg(tag: &str, manifest: &str) -> std::path::PathBuf {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_man_{tag}_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(tmp.join("occasions")).unwrap();
+    fs::write(tmp.join("plugin.yaml"), manifest).unwrap();
+    fs::write(tmp.join("occasions/a.yaml"), "occasions:\n  talk: {}\n").unwrap();
+    tmp
+}
+
+/// dsl 0.28.0 §1 (T1-1): `plugin.yaml`'s unknown keys used to be dropped
+/// silently (`dependencies:` for `depends:`, `kind: plugin`). Each is an
+/// `E-PLUGIN-KEY` at its line, and the failure still carries the plugin id
+/// (assembly says it failed to load, not that it is not installed).
+#[test]
+fn plugin_manifest_rejects_unknown_keys_and_a_non_capability_kind() {
+    for (tag, manifest, says) in [
+        (
+            "deps",
+            "id: t.plug\nversion: 0.1.0\nkind: capability\n\
+             dependencies: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports: { occasions: occasions/ }\n",
+            "plugin.yaml:4:1: `plugin.yaml` has no key `dependencies` — did you mean `depends`?",
+        ),
+        (
+            "kind",
+            "id: t.plug\nversion: 0.1.0\nkind: plugin\nexports: { occasions: occasions/ }\n",
+            "plugin.yaml:3:1: `kind: plugin` is not a plugin kind — a plugin package declares \
+             `kind: capability`",
+        ),
+        (
+            "dep_entry",
+            "id: t.plug\nversion: 0.1.0\nkind: capability\n\
+             depends:\n  - { id: lute.core, rnage: \"^0.0.1\" }\nexports: { occasions: occasions/ }\n",
+            "a `depends:` entry has no key `rnage` — did you mean `range`?",
+        ),
+    ] {
+        let tmp = manifest_pkg(tag, manifest);
+        let root = tmp.parent().unwrap().join(format!("lute_pkgs_man_{tag}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::rename(&tmp, root.join("t.plug")).unwrap();
+        let (reg, errs) = lute_manifest::loader::load_plugins_dir(&root);
+        assert_eq!(errs.len(), 1, "{tag}: {errs:?}");
+        assert_eq!(errs[0].code(), "E-PLUGIN-KEY", "{tag}");
+        let msg = errs[0].to_string();
+        assert!(msg.contains(says), "{tag}: {msg}");
+        assert!(reg.failed.contains_key("t.plug"), "{tag}: the id is known");
+        fs::remove_dir_all(&root).ok();
+    }
+    let tmp = manifest_pkg("noid", "version: 0.1.0\nkind: capability\nexports: {}\n");
+    let errs = load_plugin_dir(&tmp).unwrap_err();
+    assert_eq!(errs[0].code(), "E-PLUGIN-MANIFEST");
+    assert!(
+        errs[0]
+            .to_string()
+            .contains("`plugin.yaml` names no `id:` — add `id: <plugin id>`"),
+        "{errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// dsl 0.28.0 T3-20: an occasion `target:` typo named serde's "did not match
+/// any variant of untagged enum OccasionTarget". It names the bad key, the
+/// key meant, and the legal shape, at its line.
+#[test]
+fn occasion_target_typos_name_the_key_meant() {
+    for (tag, target, says) in [
+        (
+            "kind",
+            "{ prefix: npc, kind: crew }",
+            "`target:` has no key `kind` — did you mean `entity`?",
+        ),
+        (
+            "domain",
+            "{ prefix: isle, domain: island }",
+            "has no key `domain` — did you mean `entity`?",
+        ),
+        (
+            "member",
+            "{ prefix: npc, entity: crew, member: [mira] }",
+            "has no key `member` — did you mean `members`?",
+        ),
+        (
+            "noentity",
+            "{ prefix: npc }",
+            "`target:` names no `entity:`",
+        ),
+        ("string", "npc", "`target: npc` is not a target"),
+    ] {
+        let tmp = one_export_pkg(
+            &format!("oct_{tag}"),
+            "occasions",
+            &format!(
+                "occasions:\n  hubVisit: {{}}\n  talk: {{ select: first, target: {target} }}\n"
+            ),
+        );
+        let errs = load_plugin_dir(&tmp).unwrap_err();
+        let msg = only_parse_msg(&errs).to_string();
+        let shown = errs[0].to_string();
+        assert!(msg.contains(says), "{tag}: {msg}");
+        assert!(
+            msg.contains("`{ prefix: <id prefix>, entity: <entity kind>"),
+            "{tag}: {msg}"
+        );
+        assert!(
+            !shown.contains("untagged") && !shown.contains("OccasionTarget"),
+            "{shown}"
+        );
+        assert!(shown.contains("a.yaml:3:"), "{tag}: located: {shown}");
+        fs::remove_dir_all(&tmp).ok();
+    }
+}
+
+/// dsl 0.28.0 T3-20 (LO-26): a directive without attributes may leave out
+/// `attrs:` — it used to fail the whole plugin with `missing field attrs`.
+#[test]
+fn a_directive_without_attrs_loads() {
+    let tmp = one_export_pkg("noattrs", "directives", "directives:\n  - name: tip\n");
+    let loaded = load_plugin_dir(&tmp).expect("a directive may omit `attrs:`");
+    assert!(loaded.directives[0].attrs.is_empty());
+    assert!(
+        loaded
+            .site("directive", "tip")
+            .is_some_and(|s| s.ends_with("a.yaml:2:11")),
+        "{:?}",
+        loaded.sites
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// dsl 0.28.0 T3-20 (audit#22): a top-level key of the wrong shape says what
+/// the key holds, in YAML's words; a YAML syntax slip is the plain sentence
+/// at its line; neither shows serde's or Rust's own wording.
+#[test]
+fn export_shape_and_syntax_errors_are_plain() {
+    for (tag, export, body, says) in [
+        (
+            "oclist",
+            "occasions",
+            "occasions:\n  - talk\n",
+            "`occasions` is a list, where a mapping is expected — `occasions:` maps each occasion \
+             name to its declaration",
+        ),
+        (
+            "evmap",
+            "events",
+            "events:\n  combatEnd: {}\n",
+            "`events` is a mapping, where a list is expected — `events:` is a list",
+        ),
+        (
+            "enumtypo",
+            "enums",
+            "enums:\n  mood: { membres: [calm] }\n",
+            "has no key `membres` — did you mean `members`?",
+        ),
+        (
+            "select",
+            "occasions",
+            "occasions:\n  talk: { select: firts }\n",
+            "is `firts`, which is not one of first, all, sequence — did you mean `first`?",
+        ),
+        ("syntax", "events", "events: [ { name: a }\n", "a.yaml:"),
+    ] {
+        let tmp = one_export_pkg(&format!("shape_{tag}"), export, body);
+        let errs = load_plugin_dir(&tmp).unwrap_err();
+        assert_eq!(errs.len(), 1, "{tag}: {errs:?}");
+        let msg = errs[0].to_string();
+        assert!(msg.contains(says), "{tag}: {msg}");
+        for leak in [
+            "invalid type",
+            "untagged",
+            "struct ",
+            "at line",
+            "expected one of",
+        ] {
+            assert!(!msg.contains(leak), "{tag}: `{leak}` leaked: {msg}");
+        }
+        fs::remove_dir_all(&tmp).ok();
+    }
+}
+
+/// dsl 0.28.0: an occasion's payload field types parse explicitly. An
+/// incomplete (`list`, `enum`) or misspelled type used to fail with serde's
+/// "unit variant, where newtype variant is expected"; it names the field,
+/// what is wrong, and the forms a payload field takes, at its line. The
+/// forms a raise can give load as their `Type`.
+#[test]
+fn occasion_payload_types_are_named_in_plain_words() {
+    for (tag, ty, says) in [
+        (
+            "list",
+            "list",
+            "payload field `copies` cannot be a `list`; a payload field's type is",
+        ),
+        (
+            "listof",
+            "{ list: number }",
+            "payload field `copies` cannot be a `list`",
+        ),
+        (
+            "typo",
+            "nubmer",
+            "payload field `copies` has the type `nubmer`, which is not a payload type — did you \
+             mean `number`?",
+        ),
+        (
+            "bareenum",
+            "enum",
+            "payload field `copies` is typed `enum` without its argument — write `copies: { enum: \
+             [<member>, …] }`",
+        ),
+        (
+            "nokind",
+            "{ domain: 3 }",
+            "`{ domain: 3 }` names no kind — write `{ domain: <kind> }`",
+        ),
+        (
+            "formtypo",
+            "{ entiy: hero }",
+            "has the type `entiy`, which is not a payload type — did you mean `entity`?",
+        ),
+        ("empty", "", "payload field `copies` names no type"),
+    ] {
+        let tmp = one_export_pkg(
+            &format!("payload_{tag}"),
+            "occasions",
+            &format!(
+                "occasions:\n  hubVisit: {{}}\n  summon:\n    select: first\n    payload:\n      \
+                 seen: bool\n      copies: {ty}\n"
+            ),
+        );
+        let errs = load_plugin_dir(&tmp).unwrap_err();
+        let msg = only_parse_msg(&errs).to_string();
+        let shown = errs[0].to_string();
+        assert!(msg.contains(says), "{tag}: {msg}");
+        assert!(
+            msg.contains("`{ enum: [<member>, …] }`") || tag == "bareenum" || tag == "nokind",
+            "{tag}: names the forms: {msg}"
+        );
+        for leak in ["variant", "Type", "invalid type"] {
+            assert!(!shown.contains(leak), "{tag}: `{leak}` leaked: {shown}");
+        }
+        // At the field's own line, not the occasion's.
+        assert!(shown.contains("a.yaml:7:"), "{tag}: located: {shown}");
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    let tmp = one_export_pkg(
+        "payload_ok",
+        "occasions",
+        "occasions:\n  summon: { payload: { seen: bool, copies: number, note: string, \
+         mood: { enum: [calm, storm] }, to: { domain: route }, who: { entity: hero } } }\n",
+    );
+    let loaded = load_plugin_dir(&tmp).expect("every payload form loads");
+    let payload = &loaded.occasions[0].payload;
+    use lute_manifest::types::Type;
+    assert_eq!(payload["seen"], Type::Bool);
+    assert_eq!(payload["copies"], Type::Number);
+    assert_eq!(payload["note"], Type::Str);
+    assert_eq!(
+        payload["mood"],
+        Type::Enum(vec!["calm".into(), "storm".into()])
+    );
+    assert_eq!(payload["to"], Type::Domain("route".into()));
+    assert_eq!(payload["who"], Type::Entity("hero".into()));
     fs::remove_dir_all(&tmp).ok();
 }

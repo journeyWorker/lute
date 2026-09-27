@@ -5,6 +5,6 @@ file: ../scenes/hydroponics.lute
 choose:
   thePlainAnswer: saidNothing
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "That's an answer too."

@@ -5,6 +5,7 @@ use serde_json::{json, Value as Json};
 
 use super::Machine;
 use crate::exec::driver::Driver;
+use crate::exec::store::LabelForms;
 use crate::Value;
 
 impl<D: Driver> Machine<D> {
@@ -13,8 +14,8 @@ impl<D: Driver> Machine<D> {
     /// (`expr.raw`, lute 0.21.1). A marker whose value is unknown (unset
     /// path, undecided value or ref) or a reserved token keeps its verbatim
     /// text (state-lifecycle.md). A placeholder's `format` (dsl 0.24.0 §4)
-    /// applies to the value: `ordinal` renders a number as an English
-    /// ordinal ([`formatted`]).
+    /// applies to the value: a number hint to a number ([`formatted`]), a
+    /// text hint to the text it renders as ([`texted`]).
     pub(super) fn interpolate(&mut self, text: &str, placeholders: Option<&Vec<Json>>) -> String {
         let Some(phs) = placeholders else {
             return text.to_string();
@@ -37,23 +38,31 @@ impl<D: Driver> Machine<D> {
                     let path = ph.get("path").and_then(Json::as_str).unwrap_or("");
                     match self.store.eval(path).0 {
                         Value::Unknown => marker.to_string(),
-                        v => formatted(ph, &v).unwrap_or_else(|| self.path_text(path, &v)),
+                        v => formatted(ph, &v).unwrap_or_else(|| {
+                            let forms = self.path_forms(path, &v);
+                            texted(ph, self.path_text(path, &v), forms)
+                        }),
                     }
                 }
-                // Prerelease N8 / dsl 0.27.0 §7: the raised member of a kind
-                // beat, by its cast display name when it is a cast id, else
-                // by its kind's label, else the id.
+                // The raised member of a kind beat, by its kind's label when
+                // the kind declares one (a speaker head keeps the cast name),
+                // else by its cast display name when it is a cast id, else
+                // the id.
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("occasionTarget") => {
                     match self.store.values.get(lute_check::beats::OCCASION_TARGET) {
-                        Some(Value::Str(m)) => self
-                            .display_names
-                            .get(m)
-                            .or_else(|| {
-                                let kind = ph.get("entityKind").and_then(Json::as_str)?;
-                                self.store.kind_labels.get(kind)?.get(m)
-                            })
-                            .cloned()
-                            .unwrap_or_else(|| m.clone()),
+                        Some(Value::Str(m)) => {
+                            let kind = ph.get("entityKind").and_then(Json::as_str);
+                            match kind.and_then(|k| self.store.kind_labels.get(k)?.get(m)) {
+                                Some(label) => texted(
+                                    ph,
+                                    label.clone(),
+                                    kind.and_then(|k| self.store.kind_label_forms.get(k)?.get(m)),
+                                ),
+                                None => {
+                                    texted(ph, self.display_names.get(m).unwrap_or(m).clone(), None)
+                                }
+                            }
+                        }
                         Some(Value::Unknown) | None => marker.to_string(),
                         Some(v) => value_to_string(v),
                     }
@@ -62,7 +71,8 @@ impl<D: Driver> Machine<D> {
                     let raw = ph.pointer("/expr/raw").and_then(Json::as_str).unwrap_or("");
                     match self.eval_raw(raw) {
                         Value::Unknown => marker.to_string(),
-                        v => formatted(ph, &v).unwrap_or_else(|| value_to_string(&v)),
+                        v => formatted(ph, &v)
+                            .unwrap_or_else(|| texted(ph, value_to_string(&v), None)),
                     }
                 }
                 _ => marker.to_string(),
@@ -72,6 +82,21 @@ impl<D: Driver> Machine<D> {
         }
         out.push_str(rest);
         out
+    }
+
+    /// The first `{{occasion.payload.<field>}}` marker among `placeholders`
+    /// whose field this raise left unset (dsl 0.28.0, T1-13).
+    pub(super) fn unset_payload(&self, placeholders: Option<&Vec<Json>>) -> Option<String> {
+        let prefix = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
+        placeholders?
+            .iter()
+            .filter(|ph| ph.get("kind").and_then(Json::as_str) == Some("path"))
+            .filter_map(|ph| ph.get("path").and_then(Json::as_str))
+            .find(|path| {
+                path.starts_with(&prefix)
+                    && matches!(self.store.read(path), crate::eval::Read::Unset)
+            })
+            .map(str::to_string)
     }
 
     /// A `{{path}}` value as text: an enum member with a declared label
@@ -88,6 +113,20 @@ impl<D: Driver> Machine<D> {
             }
         }
         value_to_string(v)
+    }
+
+    /// The declared label forms of a `{{path}}` value's member, when the
+    /// path is typed against an entity kind that declares them.
+    fn path_forms(&self, path: &str, v: &Value) -> Option<&LabelForms> {
+        let Value::Str(s) = v else { return None };
+        self.store
+            .label_forms
+            .get(path)
+            .or_else(|| {
+                path.strip_prefix("prev.")
+                    .and_then(|p| self.store.label_forms.get(p))
+            })?
+            .get(s)
     }
 }
 
@@ -127,6 +166,23 @@ fn formatted(ph: &Json, v: &Value) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// A placeholder's text hint (`capitalize`, `start`, `indefinite`) applied
+/// to the text a value renders as ([`lute_syntax::ast::format_text`]), with
+/// the member's declared label `forms`; the text unchanged without one.
+fn texted(ph: &Json, text: String, forms: Option<&LabelForms>) -> String {
+    ph.get("format")
+        .and_then(Json::as_str)
+        .and_then(|format| {
+            lute_syntax::ast::format_text(
+                format,
+                &text,
+                forms.and_then(|f| f.start.as_deref()),
+                forms.and_then(|f| f.indefinite.as_deref()),
+            )
+        })
+        .unwrap_or(text)
 }
 
 pub fn value_to_string(v: &Value) -> String {

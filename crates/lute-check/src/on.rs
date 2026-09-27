@@ -31,6 +31,11 @@ pub const E_UNKNOWN_EVENT: &str = "E-UNKNOWN-EVENT";
 /// [`BUILTIN_LIFECYCLE_EVENTS`] name nor a `snapshot.events` entry (a
 /// capability-declared world event, Plan B) is `E-UNKNOWN-EVENT`.
 pub fn check_on_event(on: &On, snapshot: &CapabilitySnapshot) -> Vec<Diagnostic> {
+    // `<on occasion=…>` / `<on on=…>` is the unknown attribute's to report,
+    // naming `event=`; "has no `event`" would only repeat it.
+    if on.event.is_empty() && crate::logic_attrs::names_occasion_misspelt(&on.attrs, "event") {
+        return Vec::new();
+    }
     if on.event.is_empty() {
         return vec![diag(
             E_ON_NO_EVENT,
@@ -44,12 +49,20 @@ pub fn check_on_event(on: &On, snapshot: &CapabilitySnapshot) -> Vec<Diagnostic>
     {
         return Vec::new();
     }
+    let known: Vec<&str> = BUILTIN_LIFECYCLE_EVENTS
+        .iter()
+        .copied()
+        .chain(snapshot.events.keys().map(String::as_str))
+        .collect();
+    let hint = lute_manifest::suggest::did_you_mean(&on.event, known.iter().copied());
+    let listed: Vec<String> = known.iter().map(|e| format!("`{e}`")).collect();
     vec![diag(
         E_UNKNOWN_EVENT,
         format!(
             "`<on event=\"{}\">` names no built-in lifecycle event or capability-declared \
-             world event (dsl 0.2.0 §4.5)",
-            on.event
+             world event{hint}; the events are {}",
+            on.event,
+            listed.join(", ")
         ),
         on,
     )]
@@ -97,10 +110,7 @@ fn check_on_target(
     };
     let event = on.event.as_str();
     let message = if !is_entry_target(target) {
-        format!(
-            "`<on>` `target=\"{target}\"` must be a dotted id `Ident (\".\" Segment)*`, e.g. \
-             `npc.maud` (dsl 0.24.0 §2)"
-        )
+        crate::beats::malformed_target("`<on>`", target, false)
     } else if event.is_empty() {
         // `E-ON-NO-EVENT` is the whole story.
         return;
@@ -151,7 +161,7 @@ fn for_each_on<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a On)) {
                 for_each_on(&o.body, f);
             }
             Node::Branch(b) => b.choices.iter().for_each(|c| for_each_on(&c.body, f)),
-            Node::Hub(h) => h.choices.iter().for_each(|c| for_each_on(&c.body, f)),
+            Node::Hub(h) => h.bodies().for_each(|b| for_each_on(b, f)),
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {

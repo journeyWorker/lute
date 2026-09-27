@@ -49,7 +49,7 @@ for reference.
 
 `lute.project.yaml` marks the folder as a project. Its `defaults:` block gives every document the
 same `uses:` line, so no scene has to repeat it ([Project defaults](/language/imports/#project-defaults)),
-and its `sequence:` block chains the chapters in order:
+and its `chapters:` block chains the chapters in order:
 
 ```yaml
 defaultProfile: core
@@ -58,9 +58,9 @@ profiles:
     plugins: {}
 defaults:
   uses: [world.schema.yaml]
-sequence:
-  occasion: chapter
-  scenes: [prologue, counter, accusation]
+chapters:
+  - on: chapter
+    scenes: [prologue, counter, accusation]
 ```
 
 `world.schema.yaml` declares the one piece of state the story remembers: whom the player accused.
@@ -70,10 +70,11 @@ state:
   run.accused: { type: { enum: [nobody, ruben, tilly] }, default: nobody }
 ```
 
-## The chapters: `sequence:`
+## The chapters: `chapters:`
 
-`sequence:` lists scenes by their `id:`, in play order, and names the occasion they answer. The
-scenes themselves only say who they are:
+`chapters:` is a list of chains, one per occasion, so a project can chain several occasions. A
+chain names the occasion its scenes answer with `on:` and lists the scenes by their `id:`, in play
+order. The scenes themselves only say who they are:
 
 ```lute check="docs/examples/connect-scenes/scenes/prologue.lute"
 ---
@@ -101,7 +102,7 @@ title: The Counter
 @wren: Somebody here knows what happened.
 ```
 
-For every listed scene, the sequence writes three frontmatter keys you would otherwise write by
+For every listed scene, the chain writes three frontmatter keys you would otherwise write by
 hand. `counter` behaves exactly as if its frontmatter said:
 
 ```yaml
@@ -113,29 +114,35 @@ priority: 20
 - `on: chapter` makes the scene a candidate whenever `chapter` is raised.
 - `after: 'visited("prologue")'` keeps it waiting until the scene listed before it has played.
   `visited("…")` names a scene by its `id:`. The first scene has no `after:`, so it is eligible
-  from the start.
+  from the start. `visited()` is save-wide, not per run: a scene stays visited after a new run
+  starts, so from the second run on every `after:` in the chain already holds, and only
+  `priority:` keeps the chapters in order.
 - A scene plays at most once per run, so after the prologue has played it drops out and the counter
-  is the one left.
-- `priority:` states the running order outright: higher plays first. The sequence counts down in
+  is the one left. The chain writes no `once:`. For a story told across runs, one chapter per run,
+  give each listed scene `once: user`, so a chapter played in an earlier run stays spent.
+- `priority:` states the running order outright: higher plays first. The chain counts down in
   steps of ten from the first scene (30, 20, 10 for three scenes), so every chapter outranks the
   scenes that come after the chain.
 
-A key the scene writes itself wins over the sequence: give one scene its own `priority:` or a
-different `after:` and only that key changes. A listed id that no scene declares is `E-SEQUENCE`
+A key the scene writes itself wins over the chain: give one scene its own `priority:` or a
+different `after:` and only that key changes. A listed id that no scene declares is `E-CHAPTERS`
 in `lute check-project`, with a did-you-mean, and so is a listed scene whose own `on:` answers a
-different occasion, or an `occasion:` no plugin declares. Scenes you do not list, like the endings
-below, still write their keys by hand.
+different occasion, a scene listed twice, two chains on one occasion, or an `on:` no plugin
+declares. Scenes you do not list, like the endings below, still write their keys by hand.
 
-A chapter that may not play, because it has a `when:` of its own, stalls the chain: the next listed
-scene waits on it through the `after:` the sequence wrote, and `lute check-project` warns
-(`W-SEQUENCE-STALL`). Either leave the optional chapter out of `scenes:` and give it its own `on:`,
-`after:` and `priority:`, or give the scene after it its own `after:` naming the chapter before
-the optional one. `lute play` names a derived `after:` in its reasons: `after:
-visited("pryceWakes") is not satisfied (written by `sequence:` in lute.project.yaml)`.
+A chapter that may not play, because its own `when:` reads state the story may never set, stalls
+the chain: the next listed scene waits on it through its `after:`, and `lute check-project` warns
+(`W-CHAPTER-STALL`). A `when:` that reads only the clock merely delays the chain, so it draws no
+warning. Either give the scene after the optional chapter its own `after:` naming the chapter
+before it, or, for the first chapter, take it out of the chain and give it its own `on:`. `lute
+play` names a derived `after:` in its reasons: `after: visited("pryceWakes") is not satisfied
+(written by `chapters:` in lute.project.yaml)`.
 
 On an occasion declared `select: sequence`, which presents every eligible beat in one raise, the
-sequence writes only `on:` and `priority:`: the listed scenes play one after another in that raise,
-in list order. On any other occasion one listed scene plays per raise.
+chain writes only `on:` and `priority:`: the listed scenes play one after another in that raise,
+in list order. On any other occasion one listed scene plays per raise. On an occasion raised *for*
+a target, every listed scene must declare its own `target:`; one without would play for every
+target, so it is `E-CHAPTERS`.
 
 The third scene gives the player a choice and remembers it:
 
@@ -257,19 +264,19 @@ expect:
 $ lute play . --script plays/caught.play.yaml
 ── step 1 · chapter ──────────────
   ✓ prologue [scene, priority 30]
-  ✗ counter [scene, priority 20] — after: prerequisite not satisfied
-  ✗ accusation [scene, priority 10] — after: prerequisite not satisfied
-  ✗ ending.caught [scene, priority 0] — after: prerequisite not satisfied
-  ✗ ending.wrong [scene, priority 0] — after: prerequisite not satisfied
+  ✗ counter [scene, priority 20] — after: visited("prologue") is not satisfied (written by `chapters:` in lute.project.yaml)
+  ✗ accusation [scene, priority 10] — after: visited("counter") is not satisfied (written by `chapters:` in lute.project.yaml)
+  ✗ ending.caught [scene, priority 0] — after: visited("accusation") is not satisfied
+  ✗ ending.wrong [scene, priority 0] — after: visited("accusation") is not satisfied
   → prologue
 @narrator: Five minutes to close, and the bakery smells of burnt sugar.
 @wren: Mr. Pryce? We're closing.
 ── step 2 · chapter ──────────────
   ✓ counter [scene, priority 20]
   ✗ prologue [scene, priority 30] — once: run — already presented this run
-  ✗ accusation [scene, priority 10] — after: prerequisite not satisfied
-  ✗ ending.caught [scene, priority 0] — after: prerequisite not satisfied
-  ✗ ending.wrong [scene, priority 0] — after: prerequisite not satisfied
+  ✗ accusation [scene, priority 10] — after: visited("counter") is not satisfied (written by `chapters:` in lute.project.yaml)
+  ✗ ending.caught [scene, priority 0] — after: visited("accusation") is not satisfied
+  ✗ ending.wrong [scene, priority 0] — after: visited("accusation") is not satisfied
   → counter
 @narrator: Mr. Pryce is face down on the counter. The till is open.
 @wren: Somebody here knows what happened.
@@ -277,8 +284,8 @@ $ lute play . --script plays/caught.play.yaml
   ✓ accusation [scene, priority 10]
   ✗ prologue [scene, priority 30] — once: run — already presented this run
   ✗ counter [scene, priority 20] — once: run — already presented this run
-  ✗ ending.caught [scene, priority 0] — after: prerequisite not satisfied
-  ✗ ending.wrong [scene, priority 0] — after: prerequisite not satisfied
+  ✗ ending.caught [scene, priority 0] — after: visited("accusation") is not satisfied
+  ✗ ending.wrong [scene, priority 0] — after: visited("accusation") is not satisfied
   → accusation
 @wren: One of you did this.
 ▷ choice accuse: [ruben] tilly        ← chosen: ruben
@@ -319,8 +326,8 @@ needed, because the accusation waits for `after: 'visited("counter")'`:
 
 ```
 $ lute test . --project .
-FAIL  ./tests/accusation.test.yaml  (./tests/../scenes/accusation.lute)
-      eligible accusation: not eligible under these mocks (its `after: visited("counter")` is false — mock `visited: [counter]`) — the engine would never present it, so the walk proves nothing about play; fix the mocks, or assert `expect: { eligible: { accusation: false } }` (the body is then not walked)
+FAIL  ./tests/accusation.test.yaml  (./scenes/accusation.lute)
+      eligible accusation: not eligible under these mocks (its `after: visited("counter")` (written by `chapters:` in lute.project.yaml) is false — add `visited: [counter]` to the mocks) — the engine would never present it, so the walk proves nothing about play; fix the mocks, or assert `expect: { eligible: { accusation: false } }` (the body is then not walked)
 PASS  ./plays/caught.play.yaml  (play of .)
 
 1 passed, 1 failed
@@ -330,7 +337,7 @@ With `visited: [counter]` in place:
 
 ```
 $ lute test . --project .
-PASS  ./tests/accusation.test.yaml  (./tests/../scenes/accusation.lute)
+PASS  ./tests/accusation.test.yaml  (./scenes/accusation.lute)
 PASS  ./plays/caught.play.yaml  (play of .)
 
 2 passed, 0 failed
@@ -341,11 +348,13 @@ The test file format is in the [CLI reference](/tooling/cli/#test), and every pl
 
 ## Adding a scene
 
-`lute new scene <name> --on chapter` writes a new scene with an `id:` taken from the name. Because
-`chapter` is the occasion of your `sequence:`, it leaves `on:`, `after:` and `priority:` out and
-tells you to add the id to `sequence.scenes`: put it where it belongs in the list, and the sequence
-gives it all three. Then add a step to your play script. (On an occasion no sequence answers, the
-command writes `on:` and a `priority:` below every beat already there.)
+`lute new scene <name> --occasion chapter` writes a new scene named after its `id:`, which it takes
+from the name as you type it (`lute new scene pryceWakes --occasion chapter` writes
+`scenes/pryceWakes.lute` with `id: pryceWakes`). Because `chapter` is the occasion of a chain in
+your `chapters:`, it leaves `on:`, `after:` and `priority:` out and tells you to add the id to that
+chain: put it where it belongs in the list, and the chain gives it all three. Then add a step to
+your play script. (On an occasion no chain answers, the command writes `on:` and a `priority:`
+below every beat already there.)
 
 A conversation the player chooses, rather than the next chapter, is a second occasion raised
 *for* someone. The scene names the person with `target:`:

@@ -200,6 +200,11 @@ fn resolve_domain(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<DomainInfo> {
         // to the dotted-path attempt below via `select_path`.
     }
     let path = crate::cel_paths::select_path(expr)?;
+    // T3-1: a path whose own declaration was reported has no domain to
+    // judge a literal against, nor to decide a guard by.
+    if ctx.schema.is_faulty(&path) {
+        return None;
+    }
     Some(infer_domain(Some(&path), ctx.schema))
 }
 
@@ -214,18 +219,33 @@ fn decide_domain_equality(
     rhs: &Expr,
     ctx: &DecideCtx<'_>,
 ) -> Option<Decided> {
-    let (dom, other) = resolve_domain(lhs, ctx)
-        .map(|d| (d, rhs))
-        .or_else(|| resolve_domain(rhs, ctx).map(|d| (d, lhs)))?;
+    let (dom, subject, other) = resolve_domain(lhs, ctx)
+        .map(|d| (d, lhs, rhs))
+        .or_else(|| resolve_domain(rhs, ctx).map(|d| (d, rhs, lhs)))?;
     if !matches!(dom.domain, Domain::Finite(_) | Domain::IntRange { .. }) {
         return None;
     }
     let value = const_side(other, ctx)?;
-    if domain_contains(&dom, &value) {
-        None // a literal INSIDE the domain: the actual value is still unknown
-    } else {
-        Some(Decided::Bool(op_name == op::NOT_EQUALS))
+    if !domain_contains(&dom, &value) {
+        return Some(Decided::Bool(op_name == op::NOT_EQUALS));
     }
+    // dsl 0.28.0 (T3-40): a member a finite clock never reaches is as
+    // absent as a foreign one (`!=` holds only on a never-unset subject).
+    let unreached = clock_unreached(subject, &value, ctx);
+    match op_name {
+        op::EQUALS if unreached => Some(Decided::Bool(false)),
+        op::NOT_EQUALS if unreached && !dom.maybe_unset => Some(Decided::Bool(true)),
+        _ => None, // a literal INSIDE the domain: the actual value is still unknown
+    }
+}
+
+/// dsl 0.28.0 (T3-40): `value` is a member of `subject`'s type that a finite
+/// clock never lets it hold ([`crate::meta::StateSchema::clock_excludes`]).
+fn clock_unreached(subject: &Expr, value: &Constant, ctx: &DecideCtx<'_>) -> bool {
+    let Constant::Value(Decided::Str(s)) = value else {
+        return false;
+    };
+    crate::cel_paths::select_path(subject).is_some_and(|p| ctx.schema.clock_excludes(&p, s))
 }
 
 /// R2's `in`: `S in [lit, …]` decides **false** iff NONE of the list's
@@ -243,7 +263,7 @@ fn decide_domain_in(needle: &Expr, container: &Expr, ctx: &DecideCtx<'_>) -> Opt
     };
     for el in &list.elements {
         let value = const_side(&el.expr, ctx)?;
-        if domain_contains(&dom, &value) {
+        if domain_contains(&dom, &value) && !clock_unreached(needle, &value, ctx) {
             return None; // a domain member is present: the subject might pick it
         }
     }
@@ -408,7 +428,7 @@ fn connective(name: &str, positive: bool) -> Chain {
 /// One literal read with `positive` polarity as a solution set over one
 /// path: its key, the path's domain, and the values that make it TRUE.
 /// `None` for any other shape — it then constrains nothing.
-fn literal_truth(
+pub(crate) fn literal_truth(
     expr: &Expr,
     positive: bool,
     ctx: &DecideCtx<'_>,
@@ -750,14 +770,17 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
                 Some(Decided::Bool(false))
             }
             (Some(Decided::Bool(true)), Some(Decided::Bool(true))) => Some(Decided::Bool(true)),
-            _ => decide_chain(&c.args, Chain::And, ctx).then_some(Decided::Bool(false)),
+            _ if decide_chain(&c.args, Chain::And, ctx) => Some(Decided::Bool(false)),
+            // The clock's positions: no position satisfies its clock reads.
+            _ => crate::clock_positions::decide_connective(name, &c.args, ctx).map(Decided::Bool),
         },
         (op::LOGICAL_OR, [a, b]) => match (decide(&a.expr, ctx), decide(&b.expr, ctx)) {
             (Some(Decided::Bool(true)), _) | (_, Some(Decided::Bool(true))) => {
                 Some(Decided::Bool(true))
             }
             (Some(Decided::Bool(false)), Some(Decided::Bool(false))) => Some(Decided::Bool(false)),
-            _ => decide_chain(&c.args, Chain::Or, ctx).then_some(Decided::Bool(true)),
+            _ if decide_chain(&c.args, Chain::Or, ctx) => Some(Decided::Bool(true)),
+            _ => crate::clock_positions::decide_connective(name, &c.args, ctx).map(Decided::Bool),
         },
         (op::CONDITIONAL, [cnd, t, e]) => match decide(&cnd.expr, ctx)? {
             Decided::Bool(true) => decide(&t.expr, ctx),
@@ -988,6 +1011,37 @@ pub(crate) enum LiteralCmpKind {
         literal: String,
         members: Vec<String>,
     },
+    /// dsl 0.28.0 §1: a literal of another type compared with a subject of
+    /// a decided domain (`run.knows == 1`, `run.day == 'monday'`). Reported
+    /// as `E-CEL-TYPE` by [`crate::cel_types`] on every slot; collected here
+    /// only so the mistyped comparison owns the dead guard it causes.
+    TypeMismatch,
+}
+
+/// One operand order of the dsl 0.28.0 §1 type trigger: `subject` resolves
+/// to a decided domain (bools, strings, whole numbers or numbers) and
+/// `other` is a literal of another type.
+fn type_mismatch_operand(subject: &Expr, other: &Expr, ctx: &DecideCtx<'_>) -> bool {
+    let Expr::Literal(lit) = other else {
+        return false;
+    };
+    let Some(dom) = resolve_domain(subject, ctx).filter(|d| d.resolved) else {
+        return false;
+    };
+    let is_str = matches!(lit, Val::String(_));
+    let is_bool = matches!(lit, Val::Boolean(_));
+    let is_num = matches!(lit, Val::Int(_) | Val::UInt(_) | Val::Double(_));
+    match &dom.domain {
+        Domain::Number | Domain::IntRange { .. } => is_str || is_bool,
+        Domain::Finite(vals) if vals.is_empty() => false,
+        Domain::Finite(vals) if vals.iter().all(|v| matches!(v, DomainValue::Bool(_))) => {
+            is_str || is_num
+        }
+        Domain::Finite(vals) if vals.iter().all(|v| matches!(v, DomainValue::Str(_))) => {
+            is_bool || is_num
+        }
+        _ => false,
+    }
 }
 
 /// dsl 0.5.2 §2.1/§2.3: the full analysis of one CEL guard slot.
@@ -1126,6 +1180,12 @@ fn collect_literal_cmp(ided: &IdedExpr, ctx: &DecideCtx<'_>, out: &mut Vec<Liter
                         kind: LiteralCmpKind::ForeignMember { literal, members },
                         id: ided.id,
                     });
+                } else if type_mismatch_operand(a, b, ctx) || type_mismatch_operand(b, a, ctx) {
+                    out.push(LiteralCmpHit {
+                        subject: subject_display(a).unwrap_or_default(),
+                        kind: LiteralCmpKind::TypeMismatch,
+                        id: ided.id,
+                    });
                 }
             }
             if c.func_name == op::IN && c.args.len() == 2 {
@@ -1137,6 +1197,12 @@ fn collect_literal_cmp(ided: &IdedExpr, ctx: &DecideCtx<'_>, out: &mut Vec<Liter
                             out.push(LiteralCmpHit {
                                 subject,
                                 kind: LiteralCmpKind::ForeignMember { literal, members },
+                                id: ided.id,
+                            });
+                        } else if type_mismatch_operand(&c.args[0].expr, &el.expr, ctx) {
+                            out.push(LiteralCmpHit {
+                                subject: subject_display(&c.args[0].expr).unwrap_or_default(),
+                                kind: LiteralCmpKind::TypeMismatch,
                                 id: ided.id,
                             });
                         }

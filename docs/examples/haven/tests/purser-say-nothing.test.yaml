@@ -17,7 +17,7 @@ facts:
 choose:
   theCorrection: sayNothing
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "You, me, and a man this ship has never heard of. That's the crew. That's the whole crew."
     - "Two of you, then, and a wall. Whatever was going to be said had to be said by the people who were awake to say it."

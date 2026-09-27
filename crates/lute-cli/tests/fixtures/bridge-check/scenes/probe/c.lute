@@ -2,7 +2,7 @@
 kind: scene
 id: probe.c
 title: C
-on: hubVisit
+on: townVisit
 priority: 50
 ---
 

@@ -157,8 +157,8 @@ fn walk(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>)
                 if lhs_nt || rhs_nt {
                     diags.push(diag(
                         E_TEMPORAL_ARG,
-                        "`!=` is not admitted between narrative-time values (D8 \
-                         admits only <, <=, ==, >, >=); negate an `==` comparison \
+                        "`!=` is not admitted between narrative-time values (only \
+                         <, <=, ==, > and >= are); negate an `==` comparison \
                          instead, e.g. `!(a == b)` (dsl 0.3.0 §6)"
                             .to_string(),
                         slot.span,

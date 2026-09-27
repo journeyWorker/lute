@@ -34,6 +34,24 @@ fn missing(p: &crate::datalog::Premise) -> Option<String> {
     }
 }
 
+/// The base premises `attempts` miss, each rule followed down to a missing
+/// atom no rule explains further (`recruited(wren)` under `inParty(wren)`)
+/// — what a play or a mock has to produce.
+fn base_missing(attempts: &[crate::datalog::Attempt], out: &mut Vec<String>) {
+    use crate::datalog::Premise;
+    for p in attempts.iter().flat_map(|a| &a.premises) {
+        match p {
+            Premise::Missing { atom, why } if why.is_empty() => {
+                if !out.contains(atom) {
+                    out.push(atom.clone());
+                }
+            }
+            Premise::Missing { why, .. } => base_missing(why, out),
+            _ => {}
+        }
+    }
+}
+
 impl<D: Driver> Machine<D> {
     /// A walk-time `E-TRACE-CHOICE`: the script forced an option that is not
     /// offered at this presentation point. Halts like a fatal error, flagged
@@ -80,13 +98,8 @@ impl<D: Driver> Machine<D> {
         atoms
             .into_iter()
             .filter_map(|a| match a {
-                crate::eval::GuardAtom::Path(p) => {
-                    let v = match self.store.read(&p) {
-                        Read::Value(v) => v,
-                        Read::Unset => Value::Unknown,
-                    };
-                    Some(GuardRead::Path(p, v))
-                }
+                crate::eval::GuardAtom::Path(p) => Some(self.path_read(p)),
+                crate::eval::GuardAtom::Indexed(family) => Some(self.indexed_read(&family)),
                 crate::eval::GuardAtom::Fact(f) => {
                     if self.store.eval(&format!("holds({f})")).0 != Value::Bool(false) {
                         return None;
@@ -142,13 +155,8 @@ impl<D: Driver> Machine<D> {
         atoms
             .into_iter()
             .filter_map(|a| match a {
-                crate::eval::GuardAtom::Path(p) => {
-                    let v = match self.store.read(&p) {
-                        Read::Value(v) => v,
-                        Read::Unset => Value::Unknown,
-                    };
-                    Some(GuardRead::Path(p, v))
-                }
+                crate::eval::GuardAtom::Path(p) => Some(self.path_read(p)),
+                crate::eval::GuardAtom::Indexed(family) => Some(self.indexed_read(&family)),
                 crate::eval::GuardAtom::Fact(f) => {
                     match self.store.eval(&format!("holds({f})")).0 {
                         Value::Bool(true) => {
@@ -165,6 +173,26 @@ impl<D: Driver> Machine<D> {
                 crate::eval::GuardAtom::Visited(k) => Some(GuardRead::Visited(k)),
             })
             .collect()
+    }
+
+    /// A state path `p` with the value it holds.
+    fn path_read(&mut self, p: String) -> GuardRead {
+        let v = match self.store.read(&p) {
+            Read::Value(v) => v,
+            Read::Unset => Value::Unknown,
+        };
+        GuardRead::Path(p, v)
+    }
+
+    /// dsl 0.27.0 §3: a family read by the bound member
+    /// (`user.bond[occasion.target]`) is the member path it reads
+    /// (`user.bond.ines`) with its value; unbound, `occasion.target` itself.
+    fn indexed_read(&mut self, family: &str) -> GuardRead {
+        let target = lute_check::beats::OCCASION_TARGET;
+        match self.store.read(target) {
+            Read::Value(Value::Str(member)) => self.path_read(format!("{family}.{member}")),
+            _ => self.path_read(target.to_string()),
+        }
     }
 
     /// A fact pattern `rel(a, b)` as its relation and arguments, its path
@@ -198,18 +226,23 @@ impl<D: Driver> Machine<D> {
             .then(|| self.store.why_not(&(rel.to_string(), args)))
             .flatten()
         {
-            Some(attempts) => GuardRead::Derived {
-                fact,
-                rules: attempts
-                    .iter()
-                    .map(|a| {
-                        (
-                            a.rule.clone(),
-                            a.premises.iter().filter_map(missing).collect(),
-                        )
-                    })
-                    .collect(),
-            },
+            Some(attempts) => {
+                let mut base = Vec::new();
+                base_missing(&attempts, &mut base);
+                GuardRead::Derived {
+                    fact,
+                    rules: attempts
+                        .iter()
+                        .map(|a| {
+                            (
+                                a.rule.clone(),
+                                a.premises.iter().filter_map(missing).collect(),
+                            )
+                        })
+                        .collect(),
+                    base,
+                }
+            }
             None => GuardRead::Fact(fact),
         }
     }
@@ -240,8 +273,17 @@ impl<D: Driver> Machine<D> {
         out
     }
 
-    /// The `E-TRACE-CHOICE` text for a picked option the driver refused.
-    fn refusal(construct: &str, id: &str, option: &str, when: &str, verdict: &Verdict) -> String {
+    /// The `E-TRACE-CHOICE` text for a picked option the driver refused; a
+    /// closed guard's reads each carry the driver's hint
+    /// ([`Driver::premise_hint`]).
+    fn refusal(
+        &self,
+        construct: &str,
+        id: &str,
+        option: &str,
+        when: &str,
+        verdict: &Verdict,
+    ) -> String {
         match verdict {
             Verdict::Spent => format!(
                 "[E-TRACE-CHOICE] `choose: {id}: {option}` names a `once` option already \
@@ -254,7 +296,10 @@ impl<D: Driver> Machine<D> {
             Verdict::Open | Verdict::Closed(_) => {
                 let premise = match verdict {
                     Verdict::Closed(reads) if !reads.is_empty() => {
-                        format!(": {}", guard_premise(reads, GuardRead::yaml_mock))
+                        format!(
+                            ": {}",
+                            guard_premise(reads, |r| self.driver.premise_hint(r))
+                        )
                     }
                     _ => String::new(),
                 };
@@ -309,7 +354,6 @@ impl<D: Driver> Machine<D> {
                 0,
             ),
             Pick::Unscripted { scripted } => (None, scripted),
-            Pick::Leave => (None, 0),
         };
         let incomplete_rec = |note: &str| {
             let mut rec = serde_json::Map::new();
@@ -368,7 +412,7 @@ impl<D: Driver> Machine<D> {
                     match self.driver.forced(&menu, &forced, &verdict) {
                         Forced::Take => {}
                         Forced::Refuse => {
-                            self.refuse(Self::refusal("branch", &branch, &forced, when, &verdict));
+                            self.refuse(self.refusal("branch", &branch, &forced, when, &verdict));
                             return Step::Halt;
                         }
                         Forced::Skip => {
@@ -422,17 +466,26 @@ impl<D: Driver> Machine<D> {
             .cloned()
             .unwrap_or_default();
 
-        // Segment boundaries: every option target + the converge, so an option
-        // body runs from its target up to the NEXT boundary (a non-`exit`
-        // option falls through into the next option's body in the stream).
-        let mut boundaries: Vec<usize> = options
+        // Segment starts in stream order: every option target, then the
+        // `<return>` segment (dsl 0.28.0 §5), then the converge. A segment
+        // runs from its start up to the NEXT start in this order (a non-`exit`
+        // option never falls through into the next option's body or the
+        // return block). Two starts on one address mean an empty segment —
+        // never the following segment's body.
+        let return_idx = cmd
+            .get("return")
+            .and_then(Json::as_str)
+            .map(|t| self.resolve(t));
+        let mut starts: Vec<usize> = options
             .iter()
-            .filter_map(|o| o.get("target").and_then(Json::as_str))
-            .map(|t| self.resolve(t))
+            .map(|o| {
+                o.get("target")
+                    .and_then(Json::as_str)
+                    .map_or(converge_idx, |t| self.resolve(t))
+            })
             .collect();
-        boundaries.push(converge_idx);
-        boundaries.sort_unstable();
-        boundaries.dedup();
+        starts.extend(return_idx);
+        starts.push(converge_idx);
 
         let mut presentation = 0usize;
         // [`Pick::HubAutoPass`]: the next menu position the pass considers.
@@ -513,19 +566,22 @@ impl<D: Driver> Machine<D> {
                         o.verdict == Verdict::Open && exit.is_none_or(|e| o.exit == e)
                     })
                 };
-            let (choice_id, auto) = match self.driver.choose(&menu) {
-                Pick::Option(c) => (Some(c), false),
-                Pick::Unscripted { .. } => (None, false),
-                Pick::Leave => break,
-                Pick::AutoFirst => (first_open(None, 0).map(|(_, o)| o.id.clone()), true),
+            let (choice_id, auto, scripted) = match self.driver.choose(&menu) {
+                Pick::Option(c) => (Some(c), false, 0),
+                Pick::Unscripted { scripted } => (None, false, scripted),
+                Pick::AutoFirst => (first_open(None, 0).map(|(_, o)| o.id.clone()), true, 0),
                 Pick::HubAutoPass => match first_open(Some(false), auto_at) {
                     Some((i, o)) => {
                         auto_at = i + 1;
-                        (Some(o.id.clone()), true)
+                        (Some(o.id.clone()), true, 0)
                     }
                     None => {
                         auto_at = judged.len();
-                        (first_open(Some(true), 0).map(|(_, o)| o.id.clone()), true)
+                        (
+                            first_open(Some(true), 0).map(|(_, o)| o.id.clone()),
+                            true,
+                            0,
+                        )
                     }
                 },
             };
@@ -554,21 +610,22 @@ impl<D: Driver> Machine<D> {
                     NOTE_NO_DECISION
                 };
                 rec.insert("note".into(), Json::String(note.into()));
+                if scripted > 0 {
+                    rec.insert("scripted".into(), json!(scripted));
+                }
                 marks(&mut rec);
                 self.driver.emit(Json::Object(rec));
                 return Step::Halt;
             };
 
-            let opt = match options
+            let Some(at) = options
                 .iter()
-                .find(|o| o.get("id").and_then(Json::as_str) == Some(&choice_id))
-            {
-                Some(o) => o.clone(),
-                None => {
-                    self.fatal = Some(format!("hub `{id}` has no option `{choice_id}`"));
-                    return Step::Halt;
-                }
+                .position(|o| o.get("id").and_then(Json::as_str) == Some(&choice_id))
+            else {
+                self.fatal = Some(format!("hub `{id}` has no option `{choice_id}`"));
+                return Step::Halt;
             };
+            let opt = options[at].clone();
             let once = opt.get("once").and_then(Json::as_bool).unwrap_or(false);
             let is_exit = opt.get("exit").and_then(Json::as_bool).unwrap_or(false);
             if !auto {
@@ -581,7 +638,7 @@ impl<D: Driver> Machine<D> {
                         Forced::Take => {}
                         Forced::Skip => continue,
                         Forced::Refuse => {
-                            self.refuse(Self::refusal("hub", &id, &choice_id, "", &Verdict::Spent));
+                            self.refuse(self.refusal("hub", &id, &choice_id, "", &Verdict::Spent));
                             return Step::Halt;
                         }
                     }
@@ -597,7 +654,7 @@ impl<D: Driver> Machine<D> {
                             Forced::Take => {}
                             Forced::Skip => continue,
                             Forced::Refuse => {
-                                self.refuse(Self::refusal("hub", &id, &choice_id, when, &verdict));
+                                self.refuse(self.refusal("hub", &id, &choice_id, when, &verdict));
                                 return Step::Halt;
                             }
                         }
@@ -618,19 +675,20 @@ impl<D: Driver> Machine<D> {
             let mut rec = head(Json::String(choice_id.clone()));
             marks(&mut rec);
             self.driver.emit(Json::Object(rec));
-            let target = opt.get("target").and_then(Json::as_str).unwrap_or(converge);
-            let start = self.resolve(target);
-            let stop = boundaries
-                .iter()
-                .find(|&&b| b > start)
-                .copied()
-                .unwrap_or(self.commands.len());
-            self.run_range(start, stop);
+            self.run_range(starts[at], starts[at + 1]);
             if self.stopped() {
                 return Step::Halt;
             }
             if is_exit {
                 break;
+            }
+            // dsl 0.28.0 §5: control returns to the hub through its
+            // `<return>` block, before the menu is judged and presented again.
+            if let Some(back) = return_idx {
+                self.run_range(back, converge_idx);
+                if self.stopped() {
+                    return Step::Halt;
+                }
             }
         }
         Step::Next(converge_idx)

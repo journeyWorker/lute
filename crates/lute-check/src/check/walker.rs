@@ -40,21 +40,30 @@ pub(super) struct Walker<'a> {
     /// 0.24.0): a `<match>` needs no arm for a value it rules out — `unset`
     /// included — exactly as reachability's `E-ARM-DEAD` reads it.
     pub(super) assume: Option<crate::reachability::Assumption>,
+    /// dsl 0.28.0 (T1-23): the pick records the enclosing options hold —
+    /// a `<match>` needs no arm for a value the record cannot hold there,
+    /// as reachability's `E-ARM-DEAD` reads it.
+    pub(super) picks: Vec<crate::reachability::Pick>,
+    /// The document's `::next` targets: an option arm a jump enters holds
+    /// no pick.
+    pub(super) targets: std::collections::BTreeSet<String>,
 }
 
 impl Walker<'_> {
-    /// `when` as an assumption over `bodies` (dsl 0.24.0).
+    /// `when` as an assumption over `bodies` (dsl 0.24.0), judged over
+    /// `schema` — the beat's own environment's.
     pub(super) fn assumption(
         &self,
         when: Option<&lute_syntax::ast::CelSlot>,
         bodies: &[&[Node]],
+        schema: &crate::meta::StateSchema,
     ) -> Option<crate::reachability::Assumption> {
         crate::reachability::Assumption::new(
             when?,
             bodies,
             &self.scope.defs,
             self.scope.def_types,
-            self.scope.schema,
+            schema,
             self.snapshot,
         )
     }
@@ -84,6 +93,7 @@ impl Walker<'_> {
                     );
                     check_interps(&l.interps, ctx, &mut self.diags);
                     self.diags.extend(text_looks_like_ref(l, ctx));
+                    super::literal_text::line_text(l, ctx, Some(self.src), &mut self.diags);
                     // dsl 0.26.0 §3.2: `@@p:` speaks as a component's
                     // `speaker` param — there is none outside a component.
                     if let Some(p) = l.speaker.strip_prefix('@') {
@@ -122,15 +132,7 @@ impl Walker<'_> {
                     // `E-UNKNOWN-DIRECTIVE`. It is a component invocation, not a
                     // snapshot directive.
                     let before = self.diags.len();
-                    check_use(d, self.components, ctx, &mut self.diags);
-                    check_use_typed_args(
-                        d,
-                        self.components,
-                        self.snapshot,
-                        self.providers,
-                        self.domains,
-                        &mut self.diags,
-                    );
+                    self.check_use_node(d, ctx);
                     if self.diags.len() > before {
                         refused_use = Some(d.span);
                     }
@@ -153,6 +155,16 @@ impl Walker<'_> {
                 // dsl 0.27.0 §6: `::body` is a template marker, judged by
                 // `templates::check_body_markers` — never a capability directive.
                 Node::Directive(d) if d.tag == crate::templates::BODY_DIRECTIVE => {}
+                // Round-6 T3-7: `::greet{}` for an imported component `greet`
+                // names `::use{component="greet"}`; its attrs are the use's
+                // arguments, so they are not judged as directive attributes.
+                Node::Directive(d)
+                    if self.snapshot.directive(&d.tag).is_none()
+                        && self.components.table.contains_key(&d.tag) =>
+                {
+                    self.diags
+                        .push(crate::directives::component_as_directive(d));
+                }
                 Node::Directive(d) => {
                     self.diags.extend(check_directive(
                         d,
@@ -166,19 +178,7 @@ impl Walker<'_> {
                         .extend(check_directive_when(d, self.snapshot, self.arena, ctx));
                 }
                 Node::Set(s) => {
-                    self.diags.extend(check_set(s, &ctx.env.state, ctx));
-                    // dsl 0.10.0 §3: the RHS half `set_op` explicitly does not
-                    // do (`set_op.rs:27-29`).
-                    self.diags.extend(crate::set_type::check_set_type(
-                        s,
-                        self.arena,
-                        &ctx.env.state,
-                    ));
-                    let expected = resolve_type(&s.path, &ctx.env.state)
-                        .cloned()
-                        .map(ExpectedType::Ty);
-                    self.diags
-                        .extend(check_cel_slot(&s.expr, self.arena, ctx, expected.as_ref()));
+                    self.check_set_write(s, ctx);
                     if let Some(when) = &s.when {
                         // dsl 0.24.0 §1: `::set{… when=}` — a Bool condition
                         // with the SAME "$ not in scope" rule as a content-line
@@ -219,6 +219,12 @@ impl Walker<'_> {
                             ctx,
                             &mut self.diags,
                         );
+                        super::literal_text::choice_label(
+                            &choice.label,
+                            choice.span,
+                            ctx,
+                            &mut self.diags,
+                        );
                         if let Some(when) = &choice.when {
                             self.diags.extend(check_cel_slot(
                                 when,
@@ -227,7 +233,16 @@ impl Walker<'_> {
                                 Some(&ExpectedType::Bool),
                             ));
                         }
+                        let picks = crate::reachability::Pick::with(
+                            &self.picks,
+                            &b.id,
+                            choice,
+                            false,
+                            &self.targets,
+                        );
+                        let outer = std::mem::replace(&mut self.picks, picks);
                         self.walk(&choice.body, ctx);
+                        self.picks = outer;
                     }
                 }
                 Node::Match(m) => {
@@ -283,11 +298,27 @@ impl Walker<'_> {
                                 &ctx.env.state,
                             );
                             let assume = self.assume.as_ref();
+                            // dsl 0.28.0 (T3-40): a slot a finite clock never
+                            // reaches needs no arm either.
                             let ruled_out = |item: &crate::match_check::CoverItem| {
-                                subject
-                                    .as_deref()
-                                    .zip(assume)
-                                    .is_some_and(|(p, a)| a.rules_out(p, item, &ctx.env.state))
+                                let unreached = match item {
+                                    crate::match_check::CoverItem::Value(
+                                        crate::match_check::DomainValue::Str(s),
+                                    ) => subject
+                                        .as_deref()
+                                        .is_some_and(|p| ctx.env.state.clock_excludes(p, s)),
+                                    _ => false,
+                                };
+                                let picked = subject.as_deref().is_some_and(|p| {
+                                    crate::reachability::Pick::ruling_out(&self.picks, p, item)
+                                        .is_some()
+                                });
+                                unreached
+                                    || picked
+                                    || subject
+                                        .as_deref()
+                                        .zip(assume)
+                                        .is_some_and(|(p, a)| a.rules_out(p, item, &ctx.env.state))
                             };
                             self.diags
                                 .extend(crate::match_check::check_match_with_domain(
@@ -333,7 +364,13 @@ impl Walker<'_> {
                         for clip in &track.clips {
                             match &clip.node {
                                 ClipNode::Directive(d) if d.tag == "use" => {
-                                    check_use(d, self.components, ctx, &mut self.diags);
+                                    check_use(
+                                        d,
+                                        self.components,
+                                        ctx,
+                                        &self.param_domains,
+                                        &mut self.diags,
+                                    );
                                     check_use_typed_args(
                                         d,
                                         self.components,
@@ -405,21 +442,7 @@ impl Walker<'_> {
                                     self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
                                 }
                                 ClipNode::Set(s) => {
-                                    self.diags.extend(check_set(s, &ctx.env.state, ctx));
-                                    self.diags.extend(crate::set_type::check_set_type(
-                                        s,
-                                        self.arena,
-                                        &ctx.env.state,
-                                    ));
-                                    let expected = resolve_type(&s.path, &ctx.env.state)
-                                        .cloned()
-                                        .map(ExpectedType::Ty);
-                                    self.diags.extend(check_cel_slot(
-                                        &s.expr,
-                                        self.arena,
-                                        ctx,
-                                        expected.as_ref(),
-                                    ));
+                                    self.check_set_write(s, ctx);
                                 }
                             }
                         }
@@ -449,6 +472,12 @@ impl Walker<'_> {
                             ctx,
                             &mut self.diags,
                         );
+                        super::literal_text::choice_label(
+                            &choice.label,
+                            choice.span,
+                            ctx,
+                            &mut self.diags,
+                        );
                         if let Some(when) = &choice.when {
                             self.diags.extend(check_cel_slot(
                                 when,
@@ -457,7 +486,30 @@ impl Walker<'_> {
                                 Some(&ExpectedType::Bool),
                             ));
                         }
+                        let hub_id = h
+                            .attrs
+                            .iter()
+                            .find(|a| a.key == "id")
+                            .and_then(|a| match &a.value {
+                                AttrValue::Str(s) => Some(s.as_str()),
+                                _ => None,
+                            })
+                            .unwrap_or("");
+                        let picks = crate::reachability::Pick::with(
+                            &self.picks,
+                            hub_id,
+                            choice,
+                            true,
+                            &self.targets,
+                        );
+                        let outer = std::mem::replace(&mut self.picks, picks);
                         self.walk(&choice.body, ctx);
+                        self.picks = outer;
+                    }
+                    // dsl 0.28.0 §5: the `<return>` body gets the same node
+                    // checks as an option body.
+                    if let Some(r) = &h.on_return {
+                        self.walk(&r.body, ctx);
                     }
                 }
                 Node::Objective(o) => {
@@ -476,7 +528,7 @@ impl Walker<'_> {
                         ctx,
                         Some(&ExpectedType::Bool),
                     ));
-                    if let Some(when) = &o.when {
+                    if let Some(when) = &o.visible_when {
                         self.diags.extend(check_cel_slot(
                             when,
                             self.arena,
@@ -568,6 +620,92 @@ impl Walker<'_> {
                     .extend(check_cel_slot(slot, self.arena, ctx, expected.as_ref()));
             }
         }
+    }
+
+    /// `::set`'s target and value checks (dsl §7.3.4): the write policy and
+    /// op/type matrix, the value's type against the target's, and the value's
+    /// CEL. dsl 0.28.0 §3: a target indexed `[occasion.target]` is judged
+    /// once per member of the enclosing kind or `for=` beat
+    /// ([`crate::target_writes`]); outside one it is the one scope error.
+    fn check_set_write(&mut self, s: &lute_syntax::ast::Set, ctx: &Ctx<'_>) {
+        let judge = |s: &lute_syntax::ast::Set| {
+            let mut ds = check_set(s, &ctx.env.state, ctx);
+            // dsl 0.10.0 §3: the RHS half `set_op` explicitly does not do
+            // (`set_op.rs:27-29`).
+            ds.extend(crate::set_type::check_set_type(
+                s,
+                self.arena,
+                &ctx.env.state,
+            ));
+            ds
+        };
+        let target = match crate::target_writes::indexed_family(&s.path) {
+            None => {
+                self.diags.extend(judge(s));
+                Some(s.path.clone())
+            }
+            Some(_) => match crate::target_writes::scope_members(ctx, s.span) {
+                Ok(members) => {
+                    self.diags
+                        .extend(crate::cel_resolve::group_per_member(members, |m| {
+                            judge(&lute_syntax::ast::Set {
+                                path: crate::target_writes::member_path(&s.path, m),
+                                ..s.clone()
+                            })
+                        }));
+                    members
+                        .first()
+                        .map(|m| crate::target_writes::member_path(&s.path, m))
+                }
+                Err(d) => {
+                    self.diags.push(d);
+                    None
+                }
+            },
+        };
+        let expected = target
+            .and_then(|p| resolve_type(&p, &ctx.env.state).cloned())
+            .map(ExpectedType::Ty);
+        self.diags
+            .extend(check_cel_slot(&s.expr, self.arena, ctx, expected.as_ref()));
+    }
+
+    /// A `::use`'s arguments against the component's params (dsl §13).
+    /// dsl 0.28.0 §3: an argument that is `occasion.target` passes the member
+    /// the enclosing kind or `for=` beat runs for — the `::use` is judged as
+    /// if that member were written, once per member.
+    fn check_use_node(&mut self, d: &lute_syntax::ast::Directive, ctx: &Ctx<'_>) {
+        let judge = |d: &lute_syntax::ast::Directive| {
+            let mut ds = Vec::new();
+            check_use(d, self.components, ctx, &self.param_domains, &mut ds);
+            check_use_typed_args(
+                d,
+                self.components,
+                self.snapshot,
+                self.providers,
+                self.domains,
+                &mut ds,
+            );
+            ds
+        };
+        let targeted = d
+            .attrs
+            .iter()
+            .any(|a| a.key != "component" && crate::target_writes::is_target_value(&a.value));
+        if !targeted {
+            self.diags.extend(judge(d));
+            return;
+        }
+        self.diags
+            .extend(crate::target_writes::per_member(ctx, d.span, |m| {
+                let mut dm = d.clone();
+                for a in dm.attrs.iter_mut().filter(|a| {
+                    a.key != "component" && crate::target_writes::is_target_value(&a.value)
+                }) {
+                    a.value = AttrValue::Str(m.to_string());
+                }
+                judge(&dm)
+            }));
     }
 }
 

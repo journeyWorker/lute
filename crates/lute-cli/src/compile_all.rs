@@ -111,7 +111,7 @@ pub fn run(
             // have changed the resolved surface.
             crate::manifests::mark_inert_under(&mut verdicts, project);
             if crate::manifests::report_and_gate(&verdicts)
-                | crate::manifests::gate_sequences(&verdicts)
+                | crate::manifests::gate_chapters(&verdicts)
             {
                 return ExitCode::from(1);
             }
@@ -282,7 +282,10 @@ pub fn run(
         Ok(index) => index,
         Err(errors) => {
             for e in &errors {
-                eprintln!("lute compile --all: {e}");
+                eprintln!(
+                    "lute compile --all: {}",
+                    lute_core_span::plain_message(&e.to_string())
+                );
             }
             eprintln!(
                 "lute compile --all: {} vocabulary conflict(s); no output written",

@@ -4,4 +4,4 @@ expect:
   transcriptContains: ["@mira: Good. No nonsense in a cup."]
   transcriptLacks: ["@mira: You remembered. That's new."]
   state: { run.metMira: true }
-  exit: complete
+  end: complete

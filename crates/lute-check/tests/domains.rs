@@ -1021,3 +1021,31 @@ fn enum_labels_must_name_members_and_be_strings() {
         "{imported:?}"
     );
 }
+
+/// A label for a non-member of an imported enum is reported at the label key
+/// (with a did-you-mean), not at the enum's line.
+#[test]
+fn an_imported_enum_label_for_a_non_member_is_reported_at_the_label() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "w.schema.yaml",
+        "enums:\n  route:\n    members: [none, ren, mika]\n    \
+         labels: { none: Nobody, ren: Ren, mkia: Mika }\n",
+    );
+    let imports = resolve_imports(&dir, &["w.schema.yaml".to_string()], &[], zero_span());
+    let (_merged, diags) = merge_domains(&load_core_snapshot(), &imports, no_inline(), zero_span());
+    let found: Vec<(u32, u32, &str)> = diags
+        .iter()
+        .flat_map(|d| d.related.iter().map(|r| &r.diagnostic))
+        .filter(|d| d.code == "E-ENUM-LABEL-NOT-MEMBER")
+        .map(|d| (d.span.line, d.span.column, d.message.as_str()))
+        .collect();
+    assert_eq!(found.len(), 1, "{diags:#?}");
+    assert_eq!((found[0].0, found[0].1), (4, 39), "{}", found[0].2);
+    assert!(
+        found[0].2.contains("did you mean `mika`?"),
+        "{}",
+        found[0].2
+    );
+}

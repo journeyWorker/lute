@@ -164,17 +164,25 @@ pub fn colliding_occurrences(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Span
 /// dsl 0.5.1 §1.4: a `check-project` reference to a reserved
 /// `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` path whose
 /// `<id>` (or `<oid>`, under a project-defined quest) no quest document in
-/// the walked project defines.
+/// the walked directory defines — when that directory is not a whole project
+/// (no `lute.project.yaml` at its root), so the quest may live outside it.
+/// Over a whole project the same reference is [`E_QUEST_REF_UNKNOWN`].
 pub const W_QUEST_REF_UNKNOWN: &str = "W-QUEST-REF-UNKNOWN";
 
-/// [`W_QUEST_REF_UNKNOWN`], [`Layer::Logic`] (matching [`diag`]'s quest-id
-/// concern), [`Severity::Warning`] — the reference is shape-legal, and the
-/// quest may be defined outside the walked project or added later (dsl
-/// 0.5.1 §1.4), so this must never flip a per-file `ok` verdict to error.
-fn ref_diag(message: String, span: Span) -> Diagnostic {
+/// [`W_QUEST_REF_UNKNOWN`] (a [`Severity::Warning`]: the quest may be defined
+/// outside the walked directory, dsl 0.5.1 §1.4) or, when the walk covers
+/// the whole project, [`E_QUEST_REF_UNKNOWN`] (an error: no quest anywhere
+/// answers the read, so it can never be true). [`Layer::Logic`], matching
+/// [`diag`]'s quest-id concern.
+fn ref_diag(message: String, span: Span, whole_project: bool) -> Diagnostic {
+    let (code, severity) = if whole_project {
+        (E_QUEST_REF_UNKNOWN, Severity::Error)
+    } else {
+        (W_QUEST_REF_UNKNOWN, Severity::Warning)
+    };
     Diagnostic {
-        code: W_QUEST_REF_UNKNOWN.to_string(),
-        severity: Severity::Warning,
+        code: code.to_string(),
+        severity,
         message,
         span,
         layer: Layer::Logic,
@@ -308,11 +316,13 @@ fn did_you_mean<'a>(id: &str, known: impl Iterator<Item = &'a str>) -> String {
         .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"))
 }
 
-fn unknown_quest_message(path: &str, id: &str, hint: &str) -> String {
-    format!(
-        "`{path}` references quest `{id}`, which no project quest defines{hint} (dsl 0.5.1 \
-         §1.4) — a typo, or a quest defined outside this walked directory"
-    )
+fn unknown_quest_message(path: &str, id: &str, hint: &str, whole_project: bool) -> String {
+    let why = if whole_project {
+        ""
+    } else {
+        " — a typo, or a quest defined outside this walked directory"
+    };
+    format!("`{path}` references quest `{id}`, which no project quest defines{hint}{why}")
 }
 
 fn unknown_objective_message(path: &str, quest_id: &str, oid: &str) -> String {
@@ -322,55 +332,83 @@ fn unknown_objective_message(path: &str, quest_id: &str, oid: &str) -> String {
     )
 }
 
-/// dsl 0.5.1 §1.4: `W-QUEST-REF-UNKNOWN` — verify every reserved
-/// `quest.<id>` (and `quest.<id>.objectives.<oid>`) reference across `docs`
-/// resolves to a quest (and objective) DEFINED by some quest document among
-/// `docs`. A referenced quest `<id>` no project quest defines — or a
-/// referenced objective `<oid>` under a quest `docs` DOES define, but that
-/// quest does not itself declare `<oid>` — is one warning, naming the
-/// referencing document and the exact path (the mistyped-quest-id catch:
-/// `quest.heits.state` when the project defines `heist`). Only ever called
-/// from `check-project` (the whole-project quest graph this pass needs);
-/// single-file `check()` has no such graph and MUST NOT emit this code (dsl
-/// 0.5.1 §1.4).
-pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
+/// When `id` names a quest DOCUMENT (its frontmatter `id:` is `id`,
+/// `quest.<id>`, or ends in `.<id>`) rather than a `<quest>`: the sentence
+/// naming the quests it declares — the doc-id/quest-id confusion.
+fn quest_doc_hint(docs: &[(PathBuf, Document)], id: &str) -> Option<String> {
+    docs.iter().find_map(|(_, doc)| {
+        let quests: Vec<&str> = doc
+            .quests
+            .iter()
+            .map(|q| q.id.as_str())
+            .filter(|q| !q.is_empty())
+            .collect();
+        if quests.is_empty() {
+            return None;
+        }
+        let map = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok()?;
+        let doc_id = map.get("id")?.as_str()?;
+        let named = doc_id == id || doc_id.rsplit('.').next() == Some(id);
+        named.then(|| {
+            let list = quests
+                .iter()
+                .map(|q| format!("`{q}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "; `{doc_id}` is a quest document's `id:`, not a quest — its quest is {list}, \
+                 read as `quest.{}.state`",
+                quests[0]
+            )
+        })
+    })
+}
+
+/// dsl 0.5.1 §1.4: verify every reserved `quest.<id>` (and
+/// `quest.<id>.objectives.<oid>`) reference across `docs` resolves to a
+/// quest (and objective) DEFINED by some quest document among `docs`. A
+/// referenced quest `<id>` no project quest defines — or a referenced
+/// objective `<oid>` under a quest `docs` DOES define, but that quest does
+/// not itself declare `<oid>` — is one diagnostic, naming the referencing
+/// document and the exact path (the mistyped-quest-id catch:
+/// `quest.heits.state` when the project defines `heist`), and a quest
+/// document's `id:` written where its quest id belongs. `whole_project`
+/// (the walk covers a `lute.project.yaml` root) makes it
+/// [`E_QUEST_REF_UNKNOWN`]; else [`W_QUEST_REF_UNKNOWN`]. Only ever called
+/// from `check-project`; single-file `check()` has no such graph and MUST
+/// NOT emit either code.
+pub fn check_project_quest_refs(
+    docs: &[(PathBuf, Document)],
+    whole_project: bool,
+) -> Vec<(PathBuf, Diagnostic)> {
     let defined = defined_quests(docs);
     let unknown = |ref_path: &str, id: &str| {
-        unknown_quest_message(ref_path, id, &did_you_mean(id, defined.keys().copied()))
+        let hint =
+            quest_doc_hint(docs, id).unwrap_or_else(|| did_you_mean(id, defined.keys().copied()));
+        unknown_quest_message(ref_path, id, &hint, whole_project)
     };
     let mut out = Vec::new();
     for (path, doc) in docs {
         for (ref_path, span) in referenced_reserved_paths(doc) {
             let segs: Vec<&str> = ref_path.split('.').collect();
-            match segs.as_slice() {
-                ["quest", id, "state"] => {
-                    if !defined.contains_key(id) {
-                        out.push((path.clone(), ref_diag(unknown(&ref_path, id), span)));
-                    }
-                }
-                // dsl 0.8.0 §5: the reserved narrative-time anchor carries no
-                // objective segment, so its only project-wide obligation is
-                // that the quest id resolves — same rule as `quest.<id>.state`.
-                // So does dsl 0.24.0 §2's failure reason.
-                ["quest", id, "activatedAt" | "failedBy"] => {
-                    if !defined.contains_key(id) {
-                        out.push((path.clone(), ref_diag(unknown(&ref_path, id), span)));
-                    }
+            let message = match segs.as_slice() {
+                // dsl 0.8.0 §5 / 0.24.0 §2: the narrative-time anchor and the
+                // failure reason carry no objective segment, so their only
+                // project-wide obligation is that the quest id resolves.
+                ["quest", id, "state" | "activatedAt" | "failedBy"] => {
+                    (!defined.contains_key(id)).then(|| unknown(&ref_path, id))
                 }
                 ["quest", id, "objectives", oid, "done" | "failed"] => match defined.get(id) {
-                    None => out.push((path.clone(), ref_diag(unknown(&ref_path, id), span))),
-                    Some(objectives) => {
-                        if !objectives.contains(oid) {
-                            out.push((
-                                path.clone(),
-                                ref_diag(unknown_objective_message(&ref_path, id, oid), span),
-                            ));
-                        }
-                    }
+                    None => Some(unknown(&ref_path, id)),
+                    Some(objectives) => (!objectives.contains(oid))
+                        .then(|| unknown_objective_message(&ref_path, id, oid)),
                 },
                 _ => unreachable!(
                     "referenced_reserved_paths only ever yields is_reserved_quest_path shapes"
                 ),
+            };
+            if let Some(message) = message {
+                out.push((path.clone(), ref_diag(message, span, whole_project)));
             }
         }
     }
@@ -824,7 +862,7 @@ pub fn check_project_quest_tree(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
                     format!(
                         "quest `{child}` is referenced as a subquest from two different parents \
                          (`{first_parent}` and `{}`); a quest must have at most one parent \
-                         (tree, not DAG — dsl 2026-08-31 §4)",
+                         (tree, not DAG, dsl 2026-08-31 §4)",
                         e.parent,
                     ),
                     e.span,
@@ -900,6 +938,28 @@ pub fn check_project_quest_tree(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
             ));
         }
     }
+    // 5) A subquest's `rearm=` across documents (the same-document case is
+    //    the per-file `check()`'s [`check_doc_quest_rearm`]).
+    let rearms: BTreeMap<&str, (&Path, Span)> = docs
+        .iter()
+        .flat_map(|(path, doc)| {
+            doc.quests.iter().filter_map(move |q| {
+                Some((q.id.as_str(), (path.as_path(), q.rearm.as_ref()?.span)))
+            })
+        })
+        .collect();
+    let mut seen_children = BTreeSet::new();
+    for e in &edges {
+        let Some(&(child_path, span)) = rearms.get(e.child.as_str()) else {
+            continue;
+        };
+        if child_path != e.path.as_path() && seen_children.insert(e.child.as_str()) {
+            out.push((
+                child_path.to_path_buf(),
+                subquest_rearm_diag(&e.child, &e.parent, span),
+            ));
+        }
+    }
 
     out
 }
@@ -972,6 +1032,94 @@ pub fn check_doc_quest_tiers(doc: &Document) -> Vec<Diagnostic> {
     out
 }
 
+/// A subquest's `rearm=` has no round to start: a child activates with its
+/// parent (or on `::accept` while the parent is active), so once the parent
+/// has ended a rearmed child returns to `unset` and never activates again.
+pub const E_SUBQUEST_REARM: &str = "E-SUBQUEST-REARM";
+
+/// A `rearm=` that decides to a constant never turns from false to true, so
+/// the quest never rearms.
+pub const W_QUEST_REARM_CONSTANT: &str = "W-QUEST-REARM-CONSTANT";
+
+fn subquest_rearm_diag(child: &str, parent: &str, span: Span) -> Diagnostic {
+    tree_diag(
+        E_SUBQUEST_REARM,
+        format!(
+            "subquest `{child}` has `rearm=`, but a subquest activates with its parent \
+             `{parent}`: once `{parent}` has ended, a rearmed `{child}` returns to `unset` and \
+             never activates again — put `rearm=` on `{parent}` (rearming it resets the round), \
+             or make `{child}` a quest of its own"
+        ),
+        span,
+    )
+}
+
+/// Per document: [`W_QUEST_REARM_CONSTANT`] for each quest whose `rearm=`
+/// decides to `true` or `false` without facts (`rearm="true"`, a def or a
+/// comparison that folds to a constant), and [`E_SUBQUEST_REARM`] for a
+/// `rearm=` on a quest an `<objective quest=…>` of this document names
+/// (cross-document parents are [`check_project_quest_tree`]'s).
+pub fn check_doc_quest_rearm(doc: &Document, folded: &crate::check::FoldedEnv) -> Vec<Diagnostic> {
+    use crate::decide::{decide_slot, DecideCtx, Decided};
+    let mut out = Vec::new();
+    let defs = crate::cel_expand::DefTable {
+        bodies: &folded.def_bodies,
+        params: &folded.env.def_params,
+    };
+    let params = BTreeMap::new();
+    let ctx = DecideCtx {
+        schema: &folded.env.state,
+        dollar: None,
+        params: &params,
+        facts: None,
+    };
+    for q in &doc.quests {
+        let Some(rearm) = &q.rearm else { continue };
+        if let Some(Decided::Bool(b)) = decide_slot(&rearm.raw, &defs, &ctx) {
+            let never = if b {
+                "is always true, so it never turns from false to true"
+            } else {
+                "is never true"
+            };
+            out.push(Diagnostic {
+                code: W_QUEST_REARM_CONSTANT.to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "`rearm=\"{}\"` on quest `{}` {never}, so the quest never rearms — rearm \
+                     fires each time its condition turns from false to true; write the \
+                     condition that starts a new round (`rearm=\"clock.weekday == 0\"`), or \
+                     remove `rearm=`",
+                    rearm.raw.trim(),
+                    q.id
+                ),
+                span: rearm.span,
+                layer: Layer::Logic,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+        }
+    }
+    for parent in &doc.quests {
+        for node in &parent.body {
+            let Node::Objective(o) = node else { continue };
+            let Some(child) = o.quest.as_deref().filter(|c| !c.is_empty()) else {
+                continue;
+            };
+            if let Some(rearm) = doc
+                .quests
+                .iter()
+                .find(|q| q.id == child)
+                .and_then(|q| q.rearm.as_ref())
+            {
+                out.push(subquest_rearm_diag(child, &parent.id, rearm.span));
+            }
+        }
+    }
+    out
+}
+
 /// dsl 0.27.0 §9 (round-5 T3-24): a `<quest>` with no `tier=` (and none
 /// from `defaults.questTier`) is user-tier, but every state its conditions
 /// read is run-tier — it looks meant to reset each run.
@@ -1023,8 +1171,11 @@ pub fn check_quest_tier_implicit(
             _ => ReadTier::Other,
         }
     });
-    // Each implicit quest's own reads and its `quest=` children.
+    // Each implicit quest's own reads and its `quest=` children, and the
+    // seasons whose state it reads (dsl 0.28.0 §5: such a read is as
+    // transient as a run read, and names the tier to suggest).
     let mut own: BTreeMap<&str, (Vec<ReadTier>, Vec<&str>)> = BTreeMap::new();
+    let mut seasons_read: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
     for q in doc
         .quests
         .iter()
@@ -1058,6 +1209,11 @@ pub fn check_quest_tier_implicit(
                 if let Some(t) = clock_tier.filter(|_| reads_clock(&ided.expr)) {
                     read.push(t);
                 }
+                reads_seasons(
+                    &ided.expr,
+                    &folded.env.rel_vocab.relations,
+                    seasons_read.entry(q.id.as_str()).or_default(),
+                );
             }
         }
         own.insert(q.id.as_str(), (read, children));
@@ -1095,7 +1251,13 @@ pub fn check_quest_tier_implicit(
                 Some(false) => Standing::Run,
                 None => standing.get(c).copied().unwrap_or(Standing::Neutral),
             });
-            let now = from_children.fold(of_reads(reads), Ord::max);
+            // A season read is as transient as a run read.
+            let season = if seasons_read.get(id).is_some_and(|s| !s.is_empty()) {
+                Standing::Run
+            } else {
+                Standing::Neutral
+            };
+            let now = from_children.fold(of_reads(reads).max(season), Ord::max);
             if standing[id] != now {
                 standing.insert(id, now);
                 changed = true;
@@ -1177,10 +1339,23 @@ pub fn check_quest_tier_implicit(
                 }
             }
         }
+        // dsl 0.28.0 §5 (T2-7): a tree reading one season's state resets
+        // with that season — suggest its tier, never `run`.
+        let seasons: BTreeSet<&str> = std::iter::once(q.id.as_str())
+            .chain(tree.iter().copied())
+            .filter_map(|id| seasons_read.get(id))
+            .flatten()
+            .map(String::as_str)
+            .collect();
+        let (tier, state) = match seasons.iter().next() {
+            Some(s) if seasons.len() == 1 => (format!("season:{s}"), format!("season `{s}`")),
+            _ => ("run".to_string(), "run".to_string()),
+        };
         let fix = if tree.is_empty() {
-            "write `tier=\"run\"` (or `tier=\"user\"` if it should persist), or set \
-             `defaults.questTier` in lute.project.yaml"
-                .to_string()
+            format!(
+                "write `tier=\"{tier}\"` (or `tier=\"user\"` if it should persist), or set \
+                 `defaults.questTier` in lute.project.yaml"
+            )
         } else {
             let names = tree
                 .iter()
@@ -1188,10 +1363,19 @@ pub fn check_quest_tier_implicit(
                 .collect::<Vec<_>>()
                 .join(", ");
             format!(
-                "its quest tree must share one tier, so write `tier=\"run\"` on it and on \
+                "its quest tree must share one tier, so write `tier=\"{tier}\"` on it and on \
                  {names} together (or `tier=\"user\"` on all of them if they should persist), \
                  or set `defaults.questTier` in lute.project.yaml"
             )
+        };
+        let any_run = std::iter::once(q.id.as_str())
+            .chain(tree.iter().copied())
+            .filter_map(|id| own.get(id))
+            .any(|(reads, _)| reads.contains(&ReadTier::Run));
+        let state = if any_run && tier != "run" {
+            format!("run and {state}")
+        } else {
+            state
         };
         out.push(Diagnostic {
             code: W_QUEST_TIER_IMPLICIT.to_string(),
@@ -1201,9 +1385,12 @@ pub fn check_quest_tier_implicit(
                  {reads} — {fix}",
                 id = q.id,
                 reads = if standing.get(q.id.as_str()) == Some(&Standing::Neutral) {
-                    "it reads no state itself and the rest of its quest tree reads only run state"
+                    format!(
+                        "it reads no state itself and the rest of its quest tree reads only \
+                         {state} state"
+                    )
                 } else {
-                    "its conditions read only run state"
+                    format!("its conditions read only {state} state")
                 }
             ),
             span: q.id_span,
@@ -1215,6 +1402,50 @@ pub fn check_quest_tier_implicit(
         });
     }
     out
+}
+
+/// dsl 0.28.0 §5 (T2-7): the seasons whose state `expr` reads —
+/// `season.<name>.*` paths and queries of `tier: season:<name>` relations.
+fn reads_seasons(
+    expr: &cel_parser::ast::Expr,
+    relations: &BTreeMap<String, lute_manifest::relations::RelationDecl>,
+    out: &mut BTreeSet<String>,
+) {
+    use cel_parser::ast::Expr;
+    match expr {
+        Expr::Select(_) | Expr::Ident(_) => {
+            if let Some(p) = crate::cel_paths::select_path(expr) {
+                if let Some(s) = lute_manifest::season::season_of_path(&p) {
+                    out.insert(s.to_string());
+                }
+            }
+        }
+        Expr::Call(c) => {
+            if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct") {
+                if let Some(Expr::Call(atom)) = c.args.first().map(|a| &a.expr) {
+                    let tier = relations
+                        .get(&atom.func_name)
+                        .and_then(|r| r.tier.as_deref());
+                    if let Some(s) = tier.and_then(lute_manifest::season::season_ref) {
+                        out.insert(s.to_string());
+                    }
+                }
+            }
+            for e in c
+                .target
+                .iter()
+                .map(|t| &t.expr)
+                .chain(c.args.iter().map(|a| &a.expr))
+            {
+                reads_seasons(e, relations, out);
+            }
+        }
+        Expr::List(l) => l
+            .elements
+            .iter()
+            .for_each(|e| reads_seasons(&e.expr, relations, out)),
+        _ => {}
+    }
 }
 
 /// Whether `expr` reads a `clock.*` path.
@@ -1655,6 +1886,121 @@ pub fn check_project_domain_reads(
     out
 }
 
+/// Two documents of one project declare the same `<branch id>` / `<hub id>`.
+/// Each document is its own episode, so the ids are legal, but a play's or
+/// test's `choose:` names a menu by its id alone: one key answers both, and
+/// a list of decisions is consumed across both.
+pub const W_BRANCH_ID_SHARED: &str = "W-BRANCH-ID-SHARED";
+
+/// [`W_BRANCH_ID_SHARED`] over `docs` (pre-sorted by path): every document
+/// after the first to declare an id is warned at its first menu with that
+/// id, naming the first document's menu relative to `root`. A repeat inside
+/// one document is that document's `E-DUP-BRANCH`, not this.
+pub fn check_project_branch_ids(
+    root: &Path,
+    docs: &[(PathBuf, Document)],
+) -> Vec<(PathBuf, Diagnostic)> {
+    fn menus<'a>(nodes: &'a [Node], out: &mut Vec<(&'a str, &'static str, Span)>) {
+        for node in nodes {
+            match node {
+                Node::Branch(b) => {
+                    out.push((b.id.as_str(), "branch", b.span));
+                    for c in &b.choices {
+                        menus(&c.body, out);
+                    }
+                }
+                Node::Hub(h) => {
+                    let id = h
+                        .attrs
+                        .iter()
+                        .find(|a| a.key == "id")
+                        .and_then(|a| match &a.value {
+                            lute_syntax::ast::AttrValue::Str(s) => Some(s.as_str()),
+                            _ => None,
+                        });
+                    if let Some(id) = id {
+                        out.push((id, "hub", h.span));
+                    }
+                    for body in h.bodies() {
+                        menus(body, out);
+                    }
+                }
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        match arm {
+                            lute_syntax::ast::Arm::When { body, .. }
+                            | lute_syntax::ast::Arm::Otherwise { body, .. } => menus(body, out),
+                        }
+                    }
+                }
+                Node::On(o) => menus(&o.body, out),
+                Node::Objective(o) => menus(&o.body, out),
+                Node::Line(_)
+                | Node::Directive(_)
+                | Node::Set(_)
+                | Node::Timeline(_)
+                | Node::Assert(_)
+                | Node::Retract(_) => {}
+            }
+        }
+    }
+    let shown = |p: &Path| {
+        p.strip_prefix(root)
+            .unwrap_or(p)
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/")
+    };
+    // id -> the first document's menu (file, tag, span).
+    let mut first: BTreeMap<&str, (&Path, &'static str, Span)> = BTreeMap::new();
+    let mut out = Vec::new();
+    for (path, doc) in docs {
+        let mut found = Vec::new();
+        let bodies = doc
+            .shots
+            .iter()
+            .map(|s| &s.body)
+            .chain(doc.quests.iter().map(|q| &q.body))
+            .chain(doc.entries.iter().map(|e| &e.body))
+            .chain(doc.beats.iter().map(|b| &b.body));
+        for body in bodies {
+            menus(body, &mut found);
+        }
+        let mut here: BTreeSet<&str> = BTreeSet::new();
+        for (id, tag, span) in found {
+            if id.is_empty() || !here.insert(id) {
+                continue;
+            }
+            let Some(&(other, other_tag, other_span)) = first.get(id) else {
+                first.insert(id, (path.as_path(), tag, span));
+                continue;
+            };
+            out.push((
+                path.clone(),
+                Diagnostic {
+                    code: W_BRANCH_ID_SHARED.to_string(),
+                    severity: Severity::Warning,
+                    message: format!(
+                        "`<{tag} id=\"{id}\">` shares its id with the `<{other_tag}>` at `{}:{}` \
+                         — a `choose:` in a play or test names a menu by its id alone, so \
+                         `choose: {{ {id}: … }}` answers both; rename one",
+                        shown(other),
+                        other_span.line
+                    ),
+                    span,
+                    layer: Layer::Logic,
+                    fixits: Vec::new(),
+                    provenance: None,
+                    covered: Vec::new(),
+                    related: Vec::new(),
+                },
+            ));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1677,8 +2023,8 @@ mod tests {
             title: None,
             start: None,
             fail: None,
-            after: None,
-            after_span: span(id_line),
+            follows: None,
+            follows_span: span(id_line),
             tier: None,
             activate: None,
             complete: None,
@@ -1864,7 +2210,7 @@ mod tests {
 
     #[test]
     fn quest_refs_no_docs_yields_no_diagnostics() {
-        assert!(check_project_quest_refs(&[]).is_empty());
+        assert!(check_project_quest_refs(&[], false).is_empty());
     }
 
     #[test]
@@ -1876,7 +2222,10 @@ mod tests {
                 scene_doc_matching("quest.heist.state"),
             ),
         ];
-        assert!(check_project_quest_refs(&docs).is_empty(), "{docs:?}");
+        assert!(
+            check_project_quest_refs(&docs, false).is_empty(),
+            "{docs:?}"
+        );
     }
 
     #[test]
@@ -1888,7 +2237,10 @@ mod tests {
                 scene_doc_matching("quest.heist.objectives.steal.done"),
             ),
         ];
-        assert!(check_project_quest_refs(&docs).is_empty(), "{docs:?}");
+        assert!(
+            check_project_quest_refs(&docs, false).is_empty(),
+            "{docs:?}"
+        );
     }
 
     #[test]
@@ -1900,7 +2252,7 @@ mod tests {
                 scene_doc_matching("quest.heits.state"),
             ),
         ];
-        let out = check_project_quest_refs(&docs);
+        let out = check_project_quest_refs(&docs, false);
         assert_eq!(out.len(), 1, "{out:?}");
         let (path, d) = &out[0];
         assert_eq!(path, Path::new("scene.lute"), "names the referencing doc");
@@ -1908,6 +2260,39 @@ mod tests {
         assert_eq!(d.severity, Severity::Warning);
         assert!(d.message.contains("quest.heits.state"), "{}", d.message);
         assert!(d.message.contains("heits"), "{}", d.message);
+    }
+
+    /// Over a whole project a read no quest answers can never be true: an
+    /// error, and a quest DOCUMENT id written where its quest id belongs is
+    /// named as such.
+    #[test]
+    fn quest_refs_over_a_whole_project_are_errors_naming_the_doc_id_confusion() {
+        let quest = parsed(
+            "---\nkind: quest\nid: quest.lamp\n---\n<quest id=\"lampOut\">\n\
+             <objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+        );
+        let docs = vec![
+            (PathBuf::from("q.lute"), quest),
+            (
+                PathBuf::from("scene.lute"),
+                scene_doc_matching("quest.lamp.state"),
+            ),
+        ];
+        let out = check_project_quest_refs(&docs, true);
+        assert_eq!(out.len(), 1, "{out:?}");
+        let d = &out[0].1;
+        assert_eq!(d.code, "E-QUEST-REF-UNKNOWN");
+        assert_eq!(d.severity, Severity::Error);
+        assert!(
+            d.message.contains("its quest is `lampOut`"),
+            "{}",
+            d.message
+        );
+        assert!(
+            !d.message.contains("outside this walked directory"),
+            "{}",
+            d.message
+        );
     }
 
     #[test]
@@ -1919,7 +2304,7 @@ mod tests {
                 scene_doc_matching("quest.heist.objectives.bogus.done"),
             ),
         ];
-        let out = check_project_quest_refs(&docs);
+        let out = check_project_quest_refs(&docs, false);
         assert_eq!(out.len(), 1, "{out:?}");
         let (path, d) = &out[0];
         assert_eq!(path, Path::new("scene.lute"));
@@ -1945,7 +2330,7 @@ mod tests {
             (PathBuf::from("heist.lute"), quest_doc("heist", "steal")),
             (PathBuf::from("scene.lute"), scene),
         ];
-        let out = check_project_quest_refs(&docs);
+        let out = check_project_quest_refs(&docs, false);
         assert_eq!(out.len(), 1, "one path read twice is one warning: {out:?}");
     }
 
@@ -1958,7 +2343,10 @@ mod tests {
              <otherwise>\n@x: b\n</otherwise>\n</match>\n",
         );
         let docs = vec![(PathBuf::from("scene.lute"), scene)];
-        assert!(check_project_quest_refs(&docs).is_empty(), "{docs:?}");
+        assert!(
+            check_project_quest_refs(&docs, false).is_empty(),
+            "{docs:?}"
+        );
     }
 
     /// 0.10.0 §11.1: the reading set is the domain-typed attribute slots in the
@@ -2109,7 +2497,7 @@ mod tests {
             ),
             quest: quest.map(str::to_string),
             quest_span: span(line),
-            when: None,
+            visible_when: None,
             title: None,
             optional,
             on: None,

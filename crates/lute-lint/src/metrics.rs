@@ -86,6 +86,13 @@ pub struct SceneRow {
 /// is that kind; otherwise the document is a scene — a `beat` when it carries
 /// `on:`. Malformed frontmatter counts as a scene, which lint tolerates like a
 /// parse-error AST.
+///
+/// `raw_yaml` is the desugared frontmatter ([`crate::LintDocInput::doc`]): an
+/// `on:` the manifest's `chapters:` derived counts like one the scene wrote,
+/// so every scene an applied chain lists is a `beat`. That includes a scene
+/// that continues the one before it in the same raise of a `select:
+/// sequence` chain — it plays onto the stage the previous scene set, which
+/// is why it needs no `::bg` of its own.
 pub fn doc_kind(raw_yaml: &str) -> String {
     let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(raw_yaml)
     else {
@@ -422,6 +429,9 @@ impl Walker {
                 Node::Hub(h) => {
                     for c in &h.choices {
                         self.visit_choice(c);
+                    }
+                    if let Some(r) = &h.on_return {
+                        self.visit_nodes(&r.body);
                     }
                 }
                 Node::Match(m) => {

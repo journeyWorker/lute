@@ -425,6 +425,7 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
         &refs,
         &lute_check::cast::fact_producers(&docs, &Default::default()),
         None,
+        &Default::default(),
     )
 }
 
@@ -494,7 +495,7 @@ fn exclusive_whens_different_priorities_targets_or_select_all_do_not_tie() {
     ]);
     assert_eq!(codes(&offered, "W-BEAT-PRIORITY-TIE"), 0, "{offered:?}");
     // `holds(P)` against `!holds(P)` is exclusive too.
-    let rel = "relations:\n  here: { args: [person] }\n";
+    let rel = "relations:\n  here: { args: [person], tier: run }\n";
     let facts = project_beats(&[
         &beat(
             "a.one",

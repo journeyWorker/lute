@@ -18,6 +18,7 @@ use lute_check::component_effects::{
     use_args_for,
 };
 use lute_check::meta::StateSchema;
+use lute_check::occasion_bind::OccasionScopes;
 use lute_check::ComponentSet;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::CastMember;
@@ -53,6 +54,17 @@ pub fn component_scope(d: &Directive) -> &str {
             _ => None,
         })
         .unwrap_or("")
+}
+
+/// dsl 0.27.0 §6: carried by the two sentinels a template's `::body` split
+/// adds around a `<beat use>`'s own body (the end before it, the begin after
+/// it). They pause and resume ONE expansion — its scope stack pops and pushes
+/// as for any end/begin — rather than close it and open another.
+const BODY_SPLIT_ATTR: &str = "__body";
+
+/// Is `d` one of the [`BODY_SPLIT_ATTR`] sentinels?
+pub fn is_body_split(d: &Directive) -> bool {
+    d.attrs.iter().any(|a| a.key == BODY_SPLIT_ATTR)
 }
 
 /// dsl 0.26.0 §4: the `::use` as authored (`::use{component="eff" n="5"}`),
@@ -116,10 +128,7 @@ fn visit_lines(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
                 .choices
                 .iter_mut()
                 .for_each(|c| visit_lines(&mut c.body, f)),
-            Node::Hub(h) => h
-                .choices
-                .iter_mut()
-                .for_each(|c| visit_lines(&mut c.body, f)),
+            Node::Hub(h) => h.bodies_mut().for_each(|b| visit_lines(b, f)),
             Node::Match(m) => {
                 for arm in &mut m.arms {
                     match arm {
@@ -159,13 +168,16 @@ type UseOrdinals = BTreeMap<String, u32>;
 /// document exactly as compile expansion binds it — D14). `lute-trace`
 /// calls this BEFORE [`crate::expand::expand_document`] so component
 /// binding (§13.2), the §6.4 folds, and the `when=`/`into=` desugars are
-/// inherited by construction, with zero duplicated logic.
+/// inherited by construction, with zero duplicated logic. `targets`: the
+/// members `occasion.target` names in each kind or `for=` beat of the
+/// document ([`expand_target_uses`]).
 pub fn normalize_document(
     doc: &mut Document,
     components: &ComponentSet,
     cast: &BTreeMap<String, CastMember>,
     domains: &BTreeMap<String, Domain>,
     schema: &StateSchema,
+    targets: &OccasionScopes,
 ) -> Vec<Diagnostic> {
     let components = &Components {
         set: components,
@@ -177,6 +189,7 @@ pub fn normalize_document(
     // shots share one, each quest and each entry gets its own.
     let mut shot_uses = UseOrdinals::new();
     for shot in &mut doc.shots {
+        expand_target_uses(&mut shot.body, targets);
         normalize_nodes(
             &mut shot.body,
             components,
@@ -197,6 +210,7 @@ pub fn normalize_document(
     // dsl 0.19.0 §4: entry bodies admit content lines (incl. `when=` guards)
     // and `<match>` — the same desugars a quest body gets.
     for entry in &mut doc.entries {
+        expand_target_uses(&mut entry.body, targets);
         normalize_nodes(
             &mut entry.body,
             components,
@@ -208,6 +222,7 @@ pub fn normalize_document(
     // dsl 0.23.0 §4: a bundle beat body is a scene body, its own identity
     // scope (like an entry's).
     for beat in &mut doc.beats {
+        expand_target_uses(&mut beat.body, targets);
         normalize_nodes(
             &mut beat.body,
             components,
@@ -225,6 +240,123 @@ pub fn normalize_document(
     // lowerer.
     synthesize_subquests(&mut doc.quests);
     diags
+}
+
+/// dsl 0.28.0 §3: a `::use` passing `occasion.target` as an argument, in a
+/// beat or entry that targets a kind or runs for each member of one, plays
+/// the component for the member the beat runs for: it becomes a
+/// `<match on="occasion.target">` with one `<when is="<member>">` arm per
+/// member of `targets`' enclosing scope, each holding the `::use` with that
+/// member as the argument. So a `speaker` param speaks as the member, a
+/// kind-typed one renders its label, and the body's writes name it — every
+/// arm is an ordinary literal `::use`. A `<beat use>` host whose template
+/// body splits (`::body`) takes its host body into each arm with it. The
+/// checker has judged the argument for every member; outside such a beat
+/// (already an error) the `::use` is left as written.
+fn expand_target_uses(nodes: &mut Vec<Node>, targets: &OccasionScopes) {
+    let mut i = 0;
+    while i < nodes.len() {
+        let members = match &nodes[i] {
+            Node::Directive(d) if d.tag == "use" && target_arg(d).is_some() => targets
+                .members_at(d.span.byte_start, d.span.byte_end)
+                .filter(|ms| !ms.is_empty())
+                .map(<[String]>::to_vec),
+            _ => None,
+        };
+        let Some(members) = members else {
+            match &mut nodes[i] {
+                Node::Branch(b) => b
+                    .choices
+                    .iter_mut()
+                    .for_each(|c| expand_target_uses(&mut c.body, targets)),
+                Node::Hub(h) => {
+                    h.choices
+                        .iter_mut()
+                        .for_each(|c| expand_target_uses(&mut c.body, targets));
+                    if let Some(r) = &mut h.on_return {
+                        expand_target_uses(&mut r.body, targets);
+                    }
+                }
+                Node::Match(m) => m.arms.iter_mut().for_each(|arm| match arm {
+                    Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                        expand_target_uses(body, targets)
+                    }
+                }),
+                Node::On(on) => expand_target_uses(&mut on.body, targets),
+                Node::Objective(o) => expand_target_uses(&mut o.body, targets),
+                _ => {}
+            }
+            i += 1;
+            continue;
+        };
+        // A `<beat use>` template whose body splits closes at the host's
+        // `::body{component}` marker: the run up to it plays per member.
+        let Node::Directive(d) = &nodes[i] else {
+            unreachable!("matched a `::use` directive above")
+        };
+        let span = d.span;
+        let end = marker_component(d)
+            .and_then(|name| {
+                nodes[i + 1..]
+                    .iter()
+                    .position(|n| is_body_marker(n) && body_marker_for(n) == Some(name))
+            })
+            .map_or(i, |k| i + 1 + k);
+        let run: Vec<Node> = nodes.drain(i..=end).collect();
+        let arms = members
+            .iter()
+            .map(|m| {
+                let mut body = run.clone();
+                if let Some(Node::Directive(u)) = body.first_mut() {
+                    for a in u
+                        .attrs
+                        .iter_mut()
+                        .filter(|a| a.key != "component" && is_target_arg(&a.value))
+                    {
+                        a.value = AttrValue::Str(m.clone());
+                    }
+                }
+                expand_target_uses(&mut body, targets);
+                Arm::When {
+                    is: Some(lute_syntax::ast::IsPattern {
+                        raw: m.clone(),
+                        span,
+                    }),
+                    test: CelSlot::raw(CelKind::Condition, String::new(), span),
+                    attrs: Vec::new(),
+                    body,
+                    span,
+                }
+            })
+            .collect();
+        nodes.insert(
+            i,
+            Node::Match(Match {
+                subject: CelSlot::raw(
+                    CelKind::MatchSubject,
+                    lute_check::beats::OCCASION_TARGET.to_string(),
+                    span,
+                ),
+                // Synthesized, not authored: no residual attributes exist.
+                attrs: Vec::new(),
+                arms,
+                span,
+            }),
+        );
+        i += 1;
+    }
+}
+
+/// An argument that is `occasion.target` ([`expand_target_uses`]).
+fn is_target_arg(value: &AttrValue) -> bool {
+    lute_check::target_writes::is_target_value(value)
+}
+
+/// The first argument of a `::use` that passes `occasion.target`.
+fn target_arg(d: &Directive) -> Option<&Attr> {
+    d.attrs
+        .iter()
+        .find(|a| a.key != "component" && is_target_arg(&a.value))
 }
 
 /// Fill the empty `done` slot of every `<objective quest=c>` with §2.1's
@@ -367,8 +499,8 @@ fn normalize_nodes(
                     .any(|n| is_body_marker(n) && body_marker_for(n) == Some(name.as_str()));
                 match (hosted, spliced.first().cloned(), tail.last().cloned()) {
                     (true, Some(begin), Some(end)) => {
-                        spliced.push(end);
-                        tail.insert(0, begin);
+                        spliced.push(body_split(end));
+                        tail.insert(0, body_split(begin));
                         pending.push((name, tail));
                     }
                     _ => spliced.append(&mut tail),
@@ -449,6 +581,9 @@ fn normalize_nodes(
                     synth_into(c, schema);
                     normalize_nodes(&mut c.body, components, schema, uses, diags);
                 }
+                if let Some(r) = &mut h.on_return {
+                    normalize_nodes(&mut r.body, components, schema, uses, diags);
+                }
             }
             Node::Match(m) => {
                 for arm in &mut m.arms {
@@ -497,6 +632,19 @@ fn normalize_nodes(
 /// the host marker a `<beat use>` desugars to.
 fn is_body_marker(n: &Node) -> bool {
     matches!(n, Node::Directive(d) if d.tag == lute_check::templates::BODY_DIRECTIVE)
+}
+
+/// A sentinel copy marked [`BODY_SPLIT_ATTR`].
+fn body_split(mut node: Node) -> Node {
+    if let Node::Directive(d) = &mut node {
+        d.attrs.push(Attr {
+            key: BODY_SPLIT_ATTR.to_string(),
+            value: AttrValue::Str(String::new()),
+            value_span: d.span,
+            span: d.span,
+        });
+    }
+    node
 }
 
 /// The template a host `::body{component="…"}` marker closes.
@@ -822,6 +970,9 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                     bind_attrs(&mut c.attrs, args, params);
                     bind_params(&mut c.body, args, params);
                 }
+                if let Some(r) = &mut h.on_return {
+                    bind_params(&mut r.body, args, params);
+                }
             }
             Node::On(on) => {
                 if let Some(w) = &mut on.when {
@@ -832,7 +983,7 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
             }
             Node::Objective(o) => {
                 bind_slot(&mut o.done, args, params);
-                if let Some(w) = &mut o.when {
+                if let Some(w) = &mut o.visible_when {
                     bind_slot(w, args, params);
                 }
                 for deadline in o.by.iter_mut().chain(o.until.iter_mut()) {
@@ -930,16 +1081,23 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                 Some(AttrValue::Str(s)) => {
                     // dsl 0.24.0 §4: no placeholder survives a literal splice
                     // to carry the hint, so it applies here — `ordinal` /
-                    // `ordinalWord` on a number literal renders its ordinal,
-                    // `plural` (dsl 0.27.0 §7) its form.
+                    // `ordinalWord` / `cardinalWord` on a number literal
+                    // renders its word, `plural` (dsl 0.27.0 §7) its form, and
+                    // a text hint the literal's text (its fallback forms: the
+                    // spliced literal is text, not a member with forms).
                     let shown = s.trim();
-                    let formatted = interp
-                        .format
-                        .as_deref()
-                        .zip(shown.parse::<f64>().ok())
-                        .and_then(|(f, n)| {
-                            lute_syntax::ast::format_number(f, interp.forms.as_deref(), n, shown)
-                        });
+                    let formatted = interp.format.as_deref().and_then(|f| {
+                        match shown.parse::<f64>() {
+                            Ok(n) => lute_syntax::ast::format_number(
+                                f,
+                                interp.forms.as_deref(),
+                                n,
+                                shown,
+                            ),
+                            Err(_) => None,
+                        }
+                        .or_else(|| lute_syntax::ast::format_text(f, &s, None, None))
+                    });
                     let lit = formatted.as_deref().unwrap_or(&s);
                     out.push_str(lit);
                     // dsl 0.26.0 §3.1: a `{{…}}` inside a string argument is
@@ -1071,16 +1229,18 @@ fn interpolate_params(
 }
 
 /// The span of `text[start..end]` for a line text beginning at `text_span`
-/// (single-line: `line` is the text's, `column`/UTF-16 advance by the prefix).
+/// (single-line: `line` is the text's, the character column and UTF-16
+/// offset advance by the prefix's own counts).
 fn text_sub_span(text_span: Span, text: &str, start: usize, end: usize) -> Span {
     let (start, end) = (start.min(text.len()), end.min(text.len()));
     let u16_len = |s: &str| s.chars().map(|c| c.len_utf16() as u32).sum::<u32>();
-    let u16_start = text_span.utf16_range.0 + u16_len(text.get(..start).unwrap_or(""));
+    let prefix = text.get(..start).unwrap_or("");
+    let u16_start = text_span.utf16_range.0 + u16_len(prefix);
     Span {
         byte_start: text_span.byte_start + start,
         byte_end: text_span.byte_start + end,
         line: text_span.line,
-        column: text_span.column + start as u32,
+        column: text_span.column + prefix.chars().count() as u32,
         utf16_range: (
             u16_start,
             u16_start + u16_len(text.get(start..end).unwrap_or("")),
@@ -1172,6 +1332,7 @@ mod tests {
             &Default::default(),
             &Default::default(),
             &StateSchema::default(),
+            &Default::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
 
@@ -1237,6 +1398,7 @@ episode: 1
             &Default::default(),
             &Default::default(),
             &StateSchema::default(),
+            &Default::default(),
         );
         assert!(
             diags.iter().any(|d| d.code == "E-COMPILE-COMPONENT"),
@@ -1274,6 +1436,7 @@ components: [greet.component.lute]
             &Default::default(),
             &Default::default(),
             &StateSchema::default(),
+            &Default::default(),
         );
         let arg_err = diags
             .iter()
@@ -1358,6 +1521,7 @@ episode: 1
             &Default::default(),
             &Default::default(),
             &schema,
+            &Default::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
 
@@ -1434,6 +1598,7 @@ components: [greet.component.lute]
             &Default::default(),
             &Default::default(),
             &StateSchema::default(),
+            &Default::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
 
@@ -1485,7 +1650,7 @@ params:
 <on event="questComplete" when="@n > 0" foo=@n>
 ::set{run.score = run.score + @n}
 </on>
-<objective id="bonus" done="@n > 3" when="@n > 1">
+<objective id="bonus" done="@n > 3" visibleWhen="@n > 1">
 ::set{run.bonus = @n}
 </objective>
 "#;
@@ -1525,6 +1690,7 @@ kind: quest
             &Default::default(),
             &Default::default(),
             &StateSchema::default(),
+            &Default::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
 
@@ -1550,7 +1716,7 @@ kind: quest
         };
         assert_eq!(obj.done.raw, "5 > 3");
         assert!(!obj.done.raw.contains('@'));
-        let owhen = obj.when.as_ref().expect("objective.when");
+        let owhen = obj.visible_when.as_ref().expect("objective.visible_when");
         assert_eq!(owhen.raw, "5 > 1");
         let Node::Set(s2) = &obj.body[0] else {
             panic!("expected set, got {:?}", obj.body.first());
@@ -1568,6 +1734,7 @@ kind: quest
             &Default::default(),
             &Default::default(),
             &StateSchema::default(),
+            &Default::default(),
         );
         // Subquest synthesis is pure text: it never produces diagnostics of
         // its own (structural / cross-doc violations are the checker's job).

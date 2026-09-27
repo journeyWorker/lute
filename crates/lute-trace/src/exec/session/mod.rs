@@ -23,6 +23,7 @@ mod advance;
 mod eligibility;
 mod lifecycle;
 mod present;
+mod producers;
 mod project;
 mod resolve;
 mod step;
@@ -33,6 +34,7 @@ pub use advance::*;
 pub use eligibility::*;
 pub use lifecycle::*;
 pub use present::*;
+pub use producers::*;
 pub use project::*;
 pub use resolve::*;
 pub use step::*;
@@ -60,8 +62,9 @@ pub struct Session<'p> {
 }
 
 impl<'p> Session<'p> {
-    /// The playthrough's starting world ([`seed_world`]).
-    pub fn seed(project: &'p ExecProject, seed: &WorldSeed<'_>) -> Result<Self, String> {
+    /// The playthrough's starting world ([`seed_world`]); `Err` is every seed
+    /// the project cannot take.
+    pub fn seed(project: &'p ExecProject, seed: &WorldSeed<'_>) -> Result<Self, Vec<SeedError>> {
         Ok(Session {
             project,
             world: seed_world(project, seed)?,
@@ -141,6 +144,7 @@ impl<'p> Session<'p> {
         pick: &Option<Pick>,
         choose: &BTreeMap<String, Vec<String>>,
     ) -> StepOutcome {
+        self.world.step = n;
         // dsl 0.27.0 §4: a raise the engine would not make (its gate is
         // false, or the game is over) is refused.
         if let Some(why) =
@@ -158,6 +162,11 @@ impl<'p> Session<'p> {
                 decided: false,
                 presented: Vec::new(),
                 judged: Vec::new(),
+                not_raised: Some(match why {
+                    super::seam::Closed::Gate { .. } => "gate false",
+                    super::seam::Closed::Terminal(_) => "the game is over",
+                    super::seam::Closed::Unknown(_) => "undecided",
+                }),
             };
             let halt = super::seam::refusal(n, occasion, target.as_deref(), &why);
             return (body, Vec::new(), Some(halt));
@@ -197,6 +206,7 @@ impl<'p> Session<'p> {
         pick: &Option<Pick>,
         choose: &BTreeMap<String, Vec<String>>,
     ) -> StepOutcome {
+        self.world.step = n;
         run_advance(
             self.project,
             &mut self.world,

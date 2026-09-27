@@ -153,7 +153,7 @@ fn print_graph_for_root(
     print_unanchored(out, unanchored, when_visited);
 }
 
-/// dsl 0.21.0 §7a.5: a quest without `after=` is in no layer and on no edge,
+/// dsl 0.21.0 §7a.5: a quest without `follows=` is in no layer and on no edge,
 /// and used to be absent from this report entirely. Named here instead.
 /// dsl 0.25.0 §3: so is a beat whose `when` reads `visited()` but that
 /// declares no `after` — gated, yet drawn as an entry point — with the
@@ -168,8 +168,8 @@ fn print_unanchored(
     }
     outln!(
         out,
-        "  unanchored (no `after` — available from the start of play; no prerequisites in this \
-         graph):"
+        "  unanchored (no `after` / `follows` — available from the start of play; no \
+         prerequisites in this graph):"
     );
     for node in unanchored {
         outln!(out, "    {node}");
@@ -196,7 +196,7 @@ pub(crate) fn when_visited_hint(node: &lute_check::connectivity::NodeId, ids: &[
 
 /// dsl 0.23.0 §1: the prerequisite references the graph does not draw —
 /// counted and named, so a missing edge is explained where it is missed. A
-/// quest's edges come from its `after`, its subquest tree, its top-level
+/// quest's edges come from its `follows`, its subquest tree, its top-level
 /// `start` conjuncts and its `::accept`s (dsl 0.24.0 §2, 0.25.0 §4).
 fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedRef]) {
     use lute_check::connectivity::OmittedRef;
@@ -206,7 +206,7 @@ fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedR
     outln!(
         out,
         "  note: {} `visited()`/`completed()`/`active()` reference(s) not drawn — a quest's \
-         edges come from its `after`, its subquest tree, its `start` conjuncts and its \
+         edges come from its `follows`, its subquest tree, its `start` conjuncts and its \
          `::accept`s:",
         omitted.len()
     );
@@ -214,12 +214,12 @@ fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedR
         match r {
             OmittedRef::Lifecycle { from, kind, quest } => outln!(
                 out,
-                "    {from} -> {}(\"{quest}\") — quest({quest}) is on no edge (no `after`, tree, \
+                "    {from} -> {}(\"{quest}\") — quest({quest}) is on no edge (no `follows`, tree, \
                  `start` anchor or `::accept`)",
                 kind.as_str()
             ),
             // A condition read gates the quest but is no anchor; copying it
-            // into `after` would replace the quest's real anchors (its
+            // into `follows` would replace the quest's real anchors (its
             // `::accept`s, tree, `start`) with a possibly backwards edge, so
             // the note never suggests it (summer S1).
             OmittedRef::Visited { quest, scene, slot } => outln!(

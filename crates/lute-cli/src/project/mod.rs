@@ -116,19 +116,27 @@ pub(crate) type ByRoot = BTreeMap<PathBuf, DocGroup>;
 ///
 /// `Err(ExitCode::from(2))` on the same I/O failures `run_check_project`
 /// always had: the walk itself failing, or `build_input` unable to read a
-/// file.
+/// file; `Err(ExitCode::from(1))` on a capability-resolution error (under
+/// per-file roots), printed.
 pub(crate) fn collect_project_docs(
     dir: &Path,
     providers: Option<&Path>,
     single_root: bool,
 ) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
-    collect_project_inputs(dir, providers, single_root)
-        .map(|(file_results, by_root, _)| (file_results, by_root))
+    let (file_results, by_root, _, resolve_errors) =
+        collect_project_inputs(dir, providers, single_root)?;
+    if resolve_errors > 0 && !single_root {
+        return Err(ExitCode::from(1));
+    }
+    Ok((file_results, by_root))
 }
 
 /// [`collect_project_docs`], also handing back each file's `(root, input)` —
 /// aligned with the returned results — for `check-project`'s compile pass
-/// ([`project_compile_pass`]).
+/// ([`project_compile_pass`]), and the number of capability-resolution
+/// errors printed that did not stop the walk (a name declared twice keeps
+/// its first declaration, so the documents are still checked); the caller
+/// fails on them.
 ///
 /// [`project_compile_pass`]: crate::cmd_check_project::project_compile_pass
 #[allow(clippy::type_complexity)]
@@ -141,6 +149,7 @@ pub(crate) fn collect_project_inputs(
         Vec<(PathBuf, lute_check::CheckResult)>,
         ByRoot,
         Vec<(PathBuf, CheckInput)>,
+        usize,
     ),
     ExitCode,
 > {
@@ -174,7 +183,7 @@ pub(crate) fn collect_project_inputs(
             };
             let text = read_document(file)?;
             let (built, parsed) = assemble_input(&cache, file, text, providers, Some(&root), None);
-            let analysis = (!built.resolve_error || single_root).then(|| {
+            let analysis = (!built.resolve_blocks || single_root).then(|| {
                 let input = &built.input;
                 let mut doc = parsed.0.clone();
                 // dsl 0.27.0 §6: template beats are ordinary beats to every pass.
@@ -197,6 +206,11 @@ pub(crate) fn collect_project_inputs(
     let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> = Vec::with_capacity(files.len());
     let mut by_root: ByRoot = BTreeMap::new();
     let mut inputs: Vec<(PathBuf, CheckInput)> = Vec::with_capacity(files.len());
+    // A plugin or manifest fault is the project's, not each document's:
+    // every document under the same root resolves it alike, so each distinct
+    // line prints once.
+    let mut reported: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut resolve_errors = 0;
     for (file, checked) in files.iter().zip(checked) {
         let Checked {
             root,
@@ -206,9 +220,12 @@ pub(crate) fn collect_project_inputs(
             eprintln!("{message}");
             ExitCode::from(2)
         })?;
-        // Per file, exactly as `build_input` printed them before: this loop
-        // resolves each document's own root, so the lines stay one-per-document.
-        built.report_project_diags();
+        for m in &built.project_diags {
+            if reported.insert(m.clone()) {
+                eprintln!("lute: {m}");
+                resolve_errors += usize::from(m.starts_with("E-"));
+            }
+        }
         // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
         // option, missing active plugin, bad identity template) is a
         // build-failing error; it printed above, and it MUST gate or it would
@@ -234,12 +251,12 @@ pub(crate) fn collect_project_inputs(
         inputs.push((root, built.input));
     }
 
-    Ok((file_results, by_root, inputs))
+    Ok((file_results, by_root, inputs, resolve_errors))
 }
 
 /// Read and parse each of `files` (under the walk root `dir`) as every
 /// pass reads it: desugared against its own project's input (dsl 0.27.0
-/// §6/§8 — template beats, `sequence:` keys, the `questTier` default), for
+/// §6 — template beats, the keys `chapters:` derives, the `questTier` default), for
 /// the report surfaces that read documents without checking them (`lute
 /// refs`, `lute lore`). In `files` order, each with its parse diagnostics.
 #[allow(clippy::type_complexity)]

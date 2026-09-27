@@ -50,6 +50,34 @@ fn hub_no_exit_rejected() {
     );
 }
 
+// (a') A choice named `exit` that lacks the flag is the likely intent: the
+// verdict points at that choice and names the fix.
+#[test]
+fn hub_choice_named_exit_without_the_flag_is_pointed_at() {
+    let text = format!(
+        "{FM}## Shot 1.\n<hub id=\"h\">\n\
+         <choice id=\"read\" label=\"Read\">\n@narrator: a.\n</choice>\n\
+         <choice id=\"exit\" label=\"Leave\">\n@narrator: bye.\n</choice>\n</hub>\n",
+    );
+    let ds: Vec<_> = run(&text)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "E-HUB-NO-EXIT")
+        .collect();
+    assert_eq!(ds.len(), 1, "{ds:?}");
+    assert!(
+        text[ds[0].span.byte_start..].starts_with("<choice id=\"exit\""),
+        "{ds:?}"
+    );
+    assert!(
+        ds[0]
+            .message
+            .contains("`<choice id=\"exit\" label=\"Leave\" exit>`"),
+        "{}",
+        ds[0].message
+    );
+}
+
 // (b) A single unguarded `<choice … exit>` satisfies the exit obligation.
 #[test]
 fn hub_unguarded_exit_ok() {
@@ -221,4 +249,90 @@ fn hub_unknown_attr_still_rejected_beside_prompt() {
         "{FM}## Shot 1.\n<hub id=\"look\" prompt=\"Where?\" timeout=\"5\">\n{HUB_PROMPT_BODY}"
     ));
     assert_eq!(out, vec!["E-UNKNOWN-ATTR".to_string()]);
+}
+
+/// dsl 0.28.0 §5: a hub's revisit text.
+fn lamp(back: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: {{ type: number }}\n---\n\
+         ## Shot 1.\n<hub id=\"lamp\">\n{back}\
+         <choice id=\"ledger\" label=\"Read the ledger\">\n@narrator: smudged.\n</choice>\n\
+         <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye.\n</choice>\n</hub>\n"
+    )
+}
+
+#[test]
+fn hub_return_checks_clean() {
+    let res = run(&lamp(
+        "<return>\n@narrator: The lamp room again.\n</return>\n",
+    ));
+    assert!(res.ok, "{:?}", res.diagnostics);
+    assert!(res.diagnostics.is_empty(), "{:?}", res.diagnostics);
+}
+
+// The `<return>` body is checked like an option body: a read of a no-default
+// path there is E-MAYBE-UNSET, and an undeclared one is reported too.
+#[test]
+fn hub_return_body_is_checked() {
+    let text = lamp("<return>\n@narrator: {{scene.n}} and {{scene.nope}}.\n</return>\n");
+    let res = run(&text);
+    let line = |code: &str| {
+        res.diagnostics
+            .iter()
+            .filter(|d| d.code == code)
+            .map(|d| d.span.line)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(line("E-MAYBE-UNSET"), [12], "{:?}", res.diagnostics);
+    assert!(!res.ok);
+    assert!(
+        res.diagnostics
+            .iter()
+            .any(|d| d.span.line == 12 && d.code != "E-MAYBE-UNSET"),
+        "the undeclared `scene.nope` must be reported inside <return>: {:?}",
+        res.diagnostics
+    );
+}
+
+// A write that dominates the hub still proves a read in the `<return>` block.
+#[test]
+fn hub_return_read_proven_by_dominating_write() {
+    let text = lamp("<return>\n@narrator: {{scene.n}}.\n</return>\n")
+        .replace("## Shot 1.\n", "## Shot 1.\n::set{scene.n = 1}\n");
+    let res = run(&text);
+    assert!(res.ok, "{:?}", res.diagnostics);
+}
+
+// `<return>` takes no attributes; a `when=` names the remedy.
+#[test]
+fn hub_return_attr_rejected() {
+    let res = run(&lamp(
+        "<return when=\"scene.n > 0\">\n@narrator: again.\n</return>\n",
+    ));
+    let codes: Vec<&str> = res.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["E-UNKNOWN-ATTR"], "{:?}", res.diagnostics);
+    assert!(
+        res.diagnostics[0].message.contains("guard its lines"),
+        "{}",
+        res.diagnostics[0].message
+    );
+}
+
+// Outside a hub, a second one, or inside an option body: an error naming
+// where it belongs.
+#[test]
+fn hub_return_misplaced_is_an_error() {
+    let outside = format!("{FM}## Shot 1.\n<return>\n@narrator: again.\n</return>\n");
+    let second = lamp("<return>\n@narrator: a.\n</return>\n<return>\n@narrator: b.\n</return>\n");
+    let nested = lamp("").replace(
+        "@narrator: smudged.\n",
+        "@narrator: smudged.\n<return>\n@narrator: again.\n</return>\n",
+    );
+    for text in [outside, second, nested] {
+        let res = run(&text);
+        let codes: Vec<&str> = res.diagnostics.iter().map(|d| d.code.as_str()).collect();
+        assert_eq!(codes, ["E-LOGIC-CONTENT"], "{text}");
+        assert!(res.diagnostics[0].message.contains("<return>"), "{text}");
+        assert!(!res.ok);
+    }
 }

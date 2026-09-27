@@ -107,6 +107,9 @@ fn scan_hub(hub: &Hub, out: &mut BTreeSet<String>) {
     for choice in &hub.choices {
         scan_choice(choice, out);
     }
+    if let Some(r) = &hub.on_return {
+        scan_nodes(&r.body, out);
+    }
 }
 
 fn scan_choice(choice: &Choice, out: &mut BTreeSet<String>) {
@@ -542,7 +545,7 @@ pub fn quest_envelope(
         guaranteed: d.clone(),
         possible: d.clone(),
     };
-    match &q.after {
+    match &q.follows {
         None => QuestEnv {
             env: defaults_only(),
             enrichment_note: true,
@@ -1519,7 +1522,10 @@ mod tests {
     #[test]
     fn quest_without_after_gets_defaults_only_non_empty() {
         let (q, _schema) = quest_fixture("---\nkind: quest\n---\n<quest id=\"q\">\n</quest>\n");
-        assert!(q.after.is_none(), "fixture must declare no after attribute");
+        assert!(
+            q.follows.is_none(),
+            "fixture must declare no after attribute"
+        );
 
         let g = ConnGraph::default();
         let envs: BTreeMap<NodeId, Env> = BTreeMap::new();
@@ -1541,9 +1547,9 @@ mod tests {
     #[test]
     fn quest_with_after_gets_full_tables() {
         let (q, _schema) = quest_fixture(
-            "---\nkind: quest\n---\n<quest id=\"q\" after=\"visited(a)\">\n</quest>\n",
+            "---\nkind: quest\n---\n<quest id=\"q\" follows=\"visited(a)\">\n</quest>\n",
         );
-        assert_eq!(q.after.as_deref(), Some("visited(a)"));
+        assert_eq!(q.follows.as_deref(), Some("visited(a)"));
 
         let a = NodeId::Scene("a".to_string());
         let quest_node = NodeId::Quest("q".to_string());
@@ -1587,8 +1593,8 @@ mod tests {
         // emptiness, so this must resolve through the graph-lookup arm and
         // carry NO enrichment note even though its table ends up D/D.
         let (q, _schema) =
-            quest_fixture("---\nkind: quest\n---\n<quest id=\"q\" after=\"\">\n</quest>\n");
-        assert_eq!(q.after.as_deref(), Some(""));
+            quest_fixture("---\nkind: quest\n---\n<quest id=\"q\" follows=\"\">\n</quest>\n");
+        assert_eq!(q.follows.as_deref(), Some(""));
 
         let quest_node = NodeId::Quest("q".to_string());
         let g = graph(
@@ -1614,7 +1620,7 @@ mod tests {
         // INVENTORY (not a diagnostic), reusing that placeholder verbatim
         // is the sound, non-empty, non-error answer.
         let (q, _schema) = quest_fixture(
-            "---\nkind: quest\n---\n<quest id=\"q\" after=\"completed(ghost)\">\n</quest>\n",
+            "---\nkind: quest\n---\n<quest id=\"q\" follows=\"completed(ghost)\">\n</quest>\n",
         );
         let quest_node = NodeId::Quest("q".to_string());
         let f = PrereqFormula::Completed("ghost".to_string());
@@ -1647,7 +1653,7 @@ mod tests {
         // -- even an `after`-declaring quest can hit this. Must still
         // return a real, non-empty, non-error answer.
         let (q, _schema) = quest_fixture(
-            "---\nkind: quest\n---\n<quest id=\"q\" after=\"visited(a)\">\n</quest>\n",
+            "---\nkind: quest\n---\n<quest id=\"q\" follows=\"visited(a)\">\n</quest>\n",
         );
         let g = ConnGraph::default();
         let envs: BTreeMap<NodeId, Env> = BTreeMap::new();

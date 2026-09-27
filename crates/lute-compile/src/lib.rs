@@ -332,7 +332,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// `"season:<name>"`, the `plugin` record's resolved `asserts` /
 /// `retracts`, `labels` on `entities[]` and `state[]` entries, and the
 /// placeholder format `"plural"` with its `forms` appear only when authored.
-/// A beat template, the manifest's `sequence:` and `occasion.target` as a
+/// A beat template, the manifest's `chapters:` and `occasion.target` as a
 /// ground term lower to plain beats and conditions, so none adds a field. A
 /// `<match>` arm's `test` now carries the whole arm condition as CEL (an
 /// `is` arm over a subject with no portable `expr` used to lower to an empty
@@ -423,6 +423,7 @@ fn compile_inner(
         &cast,
         &folded.env.domains,
         &folded.env.state,
+        &folded.env.occasion_scopes,
     );
     // A plugin directive lowered by a core builtin hook runs as that core
     // directive (`lower: { kind: builtin, name: clearStage }` is `::clear`).
@@ -645,7 +646,13 @@ fn compile_inner(
         ir_version: LUTE_IR_VERSION.to_string(),
         capability_version: input.snapshot.version.clone(),
         meta,
-        state: state_entries(&folded.env.state, &branch_paths, &reserved, &folded.domains),
+        state: state_entries(
+            &folded.env.state,
+            &branch_paths,
+            &reserved,
+            &folded.domains,
+            &folded.env.rel_vocab.kinds,
+        ),
         entities,
         enums,
         relations,
@@ -667,6 +674,13 @@ fn compile_inner(
                 live: seam_cel(&decl.live, &table),
             })
             .collect(),
+        // dsl 0.28.0 (T2-9): `folded.occasions` is name-sorted.
+        outside_run: folded
+            .occasions
+            .iter()
+            .filter(|(_, d)| d.outside_run)
+            .map(|(name, _)| name.clone())
+            .collect(),
     })
 }
 
@@ -687,7 +701,9 @@ fn seam_gates(folded: &FoldedEnv, defs: &DefTable<'_>) -> Vec<ir::GateEntry> {
         .collect()
 }
 
-/// A seam condition (a gate, `terminal:`) as the IR's `{raw, expr}` pair.
+/// A seam condition (a gate, `terminal:`) as the IR's `{raw, expr}` pair,
+/// `@def`s expanded — with the author's text beside it when that changed
+/// it ([`ir::CelPair::authored`]).
 fn seam_cel(raw: &str, defs: &DefTable<'_>) -> ir::CelPair {
     let mut slot = lute_syntax::ast::CelSlot::raw(
         lute_syntax::ast::CelKind::Condition,
@@ -701,7 +717,9 @@ fn seam_cel(raw: &str, defs: &DefTable<'_>) -> ir::CelPair {
         },
     );
     let _ = expand::expand_beat_when(&mut slot, defs);
-    ir::CelPair::from_raw(&slot.raw)
+    let mut pair = ir::CelPair::from_raw(&slot.raw);
+    pair.authored = (raw.contains('@') && slot.raw.trim() != raw.trim()).then(|| raw.to_string());
+    pair
 }
 
 /// The [`SourceMap`] tables keyed by construct id rather than `addr`: every
@@ -815,13 +833,19 @@ fn rel_entries(
                 name: name.clone(),
                 members: Some(members.clone()),
                 open: false,
-                labels: decl.labels.clone(),
+                labels: decl
+                    .labels
+                    .iter()
+                    .map(|(m, l)| (m.clone(), l.text.clone()))
+                    .collect(),
+                label_forms: ir::LabelForms::of(&decl.labels),
             },
             KindShape::Open => EntityKindEntry {
                 name: name.clone(),
                 members: None,
                 open: true,
                 labels: BTreeMap::new(),
+                label_forms: BTreeMap::new(),
             },
             KindShape::Invalid => unreachable!(
                 "dsl 0.3.0 §3.1: an invalid entity-kind shape is E-ENTITY-KIND-SHAPE, an \
@@ -892,6 +916,7 @@ fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
+        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
     }
 }
 
@@ -1140,7 +1165,7 @@ fn plugin_frontmatter(
 }
 
 /// Advisory connectivity IR (connectivity spec §2.6, A-hybrid, T13): this
-/// document's OWN raw declared `after` prerequisite formula(s), parallel to
+/// document's OWN raw declared `after` / `follows` edge formula(s), parallel to
 /// [`rel_entries`]'s DATA-only lowering (D1 — declarations only, no
 /// resolution/evaluation/interpretation). `compile` is single-document with
 /// no resolved project root, so this NEVER validates a `visited`/
@@ -1148,9 +1173,9 @@ fn plugin_frontmatter(
 /// assembles a project-wide graph — those stay entirely in
 /// `check-project`/`lute scenario` (T3–T14).
 ///
-/// **Raw means raw**: an entry is emitted whenever the `after` slot is
+/// **Raw means raw**: an entry is emitted whenever the edge slot is
 /// AUTHORED (`Some(_)`), including an authored-but-empty `after: ""` /
-/// `after=""` — that entry's `after` field is then the empty string,
+/// `follows=""` — that entry's formula is then the empty string,
 /// verbatim. Deciding an empty string "isn't a declared prerequisite"
 /// (`PrereqState::Absent`, `check()`'s §6c gate) is itself an
 /// interpretation step, not a raw-declaration fact — it stays entirely on
@@ -1162,8 +1187,8 @@ fn plugin_frontmatter(
 /// keyed by the shared canonical scene key
 /// ([`lute_check::meta::canonical_scene_key`], dsl 0.15.0 §2) so authored
 /// `id:` and derived legacy joins land on the same identity everywhere. A
-/// quest-pack doc contributes ONE entry per `<quest>` that carries an
-/// `after` attribute (attribute present, any text), keyed by that quest's
+/// quest-pack doc contributes ONE `follows` entry per `<quest>` that carries
+/// a `follows` attribute (attribute present, any text), keyed by that quest's
 /// id. dsl 0.25.0 §3: a lore doc contributes one per bundle `<beat after=…>`,
 /// keyed by its canonical `<document id>.<beat id>`. Sorted by `node`
 /// (byte-stable determinism).
@@ -1180,16 +1205,16 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                 let node = canonical_scene_key(&folded.typed).unwrap_or_default();
                 out.push(PrereqEdgeEntry {
                     node,
-                    after: after.to_string(),
+                    edge: PrereqEdge::After(after.to_string()),
                 });
             }
         }
         lute_check::DocKind::Quest => {
             for quest in &doc.quests {
-                if let Some(after) = quest.after.as_deref() {
+                if let Some(follows) = quest.follows.as_deref() {
                     out.push(PrereqEdgeEntry {
                         node: quest.id.clone(),
-                        after: after.to_string(),
+                        edge: PrereqEdge::Follows(follows.to_string()),
                     });
                 }
             }
@@ -1202,7 +1227,7 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                     if let Some((after, _)) = &beat.after {
                         out.push(PrereqEdgeEntry {
                             node: lute_check::bundle_beat_key(doc_id, &beat.id),
-                            after: after.clone(),
+                            edge: PrereqEdge::After(after.clone()),
                         });
                     }
                 }
@@ -1303,6 +1328,7 @@ fn state_entries(
     branch_paths: &BTreeSet<String>,
     reserved: &BTreeMap<String, String>,
     domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
+    kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
 ) -> Vec<StateEntry> {
     schema
         .decls
@@ -1317,9 +1343,8 @@ fn state_entries(
         .map(|(path, decl)| {
             // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is
             // one of the `scene.choices.<branchId>` paths folded in from an actual
-            // `<branch>` in the document — NOT a `scene.choices.` prefix + `enum`
-            // guess. An author `state:` decl at a `scene.choices.*` path with no
-            // matching `<branch>` is a plain author entry, not a choice slot.
+            // `<branch>`/`<hub>` in the document. (`state:` cannot declare a
+            // `scene.choices.*` path, `E-STATE-NAMESPACE`, dsl 0.28.0.)
             let is_implicit = branch_paths.contains(path);
             // Same membership discriminator for the reserved quest/entry
             // namespaces (NOT a `quest.`/`entry.` prefix guess): only a path
@@ -1334,10 +1359,10 @@ fn state_entries(
             // §4.1 seeds implicit choice slots `default: "unset"` (their domain is
             // choice ids ∪ `unset`, no author default) so the runtime can init the
             // branch record key before any choice is taken. Every other entry —
-            // including an author enum at `scene.choices.manual` with no branch,
-            // and a quest-reserved entry (keeps `lute-check`'s own `None`/`Some(false)`
-            // default verbatim) — keeps its declared default; the `or_else` fires
-            // only when `default` is absent AND the slot is a real branch.
+            // a quest-reserved one included (keeps `lute-check`'s own
+            // `None`/`Some(false)` default verbatim) — keeps its declared default;
+            // the `or_else` fires only when `default` is absent AND the slot is a
+            // real branch.
             let default =
                 decl.default.as_ref().map(literal_json).or_else(|| {
                     is_implicit.then(|| serde_json::Value::String("unset".to_string()))
@@ -1366,6 +1391,13 @@ fn state_entries(
                         .unwrap_or_default(),
                     _ => BTreeMap::new(),
                 },
+                label_forms: match &decl.ty {
+                    Type::Domain(name) | Type::Entity(name) => kinds
+                        .get(name)
+                        .map(|k| ir::LabelForms::of(&k.labels))
+                        .unwrap_or_default(),
+                    _ => BTreeMap::new(),
+                },
                 member_domain: schema.domain_members.get(path).cloned(),
             }
         })
@@ -1379,9 +1411,8 @@ fn state_entries(
 /// `<branch>` (`E-COMPONENT-BODY`) and normalize/expand preserve branches, so
 /// the post-expand document yields the same set the folded schema was built
 /// from. Membership here — NOT a `scene.choices.` prefix + `enum` guess — is the
-/// reliable discriminator between a real branch slot (folded with `default:
-/// None`, seeded `"unset"` in the envelope) and an author decl at a
-/// `scene.choices.*` path (which keeps its own default/None and no `unset`).
+/// discriminator for a real branch slot (folded with `default: None`, seeded
+/// `"unset"` in the envelope).
 ///
 /// `pub` so `lute context` (D4) can reuse the SAME discriminator: it appends
 /// `unset` to exactly these implicit-slot enum domains, never to author enums —
@@ -1428,8 +1459,8 @@ fn collect_branch_paths_nodes(nodes: &[Node], paths: &mut BTreeSet<String>) {
                 // matching the walker + the B6 schema fold.
                 let id = crate::lower::attr_string(&h.attrs, "id").unwrap_or_default();
                 paths.insert(format!("scene.choices.{id}"));
-                for choice in &h.choices {
-                    collect_branch_paths_nodes(&choice.body, paths);
+                for b in h.bodies() {
+                    collect_branch_paths_nodes(b, paths);
                 }
             }
             // Quest-only arms (dsl 0.2.0 §4, §6.4): a `<branch>`/`<match>`
@@ -1489,8 +1520,8 @@ fn type_label(append_unset: bool, ty: &Type) -> (String, Option<Vec<String>>) {
         Type::Str => ("string".to_string(), None),
         Type::Enum(members) => {
             let mut domain = members.clone();
-            // Only a real implicit branch slot's domain is choice ids ∪ `unset`;
-            // an author enum at a `scene.choices.*` path keeps its declared members.
+            // Only a real implicit branch slot's (or quest state's) domain gains
+            // `unset`; an author enum keeps its declared members.
             if append_unset {
                 domain.push("unset".to_string());
             }
@@ -1613,7 +1644,7 @@ mod tests {
     fn raw_quest_pack_with_one_after() -> lute_check::CheckInput {
         test_input(
             "---\nkind: quest\n---\n\n\
-             <quest id=\"hasAfter\" after=\"visited('y.s01ep01')\">\n\
+             <quest id=\"hasAfter\" follows=\"visited('y.s01ep01')\">\n\
              <objective id=\"o1\" done=\"true\"/>\n\
              </quest>\n\n\
              <quest id=\"noAfter\">\n\
@@ -1641,7 +1672,7 @@ mod tests {
         assert_eq!(v["prereqEdges"].as_array().unwrap().len(), 1);
         assert_eq!(v["prereqEdges"][0]["node"], serde_json::json!("hasAfter"));
         assert_eq!(
-            v["prereqEdges"][0]["after"],
+            v["prereqEdges"][0]["follows"],
             serde_json::json!("visited('y.s01ep01')")
         );
     }
@@ -1662,13 +1693,13 @@ mod tests {
     #[test]
     fn quest_pack_emits_edge_for_empty_after_attribute_present() {
         let art = super::compile(&test_input(
-            "---\nkind: quest\n---\n\n<quest id=\"q\" after=\"\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n",
+            "---\nkind: quest\n---\n\n<quest id=\"q\" follows=\"\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n",
         ))
         .unwrap();
         let v = serde_json::to_value(&art).unwrap();
         assert_eq!(v["prereqEdges"].as_array().unwrap().len(), 1);
         assert_eq!(v["prereqEdges"][0]["node"], serde_json::json!("q"));
-        assert_eq!(v["prereqEdges"][0]["after"], serde_json::json!(""));
+        assert_eq!(v["prereqEdges"][0]["follows"], serde_json::json!(""));
     }
 
     #[test]

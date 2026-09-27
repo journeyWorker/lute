@@ -11,7 +11,7 @@ CEL text sits in every guard and value slot:
 
 - `<match on="S">` subject, `<when test="…">` guards, `<choice when="…">` and `when=` content-line gates
 - `::set{path = celExpr}` right-hand sides, and since 0.24.0 a `::set`'s own `when="…"` guard
-- quest `<quest start="…" fail="…">` and `<objective done="…" when="…" by="…" until="…">` predicates, `<on when="…">` handlers
+- quest `<quest start="…" fail="…">` and `<objective done="…" visibleWhen="…" by="…" until="…">` predicates, `<on when="…">` handlers
 - beat `when:` / `when=` eligibility conditions
 - a cast entry's `present:` condition (0.24.0, see [The cast](/language/dialogue-and-cast/#the-cast))
 
@@ -62,7 +62,7 @@ Since 0.21.0, every condition slot may also call `visited('<scene id>')` — tru
 
 ## Interpolation is not CEL
 
-A `{{…}}` interpolation in content text is not a CEL expression. It names one value: a state path, a def `@ref` / `@ref(args)`, or `userName`. A computed value needs a def. Since 0.24.0 an interpolation may carry one **format hint** after a colon: `{{user.deaths:ordinal}}` renders `1st`, `2nd`, `3rd`, `11th`, `21st`, `111th` (see [Interpolation](/language/dialogue-and-cast/#interpolation)). `ordinal` is the only hint, and any other name is `E-CEL-PROFILE`. It needs a number, so `:ordinal` on a string, enum or bool path or def, or on `userName`, is `E-REF-TYPE`.
+A `{{…}}` interpolation in content text is not a CEL expression. It names one value: a state path (in a beat that runs for a kind's members, also a `per:` family indexed by the member, `{{user.bond[occasion.target]}}`), `{{occasion.target}}` itself there, a def `@ref` / `@ref(args)`, or `userName`. A computed value needs a def. Since 0.24.0 an interpolation may carry one **format hint** after a colon: `{{user.deaths:ordinal}}` renders `1st`, `2nd`, `3rd`, `11th`, `21st`, `111th` (see [Interpolation](/language/dialogue-and-cast/#interpolation)). The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural(one|other)` for a number, and `capitalize`, `start` and `indefinite` for text; any other name is `E-CEL-PROFILE`. A number hint on a string, enum or bool path or def, or on `userName`, is `E-REF-TYPE`, and so is a text hint on a number or a bool.
 
 ## Compile target
 

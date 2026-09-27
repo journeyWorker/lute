@@ -59,6 +59,7 @@ fn ties(texts: &[&str]) -> Vec<Diagnostic> {
         &refs,
         &lute_check::cast::fact_producers(&docs, &Default::default()),
         None,
+        &Default::default(),
     )
     .into_iter()
     .map(|(_, d)| d)
@@ -152,7 +153,15 @@ fn a_fact_only_the_beats_own_unplayed_presentation_asserts_excludes_it() {
     );
     let out = ties(&[&again, &bark]);
     assert_eq!(out.len(), 1, "{out:?}");
-    assert!(out[0].message.contains("never spent"), "{}", out[0].message);
+    // dsl 0.28.0: the wording covers `once: false` and a latched `spentBy`
+    // alike — neither is spent by being presented.
+    assert!(
+        out[0]
+            .message
+            .contains("it is not spent by being presented"),
+        "{}",
+        out[0].message
+    );
 }
 
 #[test]

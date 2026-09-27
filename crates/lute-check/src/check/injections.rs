@@ -31,7 +31,7 @@ pub(super) fn fold_injections(
         out.extend(emit);
         let arms: Vec<&[Node]> = match node {
             Node::Branch(b) => b.choices.iter().map(|c| c.body.as_slice()).collect(),
-            Node::Hub(h) => h.choices.iter().map(|c| c.body.as_slice()).collect(),
+            Node::Hub(h) => h.bodies().map(|b| b.as_slice()).collect(),
             Node::Match(m) => m
                 .arms
                 .iter()

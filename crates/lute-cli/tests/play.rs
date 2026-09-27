@@ -1435,6 +1435,23 @@ fn engine_writes_are_validated_before_anything_plays() {
             "seed a save's quest status with top-level `quests:`",
         ),
         (
+            "steps:\n  - engine: { state: { occasion.payload.seconds: 2 } }\n",
+            "the payload comes from the raise, not the engine — give the `occasion:` step a \
+             `payload:`",
+        ),
+        (
+            "steps:\n  - engine: { state: { occasion.target: warden } }\n",
+            "give the `occasion:` step a `target:`",
+        ),
+        (
+            "steps:\n  - engine: { state: { scene.choices.door: stay } }\n",
+            "answer the branch or hub with `choose:`",
+        ),
+        (
+            "steps:\n  - newRun: { state: { scene.visited.gate: true } }\n",
+            "list the scenes a save has visited in top-level `visited:`",
+        ),
+        (
             "steps:\n  - engine: { facts: [slain(warden)] }\n",
             "names an undeclared relation `slain`",
         ),
@@ -2021,21 +2038,21 @@ fn select_sequence_presents_every_eligible_beat_in_order_and_spends_each_once() 
         "steps:\n  - occasion: evening\n  - occasion: evening\n  - occasion: evening\n",
     );
     assert_eq!(step(&v, 1)["select"], "sequence");
-    // Eligibility is decided at the raise: the routine moves the day to 2,
-    // but `eve.letter` was ineligible when `evening` was raised on day 1.
-    assert_eq!(presented_ids(&v, 1), ["eve.routine"]);
-    assert_eq!(candidate(&v, 1, "eve.letter")["reason"], "when: false");
-    // Day 2: both, in selection order (priority first).
-    assert_eq!(presented_ids(&v, 2), ["eve.routine", "eve.letter"]);
-    assert_eq!(winner(&v, 2), Some("eve.routine"));
-    // `eve.letter` spent its `once: run`; the routine repeats.
-    assert_eq!(presented_ids(&v, 3), ["eve.routine"]);
-    assert_eq!(
-        candidate(&v, 3, "eve.letter")["reason"],
-        "once: run — already presented this run"
-    );
+    // Each beat is judged just before it is presented: the routine moves
+    // the day to 2, so `eve.letter`, false when `evening` was raised on day
+    // 1, is eligible by its turn and follows in selection order.
+    assert_eq!(presented_ids(&v, 1), ["eve.routine", "eve.letter"]);
+    assert_eq!(winner(&v, 1), Some("eve.routine"));
+    // `eve.letter` spent its `once: run`; the routine repeats alone.
+    for n in [2, 3] {
+        assert_eq!(presented_ids(&v, n), ["eve.routine"]);
+        assert_eq!(
+            candidate(&v, n, "eve.letter")["reason"],
+            "once: run — already presented this run"
+        );
+    }
 
-    let script = "steps:\n  - occasion: evening\n  - occasion: evening\n    \
+    let script = "steps:\n  - occasion: evening\n    \
                   expect: { presented: [eve.routine, eve.letter] }\n";
     let out = play_in(&dir, "sequence-expect", script, false);
     assert_eq!(
@@ -2049,7 +2066,7 @@ fn select_sequence_presents_every_eligible_beat_in_order_and_spends_each_once() 
     assert!(text.contains("· evening (select: sequence)"), "{text}");
     assert!(text.contains("  → eve.routine\n  → eve.letter\n"), "{text}");
 
-    let wrong = "steps:\n  - occasion: evening\n  - occasion: evening\n    \
+    let wrong = "steps:\n  - occasion: evening\n    \
                  expect: { presented: [eve.letter, eve.routine] }\n";
     let out = play_in(&dir, "sequence-miss", wrong, false);
     assert_eq!(out.status.code(), Some(1), "{}", stdout(&out));
@@ -2501,28 +2518,34 @@ fn an_expected_winner_no_beat_has_is_a_located_usage_error() {
 }
 
 /// dsl 0.27.0 (T3-22): `repeat:` on an `include:` splices the file that many
-/// times; a key an include does not take names the ones it does.
+/// times; its `label:` labels the steps it splices in; a key an include does
+/// not take names the ones it does.
 #[test]
-fn an_include_takes_repeat_and_names_its_keys() {
+fn an_include_takes_repeat_and_label_and_names_its_keys() {
     let dir = temp_dir("include-repeat");
     let steps = write(&dir, "v.steps.yaml", "- occasion: hubVisit\n");
     let v = play_json(
         "include-repeat-play",
-        &format!("steps:\n  - include: {}\n    repeat: 3\n", steps.display()),
+        &format!(
+            "steps:\n  - include: {}\n    repeat: 3\n    label: day 9\n",
+            steps.display()
+        ),
         0,
     );
-    assert!(v["steps"].as_array().is_some_and(|s| s.len() == 3), "{v}");
+    let played = v["steps"].as_array().cloned().unwrap_or_default();
+    assert_eq!(played.len(), 3, "{v}");
+    assert!(played.iter().all(|s| s["label"] == "day 9"), "{v}");
     let out = play_in(
         &fixture(),
         "include-bad-key",
-        &format!("steps:\n  - include: {}\n    label: x\n", steps.display()),
+        &format!("steps:\n  - include: {}\n    name: x\n", steps.display()),
         false,
     );
     let err = stderr(&out);
     assert_eq!(out.status.code(), Some(2), "{err}");
     assert!(
-        err.contains("`label` does not apply to an `include:` step")
-            && err.contains("`repeat`, `choose`, `bridges`"),
+        err.contains("`name` does not apply to an `include:` step")
+            && err.contains("`repeat`, `choose`, `bridges`, `label`"),
         "{err}"
     );
 }
@@ -2709,4 +2732,110 @@ fn an_include_choose_its_steps_never_present_is_noted() {
     );
     assert!(t.contains("note: `include: "), "{t}");
     assert!(!t.contains("`choose: look`"), "{t}");
+}
+
+/// A step's own `choose:` key none of its presentations presented gets the
+/// include's note; a halt at a choice an ended `include:` carried the
+/// decision for names that include.
+#[test]
+fn a_halt_names_the_include_that_scripted_its_choice_and_a_step_choose_is_noted() {
+    let dir = stage_project("include-halt");
+    let steps = write(
+        &temp_dir("include-halt-steps"),
+        "v.steps.yaml",
+        "- occasion: visit\n",
+    );
+    let out = play_in(
+        &dir,
+        "include-halt",
+        &format!(
+            "steps:\n  - include: {}\n    choose: {{ ask: [accept] }}\n  \
+             - occasion: visit\n    choose: {{ ask: [accept] }}\n  - occasion: talk\n\
+             choose:\n  look: [leave, leave]\n",
+            steps.display()
+        ),
+        false,
+    );
+    let t = format!("{}{}", stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(3), "{t}");
+    assert!(
+        t.contains(
+            "step 2 never used its own `choose: ask` (no presentation of the step presented `ask`)"
+        ),
+        "{t}"
+    );
+    assert!(
+        t.contains("its decision was scripted on `include: ")
+            && t.contains("which ended before this step"),
+        "{t}"
+    );
+}
+
+/// A refused scripted pick whose guard misses a fact names what in the
+/// project asserts it — the scene and the choice option — and what the play
+/// chose there; an engine-asserted fact names the `engine:` step. A play
+/// has no mocks, so it
+/// never suggests one.
+#[test]
+fn a_refused_pick_names_the_producer_of_its_missing_fact() {
+    let dir = temp_dir("producer");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  clue: { members: [receipt, glove] }\n\
+         relations:\n  found: { args: [clue], tier: run }\n  \
+         seen: { args: [clue], tier: run, reserved: true }\n",
+    );
+    write(
+        &dir,
+        "scenes/counter.lute",
+        "---\nkind: scene\nid: counter\ntitle: The counter\non: chapter\npriority: 20\n---\n\n\
+         ## The counter\n\n<branch id=\"look\">\n  \
+         <choice id=\"receipt\" label=\"Check under the till\">\n    \
+         @narrator: A crumpled receipt.\n    ::assert{found(receipt)}\n  </choice>\n  \
+         <choice id=\"leave\" label=\"Leave it\">\n    @narrator: You leave.\n  </choice>\n\
+         </branch>\n",
+    );
+    write(
+        &dir,
+        "scenes/accusation.lute",
+        "---\nkind: scene\nid: accusation\ntitle: The accusation\non: chapter\npriority: 10\n\
+         after: 'visited(\"counter\")'\n---\n\n## The parlour\n\n<branch id=\"askTilly\">\n  \
+         <choice id=\"receipt\" label=\"Show the receipt\" when=\"holds(found(receipt))\">\n    \
+         @narrator: Tilly goes pale.\n  </choice>\n  \
+         <choice id=\"glove\" label=\"Show the glove\" when=\"holds(seen(glove))\">\n    \
+         @narrator: A glove.\n  </choice>\n  \
+         <choice id=\"bluff\" label=\"Bluff\">\n    @narrator: She laughs.\n  </choice>\n\
+         </branch>\n",
+    );
+    let script = |pick: &str| {
+        format!(
+            "steps:\n  - occasion: chapter\n    choose: {{ look: leave }}\n  \
+             - occasion: chapter\n    choose: {{ askTilly: {pick} }}\n"
+        )
+    };
+    let out = play_in(&dir, "producer-receipt", &script("receipt"), false);
+    let t = format!("{}{}", stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(1), "{t}");
+    assert!(
+        t.contains(
+            "`found(receipt)` does not hold (asserted by scene `counter` choice \
+             `look: receipt`; step 1 chose `leave`)"
+        ),
+        "{t}"
+    );
+    assert!(!t.contains("mock"), "{t}");
+    let out = play_in(&dir, "producer-glove", &script("glove"), false);
+    let t = format!("{}{}", stdout(&out), stderr(&out));
+    assert!(
+        t.contains(
+            "`seen(glove)` does not hold (the engine asserts it — an `engine:` step writes it)"
+        ),
+        "{t}"
+    );
 }

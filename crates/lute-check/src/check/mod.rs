@@ -99,6 +99,7 @@ mod fold;
 mod guard;
 mod injections;
 mod interp;
+mod literal_text;
 mod pipeline;
 mod postprocess;
 mod use_site;
@@ -108,8 +109,8 @@ mod walker;
 use choice_record::{check_choice_record, into_literal};
 pub(crate) use component_body::{bare_param_ref, directive_writes_state};
 use component_body::{
-    component_own_slots, component_use_sites, use_target, validate_components, walk_component_body,
-    BodyScope,
+    component_def_reads, component_own_slots, component_use_sites, use_target, validate_components,
+    walk_component_body, BodyScope,
 };
 pub use fold::fold_env;
 use fold::{attr_str, fold_directive_slots, params_from_yaml};
@@ -124,11 +125,13 @@ use interp::{
 };
 use pipeline::cel_parse_diagnostics;
 pub use pipeline::{check, check_parsed};
+pub use postprocess::diagnostic_order;
 use postprocess::{
     collapse_same_root, dedup_rehomed, dedup_undeclared, first_backtick_token, normalize_spans,
     suppress_dead_arm_overlaps, suppress_exhaustive_subject_reads,
     suppress_unparsed_child_list_verdicts, suppress_unproven_absence,
 };
+pub(crate) use use_site::literal_arg_ok;
 pub use use_site::use_speaker_lines;
 use use_site::{
     check_param_literal_defaults, check_speaker_args, check_use, check_use_def_enum_args,
@@ -298,4 +301,25 @@ pub struct FoldedEnv {
     /// arguments name ([`crate::component_effects::use_speaker_lines`]) —
     /// what the emotion and presence passes judge at that `::use`.
     pub use_lines: std::collections::BTreeMap<usize, Vec<lute_syntax::ast::Line>>,
+    /// When the document's kind and `for=` beats answer different members:
+    /// one environment per member list, `occasion.target` typed by that list
+    /// alone ([`Self::env_at`]). Empty otherwise — [`Self::env`] is exact.
+    pub member_envs: Vec<(Vec<String>, Env)>,
+}
+
+impl FoldedEnv {
+    /// The environment a slot written at `span` is checked in: in a kind or
+    /// `for=` beat, `occasion.target` is typed by that beat's own members,
+    /// so a `<match>` over it needs only those and a literal from another
+    /// kind is outside its domain; everywhere else, [`Self::env`].
+    pub fn env_at(&self, span: lute_core_span::Span) -> &Env {
+        if self.member_envs.is_empty() {
+            return &self.env;
+        }
+        self.env
+            .occasion_scopes
+            .members_at(span.byte_start, span.byte_end)
+            .and_then(|ms| self.member_envs.iter().find(|(list, _)| list == ms))
+            .map_or(&self.env, |(_, env)| env)
+    }
 }

@@ -3,7 +3,7 @@ title: Tracing guide
 description: "Preview a scene before you ship it — seeding state, facts, choices, events, accepts, the visited set, a save's quest status and entry reads, raised occasions (for a target, too), the previous run and plugin bridge answers via flags or a mock YAML file, credited rewards and objective bodies, quest structure, presenting one bundle beat or a kind beat's member, how the project's rules derive over them, reading the decision transcript (def references as authored, or `--expand`ed; a taken `::next` followed to its label), and the E-TRACE-* refusals."
 ---
 
-`lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof. Since 0.22.0 it applies the project's seed facts and Datalog rules over those mocks by default, exactly as `lute run` and `lute play` do — see [Derivation](#derivation). Since dsl 0.26.0 it also follows a taken `::next` to its label and applies a quest `<on>` handler's `::accept`, as play does, and `lute test` fails a test that presents a beat its mocks make ineligible — see [Following a taken `::next`](#following-a-taken-next) and [`lute test`](/tooling/cli/#test).
+`lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof. Since 0.22.0 it applies the project's seed facts and Datalog rules over those mocks by default, exactly as `lute run` and `lute play` do — see [Derivation](#derivation). Since dsl 0.26.0 it also follows a taken `::next` to its mark and applies a quest `<on>` handler's `::accept`, as play does, and `lute test` fails a test that presents a beat its mocks make ineligible — see [Following a taken `::next`](#following-a-taken-next) and [`lute test`](/tooling/cli/#test).
 
 ## Seeding the world
 
@@ -164,7 +164,7 @@ trace complete: 0 decisions
 
 A beat's own `after="…"` (dsl 0.25.0 §3) is shown the same way, over the mock's `visited:` and quest states, and never enforced: ``<beat keeper.greeting>   (not eligible: `after` prerequisite not satisfied)`` heads the walk when it does not hold.
 
-A beat or entry that targets a whole kind (`target="kind:trainer"`, dsl 0.26.0 §5; see [Kind targets](/tooling/play/#kind-targets)) reads the raised member as `occasion.target`. Seed it like any state path — `--state occasion.target=r16Gus`, or `state: { occasion.target: r16Gus }` in a mock or test — typed by the kind, so a non-member is `E-TRACE-MOCK-TYPE`. Where the text interpolates it, trace and test print the member the way `lute play` does: its cast `name:` when the member is a cast id (`@narrator  Hiker Brom squares up.`), else the id. Without the seed the text keeps `{{occasion.target}}`. `--entry` also takes an entry's `<document id>.<entry id>` (`--entry lore.tomas.tomasOil`).
+A beat or entry that targets a whole kind (`target="kind:trainer"`, dsl 0.26.0 §5; see [Kind targets](/tooling/play/#kind-targets)) reads the raised member as `occasion.target`. Seed it like any state path — `--state occasion.target=r16Gus`, or `state: { occasion.target: r16Gus }` in a mock or test — typed by the kind, so a non-member is `E-TRACE-MOCK-TYPE`. Where the text interpolates it, trace and test print the member the way `lute play` does: the kind's label for it, else its cast `name:` when the member is a cast id (`@narrator  Hiker Brom squares up.`), else the id. Without the seed the text keeps `{{occasion.target}}`. `--entry` also takes an entry's `<document id>.<entry id>` (`--entry lore.tomas.tomasOil`).
 
 A lore document needs `--entry` or `--beat`, and without either the usage error (exit **2**) lists both kinds of id. A `--beat` that names no beat of the document is `E-TRACE-BEAT` (exit **1**), listing the ones it declares:
 
@@ -178,7 +178,7 @@ lore/oskar.lute:0:0: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id
 
 A scenario test presents the same beat with `beat: <id>` (bare or canonical) instead of `entry:`. Trace shows a beat's `when` without enforcing it, but since dsl 0.26.0 `lute test` enforces it: a test that presents an entry or beat its mocks make ineligible fails, naming the premise that is false, unless it asserts `expect.eligible` — see [`lute test`](/tooling/cli/#test). `--entry` with a beat's id is refused as `E-TRACE-ENTRY`; after the document's entries its message adds ``— `hunt` is a `<beat>`: present it with `--beat hunt` ``, and in a test it names the `beat:` key instead. For an id that is neither, the message lists the beats (`--beat`) after the entries.
 
-An `eligible:` expectation answers that failure, and with it asserted an ineligible body is not walked, so an `eligible: false` test needs no bridge answers for a body that never plays. A map key may name an entry or bundle beat of the file that the test did not present: it is judged alone, under the same mocks, so a lore test may carry a map-form `eligible:` without presenting anything. Two more test expectations read a walk's structure: `expect.accepts: [quest ids]` asserts the quests the scene's `::accept`s took, as a set (`accepts: expected [toll], got [parley]`), and `expect.offered` of a `<hub>` is every choice eligible at any of its visits, unioned, as for a branch (it was always `[]`). See [`lute test`](/tooling/cli/#test).
+An `eligible:` expectation answers that failure, and with it asserted an ineligible body is not walked, so an `eligible: false` test needs no bridge answers for a body that never plays. A map key may name an entry or bundle beat of the file that the test did not present: it is judged alone, under the same mocks, so a lore test may carry a map-form `eligible:` without presenting anything. Two more test expectations read a walk's structure: `expect.accepts: [quest ids]` asserts the quests the scene's `::accept`s took, as a set (`accepts: expected [toll], got [parley]`), and `expect.options` of a `<hub>` is every choice eligible at any of its visits, unioned, as for a branch (it was always `[]`). See [`lute test`](/tooling/cli/#test).
 
 ## Reading the transcript
 
@@ -240,7 +240,7 @@ trace complete: 1 decision; choices 1/2 (offer)
 
 ### Following a taken `::next`
 
-A `::next{to="<label>"}` the walk takes jumps to its `::mark`, exactly as `lute run` and `lute play` jump (dsl 0.26.0 §7): the transcript shows `<next -> <label>>` (JSON step `{"kind": "jump", "to": "<label>"}`) and the walk goes on from the mark, so `trace complete` — and a test's `exit: complete` — means the walk reached the end of the document. Before 0.26.0 the walk ended at a taken jump and still reported complete, so a test could pass on a transcript that play never shows. A vault whose door choice jumps past the guard:
+A `::next{to="<mark>"}` the walk takes jumps to its `::mark`, exactly as `lute run` and `lute play` jump (dsl 0.26.0 §7): the transcript shows `<next -> <mark>>` (JSON step `{"kind": "jump", "to": "<mark>"}`) and the walk goes on from the mark, so `trace complete` — and a test's `end: complete` — means the walk reached the end of the document. Before 0.26.0 the walk ended at a taken jump and still reported complete, so a test could pass on a transcript that play never shows. A vault whose door choice jumps past the guard:
 
 ```console
 $ lute trace scenes/vault.lute --project . --choose enter=yes
@@ -335,8 +335,8 @@ id: case.accuse
 entities:
   person: { members: [ann, bob] }
 relations:
-  suspect: { args: [person] }
-  alibi: { args: [person] }
+  suspect: { args: [person], tier: run }
+  alibi: { args: [person], tier: run }
   culprit: { args: [person], derive: true }
 facts:
   - "suspect(ann)"
@@ -399,7 +399,7 @@ trace complete: 2 decisions; choices 1/2 (ask), choices 1/2 (verdict)
 
 The refusal names the premise that is false (round-5 T3-12): the guard as authored, every read it is false over, and the mock that would change it — ``its guard `holds(found(receipt))` decided false: `found(receipt)` does not hold (mock `--fact "found(receipt)"`)``, or ``… `run.x` is 2 (mock `--state run.x=<value>`)``. A `visited(…)` or quest-state read is named with its `--mock` file key (`visited: [a]`, `quests: { q: <state> }`) and the note that a single-file trace does not know what earlier scenes did. A spent hub option says ``it is `once` and already taken in this visit of hub `h` ``. In a `*.test.yaml` the hints are spelled as test keys (`facts: ["found(receipt)"]`, `state: { run.x: <value> }`), and `lute play` appends the same premise to its own `E-TRACE-CHOICE`.
 
-A mocked derived atom is still accepted: it is a seed like any other, so `--fact "culprit(ann)"` holds whatever the rules conclude. [`lute test`](/tooling/cli/#test) walks the same way, and a test whose walk halts fails unless it declares `expect: { exit: incomplete }`. A test asserts what the rules conclude with `expect.facts` and `expect.notFacts` — atoms that must hold, or must not, after derivation when the walk ends:
+A mocked derived atom is still accepted: it is a seed like any other, so `--fact "culprit(ann)"` holds whatever the rules conclude. [`lute test`](/tooling/cli/#test) walks the same way, and a test whose walk halts fails unless it declares `expect: { end: incomplete }`. A test asserts what the rules conclude with `expect.facts` and `expect.notFacts` — atoms that must hold, or must not, after derivation when the walk ends:
 
 ```yaml
 file: accuse.lute
@@ -422,7 +422,7 @@ state:
 entities:
   person: { members: [ann] }
 relations:
-  suspect: { args: [person] }
+  suspect: { args: [person], tier: run }
   warrant: { args: [person], derive: true }
 facts:
   - "suspect(ann)"

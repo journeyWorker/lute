@@ -106,9 +106,17 @@ fn the_checker_knows_a_directive_asserts_its_declared_facts() {
     assert_eq!(code, Some(0), "{t}");
     // The entry's `::fright` is admitted; the office gate is not dead for
     // want of a `holding(brassKey)` producer.
-    for code in ["E-GRAMMAR-NOT-ADMITTED", "E-ARM-DEAD", "E-BEAT", "W-"] {
+    for code in ["E-GRAMMAR-NOT-ADMITTED", "E-ARM-DEAD", "E-BEAT"] {
         assert!(!t.contains(code), "{code}: {t}");
     }
+    // The one warning is the lookup entry's first-read-only write (0.28
+    // covers every entry that can be read again).
+    let warnings: Vec<&str> = t.lines().filter(|l| l.contains("W-")).collect();
+    assert_eq!(warnings.len(), 1, "{t}");
+    assert!(
+        warnings[0].contains("[W-ENTRY-WRITE-REREAD] `<entry id=\"diary\">`"),
+        "{t}"
+    );
 }
 
 /// HW27-06: a directive an entry cannot call is refused with the 0.27 rule
@@ -260,10 +268,11 @@ fn an_entry_applies_its_effect_directive_on_the_first_read_only() {
     assert_eq!(code, Some(0), "{t}");
 }
 
-/// HW27-12: an entry beat without `once` applies an effect directive's
-/// `writes` on the first read in a run only, like its own `::set` — the
-/// same `W-ENTRY-WRITE-REREAD`. An `asserts`-only effect (idempotent) is not
-/// a write that could be lost.
+/// HW27-12: an entry that can be read again in a run applies an effect
+/// directive's `writes` on the first read in a run only, like its own
+/// `::set` — the same `W-ENTRY-WRITE-REREAD`, for an entry beat without
+/// `once` and (0.28) a lookup entry alike. An `asserts`-only effect
+/// (idempotent) is not a write that could be lost.
 #[test]
 fn an_entry_beats_effect_write_warns_it_applies_on_the_first_read_only() {
     let dir = project("reread");
@@ -280,13 +289,21 @@ fn an_entry_beats_effect_write_warns_it_applies_on_the_first_read_only() {
         .lines()
         .filter(|l| l.contains("[W-ENTRY-WRITE-REREAD]"))
         .collect();
-    assert_eq!(hits.len(), 1, "{t}");
+    assert_eq!(hits.len(), 2, "{t}");
     assert!(
-        hits[0].contains("tape.lute:7:")
-            && hits[0].contains("`<entry id=\"tape\">` has no `once`")
-            && hits[0].contains("its `::fright` applies on the first read in a run only"),
+        hits.iter().any(|h| h.contains("notes.lute:7:")
+            && h.contains("`<entry id=\"diary\">` answers no occasion")
+            && h.contains("its `::fright` applies on the first read in a run only")),
         "{t}"
     );
+    assert!(
+        hits.iter().any(|h| h.contains("tape.lute:7:")
+            && h.contains("`<entry id=\"tape\">` has no `once`")
+            && h.contains("its `::fright` applies on the first read in a run only")),
+        "{t}"
+    );
+    // The `::give` entry only asserts: nothing to lose on a reread.
+    assert!(!hits.iter().any(|h| h.contains("id=\"key\"")), "{t}");
 }
 
 #[test]

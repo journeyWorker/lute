@@ -140,8 +140,9 @@ pub struct IndexBeat {
     /// artifact's `forKind`. Omitted when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub for_kind: Option<crate::ir::ForKind>,
-    /// dsl 0.27.0 §5: the beat's `spentBy` condition (raw, `@def`-expanded)
-    /// — eligible only while it does not hold. Omitted when not authored.
+    /// dsl 0.27.0 §5, 0.28.0 §6: the beat's `spentBy` condition (raw,
+    /// `@def`-expanded) — once it has held the beat is spent for its `once`
+    /// period. Omitted when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spent_by: Option<String>,
 }
@@ -211,6 +212,11 @@ pub struct ProjectIndex {
     /// `seasons`, one declaration per name), name-sorted. OMITTED when none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub seasons: Vec<crate::ir::SeasonEntry>,
+    /// dsl 0.28.0 (T2-9): the occasions declared `outsideRun: true` (the
+    /// artifacts' `outsideRun`, unioned), name-sorted — raised even after
+    /// `terminal` holds. OMITTED when none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub outside_run: Vec<String>,
 }
 
 impl ProjectIndex {
@@ -367,6 +373,7 @@ pub fn build_index(
     // two documents is ONE declaration, so these dedupe on the whole value and
     // can never conflict.
     let mut seed_facts: BTreeMap<(String, Vec<String>), SeedFactEntry> = BTreeMap::new();
+    let mut outside_run: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut rules: BTreeMap<(String, String), RuleEntry> = BTreeMap::new();
 
     for d in docs {
@@ -395,6 +402,7 @@ pub fn build_index(
         for s in &a.seasons {
             seasons.push(&s.name, s, &d.path, &mut errors);
         }
+        outside_run.extend(a.outside_run.iter().cloned());
         for f in &a.seed_facts {
             seed_facts
                 .entry((f.relation.clone(), f.args.clone()))
@@ -521,6 +529,7 @@ pub fn build_index(
         gates: gates.finish(),
         terminal: terminals.finish().into_iter().next(),
         seasons: seasons.finish(),
+        outside_run: outside_run.into_iter().collect(),
     })
 }
 
@@ -651,7 +660,7 @@ pub fn document_key(artifact: &Artifact) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{AtomEntry, BeatIr, SceneMeta};
+    use crate::ir::{AtomEntry, BeatIr, PrereqEdge, SceneMeta};
 
     fn scene(character: &str, capability: &str) -> Artifact {
         Artifact {
@@ -683,6 +692,7 @@ mod tests {
             gates: Vec::new(),
             terminal: None,
             seasons: Vec::new(),
+            outside_run: Vec::new(),
         }
     }
 
@@ -734,7 +744,7 @@ mod tests {
         a.rules = vec![rule("trusts", "trusts(X) :- knows(X)")];
         a.prereq_edges = vec![PrereqEdgeEntry {
             node: "marina.s01ep02".to_string(),
-            after: "visited(\"a.b\")".to_string(),
+            edge: PrereqEdge::After("visited(\"a.b\")".to_string()),
         }];
         let mut b = scene("kai", "cap-1");
         // Same relation + same fact + same rule as `a`: one union entry each.
@@ -1083,6 +1093,7 @@ mod tests {
             b.when = Some(crate::ir::CelPair {
                 raw: "run.day == 3 && run.slot == 'night'".to_string(),
                 expr: None,
+                authored: None,
             });
         }
         let mut titled = beat_scene("wed.night", scene_beat);
@@ -1095,6 +1106,7 @@ mod tests {
             e.when = Some(crate::ir::CelPair {
                 raw: "run.slot != 'night'".to_string(),
                 expr: None,
+                authored: None,
             });
         }
         let docs = [

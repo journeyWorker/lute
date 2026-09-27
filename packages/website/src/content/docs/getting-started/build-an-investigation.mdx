@@ -502,7 +502,7 @@ state:
 choose:
   accuse: accuseBlake
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "The cuffs close on the right wrists. Case closed."
     - "Booked. The file can finally rest."
@@ -520,7 +520,7 @@ state:
 choose:
   accuse: accuseCass
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "The wrong suspect walks free. Somewhere, the real one exhales."
     - "I got it wrong. The file stays open."
@@ -537,7 +537,7 @@ file: ../scenes/interview.lute
 choose:
   interrogate: [pressLedger, leave]
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "These numbers were bled dry. Explain them."
     - "Blake keeps surfacing. A thread worth pulling."

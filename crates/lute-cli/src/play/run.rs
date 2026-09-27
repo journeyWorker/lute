@@ -6,6 +6,8 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
+use serde_json::Value as Json;
+
 use lute_trace::exec::seam::Closed;
 use lute_trace::exec::session::{PlayHalt, Played, QuestAdvance, Session, StepBody, World};
 
@@ -45,10 +47,23 @@ pub(super) struct Playthrough {
     /// The steps an `end: true` step left unplayed: `(n, label)`.
     pub(super) skipped: Vec<(usize, Option<String>)>,
     pub(super) outcome: Result<String, PlayHalt>,
-    /// dsl 0.27.0 §4: the playthrough ended in the project's terminal state
-    /// (`end: terminal`) — every step played and `terminal:` holds.
+    /// The playthrough ran to its end (every step, or an `end: true` step)
+    /// with the project's `terminal:` holding (`end: terminal`).
     pub(super) terminal: bool,
     pub(super) world: World,
+}
+
+impl Playthrough {
+    /// How the playthrough ended — the value `expect.end` judges
+    /// ([`crate::play_expect::ENDS`]): `complete`, `terminal`, or the halt's
+    /// `incomplete` / `error`.
+    pub(super) fn ended(&self) -> &'static str {
+        match &self.outcome {
+            Ok(_) if self.terminal => "terminal",
+            Ok(_) => "complete",
+            Err(h) => h.exit_label(),
+        }
+    }
 }
 
 pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) -> Playthrough {
@@ -92,11 +107,15 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
         return finish(start, steps, h, s.world);
     }
     let mut open: Vec<OpenScope> = Vec::new();
+    // T3-56: the `choose:` keys of `include:` items that closed without
+    // presenting them, with the include — what a later halt at that
+    // choice names.
+    let mut ended: Vec<(String, String)> = Vec::new();
     for (i, step) in plan.iter().enumerate() {
-        let closed = enter_scopes(&mut s.world, &mut open, &step.segments);
+        let closed = enter_scopes(&mut s.world, &mut open, &step.segments, &mut ended);
         note_on_last(&mut steps, closed);
         if matches!(step.action, Action::End) {
-            let closed = enter_scopes(&mut s.world, &mut open, &[]);
+            let closed = enter_scopes(&mut s.world, &mut open, &[], &mut ended);
             note_on_last(&mut steps, closed);
             steps.push(StepRecord {
                 n: step.n,
@@ -125,7 +144,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                 start,
                 steps,
                 skipped,
-                terminal: false,
+                terminal: s.terminal(),
                 outcome: Ok(reason),
                 world: s.world,
             };
@@ -135,6 +154,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
             .iter()
             .find(|(i, _, _)| *i == step.n)
             .and_then(|(_, _, e)| crate::play_expect::wants_world(e));
+        let first = steps.len();
         for k in 1..=step.repeat {
             // dsl 0.24.0 §5: the step's own answers ride before the top
             // level's for exactly this run of the step.
@@ -186,6 +206,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
             let mut notes: Vec<String> = clock_raised_note(&s, &step.action, &plan[i + 1..])
                 .into_iter()
                 .chain(closed_raise_notes(&body))
+                .chain(passed_raise_note(&s, &body))
                 .collect();
             // dsl 0.27.0 §4: the step that ended the game says so.
             if halt.is_none() && !was_terminal && s.terminal() {
@@ -206,11 +227,15 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                 menus_presented(steps.last().expect("just pushed"), &mut o.used);
             }
             if let Some(h) = halt {
+                let h = name_ended_include(h, steps.last(), &ended);
                 return finish(start, steps, h, s.world);
             }
         }
+        if let Some(note) = step_choose_note(step, &steps[first..]) {
+            note_on_last(&mut steps, vec![note]);
+        }
     }
-    let closed = enter_scopes(&mut s.world, &mut open, &[]);
+    let closed = enter_scopes(&mut s.world, &mut open, &[], &mut ended);
     note_on_last(&mut steps, closed);
     // dsl 0.27.0 §4: a playthrough whose last step left the game over ends
     // in the terminal state (a later raising step was refused above).
@@ -282,6 +307,79 @@ fn closed_raise_notes(body: &StepBody) -> Vec<String> {
         .collect()
 }
 
+/// The note on an `advance:` that passed positions without raising the
+/// clock's slot occasion (raised once, where the clock stops), naming them
+/// by day — a run of days passed whole as one range — when some beat
+/// answers that occasion.
+fn passed_raise_note(s: &Session<'_>, body: &StepBody) -> Option<String> {
+    let StepBody::Advance {
+        passed: Some(pr), ..
+    } = body
+    else {
+        return None;
+    };
+    if pr.beats == 0 {
+        return None;
+    }
+    let clock = s.project().index.clock.as_ref()?;
+    let day = |d: i64| match clock.weekday_label(d) {
+        Some(label) => format!("day {d} ({label})"),
+        None => format!("day {d}"),
+    };
+    let days = |from: i64, to: i64| match to - from {
+        0 => day(from),
+        _ => format!("{} to {}", day(from), day(to)),
+    };
+    let mut groups: Vec<(i64, Vec<&str>)> = Vec::new();
+    for at in &pr.at {
+        match groups.last_mut() {
+            Some((d, slots)) if *d == at.day => slots.extend(at.slot.as_deref()),
+            _ => groups.push((at.day, at.slot.as_deref().into_iter().collect())),
+        }
+    }
+    // Runs of consecutive days passed whole: `(first, last)`; a day passed
+    // in part is its own entry with its slots.
+    let whole = |slots: &[&str]| slots.len() == clock.slot_count();
+    let mut named: Vec<String> = Vec::new();
+    let mut run: Option<(i64, i64)> = None;
+    let flush = |run: &mut Option<(i64, i64)>, named: &mut Vec<String>| {
+        if let Some((a, b)) = run.take() {
+            if clock.slot.is_some() {
+                named.push(format!("{}, every slot", days(a, b)));
+            } else if b - a >= 2 {
+                named.push(days(a, b));
+            } else {
+                named.extend((a..=b).map(day));
+            }
+        }
+    };
+    for (d, slots) in &groups {
+        if whole(slots) || clock.slot.is_none() {
+            match &mut run {
+                Some((_, b)) if *b + 1 == *d => *b = *d,
+                _ => {
+                    flush(&mut run, &mut named);
+                    run = Some((*d, *d));
+                }
+            }
+        } else {
+            flush(&mut run, &mut named);
+            named.push(format!("{} {}", day(*d), slots.join(", ")));
+        }
+    }
+    flush(&mut run, &mut named);
+    let sep = if clock.slot.is_some() { "; " } else { ", " };
+    Some(format!(
+        "passed {} without raising `{}` ({} beat{} answer{} it; an `advance:` raises it only \
+         where the clock stops)",
+        named.join(sep),
+        pr.occasion,
+        pr.beats,
+        if pr.beats == 1 { "" } else { "s" },
+        if pr.beats == 1 { "s" } else { "" },
+    ))
+}
+
 /// dsl 0.27.0 (T3-22): a segment open around the running step, with what
 /// it replaced in the world — per `choose:` key the script's list and its
 /// consumption, per `bridges:` tag the queue — so leaving it restores them,
@@ -311,8 +409,14 @@ struct Used {
 /// over all its repetitions — never presented a `choose:` key of its own,
 /// or never took an answer of a `bridges:` tag of its own, says so as its
 /// last repetition closes (a decision written on the wrong `include:`);
-/// the notes are returned.
-fn enter_scopes(w: &mut World, open: &mut Vec<OpenScope>, want: &[Arc<Scope>]) -> Vec<String> {
+/// the notes are returned, and each such key is pushed onto `ended` with
+/// its include (T3-56: a later halt at that choice names it).
+fn enter_scopes(
+    w: &mut World,
+    open: &mut Vec<OpenScope>,
+    want: &[Arc<Scope>],
+    ended: &mut Vec<(String, String)>,
+) -> Vec<String> {
     let keep = open
         .iter()
         .zip(want)
@@ -371,11 +475,73 @@ fn enter_scopes(w: &mut World, open: &mut Vec<OpenScope>, want: &[Arc<Scope>]) -
             used,
         });
     }
+    for (_, scope, used) in &closed {
+        ended.extend(
+            scope
+                .choose
+                .keys()
+                .filter(|k| !used.menus.contains(*k))
+                .map(|k| (k.clone(), scope.include.clone())),
+        );
+    }
     closed
         .iter()
         .rev()
         .filter_map(|(_, scope, used)| leftover_note(scope, used))
         .collect()
+}
+
+/// T3-56: a halt at a choice no decision was scripted for, when an
+/// `include:` that already ended carried that decision unused — the halt
+/// names it (its "never used" note sits steps above).
+fn name_ended_include(
+    h: PlayHalt,
+    last: Option<&StepRecord>,
+    ended: &[(String, String)],
+) -> PlayHalt {
+    let PlayHalt::Incomplete(msg) = h else {
+        return h;
+    };
+    let unscripted = last.and_then(|r| {
+        step_transcript(r).find_map(|rec| {
+            (rec.get("note").and_then(|n| n.as_str()) == Some(lute_trace::exec::NOTE_NO_DECISION))
+                .then(|| menu_id(rec))
+                .flatten()
+        })
+    });
+    match unscripted.and_then(|id| ended.iter().rev().find(|(k, _)| k == id)) {
+        Some((_, include)) => PlayHalt::Incomplete(format!(
+            "{msg} — its decision was scripted on {include}, which ended before this step"
+        )),
+        None => PlayHalt::Incomplete(msg),
+    }
+}
+
+/// T3-56: a step's own `choose:` keys none of its presentations (over all
+/// its repetitions) presented — dropped with the step, like an
+/// `include:`'s ([`leftover_note`]).
+fn step_choose_note(step: &Step, records: &[StepRecord]) -> Option<String> {
+    let choose = match &step.action {
+        Action::Occasion { choose, .. } | Action::Advance { choose, .. } => choose,
+        _ => return None,
+    };
+    let mut used = Used::default();
+    for r in records {
+        menus_presented(r, &mut used);
+    }
+    let unused: Vec<String> = choose
+        .keys()
+        .filter(|k| !used.menus.contains(*k))
+        .map(|k| format!("`choose: {k}` (no presentation of the step presented `{k}`)"))
+        .collect();
+    (!unused.is_empty()).then(|| {
+        format!(
+            "step {} never used its own {} — a decision for a later step belongs on that step, \
+             or on the script",
+            step.n,
+            unused.join(", ")
+        )
+    })
 }
 
 /// Notes a segment left as it closed ([`leftover_note`]), on the last step
@@ -414,9 +580,9 @@ fn leftover_note(scope: &Scope, used: &Used) -> Option<String> {
     })
 }
 
-/// Every branch/hub id a step record's walks presented — its beats (an
-/// `advance:`'s midnight raises included) and its quest handlers.
-fn menus_presented(r: &StepRecord, into: &mut Used) {
+/// Every record a step record's walks wrote — its beats (an `advance:`'s
+/// midnight raises included) and its quest handlers.
+fn step_transcript(r: &StepRecord) -> impl Iterator<Item = &Json> {
     let beats = r
         .body
         .occasion()
@@ -426,26 +592,37 @@ fn menus_presented(r: &StepRecord, into: &mut Used) {
             _ => Vec::new(),
         })
         .map(|pr| pr.transcript.as_slice());
-    let days = r.body.days_played();
-    let days = days.iter().map(|p| match p {
-        Played::Beat(pr) => pr.transcript.as_slice(),
-        Played::Quest(q) => q.transcript.as_slice(),
-    });
+    let days: Vec<&[Json]> = r
+        .body
+        .days_played()
+        .into_iter()
+        .map(|p| match p {
+            Played::Beat(pr) => pr.transcript.as_slice(),
+            Played::Quest(q) => q.transcript.as_slice(),
+        })
+        .collect();
     let quests = r
         .body
         .settled()
         .chain(&r.quests)
         .map(|q| q.transcript.as_slice());
-    for rec in beats.chain(days).chain(quests).flatten() {
-        let id = match rec.get("kind").and_then(|k| k.as_str()) {
-            Some("choice") => rec.get("branch"),
-            Some("hub") => rec.get("hub"),
-            _ => None,
-        };
-        if let Some(id) = id.and_then(|v| v.as_str()) {
-            into.menus.insert(id.to_string());
-        }
+    beats.chain(days).chain(quests).flatten()
+}
+
+/// The branch/hub id a `choice` / `hub` record presented.
+fn menu_id(rec: &Json) -> Option<&str> {
+    match rec.get("kind").and_then(|k| k.as_str()) {
+        Some("choice") => rec.get("branch"),
+        Some("hub") => rec.get("hub"),
+        _ => None,
     }
+    .and_then(|v| v.as_str())
+}
+
+/// Every branch/hub id a step record's walks presented.
+fn menus_presented(r: &StepRecord, into: &mut Used) {
+    into.menus
+        .extend(step_transcript(r).filter_map(menu_id).map(str::to_string));
 }
 
 /// Summer R1: an `occasion:` step raising the `dayEnd` / `dayStart` the
@@ -475,7 +652,7 @@ fn clock_raised_note(s: &Session<'_>, action: &Action, later: &[Step]) -> Option
     // dsl 0.27.0 §4: a finite clock stops at its last position, raising
     // its last `dayEnd` once; an advance after that moves nothing.
     let last = clock.last_at();
-    let mut ended = s.world.clock_ended;
+    let mut ended = lute_trace::clock::ended(&s.world.state);
     let passed = later
         .iter()
         .take_while(|s| !matches!(s.action, Action::NewRun(_) | Action::End))

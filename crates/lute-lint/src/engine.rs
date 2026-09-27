@@ -25,7 +25,9 @@ use crate::rules::{active_group_bys, evaluate_rule, resolve_rules, DocContext};
 /// caller normalizes (e.g. project-root-relative) before invoking. `doc` is
 /// the [`lute_syntax::parse`] result (a parse-error document is legal —
 /// lint runs over whatever AST syntax layer produced, matching the
-/// `lute-check` policy).
+/// `lute-check` policy) after the manifest's `chapters:` derivation
+/// ([`lute_check::chapters::apply_chapters`]), so a scene a chain lists is
+/// classified by the `on:` the chain gives it ([`crate::metrics::doc_kind`]).
 pub struct LintDocInput {
     pub path: PathBuf,
     pub doc: Document,

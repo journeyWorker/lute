@@ -71,7 +71,7 @@ fn project(tag: &str) -> PathBuf {
         &dir,
         "world.schema.yaml",
         "entities:\n  hero: { members: [aria, bram, cyra] }\n\
-         relations:\n  owned: { args: [hero], reserved: true }\n  birthday: { args: [hero] }\n\
+         relations:\n  owned: { args: [hero], tier: run, reserved: true }\n  birthday: { args: [hero], tier: run, reserved: true }\n\
          state:\n  user.bond: { type: number, default: 0, per: hero, owner: engine }\n  \
          run.total: { type: number, default: 0 }\n",
     );
@@ -174,16 +174,17 @@ fn a_payload_is_bound_for_its_raise_only() {
     assert_eq!(step_lines(step), ["2 copies of bram."], "{step}");
     assert_eq!(step["presented"]["stateDelta"]["run.total"], 2, "{step}");
 
-    // The next raise carries no payload: `occasion.payload.copies` has no
-    // value, so the beat reading it cannot be decided — the play halts
-    // rather than reuse the previous raise's copies.
+    // The next raise carries no payload: the previous raise's copies are not
+    // reused — a raise that leaves out a declared field is a usage error at
+    // its step, naming the field.
     let (code, _, t) = play(
         &dir,
         "steps:\n  - occasion: summon\n    target: hero.bram\n    payload: { copies: 2 }\n  \
          - occasion: summon\n    target: hero.bram\n",
     );
-    assert_eq!(code, Some(3), "{t}");
-    assert!(t.contains("occasion.payload.copies"), "{t}");
+    assert_eq!(code, Some(2), "{t}");
+    assert!(t.contains("s.play.yaml:5:"), "{t}");
+    assert!(t.contains("`copies`") && t.contains("missing"), "{t}");
 }
 
 #[test]
@@ -291,7 +292,7 @@ fn a_union_kind_orders_its_members_as_the_schema_declares_them() {
         "world.schema.yaml",
         "entities:\n  hero: { members: [] }\n  ssr: { subsetOf: hero, members: [aria, cyra] }\n  \
          sr: { subsetOf: hero, members: [bram] }\n  limited: { subsetOf: ssr, members: [cyra] }\n\
-         relations:\n  owned: { args: [hero], reserved: true }\n  birthday: { args: [hero] }\n\
+         relations:\n  owned: { args: [hero], tier: run, reserved: true }\n  birthday: { args: [hero], tier: run, reserved: true }\n\
          state:\n  user.bond: { type: number, default: 0, per: hero, owner: engine }\n  \
          run.total: { type: number, default: 0 }\n",
     );

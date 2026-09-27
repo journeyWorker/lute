@@ -73,6 +73,12 @@ pub enum WriteOwner {
     /// Any `clock.*` path (dsl 0.24.0 §1): derived from the clock's `day`
     /// and `slot`, read-only.
     ClockReserved,
+    /// `scene.choices.*` / `scene.visited.*` (dsl 0.28.0 §1, T1-12): what a
+    /// branch or hub chose and what a run visited, recorded by the engine.
+    SceneRecord,
+    /// Any `occasion.*` path (dsl 0.28.0 §1, T1-12): the raise a beat
+    /// answers — its target and payload come from the raise.
+    OccasionReserved,
     /// A declared path marked `owner: engine` (dsl 0.22.0 §1.2): the engine
     /// writes it at runtime (and `engine:` play steps / trace mocks in the
     /// toolchain); content may only read it.
@@ -94,6 +100,10 @@ pub(crate) fn classify_write(path: &str, schema: &StateSchema) -> WriteOwner {
         WriteOwner::PrevReserved
     } else if lute_manifest::clock::is_clock_path(path) {
         WriteOwner::ClockReserved
+    } else if path.starts_with("scene.choices.") || path.starts_with("scene.visited.") {
+        WriteOwner::SceneRecord
+    } else if path == "occasion" || path.starts_with("occasion.") {
+        WriteOwner::OccasionReserved
     } else if engine_owned(path, schema) {
         WriteOwner::Engine
     } else {
@@ -118,6 +128,178 @@ fn engine_owned(path: &str, schema: &StateSchema) -> bool {
         .is_some_and(|(_, d)| owned(d))
 }
 
+/// Why the engine owns `path` — a scene record, an `occasion.*` path or an
+/// `owner: engine` path (`owner`) — as `(code, why)`: one message shape for
+/// all three, so [`write_fault`] formats them with one literal.
+fn reserved_write_why(
+    owner: &WriteOwner,
+    path: &str,
+    schema: &StateSchema,
+) -> (&'static str, &'static str) {
+    let scene_record = matches!(owner, WriteOwner::SceneRecord);
+    let occasion = matches!(owner, WriteOwner::OccasionReserved);
+    if scene_record && path.starts_with("scene.choices.") {
+        (
+            "E-QUEST-RESERVED-WRITE",
+            "`scene.choices.<id>` records which choice a branch or hub took; the engine \
+             writes it when a choice is taken — keep your own record in a `run.` path",
+        )
+    } else if scene_record {
+        (
+            "E-QUEST-RESERVED-WRITE",
+            "`scene.visited.*` records what a run has visited; the engine writes it — keep \
+             your own record in a `run.` path",
+        )
+    } else if occasion && path.starts_with("occasion.payload") {
+        (
+            "E-QUEST-RESERVED-WRITE",
+            "the payload comes from the raise — in `lute play`, the `occasion:` step's \
+             `payload:`; in a trace or test, the mock",
+        )
+    } else if occasion {
+        (
+            "E-QUEST-RESERVED-WRITE",
+            "`occasion.*` describes the raise a beat answers and is read-only — its target \
+             comes from the raise (`target:` on the `occasion:` step)",
+        )
+    } else if schema
+        .clock
+        .as_ref()
+        .is_some_and(|c| c.day == path || c.slot.as_deref() == Some(path))
+    {
+        // dsl 0.28.0 (T3-52): the clock's own paths move only with the
+        // clock — an `engine:` write would move it without raising.
+        (
+            E_ENGINE_OWNED_WRITE,
+            "it is the declared clock's position, which only the engine moves — in `lute \
+             play`, move the clock with an `advance:` step",
+        )
+    } else {
+        (
+            E_ENGINE_OWNED_WRITE,
+            "it is declared `owner: engine` — the engine writes it and content may only \
+             read it; in `lute play` write it with an `engine:` step, in a trace/test with \
+             a mock",
+        )
+    }
+}
+
+/// Why `writer` (`` `::set` ``, or a plugin directive's declared effect,
+/// dsl 0.28.0 T1-18) cannot write `path`, as `(code, message)`: the
+/// write-policy verdict ([`classify_write`]) — `app.*` is read-only to
+/// content, a reserved quest/entry/prev/clock/record/occasion path is the
+/// engine's, an `owner: engine` path is written only by the engine — and
+/// then declaredness (§7.3.4/§9.4): the target must resolve to a declared
+/// state path; §9.1 admits no bare, un-namespaced state names, so BOTH a
+/// declared-tier path absent from the schema AND a non-tier target
+/// (`foo.bar`) are undeclared. `None` for a declared content path.
+pub(crate) fn write_fault(
+    path: &str,
+    schema: &StateSchema,
+    writer: &str,
+) -> Option<(&'static str, String)> {
+    match classify_write(path, schema) {
+        WriteOwner::AppReadonly => {
+            return Some((
+                "E-APP-READONLY",
+                format!(
+                    "{writer} cannot write `{path}`: the `app.*` namespace is read-only to \
+                     content (dsl §9.5); the engine/settings layer owns these writes"
+                ),
+            ))
+        }
+        WriteOwner::QuestReserved => {
+            return Some((
+                "E-QUEST-RESERVED-WRITE",
+                format!(
+                    "{writer} cannot write `{path}`: it is a reserved quest path, \
+                     engine-populated and author-unwritable (dsl 0.2.0 §5.2, §5.4)"
+                ),
+            ))
+        }
+        WriteOwner::EntryReserved => {
+            return Some((
+                "E-QUEST-RESERVED-WRITE",
+                format!(
+                    "{writer} cannot write `{path}`: `entry.*` paths are reserved — \
+                     `entry.<id>.read` is engine-written when an entry is first presented \
+                     (dsl 0.19.0 §5)"
+                ),
+            ))
+        }
+        WriteOwner::PrevReserved => {
+            let message = if path.starts_with("prev.season.") {
+                format!(
+                    "{writer} cannot write `{path}`: `prev.season.<name>.*` is the read-only \
+                     mirror of the values the season's previous window ended with, copied by \
+                     the engine when the season opens (dsl 0.27.0 §5)"
+                )
+            } else {
+                format!(
+                    "{writer} cannot write `{path}`: `prev.run.*` is the read-only mirror of \
+                     the value `run.*` had when the previous run ended, snapshotted by the \
+                     engine (dsl 0.23.0 §6)"
+                )
+            };
+            return Some(("E-QUEST-RESERVED-WRITE", message));
+        }
+        WriteOwner::ClockReserved => {
+            return Some((
+                "E-QUEST-RESERVED-WRITE",
+                format!(
+                    "{writer} cannot write `{path}`: `clock.*` is derived from the declared \
+                     clock's `day` and `slot` paths and is read-only; the engine moves the \
+                     clock (in `lute play`, move it with an `advance:` step)"
+                ),
+            ))
+        }
+        owner @ (WriteOwner::SceneRecord | WriteOwner::OccasionReserved | WriteOwner::Engine) => {
+            let (code, why) = reserved_write_why(&owner, path, schema);
+            return Some((code, format!("{writer} cannot write `{path}`: {why}")));
+        }
+        WriteOwner::Content => {}
+    }
+    if resolve_type(path, schema).is_some() {
+        return None;
+    }
+    let message = if namespace_of(path).is_some() {
+        let mut m =
+            format!("{writer} target `{path}` is not declared in the `state:` schema (dsl §7.3.4)");
+        // dsl 0.5.0 §2.2 "did you mean": suggest the nearest declared path
+        // within a small edit distance, advisory text only. dsl 0.28.0
+        // (T1-18): a season path that leaves out its season names the
+        // declared one holding that path.
+        if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, schema, 2) {
+            m.push_str(&format!(" — did you mean `{sugg}`?"));
+        } else if let Some(sugg) = season_path_for(path, schema) {
+            m.push_str(&format!(
+                " — a season path names its season, `season.<name>.<path>`: did you mean \
+                 `{sugg}`?"
+            ));
+        }
+        m
+    } else {
+        format!(
+            "{writer} target `{path}` is not a state path: it must begin with a \
+             `scene.`/`run.`/`user.`/`app.` namespace (dsl §7.3.4/§9.1)"
+        )
+    };
+    Some(("E-UNDECLARED", message))
+}
+
+/// The declared `season.<name>.<rest>` path a `season.<rest>` (the season
+/// left out) means, when exactly one season declares `<rest>`.
+fn season_path_for(path: &str, schema: &StateSchema) -> Option<String> {
+    let rest = path.strip_prefix("season.")?;
+    let mut hits = schema.decls.keys().filter(|k| {
+        k.strip_prefix("season.")
+            .and_then(|s| s.split_once('.'))
+            .is_some_and(|(_, r)| r == rest)
+    });
+    let first = hits.next()?;
+    hits.next().is_none().then(|| first.clone())
+}
+
 /// Check a `::set` directive's target write-policy and op/type compatibility
 /// (dsl §7.3.4, §9.5). Reads nothing from `Ctx` today; it is threaded for
 /// parity with the other `check_*` entrypoints and for future modes.
@@ -140,121 +322,15 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnos
         ));
     }
 
-    // Write policy (dsl §9.5, dsl 0.2.0 §5.4): `app.*` is read-only to content;
-    // a reserved `quest.<id>.state`/`…objectives.*.done` path is
-    // engine-populated and author-unwritable. Both short-circuit — neither is
-    // additionally reported undeclared or op/type-mismatched (their
-    // declaration and value shape are engine business).
-    match classify_write(&set.path, schema) {
-        WriteOwner::AppReadonly => {
-            diags.push(diag(
-                "E-APP-READONLY",
-                format!(
-                    "`::set` cannot write `{}`: the `app.*` namespace is read-only to content \
-                     (dsl §9.5); the engine/settings layer owns these writes",
-                    set.path
-                ),
-                set.path_span,
-            ));
-            return diags;
-        }
-        WriteOwner::QuestReserved => {
-            diags.push(diag(
-                "E-QUEST-RESERVED-WRITE",
-                format!(
-                    "`::set` cannot write `{}`: it is a reserved quest path, \
-                     engine-populated and author-unwritable (dsl 0.2.0 §5.2, §5.4)",
-                    set.path
-                ),
-                set.path_span,
-            ));
-            return diags;
-        }
-        WriteOwner::EntryReserved => {
-            diags.push(diag(
-                "E-QUEST-RESERVED-WRITE",
-                format!(
-                    "`::set` cannot write `{}`: `entry.*` paths are reserved — \
-                     `entry.<id>.read` is engine-written when an entry is first presented \
-                     (dsl 0.19.0 §5)",
-                    set.path
-                ),
-                set.path_span,
-            ));
-            return diags;
-        }
-        WriteOwner::PrevReserved => {
-            let message = if set.path.starts_with("prev.season.") {
-                format!(
-                    "`::set` cannot write `{}`: `prev.season.<name>.*` is the read-only mirror \
-                     of the values the season's previous window ended with, copied by the \
-                     engine when the season opens (dsl 0.27.0 §5)",
-                    set.path
-                )
-            } else {
-                format!(
-                    "`::set` cannot write `{}`: `prev.run.*` is the read-only mirror of the \
-                     value `run.*` had when the previous run ended, snapshotted by the engine \
-                     (dsl 0.23.0 §6)",
-                    set.path
-                )
-            };
-            diags.push(diag("E-QUEST-RESERVED-WRITE", message, set.path_span));
-            return diags;
-        }
-        WriteOwner::ClockReserved => {
-            diags.push(diag(
-                "E-QUEST-RESERVED-WRITE",
-                format!(
-                    "`::set` cannot write `{}`: `clock.*` is derived from the declared clock's \
-                     `day` and `slot` paths and is read-only; the engine moves the clock (in \
-                     `lute play`, an `advance:` step) (dsl 0.24.0 §1)",
-                    set.path
-                ),
-                set.path_span,
-            ));
-            return diags;
-        }
-        WriteOwner::Engine => {
-            diags.push(diag(
-                E_ENGINE_OWNED_WRITE,
-                format!(
-                    "`::set` cannot write `{}`: it is declared `owner: engine` — the engine \
-                     writes it and content may only read it; in `lute play` write it with an \
-                     `engine:` step, in a trace/test with a mock (dsl 0.22.0 §1.2)",
-                    set.path
-                ),
-                set.path_span,
-            ));
-            return diags;
-        }
-        WriteOwner::Content => {}
+    // Write policy (dsl §9.5, dsl 0.2.0 §5.4) and declaredness (§7.3.4/§9.4):
+    // a policy fault short-circuits — it is never additionally reported
+    // undeclared or op/type-mismatched (its declaration and value shape are
+    // engine business).
+    if let Some((code, message)) = write_fault(&set.path, schema, "`::set`") {
+        diags.push(diag(code, message, set.path_span));
+        return diags;
     }
-
-    // The target must resolve to a declared state path (§7.3.4/§9.4). §9.1 admits
-    // no bare, un-namespaced state names, so BOTH a declared-tier path absent from
-    // the schema AND a non-tier target (`namespace_of == None`, e.g. `foo.bar`)
-    // are undeclared and reported — the latter used to be silently accepted (C3).
     let Some(ty) = resolve_type(&set.path, schema) else {
-        let msg = if namespace_of(&set.path).is_some() {
-            let mut m = format!(
-                "`::set` target `{}` is not declared in the `state:` schema (dsl §7.3.4)",
-                set.path
-            );
-            // dsl 0.5.0 §2.2 "did you mean": suggest the nearest declared
-            // path within a small edit distance, advisory text only.
-            if let Some(sugg) = crate::cel_paths::nearest_declared_path(&set.path, schema, 2) {
-                m.push_str(&format!(" — did you mean `{sugg}`?"));
-            }
-            m
-        } else {
-            format!(
-                "`::set` target `{}` is not a state path: it must begin with a \
-                 `scene.`/`run.`/`user.`/`app.` namespace (dsl §7.3.4/§9.1)",
-                set.path
-            )
-        };
-        diags.push(diag("E-UNDECLARED", msg, set.path_span));
         return diags;
     };
 

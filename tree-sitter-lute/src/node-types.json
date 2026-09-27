@@ -396,12 +396,79 @@
         {
           "type": "hub_choice",
           "named": true
+        },
+        {
+          "type": "hub_return",
+          "named": true
         }
       ]
     }
   },
   {
     "type": "hub_choice",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
+        {
+          "type": "attr",
+          "named": true
+        },
+        {
+          "type": "branch",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "hub",
+          "named": true
+        },
+        {
+          "type": "line",
+          "named": true
+        },
+        {
+          "type": "match",
+          "named": true
+        },
+        {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
+          "type": "retract",
+          "named": true
+        },
+        {
+          "type": "set",
+          "named": true
+        },
+        {
+          "type": "timeline",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "hub_return",
     "named": true,
     "fields": {},
     "children": {
@@ -1285,6 +1352,10 @@
     "named": false
   },
   {
+    "type": "</return>",
+    "named": false
+  },
+  {
     "type": "</timeline>",
     "named": false
   },
@@ -1334,6 +1405,10 @@
   },
   {
     "type": "<quest",
+    "named": false
+  },
+  {
+    "type": "<return",
     "named": false
   },
   {
@@ -1423,6 +1498,10 @@
   },
   {
     "type": "test",
+    "named": false
+  },
+  {
+    "type": "visibleWhen",
     "named": false
   },
   {

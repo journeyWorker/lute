@@ -164,7 +164,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
 
     // 1. Parse the DSL structure (done by the caller).
     let (mut doc, mut parse_diags) = parsed;
-    // `questTier` default, `sequence:` keys (dsl 0.27.0 §8) and beat
+    // `questTier` default, the keys `chapters:` derives and beat
     // templates (dsl 0.27.0 §6): ordinary beats before any pass reads them.
     parse_diags.extend(crate::desugar_document(&mut doc, input));
     // dsl 0.24.0 §4: each `::use` of an `effects: true` component performs
@@ -193,6 +193,12 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         &doc,
         folded.typed.beat_template.is_some(),
     ));
+    // dsl 0.28.0 §1: reserved ids are refused where they are declared.
+    parse_diags.extend(crate::reserved_names::check_document_ids(
+        &doc,
+        &folded.typed,
+        &input.text,
+    ));
     // 0.21.1 T3-8 (seven F3): a frontmatter that does not parse leaves the
     // document with NO environment — no `uses:`/`defaults:` vocabulary, no
     // `state:`, no `defs:`, no id — so every semantic pass below would judge
@@ -200,19 +206,31 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // one real error (`E-DOMAIN-UNKNOWN`, `E-UNDECLARED`, …), each with advice
     // that sends the author to the wrong fix. Stop at the syntax layer: the
     // body's own parse errors, its CEL parse errors, and the `E-META-PARSE`.
-    if fold_diags.iter().any(|d| d.code == "E-META-PARSE") {
+    // A schema import whose YAML does not parse leaves the same empty world
+    // (no cast, no clock, no kinds, no state from it): the import errors
+    // are the cause, and the same stop applies.
+    let meta_unparsed = fold_diags.iter().any(|d| d.code == "E-META-PARSE");
+    let schema_unparsed = input.imports.diags.iter().any(|d| {
+        d.code == "E-USES-PARSE"
+            && d.related
+                .iter()
+                .any(|r| r.diagnostic.code == "E-META-PARSE")
+    });
+    if meta_unparsed || schema_unparsed {
+        let import_diags = input
+            .imports
+            .diags
+            .iter()
+            .filter(|d| !meta_unparsed && d.code.starts_with("E-USES-"))
+            .cloned();
         let mut diags: Vec<Diagnostic> = parse_diags
             .into_iter()
             .chain(cel_diags)
             .chain(fold_diags.into_iter().filter(|d| d.code == "E-META-PARSE"))
+            .chain(import_diags)
             .collect();
         normalize_spans(&idx, &input.text, &mut diags);
-        diags.sort_by(|a, b| {
-            a.span
-                .byte_start
-                .cmp(&b.span.byte_start)
-                .then_with(|| a.code.cmp(&b.code))
-        });
+        diags.sort_by(super::postprocess::diagnostic_order);
         return CheckResult {
             ok: false,
             diagnostics: diags,
@@ -308,7 +326,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
             .collect();
         crate::component_effects::host_param_types(&params, &folded.typed.speaker_params, &own_cast)
             .into_iter()
-            .map(|(name, ty)| (name, param_domain(&ty)))
+            .map(|(name, ty)| (name, param_domain(&ty, domains)))
             .collect()
     } else {
         std::collections::BTreeMap::new()
@@ -330,6 +348,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         param_domains,
         scope: &scope,
         assume: None,
+        picks: Vec::new(),
+        targets: crate::next_labels::next_targets(&doc),
     };
     // Kind-dispatched walk (dsl 0.2.0 §3.1): scene walks `doc.shots` (dsl
     // 0.1.0 grammar, unchanged); quest walks `doc.quests` — each quest's own
@@ -375,6 +395,11 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     &mut walker.diags,
                 );
             }
+            // A read of one of its defs is the body's one report
+            // (`validate_components` gives each host's `::use` the same).
+            walker
+                .diags
+                .extend(component_def_reads(&doc, &walker.param_domains, env, &[]));
         }
         crate::meta::DocKind::Scene => {
             // dsl 0.21.0 §3.1, §5: the beat's `when` joins the CEL-slot
@@ -393,7 +418,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     .extend(check_beat_when(spent_by, &arena, &base_ctx, &scope));
             }
             let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
-            walker.assume = walker.assumption(beat_when.as_ref(), &shots);
+            walker.assume = walker.assumption(beat_when.as_ref(), &shots, &env.state);
             for shot in &doc.shots {
                 walker.walk(&shot.body, &base_ctx);
             }
@@ -450,11 +475,18 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         // (`lute_syntax::walk::entry`).
         crate::meta::DocKind::Lore => {
             for entry in &doc.entries {
+                // dsl 0.28.0: a kind or `for=` entry reads `occasion.target`
+                // typed by its own members.
+                let ctx = Ctx {
+                    env: folded.env_at(entry.span),
+                    in_match: false,
+                    match_subject: None,
+                };
                 if let Some(when) = &entry.when {
                     walker.diags.extend(check_cel_slot(
                         when,
                         &arena,
-                        &base_ctx,
+                        &ctx,
                         Some(&ExpectedType::Bool),
                     ));
                 }
@@ -463,30 +495,47 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     walker.diags.extend(check_cel_slot(
                         spent_by,
                         &arena,
-                        &base_ctx,
+                        &ctx,
                         Some(&ExpectedType::Bool),
                     ));
                 }
-                walker.assume = walker.assumption(entry.when.as_ref(), &[&entry.body]);
-                walker.walk(&entry.body, &base_ctx);
+                walker.assume =
+                    walker.assumption(entry.when.as_ref(), &[&entry.body], &ctx.env.state);
+                walker.walk(&entry.body, &ctx);
             }
             // dsl 0.23.0 §4: a bundle beat is a scene beat written in a lore
             // file — its `when` gets the scene beat's treatment (Bool slot,
             // fresh guard definite assignment, no `scene.*` reads) and its
             // body the scene shot walk.
             for beat in &doc.beats {
+                let ctx = Ctx {
+                    env: folded.env_at(beat.span),
+                    in_match: false,
+                    match_subject: None,
+                };
+                // dsl 0.28.0 §3: a condition a template header derived is
+                // reported at the use with the header key it came from.
                 if let Some(when) = &beat.when {
-                    walker
-                        .diags
-                        .extend(check_beat_when(when, &arena, &base_ctx, &scope));
+                    let found = check_beat_when(when, &arena, &ctx, &scope);
+                    walker.diags.extend(crate::templates::attribute_header(
+                        beat,
+                        "when",
+                        &input.components,
+                        found,
+                    ));
                 }
                 if let Some(spent_by) = &beat.spent_by {
-                    walker
-                        .diags
-                        .extend(check_beat_when(spent_by, &arena, &base_ctx, &scope));
+                    let found = check_beat_when(spent_by, &arena, &ctx, &scope);
+                    walker.diags.extend(crate::templates::attribute_header(
+                        beat,
+                        "spentBy",
+                        &input.components,
+                        found,
+                    ));
                 }
-                walker.assume = walker.assumption(beat.when.as_ref(), &[&beat.body]);
-                walker.walk(&beat.body, &base_ctx);
+                walker.assume =
+                    walker.assumption(beat.when.as_ref(), &[&beat.body], &ctx.env.state);
+                walker.walk(&beat.body, &ctx);
             }
         }
     }
@@ -606,20 +655,23 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     if let Some(spent_by) = &e.spent_by {
                         ds.extend(check_quest_guard_defassign(spent_by, &scope));
                     }
+                    // dsl 0.28.0: over the entry's own `occasion.target`.
+                    let own = scope.with_schema(&folded.env_at(e.span).state);
                     let (diags, _, _reads) =
-                        check_definite_assignment(&e.body, &scope, e.when.as_ref());
+                        check_definite_assignment(&e.body, &own, e.when.as_ref());
                     exhaustive_subject_spans.extend(
-                        crate::defassign::exhaustive_match_subject_spans(&e.body, &scope),
+                        crate::defassign::exhaustive_match_subject_spans(&e.body, &own),
                     );
                     ds.extend(diags);
                     ds
                 })
                 .collect();
             for beat in &doc.beats {
+                let own = scope.with_schema(&folded.env_at(beat.span).state);
                 let (diags, _, _reads) =
-                    check_definite_assignment(&beat.body, &scope, beat.when.as_ref());
+                    check_definite_assignment(&beat.body, &own, beat.when.as_ref());
                 exhaustive_subject_spans.extend(crate::defassign::exhaustive_match_subject_spans(
-                    &beat.body, &scope,
+                    &beat.body, &own,
                 ));
                 ds.extend(diags);
             }
@@ -733,6 +785,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     diags.extend(crate::project_check::check_quest_tier_implicit(
         &doc, &folded,
     ));
+    // A constant `rearm=`, and a subquest's `rearm=` (same-document parent).
+    diags.extend(crate::project_check::check_doc_quest_rearm(&doc, &folded));
     diags.extend(input.imports.diags.clone());
     // Component-import resolution diagnostics (dsl §13) + the per-component
     // body validation and `::use` expansion-cycle diagnostics, reported at
@@ -767,6 +821,12 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         doc.meta.span,
         &component_use_sites(&doc, &input.components),
         &cast,
+        env,
+        if folded.typed.component.is_some() {
+            &folded.typed.params
+        } else {
+            &[]
+        },
     );
     let component_body_diags = crate::component_import::merge_component_body_diags(
         &mut component_diags,
@@ -774,7 +834,12 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     );
     diags.extend(component_diags);
     diags.extend(component_body_diags);
-    diags.extend(check_use_speaker_args(&doc, &input.components, &cast));
+    diags.extend(check_use_speaker_args(
+        &doc,
+        &input.components,
+        &cast,
+        &folded.typed.speaker_params,
+    ));
     diags.extend(state_merge_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
@@ -805,9 +870,9 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         }
     }
     for quest in &doc.quests {
-        if let Some(after) = &quest.after {
+        if let Some(after) = &quest.follows {
             if !after.is_empty() {
-                let (_, after_diags) = crate::prereq::parse_prereq(after, quest.after_span);
+                let (_, after_diags) = crate::prereq::parse_prereq(after, quest.follows_span);
                 diags.extend(after_diags);
             }
         }
@@ -845,6 +910,15 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         folded.doc_kind,
         &input.snapshot,
     ));
+    // An illegal `once` / `tier` value naming a declared season, and a
+    // scene's legacy `season:` holding one.
+    crate::season::hint_declared(
+        &doc,
+        folded.doc_kind == crate::meta::DocKind::Scene,
+        &env.seasons,
+        &env.rel_vocab,
+        &mut diags,
+    );
 
     // is_exhaustive suppression (carry-forward, T4.6 x T4.4): drop a maybe-unset
     // read whose span is a domain-exhaustive `<match>` subject.
@@ -903,14 +977,10 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let mut diags = dedup_undeclared(dedup_rehomed(diags));
 
     // Normalize every span's line/column/utf16 from its bytes (some validators
-    // leave them zeroed), then sort deterministically (carry-forward #3).
+    // leave them zeroed), then sort deterministically (carry-forward #3),
+    // the cause first where several share a position.
     normalize_spans(&idx, &input.text, &mut diags);
-    diags.sort_by(|a, b| {
-        a.span
-            .byte_start
-            .cmp(&b.span.byte_start)
-            .then_with(|| a.code.cmp(&b.code))
-    });
+    diags.sort_by(super::postprocess::diagnostic_order);
 
     // C3 (dsl 0.4.0 §8.2/D12): a failed uses/extends/components import
     // suppresses the absence diagnostics that depend on the merge it never
@@ -919,6 +989,9 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // `diags` is already document order — C1 collapse never reorders it.
     let diags = suppress_unproven_absence(diags);
     let diags = collapse_same_root(diags);
+    // A name the manifest's `defaults.uses` declares, missing because this
+    // document's own `uses:` replaced that list: the error says so.
+    let diags = crate::defaults_note::note_replaced_uses(&doc, input, diags);
 
     // Some-vs-None policy for the resolved view.
     let structural_break = diags
@@ -945,7 +1018,13 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         // and THIS document's resolved snapshot. `check()` draws no conclusion
         // from them — `check-project` unions them across the root.
         domain_use: DomainUse {
-            declared: domains.keys().cloned().collect(),
+            // The clock's own enums (`clock.slot`, `clock.weekdayLabel`) are
+            // nameable domains, not declarations of this project.
+            declared: domains
+                .keys()
+                .filter(|k| !lute_manifest::clock::is_clock_path(k))
+                .cloned()
+                .collect(),
             read: {
                 let mut read = crate::project_check::domain_reading_set(&input.snapshot);
                 read.extend(crate::project_check::domain_reads_from_relations(
@@ -957,21 +1036,31 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     std::iter::once(crate::usage::document_read_view(&input.text).as_str())
                         .chain(folded.def_bodies.values().map(String::as_str)),
                 ));
-                // dsl 0.26.0 §5: a `target="kind:<kind>"` beat reads its kind.
-                let scene_target = folded.typed.beat.as_ref().and_then(|b| b.target.as_deref());
-                read.extend(
-                    scene_target
+                // A `target="kind:<kind>"` or `for="kind:<kind>"` beat (scene,
+                // entry or bundle beat) reads its kind.
+                let scene = folded.typed.beat.as_ref();
+                let scene_kinds = scene.into_iter().flat_map(|b| {
+                    b.target
+                        .as_deref()
                         .into_iter()
-                        .chain(
-                            doc.entries
-                                .iter()
-                                .filter_map(|e| Some(e.target.as_ref()?.0.as_str())),
-                        )
-                        .chain(
-                            doc.beats
-                                .iter()
-                                .filter_map(|b| Some(b.target.as_ref()?.0.as_str())),
-                        )
+                        .chain(b.for_kind.as_ref().map(|(f, _)| f.as_str()))
+                });
+                let entry_kinds = doc.entries.iter().flat_map(|e| {
+                    e.target
+                        .iter()
+                        .chain(e.for_kind.iter())
+                        .map(|(t, _)| t.as_str())
+                });
+                let beat_kinds = doc.beats.iter().flat_map(|b| {
+                    b.target
+                        .iter()
+                        .chain(b.for_kind.iter())
+                        .map(|(t, _)| t.as_str())
+                });
+                read.extend(
+                    scene_kinds
+                        .chain(entry_kinds)
+                        .chain(beat_kinds)
                         .filter_map(crate::lore::kind_target)
                         .map(str::to_string),
                 );

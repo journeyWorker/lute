@@ -496,7 +496,7 @@ fn play_and_test_agree_on_guarded_directives_and_play_names_each_skip() {
     write(
         &dir,
         "tests/a.test.yaml",
-        "file: ../scenes/a.lute\nexpect:\n  exit: complete\n  state: { run.coins: 7 }\n  \
+        "file: ../scenes/a.lute\nexpect:\n  end: complete\n  state: { run.coins: 7 }\n  \
          facts: [\"met(ada)\"]\n  notFacts: [\"met(joey)\"]\n  \
          transcriptContains: [\"Effects 7.\"]\n  transcriptLacks: [\"Effects 5.\"]\n",
     );

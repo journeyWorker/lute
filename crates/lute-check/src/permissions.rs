@@ -218,6 +218,9 @@ impl PermissionChecker<'_> {
                         self.check_choice_into(choice);
                         self.walk_nodes(&choice.body);
                     }
+                    if let Some(r) = &hub.on_return {
+                        self.walk_nodes(&r.body);
+                    }
                 }
                 Node::Match(m) => {
                     for arm in &m.arms {
@@ -425,7 +428,12 @@ impl PermissionChecker<'_> {
     }
 
     fn check_state_write(&mut self, path: &str, span: Span, source: &str) {
-        if !self.permissions.allows_state_write(path) {
+        // dsl 0.28.0 §3: `F[occasion.target]` writes a member of `F` — judged
+        // like any `F.<member>` write.
+        if !self
+            .permissions
+            .allows_state_write(&crate::target_writes::member_path(path, "_"))
+        {
             self.diagnostics.push(permission_diag(
                 E_PERMISSION_STATE,
                 format!(
@@ -487,6 +495,8 @@ impl PermissionChecker<'_> {
 /// Resolve a manifest-authored path template against one directive invocation.
 /// Slot declarations, effect writes and permission enforcement all use this
 /// exact convention; an absent or non-string `fromAttr` fails the whole path.
+/// dsl 0.28.0 §3: a last `fromAttr` given `occasion.target` indexes the
+/// family by it ([`crate::target_writes::join_path`]).
 pub(crate) fn resolve_path(
     scope: &str,
     segments: &[PathSegment],
@@ -502,7 +512,7 @@ pub(crate) fn resolve_path(
             }
         }
     }
-    Some(parts.join("."))
+    Some(crate::target_writes::join_path(&parts))
 }
 
 fn string_attr<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {

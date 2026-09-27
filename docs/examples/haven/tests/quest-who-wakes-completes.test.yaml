@@ -14,6 +14,6 @@ facts:
   - "awake(vesna)"
   - "awake(toma)"
 expect:
-  exit: complete
+  end: complete
   transcriptContains:
     - "Two of you up, and a schedule that had already read the bill."

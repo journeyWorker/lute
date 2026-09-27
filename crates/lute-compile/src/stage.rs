@@ -16,9 +16,9 @@ use crate::lower::{
     attr_bool, attr_string, fact_text, lower_assert, lower_directive, lower_line, lower_retract,
     lower_set,
 };
-use crate::normalize::{component_scope, COMPONENT_BEGIN, COMPONENT_END};
+use crate::normalize::{component_scope, is_body_split, COMPONENT_BEGIN, COMPONENT_END};
 use crate::schedule::schedule_timeline;
-use crate::source_map::{ArmSource, ComponentBoundary, SourceInfo, SourceMarker};
+use crate::source_map::{ArmSource, ComponentBoundary, ComponentUse, SourceInfo, SourceMarker};
 
 /// Walk context: the read-only capability surface + the component-source
 /// stack (sentinel-driven: each open expansion's name and its
@@ -53,13 +53,13 @@ pub fn walk_seq(
     for (i, node) in nodes.iter().enumerate() {
         match node {
             Node::Directive(d) if d.tag == COMPONENT_BEGIN => {
-                em.marker(|| directive_marker(d));
-                cx.components
-                    .push((component_attr(d), component_scope(d).to_string()));
+                let name = component_attr(d);
+                em.marker(|| boundary_marker(d, &name));
+                cx.components.push((name, component_scope(d).to_string()));
             }
             Node::Directive(d) if d.tag == COMPONENT_END => {
-                em.marker(|| directive_marker(d));
-                cx.components.pop();
+                let name = cx.components.pop().map(|(name, _)| name);
+                em.marker(|| boundary_marker(d, name.as_deref().unwrap_or_default()));
             }
             // dsl 0.12.0: `::mark{id}` emits NO record — bind the author's
             // NAMED label to whatever gets pushed NEXT (or, nothing left
@@ -314,17 +314,29 @@ fn node_span(node: &Node) -> Span {
 
 /// A source-only step for directive `d`.
 fn directive_marker(d: &Directive) -> SourceMarker {
-    let component = if d.tag == COMPONENT_BEGIN {
-        Some(ComponentBoundary::Begin)
-    } else if d.tag == COMPONENT_END {
-        Some(ComponentBoundary::End)
-    } else {
-        None
+    SourceMarker {
+        tag: d.tag.clone(),
+        span: d.span,
+        component: None,
+        name: None,
+    }
+}
+
+/// The step a component sentinel `d` of component `name` is: the
+/// expansion's begin/end, or — a template's `::body` split — where the
+/// `<beat use>`'s own body starts and ends.
+fn boundary_marker(d: &Directive, name: &str) -> SourceMarker {
+    let component = match (d.tag == COMPONENT_BEGIN, is_body_split(d)) {
+        (true, false) => ComponentBoundary::Begin,
+        (false, false) => ComponentBoundary::End,
+        (false, true) => ComponentBoundary::Body,
+        (true, true) => ComponentBoundary::BodyEnd,
     };
     SourceMarker {
         tag: d.tag.clone(),
         span: d.span,
-        component,
+        component: Some(component),
+        name: Some(name.to_string()),
     }
 }
 
@@ -480,6 +492,8 @@ fn walk_hub(
     let id = attr_string(&h.attrs, "id").unwrap_or_default();
     let conv = em.fresh();
     let arms: Vec<Label> = h.choices.iter().map(|_| em.fresh()).collect();
+    // dsl 0.28.0 §5: the `<return>` segment's label, after every option body.
+    let back = h.on_return.as_ref().map(|_| em.fresh());
     let options = h
         .choices
         .iter()
@@ -511,6 +525,7 @@ fn walk_hub(
         converge: conv.sym(),
         // dsl 0.23.0 §4: `<hub prompt>`, like `<branch prompt>`.
         prompt: attr_string(&h.attrs, "prompt"),
+        on_return: back.map(|l| l.sym()),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -543,6 +558,27 @@ fn walk_hub(
                 || SourceInfo::at(h.span),
             );
         }
+        exits.push(exit);
+    }
+    // dsl 0.28.0 §5: the `<return>` segment, bounded like an option body and
+    // likewise ending in NO jump — the runtime runs it after a non-`exit`
+    // option's segment, then judges and presents the hub again. It starts
+    // from what every non-`exit` arm leaves behind (their diagnostics stay
+    // with the arms).
+    if let (Some(r), Some(l)) = (&h.on_return, back) {
+        let returning: Vec<StageState> = h
+            .choices
+            .iter()
+            .zip(&exits)
+            .filter(|(c, _)| !attr_bool(&c.attrs, "exit").unwrap_or(false))
+            .map(|(_, s)| StageState {
+                diags: Vec::new(),
+                ..s.clone()
+            })
+            .collect();
+        let entry = StageState::join(&state, returning);
+        em.bind(l);
+        let exit = walk_seq(em, &r.body, entry, cx, tail, diags);
         exits.push(exit);
     }
     em.bind(conv);
@@ -652,6 +688,8 @@ fn walk_match(
                 Arm::Otherwise { span, .. } => ArmSource::otherwise(*span),
             })
             .collect(),
+        guard: is_guard_desugar(m),
+        component: component_use(cx),
         ..SourceInfo::at(m.span)
     });
     let mut state = state;
@@ -689,6 +727,17 @@ fn into_attr(c: &lute_syntax::ast::Choice) -> Option<(String, Span)> {
     })
 }
 
+/// Is `m` the one-arm match a `when=` guard desugars to
+/// ([`crate::normalize::guard_match`])? Its arms carry the match's own span;
+/// an authored arm is an element of its own, never spanning its `<match>`.
+fn is_guard_desugar(m: &Match) -> bool {
+    matches!(
+        m.arms.as_slice(),
+        [Arm::When { is: None, span: when, .. }, Arm::Otherwise { body, span: other, .. }]
+            if *when == m.span && *other == m.span && body.is_empty()
+    )
+}
+
 /// A compile-stage Error at a `<when>` arm.
 fn arm_diag(code: &str, message: String, span: lute_core_span::Span) -> Diagnostic {
     Diagnostic {
@@ -707,20 +756,29 @@ fn arm_diag(code: &str, message: String, span: lute_core_span::Span) -> Diagnost
 /// `source { component }` from the sentinel-driven stack (§4.3, D8), plus
 /// the identity scope the addressing pass mints the record's ids under.
 fn apply_source(cmd: &mut Command, cx: &WalkCx<'_>) {
-    if let Some((name, _)) = cx.components.last() {
+    if let Some(ComponentUse { name, scope }) = component_use(cx) {
         if let Some(stamp) = cmd.stamp_mut() {
-            let scope = cx
-                .components
-                .iter()
-                .map(|(_, segment)| segment.as_str())
-                .collect::<Vec<_>>()
-                .join(".");
             stamp.source = Some(Source {
-                component: name.clone(),
+                component: name,
                 scope,
             });
         }
     }
+}
+
+/// The innermost open component expansion and its identity scope.
+fn component_use(cx: &WalkCx<'_>) -> Option<ComponentUse> {
+    let (name, _) = cx.components.last()?;
+    let scope = cx
+        .components
+        .iter()
+        .map(|(_, segment)| segment.as_str())
+        .collect::<Vec<_>>()
+        .join(".");
+    Some(ComponentUse {
+        name: name.clone(),
+        scope,
+    })
 }
 
 /// `timeline`/`at`/`duration` stamps on timeline-clip records (§4.3, Task 10).
@@ -779,7 +837,7 @@ pub fn walk_quest(
                 title: o.title.clone(),
                 title_line_id: o.title.as_ref().map(|_| format!("{}.{}", quest.id, o.id)),
                 done: CelPair::from_raw(&o.done.raw),
-                when: o.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+                visible_when: o.visible_when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
                 optional: o.optional,
                 body: label.map(Label::sym),
                 // Subquest reference (2026-08-31 subquest design §3): the
@@ -825,7 +883,7 @@ pub fn walk_quest(
         fail: quest.fail.as_ref().map(|s| CelPair::from_raw(&s.raw)),
         objectives,
         // dsl 0.16.0 §2/§3: quest-level `<reward/>` entries in declaration
-        // order. `on="failed"` is preserved here (only ever legal on a
+        // order. `outcome="failed"` is preserved here (only ever legal on a
         // quest-level entry per spec §2). Empty ⇒ field omitted, so a
         // rewardless quest artifact stays byte-identical to pre-0.16.0
         // output (see `ir::QuestCmd.rewards`).

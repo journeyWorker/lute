@@ -7,7 +7,7 @@ exports:
   state: state/
   providers: providers/
   bridge: bridge/
-  assetkinds: assetkinds/
+  assetKinds: assetkinds/
   defs: defs/
   enums: enums/
 options:

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::DefParam;
@@ -51,6 +51,23 @@ pub struct StateSchema {
     /// `<match>` over it is exhaustive over `K`, exactly like an inline
     /// `{ enum: […] }` path. Filled by [`StateSchema::resolve_domains`].
     pub domain_members: BTreeMap<String, (String, Vec<String>)>,
+    /// dsl 0.28.0 (T3-40): the slot members a finite clock that ends on
+    /// its first day ever lets its slot path (and `clock.slot`) hold — the
+    /// type's members from the starting slot to the last one. A literal
+    /// outside them is a member of the type the clock never reaches.
+    pub clock_members: BTreeMap<String, Vec<String>>,
+    /// The project's declared clock (dsl 0.24.0 §1), when there is one —
+    /// what names its `day` / `slot` paths to the checks that read them.
+    pub clock: Option<lute_manifest::clock::ClockDecl>,
+    /// dsl 0.28.0 §7 (T3-1): declared paths whose own `state:` row was
+    /// reported (an unknown row key, a `default:` outside its enum) — the
+    /// row's error is the cause, so judgements downstream of the path (it
+    /// may be unset, a literal against it, a guard it decides) stay quiet.
+    pub faulty: BTreeSet<String>,
+    /// T3-1: a `clock:` was written (in this document or a schema it
+    /// imports) and rejected (`E-CLOCK-DECL`), so the project has no clock
+    /// because of that one error — what needs a clock stays quiet.
+    pub clock_rejected: bool,
 }
 
 impl StateSchema {
@@ -64,6 +81,32 @@ impl StateSchema {
             Type::Enum(ms) => Some(ms),
             _ => None,
         }
+    }
+
+    /// dsl 0.28.0 (T3-40): whether the finite clock never lets `path` hold
+    /// `member` ([`Self::clock_members`]).
+    pub fn clock_excludes(&self, path: &str, member: &str) -> bool {
+        self.clock_members
+            .get(path)
+            .is_some_and(|ms| !ms.iter().any(|m| m == member))
+    }
+
+    /// T3-1: whether a read of `path` depends on a declaration already
+    /// reported ([`Self::faulty`]): the path itself, a member under a faulty
+    /// state path (`run.bond.ines` under `run.bond`), or — while a written
+    /// `clock:` was rejected — a `clock.*` path. A bare root in `faulty`
+    /// (`run`, from a refused member of that name) covers only itself.
+    pub fn is_faulty(&self, path: &str) -> bool {
+        if self.clock_rejected && (path == "clock" || path.starts_with("clock.")) {
+            return true;
+        }
+        self.faulty.contains(path)
+            || self.faulty.iter().any(|f| {
+                f.contains('.')
+                    && path.len() > f.len()
+                    && path.starts_with(f.as_str())
+                    && path.as_bytes()[f.len()] == b'.'
+            })
     }
 
     /// Fill [`Self::domain_members`] from the merged domains (enums and entity
@@ -232,6 +275,9 @@ pub struct TypedMeta {
     /// ordinary [`Self::state`] decl; this map is what lets a rule `cel()`
     /// guard read `run.approval[P]` for a rule variable `P`.
     pub state_index: BTreeMap<String, String>,
+    /// dsl 0.28.0: `per:` families over a kind this document does not
+    /// declare, expanded against the merged kinds ([`expand_per_pending`]).
+    pub per_pending: Vec<PendingPer>,
     /// dsl 0.23.0 §7: a schema document's `cast:` — declared speaker ids
     /// (and display names), in key order. Legal only on `MetaKind::Schema`.
     pub cast: Vec<lute_manifest::schema::CastMember>,
@@ -279,7 +325,7 @@ const UNIVERSAL_KEYS: &[&str] = &[
 /// triad plus the scene-only extras plus the authored canonical key `id:`
 /// plus the beat keys ([`crate::beats::BEAT_KEYS`]). A Quest document
 /// declaring any of these but `id:` is `E-META-UNKNOWN-KEY`.
-const SCENE_KEYS: &[&str] = &[
+pub const SCENE_KEYS: &[&str] = &[
     "id",
     "character",
     "season",
@@ -303,8 +349,10 @@ const SCENE_KEYS: &[&str] = &[
 const QUEST_KEYS: &[&str] = &["id"];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Lore` document: the optional
-/// document id and the document-level `series:` (dsl 0.19.0 §2.1, D-J/D-K).
-const LORE_KEYS: &[&str] = &["id", "series"];
+/// document id and the document-level `series:` (dsl 0.19.0 §2.1, D-J/D-K),
+/// and (dsl 0.28.0, T3-66) `pov:` — a lore document's `<beat>` bundles are
+/// scene bodies, so it names their point of view as a scene's does.
+const LORE_KEYS: &[&str] = &["id", "series", "pov"];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Schema` document: the
 /// declared cast (dsl 0.23.0 §7).
@@ -377,31 +425,36 @@ pub fn apply_quest_tier_default(
 /// generalised): empty when nothing is close, because a wrong suggestion is
 /// worse than none.
 ///
-/// `after` is the one special case (0.10.0 backlog #11, T9.1). It is a CORE key
-/// on the sibling kind and a legal ATTRIBUTE in this one, so the generic
-/// edit-distance suggestion has no candidate to land on and the author is told
-/// only that the key is unknown — while `after=` is legal two lines below in
-/// the same file. Name the attribute form instead.
+/// `after` / `follows` is the one special case (0.10.0 backlog #11, T9.1).
+/// `after` is a CORE key on the sibling kind and `follows` a legal ATTRIBUTE
+/// in this one, so the generic edit-distance suggestion has no candidate to
+/// land on and the author is told only that the key is unknown — while
+/// `follows=` is legal two lines below in the same file. Name the attribute
+/// form instead.
 ///
 /// The candidate set mirrors the unknown-key loop's own `core_key` predicate
 /// exactly, so the suggestion can never name a key that would itself be
 /// rejected on this kind. Slice order is source order, which makes
 /// [`lute_manifest::suggest::nearest`]'s first-wins tie-break deterministic.
 fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> String {
-    if key == "after" && kind == MetaKind::Quest {
-        return " — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, \
-                not a frontmatter key (dsl §4.1)"
+    if matches!(key, "after" | "follows") && kind == MetaKind::Quest {
+        return " — a quest's graph edge is the `follows=` ATTRIBUTE on its `<quest>` element, \
+                not a frontmatter key; it does not gate the quest (to wait, write \
+                `start=\"visited('<scene id>')\"`)"
             .to_string();
     }
     if crate::beats::BEAT_KEYS.contains(&key) && matches!(kind, MetaKind::Quest | MetaKind::Lore) {
         return if kind == MetaKind::Lore && matches!(key, "on" | "priority" | "target" | "when") {
             format!(
                 " — only a scene's frontmatter declares a beat; a lore entry answers an occasion \
-                 with its own `<entry {key}=…>` attribute (dsl 0.21.0 §3.2)"
+                 with its own `<entry {key}=…>` attribute"
             )
         } else {
-            " — only a scene's frontmatter declares a beat (dsl 0.21.0 §3.1)".to_string()
+            " — only a scene's frontmatter declares a beat".to_string()
         };
+    }
+    if let Some(owner) = owning_layer(key, kind) {
+        return owner;
     }
     let is_root = kind.is_root();
     let component_keys: &[&str] = if component_key_allowed {
@@ -420,6 +473,59 @@ fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> S
         Some(sugg) => format!(" — did you mean `{sugg}`?"),
         None => String::new(),
     }
+}
+
+/// T3-9/T3-10: the layer that owns a key written in the wrong one, as the
+/// tail of `E-META-UNKNOWN-KEY` — the key is real, just not here. `None`
+/// for a key no other layer declares either (the did-you-mean then runs).
+fn owning_layer(key: &str, kind: MetaKind) -> Option<String> {
+    let beat_doc = matches!(kind, MetaKind::Scene);
+    Some(match key {
+        // T3-9: an occasion is named `on` in a document, `occasion` in the
+        // manifest-free surfaces (play steps, the CLI).
+        "occasion" | "event" if beat_doc => {
+            " — a scene names the occasion it answers with `on:`, e.g. `on: <occasion>` \
+             (`occasion:` is a play step's key)"
+                .to_string()
+        }
+        "occasion" | "event" if kind == MetaKind::Lore => {
+            " — a lore entry answers an occasion with its own `<entry on=…>` attribute".to_string()
+        }
+        "tier" | "start" | "fail" | "rearm" | "repeatable" if kind == MetaKind::Quest => format!(
+            " — `{key}` is an attribute of the `<quest>` element (`<quest id=\"…\" {key}=\"…\">`), \
+             not a frontmatter key{}",
+            if key == "tier" {
+                "; a project-wide default is `defaults: { questTier: … }` in lute.project.yaml"
+            } else {
+                ""
+            }
+        ),
+        "rearm" | "tier" => format!(
+            " — `{key}=` is an attribute of a `<quest>`; a beat comes back with `once:` (how long \
+             it stays spent) or `spentBy:`"
+        ),
+        "raisedWhen" | "select" | "outsideRun" | "judge" => format!(
+            " — `{key}:` belongs to an occasion's declaration (the `occasions:` of a plugin), not \
+             to a document"
+        ),
+        "sequence" | "chapters" => " — chapters are declared once for the project, in \
+             lute.project.yaml: `chapters: [{ on: <occasion>, scenes: [<scene id>, …] }]`"
+            .to_string(),
+        "questTier" => " — `questTier` is a project default, `defaults: { questTier: … }` in \
+             lute.project.yaml; one quest sets `<quest tier=\"…\">`"
+            .to_string(),
+        "terminal" | "clock" | "seasons" | "cast" if kind != MetaKind::Schema => format!(
+            " — `{key}:` belongs in a schema (a `.schema.yaml` the documents import through \
+             `uses:`)"
+        ),
+        "use" => " — a schema is imported with `uses:`; a template is applied by a bundle \
+                   beat's `<beat use=\"…\">` attribute"
+            .to_string(),
+        "tags" | "tag" => {
+            " — keep free-form data under `extra:`, e.g. `extra: { tags: [...] }`".to_string()
+        }
+        _ => return None,
+    })
 }
 
 const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
@@ -535,8 +641,9 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
                     vec![err(
                         E_UNKNOWN_KIND,
                         format!(
-                            "unknown document kind `{other}`; expected `scene`, `quest`, or \
-                             `lore` (dsl 0.2.0 §3.1, dsl 0.19.0 §2)"
+                            "unknown document kind `{other}`{}; expected `scene`, `quest`, or \
+                             `lore`",
+                            lute_manifest::suggest::did_you_mean(other, ["scene", "quest", "lore"])
                         ),
                     )],
                 ),
@@ -979,12 +1086,13 @@ pub fn parse_meta_kind_with_defaults(
             continue;
         }
         let Some(ty) = snapshot.frontmatter.get(key) else {
-            diags.push(err(
+            diags.push(err_at(
                 "E-META-UNKNOWN-KEY",
                 format!(
                     "unknown top-level meta key `{key}` (not a core key and not owned by an active plugin){}",
                     unknown_key_hint(key, kind, component_key_allowed)
                 ),
+                meta_path_span(meta, &[key]),
             ));
             continue;
         };
@@ -1131,21 +1239,30 @@ pub fn parse_meta_kind_with_defaults(
         .get(yaml_key("enums"))
         .unwrap_or(&serde_yaml::Value::Null);
     let project_enums = lute_manifest::entities::parse_enums(enums_val);
-    // dsl 0.24.0 §1: `parse_enums` is total and drops a non-string label; the
-    // frontmatter value-shape code reports it (a label for a non-member is
+    // dsl 0.24.0 §1 / 0.28.0 §1: `parse_enums` is total; the long-form shape
+    // mistakes it drops (an unknown key, no `members:`, a non-string label)
+    // are reported here, each at its own key (a label for a non-member is
     // `E-ENUM-LABEL-NOT-MEMBER`, from the shared `validate_domain` rules).
-    for message in lute_manifest::entities::label_shape_errors(enums_val) {
-        diags.push(err_at(
-            "E-META-VALUE",
-            message,
-            meta_key_span(meta, "enums"),
-        ));
+    for (message, path) in lute_manifest::entities::enum_shape_errors(enums_val) {
+        let path: Vec<&str> = path.iter().map(String::as_str).collect();
+        diags.push(err_at("E-META-VALUE", message, meta_path_span(meta, &path)));
     }
     typed.domains = project_enums.clone();
     typed.rel_kinds = lute_manifest::relations::parse_entity_kinds(
         map.get(yaml_key("entities"))
             .unwrap_or(&serde_yaml::Value::Null),
     );
+    // dsl 0.28.0 (T3-45): an `enums:` name this document also declares as an
+    // entity kind (a clash across documents is `build_rel_vocab`'s).
+    for (name, dom) in &project_enums {
+        if let Some(kind) = typed.rel_kinds.kinds.get(name) {
+            diags.push(err_at(
+                crate::rel_schema::E_DOMAIN_NAME_CLASH,
+                crate::rel_schema::domain_clash_message(name, &dom.members, &kind.shape),
+                meta_path_span(meta, &["entities", name]),
+            ));
+        }
+    }
     typed.rel_relations = lute_manifest::relations::parse_relations(
         map.get(yaml_key("relations"))
             .unwrap_or(&serde_yaml::Value::Null),
@@ -1190,6 +1307,7 @@ pub fn parse_meta_kind_with_defaults(
     if kind == MetaKind::Schema {
         if let Some(v) = map.get(yaml_key("clock")) {
             let (clock, clock_diags) = crate::clock::parse_clock(v, meta);
+            typed.state.clock_rejected = clock.is_none();
             typed.clock = clock;
             diags.extend(clock_diags);
         }
@@ -1220,8 +1338,12 @@ pub fn parse_meta_kind_with_defaults(
         }
         // dsl 0.27.0 §5: `seasons: { <name>: { live: "<condition>" } }`.
         if let Some(v) = map.get(yaml_key("seasons")) {
-            let (seasons, season_diags) =
-                crate::season::parse_seasons(v, meta_key_span(meta, "seasons"));
+            let (seasons, season_diags) = crate::season::parse_seasons(v, &|path| {
+                let full: Vec<&str> = std::iter::once("seasons")
+                    .chain(path.iter().copied())
+                    .collect();
+                meta_path_span(meta, &full)
+            });
             typed.seasons = seasons;
             diags.extend(season_diags);
         }
@@ -1472,13 +1594,22 @@ pub fn parse_meta_kind_with_defaults(
             meta_key_span(meta, "effects"),
         )),
     }
-    // dsl 0.27.0 §6: a component's `beat:` header template.
+    // dsl 0.27.0 §6: a component's `beat:` header template. dsl 0.28.0 §1:
+    // a param named like a key of the use itself can never be passed, and
+    // is refused where it is declared (the template is then faulty, so its
+    // uses stay silent about it).
     if kind == MetaKind::Component {
-        if let Some(v) = map.get(yaml_key("beat")) {
+        let template = map.get(yaml_key("beat"));
+        let reserved = crate::templates::check_param_names(meta, &typed.params, template.is_some());
+        if let Some(v) = template {
             let (template, tdiags) = crate::templates::parse_beat_template(meta, v, &typed.params);
-            typed.beat_template = template;
+            typed.beat_template = template.map(|mut t| {
+                t.faulty |= !reserved.is_empty();
+                t
+            });
             diags.extend(tdiags);
         }
+        diags.extend(reserved);
     }
 
     // Parse the inline `state:` schema (dsl §9.3).
@@ -1494,11 +1625,19 @@ pub fn parse_meta_kind_with_defaults(
                         ));
                         continue;
                     };
-                    let Some(namespace) = namespace_of(path) else {
-                        diags.push(err(
-                            "E-STATE-NAMESPACE",
-                            format!("state path `{path}` must begin with scene./run./user./app./season."),
-                        ));
+                    // dsl 0.28.0 §1 (T1-12): a path outside the author tiers,
+                    // or inside one the engine owns (`scene.choices.*`,
+                    // `scene.visited.*`, a quest or season path missing its
+                    // id/name segment), is not declarable — anchored at its key.
+                    let (Some(namespace), None) = (namespace_of(path), engine_namespace(path))
+                    else {
+                        let why = engine_namespace(path).unwrap_or_else(|| {
+                            format!(
+                                "state path `{path}` must begin with an author tier: `run.`, \
+                                 `user.`, `scene.`, `app.`, `season.<name>.` or `quest.<id>.`"
+                            )
+                        });
+                        diags.push(err_at("E-STATE-NAMESPACE", why, meta_key_span(meta, path)));
                         continue;
                     };
                     // dsl 0.2.0 §5.2/§9.3: `quest.<id>.state` / `quest.<id>.objectives.<oid>.done`
@@ -1534,6 +1673,20 @@ pub fn parse_meta_kind_with_defaults(
                             ),
                             meta_key_span(meta, path),
                         ));
+                    }
+                    // dsl 0.28.0 §1 (T1-2): a state row's keys are closed. An
+                    // unknown one (`defualt:`, `ownr:`, `reserved:`, `tier:`)
+                    // was dropped silently — the default, the owner or the
+                    // tier the author wrote never applied. The row is still
+                    // installed from the keys it does spell right, and the
+                    // path is `faulty`: its reads are judged no further.
+                    for (key, message) in unknown_state_row_keys(path, decl_val) {
+                        diags.push(err_at(
+                            "E-STATE-DECL",
+                            message,
+                            meta_path_span(meta, &["state", path, &key]),
+                        ));
+                        typed.state.faulty.insert(path.to_string());
                     }
                     match serde_yaml::from_value::<StateDeclRaw>(decl_val.clone()) {
                         Ok(raw) if matches!(raw.ty, Type::NarrativeTime) => {
@@ -1612,13 +1765,50 @@ pub fn parse_meta_kind_with_defaults(
                                         }
                                         other => scalar_default(path, other, &mut diags, key_span),
                                     };
+                                    // dsl 0.28.0 §1 (T1-2): an inline enum's
+                                    // `default:` must be one of its members —
+                                    // `c` in `{ enum: [a, b] }` played as a
+                                    // value no `<match>` arm can take.
+                                    let default = match (&decl.ty, default) {
+                                        (Type::Enum(ms), Some(Literal::Str(d)))
+                                            if !ms.contains(&d) =>
+                                        {
+                                            let hint = lute_manifest::suggest::did_you_mean(
+                                                &d,
+                                                ms.iter().map(String::as_str),
+                                            );
+                                            diags.push(err_at(
+                                                "E-STATE-DECL",
+                                                format!(
+                                                    "`{path}`'s `default: {d}` is not one of its \
+                                                     members [{}]{hint}",
+                                                    ms.join(", ")
+                                                ),
+                                                meta_path_span(meta, &["state", path, "default"]),
+                                            ));
+                                            typed.state.faulty.insert(path.to_string());
+                                            None
+                                        }
+                                        (_, default) => default,
+                                    };
                                     typed
                                         .state
                                         .decls
                                         .insert(path.to_string(), StateDecl { default, ..decl });
                                 }
                                 // dsl 0.24.0 §3: one decl per member of a
-                                // closed kind declared in this same document.
+                                // closed kind. A kind this document does not
+                                // declare is resolved against the schemas it
+                                // imports ([`expand_per_pending`], dsl 0.28.0).
+                                Some(kind) if !typed.rel_kinds.kinds.contains_key(&kind) => {
+                                    typed.per_pending.push(PendingPer {
+                                        path: path.to_string(),
+                                        kind,
+                                        decl,
+                                        default: raw.default,
+                                        span: key_span,
+                                    });
+                                }
                                 Some(kind) => match per_members(&typed.rel_kinds, &kind) {
                                     Ok(members) => {
                                         let defaults = per_member_defaults(
@@ -1643,12 +1833,7 @@ pub fn parse_meta_kind_with_defaults(
                                     }
                                     Err(why) => diags.push(err_at(
                                         "E-STATE-DECL",
-                                        format!(
-                                            "invalid state declaration for `{path}`: `per: {kind}` {why}; \
-                                             `per:` indexes a path by a closed entity kind (`members: [...]`) \
-                                             declared in this document's `entities:`, declaring \
-                                             `{path}.<member>` for every member (dsl 0.24.0 §3)"
-                                        ),
+                                        per_fault(path, &kind, why),
                                         key_span,
                                     )),
                                 },
@@ -1681,6 +1866,10 @@ pub fn parse_meta_kind_with_defaults(
             )),
         }
     }
+    // dsl 0.28.0 §1: reserved names are refused where they are declared.
+    diags.extend(crate::reserved_names::check_frontmatter(
+        meta, map, &mut typed,
+    ));
 
     (typed, diags)
 }
@@ -1885,9 +2074,14 @@ pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {
     // T10.2). The two cases are told apart exactly: a real frontmatter span
     // covers at least `"---\n"` + `"---"` more bytes than its interior.
     const OPENER_LEN: usize = 4; // "---\n"
-                                 // dsl 0.27.0 §8: keys a project `sequence:` derived sit below the marker
-                                 // and have no text in the file; they are anchored at the scene's `id:`.
-    let authored = crate::sequence::authored_yaml(&meta.raw_yaml);
+
+    // dsl 0.28.0 §4: keys a project `chapters:` chain derived sit below the
+    // marker and have no text in the file; they are anchored at the scene's
+    // `id:` — never at some other occurrence of the key's name (T3-18).
+    if needle != "id" && crate::chapters::derived(meta, needle) {
+        return meta_key_span(meta, "id");
+    }
+    let authored = crate::chapters::authored_yaml(&meta.raw_yaml);
     let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != authored.len();
     let base = meta.span.byte_start + if enveloped { OPENER_LEN } else { 0 };
     let at = |start: usize| Span {
@@ -1908,13 +2102,36 @@ pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {
         }
         line_start += line.len();
     }
-    // Fallbacks: naive first occurrence, the scene's `id:` for a derived
-    // key, then the whole frontmatter block.
+    // Fallbacks: naive first occurrence, then the whole frontmatter block.
     match authored.find(needle) {
         Some(idx) => at(base + idx),
         None if needle != "id" && meta.raw_yaml.len() > authored.len() => meta_key_span(meta, "id"),
         None => meta.span,
     }
+}
+
+/// The span of the mapping key at `path` (from the frontmatter's top level
+/// down, e.g. `["state", "run.n", "defualt"]`) — a nested key, block or
+/// one-line flow mapping, located by [`lute_manifest::yaml_text::key_span`].
+/// Falls back to the deepest ancestor key found, then [`meta_key_span`] of
+/// the first segment.
+pub fn meta_path_span(meta: &Meta, path: &[&str]) -> Span {
+    let authored = crate::chapters::authored_yaml(&meta.raw_yaml);
+    let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != authored.len();
+    let base = meta.span.byte_start + if enveloped { 4 } else { 0 };
+    for depth in (1..=path.len()).rev() {
+        if let Some(r) = lute_manifest::yaml_text::key_span(authored, &path[..depth]) {
+            return Span {
+                byte_start: base + r.start,
+                byte_end: base + r.end,
+                line: 0,
+                column: 0,
+                utf16_range: (0, 0),
+            };
+        }
+    }
+    path.first()
+        .map_or(meta.span, |first| meta_key_span(meta, first))
 }
 
 /// `E-META-PARSE` for a frontmatter serde_yaml rejects: the message and the
@@ -1923,8 +2140,7 @@ pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {
 /// `at line N column M` was one line short and the diagnostic sat at `1:1`.
 /// The anchor now carries the position, so the problem mark is dropped from
 /// the message and any other mark (a context's) is renumbered to file lines.
-/// The two common causes get a fix first: a `"` nested inside a
-/// double-quoted value, and a tab in the indentation.
+/// The fix and its anchor come from [`lute_manifest::yaml_text::yaml_fault`].
 fn yaml_parse_error(meta: &Meta, e: &serde_yaml::Error) -> (String, Span) {
     // [`meta_key_span`]'s envelope rule: a `.lute` frontmatter's interior
     // starts after the 4-byte `"---\n"` opener; a bare `.yaml` has none.
@@ -1958,38 +2174,21 @@ fn yaml_parse_error(meta: &Meta, e: &serde_yaml::Error) -> (String, Span) {
     }
     problem.push_str(&rest);
 
-    let Some(loc) = loc else {
+    if loc.is_none() {
         return (
             format!("invalid meta frontmatter YAML: {problem}"),
             meta.span,
         );
-    };
-    let bad_line = meta
-        .raw_yaml
-        .lines()
-        .nth(loc.line().saturating_sub(1))
-        .unwrap_or("");
-    let indent = &bad_line[..bad_line.len() - bad_line.trim_start().len()];
-    let mut start = loc.index().min(meta.raw_yaml.len());
-    let hint = if indent.contains('\t') {
-        Some(
-            "YAML indents with spaces, not tabs: replace the tab at the start of the line with \
-             spaces"
-                .to_string(),
-        )
-    } else if let Some(hint) = nested_quote_hint(bad_line) {
-        Some(hint)
-    } else if let Some((at, hint)) = earlier_line_fault(&meta.raw_yaml, loc.line()) {
-        // The error surfaced on a later line; the anchor is the slip.
-        start = at;
-        Some(hint)
-    } else {
-        None
-    };
-    let message = match hint {
-        Some(hint) => format!("invalid meta frontmatter YAML — {hint} (YAML: {problem})"),
-        None => format!("invalid meta frontmatter YAML: {problem}"),
-    };
+    }
+    // The shared YAML fault reader words the known slips (a tab in the
+    // indentation, a quote nested or never closed, `key:value`, a value
+    // holding `: `, …) with their fix, and anchors at the slip.
+    let fault = lute_manifest::yaml_text::yaml_fault(&meta.raw_yaml, e);
+    let message = format!(
+        "invalid meta frontmatter YAML — {} (YAML: {problem})",
+        fault.message
+    );
+    let mut start = fault.offset.min(meta.raw_yaml.len());
     while !meta.raw_yaml.is_char_boundary(start) {
         start -= 1;
     }
@@ -2005,100 +2204,6 @@ fn yaml_parse_error(meta: &Meta, e: &serde_yaml::Error) -> (String, Span) {
         utf16_range: (0, 0),
     };
     (message, at)
-}
-
-/// The fix for a quoted value that holds its own quote character, which YAML
-/// reads as the end of the value. `key: "a "b" c"` → use single quotes
-/// inside (`key: "a 'b' c"`); `key: 'a 'b' c'` → quote the value with `"`
-/// instead (`key: "a 'b' c"`). `None` when the line's value is not such a
-/// quoted scalar.
-fn nested_quote_hint(line: &str) -> Option<String> {
-    let colon = line.find(": ")?;
-    let key = line[..colon].trim();
-    let value = line[colon + 1..].trim();
-    if let Some(inner) = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
-        let b = inner.as_bytes();
-        let nested = (0..b.len()).any(|i| b[i] == b'"' && (i == 0 || b[i - 1] != b'\\'));
-        return nested.then(|| {
-            format!(
-                "a `\"` inside a double-quoted value ends the value early: use single quotes \
-                 inside a double-quoted value — `{key}: \"{}\"`",
-                inner.replace('"', "'")
-            )
-        });
-    }
-    let inner = value.strip_prefix('\'')?.strip_suffix('\'')?;
-    (inner.contains('\'') && !inner.contains('"')).then(|| {
-        format!(
-            "a `'` inside a single-quoted value ends the value early: quote the value with \
-             double quotes instead — `{key}: \"{inner}\"`"
-        )
-    })
-}
-
-/// FS-F15: the two slips whose YAML error surfaces on a LATER line — a
-/// quoted value not closed on its own line (the quote swallows the next
-/// lines), and `key:value` with no space after the colon (a plain scalar,
-/// so the mapping breaks on the next line). The nearest such line at or
-/// before the error's 1-based line `upto`: the raw-YAML offset of the
-/// opening quote / the colon, and the fix.
-fn earlier_line_fault(raw_yaml: &str, upto: usize) -> Option<(usize, String)> {
-    let mut offset = 0;
-    let mut found = None;
-    for line in raw_yaml.split_inclusive('\n').take(upto) {
-        let text = line.trim_end_matches(['\n', '\r']);
-        if let Some((at, hint)) = unclosed_quote(text).or_else(|| missing_colon_space(text)) {
-            found = Some((offset + at, hint));
-        }
-        offset += line.len();
-    }
-    found
-}
-
-/// `key: "value` with no closing quote on the line.
-fn unclosed_quote(line: &str) -> Option<(usize, String)> {
-    let colon = line.find(": ")?;
-    let key = line[..colon].trim().trim_start_matches("- ");
-    let after = &line[colon + 2..];
-    let at = colon + 2 + (after.len() - after.trim_start().len());
-    let value = &line[at..];
-    let quote = value.chars().next().filter(|c| matches!(c, '"' | '\''))?;
-    let rest = value[1..].as_bytes();
-    let closed = if quote == '"' {
-        (0..rest.len()).any(|i| rest[i] == b'"' && (i == 0 || rest[i - 1] != b'\\'))
-    } else {
-        value[1..].replace("''", "").contains('\'')
-    };
-    (!closed).then(|| {
-        (
-            at,
-            format!(
-                "the `{quote}` that opens `{key}:`'s value is never closed — end the value with \
-                 `{quote}` on the same line"
-            ),
-        )
-    })
-}
-
-/// `key:value` — a mapping key with no space after its colon.
-fn missing_colon_space(line: &str) -> Option<(usize, String)> {
-    let t = line.trim_start();
-    if t.starts_with(['#', '-']) || line.contains(": ") {
-        return None;
-    }
-    let colon = t.find(':')?;
-    let key = &t[..colon];
-    let value = t[colon + 1..].trim_end();
-    let is_key = !key.is_empty()
-        && key
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c));
-    (is_key && !value.is_empty() && !value.starts_with(char::is_whitespace)).then(|| {
-        (
-            line.len() - t.len() + colon,
-            format!("a key needs a space after its colon — `{key}: {value}`"),
-        )
-    })
 }
 
 /// Authoritative same-block duplicate-key scan for `relations:`/`entities:`
@@ -2225,6 +2330,43 @@ fn sanitize_dup_block_keys(raw_yaml: &str) -> String {
     out
 }
 
+/// The keys a `state:` row may carry ([`StateDeclRaw`]).
+const STATE_ROW_KEYS: [&str; 4] = ["type", "default", "owner", "per"];
+
+/// dsl 0.28.0 §1 (T1-2): every key of a `state:` row outside
+/// [`STATE_ROW_KEYS`], with its message. Two keys other layers spell get the
+/// state row's own spelling: `reserved:` (a relation's engine-ownership) and
+/// `tier:` (a quest's or relation's lifetime — a state path's tier is its
+/// first segment).
+fn unknown_state_row_keys(path: &str, row: &serde_yaml::Value) -> Vec<(String, String)> {
+    let Some(row) = row.as_mapping() else {
+        return Vec::new();
+    };
+    row.keys()
+        .filter_map(|k| k.as_str())
+        .filter(|k| !STATE_ROW_KEYS.contains(k))
+        .map(|key| {
+            let message = match key {
+                "reserved" => format!(
+                    "`{path}`: a state row says who writes it with `owner: engine` — \
+                     `reserved: true` is how a relation says it"
+                ),
+                "tier" => format!(
+                    "`{path}`: a state path's tier is its first segment (`{}.`), not a \
+                     `tier:` key — rename the path to change its tier",
+                    map_prefix(path)
+                ),
+                _ => format!(
+                    "`{path}`: unknown key `{key}`{} (a state row takes `type:`, `default:`, \
+                     `owner:` and `per:`)",
+                    lute_manifest::suggest::did_you_mean(key, STATE_ROW_KEYS)
+                ),
+            };
+            (key.to_string(), message)
+        })
+        .collect()
+}
+
 /// Raw `state:` entry (dsl §9.3): `{ type, default?, owner?, per? }`. `Type`
 /// reuses the manifest's manual serde (inline `{ enum: [...] }` etc. work).
 #[derive(serde::Deserialize)]
@@ -2244,28 +2386,96 @@ struct StateDeclRaw {
 /// §3) — including the members its `subsetOf:` sub-kinds add (dsl 0.26.0
 /// §2.3, closed by the one [`lute_manifest::relations::imply_sub_kind_members`]
 /// every other kind consumer uses; dsl 0.27.0 §2) — or why it cannot be: the
-/// kind is not declared in `kinds` (this document's own `entities:`), is
-/// `open:`, or is malformed.
+/// kind is `open:` or malformed. `kinds` is this document's own `entities:`.
 fn per_members(
     kinds: &lute_manifest::relations::ParsedKinds,
     kind: &str,
 ) -> Result<Vec<String>, &'static str> {
+    let mut closed = kinds.kinds.clone();
+    lute_manifest::relations::imply_sub_kind_members(&mut closed, &kinds.order);
+    closed_per_members(&closed, kind)
+}
+
+/// [`per_members`] over kinds whose sub-kind members are already implied.
+fn closed_per_members(
+    kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+    kind: &str,
+) -> Result<Vec<String>, &'static str> {
     use lute_manifest::relations::KindShape;
-    match kinds.kinds.get(kind).map(|k| &k.shape) {
-        Some(KindShape::Members(_)) => {
-            let mut closed = kinds.kinds.clone();
-            lute_manifest::relations::imply_sub_kind_members(&mut closed, &kinds.order);
-            match closed.remove(kind).map(|k| k.shape) {
-                Some(KindShape::Members(ms)) => Ok(ms),
-                _ => Err("names a malformed entity kind"),
-            }
-        }
+    match kinds.get(kind).map(|k| &k.shape) {
+        Some(KindShape::Members(ms)) => Ok(ms.clone()),
         Some(KindShape::Open) => {
             Err("names an `open:` entity kind, whose members the engine registers at runtime")
         }
         Some(KindShape::Invalid) => Err("names a malformed entity kind"),
-        None => Err("names no entity kind declared in this document's `entities:`"),
+        None => Err(
+            "names no entity kind declared in this document's `entities:` or in a \
+                     schema it imports",
+        ),
     }
+}
+
+/// `E-STATE-DECL`'s message for a `per:` that cannot index `path`.
+fn per_fault(path: &str, kind: &str, why: &str) -> String {
+    format!(
+        "invalid state declaration for `{path}`: `per: {kind}` {why}; `per:` indexes a path by a \
+         closed entity kind (`members: [...]`), declaring `{path}.<member>` for every member"
+    )
+}
+
+/// A `per: <kind>` state family whose kind the declaring document does not
+/// declare itself — another schema may (dsl 0.28.0: `per:` reads the merged
+/// kinds, as `subsetOf:` and `add:` do). Expanded by [`expand_per_pending`]
+/// once the imports are merged; `span` is the path's key in its document.
+#[derive(Clone, Debug)]
+pub struct PendingPer {
+    pub path: String,
+    pub kind: String,
+    pub decl: StateDecl,
+    pub default: Option<Literal>,
+    pub span: Span,
+}
+
+/// The member decls and `path → kind` index entries each [`PendingPer`]
+/// declares over `kinds` (sub-kind members already implied — the merged
+/// vocabulary's), and an `E-STATE-DECL` at its key for one whose kind is
+/// still unknown, `open:` or malformed, or whose `default:` map is wrong.
+pub(crate) fn expand_per_pending(
+    pending: &[PendingPer],
+    kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+) -> (
+    Vec<(String, StateDecl)>,
+    Vec<(String, String)>,
+    Vec<Diagnostic>,
+) {
+    let (mut decls, mut index, mut diags) = (Vec::new(), Vec::new(), Vec::new());
+    for p in pending {
+        match closed_per_members(kinds, &p.kind) {
+            Ok(members) => {
+                let defaults = per_member_defaults(
+                    &p.path,
+                    &p.kind,
+                    &members,
+                    &p.decl.ty,
+                    p.default.clone(),
+                    &mut diags,
+                    p.span,
+                );
+                for (m, default) in members.iter().zip(defaults) {
+                    decls.push((
+                        format!("{}.{m}", p.path),
+                        StateDecl {
+                            default,
+                            ..p.decl.clone()
+                        },
+                    ));
+                }
+                index.push((p.path.clone(), p.kind.clone()));
+            }
+            Err(why) => diags.push(state_decl_diag(per_fault(&p.path, &p.kind, why), p.span)),
+        }
+    }
+    (decls, index, diags)
 }
 
 /// An `E-STATE-DECL` at a `state:` key.
@@ -2390,6 +2600,45 @@ fn yaml_key(k: &str) -> serde_yaml::Value {
 
 fn map_prefix(path: &str) -> &str {
     path.split_once('.').map_or(path, |(head, _)| head)
+}
+
+/// dsl 0.28.0 §1 (T1-12): why `path` cannot be declared in `state:` — it is
+/// a name the engine owns — or `None` when the namespace is the author's.
+/// A non-tier root with no engine meaning (`foo.bar`) is `None` here too;
+/// [`namespace_of`] refuses it.
+pub(crate) fn engine_namespace(path: &str) -> Option<String> {
+    let segs: Vec<&str> = path.split('.').collect();
+    let why = match segs.as_slice() {
+        ["scene", "choices", ..] => {
+            "`scene.choices.<id>` records which choice a branch or hub took; the engine declares \
+             it from the `<branch>`/`<hub>` and writes it when a choice is taken"
+        }
+        ["scene", "visited", ..] => {
+            "`scene.visited.*` records the scenes and marks a run has visited; the engine \
+             declares and writes it"
+        }
+        ["occasion", ..] => {
+            "`occasion.*` describes the raise a beat answers — its `target` and `payload` come \
+             from the raise, and payload fields are declared on the occasion"
+        }
+        ["clock", ..] => {
+            "`clock.*` is derived from the declared `clock:`; declare the clock's own day and \
+             slot paths under `run.` or `user.` instead"
+        }
+        ["entry", ..] => "`entry.<id>.read` is recorded by the engine when an entry is read",
+        ["prev", ..] => {
+            "`prev.*` is the engine's read-only mirror of the previous run's or season's values"
+        }
+        ["quest", _] | ["quest"] => {
+            "a quest path is `quest.<questId>.<field>`, a field of one quest; for state shared \
+             across quests use `run.` or `user.`"
+        }
+        ["season", _] | ["season"] => {
+            "a season path is `season.<name>.<field>`, with `<name>` declared in `seasons:`"
+        }
+        _ => return None,
+    };
+    Some(format!("state path `{path}` cannot be declared: {why}"))
 }
 
 pub(crate) fn namespace_of(path: &str) -> Option<Namespace> {

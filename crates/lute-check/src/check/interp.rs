@@ -167,14 +167,30 @@ pub(super) fn is_renderable(ty: &Type) -> bool {
 /// is CEL used where the profile does not admit it (§7.6: the only CEL inside
 /// `{{…}}` is a `@fn(args)` argument).
 pub(super) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
+    // dsl 0.28.0 (T3-4): conditional text is a line with its own `when`; a
+    // `@def` only helps a computed number or string (a bool is not shown).
+    let advice = match raw.split_once(':') {
+        Some((cond, text))
+            if !cond.trim().is_empty() && !cond.contains('?') && !text.starts_with(':') =>
+        {
+            format!(
+                "text shown only while a condition holds is a line of its own — split it into \
+                 `@who{{when=\"{}\"}}: {}` lines",
+                cond.trim(),
+                text.trim()
+            )
+        }
+        _ => "name a computed number or string with a `@def` and show `{{@name}}`; text shown \
+              only while a condition holds is a line of its own — `@who{when=\"…\"}: …`"
+            .to_string(),
+    };
     Diagnostic {
         code: crate::cel_resolve::E_CEL_PROFILE.to_string(),
         severity: Severity::Error,
         message: format!(
             "interpolation `{raw}` is not a valid `{{{{…}}}}` form — only a state path, a \
              family path indexed by the raised member (`user.bond[occasion.target]`), a def \
-             `@ref` / `@ref(args)`, or `userName` are permitted; a bare CEL expression is not \
-             (name a computed value with a `@def`, dsl §7.6)"
+             `@ref` / `@ref(args)`, or `userName` are permitted; {advice}"
         ),
         span,
         layer: Layer::Cel,
@@ -185,17 +201,29 @@ pub(super) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
     }
 }
 
+/// `E-PLURAL-FORM`: a `:plural(…)` whose forms are not a bare singular and
+/// a bare plural separated by `|` — quoted forms (the quotes would print),
+/// a `,` separator, a missing or empty form.
+pub const E_PLURAL_FORM: &str = "E-PLURAL-FORM";
+
+/// The hint list an unknown-hint message names.
+const HINT_LIST: &str = "`:ordinal`, `:ordinalWord`, `:cardinalWord` and \
+                         `:plural(one|other)` format a number; `:capitalize`, `:start` and \
+                         `:indefinite` format text";
+
 /// dsl 0.24.0 §4 / 0.25.0 §8 / 0.27.0 §7: validate an interpolation's format
 /// hint ([`Interp::format`], the `:ordinal` of `{{user.deaths:ordinal}}`).
-/// `ordinal`, `ordinalWord` and `plural(one|other)` are the hints
-/// ([`lute_syntax::ast::INTERP_FORMATS`]); any other, a `plural` without
-/// exactly two non-empty forms, and an ordinal with a `(…)` are
-/// `E-CEL-PROFILE`, the §7.6 interpolation-grammar code
-/// ([`interp_grammar_diag`]) — the hint is part of the `{{…}}` form. Each
-/// formats a number, so a referent whose type is KNOWN and not a number — a
-/// declared state path, a def's produced type, the reserved `userName`
-/// string — is `E-REF-TYPE`, the interpolation rendering-type code. An
-/// unresolved referent (already `E-UNDECLARED` / `E-UNDECLARED-REF`) and one
+/// The hints are [`lute_syntax::ast::INTERP_FORMATS`]: an unknown one and
+/// an argument on a hint other than `plural` are `E-CEL-PROFILE`, the §7.6
+/// interpolation-grammar code ([`interp_grammar_diag`]) — the hint is part
+/// of the `{{…}}` form; `plural` forms that are not a bare singular and a
+/// bare plural are [`E_PLURAL_FORM`]. A number hint
+/// ([`lute_syntax::ast::INTERP_NUMBER_FORMATS`]) on a referent whose type is
+/// KNOWN and not a number — a declared state path, a def's produced type,
+/// the reserved `userName` string — and a text hint
+/// ([`lute_syntax::ast::INTERP_TEXT_FORMATS`]) on a number or a bool are
+/// `E-REF-TYPE`, the interpolation rendering-type code. An unresolved
+/// referent (already `E-UNDECLARED` / `E-UNDECLARED-REF`) and one
 /// `type_flagged` as non-renderable already are not flagged again.
 pub(super) fn check_interp_format(
     interp: &Interp,
@@ -213,27 +241,22 @@ pub(super) fn check_interp_format(
         (
             crate::cel_resolve::E_CEL_PROFILE,
             format!(
-                "`{{{{{raw}:{hint}}}}}` names an unknown format `{format}` — the \
-                 interpolation formats are `:ordinal`, `:ordinalWord` and \
-                 `:plural(one|other)` (dsl 0.27.0 §7)"
+                "`{{{{{raw}:{hint}}}}}` names an unknown format `{format}`{} — {HINT_LIST}",
+                lute_manifest::suggest::did_you_mean(
+                    format,
+                    lute_syntax::ast::INTERP_FORMATS.iter().copied()
+                )
             ),
         )
-    } else if plural
-        && !matches!(&interp.forms, Some(f) if f.len() == 2 && f.iter().all(|f| !f.is_empty()))
+    } else if let Some(problem) = plural
+        .then(|| plural_form_problem(raw, interp.forms.as_deref()))
+        .flatten()
     {
-        (
-            crate::cel_resolve::E_CEL_PROFILE,
-            format!(
-                "`{{{{{raw}:{hint}}}}}` needs a singular and a plural form, as \
-                 `{{{{{raw}:plural(lantern|lanterns)}}}}` — the first is shown when the \
-                 number is 1, the second otherwise, and `#` in a form is the number \
-                 (dsl 0.27.0 §7)"
-            ),
-        )
+        (E_PLURAL_FORM, problem)
     } else if !plural && interp.forms.is_some() {
         (
             crate::cel_resolve::E_CEL_PROFILE,
-            format!("`:{format}` takes no `(…)` — write `{{{{{raw}:{format}}}}}` (dsl 0.24.0 §4)"),
+            format!("`:{format}` takes no `(…)` — write `{{{{{raw}:{format}}}}}`"),
         )
     } else {
         let ty = match interp.kind {
@@ -257,13 +280,33 @@ pub(super) fn check_interp_format(
                 .find(|r| !r.is_dollar)
                 .and_then(|r| env.def_types.get(&r.name).cloned()),
         };
+        let text_hint = lute_syntax::ast::INTERP_TEXT_FORMATS.contains(&format);
         match ty {
-            Some(ty) if ty != Type::Number && !type_flagged => (
+            _ if type_flagged => return,
+            Some(ty) if text_hint && matches!(ty, Type::Number | Type::Bool) => (
+                "E-REF-TYPE",
+                format!(
+                    "`:{format}` formats text, but `{raw}` is {} — write `{{{{{raw}}}}}` \
+                     without the hint{}",
+                    crate::cel_resolve::ty_desc(&ty),
+                    if ty == Type::Number {
+                        ", or a number hint (`:cardinalWord`, `:ordinal`)"
+                    } else {
+                        ""
+                    }
+                ),
+            ),
+            Some(ty) if !text_hint && ty != Type::Number => (
                 "E-REF-TYPE",
                 format!(
                     "`:{format}` formats a number, but `{raw}` is {} — write `{{{{{raw}}}}}` \
-                     without the hint, or interpolate a number (dsl 0.24.0 §4)",
-                    crate::cel_resolve::ty_desc(&ty)
+                     without the hint, or interpolate a number{}",
+                    crate::cel_resolve::ty_desc(&ty),
+                    if ty == Type::Bool {
+                        ""
+                    } else {
+                        " (text takes `:capitalize`, `:start` or `:indefinite`)"
+                    }
                 ),
             ),
             _ => return,
@@ -280,6 +323,53 @@ pub(super) fn check_interp_format(
         covered: Vec::new(),
         related: Vec::new(),
     });
+}
+
+/// Why `plural` forms `forms` (the hint's `(…)` split on `|`) are not a bare
+/// singular and a bare plural, as an [`E_PLURAL_FORM`] message; `None` when
+/// they are.
+fn plural_form_problem(raw: &str, forms: Option<&[String]>) -> Option<String> {
+    let quoted = |f: &str| {
+        let f = f.trim();
+        [('"', '"'), ('\'', '\''), ('“', '”'), ('‘', '’')]
+            .iter()
+            .any(|&(open, close)| f.len() > 1 && f.starts_with(open) && f.ends_with(close))
+    };
+    let unquote = |f: &str| {
+        let f = f.trim();
+        let mut cs = f.chars();
+        cs.next();
+        cs.next_back();
+        cs.as_str().to_string()
+    };
+    match forms {
+        Some(forms) if forms.iter().any(|f| quoted(f)) => {
+            let bare: Vec<String> = forms
+                .iter()
+                .map(|f| if quoted(f) { unquote(f) } else { f.clone() })
+                .collect();
+            Some(format!(
+                "plural forms are bare text — the quotes would be shown; write \
+                 `{{{{{raw}:plural({})}}}}`",
+                bare.join("|")
+            ))
+        }
+        Some([one]) if one.contains(',') => {
+            let split: Vec<&str> = one.split(',').map(str::trim).collect();
+            Some(format!(
+                "separate the singular and plural forms with `|`, not `,`: \
+                 `{{{{{raw}:plural({})}}}}`",
+                split.join("|")
+            ))
+        }
+        Some([a, b]) if !a.is_empty() && !b.is_empty() => None,
+        _ => Some(format!(
+            "`:plural` needs a singular and a plural form, as \
+             `{{{{{raw}:plural(lantern|lanterns)}}}}` — the first is shown when the number is \
+             1, the second otherwise; `#` in a form is the number, `#word` / `#Word` the \
+             number as a word"
+        )),
+    }
 }
 
 /// `true` when `s` is a `CelIdent` (dsl §4.4): a leading `_`/ASCII-letter then

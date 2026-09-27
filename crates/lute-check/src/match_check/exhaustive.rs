@@ -91,6 +91,9 @@ pub(crate) fn check_match_with_domain(
     // `unset` case, + numeric intervals, dsl 0.18.0 §4) and flag a
     // provably-dead overlap. First-match-wins means an arm whose concrete
     // value was already covered by an EARLIER arm is dead.
+    // T3-1: a subject whose own declaration was reported gets no domain
+    // verdicts (a literal outside it, a member left uncovered, `unset`).
+    let faulty = subject.is_some_and(|p| ctx.env.state.is_faulty(p));
     let mut covered: BTreeSet<DomainValue> = BTreeSet::new();
     let mut covered_num = NumCoverage::default();
     let mut covers_unset = false;
@@ -123,7 +126,7 @@ pub(crate) fn check_match_with_domain(
                         continue;
                     }
                 };
-                if literal_is_foreign(&lit, &info) {
+                if !faulty && literal_is_foreign(&lit, &info) {
                     diags.push(diag(
                         E_WHEN_LITERAL_DOMAIN,
                         Severity::Error,
@@ -178,7 +181,7 @@ pub(crate) fn check_match_with_domain(
     // `E-NONEXHAUSTIVE` pointing at the match.
     let undeclared = subject
         .is_some_and(|p| !info.resolved && !crate::defassign::is_declared(p, &ctx.env.state));
-    if has_otherwise || undeclared {
+    if has_otherwise || undeclared || faulty {
         return diags;
     }
 
@@ -236,12 +239,12 @@ pub(crate) fn check_match_with_domain(
 
     // A maybe-unset subject's `unset` case must be covered (§11.2/§9.4). This is
     // scoped to subjects whose nullability is derivable from the schema alone —
-    // `run`/`user`/`app` (maybe-unset at scene entry) and `scene.choices.*` (a
-    // branch may not have run). A plain `scene.*` subject's maybe-unset status is
-    // path-sensitive; it is owned by `check_definite_assignment` (E-MAYBE-UNSET),
-    // so emitting E-UNSET-UNCOVERED here would false-positive the written case.
-    let unset_owned_here =
-        subject.is_some_and(|p| p.starts_with("scene.choices.") || !p.starts_with("scene."));
+    // `run`/`user`/`app` (maybe-unset at scene entry). A `scene.*` subject's
+    // maybe-unset status is path-sensitive — a branch's `scene.choices.*` pick
+    // record is set once the branch picked (dsl 0.28.0, T3-61) — so it is owned
+    // by `check_definite_assignment` (E-MAYBE-UNSET, which names the branch);
+    // emitting E-UNSET-UNCOVERED here would false-positive the written case.
+    let unset_owned_here = subject.is_some_and(|p| !p.starts_with("scene."));
     if info.maybe_unset && unset_owned_here && !covers_unset && !ruled_out(&CoverItem::Unset) {
         diags.push(diag(
             "E-UNSET-UNCOVERED",
@@ -330,4 +333,21 @@ pub(crate) fn is_exhaustive_resolved(
         Domain::Infinite => false,
     };
     domain_covered && (!info.maybe_unset || covers_unset)
+}
+
+/// `true` iff an unset subject can never fall out of `m` unhandled: an
+/// `<otherwise>` or a `<when>` arm that takes the unset case. A match that
+/// misses a member is `E-NONEXHAUSTIVE` on its own; its subject read is
+/// still guarded against absence, so it earns no second report.
+pub(crate) fn handles_unset_resolved(
+    m: &Match,
+    subject: Option<&str>,
+    schema: &StateSchema,
+) -> bool {
+    m.arms.iter().any(|a| match a {
+        Arm::Otherwise { .. } => true,
+        Arm::When { is, test, .. } => {
+            arm_coverage(is.as_ref(), &test.raw, subject, schema).covers_unset
+        }
+    })
 }

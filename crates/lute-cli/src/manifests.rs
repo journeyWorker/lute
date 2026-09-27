@@ -75,11 +75,26 @@ impl ManifestVerdict {
     }
 }
 
-/// Lift a manifest-scoped [`lute_manifest::project::ResolveDiag`] — which has
-/// no span and never will (D-Z: spanned YAML parsing is out of scope) — into
-/// the `Diagnostic` shape the CLI's report/JSON/`--deny` machinery already
-/// handles. The zeroed span is the signal to render without a line:column;
-/// see [`spanless_line`].
+/// Lift a manifest-scoped [`lute_manifest::project::ResolveDiag`] into the
+/// `Diagnostic` shape the CLI's report/JSON/`--deny` machinery already
+/// handles. With a `span` (a byte range of the manifest `text`) the
+/// diagnostic is located; without one the zeroed span is the signal to
+/// render without a line:column — see [`spanless_line`].
+pub fn located_diagnostic(
+    text: &str,
+    code: &str,
+    message: String,
+    span: Option<&std::ops::Range<usize>>,
+) -> Diagnostic {
+    let mut d = as_diagnostic(code, message);
+    if let Some(r) = span {
+        let idx = lute_core_span::TextIndex::new(text);
+        d.span = Span::from_bytes(&idx, r.start, r.end);
+    }
+    d
+}
+
+/// [`located_diagnostic`] with no position.
 pub fn as_diagnostic(code: &str, message: String) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
@@ -113,13 +128,15 @@ pub fn validate_manifests_under(dir: &Path) -> std::io::Result<Vec<ManifestVerdi
             Ok(cfg) => (cfg, None),
             Err(e) => (None, Some(e)),
         };
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
         let diags = config
             .as_ref()
             .map(|c| {
-                c.identity_diags
+                c.key_diags
                     .iter()
+                    .chain(c.identity_diags.iter())
                     .chain(c.defaults_diags.iter())
-                    .map(|d| as_diagnostic(&d.code, d.message.clone()))
+                    .map(|d| located_diagnostic(&text, &d.code, d.message.clone(), d.span.as_ref()))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
@@ -134,11 +151,11 @@ pub fn validate_manifests_under(dir: &Path) -> std::io::Result<Vec<ManifestVerdi
     Ok(out)
 }
 
-/// The human line for a diagnostic with no position: `path: severity [CODE]
-/// message`. A manifest diagnostic (D-Z) and a mock diagnostic (D-AB) both
-/// have a right FILE and no right line — printing `:0:0` claims a position
-/// that does not exist, which is the exact defect §8 opens with
-/// (`scenes/wake.lute:0:0`).
+/// The human line for a manifest diagnostic: `path:line:col: severity
+/// [CODE] message` when it is located, else `path: severity [CODE]
+/// message`. A mock diagnostic (D-AB) has a right FILE and no right line —
+/// printing `:0:0` claims a position that does not exist, which is the
+/// exact defect §8 opens with (`scenes/wake.lute:0:0`).
 pub fn spanless_line(path: &Path, d: &Diagnostic, denied: bool) -> String {
     let severity = if denied || d.severity == Severity::Error {
         "error"
@@ -146,8 +163,13 @@ pub fn spanless_line(path: &Path, d: &Diagnostic, denied: bool) -> String {
         "warning"
     };
     let marker = if denied { " [denied]" } else { "" };
+    let at = if d.span.line > 0 {
+        format!(":{}:{}", d.span.line, d.span.column)
+    } else {
+        String::new()
+    };
     format!(
-        "{}: {severity} [{}]{marker} {}",
+        "{}{at}: {severity} [{}]{marker} {}",
         path.display(),
         d.code,
         d.text()
@@ -155,10 +177,10 @@ pub fn spanless_line(path: &Path, d: &Diagnostic, denied: bool) -> String {
 }
 
 /// Print every verdict's diagnostics and return `true` when the tree holds an
-/// invalid manifest (the caller's exit-1 signal). A malformed `sequence:`
-/// (dsl 0.27.0 §8) is not among them: `check-project` reports it located,
-/// beside the documents it still checks; a command that builds the project
-/// gates on it with [`gate_sequences`].
+/// invalid manifest (the caller's exit-1 signal). A malformed `chapters:`
+/// is not among them: `check-project` reports it located, beside the
+/// documents it still checks; a command that builds the project gates on it
+/// separately.
 pub fn report_and_gate(verdicts: &[ManifestVerdict]) -> bool {
     let mut invalid = false;
     for v in verdicts {
@@ -173,14 +195,22 @@ pub fn report_and_gate(verdicts: &[ManifestVerdict]) -> bool {
     invalid
 }
 
-/// dsl 0.27.0 §8: for a command that builds the project (`compile --all`,
-/// `play`), a malformed `sequence:` is fatal — the chain would silently not
-/// apply. Prints each and returns `true` when there is one.
-pub fn gate_sequences(verdicts: &[ManifestVerdict]) -> bool {
+/// dsl 0.28.0 §4: for a command that builds the project (`compile --all`,
+/// `play`), a malformed `chapters:` (or the retired `sequence:`) is fatal —
+/// a chain would silently not apply. Prints each, located, and returns
+/// `true` when there is one.
+pub fn gate_chapters(verdicts: &[ManifestVerdict]) -> bool {
     let mut invalid = false;
     for v in verdicts {
-        for d in v.config.iter().flat_map(|c| &c.sequence_diags) {
-            let d = as_diagnostic(lute_manifest::project::E_SEQUENCE, d.message.clone());
+        let text = std::fs::read_to_string(&v.path).unwrap_or_default();
+        for d in v.config.iter().flat_map(|c| &c.chapter_diags) {
+            let span = lute_check::chapters::locate_in_manifest(&text, &d.anchor);
+            let d = located_diagnostic(
+                &text,
+                lute_manifest::project::E_CHAPTERS,
+                d.message.clone(),
+                Some(&span),
+            );
             println!("{}", spanless_line(&v.path, &d, false));
             invalid = true;
         }

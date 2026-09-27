@@ -491,10 +491,13 @@ fn project_resolves_failed_by_and_objective_failed_ids() {
     );
     let refs = |when: &str| {
         let scene = reader(when);
-        check_project_quest_refs(&docs(&[("scene.lute", &scene), ("quest.lute", &quest)]))
-            .into_iter()
-            .map(|(_, d)| d)
-            .collect::<Vec<_>>()
+        check_project_quest_refs(
+            &docs(&[("scene.lute", &scene), ("quest.lute", &quest)]),
+            false,
+        )
+        .into_iter()
+        .map(|(_, d)| d)
+        .collect::<Vec<_>>()
     };
     assert!(
         refs("quest.road.failedBy == 'fail' || quest.road.objectives.bridge.failed").is_empty()

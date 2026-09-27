@@ -18,14 +18,14 @@ exports:                   # REQUIRED — which sub-directories the loader reads
   state: state/
   providers: providers/
   bridge: bridge/
-  assetkinds: assetkinds/
+  assetKinds: assetkinds/
   defs: defs/
-  stampattrs: stampattrs/
+  stampAttrs: stampattrs/
   enums: enums/
   frontmatter: frontmatter/
   events: events/
   occasions: occasions/
-  rewardkinds: rewardkinds/
+  rewardKinds: rewardkinds/
   cast: cast/
   lints: lints/
   docs: docs/
@@ -45,34 +45,34 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `providers/*.yaml` — id registries resolved against a pinned snapshot.
 - `bridge/*.yaml` — typed runtime bridge capabilities.
 - `defs/*.yaml` — shared typed-CEL `@refs`.
-- `assetkinds/*.yaml` — asset-id segment templates (compose / query modes) with ordered `fallback` hooks.
-- `stampattrs/*.yaml` — cross-cutting attributes admissible on every directive and content line (below).
+- `assetKinds` (`assetkinds/*.yaml`) — asset-id segment templates (compose / query modes) with ordered `fallback` hooks.
+- `stampAttrs` (`stampattrs/*.yaml`) — cross-cutting attributes admissible on every directive and content line (below).
 - `enums/*.yaml`, `frontmatter/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, and hover docs.
 - `events/*.yaml` — world events a quest's `<on event>` may name and `lute trace --event` fires.
 - `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0), each optionally raised for a target drawn from a project entity kind (dsl 0.22.0), presented as one winner, an offered list, or a sequence (dsl 0.23.0), and optionally gated by a [`raisedWhen`](#occasion-gates-raisedwhen) condition (dsl 0.27.0).
-- `rewardkinds/*.yaml` — the closed set of `<reward kind>` values, with an optional [target contract](#reward-target-contracts), extra attributes, and the state path a grant credits (dsl 0.23.0).
+- `rewardKinds` (`rewardkinds/*.yaml`) — the closed set of `<reward kind>` values, with an optional [target contract](#reward-target-contracts), extra attributes, and the state path a grant credits (dsl 0.23.0).
 - `cast/*.yaml` — the speakers content lines may use, with display names (dsl 0.23.0).
 - `lints/*.yaml` — advisory [lint rules](/tooling/linting/), namespaced `<plugin-id>/<rule-id>`; excluded from the capability snapshot.
 
-An export name outside this list is a load error. Every export file is also read strictly (0.24.0): a key the declaration does not know is `E-PLUGIN-PARSE`, with a did-you-mean, instead of being ignored. This covers directives and their attrs, state, effects and bridge, state shapes and templates, providers, bridge capabilities, defs, enums, events, frontmatter, asset kinds, stamp attributes, reward kinds, occasions, cast entries and lints. Before, `{ selct: all }` loaded as `select: first` without a word:
+An export name outside this list is a load error. Every export file is also read strictly (0.24.0): a key the declaration does not know is `E-PLUGIN-KEY` at its line, with a did-you-mean, instead of being ignored (0.28.0 also reads `plugin.yaml` itself this way). This covers directives and their attrs, state, effects and bridge, state shapes and templates, providers, bridge capabilities, defs, enums, events, frontmatter, asset kinds, stamp attributes, reward kinds, occasions, cast entries and lints. Before, `{ selct: all }` loaded as `select: first` without a word:
 
-<!-- lute-diagnostics unverified="serde's unknown-field text with a did-you-mean appended by crates/lute-manifest, then wrapped in the loader's E-PLUGIN-PARSE line; no single format! literal pins it; copied verbatim from lute check --project output" -->
+<!-- lute-diagnostics unverified="the loader's E-PLUGIN-KEY line (crates/lute-manifest export_error); no single format! literal pins it; copied verbatim from lute check --project output" -->
 ```
-lute: E-PLUGIN-PARSE: `./plugins/demo.pack/occasions/o.yaml` failed to parse: occasions.inbox: unknown field `selct`, expected one of `select`, `target`, `description`, `judge` at line 3 column 12; did you mean `select`?
+lute: E-PLUGIN-KEY: ./plugins/demo.pack/occasions/o.yaml:3:12: `occasions.inbox` has no key `selct` — did you mean `select`? (its keys: select, target, description, judge, raisedWhen, payload, outsideRun)
 ```
 
 A common way to get there is an unquoted description in a flow map. YAML ends an unquoted value at the first comma, so `{ select: all, description: Pick one, the player picks one }` leaves `the player picks one` as a key with no value. The error says so and spells the quoted form:
 
 <!-- lute-diagnostics unverified="serde's unknown-field text with the flow-map hint appended by crates/lute-manifest, wrapped in the loader's E-PLUGIN-PARSE line; copied verbatim from lute check --project output" -->
 ```
-lute: E-PLUGIN-PARSE: `./plugins/demo.pack/occasions/o.yaml` failed to parse: occasions.inbox: unknown field `the player picks one`, expected one of `select`, `target`, `description`, `judge` at line 3 column 48; `the player picks one` has no value — in a flow map `{ … }` an unquoted value ends at the first comma, so the rest became a key; quote the description: `description: "Pick one, the player picks one"`
+lute: E-PLUGIN-KEY: ./plugins/demo.pack/occasions/o.yaml:3:48: `occasions.inbox` has no key `the player picks one` (its keys: select, target, description, judge, raisedWhen, payload, outsideRun); `the player picks one` has no value — in a flow map `{ … }` an unquoted value ends at the first comma, so the rest became a key; quote the description: `description: "Pick one, the player picks one"`
 ```
 
 A plugin whose `plugin.yaml` parsed but one of whose exports did not is not loaded at all. The follow-up error for a profile that activates it says the plugin **failed to load** and points back at the parse error. Before 0.24.0 it told the author to install a plugin that was already installed:
 
 <!-- lute-diagnostics unverified="assembled in crates/lute-manifest from the plugin id and a fixed suffix; copied verbatim from lute check --project output" -->
 ```
-lute: E-PLUGIN-MISSING-ACTIVE: plugin `demo.pack` is activated by the project manifest but failed to load (see E-PLUGIN-PARSE above); fix its package
+lute: E-PLUGIN-MISSING-ACTIVE: plugin `demo.pack` is activated by the project manifest but failed to load (see E-PLUGIN-KEY above); fix its package
 ```
 
 The newest kinds, one minimal file each (every file carries one top-level key; the id is the map key or `name`/`id`):
@@ -87,15 +87,20 @@ events:
 ```yaml
 # occasions/game.yaml — a bare {} is select: first, untargeted, judged after
 occasions:
-  hubVisit: {}
-  examine:  { select: first, target: true }
-  talk:     { select: first, target: { prefix: npc, entity: person } }
+  townVisit: {}
+  examine:   { select: first, target: true }
+  talk:      { select: first, target: { prefix: npc, entity: person } }
   bossDefeated: { select: first, target: { prefix: boss, entity: foe, members: [gatekeeper, warden] } }
-  inbox:    { select: all, description: Letters waiting at the fountain }
-  evening:  { select: sequence }
-  dayEnd:   { select: first, judge: before }
-  enter:    { select: first, target: { prefix: room, entity: room }, raisedWhen: "holds(canEnter(occasion.target))" }
+  inbox:     { select: all, description: Letters waiting at the fountain }
+  evening:   { select: sequence }
+  dayEnd:    { select: first, judge: before }
+  enter:     { select: first, target: { prefix: room, entity: room }, raisedWhen: "holds(canEnter(occasion.target))" }
+  summon:    { select: first, target: { prefix: hero, entity: hero }, payload: { copies: number } }
+  title:     { select: first, outsideRun: true }
 ```
+
+An occasion takes these keys, and no others: `select`, `target`, `description`, `judge`,
+`raisedWhen`, `payload`, `outsideRun`.
 
 An occasion's `select:` says what the engine presents when it is raised. `first` (the default) presents the single winning beat, plus any eligible [`also`](/language/beats/#side-remarks-with-also) beat after it. `all` offers every eligible beat and the player picks one. `sequence` (dsl 0.23.0) presents every eligible beat in selection order, such as an evening routine followed by the day's event (see [Composing an occasion](/language/beats/#composing-an-occasion)). A beat's `also: true` on an `all` or `sequence` occasion is `E-BEAT-ATTR`. When a world event of the same name is also declared under `events:`, every raise of the occasion fires that event after the beats, before the occasion judges its `on=` objectives (see [Occasions](/language/beats/#occasions)).
 
@@ -109,6 +114,10 @@ A domain's optional **`members:`** list narrows it to a subset of the kind: `bos
 - a member listed twice: ``occasion `bossDefeated`'s `target.members` lists `warden` more than once``
 
 An occasion's **`raisedWhen:`** (dsl 0.27.0 §4) says when the engine may raise it at all: `enter` above is raised for a room only once the player may enter it. See [Occasion gates](#occasion-gates-raisedwhen) below.
+
+An occasion's **`payload:`** declares the typed values each raise hands its beats, a map from field to a type of the manifest type system above (`copies: number`): a gacha pull says how many copies came with the hero drawn. Beats read them as `occasion.payload.<field>`, and so do an `<objective on=>` of that occasion and an `<on event=>` handler named like it (see [Occasion payloads](/language/beats/#occasion-payloads)). Every raise gives every field: a `lute play` step that leaves one out is a usage error naming it, `lute trace` and `lute test` halt incomplete on a line that reads a field the mock does not seed, and a clock `raise:` naming an occasion with a payload is `E-CLOCK-DECL`.
+
+An occasion's **`outsideRun: true`** marks a moment that lives outside any run, a title screen or a gallery between runs: the engine raises it even after the project's [`terminal:`](/state/schemas/#the-end-of-the-game-terminal) holds, and the checker does not judge its beats under `!terminal`. The compiled artifact lists such occasions under `outsideRun`.
 
 Occasions are part of the capability snapshot, so they fold into `capabilityVersion`. Declaring a domain restamps, and so does adding or changing its `members:` list; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0. Likewise, `select: sequence` and `raisedWhen` change the stamp only for a snapshot that declares them.
 
@@ -156,7 +165,7 @@ A beat answering a gated occasion can only be presented while the gate holds, so
 
 A project's [`terminal:`](/state/schemas/#the-end-of-the-game-terminal) condition closes every occasion the same way, once the game is over.
 
-[`lute beats`](/tooling/cli/#beats) marks a ladder whose gate never holds. Its header ends `` · gate never holds: `raisedWhen: …` ``, or, on a kind ladder, names the members the gate never holds for: `` · gate never holds for room.office: `raisedWhen: …` ``. Under `--json` the ladder carries `raisedWhen`, and `gateNeverHolds: true` or `gateNeverHoldsFor: [<targets>]`.
+[`lute beats`](/tooling/cli/#beats) shows a gated ladder's gate in its header, `` · raisedWhen: … ``, and marks one that never holds: the header then ends `` · raisedWhen: … · gate never holds ``, or, on a kind ladder, names the members the gate never holds for: `` · raisedWhen: … · gate never holds for room.office ``. Under `--json` the ladder carries `raisedWhen`, and `gateNeverHolds: true` or `gateNeverHoldsFor: [<targets>]`.
 
 [`lute play`](/tooling/play/) raises an occasion only as the engine would. An `occasion:` step that raises it while its gate is false halts the playthrough with `E-OCCASION-GATE` (exit 1): make the gate hold first, with an `engine:` write or an earlier step, or drop the step. A raise the clock makes (`raise.slot`, `dayStart`, `dayEnd`) while its gate is false is simply not made, and the step gets a note that the clock moved on without it.
 
@@ -395,7 +404,7 @@ A `builtin` name must be one of the hooks the core registers for its own directi
 
 <!-- lute-diagnostics unverified="built in crates/lute-manifest/src/schema.rs from several format! pieces and wrapped in the loader's E-PLUGIN-PARSE line; copied verbatim from lute check --project output" -->
 ```
-lute: E-PLUGIN-PARSE: `./plugins/demo.pack/directives/d.yaml` failed to parse: directives[1]: `clearStag` is not a builtin lowering hook (did you mean `clearStage`?); the core registers autoStage, cameraTransform, clearStage, end, mark, next; omit `lower:` for the generic `kind: "plugin"` passthrough at line 6 column 5
+lute: E-PLUGIN-PARSE: ./plugins/demo.pack/directives/d.yaml:6:5: directives[1]: `clearStag` is not a builtin lowering hook (did you mean `clearStage`?); the core registers autoStage, cameraTransform, clearStage, end, mark, next; omit `lower:` for the generic `kind: "plugin"` passthrough
 ```
 
 The `record` form targets one of the eight **non-control-flow staging kinds** — `background`, `music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video` — binding each target field to a `fromAttr` reference or a literal:

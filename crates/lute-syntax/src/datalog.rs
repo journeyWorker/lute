@@ -9,7 +9,9 @@
 //!
 //! ```text
 //! FactPattern ::= Ident "(" FactArg ("," FactArg)* ")"
-//! FactArg     ::= Ident | "true" | "false" | "_" | "@" Ident   (* "@" Ident: a component param *)
+//! FactArg     ::= Ident | "true" | "false" | "_" | "@" Ident | "occasion.target"
+//!                 (* "@" Ident: a component param; "occasion.target": the member a kind
+//!                    or `for=` beat runs for *)
 //! Rule        ::= Atom ":-" Literal ("," Literal)*
 //! Literal     ::= "not" WS Atom | "cel(" CelString ")" | Term ("="|"!=") Term | Atom
 //!               | "count(" Atom ")" CountOp Nat
@@ -49,6 +51,10 @@ pub enum FactTerm {
     /// to its `::use` argument — a constant — when the body is expanded. A
     /// param still present in a host document is an error.
     Param(String),
+    /// `occasion.target` (dsl 0.28.0 §3): the member the enclosing kind or
+    /// `for=` beat runs for — ground per member, bound when the write
+    /// executes. The checker judges it once per member of the beat.
+    Target,
 }
 
 /// One Horn clause: `Head :- Body` (spec §7.1).
@@ -402,10 +408,21 @@ fn parse_fact_term(c: &mut Cur) -> Result<FactTerm, DatalogError> {
     }
     let (name, _) = c.ident().ok_or_else(|| DatalogError::Malformed {
         at,
-        msg: "expected an argument (identifier, `true`, `false`, `_`, or a component \
-              `@param`)"
+        msg: "expected an argument (identifier, `true`, `false`, `_`, a component \
+              `@param`, or `occasion.target`)"
             .to_string(),
     })?;
+    if name == "occasion" && eat_str(c, ".target") {
+        if c.peek()
+            .is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.')
+        {
+            return Err(DatalogError::Malformed {
+                at,
+                msg: "a fact argument reads the beat's member as `occasion.target`".to_string(),
+            });
+        }
+        return Ok(FactTerm::Target);
+    }
     if let Some(err) = check_function_or_op(c, at, &name) {
         return Err(err);
     }

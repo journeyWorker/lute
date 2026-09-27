@@ -397,7 +397,7 @@ fn a_reserved_fact_a_guard_requires_excludes_its_partner() {
         &dir,
         "a.lute",
         "---\nkind: scene\nid: a\nentities:\n  foe: { members: [regent] }\n\
-         relations:\n  dead: { args: [foe], reserved: true }\n  \
+         relations:\n  dead: { args: [foe], tier: run, reserved: true }\n  \
          alive: { args: [foe], tier: run, excludes: [dead] }\n---\n\n## A\n\n\
          <branch id=\"b\">\n<choice id=\"c\" label=\"C\" when=\"holds(dead(regent))\">\n\
          @n{when=\"!holds(alive(regent))\"}: Gone.\n::assert{alive(regent)}\n</choice>\n\

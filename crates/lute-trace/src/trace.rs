@@ -41,8 +41,8 @@ use crate::exec::{
 };
 use crate::mock::{self, BridgeAnswer, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{
-    self, ComponentBoundary, Coverage, CoverageCount, Decision, GrantCredit, GrantReward, Seeds,
-    Step, TraceExit, TraceReport, UnresolvedEntry,
+    self, ComponentBoundary, ComponentSite, Coverage, CoverageCount, Decision, GrantCredit,
+    GrantReward, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry,
 };
 use crate::value::{UnresolvedAtom, Value};
 use lute_compile::index::BeatKind;
@@ -244,6 +244,7 @@ fn trace_pipeline(
         &cast,
         &folded.env.domains,
         &folded.env.state,
+        &folded.env.occasion_scopes,
     );
     lute_check::builtin_lowering::canonicalize_builtin_directives(&mut doc, &input.snapshot);
     let table = DefTable {
@@ -274,12 +275,15 @@ fn trace_pipeline(
         }
         Presentation::Entries(_) | Presentation::Beat(_) => true,
     };
-    let judging = judged_kind
+    // dsl 0.28.0 (T1-25): a quest document's mocked raises are judged by the
+    // engine's seam too, over the same one-document project.
+    let quest_raises = folded.doc_kind == lute_check::DocKind::Quest && !mocks.occasions.is_empty();
+    let judging = (judged_kind || quest_raises)
         .then(|| judging_project(&input.uri, artifact, &input.snapshot.occasions))
         .flatten()
         .map(|mut p| {
-            p.sequence_after =
-                lute_check::sequence::derived_afters(&input.defaults, &input.snapshot.occasions);
+            p.chapter_afters
+                .extend(lute_check::chapters::derived_after(&doc));
             p
         });
 
@@ -335,6 +339,12 @@ fn trace_pipeline(
         snapshot: &input.snapshot,
         content_reads: &content_reads,
         members,
+        component_files: input
+            .components
+            .table
+            .iter()
+            .map(|(name, def)| (name.clone(), def.src.display().to_string()))
+            .collect(),
         shots: matches!(present, Presentation::Document)
             && art.get("kind").and_then(Json::as_str).unwrap_or("scene") == "scene",
     });
@@ -383,7 +393,46 @@ fn trace_pipeline(
     if let (Some((id, _)), Some((why, prem))) = (&scene_eligible, scene_why) {
         note_premise(&mut m, id, &prem, why);
     }
+    // dsl 0.28.0 (T1-25): a quest document's mocked raise is one the
+    // engine makes — refused, as a play step raising it is, when the engine
+    // would not raise it (its `raisedWhen` false, or the game over), so an
+    // expectation of what it judges cannot hold vacuously. Judged over the
+    // seeded world, before the walk.
+    let mut gate_refusals: Vec<Diagnostic> = Vec::new();
+    if let Some(p) = judging.as_ref().filter(|_| quest_raises) {
+        for raised in &mocks.occasions {
+            let (name, target) = crate::split_occasion(raised);
+            let closed = exec::seam::closed_in(p, &mut m, name, target);
+            m.bind_occasion_target(None);
+            let why = match closed {
+                Some(exec::seam::Closed::Gate { raw, reads }) => format!(
+                    "the engine does not raise `{name}` here: its `raisedWhen: {raw}` is \
+                     false{} — seed the state that opens it, or drop the raise",
+                    exec::seam::Closed::reads_text(&reads)
+                ),
+                Some(exec::seam::Closed::Terminal(t)) => format!(
+                    "the game is over (`terminal: {t}` holds), so the engine raises no occasion \
+                     (`{name}` included)"
+                ),
+                // Undecided under the mocks: the walk reports what it needs.
+                Some(exec::seam::Closed::Unknown(_)) | None => continue,
+            };
+            gate_refusals.push(logic_diag(
+                lute_check::gates::E_OCCASION_GATE,
+                format!("`occasions: [{raised}]`: {why}"),
+                mock::synthetic_span(),
+            ));
+        }
+    }
 
+    // How the walk ended, in play's words: the project's `terminal:` (the
+    // artifact carries it) holding in the world it left is `end: terminal`.
+    let terminal = art
+        .get("terminal")
+        .and_then(|t| t.get("raw"))
+        .and_then(Json::as_str)
+        .map(str::to_string);
+    let terminal = terminal.as_deref();
     // dsl 0.25.0 §1 (LH N16): the seeded world — the mock's `facts:` /
     // `--fact`, the project's seeds, and what the rules derive over them —
     // must not already hold exclusive relations together; the walk would
@@ -409,6 +458,10 @@ fn trace_pipeline(
         let world = World::of(&mut m);
         drop(m);
         (walk, world)
+    } else if !gate_refusals.is_empty() {
+        let world = World::of(&mut m);
+        drop(m);
+        (Walked::Refused(gate_refusals), world)
     } else {
         match present {
             Presentation::Document => {
@@ -417,7 +470,8 @@ fn trace_pipeline(
                 } else {
                     run_walk(&mut m)
                 };
-                let world = World::of(&mut m);
+                let mut world = World::of(&mut m);
+                world.terminal = terminal_at(&mut m, terminal);
                 drop(m);
                 (walk, world)
             }
@@ -425,9 +479,13 @@ fn trace_pipeline(
             // previous one left (its carry): the first from the seed, every
             // later one resumed.
             Presentation::Entries(entries) => {
+                // Presenting nothing (a lore test judging `eligible:` by id
+                // alone) still asserts against the seeded world — the
+                // mock's facts, the project's seeds and what the rules
+                // derive — never an empty one.
+                let mut world: Option<World> = entries.is_empty().then(|| World::of(&mut m));
                 drop(m);
                 let mut walk = Walked::Continue;
-                let mut world: Option<World> = None;
                 let mut carry: Option<exec::Carry> = None;
                 for id in entries {
                     let id = mock::entry_local_id(&doc, folded.typed.id.as_deref(), id);
@@ -441,7 +499,8 @@ fn trace_pipeline(
                     };
                     let mut em = em.with_display_names(&names).with_entry(id);
                     walk = present_entry(&mut em, entry, judging.as_ref(), &mocks);
-                    let now = World::of(&mut em);
+                    let mut now = World::of(&mut em);
+                    now.terminal = terminal_at(&mut em, terminal);
                     world = Some(match world.take() {
                         None => now,
                         Some(before) => before.then(now),
@@ -463,7 +522,8 @@ fn trace_pipeline(
                     walk = present_beat(&mut bm, beat, canonical, judging.as_ref(), &mocks);
                     m = bm;
                 }
-                let world = World::of(&mut m);
+                let mut world = World::of(&mut m);
+                world.terminal = terminal_at(&mut m, terminal);
                 drop(m);
                 (walk, world)
             }
@@ -565,7 +625,18 @@ fn present_entry(
             after_unmet: false,
         });
     }
-    run_walk(m)
+    run_presented(m)
+}
+
+/// [`run_walk`] for one presented entry or bundle beat: a body that ran to
+/// its end shows the source-only steps after its last record too (a body
+/// ending in a `::use` closes that component's frame).
+fn run_presented(m: &mut Machine<&mut TraceDriver<'_>>) -> Walked {
+    let walked = run_walk(m);
+    if matches!(walked, Walked::Continue) {
+        m.driver_mut().close_unit();
+    }
+    walked
 }
 
 /// Present ONE bundle `<beat>` (dsl 0.23.0 §4): a scene-like beat declared
@@ -584,7 +655,7 @@ fn present_beat(
     mocks: &MockSet,
 ) -> Walked {
     let Some((p, row)) = judging.and_then(|p| Some((p, p.lore_beat(canonical)?))) else {
-        return run_walk(m);
+        return run_presented(m);
     };
     let (cand, w) = judge(p, m, mocks, &row);
     if let Some((after, span)) = beat.after.as_ref().filter(|(a, _)| !a.trim().is_empty()) {
@@ -623,7 +694,7 @@ fn present_beat(
         spent: None,
         after_unmet,
     });
-    run_walk(m)
+    run_presented(m)
 }
 
 /// The traced document as a one-document [`ExecProject`] — what the
@@ -717,7 +788,7 @@ fn premise_text(
         Premise::After {
             raw,
             unmet,
-            sequence,
+            chapters,
         } => {
             let mocks: Vec<String> = unmet
                 .iter()
@@ -730,13 +801,13 @@ fn premise_text(
             let hint = if mocks.is_empty() {
                 String::new()
             } else {
-                format!(" — mock {}", mocks.join(", "))
+                format!(" — add {} to the mocks", mocks.join(" and "))
             };
             match kind {
                 BeatKind::Bundle => format!("its `after=\"{raw}\"` is false{hint}"),
-                BeatKind::Scene | BeatKind::Entry if *sequence => format!(
-                    "its `after: {raw}` (written by `sequence:` in lute.project.yaml) is \
-                     false{hint}"
+                BeatKind::Scene | BeatKind::Entry if *chapters => format!(
+                    "its `after: {raw}`{} is false{hint}",
+                    lute_check::chapters::PROVENANCE
                 ),
                 BeatKind::Scene | BeatKind::Entry => format!("its `after: {raw}` is false{hint}"),
             }
@@ -824,6 +895,7 @@ fn when_text(
 fn note_premise(m: &mut Machine<&mut TraceDriver<'_>>, id: &str, prem: &Premise, why: String) {
     let d = m.driver_mut();
     d.premises.insert(id.to_string(), why);
+    d.ineligible_by.insert(id.to_string(), prem.kind());
     let nr = match prem {
         Premise::Gate {
             occasion,
@@ -858,6 +930,14 @@ struct World {
     undecided: BTreeSet<String>,
     reserved_reads: BTreeMap<String, bool>,
     derived_reads: BTreeSet<String>,
+    /// Whether the project's `terminal:` holds in it ([`terminal_at`]).
+    terminal: Option<bool>,
+}
+
+/// Whether the project's `terminal:` condition `raw` holds in the walk's
+/// world — `None` without one, or when the mocks leave it undecided.
+fn terminal_at(m: &mut Machine<&mut TraceDriver<'_>>, raw: Option<&str>) -> Option<bool> {
+    m.eval_guard(raw?).ok()
 }
 
 impl World {
@@ -872,6 +952,7 @@ impl World {
             undecided: m.undecided().keys().cloned().collect(),
             reserved_reads: m.reserved_reads(),
             derived_reads: m.derived_reads().clone(),
+            terminal: None,
         }
     }
 
@@ -888,6 +969,7 @@ impl World {
             undecided: later.undecided,
             reserved_reads: self.reserved_reads,
             derived_reads: self.derived_reads,
+            terminal: later.terminal,
         }
     }
 }
@@ -925,6 +1007,7 @@ fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
         undecided,
         reserved_reads,
         derived_reads,
+        terminal,
     } = world;
     let doc_quest_ids: BTreeSet<&str> = doc.quests.iter().map(|q| q.id.as_str()).collect();
     let mut notes: Vec<String> = beat_note.into_iter().collect();
@@ -997,7 +1080,9 @@ fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
         scene_eligible,
         premises: driver.premises,
         not_raised: driver.not_raised,
+        ineligible_by: driver.ineligible_by,
         said: driver.said,
+        terminal,
     };
     (report, exit)
 }
@@ -1092,7 +1177,7 @@ impl AstIndex {
                     }
                 }
                 Node::Branch(b) => b.choices.iter().for_each(|c| self.nodes(&c.body)),
-                Node::Hub(h) => h.choices.iter().for_each(|c| self.nodes(&c.body)),
+                Node::Hub(h) => h.bodies().for_each(|b| self.nodes(b)),
                 Node::Match(m) => {
                     for arm in &m.arms {
                         match arm {
@@ -1131,6 +1216,8 @@ struct TraceContext<'a> {
     members: Vec<String>,
     /// A scene walk: records open `Shot` heads.
     shots: bool,
+    /// Every component the document imports, by name → its file.
+    component_files: BTreeMap<String, String>,
 }
 
 /// The menu a pick answered, until its record arrives.
@@ -1178,6 +1265,9 @@ pub(crate) struct TraceDriver<'a> {
     head: Option<Head>,
     /// The shot whose head was shown last (`0`: none yet).
     shot: i64,
+    /// The addressing unit of the last record reached (an entry's or a
+    /// bundle beat's own unit when one is presented).
+    unit: Option<i64>,
     /// The menu `addr` a pick already reached (its heads and markers shown).
     reached: Option<String>,
     /// The last record was an authored `::next` jump.
@@ -1203,6 +1293,9 @@ pub(crate) struct TraceDriver<'a> {
     /// HW27-04: the same ids whose premise is a closed seam
     /// ([`TraceReport::not_raised`]).
     not_raised: BTreeMap<String, crate::report::NotRaised>,
+    /// T1-25: the same ids → which premise failed
+    /// ([`TraceReport::ineligible_by`]).
+    ineligible_by: BTreeMap<String, &'static str>,
 }
 
 impl<'a> TraceDriver<'a> {
@@ -1242,6 +1335,7 @@ impl<'a> TraceDriver<'a> {
             menu: None,
             head: None,
             shot: 0,
+            unit: None,
             jumped: false,
             reached: None,
             last_write: None,
@@ -1257,6 +1351,7 @@ impl<'a> TraceDriver<'a> {
             spent_accepts: Vec::new(),
             premises: BTreeMap::new(),
             not_raised: BTreeMap::new(),
+            ineligible_by: BTreeMap::new(),
         }
     }
 
@@ -1336,6 +1431,13 @@ impl<'a> TraceDriver<'a> {
             GuardRead::Path(p, _) => {
                 format!("`{}`", self.render_atom(&UnresolvedAtom::Path(p.clone())))
             }
+            // A derived fact is mocked by what its rules miss, never by the
+            // conclusion they would draw (it is re-derived over the mocks).
+            GuardRead::Derived { base, .. } if !base.is_empty() => base
+                .iter()
+                .map(|b| format!("`{}`", render_atom(&UnresolvedAtom::Fact(b.clone()))))
+                .collect::<Vec<_>>()
+                .join(" and "),
             GuardRead::Fact(f) | GuardRead::Derived { fact: f, .. } => {
                 format!("`{}`", render_atom(&UnresolvedAtom::Fact(f.clone())))
             }
@@ -1377,6 +1479,36 @@ impl<'a> TraceDriver<'a> {
             expression,
             atoms: rendered,
         });
+    }
+
+    /// A scripted `choose:` list ran out at `menu`: recorded as unresolved,
+    /// with the longer list that would decide it (`--choose id=a,<b|c>`).
+    fn record_exhausted(
+        &mut self,
+        menu: &Menu<'_>,
+        construct: &str,
+        expression: String,
+        list: &[String],
+    ) {
+        let span = self.span_at(menu.addr);
+        self.record_unresolved(construct, menu.id, span, expression, &[]);
+        let open: Vec<&str> = menu
+            .options
+            .iter()
+            .filter(|o| !matches!(o.verdict, Verdict::Spent | Verdict::Closed(_)))
+            .map(|o| o.id.as_str())
+            .collect();
+        let hint = format!(
+            "--choose {}={},<{}>",
+            menu.id,
+            list.join(","),
+            open.join("|")
+        );
+        if let Some(entry) = self.unresolved.last_mut() {
+            if entry.id == menu.id && entry.atoms.is_empty() {
+                entry.atoms.push(hint);
+            }
+        }
     }
 
     fn push_decision(&mut self, d: Decision) {
@@ -1459,14 +1591,28 @@ impl<'a> TraceDriver<'a> {
         self.shot = last;
     }
 
+    /// The source-only steps after the last record of the unit the walk
+    /// ran off the end of — a presented entry's or bundle beat's own unit:
+    /// a body ending in a `::use` closes its component frame there.
+    fn close_unit(&mut self) {
+        if let Some(unit) = self.unit.take() {
+            self.trailing(unit);
+        }
+    }
+
     fn marker(&mut self, mk: &SourceMarker) {
+        use lute_compile::source_map::ComponentBoundary as B;
         let component_boundary = mk.component.map(|c| match c {
-            lute_compile::source_map::ComponentBoundary::Begin => ComponentBoundary::Begin,
-            lute_compile::source_map::ComponentBoundary::End => ComponentBoundary::End,
+            B::Begin => ComponentBoundary::Begin,
+            B::End => ComponentBoundary::End,
+            B::Body => ComponentBoundary::Body,
+            B::BodyEnd => ComponentBoundary::BodyEnd,
         });
         self.steps.push(Step::Directive {
             tag: mk.tag.clone(),
             component_boundary,
+            component: mk.name.clone(),
+            call: None,
             exit: mk.tag == lute_manifest::core::CLEAR_DIRECTIVE,
             reason: None,
         });
@@ -1479,6 +1625,7 @@ impl<'a> TraceDriver<'a> {
     fn reach(&mut self, addr: &str) {
         if let Some(unit) = addr.split('-').next().and_then(|u| u.parse::<i64>().ok()) {
             self.enter_unit(unit);
+            self.unit = Some(unit);
         }
         let before = self
             .info(addr)
@@ -1529,7 +1676,13 @@ impl<'a> TraceDriver<'a> {
             return;
         }
         let info = self.info(&addr).cloned();
-        if self.reached.take().as_deref() != Some(addr.as_str()) {
+        // A plugin call's declared effects are recorded at the call's own
+        // `addr`, after it: its source-only steps were shown with the call.
+        let effect_of = rec
+            .get("effectOf")
+            .and_then(Json::as_str)
+            .map(str::to_string);
+        if effect_of.is_none() && self.reached.take().as_deref() != Some(addr.as_str()) {
             self.reach(&addr);
         }
         self.jumped = false;
@@ -1557,6 +1710,7 @@ impl<'a> TraceDriver<'a> {
                     path: str_of("path"),
                     value: json_text(rec.get("value")),
                     sugar: info.as_ref().is_some_and(|i| i.sugar),
+                    effect_of,
                 });
             }
             "assert" => {
@@ -1564,6 +1718,7 @@ impl<'a> TraceDriver<'a> {
                 self.exclusive.clear();
                 self.steps.push(Step::Assert {
                     text: str_of("fact"),
+                    effect_of,
                 });
             }
             "retract" => {
@@ -1571,6 +1726,7 @@ impl<'a> TraceDriver<'a> {
                 self.exclusive.clear();
                 self.steps.push(Step::Retract {
                     text: str_of("pattern"),
+                    effect_of,
                 });
             }
             "skipped" => {
@@ -1604,6 +1760,8 @@ impl<'a> TraceDriver<'a> {
             "end" => self.steps.push(Step::Directive {
                 tag: lute_manifest::core::END_DIRECTIVE.to_string(),
                 component_boundary: None,
+                component: None,
+                call: None,
                 exit: false,
                 reason: rec.get("reason").and_then(Json::as_str).map(str::to_string),
             }),
@@ -1612,6 +1770,8 @@ impl<'a> TraceDriver<'a> {
                 self.steps.push(Step::Directive {
                     tag: tag.clone(),
                     component_boundary: None,
+                    component: None,
+                    call: Some(plugin_call(&tag, self.cmds.get(&addr))),
                     exit: false,
                     reason: None,
                 });
@@ -1667,6 +1827,8 @@ impl<'a> TraceDriver<'a> {
                 self.steps.push(Step::Directive {
                     tag,
                     component_boundary: None,
+                    component: None,
+                    call: None,
                     exit,
                     reason: None,
                 });
@@ -1722,6 +1884,7 @@ impl<'a> TraceDriver<'a> {
             eligible: seen.map(|s| s.eligible).unwrap_or_default(),
             authored_id: None,
             authored_guard,
+            component: None,
         });
         self.coverage_choices
             .entry(id.clone())
@@ -1731,6 +1894,8 @@ impl<'a> TraceDriver<'a> {
                 total,
                 label: id,
                 authored_label: None,
+                guard: false,
+                component: None,
             });
     }
 
@@ -1740,6 +1905,8 @@ impl<'a> TraceDriver<'a> {
         let span = self.span_at(addr);
         let total = info.as_ref().map_or(0, |i| i.arms.len());
         let authored_id = info.as_ref().and_then(|i| i.authored_id.clone());
+        let guard_site = info.as_ref().is_some_and(|i| i.guard);
+        let component = self.component_site(info.as_ref());
         let result = rec.get("result").and_then(Json::as_str).unwrap_or("");
         let (outcome, arm) = match result.strip_prefix("arm ") {
             Some(n) => {
@@ -1753,30 +1920,73 @@ impl<'a> TraceDriver<'a> {
             None => ("no arm".to_string(), None),
         };
         let visited = usize::from(outcome != "no arm");
-        self.push_decision(Decision {
-            construct: "match".to_string(),
-            id: subject.clone(),
-            span,
-            outcome,
-            guard: arm.as_ref().and_then(|a| a.guard.clone()),
-            forced: false,
-            auto: false,
-            eligible: Vec::new(),
-            authored_id: authored_id.clone(),
-            authored_guard: arm.and_then(|a| a.authored_guard),
-        });
+        // T3-22: a `when=` guard is taken or skipped; its lowered `$` arm
+        // and empty `<otherwise>` are compiler plumbing.
+        let decision = if guard_site {
+            Decision {
+                construct: "guard".to_string(),
+                id: subject.clone(),
+                span,
+                outcome: if arm.is_some() {
+                    report::GUARD_TAKEN
+                } else {
+                    report::GUARD_SKIPPED
+                }
+                .to_string(),
+                guard: None,
+                forced: false,
+                auto: false,
+                eligible: Vec::new(),
+                authored_id: authored_id.clone(),
+                authored_guard: None,
+                component: component.clone(),
+            }
+        } else {
+            Decision {
+                construct: "match".to_string(),
+                id: subject.clone(),
+                span,
+                outcome,
+                guard: arm.as_ref().and_then(|a| a.guard.clone()),
+                forced: false,
+                auto: false,
+                eligible: Vec::new(),
+                authored_id: authored_id.clone(),
+                authored_guard: arm.and_then(|a| a.authored_guard),
+                component: component.clone(),
+            }
+        };
+        self.push_decision(decision);
+        let site = report::site_key_in(&span, component.as_ref());
         let count = CoverageCount {
             visited,
             total,
             label: subject,
             authored_label: authored_id,
+            guard: guard_site,
+            component,
         };
-        let site = report::site_key(&span);
         if visited == 1 {
             self.coverage_arms.insert(site, count);
         } else {
             self.coverage_arms.entry(site).or_insert(count);
         }
+    }
+
+    /// Where a construct a component `::use` expanded is written: the
+    /// component's file and which use (`None` for the document's own).
+    fn component_site(&self, info: Option<&SourceInfo>) -> Option<ComponentSite> {
+        let c = info?.component.as_ref()?;
+        Some(ComponentSite {
+            name: c.name.clone(),
+            file: self
+                .cx
+                .component_files
+                .get(&c.name)
+                .cloned()
+                .unwrap_or_default(),
+            scope: c.scope.clone(),
+        })
     }
 
     /// A `match` record's subject text.
@@ -1888,7 +2098,28 @@ fn bare_decision(
         eligible: Vec::new(),
         authored_id: None,
         authored_guard: None,
+        component: None,
     }
+}
+
+/// A plugin call as the walk made it — `::tag{field="value" n=3}` from its
+/// IR record's resolved `fields` — rather than the bare `<tag>` a staging
+/// directive reads as (AS-21: a plugin tag is no markup).
+fn plugin_call(tag: &str, cmd: Option<&Json>) -> String {
+    let fields = cmd
+        .and_then(|c| c.get("fields"))
+        .and_then(Json::as_object)
+        .map(|f| {
+            f.iter()
+                .map(|(k, v)| match v {
+                    Json::String(s) => format!("{k}={s:?}"),
+                    v => format!("{k}={v}"),
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default();
+    format!("::{tag}{{{fields}}}")
 }
 
 /// A record value as display text (`unknown` for an undecided one).
@@ -1908,8 +2139,9 @@ impl Driver for TraceDriver<'_> {
     /// `choose:` (a mock's, `--choose`) with the runner's cursor rule, else
     /// an automatic pick: a branch takes its first open option; a hub makes
     /// one document-order pass over its open non-`exit` options, then takes
-    /// the first open `exit`. A hub's scripted list is its whole visit: once
-    /// consumed, the hub converges.
+    /// the first open `exit`. A hub's scripted list is its visit sequence,
+    /// as in `lute play`: running out while the hub is still open halts the
+    /// walk incomplete.
     fn choose(&mut self, menu: &Menu<'_>) -> Pick {
         self.reach_once(menu.addr);
         let eligible = menu
@@ -1934,8 +2166,7 @@ impl Driver for TraceDriver<'_> {
                             "choose list exhausted — {} decision(s) scripted, presented again",
                             list.len()
                         );
-                        let span = self.span_at(menu.addr);
-                        self.record_unresolved("branch", menu.id, span, expression, &[]);
+                        self.record_exhausted(menu, "branch", expression, list);
                         Pick::Unscripted {
                             scripted: list.len(),
                         }
@@ -1945,7 +2176,24 @@ impl Driver for TraceDriver<'_> {
             (MenuKind::Hub, None) => Pick::HubAutoPass,
             (MenuKind::Hub, Some(list)) => match list.get(menu.presentation) {
                 Some(next) => Pick::Option(next.clone()),
-                None => Pick::Leave,
+                None => {
+                    // Nothing left to present: the hub converges on its own
+                    // (the machine's natural convergence), not a gap.
+                    let open = menu
+                        .options
+                        .iter()
+                        .any(|o| !matches!(o.verdict, Verdict::Spent | Verdict::Closed(_)));
+                    if open {
+                        let expression = format!(
+                            "choose list exhausted — the hub is still open after {} scripted pick(s)",
+                            list.len()
+                        );
+                        self.record_exhausted(menu, "hub", expression, list);
+                    }
+                    Pick::Unscripted {
+                        scripted: list.len(),
+                    }
+                }
             },
         };
         if let Pick::Option(id) = &pick {
@@ -2004,7 +2252,7 @@ impl Driver for TraceDriver<'_> {
             Verdict::Closed(reads) => {
                 let (guard, authored) = self.option_guard(menu.addr, option);
                 let guard = authored.or(guard).unwrap_or_default();
-                let premise = guard_premise(reads, |r| self.guard_hint(r));
+                let premise = guard_premise(reads, |r| format!("mock {}", self.guard_hint(r)));
                 let reason = if premise.is_empty() {
                     format!("its guard `{}` decided false", guard.trim())
                 } else {
@@ -2092,21 +2340,29 @@ impl Driver for TraceDriver<'_> {
         match site.kind {
             SiteKind::Arm | SiteKind::OccasionTarget => {
                 let span = self.span_at(site.addr);
-                let expr = site
-                    .arm
-                    .and_then(|i| self.arm(site.addr, i))
-                    .and_then(|a| a.guard.clone())
-                    .unwrap_or_default();
-                self.record_unresolved("match", site.id, span, expr, site.atoms);
-                let info = self.info(site.addr);
+                let info = self.info(site.addr).cloned();
+                let guard_site = info.as_ref().is_some_and(|i| i.guard);
+                let expr = if guard_site {
+                    site.id.to_string()
+                } else {
+                    site.arm
+                        .and_then(|i| self.arm(site.addr, i))
+                        .and_then(|a| a.guard.clone())
+                        .unwrap_or_default()
+                };
+                let construct = if guard_site { "guard" } else { "match" };
+                self.record_unresolved(construct, site.id, span, expr, site.atoms);
+                let component = self.component_site(info.as_ref());
                 let count = CoverageCount {
                     visited: 0,
-                    total: info.map_or(0, |i| i.arms.len()),
+                    total: info.as_ref().map_or(0, |i| i.arms.len()),
                     label: site.id.to_string(),
-                    authored_label: info.and_then(|i| i.authored_id.clone()),
+                    authored_label: info.as_ref().and_then(|i| i.authored_id.clone()),
+                    guard: guard_site,
+                    component: component.clone(),
                 };
                 self.coverage_arms
-                    .entry(report::site_key(&span))
+                    .entry(report::site_key_in(&span, component.as_ref()))
                     .or_insert(count);
                 OnUnknown::Halt
             }
@@ -2137,6 +2393,8 @@ impl Driver for TraceDriver<'_> {
                         total,
                         label: site.id.to_string(),
                         authored_label: None,
+                        guard: false,
+                        component: None,
                     });
                 OnUnknown::Halt
             }
@@ -2165,6 +2423,13 @@ impl Driver for TraceDriver<'_> {
                     .unwrap_or_else(|| self.span_at(site.addr));
                 self.record_unresolved("beat", site.id, span, raw, site.atoms);
                 OnUnknown::Continue
+            }
+            // dsl 0.28.0 (T1-13): the line needs a payload field the mocks
+            // did not seed — halt before printing its marker raw.
+            SiteKind::Payload => {
+                let span = self.span_at(site.addr);
+                self.record_unresolved("line", "payload", span, raw, site.atoms);
+                OnUnknown::Halt
             }
             SiteKind::QuestStart => {
                 let span = self
@@ -2239,6 +2504,7 @@ fn fact_term_text(t: &FactTerm) -> String {
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
+        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
     }
 }
 
@@ -2656,8 +2922,8 @@ fn collect_assert_relations(nodes: &[Node], out: &mut BTreeSet<String>) {
                 }
             }
             Node::Hub(h) => {
-                for choice in &h.choices {
-                    collect_assert_relations(&choice.body, out);
+                for b in h.bodies() {
+                    collect_assert_relations(b, out);
                 }
             }
             Node::On(o) => collect_assert_relations(&o.body, out),
@@ -2684,8 +2950,8 @@ fn collect_on_events<'a>(nodes: &'a [Node], out: &mut BTreeSet<&'a str>) {
                 }
             }
             Node::Hub(h) => {
-                for choice in &h.choices {
-                    collect_on_events(&choice.body, out);
+                for b in h.bodies() {
+                    collect_on_events(b, out);
                 }
             }
             Node::Match(m) => {
@@ -2780,6 +3046,8 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         scene_eligible: None,
         premises: BTreeMap::new(),
         not_raised: BTreeMap::new(),
+        ineligible_by: BTreeMap::new(),
         said: Vec::new(),
+        terminal: None,
     }
 }

@@ -129,7 +129,7 @@ fn scenario_envelope_reports_guaranteed_for_scene() {
 }
 
 #[test]
-fn scenario_envelope_quest_without_after_shows_defaults_note() {
+fn scenario_envelope_quest_without_follows_shows_defaults_note() {
     let dir = temp_dir("scenario-envelope-quest-defaults");
     write(&dir, "q.lute", &quest_no_after("someQuest"));
 
@@ -141,7 +141,7 @@ fn scenario_envelope_quest_without_after_shows_defaults_note() {
     ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
-    assert!(out_text.contains("declaring `after`"), "{out_text}");
+    assert!(out_text.contains("declaring `follows`"), "{out_text}");
 }
 
 #[test]
@@ -263,7 +263,7 @@ fn scenario_envelope_plain_quest_on_cyclic_root_no_cycle_note() {
     );
     // Its normal defaults-only tables still print (the enrichment note fires).
     assert!(out_text.contains("Guaranteed (safe to read"), "{out_text}");
-    assert!(out_text.contains("declaring `after`"), "{out_text}");
+    assert!(out_text.contains("declaring `follows`"), "{out_text}");
 }
 
 #[test]
@@ -938,11 +938,11 @@ fn both_edge_kinds_fixture() -> (PathBuf, String) {
         &dir,
         "q.lute",
         "---\nkind: quest\nstate:\n  run.done: { type: bool, default: false }\n---\n\
-         <quest id=\"gate\" after=\"visited('a.s01ep01')\">\n\
+         <quest id=\"gate\" follows=\"visited('a.s01ep01')\">\n\
          <objective id=\"o1\" done=\"run.done\"/>\n</quest>\n\
-         <quest id=\"viaActive\" after=\"active('gate')\">\n\
+         <quest id=\"viaActive\" follows=\"active('gate')\">\n\
          <objective id=\"o2\" done=\"run.done\"/>\n</quest>\n\
-         <quest id=\"viaCompleted\" after=\"completed('gate')\">\n\
+         <quest id=\"viaCompleted\" follows=\"completed('gate')\">\n\
          <objective id=\"o3\" done=\"run.done\"/>\n</quest>\n",
     );
     let path = dir.to_str().unwrap().to_string();
@@ -1302,7 +1302,7 @@ fn scenario_envelope_reports_guaranteed_facts_on_arrival() {
     );
 }
 
-// ── 0.21.0 §7a.5: a quest with no `after=` is listed as unanchored ─────
+// ── 0.21.0 §7a.5: a quest with no `follows=` is listed as unanchored ─────
 
 /// One scene and one bare quest (`quest_no_after`): the quest is in no layer
 /// and on no edge.
@@ -1323,7 +1323,7 @@ fn scenario_lists_a_bare_quest_as_unanchored_in_every_format() {
 
     let text = stdout(&run(&["scenario", &path]));
     let tail = text
-        .split("  unanchored (no `after` — available from the start of play; no prerequisites in this graph):\n")
+        .split("  unanchored (no `after` / `follows` — available from the start of play; no prerequisites in this graph):\n")
         .nth(1)
         .unwrap_or_else(|| panic!("no unanchored section: {text}"));
     assert_eq!(tail.lines().next(), Some("    quest(loose)"), "{text}");
@@ -1377,14 +1377,14 @@ fn scenario_reach_reports_a_bare_quest_as_unanchored() {
     assert!(out.status.success(), "{text}{}", stderr(&out));
     assert!(
         text.contains(
-            "  verdict: Unanchored — a quest with no declared `after` prerequisite: \
+            "  verdict: Unanchored — a quest with no declared `follows` edge: \
              available from the start of play;"
         ),
         "{text}"
     );
     assert!(
         text.contains(
-            "  after: (none declared) — unanchored: this quest is in no prerequisite graph \
+            "  follows: (none declared) — unanchored: this quest is in no prerequisite graph \
              layer and on no edge; it is available from the start of play."
         ),
         "{text}"
