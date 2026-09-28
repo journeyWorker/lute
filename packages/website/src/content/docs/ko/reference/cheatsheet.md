@@ -635,6 +635,12 @@ id, 문서 id의 각 부분, `share` 키, 시즌, relation, def, enum과 엔티�
 파라미터, 플러그인이 선언하는 계기와 이벤트가 모두 그렇습니다. 이름에 `-`가 있으면 그 자리의
 코드로 오류가 나고, camelCase 철자를 알려 줍니다(`lamp-duty` → `lampDuty`).
 
+Lute가 선언하는 이름은 식별자이고, **엔진**이 가진 id는 엔진이 쓰는 철자 그대로 씁니다. CEL의 맵 키가
+문자열 데이터인 것과 같습니다. 어떤 `entities:` 종류도 멤버를 나열하지 않는 `target`(계기가 없을 때,
+`target: true`로 선언한 계기, `open:` 종류)과 엔트리의 `category`는 `-`를 쓸 수 있습니다:
+`target="item.rusty-key"`, `category="key-item"`. `members:`를 나열한 종류의 대상은 선언된 멤버를
+가리키므로 식별자입니다(`npc.old-man`은 도메인 밖입니다).
+
 CEL이 들어가는 곳: `<match on>`, `<when test>`, 줄이나 선택지의 `when=`, `::set`의 우변과 `when=`,
 그것을 받는 다른 디렉티브의 `when=`(0.26.0), `::next when`, 비트 `when:`, 엔트리 `when=`, 퀘스트 `start` / `fail`, 목표 `done` / `by` / `until` /
 `visibleWhen`, `<on when>`, `<reward when>`, 캐스트 항목의 `present:`. 디렉티브 속성에서 def 참조는 따옴표 없이

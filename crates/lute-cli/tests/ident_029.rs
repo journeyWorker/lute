@@ -1,6 +1,7 @@
 //! One identifier rule: every name an author writes is a letter, then
 //! letters, digits or `_`. A `-` is an error at the name, under that slot's
-//! own code, naming the camelCase spelling.
+//! own code, naming the camelCase spelling. An id the engine owns keeps the
+//! engine's spelling.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -199,4 +200,63 @@ fn a_plugin_declared_name_refuses_a_hyphen() {
             "{what}:\n{out}"
         );
     }
+}
+
+/// A name Lute declares is an identifier; an id the engine owns is written as
+/// the engine spells it. A `target` no entity kind lists — no occasion, an
+/// untyped `target: true` occasion, an `open:` kind — keeps its `-`, on an
+/// entry, a bundle beat and a scene; so does an entry's `category` (engine
+/// vocabulary). A kind that lists its members makes the member a declared
+/// name: `npc.old-man` is outside the domain.
+#[test]
+fn an_engine_owned_target_keeps_its_hyphen() {
+    let dir = project(&[
+        ("lute.project.yaml", MANIFEST),
+        ("plugins/game.occasions/plugin.yaml", PLUGIN),
+        (
+            "plugins/game.occasions/occasions/game.yaml",
+            "occasions:\n  pickup: { select: first, target: true }\n  \
+             look: { select: first, target: { prefix: item, entity: item } }\n  \
+             talk: { select: first, target: { prefix: npc, entity: npc } }\n",
+        ),
+        (
+            "world.schema.yaml",
+            "state:\n  run.day: { type: number, default: 1 }\nentities:\n  \
+             npc: { members: [mara, oldMan] }\n  item: { open: engine }\n",
+        ),
+        (
+            "lore/items.lute",
+            "---\nkind: lore\nid: items\n---\n\
+             <entry id=\"note\" target=\"item.torn-note\" category=\"key-item\">\n  \
+             @narrator: A note.\n</entry>\n\
+             <entry id=\"rustyKey\" on=\"pickup\" target=\"item.rusty-key\" once=\"run\">\n  \
+             @narrator: A key.\n</entry>\n\
+             <entry id=\"oldKey\" on=\"look\" target=\"item.old-key\" once=\"run\">\n  \
+             @narrator: Old.\n</entry>\n\
+             <beat id=\"lamp\" on=\"pickup\" target=\"item.brass-lamp\" once=\"run\">\n  \
+             @narrator: A lamp.\n</beat>\n",
+        ),
+        (
+            "scenes/crate.lute",
+            "---\nkind: scene\nid: crate\non: pickup\ntarget: item.wooden-crate\n---\n\
+             ## Crate\n\n@narrator: A crate.\n",
+        ),
+        (
+            "lore/guard.lute",
+            "---\nkind: lore\nid: guard\n---\n\
+             <entry id=\"guard\" on=\"talk\" target=\"npc.old-man\" once=\"run\">\n  \
+             @narrator: Hm.\n</entry>\n",
+        ),
+    ]);
+    let out = check_project(&dir);
+    let faults: Vec<&str> = out
+        .lines()
+        .filter(|l| l.contains(" error [") || l.contains(" warning ["))
+        .collect();
+    assert_eq!(faults.len(), 1, "{out}");
+    assert!(
+        faults[0]
+            .contains("[E-BEAT-ATTR] target `npc.old-man` is outside occasion `talk`'s domain"),
+        "{out}"
+    );
 }
