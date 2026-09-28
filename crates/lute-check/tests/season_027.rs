@@ -117,13 +117,9 @@ fn a_malformed_seasons_block_is_a_season_decl_error() {
     for (seasons, needle) in [
         ("seasons: [harvest]\n", "maps each season name"),
         (
-            "seasons:\n  2x: { live: \"run.open\" }\n",
-            "season name `2x` is not an identifier",
-        ),
-        (
-            "seasons:\n  lantern-fest: { live: \"run.open\" }\n",
-            "season name `lantern-fest` is not an identifier: a letter, then letters, digits \
-             or `_` — write `lanternFest`",
+            "seasons:\n  lantern fest: { live: \"run.open\" }\n",
+            "season name `lantern fest` is not a name: letters, digits, `_` or `-`, not \
+             starting with `-`",
         ),
         (
             "seasons:\n  harvest: { live: \"\" }\n",
@@ -176,7 +172,7 @@ fn a_malformed_seasons_block_is_a_season_decl_error() {
 #[test]
 fn a_bad_season_entry_is_reported_at_its_own_key() {
     for (seasons, at) in [
-        ("seasons:\n  lantern-fest: { live: \"run.open\" }\n", (5, 3)),
+        ("seasons:\n  lantern fest: { live: \"run.open\" }\n", (5, 3)),
         ("seasons:\n  harvest: { live: true }\n", (5, 14)),
         ("seasons:\n  harvest:\n    live: \"\"\n", (6, 5)),
     ] {

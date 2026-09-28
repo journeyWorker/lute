@@ -173,13 +173,16 @@ pub fn bind_slot_raw(
             continue;
         };
         // dsl 0.24.0 §3/§4: `run.approval[@who]` reads the member the
-        // argument names — `run.approval.isolde`.
+        // argument names — `run.approval.isolde`, `run.approval["lab-b2"]`.
         let (s, e) = (r.span.byte_start, r.span.byte_end);
         let indexed = s > 0
             && slot.raw.as_bytes()[s - 1] == b'['
             && slot.raw.as_bytes().get(e) == Some(&b']');
         if let (true, Ok(FactTerm::Ident(member))) = (indexed, fact_arg_constant(arg)) {
-            slot.raw.replace_range(s - 1..e + 1, &format!(".{member}"));
+            slot.raw.replace_range(
+                s - 1..e + 1,
+                &lute_cel::path::bracket_spelling(&["", &member]),
+            );
             continue;
         }
         let ty = params.iter().find(|(n, _)| n == &r.name).map(|(_, t)| t);
@@ -203,9 +206,10 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
 }
 
 /// The fact-atom constant a `::use` argument binds a `@param` to (dsl 0.24.0
-/// §4): an identifier (an entity or enum member id) or `true`/`false`. `Err`
-/// names why any other argument — a CEL expression, a `@def`, a number, a
-/// string that is no identifier — cannot be a fact argument, which is ground.
+/// §4): a name (an entity or enum member id, `lab-b2`) or `true`/`false`.
+/// `Err` names why any other argument — a CEL expression, a `@def`, a
+/// number, a string that is no name — cannot be a fact argument, which is
+/// ground.
 pub fn fact_arg_constant(arg: &AttrValue) -> Result<FactTerm, String> {
     match arg {
         AttrValue::BoolTrue => Ok(FactTerm::Bool(true)),
@@ -215,12 +219,10 @@ pub fn fact_arg_constant(arg: &AttrValue) -> Result<FactTerm, String> {
             // dsl 0.28.0 §3: the member the enclosing kind or `for=` beat
             // runs for, bound when the write executes.
             crate::beats::OCCASION_TARGET => Ok(FactTerm::Target),
-            _ if s.starts_with(|c: char| c.is_ascii_alphabetic())
-                && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
-            {
-                Ok(FactTerm::Ident(s.clone()))
-            }
-            _ => Err(format!("`{s}` is not an identifier")),
+            _ if lute_manifest::ident::is_name(s) => Ok(FactTerm::Ident(s.clone())),
+            _ => Err(format!(
+                "`{s}` is not a name: letters, digits, `_` and `-`, not starting with `-`"
+            )),
         },
         AttrValue::Ref(slot) => Err(format!(
             "`{}` is an expression, decided only at runtime",

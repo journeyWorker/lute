@@ -5,7 +5,7 @@ profiles:
   ward:
     plugins: { ward.engine: true }
 defaults:
-  luteVersion: "0.29.1"
+  luteVersion: "0.30.0"
   uses:
     - schema/world.schema.yaml
     - schema/vocabulary.schema.yaml

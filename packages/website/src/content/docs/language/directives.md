@@ -324,7 +324,7 @@ player agrees:
 Like `::set` and `::assert`, it is built in, not plugin vocabulary: it lowers to its own IR record,
 `{"kind": "accept", "addr": …, "quest": "calmTheShed"}`, and the engine activates the quest if it is
 still `unset` and ignores the record otherwise. The target is checked twice: a missing or
-non-identifier `quest` is `E-ACCEPT-TARGET` in `lute check`, and `check-project` reports
+malformed `quest` is `E-ACCEPT-TARGET` in `lute check`, and `check-project` reports
 `E-ACCEPT-TARGET` when the id names no quest in the project or names a quest that has a `start`
 predicate (such a quest activates itself; accepting it means nothing), and, since 0.24.0, a child
 quest that activates with its parent (the message names the parent). See

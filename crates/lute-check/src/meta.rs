@@ -6,7 +6,7 @@ use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::{lit_str, type_accepts, type_str, Literal, Type};
 use lute_syntax::ast::Meta;
 
-use crate::cel_paths::{is_reserved_quest_path, state_path_has_hyphen, E_PATH_IDENT};
+use crate::cel_paths::{is_reserved_quest_path, E_PATH_IDENT};
 
 /// State lifetime tier (dsl §9.1), keyed by the declared path's leading segment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1131,9 +1131,9 @@ pub fn parse_meta_kind_with_defaults(
     typed.lute_version = get_str(map, "luteVersion");
     typed.after = get_str(map, "after");
 
-    // dsl 0.15.0 §2 / dsl 0.19.0 §2.1 / dsl 0.29.0 §1: authored document id —
+    // dsl 0.15.0 §2 / dsl 0.19.0 §2.1 / dsl 0.30.0 §1: authored document id —
     // a scene's canonical scene key, a quest or lore document's bundle name:
-    // identifiers joined by `.`. Anything else is `E-META-ID` and the value
+    // names joined by `.`. Anything else is `E-META-ID` and the value
     // stays unlifted (a rejected id must never fall through as a valid key).
     // A `Schema`/`Component` id: was already rejected as
     // `E-META-UNKNOWN-KEY` above and is not lifted.
@@ -1144,7 +1144,7 @@ pub fn parse_meta_kind_with_defaults(
             } else {
                 "document `id:`"
             };
-            match lute_manifest::ident::dotted_ident_fault(what, &raw) {
+            match lute_manifest::ident::dotted_name_fault(what, &raw) {
                 None => typed.id = Some(raw),
                 Some(message) => {
                     diags.push(err_at("E-META-ID", message, meta_key_span(meta, "id")))
@@ -1154,22 +1154,22 @@ pub fn parse_meta_kind_with_defaults(
     }
 
     // dsl 0.19.0 §2.1 (D-K): a lore document's `series:` names the one series
-    // all of its entries form, ordered by position. The value is an `Ident`
+    // all of its entries form, ordered by position. The value is a name
     // (the `<entry series=…>` shape); anything else is `E-META-VALUE` — the
     // frontmatter value-shape code — and stays unlifted, so no entry
     // resolves into a malformed series.
     if kind == MetaKind::Lore {
         if let Some(value) = map.get(yaml_key("series")) {
             match value.as_str() {
-                Some(series) if lute_manifest::ident::is_ident(series) => {
+                Some(series) if lute_manifest::ident::is_name(series) => {
                     typed.series = Some(series.to_string())
                 }
                 found => diags.push(err_at(
                     "E-META-VALUE",
                     match found {
-                        Some(series) => lute_manifest::ident::ident_fault("`series:`", series)
+                        Some(series) => lute_manifest::ident::name_fault("`series:`", series)
                             .unwrap_or_default(),
-                        None => "`series:` must be an identifier, got a non-string value; it \
+                        None => "`series:` must be a name, got a non-string value; it \
                                  names the series this document's entries form"
                             .to_string(),
                     },
@@ -1448,34 +1448,34 @@ pub fn parse_meta_kind_with_defaults(
         )),
     }
 
-    // One identifier rule: relation names, entity-kind names, `enums:`
-    // names, and every enum and entity member are identifiers
-    // (E-PATH-IDENT), named at the offending key.
+    // One name rule: relation names, entity-kind names, `enums:` names, and
+    // every enum and entity member are names (E-PATH-IDENT), named at the
+    // offending key.
     // A name written twice (a member also listed under `exits:`, or in two
     // enums) is reported once, at its first occurrence.
     let mut reported = BTreeSet::new();
-    let mut ident_diag = |what: &str, name: &str| {
-        if let Some(message) = lute_manifest::ident::ident_fault(what, name) {
+    let mut name_diag = |what: &str, name: &str| {
+        if let Some(message) = lute_manifest::ident::name_fault(what, name) {
             if reported.insert(name.to_string()) {
                 diags.push(err_at(E_PATH_IDENT, message, meta_key_span(meta, name)));
             }
         }
     };
     for (name, decl) in &typed.rel_kinds.kinds {
-        ident_diag("entity kind", name);
+        name_diag("entity kind", name);
         if let lute_manifest::relations::KindShape::Members(members) = &decl.shape {
             for member in members {
-                ident_diag("entity member", member);
+                name_diag("entity member", member);
             }
         }
     }
     for name in typed.rel_relations.relations.keys() {
-        ident_diag("relation", name);
+        name_diag("relation", name);
     }
     for (name, domain) in &project_enums {
-        ident_diag("enum", name);
+        name_diag("enum", name);
         for member in &domain.members {
-            ident_diag("enum member", member);
+            name_diag("enum member", member);
         }
     }
 
@@ -1517,18 +1517,18 @@ pub fn parse_meta_kind_with_defaults(
             )),
         }
     }
-    // One identifier rule: a `defs` name and each of its parameter names are
-    // identifiers (E-PATH-IDENT). Imported-schema defs are checked when their
-    // own doc is parsed (`MetaKind::Schema`), so both inline and imported
-    // defs are covered.
+    // A def is read bare as `@name` and its params bare in its body, so each
+    // is an identifier (E-PATH-IDENT). Imported-schema defs are
+    // checked when their own doc is parsed (`MetaKind::Schema`), so both
+    // inline and imported defs are covered.
     for (name, def) in &typed.defs {
-        if let Some(message) = lute_manifest::ident::ident_fault("def", name) {
+        if let Some(message) = lute_manifest::ident::ident_fault("def", name, "@") {
             diags.push(err_at(E_PATH_IDENT, message, meta_key_span(meta, name)));
         }
         if let Some(params) = def.get("params").and_then(|p| p.as_mapping()) {
             for pname in params.keys().filter_map(|k| k.as_str()) {
                 let what = format!("def `{name}` param");
-                if let Some(message) = lute_manifest::ident::ident_fault(&what, pname) {
+                if let Some(message) = lute_manifest::ident::ident_fault(&what, pname, "") {
                     diags.push(err_at(E_PATH_IDENT, message, meta_key_span(meta, pname)));
                 }
             }
@@ -1537,9 +1537,10 @@ pub fn parse_meta_kind_with_defaults(
     typed.components = get_ref_list(map, "components");
     typed.component = get_str(map, "component");
     let (params, speakers, defaults, params_malformed) = get_params(map, "params");
-    // One identifier rule: a component (and so beat-template) param name.
+    // A component (and so beat-template) param is read bare as `@name`: an
+    // identifier.
     for p in &params {
-        if let Some(message) = lute_manifest::ident::ident_fault("component param", &p.name) {
+        if let Some(message) = lute_manifest::ident::ident_fault("component param", &p.name, "@") {
             diags.push(err_at(
                 "E-COMPONENT-PARSE",
                 message,
@@ -1612,7 +1613,7 @@ pub fn parse_meta_kind_with_defaults(
                     // dsl 0.2.0 §5.2/§9.3: `quest.<id>.state` / `quest.<id>.objectives.<oid>.done`
                     // are RESERVED — implicitly declared and MUST NOT be author-declared,
                     // regardless of whether THIS document owns a matching `<quest id>` (a
-                    // shape check, not a doc-scope one; mirrors `state_path_has_hyphen`/
+                    // shape check, not a doc-scope one; mirrors the name check /
                     // `narrativeTime` below). Skip the decl install entirely so a later read
                     // of `path` resolves via the reserved-path fallback, never a phantom
                     // author-typed decl. The `check.rs:410-427` collision guard (an imported/
@@ -1630,16 +1631,14 @@ pub fn parse_meta_kind_with_defaults(
                         ));
                         continue;
                     }
-                    // §8.4: each state-path segment after the tier is a
-                    // `CelIdent`; a `-` there is E-PATH-IDENT. Still record the
-                    // decl below so downstream reads don't cascade to E-UNDECLARED.
-                    if state_path_has_hyphen(path) {
-                        diags.push(err_at(
-                            E_PATH_IDENT,
-                            lute_manifest::ident::dotted_ident_fault("state path", path)
-                                .unwrap_or_default(),
-                            meta_key_span(meta, path),
-                        ));
+                    // dsl 0.30.0 §1: each state-path segment is a name; a
+                    // character outside the rule is E-PATH-IDENT. Still record
+                    // the decl below so downstream reads don't cascade to
+                    // E-UNDECLARED.
+                    if let Some(message) =
+                        lute_manifest::ident::dotted_name_fault("state path", path)
+                    {
+                        diags.push(err_at(E_PATH_IDENT, message, meta_key_span(meta, path)));
                     }
                     // dsl 0.28.0 §1 (T1-2): a state row's keys are closed. An
                     // unknown one (`defualt:`, `ownr:`, `reserved:`, `tier:`)
@@ -1710,7 +1709,7 @@ pub fn parse_meta_kind_with_defaults(
                             if let Type::Enum(members) = &raw.ty {
                                 for member in members {
                                     if let Some(message) =
-                                        lute_manifest::ident::ident_fault("enum member", member)
+                                        lute_manifest::ident::name_fault("enum member", member)
                                     {
                                         diags.push(err_at(
                                             E_PATH_IDENT,

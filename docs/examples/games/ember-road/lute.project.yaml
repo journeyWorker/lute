@@ -10,6 +10,6 @@ profiles:
 # its language version or its schema imports, and no quest its tier — the
 # whole chapter is one playthrough (dsl 0.26.0 §2.4).
 defaults:
-  luteVersion: "0.29.1"
+  luteVersion: "0.30.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
   questTier: run

@@ -1193,7 +1193,7 @@ fn run_one_test(
                     || test_file.display().to_string(),
                     |s| format!("{}:{}:{}", test_file.display(), s.line, s.column),
                 );
-            Some((path.to_string(), want.to_string(), at))
+            Some((lute_trace::state_key(path), want.to_string(), at))
         })
         .collect();
     let rel = match lute_trace::mock_subject(&text) {
@@ -1798,10 +1798,11 @@ fn run_one_test(
             for (k, v) in state {
                 let Some(path) = k.as_str() else { continue };
                 let want = yaml_scalar_text(v).unwrap_or_default();
+                let key = lute_trace::state_key(path);
                 let actual = final_state
-                    .get(path)
+                    .get(&key)
                     .cloned()
-                    .or_else(|| reserved_quest_default(&doc, path).map(str::to_string));
+                    .or_else(|| reserved_quest_default(&doc, &key).map(str::to_string));
                 expectations.push(ExpectResult {
                     not_raised: None,
                     why: None,

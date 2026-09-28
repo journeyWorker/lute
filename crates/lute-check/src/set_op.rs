@@ -38,9 +38,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::Set;
 
-use crate::cel_paths::{
-    is_entry_path, is_reserved_quest_path, state_path_has_hyphen, E_PATH_IDENT,
-};
+use crate::cel_paths::{is_entry_path, is_reserved_quest_path};
 use crate::meta::{namespace_of, Namespace, StateSchema};
 use crate::Ctx;
 
@@ -303,25 +301,11 @@ fn season_path_for(path: &str, schema: &StateSchema) -> Option<String> {
 
 /// Check a `::set` directive's target write-policy and op/type compatibility
 /// (dsl §7.3.4, §9.5). Reads nothing from `Ctx` today; it is threaded for
-/// parity with the other `check_*` entrypoints and for future modes.
+/// parity with the other `check_*` entrypoints and for future modes. A target
+/// spelled with a name that is not an identifier after a `.` is the parser's
+/// `E-PATH-IDENT`; the path it names is judged here as any other.
 pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-
-    // §8.4 identifier alignment: the `::set` LHS is a CEL-facing state path, so
-    // every segment after the tier must be a `CelIdent` (no `-`). Emitted
-    // independently of the write-policy / declaredness checks below (a `-` name
-    // is illegal regardless), so it survives the `app`/undeclared short-circuits.
-    if state_path_has_hyphen(&set.path) {
-        diags.push(diag(
-            E_PATH_IDENT,
-            format!(
-                "`::set` target `{}` has a `-` in a state-path segment; CEL-facing names \
-                 forbid `-` (dsl §8.4)",
-                set.path
-            ),
-            set.path_span,
-        ));
-    }
 
     // Write policy (dsl §9.5, dsl 0.2.0 §5.4) and declaredness (§7.3.4/§9.4):
     // a policy fault short-circuits — it is never additionally reported

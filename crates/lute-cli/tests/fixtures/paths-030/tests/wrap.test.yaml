@@ -1,0 +1,5 @@
+file: ../scenes/wrap.lute
+state: { 'quest["zero-coke-001"].state': complete, 'run.visits["lab-b2"]': 2 }
+expect:
+  state: { run.done: true, 'run.visits["lab-b2"]': 2 }
+  transcriptContains: ["Wrapped after 2 visits."]

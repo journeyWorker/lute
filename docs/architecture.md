@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.29.0.md`](proposals/scenario-dsl/0.29.0.md). The
+> [`proposals/scenario-dsl/0.30.0.md`](proposals/scenario-dsl/0.30.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > Documents come in three kinds, selected by the `kind:` frontmatter key: `scene`
 > (played episodes, the subject of most of this file), `quest` (goal machines, dsl
@@ -53,6 +53,9 @@ target is the flat command-record format the engine consumes.
 > hub may carry a `<return>` block. Since 0.29.0 every name an author writes follows one
 > identifier rule (a letter, then letters, digits or `_`), `lute check-project` prints causes
 > first, and a `terminal:` may say its ending persists across runs (`{ when, persists: true }`).
+> Since 0.30.0 that rule is a name rule (letters, digits, `_` or `-`, not starting with `-`;
+> only a name read bare as `@name` stays an identifier), and a condition reaches a name that
+> is not an identifier with a quoted index, as in JavaScript (`quest["zero-coke-001"].state`).
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > through the current owner-metadata contract
@@ -794,6 +797,17 @@ above, never a rule-body dependency):
   `lute play` the game is over for good. `lute-cli`'s `cmd_check_project.rs` ranks
   project-wide rows by cause (`CauseRank`: manifest, plugins, schemas, documents in path
   order, then project-wide rows) before printing.
+- **Names as written, paths like JavaScript (dsl 0.30.0).** `lute_manifest::ident` owns
+  the name predicate (`is_name`, `is_dotted_name`) and the wording every slot reports a bad
+  name with (`name_fault`, `dotted_name_fault` listing the allowed characters); `ident_fault`
+  is left for the names read bare as `@name` (defs, def params, component and template
+  params). `lute_syntax::path` reads a path an author writes outside a CEL parse (a `::set`
+  target, a `{{…}}`, a `state:` key, `--state`), where `["lab-b2"]` / `['lab-b2']` and
+  `.labB2` are two spellings of one segment; `lute_cel::path` does the same over a parsed
+  condition (`static_path`, `atom_arg` for a quoted fact argument). Every consumer keys on the
+  canonical dotted form (`render_path`), whose segments never contain `.`, and every message
+  shows a path the way a condition writes it (`bracket_spelling`); a non-identifier name after
+  a `.` is one `E-PATH-IDENT` naming the bracket form (`glued_message`).
 
 ### Narrative time (spec §6, D11)
 

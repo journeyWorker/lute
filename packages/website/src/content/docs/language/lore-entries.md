@@ -57,7 +57,7 @@ heading, no `## ` shots, no `<quest>`.
 | Attr | Meaning |
 |---|---|
 | `id` | required; unique across the project |
-| `target` | the engine-owned thing it belongs to — `item.rusty_key`, `place.lab-b2`, `npc.vesna`, written as the engine spells it (letters, digits, `_` or `-` in `.`-separated parts); on an occasion whose target domain lists a kind's members, one of those members; on an entry beat also `kind:<kind>`, every member of a kind (dsl 0.26.0 §5) |
+| `target` | the engine-owned thing it belongs to — `item.rusty_key`, `place.lab-b2`, `npc.vesna`: names (letters, digits, `_` or `-`, not starting with `-`) joined by `.`; on an occasion whose target domain lists a kind's members, one of those members; on an entry beat also `kind:<kind>`, every member of a kind (dsl 0.26.0 §5) |
 | `category` | what kind of text it is — `note`, `item`, `place`, `codex`, `bark`, `key-item`, … (engine vocabulary, spelled as the engine spells it) |
 | `title` | display title, localized like a quest title |
 | `series` / `order` | multi-part text: `order` is the position within `series` (a document-level `series:` can supply both — see below) |
@@ -95,7 +95,7 @@ A lore document can say so directly (dsl 0.19.0 §2.1):
 ```lute check="docs/examples/haven/lore/purser-ledger.lute"
 ---
 kind: lore
-luteVersion: "0.29.1"
+luteVersion: "0.30.0"
 id: haven.purserLedger
 title: Purser's ledger
 series: purserLedger

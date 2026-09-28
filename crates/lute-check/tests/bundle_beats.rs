@@ -66,7 +66,7 @@ fn a_bundle_with_a_scene_body_checks_clean() {
 fn beat_shape_faults_are_beat_attr() {
     for (open, needle) in [
         ("<beat on=\"talk\">", "no `id`"),
-        ("<beat id=\"a-b\" on=\"talk\">", "write `aB`"),
+        ("<beat id=\"a b\" on=\"talk\">", "is not a name"),
         ("<beat id=\"a\">", "names no occasion"),
         (
             "<beat id=\"a\" on=\"talk\" priority=\"high\">",
@@ -78,7 +78,7 @@ fn beat_shape_faults_are_beat_attr() {
         ),
         (
             "<beat id=\"a\" on=\"talk\" target=\"npc..x\">",
-            "must be an engine id",
+            "must be a dotted id",
         ),
     ] {
         let ds = with_code(&doc(&format!("{open}\n@n: hi\n</beat>\n")), "E-BEAT-ATTR");

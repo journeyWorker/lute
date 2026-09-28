@@ -565,6 +565,29 @@ pub fn render_fact(f: &Fact) -> String {
     format!("{}({})", f.0, f.1.join(", "))
 }
 
+/// A rendered fact or pattern `rel(a, b)` as an author writes it: an
+/// argument that is not an identifier (`lab-b2`, `001`) quoted
+/// (`at("lab-b2")`); `_`, a path argument (`occasion.target`) and an
+/// already-quoted one as they are.
+pub fn fact_spelling(f: &str) -> String {
+    let Some((rel, args)) = f.strip_suffix(')').and_then(|p| p.split_once('(')) else {
+        return f.to_string();
+    };
+    let args: Vec<String> = args
+        .split(',')
+        .map(str::trim)
+        .filter(|a| !a.is_empty())
+        .map(|a| {
+            if lute_manifest::ident::is_ident(a) || a.contains('.') || a.starts_with(['"', '\'']) {
+                a.to_string()
+            } else {
+                format!("\"{a}\"")
+            }
+        })
+        .collect();
+    format!("{rel}({})", args.join(", "))
+}
+
 /// Parse a ground `rel(a, b)` into a [`Fact`]; `None` when it is not one —
 /// a `_` wildcard or a leading-uppercase rule variable (`prime(X)`) is not
 /// ground.

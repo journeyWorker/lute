@@ -820,7 +820,7 @@ fn context_outline(surface: &serde_json::Value) -> String {
     if let Some(state) = surface["stateSchema"].as_array() {
         let _ = writeln!(out, "stateSchema ({}):", state.len());
         for s in state {
-            let path = s["path"].as_str().unwrap_or("");
+            let path = crate::output::spelled_path(s["path"].as_str().unwrap_or(""));
             let ty = s["type"].as_str().unwrap_or("");
             let dom = s["domain"]
                 .as_array()
@@ -846,7 +846,7 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 reserved.len()
             );
             for s in reserved {
-                let path = s["path"].as_str().unwrap_or("");
+                let path = crate::output::spelled_path(s["path"].as_str().unwrap_or(""));
                 let ty = s["type"].as_str().unwrap_or("");
                 let dom = s["domain"]
                     .as_array()

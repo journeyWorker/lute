@@ -576,7 +576,7 @@ Three smaller pieces arrived with the clock (dsl 0.24.0 §1). None of them needs
 
 ### Display labels for enum members
 
-An enum member is an identifier, and an identifier is not always what a player should read. A
+An enum member is a name, and a name is not always what a player should read. A
 long-form enum may give its members display text with `labels:`:
 
 ```yaml

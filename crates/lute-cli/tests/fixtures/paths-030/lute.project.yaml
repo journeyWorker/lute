@@ -1,0 +1,7 @@
+pluginsDir: plugins/
+defaultProfile: game
+profiles:
+  game:
+    plugins: { game.occasions: true }
+defaults:
+  uses: [world.schema.yaml]

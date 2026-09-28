@@ -172,7 +172,7 @@ pub(crate) fn run_trace(
     let flag_mocks = MockSet {
         state: state
             .into_iter()
-            .map(|(path, literal)| (path, literal, None))
+            .map(|(path, literal)| (lute_trace::state_key(&path), literal, None))
             .collect(),
         facts: fact,
         choose: choose.into_iter().collect(),

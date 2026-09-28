@@ -9,8 +9,8 @@ use serde_json::Value as Json;
 
 use super::plugin::BridgeReads;
 use super::{Carry, Machine, Seed};
-use crate::datalog::Fact;
 use crate::exec::driver::Driver;
+use crate::exec::session::parse_ground_fact;
 use crate::exec::store::Store;
 use crate::Value;
 
@@ -241,24 +241,4 @@ impl<D: Driver> Machine<D> {
         };
         (carry, self.driver)
     }
-}
-
-/// Parse a ground `"rel(a, b)"` fact-pattern string into `(rel, args)`.
-fn parse_ground_fact(s: &str) -> Option<Fact> {
-    let open = s.find('(')?;
-    let close = s.rfind(')')?;
-    if close < open {
-        return None;
-    }
-    let rel = s[..open].trim().to_string();
-    if rel.is_empty() {
-        return None;
-    }
-    let inner = s[open + 1..close].trim();
-    let args: Vec<String> = if inner.is_empty() {
-        Vec::new()
-    } else {
-        inner.split(',').map(|a| a.trim().to_string()).collect()
-    };
-    Some((rel, args))
 }

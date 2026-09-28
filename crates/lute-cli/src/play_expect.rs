@@ -879,7 +879,7 @@ fn check_world(
     if let Some(Yaml::Mapping(state)) = m.get("state") {
         for (path, want) in state {
             let Some(path) = path.as_str() else { continue };
-            let actual = world.state.get(path);
+            let actual = world.state.get(&lute_trace::state_key(path));
             if !state_matches(want, actual) {
                 miss(
                     format!("state {path}"),

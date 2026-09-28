@@ -135,9 +135,12 @@ fn missing_id_is_entry_attr() {
 
 #[test]
 fn non_ident_id_is_entry_attr() {
-    let (src, ds) = entry_attr_diags("<entry id=\"9lives\">");
+    let (src, ds) = entry_attr_diags("<entry id=\"nine lives\">");
     assert_eq!(ds.len(), 1, "{ds:?}");
-    assert_eq!(anchored(&src, &ds[0]), "9lives");
+    assert_eq!(anchored(&src, &ds[0]), "nine lives");
+    // A leading digit or a `-` is a name.
+    let (_, ds) = entry_attr_diags("<entry id=\"9-lives\">");
+    assert!(ds.is_empty(), "{ds:?}");
 }
 
 #[test]
@@ -151,12 +154,11 @@ fn non_string_id_is_entry_attr_once() {
     assert!(anchored(&src, &ds[0]).starts_with("id"));
 }
 
-/// An entry's `target` on an untargeted occasion is an id the engine owns,
-/// written as the engine spells it (`item.rusty-key`); only its shape is
-/// checked.
+/// An entry's `target` on an untargeted occasion is a dotted id of names
+/// (`item.rusty-key`); only its shape is checked.
 #[test]
 fn malformed_target_is_entry_attr() {
-    for bad in ["item..key", "9item.key", "item.", "item.rusty key"] {
+    for bad in ["item..key", "-item.key", "item.", "item.rusty key"] {
         let (src, ds) = entry_attr_diags(&format!("<entry id=\"e\" target=\"{bad}\">"));
         assert_eq!(ds.len(), 1, "{bad}: {ds:?}");
         assert_eq!(anchored(&src, &ds[0]), bad);
@@ -167,6 +169,7 @@ fn malformed_target_is_entry_attr() {
         "item.rusty-key",
         "place.lab-b2",
         "item.9",
+        "9item.key",
     ] {
         let (_, ds) = entry_attr_diags(&format!("<entry id=\"e\" target=\"{good}\">"));
         assert!(ds.is_empty(), "{good}: {ds:?}");
@@ -181,13 +184,11 @@ fn non_ident_category_and_series_are_entry_attr() {
     let (src, ds) = entry_attr_diags("<entry id=\"e\" series=\"log.1\">");
     assert_eq!(ds.len(), 1, "{ds:?}");
     assert_eq!(anchored(&src, &ds[0]), "log.1");
-    // A category is engine vocabulary, spelled as the engine spells it; a
-    // series is a name the document declares, so an identifier.
+    // A category and a series are names: `-` is legal.
     let (_, ds) = entry_attr_diags("<entry id=\"e\" category=\"field-note\">");
     assert!(ds.is_empty(), "{ds:?}");
-    let (src, ds) = entry_attr_diags("<entry id=\"e\" series=\"field-log\">");
-    assert_eq!(ds.len(), 1, "{ds:?}");
-    assert_eq!(anchored(&src, &ds[0]), "field-log");
+    let (_, ds) = entry_attr_diags("<entry id=\"e\" series=\"field-log\">");
+    assert!(ds.is_empty(), "{ds:?}");
 }
 
 #[test]
@@ -229,12 +230,10 @@ fn unknown_entry_attr_is_unknown_attr() {
 }
 
 #[test]
-fn hyphenated_entry_id_is_path_ident() {
-    // A valid `Ident`, but `entry.<id>.read` is CEL-facing — the quest-id rule.
+fn hyphenated_entry_id_is_a_name() {
+    // `entry.<id>.read` reaches it as `entry["torn-note"].read`.
     let ds = diags(&lore("<entry id=\"torn-note\">\n@n: hi\n</entry>\n"));
-    let ident = with_code(&ds, "E-PATH-IDENT");
-    assert_eq!(ident.len(), 1, "{ds:?}");
-    assert!(ident[0].message.contains("write `tornNote`"), "{ds:?}");
+    assert!(with_code(&ds, "E-PATH-IDENT").is_empty(), "{ds:?}");
     assert!(with_code(&ds, "E-ENTRY-ATTR").is_empty(), "{ds:?}");
 }
 
@@ -664,13 +663,13 @@ fn entry_series_or_order_inside_a_series_document_is_entry_attr() {
 #[test]
 fn malformed_document_series_is_meta_value_and_orders_nothing() {
     let src = bundle(
-        "series: 2nd-log\n",
+        "series: 2nd log\n",
         "<entry id=\"a\" series=\"log\" order=\"1\">\n@n: a\n</entry>\n",
     );
     let ds = diags(&src);
     let bad = with_code(&ds, "E-META-VALUE");
     assert_eq!(bad.len(), 1, "{ds:?}");
-    assert!(bad[0].message.contains("`2nd-log`"), "{}", bad[0].message);
+    assert!(bad[0].message.contains("`2nd log`"), "{}", bad[0].message);
     // A rejected `series:` is not a document series: the entry's own
     // attributes stand and are not `E-ENTRY-ATTR`.
     assert!(with_code(&ds, "E-ENTRY-ATTR").is_empty(), "{ds:?}");

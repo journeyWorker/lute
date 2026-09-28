@@ -3,10 +3,6 @@
 
 use super::*;
 
-/// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
-/// from `fill_document`'s errors; the slot's `ast` stays `None`).
-const E_CEL_PARSE: &str = "E-CEL-PARSE";
-
 /// Translate every CEL parse failure `fill_document` reported into a
 /// writer-voiced `E-CEL-PARSE` [`Diagnostic`] (dsl 0.4.0 §8.1, T13) —
 /// `cel_message::translate_cel_parse` builds the message/fixits/span from the
@@ -47,7 +43,7 @@ pub(super) fn cel_parse_diagnostics(
         .map(|((raw, slot_span, kind), err)| {
             let t = translate_cel_parse(raw, slot_span, &err, kind);
             Diagnostic {
-                code: E_CEL_PARSE.to_string(),
+                code: t.code.to_string(),
                 severity: Severity::Error,
                 message: t.message,
                 span: t.span.unwrap_or(slot_span),
@@ -91,7 +87,7 @@ fn def_body_diagnostics(
             Err(err) => {
                 let t = translate_cel_parse(cel, span, &err, CelKind::Condition);
                 vec![Diagnostic {
-                    code: E_CEL_PARSE.to_string(),
+                    code: t.code.to_string(),
                     severity: Severity::Error,
                     message: format!("def `{name}`: {}", t.message),
                     span,
@@ -253,7 +249,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
             Err(err) => {
                 let t = translate_cel_parse(&slot.raw, slot.span, &err, slot.kind);
                 beat_when_parse_diags.push(Diagnostic {
-                    code: E_CEL_PARSE.to_string(),
+                    code: t.code.to_string(),
                     severity: Severity::Error,
                     message: t.message,
                     span: t.span.unwrap_or(slot.span),

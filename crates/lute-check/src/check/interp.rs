@@ -46,10 +46,29 @@ pub(super) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<D
             }
             InterpKind::Path => {
                 let has_dollar = scan_refs(&interp.raw).iter().any(|r| r.is_dollar);
+                // A name that is not an identifier after a `.`: one
+                // `E-PATH-IDENT` naming the quoted spelling, as in a condition.
+                if let Some(g) = crate::cel_paths::glued_state_paths(&interp.raw).first() {
+                    diags.push(Diagnostic {
+                        code: crate::cel_paths::E_PATH_IDENT.to_string(),
+                        severity: Severity::Error,
+                        message: g.message(&interp.raw),
+                        span: interp.span,
+                        layer: Layer::Cel,
+                        fixits: Vec::new(),
+                        provenance: None,
+                        covered: Vec::new(),
+                        related: Vec::new(),
+                    });
+                    continue;
+                }
                 // dsl 0.27.0 §3: `{{user.bond[occasion.target]}}` reads the
                 // raised member's family path, judged per member like a guard.
                 let indexed = crate::cel_paths::occasion_indexed_family(&interp.raw).is_some();
-                if !has_dollar && !indexed && !is_bare_state_path(&interp.raw) {
+                if !has_dollar
+                    && !indexed
+                    && crate::cel_paths::text_state_path(&interp.raw).is_none()
+                {
                     diags.push(interp_grammar_diag(&interp.raw, interp.span));
                     continue;
                 }
@@ -333,12 +352,13 @@ pub(super) fn check_interp_format(
                     .decls
                     .iter()
                     .find(|(k, _)| {
-                        k.strip_prefix(family)
+                        k.strip_prefix(family.as_str())
                             .and_then(|m| m.strip_prefix('.'))
                             .is_some_and(|m| !m.contains('.'))
                     })
                     .map(|(_, d)| d.ty.clone()),
-                None => crate::set_op::resolve_type(raw, &env.state).cloned(),
+                None => crate::cel_paths::text_state_path(raw)
+                    .and_then(|p| crate::set_op::resolve_type(&p, &env.state).cloned()),
             },
             InterpKind::Ref => scan_refs(raw)
                 .into_iter()
@@ -437,23 +457,6 @@ fn plural_form_problem(raw: &str, forms: Option<&[String]>) -> Option<String> {
     }
 }
 
-/// `true` when `s` is a `CelIdent` (dsl §4.4): a leading `_`/ASCII-letter then
-/// `_`/ASCII-alphanumerics. No `-` (CEL parses it as subtraction, §8.4). Empty
-/// is not an ident.
-pub(crate) fn is_cel_ident(s: &str) -> bool {
-    let mut it = s.bytes();
-    matches!(it.next(), Some(c) if c == b'_' || c.is_ascii_alphabetic())
-        && it.all(|c| c == b'_' || c.is_ascii_alphanumeric())
-}
-
-/// `true` when `raw` (trimmed) is EXACTLY a bare dotted state path (dsl §7.6/§9.1):
-/// a state-tier root (`scene`/`run`/`user`/`app`) followed by `.`-separated
-/// `CelIdent` segments — no operators, whitespace, calls, or literals. `run.coins`
-/// passes; `run.coins + 1`, `size(x)`, `foo.bar` (non-tier root) do not.
-fn is_bare_state_path(raw: &str) -> bool {
-    crate::cel_paths::is_state_path(raw) && raw.split('.').all(is_cel_ident)
-}
-
 /// `true` when `raw` (trimmed) is EXACTLY a `@name` or `@name(args)` reference
 /// (dsl §7.6/§8.1): the OUTERMOST `@ref` starts at byte 0 and its bare/call group
 /// reaches the end — nothing before or trailing. Nested `@ref`s inside a
@@ -475,17 +478,12 @@ pub const W_TEXT_LOOKS_LIKE_REF: &str = "W-TEXT-LOOKS-LIKE-REF";
 
 /// Text after `: ` is literal by design (dsl §7.6), so `@narrator: @memory`
 /// ships the string "@memory" to the player. When the text is EXACTLY one
-/// `@<ident>` and that ident is declared in this scope (a scene's `defs:`, a
+/// `@<name>` and that name is declared in this scope (a scene's `defs:`, a
 /// component's `params:` — both live in `ctx.env.defs`), the author almost
 /// certainly meant the interpolation. Anchored at the line text.
 pub(super) fn text_looks_like_ref(l: &lute_syntax::ast::Line, ctx: &Ctx<'_>) -> Option<Diagnostic> {
     let name = l.text.trim().strip_prefix('@')?;
-    let is_ident = name
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-    if !is_ident || !ctx.env.defs.contains(name) {
+    if !lute_manifest::ident::is_name(name) || !ctx.env.defs.contains(name) {
         return None;
     }
     Some(Diagnostic {

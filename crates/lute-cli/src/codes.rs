@@ -250,7 +250,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-BEAT-ATTR",
-        summary: "A beat's `on`, `target`, `priority`, or `once` attribute is malformed — a non-identifier `on`, a `target` on an occasion not declared `target: true`, a non-integer `priority`, a `once` outside `run`/`user`/`false`, a beat key with no `on`, a `when` reading the scene's own not-yet-existing `scene.*` state, or a `spentBy` beside `once: false` or a `share` key.",
+        summary: "A beat's `on`, `target`, `priority`, or `once` attribute is malformed — an `on` that is not a name, a `target` on an occasion not declared `target: true`, a non-integer `priority`, a `once` outside `run`/`user`/`false`, a beat key with no `on`, a `when` reading the scene's own not-yet-existing `scene.*` state, or a `spentBy` beside `once: false` or a `share` key.",
         spec: &["dsl 0.21.0 §3", "dsl 0.21.0 §5", "dsl 0.28.0 §6"],
     },
     Code {
@@ -780,8 +780,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-META-ID",
-        summary: "A document's `id:` frontmatter value is not a dotted id: identifiers (a letter, then letters, digits or `_`) joined by `.`.",
-        spec: &["dsl 0.29.0 §1"],
+        summary: "A document's `id:` frontmatter value is not a dotted id: names (letters, digits, `_` or `-`, not starting with `-`) joined by `.`.",
+        spec: &["dsl 0.30.0 §1"],
     },
     Code {
         code: "E-META-MISSING",
@@ -800,7 +800,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-META-VALUE",
-        summary: "A frontmatter value has the wrong shape — a malformed `extra:` mapping or key, a non-identifier `series:`, a malformed `cast:`/`enums:`/`terminal:` entry (in `terminal:`'s long form, a key other than `when`/`persists` or a `persists` that is not `true`/`false`), `persists: true` on a `terminal:` that reads only run state (its ending cannot outlive the run), or a bad `effects:` flag.",
+        summary: "A frontmatter value has the wrong shape — a malformed `extra:` mapping or key, a `series:` that is not a name, a malformed `cast:`/`enums:`/`terminal:` entry (in `terminal:`'s long form, a key other than `when`/`persists` or a `persists` that is not `true`/`false`), `persists: true` on a `terminal:` that reads only run state (its ending cannot outlive the run), or a bad `effects:` flag.",
         spec: &["dsl 0.15.0 §3", "dsl 0.19.0 §2.1", "dsl 0.23.0 §7", "dsl 0.29.0 §5"],
     },
     Code {
@@ -875,8 +875,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PATH-IDENT",
-        summary: "A name that must be an identifier (a letter, then letters, digits or `_`) is not one: a state path segment; a quest, objective, entry, branch, hub, choice or mark id; a def or def param; a relation, enum or entity kind; an enum or entity member.",
-        spec: &["dsl 0.29.0 §1", "dsl §8.4"],
+        summary: "A name has a character outside the name rule (letters, digits, `_` or `-`, not starting with `-`): a state path segment; a quest, objective, entry, branch, hub, choice or mark id; a relation, enum or entity kind; an enum or entity member. A def or def param is not an identifier (a letter or `_`, then letters, digits or `_`): it is read bare, as `@name` or in the def's body. Or a condition writes a name that is not an identifier after a `.` (`quest.zero-coke-001.state`), which CEL reads as a subtraction; the message names the bracket spelling (`quest[\"zero-coke-001\"].state`).",
+        spec: &["dsl 0.30.0 §1", "dsl 0.30.0 §2", "dsl §8.4"],
     },
     Code {
         code: "E-PERMISSION-BRIDGE",

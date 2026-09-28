@@ -244,7 +244,7 @@ fn on_target_must_be_a_quoted_dotted_id() {
     let bad = on_quest("<on event=\"bossDefeated\" target=\"boss gatekeeper\">");
     let ds = diags(&bad);
     assert!(
-        only(&ds, "E-BEAT-ATTR").message.contains("engine id"),
+        only(&ds, "E-BEAT-ATTR").message.contains("dotted id"),
         "{ds:?}"
     );
 }

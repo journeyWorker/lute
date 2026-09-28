@@ -369,10 +369,19 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// `schemas/lute-ir-0.29.schema.json` per the release-line rule.
 ///
 /// IR `0.29.1` is a patch on the `0.29` line with NO shape or content
-/// change (a toolchain bug-fix release): the schema keeps its
-/// `schemas/lute-ir-0.29.schema.json` name and `$id`, and documents compile
-/// byte-identically apart from the version strings.
-pub const LUTE_IR_VERSION: &str = "0.29.1";
+/// change (a toolchain bug-fix release): the schema kept its
+/// `schemas/lute-ir-0.29.schema.json` name and `$id`.
+///
+/// IR `0.30.0` adds NO field (dsl 0.30.0 §3): path fields (`set` targets,
+/// `state` entries, an `expr` node's `path` / `isSet` / `has`, a placeholder's
+/// `path`) carry the canonical dotted path, whose segments may now contain
+/// `-` or start with a digit and never contain `.`; a condition's `raw`
+/// ships as written, so it may reach a member with a quoted index. Documents
+/// whose names 0.29 accepted compile byte-identically apart from the version
+/// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
+/// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
+/// patterns widened to the name rule.
+pub const LUTE_IR_VERSION: &str = "0.30.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1616,12 +1625,13 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.29.1 axis alignment (docs/versioning.md): a bug-fix patch on the
-        // 0.29 line. The toolchain earns the move; the IR is a content no-op
-        // (the schema keeps its 0.29 name) — both still move independently of
-        // the toolchain pin.
-        assert_eq!(super::LUTE_IR_VERSION, "0.29.1");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.29.1");
+        // 0.30.0 axis alignment (docs/versioning.md): a minor release. The
+        // language earns the move (one name rule, quoted spellings in a
+        // condition) and so does the IR (names in path fields widen; the
+        // schema renames to 0.30) — both move independently of the
+        // toolchain pin.
+        assert_eq!(super::LUTE_IR_VERSION, "0.30.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.30.0");
     }
 
     #[test]
@@ -1630,8 +1640,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.29.1");
-        assert_eq!(v["irVersion"], "0.29.1");
+        assert_eq!(v["lute"], "0.30.0");
+        assert_eq!(v["irVersion"], "0.30.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

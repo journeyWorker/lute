@@ -138,17 +138,22 @@ impl GuardRead {
     /// does not hold (`canEnter(office) :- holding(brassKey)`:
     /// `holding(brassKey)` does not hold)".
     pub fn found(&self) -> String {
+        use crate::datalog::fact_spelling as f_;
         match self {
-            GuardRead::Path(p, v) => match crate::report::value_text(v) {
-                Some(t) => format!("`{p}` is {t}"),
-                None => format!("`{p}` is unset"),
-            },
-            GuardRead::Fact(f) => format!("`{f}` does not hold"),
+            GuardRead::Path(p, v) => {
+                let p = lute_cel::path::bracket_spelling_of(p);
+                match crate::report::value_text(v) {
+                    Some(t) => format!("`{p}` is {t}"),
+                    None => format!("`{p}` is unset"),
+                }
+            }
+            GuardRead::Fact(f) => format!("`{}` does not hold", f_(f)),
             GuardRead::Derived { fact, rules, .. } if rules.is_empty() => {
-                format!("`{fact}` does not hold")
+                format!("`{}` does not hold", f_(fact))
             }
             GuardRead::Derived { fact, rules, .. } => format!(
-                "`{fact}` does not hold ({})",
+                "`{}` does not hold ({})",
+                f_(fact),
                 rules
                     .iter()
                     .map(|(rule, missing)| format!("`{rule}`: {}", missing.join(", ")))
@@ -156,7 +161,7 @@ impl GuardRead {
                     .join("; ")
             ),
             GuardRead::Visited(k) => format!("scene `{k}` is not visited"),
-            GuardRead::Holds(f) => format!("`{f}` holds"),
+            GuardRead::Holds(f) => format!("`{}` holds", f_(f)),
             GuardRead::Seen(k) => format!("scene `{k}` is visited"),
         }
     }
@@ -165,17 +170,21 @@ impl GuardRead {
     /// script, a `*.test.yaml` and a `--mock` file share; a derived fact's
     /// base premises, not the conclusion a rule would draw from them.
     pub fn yaml_mock(&self) -> String {
+        use crate::datalog::fact_spelling as f_;
         match self {
             GuardRead::Path(p, _) => match crate::exec::session::quest_state_id(p) {
                 Some(q) => format!("`quests: {{ {q}: <state> }}`"),
                 None => format!("`state: {{ {p}: <value> }}`"),
             },
-            GuardRead::Derived { base, .. } if !base.is_empty() => {
-                format!("`facts: [{}]`", base.join(", "))
+            GuardRead::Derived { base, .. } if !base.is_empty() => format!(
+                "`facts: [{}]`",
+                base.iter().map(|b| f_(b)).collect::<Vec<_>>().join(", ")
+            ),
+            GuardRead::Fact(f) | GuardRead::Derived { fact: f, .. } => {
+                format!("`facts: [{}]`", f_(f))
             }
-            GuardRead::Fact(f) | GuardRead::Derived { fact: f, .. } => format!("`facts: [{f}]`"),
             GuardRead::Visited(k) => format!("`visited: [{k}]`"),
-            GuardRead::Holds(f) => format!("`facts:` without `{f}`"),
+            GuardRead::Holds(f) => format!("`facts:` without `{}`", f_(f)),
             GuardRead::Seen(k) => format!("`visited:` without `{k}`"),
         }
     }

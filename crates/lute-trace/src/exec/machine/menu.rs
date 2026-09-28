@@ -196,7 +196,8 @@ impl<D: Driver> Machine<D> {
     }
 
     /// A fact pattern `rel(a, b)` as its relation and arguments, its path
-    /// arguments read (an unset one kept as written).
+    /// arguments read (an unset one kept as written) and a quoted name
+    /// (`"lab-b2"`) as the name.
     fn fact_args<'p>(&mut self, pattern: &'p str) -> (&'p str, Vec<String>) {
         let (rel, args) = pattern
             .strip_suffix(')')
@@ -205,11 +206,16 @@ impl<D: Driver> Machine<D> {
         let args = args
             .split(", ")
             .filter(|a| !a.is_empty())
-            .map(|a| match self.store.read(a) {
-                Read::Value(v) if a.contains('.') => {
-                    crate::report::value_text(&v).unwrap_or_else(|| a.to_string())
+            .map(|a| {
+                if let Some(name) = a.strip_prefix('"').and_then(|a| a.strip_suffix('"')) {
+                    return name.to_string();
                 }
-                _ => a.to_string(),
+                match self.store.read(a) {
+                    Read::Value(v) if a.contains('.') => {
+                        crate::report::value_text(&v).unwrap_or_else(|| a.to_string())
+                    }
+                    _ => a.to_string(),
+                }
             })
             .collect();
         (rel, args)
@@ -862,13 +868,19 @@ pub fn expr_to_cel(node: &Json) -> Option<String> {
         });
     }
     if let Some(path) = node.get("path").and_then(Json::as_str) {
-        return Some(path.to_string());
+        return Some(lute_cel::path::bracket_spelling_of(path));
     }
     if let Some(path) = node.get("isSet").and_then(Json::as_str) {
-        return Some(format!("isSet({path})"));
+        return Some(format!(
+            "isSet({})",
+            lute_cel::path::bracket_spelling_of(path)
+        ));
     }
     if let Some(path) = node.get("has").and_then(Json::as_str) {
-        return Some(format!("has({path})"));
+        return Some(format!(
+            "has({})",
+            lute_cel::path::bracket_spelling_of(path)
+        ));
     }
     if let Some(items) = node.get("list").and_then(Json::as_array) {
         let items: Option<Vec<String>> = items.iter().map(expr_to_cel).collect();

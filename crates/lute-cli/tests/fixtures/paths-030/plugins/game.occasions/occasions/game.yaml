@@ -1,0 +1,3 @@
+occasions:
+  arrive: { select: first, target: { prefix: place, entity: place } }
+  wrap: { select: first }

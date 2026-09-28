@@ -116,6 +116,14 @@ fn collect_paths(expr: &Expr, keep: fn(&str) -> bool, out: &mut BTreeSet<String>
                 collect_paths(&sel.operand.expr, keep, out);
             }
         }
+        // `quest["zero-coke-001"]["state"]`: a quoted member ends the path.
+        Expr::Call(call)
+            if call.func_name == cel_parser::ast::operators::INDEX && expr_path(expr).is_some() =>
+        {
+            if let Some(path) = expr_path(expr).filter(|p| keep(p)) {
+                out.insert(path);
+            }
+        }
         Expr::Call(call) => {
             if let Some(target) = &call.target {
                 collect_paths(&target.expr, keep, out);

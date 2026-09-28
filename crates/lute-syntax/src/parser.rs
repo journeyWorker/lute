@@ -53,6 +53,10 @@ pub const E_ATTR_QUOTE: &str = "E-ATTR-QUOTE";
 /// assignment operator (`=`, `+=`, `-=`, `*=`) — `run.clues - 1`,
 /// `run.clues 2`, `run.clues == 2` (dsl 0.27.0 §2, T1-1).
 pub const E_SET_SHAPE: &str = "E-SET-SHAPE";
+/// Diagnostic code: a name that is not an identifier written after a `.` in a
+/// state path (`run.lab-b2`) — written as a quoted index instead,
+/// `run["lab-b2"]`.
+pub const E_PATH_IDENT: &str = "E-PATH-IDENT";
 /// Diagnostic code: a `{{` interpolation had no closing `}}` before end of line
 /// (§7.6).
 pub const E_INTERP_UNTERMINATED: &str = "E-INTERP-UNTERMINATED";
@@ -804,20 +808,53 @@ impl Parser<'_> {
             j += 1;
         }
         let path_start = j;
-        // A `-` joins the path only inside a (kebab, `E-PATH-IDENT`) segment
-        // — `run.clues-found`. Before a digit, `=`, a space or the end it is
-        // the author's operator: `run.clues-1` is `run.clues -= 1` meant
-        // (FS-F3), `run.clues-=1` is `run.clues -= 1`.
-        while j < n
-            && (ib[j] == b'.'
-                || (is_ident_byte(ib[j])
-                    && (ib[j] != b'-'
-                        || ib
-                            .get(j + 1)
-                            .is_some_and(|&c| c.is_ascii_alphabetic() || c == b'_'))))
-        {
-            j += 1;
+        // The path as named: dotted segments and quoted indexes
+        // (`run.visits["lab-b2"]`) are one path, canonical with `.`.
+        let mut canon = String::new();
+        // The first name written after a `.` that is not an identifier
+        // (`run.lab-b2`): the path is still the one meant, but a condition
+        // cannot spell it so, and neither does a `::set`.
+        let mut glued: Option<String> = None;
+        loop {
+            let run_start = j;
+            // A `-` joins the path only inside a segment — `run.clues-found`,
+            // `run.lab-b2`, `run.zero-coke-001 = 1`. Before a lone number,
+            // `=`, a space or the end it is the author's operator:
+            // `run.clues-1` is `run.clues -= 1` meant (FS-F3), `run.clues-=1`
+            // is `run.clues -= 1`.
+            while j < n
+                && (ib[j] == b'.'
+                    || (is_ident_byte(ib[j]) && (ib[j] != b'-' || set_hyphen_joins(inner, j))))
+            {
+                j += 1;
+            }
+            let run = &inner[run_start..j];
+            if glued.is_none() {
+                glued = run
+                    .split('.')
+                    .enumerate()
+                    .find(|&(k, seg)| {
+                        (k > 0 || run_start > path_start)
+                            && !seg.is_empty()
+                            && !lute_manifest::ident::is_ident(seg)
+                    })
+                    .map(|(_, seg)| seg.to_string());
+            }
+            canon.push_str(run);
+            match crate::path::read_index(&inner[j..]) {
+                Some((name, len)) if j > path_start => {
+                    canon.push('.');
+                    canon.push_str(&name);
+                    j += len;
+                }
+                _ => break,
+            }
         }
+        let named_end = j;
+        let glued_msg = glued.map(|name| {
+            let segs: Vec<&str> = canon.split('.').collect();
+            crate::path::glued_message(&inner[path_start..named_end], &name, &segs)
+        });
         // dsl 0.24.0 §3/§4: `run.approval[@who]` — a `per:` family member
         // chosen by a component param, bound to `run.approval.<arg>` at each
         // `::use`. Only the `[@ident]` form joins the path.
@@ -827,6 +864,7 @@ impl Parser<'_> {
                 k += 1;
             }
             if k > j + 2 && ib.get(k) == Some(&b']') {
+                canon.push_str(&inner[j..k + 1]);
                 j = k + 1;
             }
         }
@@ -834,19 +872,27 @@ impl Parser<'_> {
         // `for=` beat runs for, bound when the write executes. The index
         // joins the path exactly as spelled; the checker judges it per member.
         const TARGET_INDEX: &str = "[occasion.target]";
-        // Any other bracket index (`run.count[cod]`, `run.count['cod']`) is
-        // one `E-SET-SHAPE` naming the member path, recovered as that path so
-        // the leftover `[…]` does not cascade into operator/expression errors
-        // (with no node at all when the index names no member).
-        let mut literal_index: Option<(String, Option<String>)> = None;
+        // Any other bracket index (`run.count[cod]`) is one `E-SET-SHAPE`
+        // naming the quoted member, recovered as that path so the leftover
+        // `[…]` does not cascade into operator/expression errors (with no
+        // node at all when the index names no member).
+        let mut literal_index: Option<(String, Option<(String, String)>)> = None;
         if inner[j..].starts_with(TARGET_INDEX) {
+            canon.push_str(TARGET_INDEX);
             j += TARGET_INDEX.len();
         } else if j > path_start && ib.get(j) == Some(&b'[') && ib.get(j + 1) != Some(&b'@') {
             if let Some(close) = inner[j..].find(']') {
-                let key = inner[j + 1..j + close].trim().trim_matches(['\'', '"']);
+                let key = inner[j + 1..j + close].trim();
                 let member = (!key.is_empty()
-                    && key.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_'))
-                .then(|| format!("{}.{key}", &inner[path_start..j]));
+                    && key
+                        .bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-'))
+                .then(|| {
+                    (
+                        format!("{canon}.{key}"),
+                        format!("{}[\"{key}\"]", &inner[path_start..j]),
+                    )
+                });
                 literal_index = Some((inner[path_start..j + close + 1].to_string(), member));
                 j += close + 1;
             }
@@ -861,7 +907,7 @@ impl Parser<'_> {
                 k += 1;
             }
             if k > j + 1 {
-                param_segment = Some(format!("{}[{}]", &inner[path_start..j - 1], &inner[j..k]));
+                param_segment = Some(format!("{}[{}]", canon.trim_end_matches('.'), &inner[j..k]));
                 j = k;
             }
         }
@@ -871,9 +917,9 @@ impl Parser<'_> {
             .or_else(|| {
                 literal_index
                     .as_ref()
-                    .and_then(|(_, member)| member.clone())
+                    .and_then(|(_, member)| member.as_ref().map(|(canon, _)| canon.clone()))
             })
-            .unwrap_or_else(|| inner[path_start..path_end].to_string());
+            .unwrap_or(canon);
         let path_span = self.span(inner_start + path_start, inner_start + path_end);
         while j < n && (ib[j] == b' ' || ib[j] == b'\t') {
             j += 1;
@@ -969,16 +1015,21 @@ impl Parser<'_> {
             self.cursor += 1;
             return None;
         }
+        // The path as the author spells it, for the hints below.
+        let shown = match &literal_index {
+            Some((_, Some((_, quoted)))) => quoted.clone(),
+            _ => inner[path_start..path_end].to_string(),
+        };
         if let Some(guess) = shape_err {
             let value = match expr.raw.trim() {
                 "" if step => "1",
                 value => value,
             };
             let hint = match (guess, value.is_empty()) {
-                (Some(g), true) => format!(" with no value — write `{path} {g} <value>`"),
-                (None, true) => format!(" — write `{path} = <value>`"),
-                (Some(g), false) => format!(" — did you mean `{path} {g} {value}`?"),
-                (None, false) => format!(" — did you mean `{path} = {value}`?"),
+                (Some(g), true) => format!(" with no value — write `{shown} {g} <value>`"),
+                (None, true) => format!(" — write `{shown} = <value>`"),
+                (Some(g), false) => format!(" — did you mean `{shown} {g} {value}`?"),
+                (None, false) => format!(" — did you mean `{shown} = {value}`?"),
             };
             let end = expr_end.max(op_start);
             let written = self.body[inner_start + op_start..inner_start + end].trim();
@@ -988,7 +1039,7 @@ impl Parser<'_> {
                 format!("`{written}`")
             };
             let msg = format!(
-                "`::set` needs an assignment operator after `{path}` — `=` (replace), `+=` \
+                "`::set` needs an assignment operator after `{shown}` — `=` (replace), `+=` \
                  (add), `-=` (subtract) or `*=` (multiply) — but found {found}{hint}"
             );
             let (a, b) = (
@@ -1011,12 +1062,12 @@ impl Parser<'_> {
         if let Some((written, member)) = &literal_index {
             let fix = member
                 .as_ref()
-                .map(|m| format!("name the member with a dot, `{m}`; "))
+                .map(|(_, quoted)| format!("quote the member's name, `{quoted}`; "))
                 .unwrap_or_default();
             let msg = format!(
-                "`{written}`: {fix}a `::set` path is indexed only by `[occasion.target]` (in a \
-                 beat or entry that targets a kind or runs for each member of one) or a \
-                 component's `[@param]`"
+                "`{written}`: {fix}an unquoted index in a `::set` path is only \
+                 `[occasion.target]` (in a beat or entry that targets a kind or runs for each \
+                 member of one) or a component's `[@param]`"
             );
             let (a, b) = (
                 self.orig(inner_start + path_start),
@@ -1027,6 +1078,13 @@ impl Parser<'_> {
                 self.cursor += 1;
                 return None;
             }
+        }
+        if let Some(msg) = glued_msg {
+            let (a, b) = (
+                self.orig(inner_start + path_start),
+                self.orig(inner_start + named_end),
+            );
+            self.emit_o(E_PATH_IDENT, msg, a, b, Layer::Logic);
         }
         let span = self.span(cstart, node_end);
         self.cursor += 1;
@@ -1342,6 +1400,35 @@ fn zero_span() -> Span {
         line: 1,
         column: 1,
         utf16_range: (0, 0),
+    }
+}
+
+/// Whether the `-` at `at` in a `::set` body joins its path segment
+/// (`run.lab-b2`, `run.zero-coke-001 = 1`) rather than opening the author's
+/// operator (`run.clues-1` for `-= 1`, `run.clues-=1`). Before a letter or
+/// `_` it joins; before a number it joins only when the path goes on, or an
+/// assignment operator follows the number.
+fn set_hyphen_joins(inner: &str, at: usize) -> bool {
+    let b = inner.as_bytes();
+    match b.get(at + 1) {
+        Some(c) if c.is_ascii_alphabetic() || *c == b'_' => true,
+        Some(c) if c.is_ascii_digit() => {
+            let end = at
+                + 1
+                + b[at + 1..]
+                    .iter()
+                    .take_while(|c| c.is_ascii_digit())
+                    .count();
+            match b.get(end) {
+                Some(c) if is_ident_byte(*c) || matches!(c, b'.' | b'[') => true,
+                _ => {
+                    let rest = inner[end..].trim_start();
+                    rest.starts_with('=') && !rest.starts_with("==")
+                        || ["+=", "-=", "*="].iter().any(|op| rest.starts_with(op))
+                }
+            }
+        }
+        _ => false,
     }
 }
 

@@ -37,6 +37,22 @@ and `visited` below. Boolean composition follows Kleene short-circuit for `&&`/`
 engine evaluating over partially-unknown state should mirror this so an unknown
 operand does not force a spurious verdict.
 
+### Paths and names in a guard
+
+Every path string an `expr` node carries (`path`, `isSet`, `has`) is the
+**canonical dotted** path: names joined by `.`, where a name may contain `-`
+or start with a digit but never contains `.` (dsl 0.30.0 §3) —
+`quest.zero-coke-001.state`, `run.visits.001`. `split('.')` recovers the
+segments; never re-parse the string as CEL.
+
+`raw` is the condition as written. A name that is not an identifier is reached
+with a quoted index, as in JavaScript — `quest["zero-coke-001"].state`,
+`run.visits['lab-b2']` — which CEL over nested maps reads exactly as the
+dotted member: `m["k"]` and `m.k` are the same entry. A fact argument may be
+quoted the same way: `holds(at(hall))` and `holds(at("hall"))` are the same
+query, `holds(at("lab-b2"))` the only spelling of its name, and the store holds
+the bare name (`at(lab-b2)`) — the quotes are never part of it.
+
 ### Integer `%`
 
 `%` (dsl 0.24.0 §1) is the **integer** remainder. The checker requires both

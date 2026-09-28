@@ -223,7 +223,7 @@ fn present_faults(id: &str, cel: &str, span: Span) -> Vec<Diagnostic> {
     if let Err(err) = lute_cel::parse_slot(&mut arena, cel, span.byte_start) {
         let t = crate::cel_message::translate_cel_parse(cel, span, &err, CelKind::Condition);
         return vec![cast_diag(
-            "E-CEL-PARSE",
+            t.code,
             Severity::Error,
             Layer::Cel,
             format!("cast `{id}` `present:`: {}", t.message),
@@ -909,9 +909,7 @@ fn pattern_args(pattern: &FactPattern) -> Vec<Option<String>> {
         .args
         .iter()
         .map(|a| match &a.term {
-            FactTerm::Ident(s) if s.starts_with(|c: char| c.is_ascii_alphabetic()) => {
-                Some(s.clone())
-            }
+            FactTerm::Ident(s) => Some(s.clone()),
             FactTerm::Bool(b) => Some(b.to_string()),
             _ => None,
         })
@@ -1077,14 +1075,12 @@ fn stable_text(e: &Expr) -> Option<String> {
     }
 }
 
-/// A dotted `a.b.c` path's text.
+/// A static path's canonical text (`a.b.c`, `entry["a-b"].read`); `None`
+/// for a `has()` test or any other shape.
 fn select_text(e: &Expr) -> Option<String> {
     match e {
-        Expr::Ident(root) => Some(root.clone()),
-        Expr::Select(sel) if !sel.test => {
-            Some(format!("{}.{}", select_text(&sel.operand.expr)?, sel.field))
-        }
-        _ => None,
+        Expr::Select(sel) if sel.test => None,
+        _ => crate::cel_paths::select_path(e),
     }
 }
 
@@ -1100,6 +1096,10 @@ fn read_paths(e: &Expr, out: &mut Vec<String>) -> bool {
             }
             None => read_paths(&sel.operand.expr, out),
         },
+        Expr::Call(_) if crate::cel_paths::is_path_index(e) => {
+            out.extend(select_text(e));
+            true
+        }
         Expr::Call(c) => {
             let mut ok = c.target.as_ref().is_none_or(|t| read_paths(&t.expr, out));
             for a in &c.args {

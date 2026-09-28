@@ -1,0 +1,18 @@
+state: { 'run.visits["hall"]': 3 }
+steps:
+  - occasion: arrive
+    target: place.lab-b2
+    expect:
+      state: { 'run.visits["lab-b2"]': 1, run.visits.hall: 3 }
+      facts: ['at("lab-b2")']
+      quests: { zero-coke-001: active }
+  - occasion: arrive
+    target: place.001
+    expect: { state: { run.visits.001: 1 } }
+  - occasion: arrive
+    target: place.lab-b2
+    expect:
+      state: { "run.visits['lab-b2']": 2 }
+      quests: { zero-coke-001: complete }
+  - occasion: wrap
+    expect: { winner: wrap, state: { run.done: true } }

@@ -39,7 +39,7 @@ pub const W_QUEST_NEVER_ACCEPTED: &str = "W-QUEST-NEVER-ACCEPTED";
 const AT_NEXT_RUN: &str = "nextRun";
 
 /// Per-file shape of one `::accept` directive (dsl 0.21.0 §7a.3, 0.24.0
-/// §2): [`E_ACCEPT_TARGET`] for a missing, non-string, or non-identifier
+/// §2): [`E_ACCEPT_TARGET`] for a missing, non-string, or malformed
 /// `quest`, or an `at` other than the quoted `nextRun`; `E-UNKNOWN-ATTR`
 /// for any other attribute.
 pub fn check_accept_directive(d: &Directive, diags: &mut Vec<Diagnostic>) {
@@ -49,13 +49,11 @@ pub fn check_accept_directive(d: &Directive, diags: &mut Vec<Diagnostic>) {
             "quest" => {
                 quest_seen = true;
                 match &attr.value {
-                    AttrValue::Str(id) if crate::check::is_cel_ident(id) => {}
+                    AttrValue::Str(id) if lute_manifest::ident::is_name(id) => {}
                     AttrValue::Str(id) => diags.push(accept_diag(
                         E_ACCEPT_TARGET,
-                        format!(
-                            "`::accept` `quest=\"{id}\"` is not a quest id — an identifier \
-                             (`[A-Za-z_][A-Za-z0-9_]*`) (dsl 0.21.0 §7a.3)"
-                        ),
+                        lute_manifest::ident::name_fault("`::accept` quest id", id)
+                            .unwrap_or_default(),
                         attr.value_span,
                     )),
                     _ => diags.push(accept_diag(
@@ -291,7 +289,7 @@ fn check_target(
     let Some((id, span)) = d.accept_quest() else {
         return;
     };
-    if !crate::check::is_cel_ident(id) {
+    if !lute_manifest::ident::is_name(id) {
         return;
     }
     let message = match project.quests.get(id) {

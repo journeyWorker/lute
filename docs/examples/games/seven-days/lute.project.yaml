@@ -7,7 +7,7 @@ profiles:
   vn:
     plugins: { sevendays.clock: true }
 defaults:
-  luteVersion: "0.29.1"
+  luteVersion: "0.30.0"
   contentLang: en-US
   pov: sol
   uses: [world.schema.yaml, vocabulary.schema.yaml]

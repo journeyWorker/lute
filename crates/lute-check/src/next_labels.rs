@@ -89,7 +89,7 @@ impl Collector {
     }
 
     fn record_label(&mut self, id: &str, span: Span, attrs: &[Attr]) {
-        if let Some(message) = lute_manifest::ident::ident_fault("mark id", id) {
+        if let Some(message) = lute_manifest::ident::name_fault("mark id", id) {
             let at = attr_span(attrs, "id").unwrap_or(span);
             self.dups
                 .push(diag(crate::cel_paths::E_PATH_IDENT, message, at));

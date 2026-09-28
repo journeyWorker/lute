@@ -508,16 +508,12 @@ fn to_decided(v: Value) -> Option<Decided> {
     }
 }
 
-/// A pure `Ident`/`Select` chain rendered as a dotted state path
-/// (`scene.x.y`), mirroring `lute_check::cel_paths::select_path` — that
-/// helper is `pub(crate)` to `lute-check`, so `lute-trace` (structurally
-/// isolated, D1 rule 4) carries its own copy.
+/// A static state path — an `Ident`/`Select` chain whose members may also be
+/// reached by a string-literal index (`quest["zero-coke-001"].state`) —
+/// rendered in its canonical dotted form (`quest.zero-coke-001.state`): the
+/// one spelling the store keys on, whichever way the author wrote it.
 pub(crate) fn expr_path(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Ident(name) => Some(name.clone()),
-        Expr::Select(sel) => Some(format!("{}.{}", expr_path(&sel.operand.expr)?, sel.field)),
-        _ => None,
-    }
+    lute_cel::path::static_path_string(expr)
 }
 
 /// `holds`/`count`'s pattern `Call` args → [`Pat`]s: `Ident("_")` is the
@@ -537,7 +533,6 @@ fn pattern_args(
     for a in &c.args {
         out.push(match &a.expr {
             Expr::Ident(name) if name == "_" => Pat::Wildcard,
-            Expr::Ident(name) => Pat::Ground(name.clone()),
             Expr::Literal(Val::Boolean(b)) => Pat::Ground(b.to_string()),
             e if expr_path(e).as_deref() == Some(lute_check::beats::OCCASION_TARGET) => {
                 match eval_path_read(lute_check::beats::OCCASION_TARGET, env, unresolved) {
@@ -545,7 +540,11 @@ fn pattern_args(
                     _ => return Some(Err(())),
                 }
             }
-            _ => return None,
+            // A bare name or a quoted one (`at("lab-b2")`) — the same name.
+            e => match lute_cel::path::atom_arg(e) {
+                Some(name) => Pat::Ground(name),
+                None => return None,
+            },
         });
     }
     Some(Ok(out))
@@ -695,6 +694,13 @@ fn eval_index(
             Value::Str(member) => eval_path_read(&format!("{family}.{member}"), env, unresolved),
             _ => Value::Unknown,
         };
+    }
+    // A member reached by a quoted name (`run.visits["lab-b2"]`) is the
+    // same path its dotted spelling names.
+    if let (Some(family), Expr::Literal(Val::String(member))) =
+        (expr_path(&target.expr), &index.expr)
+    {
+        return eval_path_read(&format!("{family}.{member}"), env, unresolved);
     }
     let Expr::List(elements) = &target.expr else {
         return Value::Unknown;
@@ -848,6 +854,13 @@ pub(crate) fn guard_atoms(expr: &Expr, out: &mut Vec<GuardAtom>) {
             }
         }
         Expr::Call(c) => match (c.func_name.as_str(), c.args.as_slice()) {
+            // A member reached by a quoted name reads its dotted path.
+            (op::INDEX, [target, idx]) if matches!(idx.expr, Expr::Literal(Val::String(_))) => {
+                match expr_path(expr) {
+                    Some(path) => push(out, GuardAtom::Path(path)),
+                    None => guard_atoms(&target.expr, out),
+                }
+            }
             // dsl 0.27.0 §3: the member path the family read resolves to,
             // never the family (a `per:` family has no value of its own).
             (op::INDEX, [target, idx])
@@ -867,6 +880,12 @@ pub(crate) fn guard_atoms(expr: &Expr, out: &mut Vec<GuardAtom>) {
                         .iter()
                         .map(|a| match &a.expr {
                             Expr::Literal(Val::Boolean(b)) => b.to_string(),
+                            // Spelled so `holds(…)` re-parses it: a name
+                            // that is not an identifier stays quoted.
+                            Expr::Literal(Val::String(s)) if lute_manifest::ident::is_ident(s) => {
+                                s.to_string()
+                            }
+                            Expr::Literal(Val::String(s)) => format!("\"{s}\""),
                             e => expr_path(e)
                                 .filter(|n| Some(n) != var.as_ref())
                                 .unwrap_or_else(|| "_".to_string()),
@@ -1359,6 +1378,53 @@ mod tests {
             );
         }
         seed
+    }
+
+    /// A quoted index reads the dotted path its members name, and a quoted
+    /// fact argument is the bare name — either spelling, one answer.
+    #[test]
+    fn quoted_members_and_fact_args_read_the_dotted_names() {
+        let vocab = rel_vocab_with(&[("at", false)]);
+        let mut facts = FactStore::new(&vocab);
+        facts.assert("at", &["lab-b2".to_string()]);
+        let schema = schema_with(&[]);
+        let state = EffectiveState::new(
+            &schema,
+            with_target(
+                None,
+                &[
+                    ("run.visits.lab-b2", Value::Num(2.0)),
+                    ("run.visits.001", Value::Num(1.0)),
+                    ("quest.zero-coke-001.state", Value::Str("complete".into())),
+                ],
+            ),
+        );
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
+        for (raw, want) in [
+            (r#"run.visits["lab-b2"]"#, Value::Num(2.0)),
+            ("run.visits['001'] + 1", Value::Num(2.0)),
+            (
+                r#"quest["zero-coke-001"].state == "complete""#,
+                Value::Bool(true),
+            ),
+            (r#"isSet(run.visits["lab-b2"])"#, Value::Bool(true)),
+            (r#"holds(at("lab-b2"))"#, Value::Bool(true)),
+            ("holds(at('001'))", Value::Bool(false)),
+        ] {
+            let (v, unresolved) = eval_str(raw, &env);
+            assert_eq!(v, want, "{raw}");
+            assert!(unresolved.is_empty(), "{raw}: {unresolved:?}");
+        }
+        // An unset member is unknown, recorded at its dotted path.
+        let (v, unresolved) = eval_str(r#"run.visits["hall"] > 0"#, &env);
+        assert_eq!(v, Value::Unknown);
+        assert_eq!(
+            unresolved,
+            vec![UnresolvedAtom::Path("run.visits.hall".into())]
+        );
     }
 
     #[test]

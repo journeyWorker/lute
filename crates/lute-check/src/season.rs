@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::ident::is_ident;
+use lute_manifest::ident::is_name;
 use lute_manifest::season::{season_of_path, season_ref, SeasonDecl};
 
 use crate::meta::{Namespace, StateDecl, StateSchema};
@@ -53,7 +53,7 @@ pub fn parse_seasons(
         return (out, diags);
     };
     for (k, v) in map {
-        let Some(name) = k.as_str().filter(|n| is_ident(n)) else {
+        let Some(name) = k.as_str().filter(|n| is_name(n)) else {
             let at = k.as_str().map_or_else(|| span_at(&[]), |k| span_at(&[k]));
             diags.push(diag(bad_season_name(k), at));
             continue;
@@ -81,7 +81,7 @@ pub fn parse_seasons(
 const SEASON_EXAMPLE: &str =
     "`seasons: { harvest: { live: \"@harvestLive\" } }` (short form `harvest: \"@harvestLive\"`)";
 
-/// Why season key `k` is no season name, with the identifier it likely meant.
+/// Why season key `k` is no season name.
 fn bad_season_name(k: &serde_yaml::Value) -> String {
     let shown = match k.as_str() {
         Some(s) => s.to_string(),
@@ -90,7 +90,7 @@ fn bad_season_name(k: &serde_yaml::Value) -> String {
             .trim()
             .to_string(),
     };
-    lute_manifest::ident::ident_fault("season name", &shown)
+    lute_manifest::ident::name_fault("season name", &shown)
         .unwrap_or_else(|| format!("season name `{shown}` must be written as a string"))
 }
 

@@ -211,6 +211,12 @@ pub(crate) fn decide(expr: &Expr, schema: &StateSchema, defs: &DefTypes) -> Deci
                 None => Decision::Undecidable,
             }
         }
+        // Rule 2 over a quoted-name index (`run.visits["lab-b2"]`): the path
+        // it names; failing that, the family's member type (below).
+        Expr::Call(c) if crate::cel_paths::is_path_index(expr) => select_path(expr)
+            .as_deref()
+            .and_then(|p| resolve_type(p, schema))
+            .map_or_else(|| decide_call(c, schema, defs), |t| Decision::Ty(t.clone())),
         Expr::Call(c) => decide_call(c, schema, defs),
         // A list literal, a map/struct literal, a comprehension, an unset
         // node: §3.3's closing paragraph — undecidable, and it passes.
@@ -413,6 +419,12 @@ fn operand_desc(expr: &Expr, t: &Type) -> String {
 
 /// How [`operand_desc`] and [`integer_fault`] name an operand.
 fn operand_subject(expr: &Expr) -> String {
+    if let Some(p) = select_path(expr) {
+        return format!(
+            "`{}`",
+            lute_cel::path::bracket_spelling_of(&p).replace(lute_cel::REF_MARKER, "@")
+        );
+    }
     match expr {
         Expr::Call(c) => match op_spelling(&c.func_name) {
             Some(sym) => format!("the `{sym}` comparison"),
@@ -421,10 +433,7 @@ fn operand_subject(expr: &Expr) -> String {
                 c.func_name.replace(lute_cel::REF_MARKER, "@")
             ),
         },
-        _ => match select_path(expr) {
-            Some(p) => format!("`{}`", p.replace(lute_cel::REF_MARKER, "@")),
-            None => "an operand".to_string(),
-        },
+        _ => "an operand".to_string(),
     }
 }
 

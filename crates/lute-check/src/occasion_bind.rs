@@ -95,7 +95,8 @@ pub fn occurrences(cel: &str) -> Vec<Occurrence> {
             }
             let bracketed = before > 0 && b[before - 1] == b'[' && b.get(after) == Some(&b']');
             // `x[occasion.target]` after a path (not a list literal).
-            let indexed = bracketed && before >= 2 && (ident(b[before - 2]));
+            let indexed =
+                bracketed && before >= 2 && (ident(b[before - 2]) || b[before - 2] == b']');
             let occurrence = if indexed {
                 Occurrence {
                     range: (before - 1, after + 1),
@@ -140,9 +141,10 @@ pub fn mentions_target(cel: &str) -> bool {
 }
 
 /// `cel` with every `occasion.target` replaced by `member`: a pattern
-/// argument by the bare member (`holds(owned(aria))`), a family index by a
-/// member path (`user.bond[occasion.target]` → `user.bond.aria`), any other
-/// read by the string literal `'aria'`.
+/// argument by the member as a name (`holds(owned(aria))`,
+/// `holds(at("lab-b2"))`), a family index by a member path
+/// (`user.bond[occasion.target]` → `user.bond.aria` / `run.visits["lab-b2"]`),
+/// any other read by the string literal `'aria'`.
 pub fn instantiate(cel: &str, member: &str) -> String {
     rewrite(cel, member, true)
 }
@@ -159,8 +161,9 @@ fn rewrite(cel: &str, member: &str, values: bool) -> String {
     let mut at = 0;
     for o in occurrences(cel) {
         let replacement = match o.position {
-            Position::PatternArg => member.to_string(),
-            Position::Index => format!(".{member}"),
+            Position::PatternArg if lute_manifest::ident::is_ident(member) => member.to_string(),
+            Position::PatternArg => format!("\"{member}\""),
+            Position::Index => lute_cel::path::bracket_spelling(&["", member]),
             Position::Value if values => format!("'{member}'"),
             Position::Value => continue,
         };

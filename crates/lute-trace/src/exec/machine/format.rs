@@ -36,7 +36,7 @@ impl<D: Driver> Machine<D> {
             let rendered = match it.next() {
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("path") => {
                     let path = ph.get("path").and_then(Json::as_str).unwrap_or("");
-                    match self.store.eval(path).0 {
+                    match self.store.eval_path(path).0 {
                         Value::Unknown => marker.to_string(),
                         v => formatted(ph, &v).unwrap_or_else(|| {
                             let forms = self.path_forms(path, &v);

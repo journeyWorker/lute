@@ -271,13 +271,24 @@ pub fn check_cel_slot(
 /// [`check_cel_slot`]'s passes over the parsed slot `expr`: state-path
 /// reads, the CEL profile, fact queries, narrative time, `%` operands.
 fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
-    // A state path written with a `-` in a name parses as a subtraction;
-    // report that once, not the three findings the subtraction trips. When
-    // the path is declared (a quest id `lamp-duty` checked with the
-    // project), its declaration already carries the `E-PATH-IDENT`.
-    if let Some((glued, message)) = hyphenated_path(expr, &slot.raw) {
-        if !ctx.env.state.decls.contains_key(&glued) {
-            diags.push(diag(crate::cel_paths::E_PATH_IDENT, message, slot.span));
+    // A name that is not an identifier after a `.` (`quest.zero-coke-001
+    // .state`) parses as a subtraction; report the path once, with its
+    // quoted-index spelling, not the findings the subtraction trips.
+    let glued = crate::cel_paths::glued_state_paths(&slot.raw);
+    if !glued.is_empty() {
+        for g in glued {
+            let at = Span {
+                byte_start: g.start,
+                byte_end: g.end,
+                line: 0,
+                column: 0,
+                utf16_range: (0, 0),
+            };
+            diags.push(diag(
+                crate::cel_paths::E_PATH_IDENT,
+                g.message(&slot.raw),
+                map_span(slot, at),
+            ));
         }
         return;
     }
@@ -341,60 +352,6 @@ fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec
                 diags,
             );
         }
-    }
-}
-
-/// `quest.lamp-duty.state` parses as `quest.lamp - duty.state`. A
-/// subtraction whose left operand is a state path and whose right operands
-/// are bare non-root names, written with no space around the `-`, is a
-/// hyphenated path: it, and a message naming the camelCase spelling.
-fn hyphenated_path(expr: &Expr, raw: &str) -> Option<(String, String)> {
-    use cel_parser::ast::operators::SUBSTRACT;
-    /// The operands of a left-nested `a - b - c` chain, each a dotted path.
-    fn operands(expr: &Expr) -> Option<Vec<String>> {
-        match expr {
-            Expr::Call(c)
-                if c.func_name == SUBSTRACT && c.target.is_none() && c.args.len() == 2 =>
-            {
-                let mut out = operands(&c.args[0].expr)?;
-                out.push(crate::cel_paths::select_path(&c.args[1].expr)?);
-                Some(out)
-            }
-            _ => crate::cel_paths::select_path(expr).map(|p| vec![p]),
-        }
-    }
-    let root_of = |p: &str| p.split('.').next().unwrap_or_default().to_string();
-    if let Some(parts) = operands(expr).filter(|ps| ps.len() > 1) {
-        let glued = parts.join("-");
-        if parts[0].contains('.')
-            && crate::cel_paths::STATE_ROOTS.contains(&root_of(&parts[0]).as_str())
-            && parts[1..]
-                .iter()
-                .all(|p| !is_profile_ident_root(&root_of(p)))
-            && raw.contains(&glued)
-        {
-            let message = format!(
-                "`{glued}` has a `-` in a name, so it reads as `{}`; a name in a state path \
-                 cannot contain `-` — write `{}`",
-                parts.join(" - "),
-                lute_manifest::ident::camel_case_dotted(&glued)
-            );
-            return Some((glued, message));
-        }
-    }
-    match expr {
-        Expr::Call(c) => c
-            .target
-            .iter()
-            .map(|t| &t.expr)
-            .chain(c.args.iter().map(|a| &a.expr))
-            .find_map(|e| hyphenated_path(e, raw)),
-        Expr::Select(sel) => hyphenated_path(&sel.operand.expr, raw),
-        Expr::List(list) => list
-            .elements
-            .iter()
-            .find_map(|e| hyphenated_path(&e.expr, raw)),
-        _ => None,
     }
 }
 
@@ -1553,9 +1510,10 @@ fn check_fact_query_call(
 /// [`check_atom`] (dsl 0.3.0 §5/§8, the adapter T11's plan calls for):
 /// `Ident("_")` (a literal wildcard, OR the substituted `$` match subject —
 /// same token, same meaning here) -> [`FactTerm::Wildcard`]; any other
-/// `Ident` NOT marker-prefixed -> [`FactTerm::Ident`]; a boolean `Literal`
+/// `Ident` NOT marker-prefixed, or a quoted name (`"lab-b2"`, the same name
+/// as its bare spelling) -> [`FactTerm::Ident`]; a boolean `Literal`
 /// -> [`FactTerm::Bool`]. Anything else — a path `Select`, arithmetic, a
-/// nested `Call`, a non-bool literal, or a marker-prefixed `@ref` ident — is
+/// nested `Call`, a number literal, or a marker-prefixed `@ref` ident — is
 /// NOT compile-time-ground; returns `None` for the WHOLE pattern (a single
 /// non-ground arg invalidates it, per `Iterator::collect`'s `Option`
 /// short-circuit). Spans are unavailable (cel-parser drops sub-expression
@@ -1570,6 +1528,10 @@ pub(crate) fn pattern_terms(c: &cel_parser::ast::CallExpr) -> Option<Vec<FactArg
                 span: (0, 0),
             }),
             Expr::Ident(name) if !name.starts_with(lute_cel::REF_MARKER) => Some(FactArg {
+                term: FactTerm::Ident(name.clone()),
+                span: (0, 0),
+            }),
+            Expr::Literal(Val::String(name)) => Some(FactArg {
                 term: FactTerm::Ident(name.clone()),
                 span: (0, 0),
             }),
@@ -2303,14 +2265,14 @@ mod tests {
         assert_eq!(d.len(), 1, "{d:?}");
         assert_eq!(d[0].code, crate::cel_paths::E_PATH_IDENT);
         assert!(
-            d[0].message.contains("write `quest.lampDuty.state`"),
+            d[0].message.contains("write `quest[\"lamp-duty\"].state`"),
             "{}",
             d[0].message
         );
         let d = check("run.day > 0 && run.lamp-duty-log.count > 1");
         assert_eq!(d.len(), 1, "{d:?}");
         assert!(
-            d[0].message.contains("`run.lampDutyLog.count`"),
+            d[0].message.contains("`run[\"lamp-duty-log\"].count`"),
             "{}",
             d[0].message
         );

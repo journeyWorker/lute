@@ -616,50 +616,29 @@ fn ref_at(slot: &CelSlot, off: usize) -> Option<lute_cel::RefUse> {
         .find(|r| base + r.span.byte_start <= off && off <= base + r.span.byte_end)
 }
 
-/// The maximal dotted path token (`[A-Za-z0-9_.-]+`) surrounding `off` within
-/// `slot`, plus its document-relative span. Used for state-path / choice-path
-/// resolution when the cursor is not on an `@ref`.
+/// The static path surrounding `off` within `slot` — dotted or with quoted
+/// segments (`run.visits["lab-b2"]`) — in its canonical dotted form, plus the
+/// document-relative span of the whole path as written. Used for state-path /
+/// choice-path resolution when the cursor is not on an `@ref`.
 ///
-/// A cursor inside a CEL string literal (§4.4) resolves to no path — the dotted
-/// text there is literal content, not a state path. This reuses the shared
-/// [`lute_cel::cel_string_mask`] (the same quote-tracking `scan_refs` uses for
-/// @ref/$), so DSL-token and state-path scanning agree on string boundaries.
+/// A cursor inside a CEL string literal (§4.4) that is no path segment
+/// resolves to no path — the dotted text there is literal content
+/// ([`path_tokens`]).
 fn path_at(slot: &CelSlot, off: usize) -> Option<(String, Span)> {
     let base = slot.span.byte_start;
-    if off < base {
+    let local = off.checked_sub(base)?;
+    if local > slot.raw.len() {
         return None;
     }
-    let local = off - base;
-    let b = slot.raw.as_bytes();
-    if local > b.len() {
-        return None;
-    }
-    let mask = lute_cel::cel_string_mask(&slot.raw);
-    // A path token contains no quotes, so it never straddles a string boundary:
-    // if the cursor byte is string content, there is no path here.
-    if local < b.len() && mask[local] {
-        return None;
-    }
-    let mut start = local;
-    while start > 0 && is_path_byte(b[start - 1]) && !mask[start - 1] {
-        start -= 1;
-    }
-    let mut end = local;
-    while end < b.len() && is_path_byte(b[end]) && !mask[end] {
-        end += 1;
-    }
-    if start == end {
-        return None;
-    }
-    Some((
-        slot.raw[start..end].to_string(),
-        byte_span(base + start, base + end),
-    ))
+    path_tokens(&slot.raw)
+        .into_iter()
+        .find(|(_, (start, end))| *start <= local && local <= *end)
+        .map(|(path, (start, end))| (path, byte_span(base + start, base + end)))
 }
 
-/// A byte permitted in a CEL path token: an ident byte or `.`.
-fn is_path_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.'
+/// A byte permitted in a bare path segment: an ident byte or `-`.
+fn is_name_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'-'
 }
 
 // -- capability lookups (shared across features) ------------------------------
@@ -1116,23 +1095,7 @@ fn subject_reconstructed_path(raw: &str) -> Option<String> {
     let mut arena = lute_cel::CelArena::default();
     let handle = lute_cel::parse_slot(&mut arena, raw, 0).ok()?;
     let root = arena.get(handle)?;
-    select_path(&root.expr)
-}
-
-/// Verbatim mirror of `lute_check::cel_paths::select_path`: the dotted path of a
-/// pure `Ident`/`Select` chain, or `None` if the chain bottoms out in anything
-/// but a bare `Ident`. Kept byte-identical to the checker so the offered
-/// `<when is>` domain never diverges from the checker's subject reconstruction.
-fn select_path(expr: &cel_parser::ast::Expr) -> Option<String> {
-    use cel_parser::ast::Expr;
-    match expr {
-        Expr::Ident(name) => Some(name.clone()),
-        Expr::Select(sel) => {
-            let base = select_path(&sel.operand.expr)?;
-            Some(format!("{base}.{}", sel.field))
-        }
-        _ => None,
-    }
+    lute_cel::path::static_path_string(&root.expr)
 }
 
 /// `true`/`false`/`unset` — the finite domain of a `bool` (or `scene.visited.*`)
@@ -1352,16 +1315,16 @@ pub(crate) fn ref_uses(doc: &Document, name: &str) -> Vec<Span> {
     out
 }
 
-/// Every document span at which the state/choice path `path` is used: `::set`
-/// target paths, matching dotted tokens inside a CEL slot, plus content-line
-/// `{{path}}` interps.
+/// Every document span at which the state/choice path `path` (canonical
+/// dotted) is used: `::set` target paths, matching paths inside a CEL slot
+/// (bare or quoted, [`path_tokens`]), plus content-line `{{path}}` interps.
 pub(crate) fn path_uses(doc: &Document, path: &str) -> Vec<Span> {
     let mut out = Vec::new();
     for shot in &doc.shots {
         collect_set_paths(&shot.body, path, &mut out);
         collect_line_interps(
             &shot.body,
-            &|i| i.kind == InterpKind::Path && i.raw == path,
+            &|i| i.kind == InterpKind::Path && interp_path(&i.raw) == path,
             &mut out,
         );
     }
@@ -1465,11 +1428,24 @@ fn collect_line_interps(nodes: &[Node], matches: &impl Fn(&Interp) -> bool, out:
     }
 }
 
-/// Maximal dotted path tokens (start-relative byte spans) in a raw CEL fragment.
+/// A `{{…}}` path interp's canonical dotted path (`{{run.visits["lab-b2"]}}`
+/// → `run.visits.lab-b2`); text that is no static path as written.
+pub(crate) fn interp_path(raw: &str) -> String {
+    lute_cel::path::parse_path_text(raw).map_or_else(
+        || raw.trim().to_string(),
+        |segs| lute_cel::path::render_path(&segs),
+    )
+}
+
+/// Every static path in a raw CEL fragment — a root, then `.name` or quoted
+/// `["name"]` segments — canonical dotted, with the start-relative byte span
+/// it is written over.
 ///
-/// A dotted token inside a CEL string literal (§4.4) is literal content, not a
-/// state path, so it is skipped via the shared [`lute_cel::cel_string_mask`] (the
-/// same quote-tracking `scan_refs`/`slot_tokens` use for @ref/$).
+/// Dotted text inside a CEL string literal (§4.4) is literal content, not a
+/// state path, so a path never starts inside one (the shared
+/// [`lute_cel::cel_string_mask`], the same quote-tracking
+/// `scan_refs`/`slot_tokens` use for @ref/$); a quoted segment is part of the
+/// path it follows.
 pub(crate) fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
     let b = raw.as_bytes();
     let mask = lute_cel::cel_string_mask(raw);
@@ -1477,11 +1453,14 @@ pub(crate) fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
     let mut i = 0;
     while i < b.len() {
         if (b[i].is_ascii_alphabetic() || b[i] == b'_') && !mask[i] {
-            let start = i;
-            while i < b.len() && is_path_byte(b[i]) && !mask[i] {
+            let (segs, len) = lute_cel::path::scan_path(&raw[i..]);
+            out.push((lute_cel::path::render_path(&segs), (i, i + len)));
+            i += len;
+        } else if is_name_byte(b[i]) && !mask[i] {
+            // The rest of a number or a `-`-joined word: no path starts here.
+            while i < b.len() && (is_name_byte(b[i]) || b[i] == b'.') && !mask[i] {
                 i += 1;
             }
-            out.push((raw[start..i].to_string(), (start, i)));
         } else {
             i += 1;
         }
@@ -1530,6 +1509,24 @@ mod tests {
             count, 1,
             "only the path outside the CEL string is a token, got {toks:?}"
         );
+    }
+
+    /// A quoted segment is part of its path: both spellings of a member name
+    /// the same canonical path, spanning the text as written.
+    #[test]
+    fn path_tokens_read_quoted_segments_as_the_dotted_path() {
+        let raw = "run.visits[\"lab-b2\"] >= 1 && quest['zero-coke-001'].state == 'x' && run.visits.hall > 0";
+        let toks = path_tokens(raw);
+        let paths: Vec<&str> = toks.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(
+            paths,
+            [
+                "run.visits.lab-b2",
+                "quest.zero-coke-001.state",
+                "run.visits.hall"
+            ]
+        );
+        assert_eq!(toks[0].1, (0, "run.visits[\"lab-b2\"]".len()));
     }
 
     /// End-to-end: `references_at` on a match subject path must NOT count a

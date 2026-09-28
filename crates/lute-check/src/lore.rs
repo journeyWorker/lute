@@ -15,11 +15,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::ident::is_ident;
+use lute_manifest::ident::is_name;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{AttrValue, Entry, Meta};
 
-use crate::cel_paths::E_PATH_IDENT;
 use crate::meta::{Namespace, StateDecl};
 
 /// `<entry>` attribute shape (§3): missing/non-ident `id`, malformed
@@ -81,22 +80,21 @@ pub fn parse_entry_order(raw: &str) -> Option<u32> {
     raw.parse().ok()
 }
 
-/// `target ::= EngineId ("." Part)*` — an id the engine owns, written as the
-/// engine spells it ([`lute_manifest::ident::is_engine_ref`]); shape-only.
-/// Where an occasion's target domain lists an entity kind's members, the
-/// member must be one of them (`occasion_target_ok`), so it is an identifier.
+/// `target ::= Name ("." Name)*` — a dotted id; shape-only. Where an
+/// occasion's target domain lists an entity kind's members, the member must
+/// be one of them (`occasion_target_ok`).
 pub fn is_entry_target(s: &str) -> bool {
-    lute_manifest::ident::is_engine_ref(s)
+    lute_manifest::ident::is_dotted_name(s)
 }
 
-/// dsl 0.26.0 §5: `kind:<Ident>` — a beat or entry that answers its occasion
+/// dsl 0.26.0 §5: `kind:<Name>` — a beat or entry that answers its occasion
 /// for every member of an entity kind. The kind name, when `s` is one.
 pub fn kind_target(s: &str) -> Option<&str> {
-    s.strip_prefix("kind:").filter(|k| is_ident(k))
+    s.strip_prefix("kind:").filter(|k| is_name(k))
 }
 
 /// A beat's (scene, bundle beat, entry beat) `target`: a dotted id or a
-/// `kind:<Ident>` (dsl 0.26.0 §5) — shape-only.
+/// `kind:<Name>` (dsl 0.26.0 §5) — shape-only.
 pub fn is_beat_target(s: &str) -> bool {
     is_entry_target(s) || kind_target(s).is_some()
 }
@@ -122,11 +120,11 @@ pub struct EntrySeries<'a> {
 }
 
 impl<'a> EntrySeries<'a> {
-    /// The well-formed `(series, order)` position — an `Ident` series and an
+    /// The well-formed `(series, order)` position — a named series and an
     /// order — `E-ENTRY-SERIES-ORDER` groups by. `None` when either is absent
     /// or malformed (that entry's own `E-ENTRY-ATTR`).
     pub fn position(&self) -> Option<(&'a str, u32)> {
-        let series = self.series.filter(|s| is_ident(s))?;
+        let series = self.series.filter(|s| is_name(s))?;
         Some((series, self.order?))
     }
 }
@@ -166,13 +164,13 @@ pub fn resolve_entry_series<'a>(
 /// A lore document's validated `series:` read straight off its raw
 /// frontmatter — for the project-wide passes and reports that hold a parsed
 /// [`Document`] but no [`crate::meta::TypedMeta`]. The same predicate as the
-/// typed lift (a string `Ident`); `series:` is never defaultable, so the raw
+/// typed lift (a string name); `series:` is never defaultable, so the raw
 /// mapping is the whole truth.
 pub fn document_series(meta: &Meta) -> Option<String> {
     let map: serde_yaml::Mapping = serde_yaml::from_str(&meta.raw_yaml).ok()?;
     map.get(serde_yaml::Value::String("series".to_string()))?
         .as_str()
-        .filter(|s| is_ident(s))
+        .filter(|s| is_name(s))
         .map(str::to_string)
 }
 
@@ -224,7 +222,7 @@ pub fn check_entries(
                     entry.id_span,
                 ));
             }
-            if is_ident(id) {
+            if is_name(id) {
                 record.decls.push((entry_read_path(id), entry_read_decl()));
             }
         }
@@ -535,15 +533,8 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
                 entry.id_span,
             ));
         }
-    } else if let Some(fault) = lute_manifest::ident::ident_fault("entry id", id) {
-        // A `-` keeps the CEL-path code it has always had: the id is a
-        // segment of `entry.<id>.read`.
-        let code = if id.contains('-') {
-            E_PATH_IDENT
-        } else {
-            E_ENTRY_ATTR
-        };
-        diags.push(diag(code, Severity::Error, fault, entry.id_span));
+    } else if let Some(fault) = lute_manifest::ident::name_fault("entry id", id) {
+        diags.push(diag(E_ENTRY_ATTR, Severity::Error, fault, entry.id_span));
     }
     if let Some((target, span)) = &entry.target {
         if kind_target(target).is_some() && entry.on.is_none() {
@@ -562,8 +553,7 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
         }
     }
     if let Some((v, span)) = &entry.category {
-        // Engine vocabulary (dsl 0.19.0 §3): the engine's spelling.
-        if let Some(fault) = lute_manifest::ident::engine_id_fault("`<entry>` `category`", v) {
+        if let Some(fault) = lute_manifest::ident::name_fault("`<entry>` `category`", v) {
             diags.push(attr_diag(fault, *span));
         }
     }
@@ -583,7 +573,7 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
         return;
     }
     if let Some((v, span)) = &entry.series {
-        if let Some(fault) = lute_manifest::ident::ident_fault("`<entry>` `series`", v) {
+        if let Some(fault) = lute_manifest::ident::name_fault("`<entry>` `series`", v) {
             diags.push(attr_diag(fault, *span));
         }
     }

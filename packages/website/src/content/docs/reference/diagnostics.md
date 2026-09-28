@@ -92,7 +92,7 @@ Spec: [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-BEAT-ATTR
 
-A beat's `on`, `target`, `priority`, or `once` attribute is malformed — a non-identifier `on`, a `target` on an occasion not declared `target: true`, a non-integer `priority`, a `once` outside `run`/`user`/`false`, a beat key with no `on`, a `when` reading the scene's own not-yet-existing `scene.*` state, or a `spentBy` beside `once: false` or a `share` key.
+A beat's `on`, `target`, `priority`, or `once` attribute is malformed — an `on` that is not a name, a `target` on an occasion not declared `target: true`, a non-integer `priority`, a `once` outside `run`/`user`/`false`, a beat key with no `on`, a `when` reading the scene's own not-yet-existing `scene.*` state, or a `spentBy` beside `once: false` or a `share` key.
 
 Spec: [dsl 0.21.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.21.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
@@ -688,9 +688,9 @@ Spec: [dsl §9.4](/spec/)
 
 ### E-META-ID
 
-A document's `id:` frontmatter value is not a dotted id: identifiers (a letter, then letters, digits or `_`) joined by `.`.
+A document's `id:` frontmatter value is not a dotted id: names (letters, digits, `_` or `-`, not starting with `-`) joined by `.`.
 
-Spec: [dsl 0.29.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
+Spec: [dsl 0.30.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md)
 
 ### E-META-MISSING
 
@@ -708,7 +708,7 @@ A document declares a top-level meta key that is neither a core key nor owned by
 
 ### E-META-VALUE
 
-A frontmatter value has the wrong shape — a malformed `extra:` mapping or key, a non-identifier `series:`, a malformed `cast:`/`enums:`/`terminal:` entry (in `terminal:`'s long form, a key other than `when`/`persists` or a `persists` that is not `true`/`false`), `persists: true` on a `terminal:` that reads only run state (its ending cannot outlive the run), or a bad `effects:` flag.
+A frontmatter value has the wrong shape — a malformed `extra:` mapping or key, a `series:` that is not a name, a malformed `cast:`/`enums:`/`terminal:` entry (in `terminal:`'s long form, a key other than `when`/`persists` or a `persists` that is not `true`/`false`), `persists: true` on a `terminal:` that reads only run state (its ending cannot outlive the run), or a bad `effects:` flag.
 
 Spec: [dsl 0.15.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md), [dsl 0.19.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md), [dsl 0.23.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.29.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
@@ -788,9 +788,9 @@ Spec: [dsl 0.2.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-PATH-IDENT
 
-A name that must be an identifier (a letter, then letters, digits or `_`) is not one: a state path segment; a quest, objective, entry, branch, hub, choice or mark id; a def or def param; a relation, enum or entity kind; an enum or entity member.
+A name has a character outside the name rule (letters, digits, `_` or `-`, not starting with `-`): a state path segment; a quest, objective, entry, branch, hub, choice or mark id; a relation, enum or entity kind; an enum or entity member. A def or def param is not an identifier (a letter or `_`, then letters, digits or `_`): it is read bare, as `@name` or in the def's body. Or a condition writes a name that is not an identifier after a `.` (`quest.zero-coke-001.state`), which CEL reads as a subtraction; the message names the bracket spelling (`quest["zero-coke-001"].state`).
 
-Spec: [dsl 0.29.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md), [dsl §8.4](/spec/)
+Spec: [dsl 0.30.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl 0.30.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl §8.4](/spec/)
 
 ### E-PERMISSION-BRIDGE
 

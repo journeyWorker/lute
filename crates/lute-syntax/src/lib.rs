@@ -29,6 +29,7 @@ pub mod incremental;
 pub mod is_pattern;
 pub mod lex;
 pub mod parser;
+pub mod path;
 pub mod walk;
 
 pub use ast::scan_label_interps;
