@@ -2,6 +2,6 @@ defaultProfile: base
 profiles:
   base: {}
 defaults:
-  luteVersion: "0.29.0"
+  luteVersion: "0.29.1"
   uses: [world.schema.yaml]
   components: [gauge.component.lute]

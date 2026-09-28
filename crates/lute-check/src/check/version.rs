@@ -190,10 +190,13 @@ mod lute_version_tests {
     /// `lute new scene --occasion` writing `on:`, and the `terminal:` long
     /// form `{ when, persists }`. The IR gains the optional
     /// `terminalPersists` on the artifact and `project.index.json`, so the
-    /// current schema is `schemas/lute-ir-0.29.schema.json`.
+    /// current schema is `schemas/lute-ir-0.29.schema.json`. `0.29.1` is a
+    /// bug-fix patch on the same line: no new syntax and no IR shape change
+    /// (engine-owned targets and entry categories keep their spelling), so
+    /// the schema keeps its `0.29` name and `$id`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_29_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.29.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.29.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_29_1() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.29.1");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.29.1");
     }
 }

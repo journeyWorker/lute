@@ -10,7 +10,7 @@ profiles:
   league:
     plugins: { league.engine: true }
 defaults:
-  luteVersion: "0.29.0"
+  luteVersion: "0.29.1"
   # world contract, split by concern (a name may be declared in only one)
   uses:
     - schema/world.schema.yaml

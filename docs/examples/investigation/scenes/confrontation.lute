@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.29.0"
+luteVersion: "0.29.1"
 id: detective.s01ep03
 title: The Confrontation
 # Comes after the interview.
