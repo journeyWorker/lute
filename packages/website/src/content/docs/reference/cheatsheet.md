@@ -126,7 +126,7 @@ identity:                               # both values below are the defaults
   lineId: "{prefix}.{speaker}_{code}"
   voiceKey: "{prefix}.{speaker}-{code}" # the 0.21 default was {speaker}-{code}: pin it to keep old keys
 defaults:                               # frontmatter every document inherits
-  luteVersion: "0.29.0"
+  luteVersion: "0.29.1"
   uses:                                 # resolved against THIS file's directory
     - world.schema.yaml
     - schema/areas/*.schema.yaml        # 0.26.0: a glob, expanded in path order; matching nothing is fine

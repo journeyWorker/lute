@@ -356,18 +356,23 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// the version strings. `schemas/lute-ir-0.27.schema.json` is renamed to
 /// `schemas/lute-ir-0.28.schema.json` per the release-line rule.
 ///
-/// IR `0.29.0` was a patch on the `0.28` line with NO shape or content
+/// IR `0.28.1` was a patch on the `0.28` line with NO shape or content
 /// change (a toolchain bug-fix release): the schema kept its
 /// `schemas/lute-ir-0.28.schema.json` name and `$id`.
 ///
-/// IR `0.29.0` is ADDITIVE over `0.29.0` (dsl 0.29.0 §5): the optional
+/// IR `0.29.0` is ADDITIVE over `0.28.1` (dsl 0.29.0 §5): the optional
 /// `terminalPersists` on the artifact and `project.index.json` (`true` when
 /// every `terminal:` declaration is the long form with `persists: true`)
 /// appears only when authored. Documents that use none of it compile
 /// byte-identically apart from the version strings.
 /// `schemas/lute-ir-0.28.schema.json` is renamed to
 /// `schemas/lute-ir-0.29.schema.json` per the release-line rule.
-pub const LUTE_IR_VERSION: &str = "0.29.0";
+///
+/// IR `0.29.1` is a patch on the `0.29` line with NO shape or content
+/// change (a toolchain bug-fix release): the schema keeps its
+/// `schemas/lute-ir-0.29.schema.json` name and `$id`, and documents compile
+/// byte-identically apart from the version strings.
+pub const LUTE_IR_VERSION: &str = "0.29.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1611,12 +1616,12 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.29.0 axis alignment (docs/versioning.md): a minor release. The
-        // language earns the move (one identifier rule, the `terminal:` long
-        // form) and so does the IR (additive `terminalPersists`) — both move
-        // independently of the toolchain pin.
-        assert_eq!(super::LUTE_IR_VERSION, "0.29.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.29.0");
+        // 0.29.1 axis alignment (docs/versioning.md): a bug-fix patch on the
+        // 0.29 line. The toolchain earns the move; the IR is a content no-op
+        // (the schema keeps its 0.29 name) — both still move independently of
+        // the toolchain pin.
+        assert_eq!(super::LUTE_IR_VERSION, "0.29.1");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.29.1");
     }
 
     #[test]
@@ -1625,8 +1630,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.29.0");
-        assert_eq!(v["irVersion"], "0.29.0");
+        assert_eq!(v["lute"], "0.29.1");
+        assert_eq!(v["irVersion"], "0.29.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

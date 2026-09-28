@@ -63,7 +63,7 @@ profiles:
   harbor:
     plugins: { harbor.engine: true }
 defaults:
-  luteVersion: "0.29.0"
+  luteVersion: "0.29.1"
   uses:
     - schema/world.schema.yaml
     - schema/roster.schema.yaml

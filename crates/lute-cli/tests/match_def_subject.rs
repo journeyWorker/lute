@@ -48,7 +48,7 @@ fn project(tag: &str, arms: &str) -> PathBuf {
     write(
         &dir,
         "lute.project.yaml",
-        "defaultProfile: g\nprofiles:\n  g: { plugins: {} }\ndefaults:\n  luteVersion: \"0.29.0\"\n",
+        "defaultProfile: g\nprofiles:\n  g: { plugins: {} }\ndefaults:\n  luteVersion: \"0.29.1\"\n",
     );
     write(
         &dir,

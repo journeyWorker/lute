@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.29.0"
+luteVersion: "0.29.1"
 uses: ../world.schema.yaml
 title: Who Wakes
 ---

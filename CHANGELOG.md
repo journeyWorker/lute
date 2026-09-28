@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.29.0`, the grammar and semantics the checker
+- **Language** — currently `0.29.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.29.0`) and gated on by consuming engines.
+  artifact (currently `0.29.1`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -36,7 +36,16 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.29.1] - 2026-09-28
+
+**Engine-owned ids keep their spelling.**
+
+A bug-fix patch on the `0.29` line: no new syntax and no IR shape change. The
+0.29 identifier rule stays for every name Lute declares and stops reaching the
+ids an engine owns — a `target` whose members no `entities:` kind lists and an
+entry's `category` accept `-` again, as they did in 0.28.1; artifacts differ
+only in the version strings. See [`docs/versioning.md`](docs/versioning.md)
+for what each axis earned.
 
 ### Fixed
 

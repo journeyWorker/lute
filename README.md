@@ -120,7 +120,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.29.0"
+luteVersion: "0.29.1"
 profile: date-minigame
 extra:
   arc: main
@@ -223,7 +223,7 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.29.0.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.29.1.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
   [`0.29.0`](docs/proposals/scenario-dsl/0.29.0.md). Recent tips: `0.26.0` scale and many authors
   (state declared in several documents must agree, kinds assembled with `add:`,
@@ -260,10 +260,12 @@ history):
   causes first; `W-CHAPTER-STALL` is only for a `chapters:` chain;
   `lute new scene --occasion` writes the `on:` it was asked for; `terminal:` gains the long
   form `{ when, persists: true }` for an ending that outlives runs on purpose; and the
-  fourteen dogfood games ship as checked examples. Being draft means the grammar may still
-  break before 1.0; each breaking change ships a `lute fix` migration, a pin where the
-  rewrite is mechanical, or an error naming the new spelling.
-- **IR: 0.29.0.** The compiled artifact is specified by
+  fourteen dogfood games ship as checked examples. `0.29.1` is a bug-fix patch with no new
+  syntax: ids the engine owns (a `target` whose members no kind lists, an entry's
+  `category`) keep their spelling while Lute-declared names stay identifiers. Being draft
+  means the grammar may still break before 1.0; each breaking change ships a `lute fix`
+  migration, a pin where the rewrite is mechanical, or an error naming the new spelling.
+- **IR: 0.29.1.** The compiled artifact is specified by
   [`schemas/lute-ir-0.29.schema.json`](schemas/lute-ir-0.29.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only
@@ -276,7 +278,8 @@ history):
   `cardinalWord`, `capitalize`, `start` and `indefinite`, and the relation tier
   `season:<name>`. A `spentBy` beat's `once` is its period, not `none`. `0.28.1` moves no
   shape. `0.29.0` is additive: the optional `terminalPersists` on the artifact and index,
-  `true` when every `terminal:` declaration says `persists: true`.
+  `true` when every `terminal:` declaration says `persists: true`. `0.29.1` moves no
+  shape: artifacts differ only in the version strings.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver, reference
   runtime, LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (including `lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-trace`, `lute-lint`,
