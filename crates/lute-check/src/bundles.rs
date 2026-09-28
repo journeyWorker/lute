@@ -18,7 +18,7 @@ use lute_syntax::ast::{AttrValue, BundleBeat};
 
 use crate::beats::{parse_beat_priority, BeatOnce, E_BEAT_ATTR};
 use crate::lore::is_beat_target;
-use lute_manifest::ident::is_ident;
+use lute_manifest::ident::is_name;
 
 /// `<beat>`'s permitted attribute keys (dsl 0.23.0 §4). The parser extracts
 /// each into a typed field, so a permitted key reaches the residual list only
@@ -88,7 +88,7 @@ pub fn check_bundle_beats(
     }
     for beat in beats {
         check_shape(beat, &mut diags);
-        let Some((on, on_span)) = beat.on.as_ref().filter(|(on, _)| is_ident(on)) else {
+        let Some((on, on_span)) = beat.on.as_ref().filter(|(on, _)| is_name(on)) else {
             continue;
         };
         let target = beat
@@ -143,7 +143,7 @@ pub fn check_beat_ids(
                 .filter(|_| doc_id.is_some() && !beats.is_empty())
                 .map(|e| (false, e.id.as_str(), e.id_span)),
         )
-        .filter(|(_, id, _)| is_ident(id))
+        .filter(|(_, id, _)| is_name(id))
         .collect();
     decls.sort_by_key(|(_, _, span)| span.byte_start);
     let mut first: BTreeMap<&str, (bool, Span)> = BTreeMap::new();
@@ -229,7 +229,7 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
                 beat.id_span,
             ));
         }
-    } else if let Some(fault) = lute_manifest::ident::ident_fault("`<beat>` id", id) {
+    } else if let Some(fault) = lute_manifest::ident::name_fault("`<beat>` id", id) {
         diags.push(beat_attr(fault, beat.id_span));
     }
     if beat.on.is_none()
@@ -269,7 +269,7 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
     // dsl 0.25.0 §2: a shared spend needs a spend to share.
     if let Some((key, span)) = &beat.share {
         let once = beat.once.as_ref().map(|(o, _)| o.as_str());
-        if !is_ident(key) {
+        if !is_name(key) {
             diags.extend(value_faults("share", key, *span));
         } else if beat.spent_by.is_some() {
             diags.push(beat_attr(crate::beats::share_with_spent_by(key), *span));
@@ -288,7 +288,7 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
 /// 0.27.0 §6) share. Keys without a shape of their own yield nothing.
 pub(crate) fn value_faults(key: &str, raw: &str, span: Span) -> Vec<Diagnostic> {
     let message = match key {
-        "on" if !is_ident(raw) => crate::beats::occasion_malformed("`<beat>`", raw),
+        "on" if !is_name(raw) => crate::beats::occasion_malformed("`<beat>`", raw),
         "target" if !is_beat_target(raw) => crate::beats::malformed_target("`<beat>`", raw, true),
         "priority" if parse_beat_priority(raw).is_none() => {
             format!("`<beat>` `priority=\"{raw}\"` must be an integer (dsl 0.23.0 §4)")
@@ -297,7 +297,7 @@ pub(crate) fn value_faults(key: &str, raw: &str, span: Span) -> Vec<Diagnostic> 
             "`<beat>` `once=\"{raw}\"` must be {} (dsl 0.23.0 §4, 0.24.0 §1, 0.27.0 §5)",
             crate::beats::ONCE_VALUES
         ),
-        "share" if !is_ident(raw) => crate::beats::share_malformed("`<beat>`", raw),
+        "share" if !is_name(raw) => crate::beats::share_malformed("`<beat>`", raw),
         // dsl 0.25.0 §3: `after=` under the scene `after:` grammar
         // (`E-CONN-PROFILE`); an exact empty value declares no prerequisite.
         "after" if !raw.is_empty() => return crate::prereq::parse_prereq(raw, span).1,

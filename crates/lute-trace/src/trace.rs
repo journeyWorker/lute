@@ -2787,7 +2787,15 @@ impl Driver for TraceDriver<'_> {
 fn render_atom(a: &UnresolvedAtom) -> String {
     match a {
         UnresolvedAtom::Path(p) => format!("--state {p}=<value>"),
-        UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => format!("--fact \"{f}\""),
+        UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
+            let f = crate::datalog::fact_spelling(f);
+            // A quoted argument keeps the shell's quotes apart from CEL's.
+            if f.contains('"') {
+                format!("--fact '{f}'")
+            } else {
+                format!("--fact \"{f}\"")
+            }
+        }
         UnresolvedAtom::Time => "no mock surface for narrative time".to_string(),
     }
 }

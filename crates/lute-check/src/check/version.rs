@@ -183,20 +183,18 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.29.0` is a language AND IR release: one identifier rule (every
-    /// name an author writes is a letter, then letters, digits or `_`; a `-`
-    /// is an error at the name naming the camelCase spelling), causes-first
-    /// `check-project` output, `W-CHAPTER-STALL` specific to `chapters:`,
-    /// `lute new scene --occasion` writing `on:`, and the `terminal:` long
-    /// form `{ when, persists }`. The IR gains the optional
-    /// `terminalPersists` on the artifact and `project.index.json`, so the
-    /// current schema is `schemas/lute-ir-0.29.schema.json`. `0.29.1` is a
-    /// bug-fix patch on the same line: no new syntax and no IR shape change
-    /// (engine-owned targets and entry categories keep their spelling), so
-    /// the schema keeps its `0.29` name and `$id`.
+    /// `0.30.0` is a language AND IR release: one name rule (every name a
+    /// condition reaches by path, index or fact argument is letters, digits,
+    /// `_` or `-`, not starting with `-`; a name read bare as `@name` stays
+    /// an identifier), and a name that is not an identifier is written in a
+    /// condition with a quoted index (`quest["zero-coke-001"].state`) or a
+    /// quoted fact argument (`holds(at("lab-b2"))`). The IR adds no field:
+    /// path fields carry the canonical dotted path, whose segments may now
+    /// contain `-` or start with a digit, so the current schema is
+    /// `schemas/lute-ir-0.30.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_29_1() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.29.1");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.29.1");
+    fn language_ir_and_toolchain_are_aligned_at_0_30_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.30.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.30.0");
     }
 }

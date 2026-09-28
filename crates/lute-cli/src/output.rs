@@ -205,3 +205,13 @@ pub(crate) fn severity_str(s: Severity) -> &'static str {
         Severity::Hint => "hint",
     }
 }
+
+/// A state path as an author writes it in a condition: a segment that is
+/// not an identifier quoted (`run.visits["lab-b2"]`); text that is no plain
+/// path (`holds(…)`, `run.x.<who>`) as given.
+pub(crate) fn spelled_path(path: &str) -> String {
+    match lute_cel::path::parse_path_text(path) {
+        Some(segs) => lute_cel::path::bracket_spelling(&segs),
+        None => path.to_string(),
+    }
+}

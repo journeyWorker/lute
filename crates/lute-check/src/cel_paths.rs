@@ -46,15 +46,27 @@ pub fn prev_run_path(run_path: &str) -> Option<String> {
 }
 
 /// dsl 0.27.0 §3: the family a `{{<path>[occasion.target]}}` interpolation
-/// reads — `user.bond` for `user.bond[occasion.target]` — or `None` for any
-/// other text. The family is a bare dotted state path and the index is
+/// reads — `user.bond` for `user.bond[occasion.target]`, `run.visits.lab-b2`
+/// for `run.visits["lab-b2"][occasion.target]` — canonical, or `None` for
+/// any other text. The family is a static state path and the index is
 /// exactly the kind beat's member: the one computed read `{{…}}` admits.
-pub fn occasion_indexed_family(raw: &str) -> Option<&str> {
+pub fn occasion_indexed_family(raw: &str) -> Option<String> {
     let family = raw
         .strip_suffix(']')?
         .strip_suffix(crate::beats::OCCASION_TARGET)?
         .strip_suffix('[')?;
-    (is_state_path(family) && family.split('.').all(crate::check::is_cel_ident)).then_some(family)
+    text_state_path(family)
+}
+
+/// The canonical path `text` spells when the whole of it is a static state
+/// path — a state root, then `.name` / quoted-index segments, each a name
+/// (`run.visits["lab-b2"]` → `run.visits.lab-b2`) — or `None`. Whether a
+/// name is spelled so a condition can read it is [`glued_state_paths`]'s.
+pub fn text_state_path(text: &str) -> Option<String> {
+    let segs = lute_cel::path::parse_path_text(text)?;
+    (segs.iter().all(|s| lute_manifest::ident::is_name(s))
+        && STATE_ROOTS.contains(&segs[0].as_str()))
+    .then(|| lute_cel::path::render_path(&segs))
 }
 
 /// How a state path appears in an expression.
@@ -370,20 +382,20 @@ pub(crate) fn is_reserved_quest_objective_failed(path: &str) -> bool {
     )
 }
 
-/// `E-PATH-IDENT`: a `-` in a CEL-facing name — a state-path segment, a `defs`
-/// name, or a def parameter name (dsl §8.4, §4.4 `CelIdent`). CEL parses `-` as
-/// subtraction, so these positions forbid it; `Ident` positions (directive/attr/
-/// speaker/choice/branch/hub/asset ids) keep permitting it.
-pub const E_PATH_IDENT: &str = "E-PATH-IDENT";
+/// `E-PATH-IDENT`: a name outside the name rule, or a name that is not an
+/// identifier written after a `.` in a state path (`quest.zero-coke-001`),
+/// which CEL reads as a subtraction — it is written as a quoted index,
+/// `quest["zero-coke-001"]`.
+pub const E_PATH_IDENT: &str = lute_syntax::parser::E_PATH_IDENT;
 
-/// `true` when any segment of a dotted state path AFTER the leading tier contains
-/// `-` (dsl §8.4). The tier keyword (`scene`/`run`/`user`/`app`) is fixed and
-/// never carries `-`, so only the `CelIdent` segments matter.
-pub(crate) fn state_path_has_hyphen(path: &str) -> bool {
-    path.split('.').skip(1).any(|seg| seg.contains('-'))
+/// Every state path in the CEL text `raw` written with a name that is not
+/// an identifier after a `.` ([`lute_cel::path::glued_paths`] over the state
+/// roots).
+pub(crate) fn glued_state_paths(raw: &str) -> Vec<lute_cel::path::GluedPath> {
+    lute_cel::path::glued_paths(raw, |root| STATE_ROOTS.contains(&root))
 }
 
-/// The one identifier rule for a quest id and an objective id (`what` names
+/// The one name rule for a quest id and an objective id (`what` names
 /// which): each is ONE segment of the reserved `quest.<id>.state` /
 /// `quest.<id>.objectives.<oid>.done` paths. `None` when `id` is one; else
 /// why not, as an `E-PATH-IDENT` message.
@@ -391,7 +403,7 @@ pub(crate) fn quest_id_fault(what: &str, id: &str) -> Option<String> {
     if id.is_empty() {
         return None;
     }
-    lute_manifest::ident::ident_fault(&format!("{what} id"), id)
+    lute_manifest::ident::name_fault(&format!("{what} id"), id)
 }
 
 /// Collect every maximal state-path use in `expr` (recursing into all
@@ -451,6 +463,11 @@ impl Walk {
                     // `xs[0].field`): not a static state path, but its operand
                     // may still contain reads.
                     self.expr(&sel.operand.expr, false);
+                }
+            }
+            Expr::Call(_) if is_path_index(expr) => {
+                if let Some(path) = select_path(expr) {
+                    self.push(path, PathRole::Read);
                 }
             }
             Expr::Call(call) => {
@@ -586,17 +603,19 @@ pub(crate) fn proved_if(expr: &Expr, outcome: bool) -> Vec<String> {
     }
 }
 
-/// Reconstruct the dotted path of a pure `Ident`/`Select` chain (`a.b.c`).
-/// Returns `None` if the chain bottoms out in anything but a bare `Ident`.
+/// The canonical dotted path of a static path expression — an `Ident`, then
+/// `.field` selections and quoted-name indexes: `quest["zero-coke-001"].state`
+/// is `quest.zero-coke-001.state`, the same path as a bare spelling
+/// ([`lute_cel::path::static_path`]). `None` for anything else.
 pub(crate) fn select_path(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Ident(name) => Some(name.clone()),
-        Expr::Select(sel) => {
-            let base = select_path(&sel.operand.expr)?;
-            Some(format!("{base}.{}", sel.field))
-        }
-        _ => None,
-    }
+    lute_cel::path::static_path_string(expr)
+}
+
+/// `true` for a quoted-name index that is a static path (`run.visits["lab-b2"]`):
+/// the `Call` shape a walk must read as a path, like a `Select`, rather than
+/// descend into.
+pub(crate) fn is_path_index(expr: &Expr) -> bool {
+    matches!(expr, Expr::Call(c) if c.func_name == op::INDEX) && select_path(expr).is_some()
 }
 
 /// The nearest DECLARED state path to `path` within `max_dist` edits (dsl

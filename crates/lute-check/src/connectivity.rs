@@ -78,7 +78,7 @@ fn scene_identity(doc: &Document) -> Option<SceneIdentity> {
     };
     let key = |k: &str| serde_yaml::Value::String(k.to_string());
     if let Some(raw) = map.get(key("id")).and_then(|v| v.as_str()) {
-        return lute_manifest::ident::is_dotted_ident(raw).then(|| SceneIdentity {
+        return lute_manifest::ident::is_dotted_name(raw).then(|| SceneIdentity {
             key: raw.to_string(),
             anchor: "id",
         });
@@ -147,14 +147,14 @@ pub fn bundle_id(doc: &Document) -> Option<String> {
     };
     map.get(serde_yaml::Value::String("id".to_string()))?
         .as_str()
-        .filter(|raw| lute_manifest::ident::is_dotted_ident(raw))
+        .filter(|raw| lute_manifest::ident::is_dotted_name(raw))
         .map(str::to_string)
 }
 
 /// Every bundle beat's canonical id (dsl 0.23.0 §4, `<document id>.<beat
 /// id>`) in `docs`, anchored at the beat's `id` — the keys `visited()`
 /// resolves beside the scene keys. A lore document without a well-formed
-/// `id:`, or a beat whose id is not an identifier, contributes nothing (its
+/// `id:`, or a beat whose id is not a name, contributes nothing (its
 /// own `E-BEAT-ATTR` anchors); a beat id repeated within one document counts
 /// once (the per-file check reports the repeat).
 pub fn bundle_beat_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
@@ -168,7 +168,7 @@ pub fn bundle_beat_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec
         };
         let mut seen = BTreeSet::new();
         for beat in &doc.beats {
-            if !lute_manifest::ident::is_ident(&beat.id) || !seen.insert(beat.id.as_str()) {
+            if !lute_manifest::ident::is_name(&beat.id) || !seen.insert(beat.id.as_str()) {
                 continue;
             }
             by_key
@@ -1514,7 +1514,7 @@ fn accept_sources<'a>(
                 for beat in doc
                     .beats
                     .iter()
-                    .filter(|b| lute_manifest::ident::is_ident(&b.id))
+                    .filter(|b| lute_manifest::ident::is_name(&b.id))
                 {
                     let source = NodeId::Beat(crate::bundles::bundle_beat_key(&doc_id, &beat.id));
                     if nodes.contains_key(&source) {

@@ -10,7 +10,7 @@ behavior lives on the far side of the artifact, in the **engine**. This page is
 the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)
 and the machine-checkable shape is
-[`schemas/lute-ir-0.29.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.29.schema.json)
+[`schemas/lute-ir-0.30.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.30.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -108,6 +108,32 @@ Gate on `irVersion` by **MAJOR only** (since `0.13.0`):
   older engine.
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
+
+### What IR 0.30.0 changed
+
+**No field added, renamed or retyped; names may now carry `-` or open with a digit.** An engine
+that loads 0.29 artifacts loads 0.30 ones, provided it reads paths and conditions as follows
+(dsl 0.30.0 §3):
+
+- **Path fields are canonical dotted strings.** A `set` command's `path`, a `state` entry's
+  `path`, an `expr` node's `path` / `isSet` / `has` and a `{{…}}` placeholder's `path` join names
+  with `.`: `quest.zero-coke-001.state`, `run.visits.lab-b2`,
+  `run.visits.001`. A segment may contain `-` or start with a digit but never contains `.`, so
+  `split('.')` recovers it — key state on that string or on its segments, never re-parse it as
+  CEL.
+- **Conditions ship as written.** A condition's `raw` is the author's CEL, and a name that is not
+  an identifier is reached with a quoted index, as in JavaScript: `quest["zero-coke-001"].state`,
+  `run.visits['lab-b2'] >= 2`. That is ordinary CEL over nested maps — `m["k"]` and `m.k` read the
+  same entry — so an engine evaluating `raw` over its state maps needs nothing new. The portable
+  `expr` of such a condition carries the canonical path (`{"path": "run.visits.lab-b2"}`).
+- **Fact arguments are names.** `holds(at("lab-b2"))` in `raw` asks about the fact an
+  `assert` command writes as `{"relation": "at", "args": ["lab-b2"]}`; the quotes are the
+  condition's spelling, never part of the name. Seed facts and the structured terms of rule heads
+  and bodies carry the bare name the same way.
+
+The schema file renames per release line: `lute-ir-0.29.schema.json` is now
+`lute-ir-0.30.schema.json`, and its name patterns (seasons, occasions, `share` keys, `series`,
+document ids) accept a name with `-` or a leading digit.
 
 ### What IR 0.29.0 changed
 

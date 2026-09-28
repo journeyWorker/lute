@@ -1,0 +1,8 @@
+---
+kind: quest
+id: zero-quests
+---
+
+<quest id="zero-coke-001" title="Zero Coke" start="true" tier="run">
+  <objective id="lab-twice" title="Visit the lab twice" done="run.visits['lab-b2'] >= 2 && holds(at('lab-b2'))"/>
+</quest>

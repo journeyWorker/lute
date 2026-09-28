@@ -145,6 +145,7 @@ fn is_whole_ref_or_path(expr: &Expr) -> bool {
     match expr {
         Expr::Ident(n) => n != "_",
         Expr::Select(_) => select_path(expr).is_some(),
+        Expr::Call(_) if crate::cel_paths::is_path_index(expr) => true,
         Expr::Call(c) => c.func_name.starts_with(lute_cel::REF_MARKER),
         _ => false,
     }
@@ -374,7 +375,7 @@ fn equality_hint(x: &Expr, tx: &Type, y: &Expr, name: &str, t: &Typing<'_>) -> O
                 }
             }
             if s.trim().parse::<f64>().is_ok() {
-                if let Some(p) = &path {
+                if let Some(p) = path.as_deref().map(lute_cel::path::bracket_spelling_of) {
                     return Some(format!(
                         " — write the number without quotes: `{p} {sym} {}`",
                         s.trim()
@@ -383,11 +384,11 @@ fn equality_hint(x: &Expr, tx: &Type, y: &Expr, name: &str, t: &Typing<'_>) -> O
             }
             None
         }
-        (Type::Bool, Some(s @ ("true" | "false"))) => {
-            path.map(|p| format!(" — write the bool without quotes: `{p} {sym} {s}`"))
-        }
+        (Type::Bool, Some(s @ ("true" | "false"))) => path
+            .map(|p| lute_cel::path::bracket_spelling_of(&p))
+            .map(|p| format!(" — write the bool without quotes: `{p} {sym} {s}`")),
         (Type::Bool, None) => {
-            let p = path?;
+            let p = lute_cel::path::bracket_spelling_of(&path?);
             let is_num = matches!(
                 y,
                 Expr::Literal(Val::Int(_) | Val::UInt(_) | Val::Double(_))
@@ -397,7 +398,7 @@ fn equality_hint(x: &Expr, tx: &Type, y: &Expr, name: &str, t: &Typing<'_>) -> O
             })
         }
         (Type::Enum(members), None) if !members.is_empty() => {
-            let p = path?;
+            let p = lute_cel::path::bracket_spelling_of(&path?);
             Some(format!(" — `{p}` is one of {}", quoted(members)))
         }
         _ => None,
@@ -425,12 +426,16 @@ fn ordering_hint(
                  `::set{{run.picks += 1}}`)"
             ),
             Some(p) => {
+                let p = lute_cel::path::bracket_spelling_of(p);
                 format!(" — a bool is `true` or `false`: test it directly (`{p}` or `!{p}`)")
             }
             None => " — a bool is `true` or `false`, not a quantity".to_string(),
         },
         Type::Enum(members) => {
-            let shown = path.clone().unwrap_or_else(|| show(bad));
+            let shown = path
+                .as_deref()
+                .map(lute_cel::path::bracket_spelling_of)
+                .unwrap_or_else(|| show(bad));
             let clock_slot = t.clock.and_then(|c| c.slot.as_deref());
             let is_slot = path
                 .as_deref()
@@ -560,8 +565,18 @@ pub(crate) fn show(e: &Expr) -> String {
         Expr::Ident(n) if n == "_" => "$".to_string(),
         Expr::Ident(n) => n.replace(lute_cel::REF_MARKER, "@"),
         Expr::Select(_) => select_path(e)
-            .map(|p| p.replace(lute_cel::REF_MARKER, "@"))
+            .map(|p| lute_cel::path::bracket_spelling_of(&p).replace(lute_cel::REF_MARKER, "@"))
             .unwrap_or_else(|| "…".to_string()),
+        Expr::Call(_) if crate::cel_paths::is_path_index(e) => select_path(e)
+            .map(|p| lute_cel::path::bracket_spelling_of(&p))
+            .unwrap_or_default(),
+        Expr::Call(c) if c.func_name == op::INDEX && c.args.len() == 2 => {
+            format!(
+                "{}[{}]",
+                show_operand(&c.args[0].expr),
+                show(&c.args[1].expr)
+            )
+        }
         Expr::List(l) => format!(
             "[{}]",
             l.elements

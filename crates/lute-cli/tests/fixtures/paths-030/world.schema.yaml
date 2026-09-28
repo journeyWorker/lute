@@ -1,0 +1,10 @@
+state:
+  run.visits: { type: number, default: 0, per: place }
+  run.done: { type: bool, default: false }
+entities:
+  place: { members: [lab-b2, "001", hall] }
+relations:
+  at: { args: [place], tier: run }
+  regular: { args: [place], derive: true }
+rules:
+  - "regular(P) :- place(P), cel(\"run.visits[P] >= 2\")"

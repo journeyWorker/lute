@@ -376,6 +376,13 @@ impl Store {
         }
     }
 
+    /// Evaluate the canonical dotted `path` (`run.visits.lab-b2`), a path
+    /// field of the artifact, through its CEL spelling
+    /// (`run.visits["lab-b2"]`): a segment need not be an identifier.
+    pub(crate) fn eval_path(&mut self, path: &str) -> (Value, Vec<UnresolvedAtom>) {
+        self.eval(&lute_cel::path::bracket_spelling_of(path))
+    }
+
     pub(crate) fn eval_expr(&mut self, expr: &Expr) -> (Value, Vec<UnresolvedAtom>) {
         self.derive();
         let eff = EffectiveState::new(&self.schema, self.values.clone());

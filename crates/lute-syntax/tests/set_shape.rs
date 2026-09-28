@@ -151,3 +151,86 @@ fn a_param_as_a_dotted_segment_names_the_indexed_form() {
         ("run.aff[@who]", "+=")
     );
 }
+
+fn set_node(set: &str) -> (Option<(String, String)>, Vec<String>) {
+    let (doc, diags) = lute_syntax::parse(&format!("{HDR}{set}\n"));
+    let node = doc.shots[0].body.iter().find_map(|n| match n {
+        lute_syntax::ast::Node::Set(s) => Some((s.path.clone(), s.op.clone())),
+        _ => None,
+    });
+    (
+        node,
+        diags
+            .into_iter()
+            .map(|d| format!("{}: {}", d.code, d.message))
+            .collect(),
+    )
+}
+
+/// A quoted index names a member as a dotted segment does: the node keeps
+/// the canonical dotted path. A name that is not an identifier after a `.`
+/// still names the path meant, and is one `E-PATH-IDENT` naming the quoted
+/// spelling.
+#[test]
+fn a_quoted_index_is_a_path_segment() {
+    for (set, path, op, finding) in [
+        (
+            "::set{ run.visits[\"lab-b2\"] += 1 }",
+            "run.visits.lab-b2",
+            "+=",
+            None,
+        ),
+        (
+            "::set{ run.visits['lab-b2'] = 2 }",
+            "run.visits.lab-b2",
+            "=",
+            None,
+        ),
+        ("::set{run.a[\"x-y\"].n-=1}", "run.a.x-y.n", "-=", None),
+        (
+            "::set{ run.visits[ 'b' ][occasion.target] = 1 }",
+            "run.visits.b[occasion.target]",
+            "=",
+            None,
+        ),
+        (
+            "::set{ run.zero-coke-001 = 1 }",
+            "run.zero-coke-001",
+            "=",
+            Some(
+                "E-PATH-IDENT: `run.zero-coke-001`: `zero-coke-001` is not an identifier, so it \
+                  cannot follow a `.` — CEL reads its `-` as subtraction; write \
+                  `run[\"zero-coke-001\"]`",
+            ),
+        ),
+        (
+            "::set{ run.visits.lab-b2 += 1 }",
+            "run.visits.lab-b2",
+            "+=",
+            Some(
+                "E-PATH-IDENT: `run.visits.lab-b2`: `lab-b2` is not an identifier, so it cannot \
+                  follow a `.` — CEL reads its `-` as subtraction; write `run.visits[\"lab-b2\"]`",
+            ),
+        ),
+    ] {
+        let (node, diags) = set_node(set);
+        assert_eq!(node, Some((path.to_string(), op.to_string())), "{set}");
+        assert_eq!(
+            diags,
+            finding.into_iter().map(String::from).collect::<Vec<_>>(),
+            "{set}"
+        );
+    }
+}
+
+#[test]
+fn an_unquoted_index_names_the_quoted_member() {
+    let (node, diags) = set_node("::set{ run.count[cod] += 1 }");
+    assert_eq!(node, Some(("run.count.cod".to_string(), "+=".to_string())));
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(
+        diags[0].contains("quote the member's name, `run.count[\"cod\"]`"),
+        "{}",
+        diags[0]
+    );
+}

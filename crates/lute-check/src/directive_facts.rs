@@ -141,7 +141,7 @@ fn attr_term(name: &str, decl: &DirectiveDecl, attrs: &[Attr]) -> FactTerm {
                     .raw
                     .trim()
                     .strip_prefix('@')
-                    .filter(|p| is_ident(p))
+                    .filter(|p| lute_manifest::ident::is_ident(p))
                     .map(str::to_string),
                 _ => None,
             };
@@ -154,25 +154,22 @@ fn attr_term(name: &str, decl: &DirectiveDecl, attrs: &[Attr]) -> FactTerm {
         .find(|a| a.name == name)
         .and_then(|a| a.default.as_ref())
     {
-        Some(Literal::Str(s)) if is_ident(s) => const_term(s),
+        Some(Literal::Str(s)) if lute_manifest::ident::is_name(s) => const_term(s),
         Some(Literal::Bool(b)) => FactTerm::Bool(*b),
         _ => FactTerm::Param(name.to_string()),
     }
 }
 
-fn is_ident(s: &str) -> bool {
-    s.starts_with(|c: char| c.is_ascii_alphabetic())
-        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
-/// `holding(brassKey)` / `holding(_)`: a resolved pattern as the transcript
-/// and the artifact write it (`@attr` for one left unbound).
+/// `holding(brassKey)` / `holding(_)` / `at("lab-b2")`: a resolved pattern
+/// as the transcript and the artifact write it (`@attr` for one left
+/// unbound; a name that is not an identifier quoted, so it reads back).
 pub fn pattern_text(p: &FactPattern) -> String {
     let args: Vec<String> = p
         .args
         .iter()
         .map(|a| match &a.term {
-            FactTerm::Ident(s) => s.clone(),
+            FactTerm::Ident(s) if lute_manifest::ident::is_ident(s) => s.clone(),
+            FactTerm::Ident(s) => format!("\"{s}\""),
             FactTerm::Bool(b) => b.to_string(),
             FactTerm::Wildcard => "_".to_string(),
             FactTerm::Param(n) => format!("@{n}"),

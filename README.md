@@ -57,12 +57,12 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.29.0`](docs/proposals/scenario-dsl/0.29.0.md) (one identifier rule, intent you can state, games as examples: every name an author writes is a letter, then letters, digits or `_`, and a `-` is an error naming the camelCase spelling; `check-project` prints causes first; `W-CHAPTER-STALL` is only for a `chapters:` chain; `lute new scene --occasion` writes `on:`; the `terminal:` long form `{ when, persists: true }` states an ending that outlives runs; the fourteen dogfood games ship under [`docs/examples/games/`](docs/examples/games)). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.30.0`](docs/proposals/scenario-dsl/0.30.0.md) (names as written, paths like JavaScript: every name a condition reaches is letters, digits, `_` or `-`, not starting with `-`, and a name that is not an identifier is written in a condition as a quoted index, `quest["zero-coke-001"].state`, or a quoted fact argument, `holds(at("lab-b2"))`; only a name read bare as `@name` stays an identifier). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
 | **writing scenarios, fast** (one page to keep open: every construct, CLI, diagnostics, gotchas) | the spec stack above | the website's [Cheatsheet](https://lute-lang.vercel.app/reference/cheatsheet/) — every snippet on it is compile-checked in CI |
 | **authoring quests** (lifecycle, objectives, subquests, rewards) | [`0.2.0`](docs/proposals/scenario-dsl/0.2.0.md) §6 (quest kind, objectives, lifecycle events) + [`0.14.0`](docs/proposals/scenario-dsl/0.14.0.md) (subquests) + [`0.16.0`](docs/proposals/scenario-dsl/0.16.0.md) (`<reward/>`) + [`0.24.0`](docs/proposals/scenario-dsl/0.24.0.md) §2 (`activate="accept"`, `complete="any"`, `by=` / `until=` deadlines, `failedBy`) + [`0.25.0`](docs/proposals/scenario-dsl/0.25.0.md) §§4–5 (subquest and `start` graph anchors, `accept="external"`) + [`0.27.0`](docs/proposals/scenario-dsl/0.27.0.md) §5 (`rearm=`, `tier="season:<name>"`) + [`0.28.0`](docs/proposals/scenario-dsl/0.28.0.md) §§5–6 (`follows=`, `outcome=`, `visibleWhen=`, `failedBy: subquest`) | [`runtime/quest-lifecycle.md`](docs/runtime/quest-lifecycle.md) |
 | **authoring lore** (item descriptions, found notes, codex pages, barks) | [`0.19.0`](docs/proposals/scenario-dsl/0.19.0.md) (`kind: lore`, `<entry>`, `entry.<id>.read`, document bundles) + [`0.23.0`](docs/proposals/scenario-dsl/0.23.0.md) §4 (scene-like `<beat>` bundles) | [`runtime/lore-entries.md`](docs/runtime/lore-entries.md) |
 | **writing a plugin** (directives, state, providers, bridge, `stampAttrs`, `rewardKinds`, `occasions`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md)–[`0.0.7`](docs/proposals/plugin-system/0.0.7.md) deltas; the `occasions:` export is [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) §2 | [`plugin-system.md`](docs/plugin-system.md) |
-| **building an engine** (consuming the artifact) | [`docs/runtime/`](docs/runtime) — execution model, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol, lore entries, beats and occasions — plus the artifact JSON Schema [`schemas/lute-ir-0.29.schema.json`](schemas/lute-ir-0.29.schema.json) and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
+| **building an engine** (consuming the artifact) | [`docs/runtime/`](docs/runtime) — execution model, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol, lore entries, beats and occasions — plus the artifact JSON Schema [`schemas/lute-ir-0.30.schema.json`](schemas/lute-ir-0.30.schema.json) and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
 | **building the compiler / checker / LSP** | the proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) + [`0.20.0`](docs/proposals/scenario-dsl/0.20.0.md) (what `check-project` proves about fact guards) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
@@ -120,7 +120,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.29.1"
+luteVersion: "0.30.0"
 profile: date-minigame
 extra:
   arc: main
@@ -223,9 +223,9 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.29.1.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.30.0.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
-  [`0.29.0`](docs/proposals/scenario-dsl/0.29.0.md). Recent tips: `0.26.0` scale and many authors
+  [`0.30.0`](docs/proposals/scenario-dsl/0.30.0.md). Recent tips: `0.26.0` scale and many authors
   (state declared in several documents must agree, kinds assembled with `add:`,
   `defaults.uses` globs, component `@@who:` / param defaults / own result slots, directive
   `when=`, `target="kind:<kind>"` beats, rule-body `count(…)`), `0.27.0` one runtime,
@@ -262,11 +262,18 @@ history):
   form `{ when, persists: true }` for an ending that outlives runs on purpose; and the
   fourteen dogfood games ship as checked examples. `0.29.1` is a bug-fix patch with no new
   syntax: ids the engine owns (a `target` whose members no kind lists, an entry's
-  `category`) keep their spelling while Lute-declared names stay identifiers. Being draft
+  `category`) keep their spelling while Lute-declared names stay identifiers. `0.30.0`
+  settles that split with names as written, paths like JavaScript: every name a condition
+  reaches — ids, `share` keys, seasons, relations, kinds and members, what a plugin
+  declares, targets and categories — is letters, digits, `_` or `-`, not starting with
+  `-`, and a name that is not an identifier is reached with a quoted index
+  (`quest["zero-coke-001"].state`) or a quoted fact argument (`holds(at("lab-b2"))`);
+  only a name read bare as `@name` (defs, def and component params) stays an identifier.
+  Being draft
   means the grammar may still break before 1.0; each breaking change ships a `lute fix`
   migration, a pin where the rewrite is mechanical, or an error naming the new spelling.
-- **IR: 0.29.1.** The compiled artifact is specified by
-  [`schemas/lute-ir-0.29.schema.json`](schemas/lute-ir-0.29.schema.json) and the
+- **IR: 0.30.0.** The compiled artifact is specified by
+  [`schemas/lute-ir-0.30.schema.json`](schemas/lute-ir-0.30.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only
   (since `0.13.0`): fields are append-only within a major line, so a minor move costs a
@@ -279,7 +286,9 @@ history):
   `season:<name>`. A `spentBy` beat's `once` is its period, not `none`. `0.28.1` moves no
   shape. `0.29.0` is additive: the optional `terminalPersists` on the artifact and index,
   `true` when every `terminal:` declaration says `persists: true`. `0.29.1` moves no
-  shape: artifacts differ only in the version strings.
+  shape: artifacts differ only in the version strings. `0.30.0` adds no field: path fields
+  carry the canonical dotted path, whose segments may now contain `-` or start with a
+  digit, and a condition's `raw` ships as written, quoted indexes included.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver, reference
   runtime, LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (including `lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-trace`, `lute-lint`,

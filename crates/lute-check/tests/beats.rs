@@ -165,13 +165,13 @@ fn non_identifier_on_is_beat_attr_at_the_value() {
 
 #[test]
 fn malformed_target_is_beat_attr() {
-    for target in ["npc..achilles", "'1npc'", "npc.a b"] {
+    for target in ["npc..achilles", "'-npc'", "npc.a b"] {
         let src = scene("a.b", &format!("on: talk\ntarget: {target}\n"));
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
         assert!(d.message.contains("`target:` must be"), "{}", d.message);
     }
-    // An untyped target is an id the engine owns, spelled its way.
+    // An untyped target is a dotted id of names.
     let src = scene("a.b", "on: talk\ntarget: item.rusty-key\n");
     let ds = diags(&src);
     assert!(ds.iter().all(|d| d.code != "E-BEAT-ATTR"), "{ds:#?}");

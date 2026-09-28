@@ -84,8 +84,8 @@ fn function_term_in_rule_is_datalog_function() {
 }
 
 #[test]
-fn hyphenated_relation_name_is_path_ident() {
-    let c = codes(&scene_with("relations:\n  in-party: { args: [character], tier: run }\nentities:\n  character: { members: [ana] }\n"));
+fn spaced_relation_name_is_path_ident() {
+    let c = codes(&scene_with("relations:\n  in party: { args: [character], tier: run }\nentities:\n  character: { members: [ana] }\n"));
     assert!(c.contains(&"E-PATH-IDENT".to_string()), "{c:?}");
 }
 

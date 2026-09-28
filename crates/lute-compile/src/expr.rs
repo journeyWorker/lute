@@ -411,6 +411,11 @@ fn lower(expr: &Expr) -> Option<ExprNode> {
             }
             Some(ExprNode::List { list: items })
         }
+        // `run.visits["lab-b2"]`: a member reached by a quoted name is the
+        // canonical dotted path it names.
+        Expr::Call(c) if c.func_name == cel_parser::ast::operators::INDEX => {
+            select_path(expr).map(|path| ExprNode::Path { path })
+        }
         Expr::Call(c) if c.target.is_none() => lower_call(c),
         _ => None,
     }
@@ -515,18 +520,11 @@ fn lower_literal(v: &Val) -> Option<ExprNode> {
     Some(ExprNode::Lit { lit })
 }
 
-/// Reconstruct the dotted path of a pure `Ident`/`Select` chain (`a.b.c`) —
-/// mirrors `lute_check::cel_paths::select_path`. `None` if the chain bottoms out
-/// in anything but a bare `Ident`.
+/// The canonical dotted path of a static path chain (`a.b.c`,
+/// `quest["zero-coke-001"].state` → `quest.zero-coke-001.state`); `None` if
+/// the chain bottoms out in anything but a bare `Ident`.
 fn select_path(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Ident(name) => Some(name.clone()),
-        Expr::Select(sel) => {
-            let base = select_path(&sel.operand.expr)?;
-            Some(format!("{base}.{}", sel.field))
-        }
-        _ => None,
-    }
+    lute_cel::path::static_path_string(expr)
 }
 
 #[cfg(test)]

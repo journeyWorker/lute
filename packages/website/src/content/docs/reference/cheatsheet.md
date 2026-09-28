@@ -126,7 +126,7 @@ identity:                               # both values below are the defaults
   lineId: "{prefix}.{speaker}_{code}"
   voiceKey: "{prefix}.{speaker}-{code}" # the 0.21 default was {speaker}-{code}: pin it to keep old keys
 defaults:                               # frontmatter every document inherits
-  luteVersion: "0.29.1"
+  luteVersion: "0.30.0"
   uses:                                 # resolved against THIS file's directory
     - world.schema.yaml
     - schema/areas/*.schema.yaml        # 0.26.0: a glob, expanded in path order; matching nothing is fine
@@ -642,17 +642,19 @@ write `quest.q.state == 'unset'`, because `isSet(quest.q.state)` is always true
 or a quest's `state` / `failedBy` (`==`, `!=`, or an `in [...]` element) must be one of its members:
 `run.rank == 'silvr'` is `E-WHEN-LITERAL-DOMAIN`, with a did-you-mean, as `is="silvr"` is.
 
-0.29.0: every name you write is an **identifier** — a letter, then letters, digits or `_` — and a
-dotted id joins identifiers with `.`: scene, beat, entry, quest, objective, branch, hub, choice and
-mark ids, document id segments, `share` keys, seasons, relations, defs, enum and entity kinds and
-their members, component params, and the occasions and events a plugin declares. A `-` is an error
-at the name, under that slot's code, naming the camelCase spelling (`lamp-duty` → `lampDuty`).
+0.30.0: every name you write is a **name** — letters, digits, `_` or `-`, not starting with `-` —
+and a dotted id joins names with `.`: scene, beat, entry, quest, objective, branch, hub, choice and
+mark ids, document id segments, `share` keys, seasons, relations, enum and entity kinds and their
+members, the occasions and events a plugin declares, targets and categories. `lamp-out`,
+`zero-coke-001` and `001` are names; a `.`, a space or a quote is an error at the name, under that
+slot's code, listing the allowed characters. A name read bare, like a JavaScript variable — a def, a
+def's param, a component or template param (`@lampLit`) — is an **identifier** (a letter or `_`,
+then letters, digits or `_`); `lamp-lit` there is an error naming `lampLit`.
 
-A name Lute declares is an identifier; an id the **engine** owns is written as the engine spells it,
-the way a CEL map key is string data. A `target` whose members no `entities:` kind lists (no
-occasion, an occasion declared `target: true`, an `open:` kind) and an entry's `category` keep `-`:
-`target="item.rusty-key"`, `category="key-item"`. A target on a kind that lists its `members:`
-names a declared member, so it is an identifier (`npc.old-man` is outside the domain).
+A name that is an identifier may be written bare in a condition; any name may be written quoted,
+the way JavaScript reaches a key: `quest["zero-coke-001"].state`, `run.visits["lab-b2"]`,
+`holds(at("lab-b2"))`. The two spellings are the same name. `quest.zero-coke-001.state` reads as a
+subtraction, so it is `E-PATH-IDENT`, naming the bracket spelling.
 
 Where CEL goes: `<match on>`, `<when test>`, `when=` on a line or choice, `::set` right-hand sides
 and `when=`, `when=` on any other directive that takes it (0.26.0), `::next when`, beat `when:`, entry `when=`, quest `start` / `fail`, objective `done` /
@@ -742,7 +744,7 @@ state:
 
 A bundle beat takes `id`, `on`, `target`, `title`, `when`, `priority`, `once`, `also`, and since
 0.25.0 `after` and `share`, and its body is a scene body (lines, branches, hubs, match, directives).
-The document needs `id:`, the beat `id` is an identifier, and the beat's canonical id is
+The document needs `id:`, the beat `id` is a name, and the beat's canonical id is
 `<document id>.<beat id>` (`cafe.talks.miraOrder`): the id that `lute play`, `presented:`,
 `visited('cafe.talks.miraOrder')`, and `lute trace --beat` use. It behaves like a scene beat: `once`
 defaults to `run`, and presentation spends it. Since 0.24.0 a scene or quest may name it as a
@@ -832,7 +834,7 @@ events:
   - name: talk                          # same name as an occasion: <on event="talk" target="npc.mira">
 ```
 
-With no occasion-declaring plugin, any identifier is accepted. Once a plugin declares occasions, an
+With no occasion-declaring plugin, any name is accepted. Once a plugin declares occasions, an
 unknown one is `E-OCCASION-UNKNOWN`, and `target` on an occasion that declares no `target` is
 `E-BEAT-ATTR`. A target domain `{ prefix, entity }` admits `<prefix>.<member>` for each member of
 that `entities:` kind (any member of an `open:` kind), so `target: npc.vesan` is `E-BEAT-ATTR` with a

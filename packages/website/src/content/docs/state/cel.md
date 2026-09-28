@@ -33,7 +33,7 @@ Inside a `<match>`, the token `$` resolves to the subject expression `S` and MUS
 
 ## The closed environment
 
-The Lute-CEL environment provides exactly: CEL operators, literals, list literals, the ternary `?:`, the `in` membership operator, the `has()` macro, and the single extension `isSet(<path>)` (true iff a state path is assigned). **No other functions** exist — a comprehension (`map`/`filter`/`exists`/`all`), `size`, or `matches` is a static error (`E-CEL-PROFILE`). State-path segments, `defs` names, and param names are CEL-facing identifiers and forbid `-` (`E-PATH-IDENT`).
+The Lute-CEL environment provides exactly: CEL operators, literals, list literals, the ternary `?:`, the `in` membership operator, the `has()` macro, and the single extension `isSet(<path>)` (true iff a state path is assigned). **No other functions** exist — a comprehension (`map`/`filter`/`exists`/`all`), `size`, or `matches` is a static error (`E-CEL-PROFILE`). State-path segments are names (letters, digits, `_` or `-`, not starting with `-`); `defs` names and param names are identifiers, read bare. A segment that is not an identifier is written quoted, `quest["zero-coke-001"].state`; after a `.` it would read as a subtraction (`E-PATH-IDENT`).
 
 The operators include **integer `%`** since 0.24.0 (it was `E-CEL-PROFILE` before). `run.day % 7 == 0` and a def `wd: "run.day % 7"`, typed `number` by inference, are clean. Both operands must be integers: a non-number operand (`'a' % 2`, a bool path or comparison) or a fractional literal (`run.day % 2.5`) is `E-CEL-TYPE`. `%` is the truncated integer remainder, so `-7 % 3 == -1`. At run time a fractional value or a zero divisor makes the result unknown rather than an error.
 

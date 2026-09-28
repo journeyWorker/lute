@@ -902,7 +902,7 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
         // included (the season itself is checked at each quest).
         "questTier" => match v.as_str() {
             Some("run") | Some("user") => Ok(()),
-            Some(t) if crate::season::season_ref(t).is_some_and(crate::ident::is_ident) => Ok(()),
+            Some(t) if crate::season::season_ref(t).is_some_and(crate::ident::is_name) => Ok(()),
             _ => Err("`run`, `user` or `season:<name>`"),
         },
         // `uses`/`extends`/`components` take one string or a sequence of
@@ -949,18 +949,21 @@ fn defaults_value_hint(key: &str, v: &serde_yaml::Value) -> String {
             let near = crate::suggest::did_you_mean(raw, ["run", "user"]);
             // `scene` / `app` / `quest` are state tiers, not season names.
             if !near.is_empty()
-                || !crate::ident::is_ident(name)
+                || !crate::ident::is_name(name)
                 || ["scene", "app", "quest"].contains(&name)
             {
                 return near;
             }
             format!(" — if `{name}` is a declared season, write `season:{name}`")
         }
-        "season" if crate::ident::is_ident(name) => format!(
-            " — `season:` is the legacy episode number; to tie a scene to season `{name}`, \
-             write `once: season:{name}` on the scene and/or gate its `when:` on the season's \
-             `live:` condition"
-        ),
+        // A quoted episode number (`season: "3"`) is not a season name.
+        "season" if crate::ident::is_name(name) && !name.bytes().all(|b| b.is_ascii_digit()) => {
+            format!(
+                " — `season:` is the legacy episode number; to tie a scene to season `{name}`, \
+                 write `once: season:{name}` on the scene and/or gate its `when:` on the \
+                 season's `live:` condition"
+            )
+        }
         _ => String::new(),
     }
 }

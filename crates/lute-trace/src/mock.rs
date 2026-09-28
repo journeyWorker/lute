@@ -453,6 +453,17 @@ impl MockSet {
     }
 }
 
+/// A state path as a seed or expectation writes it — bare
+/// (`run.visits.lab2`) or quoted (`run.visits["lab-b2"]`) — in its canonical
+/// dotted form, the one spelling the store keys on. Text that is not a
+/// static path comes back as written, for the validation that follows to
+/// name.
+pub fn state_key(raw: &str) -> String {
+    lute_cel::path::parse_path_text(raw)
+        .map(|segs| lute_cel::path::render_path(&segs))
+        .unwrap_or_else(|| raw.to_string())
+}
+
 /// An occasion raise as written in `occasions:` / `--occasion` (dsl 0.23.0
 /// §2): `talk` → `("talk", None)`, `talk@npc.maud` → `("talk",
 /// Some("npc.maud"))`.
@@ -757,7 +768,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                 ));
             };
             let at = yaml_span(text, &[YamlStep::Key("state"), YamlStep::Key(path)]);
-            mocks.state.push((path.to_string(), literal, at));
+            mocks.state.push((state_key(path), literal, at));
         }
     }
 

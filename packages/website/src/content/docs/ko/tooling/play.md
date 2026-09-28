@@ -39,7 +39,7 @@ dsl 0.26.0(초안)부터 스크립트는 시계를 다음의 이름 붙은 슬�
 하네스), [0.23.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)(계기
 조합, 기한, 번들), [0.24.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)(시계,
 퀘스트 구조, 브리지 응답), [0.26.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)(시계
-목표, 엔진 수락, 종류 대상, 테스트와 플레이의 일치), [0.27.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)(하나의 런타임, 엔진 게이트와 종료 상태, 끝이 있는 시계, 시즌, 비트 템플릿, 지금은 `chapters:`인 매니페스트의 장면 사슬), [0.28.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)(`chapters:`, 한 번 성립하면 유지되는 `spentBy`, 차례마다 다시 판정하는 `select: sequence`, `expect.end`와 `expect.options`, `outsideRun:` 계기, `clock.ended`), [0.29.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)(런을 넘어 유지되는 결말, `terminal: { when, persists: true }`)가 이를 확장합니다. 엔진 측 계약(IR 필드와 엔진이 구현하는 선택 알고리즘)은
+목표, 엔진 수락, 종류 대상, 테스트와 플레이의 일치), [0.27.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)(하나의 런타임, 엔진 게이트와 종료 상태, 끝이 있는 시계, 시즌, 비트 템플릿, 지금은 `chapters:`인 매니페스트의 장면 사슬), [0.28.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)(`chapters:`, 한 번 성립하면 유지되는 `spentBy`, 차례마다 다시 판정하는 `select: sequence`, `expect.end`와 `expect.options`, `outsideRun:` 계기, `clock.ended`), [0.29.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)(런을 넘어 유지되는 결말, `terminal: { when, persists: true }`), [0.30.0 제안서](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md)(식별자가 아닌 이름을 따옴표 인덱스로 쓰기, `state: { 'run.visits["lab-b2"]': 1 }`)가 이를 확장합니다. 엔진 측 계약(IR 필드와 엔진이 구현하는 선택 알고리즘)은
 [`docs/runtime/beats-and-occasions.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/beats-and-occasions.md)입니다.
 0.21.0 이전의 `lute play`는 틱 클록 스케줄 파일을 걸었습니다. 그 레이어와 클록/레인/배치 모델, 그리고
 관련 플래그는 모두 제거되었습니다. 이제 시간은 틀이 아니라 비트 조건의 입력 중 하나입니다.
@@ -77,7 +77,7 @@ occasions:
   기본값 `after`는 제시가 끝난 뒤에 판정합니다. [퀘스트 구조](#퀘스트-구조)를 보세요.
 
 해석된 플러그인 중 계기를 선언한 것이 없으면 계기 이름은 **모양만(shape-only)** 검사됩니다: 어떤
-식별자든 받아들이므로, 엔진 플러그인이 생기기 전에도 비트를 쓸 수 있습니다. 엔진 플러그인이 전혀 없는
+이름이든 받아들이므로, 엔진 플러그인이 생기기 전에도 비트를 쓸 수 있습니다. 엔진 플러그인이 전혀 없는
 이야기도 이렇게 플레이합니다: [씬을 이야기로 잇기](/getting-started/connect-scenes/)는 모든 씬이 모양만
 검사되는 계기 하나에 응답하게 하고 `lute play`로 플레이합니다. 어느 플러그인이든 계기를
 선언하는 순간, 선언되지 않은 계기를 가리키는 비트는 `E-OCCASION-UNKNOWN`이 되고, 대상 없이 선언된

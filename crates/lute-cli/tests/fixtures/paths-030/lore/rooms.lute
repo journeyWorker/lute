@@ -1,0 +1,15 @@
+---
+kind: lore
+id: rooms
+---
+
+<beat id="labArrive" on="arrive" target="place.lab-b2" once="false">
+  ::set{run.visits["lab-b2"] += 1}
+  ::assert{at("lab-b2")}
+  @narrator: Lab B2, visit {{run.visits["lab-b2"]}}.
+</beat>
+
+<beat id="oneArrive" on="arrive" target="place.001" once="false">
+  ::set{run.visits['001'] += 1}
+  @narrator: Room 001, visit {{run.visits['001']}}.
+</beat>

@@ -129,17 +129,17 @@ fn diagnostics_are_sorted_by_byte_start() {
     }
 }
 
-// --- E-PATH-IDENT: `-` forbidden in CEL-facing names (dsl §8.4, §4.4 CelIdent) ---
+// --- E-PATH-IDENT: a name outside the name rule; a def or def param not an identifier ---
 
 #[test]
-fn hyphen_state_path_decl_rejected() {
-    // A `state:` path segment is a `CelIdent` (dsl §9.3): `-` after the tier is
-    // E-PATH-IDENT (dsl §8.4).
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.affect-total:\n    type: number\n---\n## Shot 1.\n@narrator: hi\n";
+fn spaced_state_path_decl_rejected() {
+    // A `state:` path segment is a `CelIdent` (dsl §9.3): a character outside the name
+    // rule is E-PATH-IDENT; a `-` is legal (dsl 0.30.0 §1).
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.affect total:\n    type: number\n---\n## Shot 1.\n@narrator: hi\n";
     let res = check(&input_for(text));
     assert!(
         res.diagnostics.iter().any(|d| d.code == "E-PATH-IDENT"),
-        "expected E-PATH-IDENT for hyphenated state-path segment, got: {:#?}",
+        "expected E-PATH-IDENT for spaced state-path segment, got: {:#?}",
         res.diagnostics
     );
 }
@@ -198,7 +198,7 @@ fn hyphen_directive_and_speaker_ok() {
 fn hyphen_path_ident_span_is_narrow() {
     // The meta-side E-PATH-IDENT span must point at the offending key, not the
     // whole frontmatter block (span-quality requirement).
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.affect-total:\n    type: number\n---\n## Shot 1.\n@narrator: hi\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.affect total:\n    type: number\n---\n## Shot 1.\n@narrator: hi\n";
     let res = check(&input_for(text));
     let d = res
         .diagnostics
@@ -213,7 +213,7 @@ fn hyphen_path_ident_span_is_narrow() {
     let len = d.span.byte_end - d.span.byte_start;
     assert_eq!(
         len,
-        "scene.affect-total".len(),
+        "scene.affect total".len(),
         "span should cover exactly the offending path segment, got {len} bytes: {d:#?}"
     );
     // Must start past the `---\n` frontmatter opener (i.e. not the whole block,
@@ -236,7 +236,7 @@ fn hyphen_path_ident_span_is_narrow() {
 fn hyphen_path_ident_span_is_key_aware() {
     // The offending identifier ALSO appears in a comment above the real key. The
     // span must point at the mapping KEY line, not the earlier comment match.
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n# comment mentioning scene.affect-total here\nstate:\n  scene.affect-total:\n    type: number\n---\n## Shot 1.\n@narrator: hi\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n# comment mentioning scene.affect total here\nstate:\n  scene.affect total:\n    type: number\n---\n## Shot 1.\n@narrator: hi\n";
     let res = check(&input_for(text));
     let d = res
         .diagnostics
@@ -248,8 +248,8 @@ fn hyphen_path_ident_span_is_key_aware() {
                 res.diagnostics
             )
         });
-    let comment_at = text.find("scene.affect-total").expect("comment occurrence");
-    let key_at = text.rfind("scene.affect-total").expect("key occurrence");
+    let comment_at = text.find("scene.affect total").expect("comment occurrence");
+    let key_at = text.rfind("scene.affect total").expect("key occurrence");
     assert_ne!(
         comment_at, key_at,
         "test setup: identifier must appear twice"

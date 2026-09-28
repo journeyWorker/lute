@@ -1,0 +1,11 @@
+---
+kind: scene
+id: wrap
+on: wrap
+when: 'quest["zero-coke-001"].state == "complete" && holds(regular("lab-b2"))'
+---
+
+## wrap
+
+::set{run.done = true}
+@narrator: Wrapped after {{run.visits["lab-b2"]}} visits.

@@ -49,10 +49,16 @@ use lute_syntax::ast::CelKind;
 /// normalize convention (`check.rs`'s `normalize_spans` fills them in from one
 /// shared `TextIndex`, same as every other ad hoc span producer in this crate).
 pub struct Translation {
+    /// `E-CEL-PARSE`, or `E-PATH-IDENT` when the slot failed because a
+    /// name that is not an identifier follows a `.` (`run.visits.001`).
+    pub code: &'static str,
     pub message: String,
     pub fixits: Vec<Fixit>,
     pub span: Option<Span>,
 }
+
+/// The code of an ordinary CEL parse failure.
+pub const E_CEL_PARSE: &str = "E-CEL-PARSE";
 
 /// §8.1 T1–T3. `raw` = the FAILED slot's full authored text (never a substring
 /// of it — the detections below need the whole fragment: rule 1 checks the
@@ -80,9 +86,29 @@ pub fn translate_cel_parse(
     // CEL expression") — no new diagnostic appears where one was silent before.
     if raw.trim().is_empty() {
         return Translation {
+            code: E_CEL_PARSE,
             message: "the condition is empty (dsl 0.4 §8.1)".to_string(),
             fixits: Vec::new(),
             span: None,
+        };
+    }
+
+    // `run.visits.001`, `quest.a-1b.state`: a name that is not an identifier
+    // after a `.` — the failure is the path's spelling, so it is reported as
+    // the path, with its quoted-index spelling.
+    if let Some(g) = crate::cel_paths::glued_state_paths(raw).into_iter().next() {
+        let bracket = g.bracket();
+        return Translation {
+            code: crate::cel_paths::E_PATH_IDENT,
+            message: g.message(raw),
+            fixits: vec![splice_fixit(
+                format!("write `{bracket}`"),
+                slot_span,
+                g.start,
+                g.end,
+                &bracket,
+            )],
+            span: Some(rebase(slot_span, g.start, g.end)),
         };
     }
 
@@ -103,6 +129,7 @@ pub fn translate_cel_parse(
         let param = &raw[dot + 2..name_end];
         let indexed = format!("[@{param}]");
         return Translation {
+            code: E_CEL_PARSE,
             message: format!(
                 "`{base}.@{param}`: a path segment cannot be a param — index the family: \
                  `{base}{indexed}`"
@@ -124,6 +151,7 @@ pub fn translate_cel_parse(
     // that never closes.
     if let Some(open) = unbalanced_quote(raw) {
         return Translation {
+            code: E_CEL_PARSE,
             message: "unclosed quote in the condition (dsl 0.4 §8.1)".to_string(),
             fixits: Vec::new(),
             span: Some(rebase(slot_span, open, raw.len())),
@@ -135,6 +163,7 @@ pub fn translate_cel_parse(
     if let Some((start, end)) = scan_has_atom(raw, &mask) {
         let atom = &raw[start + 4..end - 1];
         return Translation {
+            code: E_CEL_PARSE,
             message: format!(
                 "`{}`: `has()` asks whether a state path is set; a fact is asked about with \
                  `holds({atom})`",
@@ -155,6 +184,7 @@ pub fn translate_cel_parse(
     if let Some((pos, right)) = scan_reversed_compare(raw, &mask) {
         let wrong = if right == "<=" { "=<" } else { "=>" };
         return Translation {
+            code: E_CEL_PARSE,
             message: format!(
                 "`{wrong}` is not an operator — did you mean `{right}`? (dsl 0.4 §8.1)"
             ),
@@ -183,6 +213,7 @@ pub fn translate_cel_parse(
         // Say what is actually wrong and offer no edit.
         if kind == CelKind::SetExpr {
             return Translation {
+                code: E_CEL_PARSE,
                 message: "`::set` takes no attributes other than one trailing `when=\"…\"`; \
                           everything else after the operator is the expression (dsl 0.24.0 §1)"
                     .to_string(),
@@ -193,6 +224,7 @@ pub fn translate_cel_parse(
         let mut corrected = raw.to_string();
         corrected.replace_range(pos..pos + 1, "==");
         return Translation {
+            code: E_CEL_PARSE,
             message: format!(
                 "`=` assigns; comparison is `==` — did you mean `{corrected}`? (dsl 0.4 §8.1)"
             ),
@@ -211,6 +243,7 @@ pub fn translate_cel_parse(
     if let Some((pos, ch)) = scan_bare_logical(raw, &mask) {
         let doubled = if ch == '&' { "&&" } else { "||" };
         return Translation {
+            code: E_CEL_PARSE,
             message: format!(
                 "`{ch}` is not an operator here — use `{doubled}` (or `is=\"a|b\"` for a literal \
                  alternation) (dsl 0.4 §8.1)"
@@ -238,6 +271,7 @@ pub fn translate_cel_parse(
             _ => unreachable!("scan_word_operator only ever returns and/or/not"),
         };
         return Translation {
+            code: E_CEL_PARSE,
             message: format!(
                 "words are not operators in a condition — use `&&` / `||` / `!` (`{word}` here \
                  means `{replacement}`, dsl 0.4 §8.1)"
@@ -258,6 +292,7 @@ pub fn translate_cel_parse(
     // `E-RESERVED-NAME`; say why this use cannot parse.
     if let Some((start, end, name)) = scan_reserved_query_relation(raw, &mask) {
         return Translation {
+            code: E_CEL_PARSE,
             message: format!(
                 "`{name}` is a reserved CEL name, so `{name}(…)` cannot be queried as a \
                  relation — rename the relation (dsl 0.24 T3-8)"
@@ -279,6 +314,7 @@ pub fn translate_cel_parse(
         None
     };
     Translation {
+        code: E_CEL_PARSE,
         message: format!("not a valid condition expression: `{raw}` (dsl 0.4 §8.1)"),
         fixits: Vec::new(),
         span,

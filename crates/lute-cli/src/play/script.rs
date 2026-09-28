@@ -954,7 +954,7 @@ fn parse_writes(
                             )
                         })?),
                     };
-                    w.state.push((path.to_string(), write));
+                    w.state.push((lute_trace::state_key(path), write));
                 }
             }
             Some("facts") => w.facts = string_list(v, &format!("step {n}: `{key}.facts`"))?,

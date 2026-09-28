@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.29.1**.
+**0.30.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -46,8 +46,8 @@ pov: fixer
 - `kind: scene` — this file is a scene: dialogue the player sees. The other two kinds are `quest`
   (goals the story tracks) and `lore` (text the game looks up, such as item descriptions).
 - `id` — the scene's name, unique in your project. Other scenes and your tests refer to this scene
-  by it. It is identifiers joined by `.` (an identifier is a letter, then letters, digits or `_`;
-  no `-`: write `doorNotes`, not `door-notes`); `mira.s01ep01` reads as "Mira, season 1,
+  by it. It is names joined by `.` (a name is letters, digits, `_` or `-`, not starting with
+  `-`: `door-notes` and `doorNotes` both work); `mira.s01ep01` reads as "Mira, season 1,
   episode 1", but any name works (`prologue`, `diner.opening`).
 - `title` — a human-readable title for tools and search.
 - `pov` — the id of the player character (the protagonist the player controls).
@@ -291,8 +291,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.29.1",
-  "irVersion": "0.29.1",
+  "lute": "0.30.0",
+  "irVersion": "0.30.0",
   "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
   "meta": {
     "id": "mira.s01ep01",

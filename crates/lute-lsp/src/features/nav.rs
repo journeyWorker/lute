@@ -61,7 +61,7 @@ pub fn definition_at(
         }
         Cursor::Interp(i) => match i.kind {
             // A state path jumps to its `state:`/`<branch>` decl, as a CEL path does.
-            InterpKind::Path => path_definition(doc, &i.raw),
+            InterpKind::Path => path_definition(doc, &super::interp_path(&i.raw)),
             // An `@ref` jumps to its def decl site (`@fond` → the `fond` key).
             InterpKind::Ref => interp_ref_name(&i.raw).and_then(|name| def_decl_span(doc, &name)),
             // A reserved token has no decl site.
@@ -125,7 +125,7 @@ pub fn references_at(
             }
         }
         Cursor::Interp(i) => match i.kind {
-            InterpKind::Path => path_uses(doc, &i.raw),
+            InterpKind::Path => path_uses(doc, &super::interp_path(&i.raw)),
             InterpKind::Ref => interp_ref_name(&i.raw)
                 .map(|name| ref_uses(doc, &name))
                 .unwrap_or_default(),

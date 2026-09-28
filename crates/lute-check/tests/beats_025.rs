@@ -97,13 +97,13 @@ fn share_needs_a_written_spending_once() {
             "{text}\n{ds:#?}"
         );
     }
-    // A key is an identifier.
+    // A key is a name.
     let bad =
         lore("<beat id=\"radio\" on=\"visit\" once=\"user\" share=\"sol warm\">\n@n: a\n</beat>\n");
     assert!(
         beat_attr(&bad)
             .iter()
-            .any(|d| d.message.contains("key `sol warm` is not an identifier")),
+            .any(|d| d.message.contains("key `sol warm` is not a name")),
         "{:#?}",
         beat_attr(&bad)
     );

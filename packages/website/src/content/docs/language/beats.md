@@ -226,7 +226,7 @@ A `<beat>` takes the scene beat keys as attributes:
 
 | Attribute | Meaning |
 |---|---|
-| `id` | required; an identifier (`[A-Za-z][A-Za-z0-9_]*`), unique in the document |
+| `id` | required; a name (letters, digits, `_` or `-`, not starting with `-`), unique in the document |
 | `on` | required; the occasion the beat answers |
 | `target`, `when`, `priority`, `once`, `also`, `share`, `spentBy`, `for` | as on a [scene beat](#scene-beat-keys). `once="false"` makes the beat repeatable, and `also` may be written bare |
 | `after` | optional (dsl 0.25.0 §3); a scene `after:` formula, with the same meaning: an eligibility conjunct and an edge of the [scenario graph](/connectivity/scene-graph/) |
@@ -399,7 +399,7 @@ for the rest of the day. [`lute play`](/tooling/play/) says why:
   → talks.solNod
 ```
 
-A key is an identifier (`[A-Za-z][A-Za-z0-9_-]*`). It needs a spending `once` written beside it:
+A key is a name (letters, digits, `_` or `-`, not starting with `-`). It needs a spending `once` written beside it:
 `share` with no `once`, or with `once: false`, is `E-BEAT-ATTR`, since a repeatable beat has
 nothing to spend. Every beat of one key must declare the same `once`, because the key is spent for
 one period. Add a beat `solDock` to a lore document `harbor` with `once="user" share="solWarm"`,
@@ -567,7 +567,7 @@ occasions:
   evening:   { select: sequence }
 ```
 
-Until some resolved plugin declares occasions, occasion names are **shape-only**: any identifier
+Until some resolved plugin declares occasions, occasion names are **shape-only**: any name
 is accepted, so you can write beats before the engine's plugin exists. Once any plugin declares
 them, a beat naming an undeclared occasion is `E-OCCASION-UNKNOWN`, and a scene's or bundle beat's
 `target` on an untargeted occasion (one declared with neither `target: true` nor a domain) is
@@ -892,7 +892,7 @@ clock has no values to give it.
 
 | Code | When |
 |---|---|
-| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not an identifier, `target` not a dotted id or outside its occasion's [target domain](#target-domains), a [`kind:` target](#kind-targets) that names no closed kind within the occasion's domain, a [`for`](#once-per-member-for) that is not `kind:<kind>` of a closed kind, sits beside `target`, or is on an occasion raised for a target or not `select: sequence`, `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` / `false` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/), and `week` only with its `week:`; dsl 0.27.0 §5), `once="false"` or a `share` key written beside `spentBy`, `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, a `share` that is not an identifier or has no spending `once` beside it, beats of one `share` key with different `once`s (`check-project`), beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
+| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not a name, `target` not a dotted id or outside its occasion's [target domain](#target-domains), a [`kind:` target](#kind-targets) that names no closed kind within the occasion's domain, a [`for`](#once-per-member-for) that is not `kind:<kind>` of a closed kind, sits beside `target`, or is on an occasion raised for a target or not `select: sequence`, `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` / `false` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/), and `week` only with its `week:`; dsl 0.27.0 §5), `once="false"` or a `share` key written beside `spentBy`, `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, a `share` that is not an identifier or has no spending `once` beside it, beats of one `share` key with different `once`s (`check-project`), beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
 | `E-OCCASION-UNKNOWN` | `on` names an occasion no resolved plugin declares (only once some plugin declares occasions) |
 | `E-BEAT-UNREACHABLE` | a scene or bundle beat's `when` provably never holds; see [How a `when` is decided](#how-a-when-is-decided). `lute check` decides what one file settles, and `lute check-project` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
 | `W-BEAT-SHADOWED` | `check-project` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry without `once`, or a scene or bundle beat with `once: false`). On an occasion whose target domain is closed, an untargeted beat is also reported when, at every `<prefix>.<member>`, such a beat for that member wins; the message names the shadower per target. A [kind beat](#kind-targets) is judged member by member the same way. `also` beats neither shadow nor are shadowed. |

@@ -285,7 +285,7 @@ occasion is raised, whatever the target.
 
 The occasion is checked against the vocabulary exactly as a beat's `on` (see
 [Beats](/language/beats/#occasions)): `E-OCCASION-UNKNOWN` when a plugin declares
-occasions and this one is not among them, shape-only otherwise; an `on` that is not an identifier
+occasions and this one is not among them, shape-only otherwise; an `on` that is not a name
 is `E-BEAT-ATTR`. A `target` is checked like a beat target, also as `E-BEAT-ATTR`: it must be a
 quoted dotted id, it needs `on`, the occasion must take a target, and a
 [target domain](/language/beats/#target-domains) must contain it. `lute trace` / `lute run` raise

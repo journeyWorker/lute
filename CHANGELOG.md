@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.29.1`, the grammar and semantics the checker
+- **Language** — currently `0.30.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.29.1`) and gated on by consuming engines.
+  artifact (currently `0.30.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -35,6 +35,47 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.30.0] - 2026-09-28
+
+**Names as written, paths like JavaScript.**
+
+A minor release that settles what 0.29 and 0.29.1 left split. Every name a
+condition reaches by path, index or fact argument — scene, beat, entry, quest,
+objective, branch, hub, choice and mark ids, document id segments, `share`
+keys, seasons, relations, kinds and members, what a plugin declares, targets
+and categories — is a name: letters, digits, `_` or `-`, not starting with
+`-`, so `lamp-out`, `zero-coke-001` and `001` are written as the engine
+already spells them. A name that is not an identifier is reached in a
+condition the way JavaScript reaches it, with a quoted index
+(`quest["zero-coke-001"].state`) or a quoted fact argument
+(`holds(at("lab-b2"))`), and every surface — the checker, `lute trace`,
+`lute test`, `lute play`, `lute context`, `lute calendar` and the language
+server — reads both spellings as one name. Only a name read bare as `@name`
+(defs, def params, component and template params) stays an identifier. The
+language and the IR both earn the move (the IR adds no field; its path fields
+may now carry such names); see
+[`docs/proposals/scenario-dsl/0.30.0.md`](docs/proposals/scenario-dsl/0.30.0.md)
+and [`docs/versioning.md`](docs/versioning.md).
+
+### Added
+
+- `lute trace --state`, the `state:` of a mock, test or play, `expect.state` and `lute calendar --axis` take a state path in either spelling: `--state 'run.visits["lab-b2"]=1'` seeds the same path as `--state run.visits.lab-b2=1`. A fact seed or expectation may quote an argument, `facts: ['at("lab-b2")']`.
+- `lute trace`, `lute test` and `lute play` evaluate a quoted index into a state map (`quest["zero-coke-001"].state`, `run.visits['lab-b2']`) and a quoted fact argument (`holds(at("lab-b2"))`) as the dotted path and the bare name, including inside a rule body's `cel(…)`. A refusal names a path the way a condition writes it (`` `run.visits["lab-b2"]` is 0 ``) and a `--fact` hint quotes such an argument.
+- `lute context`'s outline and `lute calendar`'s table show a member that is not an identifier as a condition reaches it (`run.visits["lab-b2"]: number`); the language server's hover, go-to-definition and references resolve a bracket path in a condition or a `{{…}}`.
+- `lute check` reads a quoted index as the path segment it names everywhere a condition is written — a guard, a `<match on>` subject, a `::set` / `::assert` / `::retract` target (`::set{run.visits["lab-b2"] += 1}`), a `{{…}}` interpolation, a fact-query argument (`holds(at("lab-b2"))`, `count(…)`), a Datalog rule's body, head and comparison (`at(X, "lab-b2")`, `"lab-b2" = X`), and a component or template argument bound into a family index or fact. Both spellings of a name check as one path: declared-ness, types, literal domains and definite assignment are the same. A member reached per kind member (`run.visits[occasion.target]`, a rule guard's `run.visits[P]`) is judged under the spelling that member needs.
+
+### Changed
+
+- One name rule: every name an author writes — scene, beat, entry, quest, objective, branch, hub, choice and mark ids, document id segments, `share` keys, seasons, relations, enum and entity kinds and members, the occasions, events and enums a plugin declares, targets and categories — is letters, digits, `_` or `-`, not starting with `-` (a dotted id joins names with `.`). `lamp-out`, `zero-coke-001` and `001` are names. A `.`, whitespace, a quote or any other character is an error at the name under that slot's code, and the message lists the allowed characters instead of a camelCase rename. A name read bare like a JavaScript variable — a def, a def's param, a component or template param (`@name`) — stays an identifier (a letter or `_`, then letters, digits or `_`); the fault says it is read bare and names the identifier spelling. 0.29.1's split between Lute-declared names and engine-owned ids is gone: a target on a kind that lists its members (`npc.old-man`) and a category follow the same rule.
+- The published JSON Schemas follow the name rule: the name patterns in `schemas/lute-ir-0.30.schema.json` (seasons and `season:<name>`, occasions, `share` keys, `series`, document ids) and the `stateWrites` / `factWrites` patterns in `schemas/lute.project.json` accept a name that has `-` or starts with a digit.
+
+### Compatibility
+
+- Names 0.29 refused for containing `-` or starting with a digit are accepted in every slot; the reserved-name table (`E-RESERVED-NAME`) is unchanged.
+- The artifact keeps its shape. Path fields (`set` targets, `state` entries, an `expr` node's `path` / `isSet` / `has`, a `{{…}}` placeholder's `path`) carry the canonical dotted path — `run.visits.lab-b2`; a segment may contain `-` or start with a digit and never contains `.`. A condition's `raw` ships as written, so it may reach a member with a quoted index, which CEL over nested maps reads as the dotted member; fact arguments in `assert` / `retract` and seed facts are the bare names.
+- **Restamp `luteVersion:`.** A document or `defaults:` stamped with an older version draws `W-LUTE-VERSION-STALE`, which names the stamp to write (`luteVersion: "0.30.0"`); bump the stamp, or `--deny-warnings` fails the project.
+- **Schema file renamed; the IR adds no field.** The version strings move to `0.30.0` and `schemas/lute-ir-0.29.schema.json` is renamed to [`schemas/lute-ir-0.30.schema.json`](schemas/lute-ir-0.30.schema.json) (`$id` updated, name patterns widened). Engines gate on MAJOR, so nothing widens.
 
 ## [0.29.1] - 2026-09-28
 

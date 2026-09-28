@@ -57,14 +57,14 @@ pub struct HubRecord {
     pub diags: Vec<Diagnostic>,
 }
 
-/// A written branch, hub or choice id that is not an identifier
+/// A written branch, hub or choice id that is not a name
 /// (`E-PATH-IDENT`): it is a segment of `scene.choices.<id>` and
 /// `scene.visited.<hub>.<choice>`. A missing id has its own report.
 fn ident_diag(what: &str, id: &str, span: Span) -> Option<Diagnostic> {
     if id.is_empty() {
         return None;
     }
-    lute_manifest::ident::ident_fault(what, id)
+    lute_manifest::ident::name_fault(what, id)
         .map(|message| diag(E_PATH_IDENT, Severity::Error, message, span))
 }
 

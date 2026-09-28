@@ -1110,7 +1110,7 @@ fn check_expect_state_values(p: &ExecProject, script: &PlayScript, errs: &mut Ve
             .iter()
             .filter_map(|(path, want)| {
                 let (path, want) = (path.as_str()?, want.as_str()?);
-                let (domain, members) = domain_of(path)?;
+                let (domain, members) = domain_of(&lute_trace::state_key(path))?;
                 let why = lute_trace::exec::session::member_of(&domain, &members, want).err()?;
                 Some((
                     path.to_string(),

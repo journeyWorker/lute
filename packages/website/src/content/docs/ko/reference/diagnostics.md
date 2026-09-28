@@ -91,7 +91,7 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-BEAT-ATTR
 
-비트의 `on`, `target`, `priority`, `once` 속성이 잘못되었습니다. 식별자가 아닌 `on`, `target: true`로 선언되지 않은 occasion에 붙은 `target`, 정수가 아닌 `priority`, `run`/`user`/`false` 밖의 `once`, `on` 없는 비트 키, 아직 존재하지 않는 씬 자신의 `scene.*` 상태를 읽는 `when`, 또는 `once: false`나 `share` 키와 함께 쓴 `spentBy`가 해당합니다.
+비트의 `on`, `target`, `priority`, `once` 속성이 잘못되었습니다. 이름이 아닌 `on`, `target: true`로 선언되지 않은 occasion에 붙은 `target`, 정수가 아닌 `priority`, `run`/`user`/`false` 밖의 `once`, `on` 없는 비트 키, 아직 존재하지 않는 씬 자신의 `scene.*` 상태를 읽는 `when`, 또는 `once: false`나 `share` 키와 함께 쓴 `spentBy`가 해당합니다.
 
 명세: [dsl 0.21.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.21.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
@@ -687,9 +687,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-META-ID
 
-문서의 `id:` 프런트매터 값이 점으로 이은 id가 아닙니다. id는 식별자(글자로 시작하고 글자, 숫자, `_`로 이어지는 이름)를 `.`으로 이은 것입니다.
+문서의 `id:` 프런트매터 값이 점으로 이은 id가 아닙니다. id는 이름(글자, 숫자, `_`, `-`로 이루어지고 `-`로 시작하지 않는 이름)을 `.`으로 이은 것입니다.
 
-명세: [dsl 0.29.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
+명세: [dsl 0.30.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md)
 
 ### E-META-MISSING
 
@@ -707,7 +707,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-META-VALUE
 
-프런트매터 값의 형태가 잘못되었습니다 — 잘못된 `extra:` 매핑이나 키, 식별자가 아닌 `series:`, 잘못된 `cast:`/`enums:`/`terminal:` 항목(`terminal:` 긴 형식에서 `when`/`persists` 외의 키, 또는 `true`/`false`가 아닌 `persists`), run 상태만 읽는 `terminal:`에 쓴 `persists: true`(그 결말은 run을 넘어 남을 수 없음), 또는 잘못된 `effects:` 플래그입니다.
+프런트매터 값의 형태가 잘못되었습니다 — 잘못된 `extra:` 매핑이나 키, 이름이 아닌 `series:`, 잘못된 `cast:`/`enums:`/`terminal:` 항목(`terminal:` 긴 형식에서 `when`/`persists` 외의 키, 또는 `true`/`false`가 아닌 `persists`), run 상태만 읽는 `terminal:`에 쓴 `persists: true`(그 결말은 run을 넘어 남을 수 없음), 또는 잘못된 `effects:` 플래그입니다.
 
 명세: [dsl 0.15.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md), [dsl 0.19.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md), [dsl 0.23.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.29.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
 
@@ -787,9 +787,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PATH-IDENT
 
-식별자(글자로 시작하고 글자, 숫자, `_`로 이어지는 이름)여야 하는 이름이 식별자가 아닙니다: 상태 경로 세그먼트, quest·objective·entry·branch·hub·choice·mark id, def와 def 파라미터, relation·enum·엔티티 종류 이름, enum·엔티티 멤버.
+이름에 이름 규칙(글자, 숫자, `_`, `-`로 이루어지고 `-`로 시작하지 않음) 밖의 문자가 있습니다: 상태 경로 세그먼트, quest·objective·entry·branch·hub·choice·mark id, relation·enum·엔티티 종류 이름, enum·엔티티 멤버. def와 def 파라미터는 `@name`이나 def 본문에서 그대로 읽히므로 식별자(글자나 `_`로 시작하고 글자, 숫자, `_`로 이어지는 이름)여야 합니다. 또는 조건식에서 식별자가 아닌 이름을 `.` 뒤에 썼습니다(`quest.zero-coke-001.state`). CEL은 이를 뺄셈으로 읽으므로, 메시지가 대괄호 표기(`quest["zero-coke-001"].state`)를 알려 줍니다.
 
-명세: [dsl 0.29.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md), [dsl §8.4](/spec/)
+명세: [dsl 0.30.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl 0.30.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl §8.4](/spec/)
 
 ### E-PERMISSION-BRIDGE
 

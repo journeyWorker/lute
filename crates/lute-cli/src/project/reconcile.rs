@@ -273,10 +273,11 @@ pub(crate) fn reconcile_collected(
     // suppress the per-file `E-ENTRY-ID-DUP` / `E-ENTRY-SERIES-ORDER` twins.
     let mut entry_covered = Vec::new();
     // P28S-03/HW28-06: per root, the `quest.<id>.` / `entry.<id>.` heads of
-    // every quest or entry id with a `.` or a `-`. Its declaration is refused
+    // every quest or entry id with a `.`. Its declaration is refused
     // (`E-PATH-IDENT` / `E-ENTRY-ATTR`), the one report: a per-file
-    // `E-UNDECLARED` or `E-PATH-IDENT` read of it in the same root is
-    // dropped below.
+    // `E-UNDECLARED` read of it in the same root is dropped below. A `-` is
+    // a name (dsl 0.30.0): its declaration is clean, and a read that writes
+    // it after a `.` keeps its own `E-PATH-IDENT`.
     let mut dotted_heads: Vec<Vec<String>> = Vec::new();
     let mut dotted_root_of: std::collections::HashMap<PathBuf, usize> =
         std::collections::HashMap::new();
@@ -786,7 +787,7 @@ pub(crate) fn reconcile_collected(
                 let quests = doc.quests.iter().map(|q| ("quest", &q.id));
                 quests.chain(doc.entries.iter().map(|e| ("entry", &e.id)))
             })
-            .filter(|(_, id)| id.contains('.') || id.contains('-'))
+            .filter(|(_, id)| id.contains('.'))
             .map(|(root, id)| format!("{root}.{id}."))
             .collect();
         if !heads.is_empty() {
@@ -807,10 +808,9 @@ pub(crate) fn reconcile_collected(
                 && reconciled_reads
                     .iter()
                     .any(|(p, s, m)| p == path && *s == d.span && *m == d.message);
-            // The path an `E-UNDECLARED` or a hyphenated-path `E-PATH-IDENT`
-            // names first, read of a dotted or hyphenated id this root
-            // declares.
-            let dotted_read = (d.code == "E-UNDECLARED" || d.code == "E-PATH-IDENT")
+            // The path an `E-UNDECLARED` names first, read of a dotted id this
+            // root declares.
+            let dotted_read = d.code == "E-UNDECLARED"
                 && dotted_root_of.get(path).is_some_and(|&i| {
                     d.message
                         .strip_prefix('`')

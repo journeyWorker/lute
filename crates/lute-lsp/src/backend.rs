@@ -625,7 +625,7 @@ impl Backend {
                         translate_cel_parse(raw, span, &e, lute_syntax::ast::CelKind::Condition);
                     let cel_span = find_def_cel_value_span(&snapshot.text, name).unwrap_or(span);
                     diags.push(Diagnostic {
-                        code: "E-CEL-PARSE".to_string(),
+                        code: t.code.to_string(),
                         severity: Severity::Error,
                         message: t.message,
                         span: cel_span,

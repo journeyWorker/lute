@@ -381,10 +381,7 @@ impl TryFrom<String> for FactEffect {
                  members, `true`/`false`, `@attr` (one of the directive's attrs) or `_`"
             ))
         };
-        let ident = |t: &str| {
-            t.starts_with(|c: char| c.is_ascii_alphabetic())
-                && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        };
+        let ident = crate::ident::is_name;
         let t = s.trim();
         let Some((relation, rest)) = t.split_once('(') else {
             return bad("has no `(`");

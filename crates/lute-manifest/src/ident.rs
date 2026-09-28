@@ -1,70 +1,89 @@
-//! The one identifier rule. Every name an author writes — a scene, beat,
-//! entry, quest, objective, branch, hub, choice or mark id; a document id
-//! segment; a `share` key; a season, relation, def, enum or entity-kind name;
-//! an enum or entity member; a component or template param; an occasion or
-//! event a plugin declares — is an identifier: a letter, then letters, digits
-//! or `_`. A dotted id joins identifiers with `.`.
+//! The one name rule. Every name a condition reaches by a path, an index or
+//! a fact argument — a scene, beat, entry, quest, objective, branch, hub,
+//! choice or mark id; a document id segment; a `share` key; a season,
+//! relation, enum or entity-kind name; an enum or entity member; an occasion
+//! or event a plugin declares; a target or a category — is a
+//! [name](is_name): letters, digits, `_` or `-`, not starting with `-`. A
+//! dotted id joins names with `.`.
 //!
-//! A name Lute declares is an identifier; an id the ENGINE owns — external
-//! data, like a CEL map key — is written as the engine spells it: an
-//! [`is_engine_id`] / [`is_engine_ref`]. Those are a beat's or entry's
-//! `target` where no entity kind lists the members (an untyped occasion, an
-//! `open:` kind) and an entry's `category`.
+//! A name that is also an [identifier](is_ident) may be written bare in a
+//! condition (`quest.lampOut.state`); any name may be written quoted
+//! (`quest["lamp-out"].state`). The two spellings are the same name.
+//!
+//! A name a condition reads bare, like a JavaScript variable — a def, a
+//! def's param, a component or template param (`@name`) — has no quoted
+//! spelling, so it is an identifier ([`ident_fault`]).
 //!
 //! Each slot reports a bad name under its own code; this module owns the
-//! predicates and the wording, so every slot says the same thing and names
-//! the same camelCase spelling.
+//! predicates and the wording, so every slot says the same thing.
 
-/// `true` when `s` is an identifier: an ASCII letter, then ASCII letters,
-/// digits or `_`.
+/// `true` when `s` is an identifier — a name that may be written bare in a
+/// condition: an ASCII letter or `_`, then ASCII letters, digits or `_`.
 pub fn is_ident(s: &str) -> bool {
     let mut bytes = s.bytes();
-    matches!(bytes.next(), Some(b) if b.is_ascii_alphabetic())
+    matches!(bytes.next(), Some(b) if b.is_ascii_alphabetic() || b == b'_')
         && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
-/// `true` when `s` is identifiers joined by `.` (no empty segment).
-pub fn is_dotted_ident(s: &str) -> bool {
-    s.split('.').all(is_ident)
+/// `true` when `s` is a name: one or more ASCII letters, digits, `_` or `-`,
+/// not starting with `-` (`lampOut`, `lamp-out`, `001`).
+pub fn is_name(s: &str) -> bool {
+    !s.is_empty()
+        && !s.starts_with('-')
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
-/// `true` when `s` is an engine id: an ASCII letter, then ASCII letters,
-/// digits, `_` or `-` (`rusty-key`). The shape of an id the engine owns —
-/// Lute never reads it as a CEL name, so it keeps the engine's spelling.
-pub fn is_engine_id(s: &str) -> bool {
-    let mut bytes = s.bytes();
-    matches!(bytes.next(), Some(b) if b.is_ascii_alphabetic()) && bytes.all(is_engine_byte)
+/// `true` when `s` is names joined by `.` (no empty segment).
+pub fn is_dotted_name(s: &str) -> bool {
+    s.split('.').all(is_name)
 }
 
-/// `true` when `s` is an engine reference: an [`is_engine_id`], then zero or
-/// more `.`-separated parts of ASCII letters, digits, `_` or `-`
-/// (`item.rusty-key`, `place.lab-b2`).
-pub fn is_engine_ref(s: &str) -> bool {
-    let mut parts = s.split('.');
-    parts.next().is_some_and(is_engine_id)
-        && parts.all(|part| !part.is_empty() && part.bytes().all(is_engine_byte))
+/// The name rule, in words, for messages.
+const NAME_RULE: &str = "letters, digits, `_` or `-`, not starting with `-`";
+
+/// Why `name` (the `what` of its slot: "scene id", "`share` key", …) is not
+/// a name; `None` when it is.
+pub fn name_fault(what: &str, name: &str) -> Option<String> {
+    (!is_name(name)).then(|| format!("{what} {} is not a name: {NAME_RULE}", shown(name)))
 }
 
-fn is_engine_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_' || b == b'-'
-}
-
-/// [`is_engine_ref`]'s shape, in words, for messages.
-pub const ENGINE_REF_SHAPE: &str = "an engine id such as `npc.maud` or `item.rusty-key` — a \
-     letter, then letters, digits, `_` or `-`, in `.`-separated parts";
-
-/// Why `name` (the `what` of its slot) is not an [`is_engine_id`]; `None`
-/// when it is.
-pub fn engine_id_fault(what: &str, name: &str) -> Option<String> {
-    (!is_engine_id(name)).then(|| {
-        format!("{what} `{name}` is not an engine id: a letter, then letters, digits, `_` or `-`")
+/// [`name_fault`] for a dotted id: every `.`-separated segment must be a
+/// name.
+pub fn dotted_name_fault(what: &str, name: &str) -> Option<String> {
+    (!is_dotted_name(name)).then(|| {
+        format!(
+            "{what} {} is not a dotted id: names joined by `.`, each {NAME_RULE}",
+            shown(name)
+        )
     })
 }
 
-/// `name` as one camelCase identifier: split at every character that is not
-/// a letter, digit or `_`, each later part capitalised (`lamp-duty` →
-/// `lampDuty`, `isolation.hush` → `isolationHush`).
-pub fn camel_case(name: &str) -> String {
+/// Why `name` (the `what` of its slot) is not an [identifier](is_ident);
+/// `None` when it is. For a name a condition reads bare, like a JavaScript
+/// variable: a def and a component or template param (read as `@name`,
+/// `sigil` `"@"`) and a def's param (read in the def's body, `sigil` `""`).
+/// Names the identifier spelling when there is one (`lamp-lit` →
+/// `lampLit`).
+pub fn ident_fault(what: &str, name: &str, sigil: &str) -> Option<String> {
+    if is_ident(name) {
+        return None;
+    }
+    let mut message = format!(
+        "{what} {} is not an identifier: it is read bare as `{sigil}{name}` — a letter or `_`, \
+         then letters, digits or `_`",
+        shown(name)
+    );
+    let suggestion = ident_spelling(name);
+    if is_ident(&suggestion) {
+        message.push_str(&format!("; write `{suggestion}`"));
+    }
+    Some(message)
+}
+
+/// `name` as one identifier: split at every character an identifier cannot
+/// hold, each later part capitalised (`lamp-lit` → `lampLit`).
+fn ident_spelling(name: &str) -> String {
     name.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
         .filter(|part| !part.is_empty())
         .enumerate()
@@ -79,49 +98,11 @@ pub fn camel_case(name: &str) -> String {
         .collect()
 }
 
-/// `name` with each `.`-separated segment made one camelCase identifier
-/// (`door-notes.lamp-duty` → `doorNotes.lampDuty`).
-pub fn camel_case_dotted(name: &str) -> String {
-    name.split('.')
-        .map(camel_case)
-        .collect::<Vec<_>>()
-        .join(".")
-}
-
-/// Why `name` (the `what` of its slot: "scene id", "`share` key", …) is not
-/// an identifier; `None` when it is. Names the camelCase spelling when there
-/// is one.
-pub fn ident_fault(what: &str, name: &str) -> Option<String> {
-    (!is_ident(name)).then(|| fault_message(what, name, camel_case(name), false))
-}
-
-/// [`ident_fault`] for a dotted id: every `.`-separated segment must be an
-/// identifier; the suggestion keeps the dots.
-pub fn dotted_ident_fault(what: &str, name: &str) -> Option<String> {
-    (!is_dotted_ident(name)).then(|| fault_message(what, name, camel_case_dotted(name), true))
-}
-
-fn fault_message(what: &str, name: &str, suggestion: String, dotted: bool) -> String {
-    let (rule, fits): (_, fn(&str) -> bool) = if dotted {
-        (
-            "a dotted id: identifiers joined by `.`, each a letter, then letters, digits or `_`",
-            is_dotted_ident,
-        )
-    } else {
-        (
-            "an identifier: a letter, then letters, digits or `_`",
-            is_ident,
-        )
-    };
-    let shown = if name.is_empty() {
+fn shown(name: &str) -> String {
+    if name.is_empty() {
         String::from("``")
     } else {
         format!("`{name}`")
-    };
-    if fits(&suggestion) {
-        format!("{what} {shown} is not {rule} — write `{suggestion}`")
-    } else {
-        format!("{what} {shown} is not {rule}")
     }
 }
 
@@ -130,58 +111,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn identifiers_are_a_letter_then_letters_digits_or_underscore() {
-        for good in ["a", "lampDuty", "lamp_duty", "s01ep01", "A9"] {
-            assert!(is_ident(good), "{good}");
-        }
-        for bad in ["", "lamp-duty", "_x", "9a", "a.b", "a b", "é"] {
-            assert!(!is_ident(bad), "{bad}");
-        }
-        assert!(is_dotted_ident("mira.s01ep01") && !is_dotted_ident("door-notes.a"));
-        assert!(!is_dotted_ident("a..b") && !is_dotted_ident(""));
-    }
-
-    #[test]
-    fn engine_ids_keep_the_engines_spelling() {
+    fn a_name_is_letters_digits_underscore_or_hyphen_not_leading_hyphen() {
         for good in [
-            "item.rusty-key",
-            "place.lab-b2",
-            "npc.maud",
-            "rusty-key",
-            "a.9-lives",
+            "a",
+            "lampDuty",
+            "lamp_duty",
+            "lamp-duty",
+            "zero-coke-001",
+            "001",
+            "9-lives",
+            "_x",
+            "a-",
         ] {
-            assert!(is_engine_ref(good), "{good}");
+            assert!(is_name(good), "{good}");
         }
         for bad in [
-            "",
-            "9item.key",
-            "item..key",
-            "item.",
-            "item.a b",
-            "kind:npc",
-            "_x.y",
+            "", "-a", "a.b", "a b", "\"a\"", "'a'", "é", "a:b", "kind:npc",
         ] {
-            assert!(!is_engine_ref(bad), "{bad}");
+            assert!(!is_name(bad), "{bad}");
         }
-        assert!(is_engine_id("side-quest") && !is_engine_id("a.b") && !is_engine_id("-a"));
+        assert!(is_dotted_name("door-notes.lamp-duty") && is_dotted_name("mira.001"));
+        assert!(!is_dotted_name("a..b") && !is_dotted_name("") && !is_dotted_name("a.-b"));
     }
 
     #[test]
-    fn the_suggestion_is_camel_case() {
-        assert_eq!(camel_case("lamp-duty"), "lampDuty");
-        assert_eq!(camel_case("fade-in-up"), "fadeInUp");
-        assert_eq!(camel_case("isolation.hush"), "isolationHush");
+    fn an_identifier_is_the_bare_writable_name() {
+        for good in ["a", "lampDuty", "lamp_duty", "s01ep01", "A9", "_x"] {
+            assert!(is_ident(good), "{good}");
+        }
+        for bad in ["", "lamp-duty", "9a", "001", "a.b", "a b", "é"] {
+            assert!(!is_ident(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_fault_lists_the_allowed_characters() {
         assert_eq!(
-            camel_case_dotted("door-notes.lamp-duty"),
-            "doorNotes.lampDuty"
+            name_fault("`share` key", "nana report").unwrap(),
+            "`share` key `nana report` is not a name: letters, digits, `_` or `-`, not \
+             starting with `-`"
         );
         assert_eq!(
-            ident_fault("`share` key", "nana-report").unwrap(),
-            "`share` key `nana-report` is not an identifier: a letter, then letters, digits or \
-             `_` — write `nanaReport`"
+            dotted_name_fault("scene id", "door notes.a").unwrap(),
+            "scene id `door notes.a` is not a dotted id: names joined by `.`, each letters, \
+             digits, `_` or `-`, not starting with `-`"
+        );
+        assert_eq!(
+            name_fault("id", ""),
+            Some("id `` is not a name: letters, digits, `_` or `-`, not starting with `-`".into())
+        );
+        assert_eq!(name_fault("id", "lamp-out"), None);
+        assert_eq!(dotted_name_fault("id", "lore.tomas-doc"), None);
+    }
+
+    #[test]
+    fn a_name_read_bare_is_an_identifier_and_the_fault_names_its_spelling() {
+        assert_eq!(
+            ident_fault("def", "lamp-lit", "@").unwrap(),
+            "def `lamp-lit` is not an identifier: it is read bare as `@lamp-lit` — a letter or \
+             `_`, then letters, digits or `_`; write `lampLit`"
         );
         // No identifier spelling to offer: the rule alone.
-        assert!(!ident_fault("id", "9-lives").unwrap().contains("write"));
-        assert_eq!(ident_fault("id", "ok"), None);
+        assert!(!ident_fault("def `f` param", "9-lives", "")
+            .unwrap()
+            .contains("write"));
+        assert_eq!(ident_fault("def", "lampLit", "@"), None);
     }
 }

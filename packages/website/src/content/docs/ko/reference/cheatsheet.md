@@ -1,6 +1,6 @@
 ---
 title: 치트시트
-description: "Lute 0.29.1(시계, 퀘스트 구조, 파티, 브리지 응답, 배타 관계, 공유 소진, 퀘스트 그래프 간선, `add:`로 조립하는 종류, 종류 대상, 디렉티브 `when=`, 컴포넌트 기본값과 `@@who`, 규칙의 개수 세기, 엔진 게이트와 종료 상태, 영구 결말, 끝이 있는 시계, 주, 시즌, `rearm`과 한 번 성립하면 유지되는 `spentBy`, 비트 템플릿, `chapters:` 챕터, 라벨과 라벨 형태, 복수형, 허브 `<return>` 블록, `follows=` / `outcome=` / `visibleWhen=` 포함)으로 글을 쓰는 동안 열어 두는 한 페이지: 모든 구문을 검사된 최소 스니펫으로 보여 줍니다(프로젝트 구성, 프론트매터, 대사, 선택지, match, 상태, CEL, 비트, 시계, 퀘스트, 로어, 컴포넌트, 타임라인). CLI 요약, 작가가 가장 자주 만나는 진단 코드, 주의할 점도 담았습니다."
+description: "Lute 0.30.0(시계, 퀘스트 구조, 파티, 브리지 응답, 배타 관계, 공유 소진, 퀘스트 그래프 간선, `add:`로 조립하는 종류, 종류 대상, 디렉티브 `when=`, 컴포넌트 기본값과 `@@who`, 규칙의 개수 세기, 엔진 게이트와 종료 상태, 영구 결말, 끝이 있는 시계, 주, 시즌, `rearm`과 한 번 성립하면 유지되는 `spentBy`, 비트 템플릿, `chapters:` 챕터, 라벨과 라벨 형태, 복수형, 허브 `<return>` 블록, `follows=` / `outcome=` / `visibleWhen=` 포함)으로 글을 쓰는 동안 열어 두는 한 페이지: 모든 구문을 검사된 최소 스니펫으로 보여 줍니다(프로젝트 구성, 프론트매터, 대사, 선택지, match, 상태, CEL, 비트, 시계, 퀘스트, 로어, 컴포넌트, 타임라인). CLI 요약, 작가가 가장 자주 만나는 진단 코드, 주의할 점도 담았습니다."
 ---
 
 모든 구문을 한 페이지에 복사해 쓸 수 있는 스니펫으로 모았습니다. 아래의 `lute` 블록은 모두 CI에서 실제
@@ -126,7 +126,7 @@ identity:                               # both values below are the defaults
   lineId: "{prefix}.{speaker}_{code}"
   voiceKey: "{prefix}.{speaker}-{code}" # the 0.21 default was {speaker}-{code}: pin it to keep old keys
 defaults:                               # frontmatter every document inherits
-  luteVersion: "0.29.1"
+  luteVersion: "0.30.0"
   uses:                                 # resolved against THIS file's directory
     - world.schema.yaml
     - schema/areas/*.schema.yaml        # 0.26.0: a glob, expanded in path order; matching nothing is fine
@@ -629,17 +629,18 @@ rules:
 0.26.0부터 가드가 enum 경로, `occasion.target`, 퀘스트의 `state` / `failedBy`와 비교하는 문자열(`==`, `!=`,
 `in [...]`의 원소)은 그 멤버여야 합니다. `run.rank == 'silvr'`는 `is="silvr"`처럼
 `E-WHEN-LITERAL-DOMAIN`이며, 비슷한 이름을 제안합니다.
-0.29.0: 작가가 쓰는 모든 이름은 **식별자**입니다. 글자로 시작하고 글자, 숫자, `_`로 이어지며,
-점으로 이은 id는 식별자를 `.`으로 잇습니다. 씬·비트·엔트리·퀘스트·objective·branch·허브·choice·mark
-id, 문서 id의 각 부분, `share` 키, 시즌, relation, def, enum과 엔티티 종류와 그 멤버, 컴포넌트
-파라미터, 플러그인이 선언하는 계기와 이벤트가 모두 그렇습니다. 이름에 `-`가 있으면 그 자리의
-코드로 오류가 나고, camelCase 철자를 알려 줍니다(`lamp-duty` → `lampDuty`).
+0.30.0: 작가가 쓰는 모든 이름은 **이름**입니다. 글자, 숫자, `_`, `-`로 이루어지고 `-`로 시작하지
+않으며, 점으로 이은 id는 이름을 `.`으로 잇습니다. 씬·비트·엔트리·퀘스트·objective·branch·허브·choice·mark
+id, 문서 id의 각 부분, `share` 키, 시즌, relation, enum과 엔티티 종류와 그 멤버, 플러그인이
+선언하는 계기와 이벤트, 대상과 카테고리가 모두 그렇습니다. `lamp-out`,
+`zero-coke-001`, `001`은 모두 이름입니다. 이름에 `.`, 공백, 따옴표가 있으면 그 자리의 코드로 오류가 나고,
+쓸 수 있는 문자를 알려 줍니다. JavaScript 변수처럼 그대로 읽히는 이름 — def, def의 파라미터, 컴포넌트와
+템플릿 파라미터(`@lampLit`) — 는 **식별자**(글자나 `_`로 시작하고 글자, 숫자, `_`로 이어지는 이름)이며,
+여기에 쓴 `lamp-lit`은 `lampLit`을 알려 주는 오류입니다.
 
-Lute가 선언하는 이름은 식별자이고, **엔진**이 가진 id는 엔진이 쓰는 철자 그대로 씁니다. CEL의 맵 키가
-문자열 데이터인 것과 같습니다. 어떤 `entities:` 종류도 멤버를 나열하지 않는 `target`(계기가 없을 때,
-`target: true`로 선언한 계기, `open:` 종류)과 엔트리의 `category`는 `-`를 쓸 수 있습니다:
-`target="item.rusty-key"`, `category="key-item"`. `members:`를 나열한 종류의 대상은 선언된 멤버를
-가리키므로 식별자입니다(`npc.old-man`은 도메인 밖입니다).
+식별자인 이름은 조건식에 그대로 쓸 수 있고, 어떤 이름이든 JavaScript가 키에 접근하듯 따옴표로 쓸 수
+있습니다: `quest["zero-coke-001"].state`, `run.visits["lab-b2"]`, `holds(at("lab-b2"))`. 두 표기는 같은
+이름입니다. `quest.zero-coke-001.state`는 뺄셈으로 읽히므로 `E-PATH-IDENT`이며, 대괄호 표기를 알려 줍니다.
 
 CEL이 들어가는 곳: `<match on>`, `<when test>`, 줄이나 선택지의 `when=`, `::set`의 우변과 `when=`,
 그것을 받는 다른 디렉티브의 `when=`(0.26.0), `::next when`, 비트 `when:`, 엔트리 `when=`, 퀘스트 `start` / `fail`, 목표 `done` / `by` / `until` /
@@ -728,7 +729,7 @@ state:
 
 번들 비트는 `id`, `on`, `target`, `title`, `when`, `priority`, `once`, `also`, 그리고 0.25.0부터 `after`와
 `share`를 받고, 본문은 씬 본문(대사, branch, 허브, match, 디렉티브)입니다. 문서에는 `id:`가 있어야 하고, 비트
-`id`는 식별자이며, 비트의 정식 id는 `<문서 id>.<비트 id>`(`cafe.talks.miraOrder`)입니다.
+`id`는 이름이며, 비트의 정식 id는 `<문서 id>.<비트 id>`(`cafe.talks.miraOrder`)입니다.
 `lute play`, `presented:`, `visited('cafe.talks.miraOrder')`, `lute trace --beat`가 이 id를 씁니다. 씬
 비트처럼 동작합니다: `once`의 기본값은 `run`이고, 제시되면 소진됩니다. 0.24.0부터는 씬이나 퀘스트가 번들 비트를
 선행 조건으로 쓸 수 있고(`after: visited('cafe.talks.miraOrder')`), 0.25.0부터는 비트 자신의 `after="…"`가 씬의
@@ -812,7 +813,7 @@ events:
   - name: talk                          # same name as an occasion: <on event="talk" target="npc.mira">
 ```
 
-계기를 선언하는 플러그인이 없으면 어떤 식별자든 받아들여집니다. 플러그인이 계기를 선언한 뒤에는 모르는
+계기를 선언하는 플러그인이 없으면 어떤 이름이든 받아들여집니다. 플러그인이 계기를 선언한 뒤에는 모르는
 계기가 `E-OCCASION-UNKNOWN`이 되고, `target`을 선언하지 않은 계기에 `target`을 쓰면 `E-BEAT-ATTR`입니다.
 대상 도메인 `{ prefix, entity }`는 그 `entities:` 종류의 멤버마다 `<prefix>.<member>`를 허용하므로(`open:`
 종류라면 어떤 멤버든), `target: npc.vesan`은 비슷한 이름을 제안하는 `E-BEAT-ATTR`입니다.

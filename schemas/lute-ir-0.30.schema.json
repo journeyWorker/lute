@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.29.schema.json",
-  "title": "Lute compiled IR artifact (irVersion 0.29.x)",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.30.schema.json",
+  "title": "Lute compiled IR artifact (irVersion 0.30.x)",
   "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `Artifact`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec §4.1, A9; relaxed in 0.13.0): an engine gates on `irVersion` by MAJOR only — it MUST accept any artifact whose `irVersion` MAJOR it implements and MUST refuse one from a different MAJOR. Minor and patch are compatible-by-default (fields are append-only within a major line; unknown fields are ignored), and an unknown command `kind` is the hard error that catches a genuinely newer capability. Pre-1.0, a breaking change may still land in a minor (0.10.0's provenance rename); such changes are called out in the CHANGELOG and this schema rather than fenced by the gate. `lute` (the language version) is informational for the runtime and does not gate parsing. Forward compatibility: an engine MUST IGNORE unknown OBJECT FIELDS (new optional fields are added append-only within a minor line) so a newer PATCH artifact still loads on an older engine of the same major.minor; an engine MUST treat an unknown command `kind` as an ERROR (a new command kind is a real capability the engine cannot fake). Field declaration order in an artifact is a byte-stability contract of the compiler but carries no semantics for a consumer.\n\nIR 0.8.0: within one artifact every `addr` shares a field width, so lexicographic order over `addr` equals execution order (dsl 0.8.0 §2). Engines loading artifacts from mixed toolchain versions SHOULD still compare `addr` segment-wise numerically.\n\nIR 0.9.0: a PURE RESTAMP of 0.8.0 for release-wide version alignment (docs/versioning.md) — lute-ir-0.9.schema.json IS lute-ir-0.8.schema.json renamed, with no field added, renamed, moved, or retyped.\n\nIR 0.10.0: a REAL shape change, not a restamp (#36, dsl 0.10.0 Appendix B). `provenance.reason` is renamed to `provenance.explanation`; no command `kind` is added, renamed, or removed, and no other field changes. Because the gate above is by MAJOR.MINOR, an engine implementing IR 0.9 MUST refuse a 0.10.0 artifact; widening that gate and reading `provenance.explanation` are the only changes such an engine needs. lute-ir-0.9.schema.json is kept published for engines still on 0.9.\n\nIR 0.11.0: a PURE RESTAMP of 0.10.2 for release-wide version alignment (docs/versioning.md) — lute-ir-0.13.schema.json IS lute-ir-0.10.schema.json renamed, with no field added, renamed, moved, or retyped. Unlike 0.10.1/0.10.2, which shared major.minor 0.10 and needed no rename, this release moves the gated major.minor itself (0.10 → 0.11), so the file renames and an engine implementing IR 0.10 MUST widen its gate before it accepts a 0.11.0 artifact — reading no new field, because there is none. lute-ir-0.10.schema.json is kept published for engines still on 0.10.\n\nIR 0.15.0 reshapes sceneMeta (dsl 0.15.0 §2/§3, authored scene identity): sceneMeta gains the always-present `id` field (the resolved canonical scene key — authored `id:` verbatim, else the derived `{character}.{episodeId}` join); the four legacy identity keys (`character`/`season`/`episode`/`episodeId`) demote to optional; and BOTH sceneMeta and questMeta gain the descriptive `meta` block (an open mapping whose values are scalars or flat scalar arrays, key-sorted by the compiler, omitted when empty). The gated major.minor moves (0.14 → 0.15); lute-ir-0.14.schema.json is kept published for engines still on 0.14.\n\nIR 0.16.0 is ADDITIVE-ONLY over 0.15.1 (dsl 0.16.0 declarative rewards): cmdQuest and objectiveEntry each gain an optional `rewards` array of the new `rewardEntry` def. Both arrays are omitted when empty, so a pre-rewards artifact stays byte-identical to 0.15.1. A `rewardEntry` carries `kind`, optional `target`, exactly one of `amount` XOR (`amountMin` + `amountMax`) after amount defaulting (unauthored → `amount: 1`), an optional `when` CEL pair evaluated at the grant instant, and `on: \"failed\"` on a quest-level entry (objective-level entries never carry `on`). Range amounts are wire-verbatim — an engine never sees a pre-rolled scalar (spec D-C). The runtime contract emits deterministic `grant` transcript events at each fresh lifecycle transition (spec §3 D-D); the reference engine's shape is `{ \"kind\": \"grant\", \"quest\": <id>, \"objective\": <oid>?, \"reward\": { …rewardEntry sans when… }, \"onFailed\": true? }`. The per-release rename rule renames `lute-ir-0.15.schema.json` → `lute-ir-0.16.schema.json`; the gated MAJOR does not move under 0.13.0's MAJOR-only runtime contract, so a 0.15 engine parses a 0.16.0 artifact unchanged and simply does not ask for the added arrays.",
   "type": "object",
   "additionalProperties": true,
@@ -131,7 +131,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+          "name": { "type": "string", "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$" },
           "live": { "$ref": "#/$defs/celPair" }
         },
         "additionalProperties": false,
@@ -983,7 +983,7 @@
       "properties": {
         "on": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "the occasion this scene answers — engine vocabulary, shape-only unless a resolved plugin declares `occasions:` (dsl 0.21.0 §2)."
         },
         "targetKind": {
@@ -1007,7 +1007,7 @@
         "once": {
           "anyOf": [
             { "enum": ["run", "user", "none", "day", "slot", "week"] },
-            { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }
+            { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }
           ],
           "description": "repetition policy: `run` (default — presented at most once per run), `user` (at most once ever), `none` (repeatable; source `once: false`), `day` / `slot` (dsl 0.24.0 §1: spent until the declared clock's day / slot changes — the artifact's `clock` names the paths), `week` (dsl 0.27.0 §5: spent until `clock.weekday` returns to `week.first`), `season:<name>` (dsl 0.27.0 §5: spent until the season opens again). A beat with `spentBy` is `none`."
         },
@@ -1021,7 +1021,7 @@
         },
         "share": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "dsl 0.25.0 §2: the shared-spend key. Beats with the same key (project-wide; scene, entry, and bundle beats alike) are spent together: once one is presented (an entry: read), every beat of the key is spent for their common `once` period. Absent when not authored."
         }
       },
@@ -1038,7 +1038,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_.-]+$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*(\\.[A-Za-z0-9_][A-Za-z0-9_-]*)*$",
           "description": "dsl 0.19.0 §2.1: the quest document's authored `id:` verbatim (same shape as a scene `id:`). The document's ProjectIndex key. Absent when not authored, so a quest document without `id:` is byte-identical to 0.18."
         },
         "title": {
@@ -1384,7 +1384,7 @@
         },
         "on": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "dsl 0.21.0 §7a.2: the occasion at which this objective is judged. The engine evaluates the objective's `done` only when it raises this occasion while the quest is `active`, never continuously (docs/runtime/quest-lifecycle.md). Absent when not authored: the objective is evaluated continuously, as before."
         },
         "by": {
@@ -2408,7 +2408,7 @@
           "description": "dsl 0.27.0 §5: when this `@def`-expanded condition goes from false to true the quest returns to `unset` (objectives undone, `failedBy` cleared) and can be activated again. Omitted when not authored."
         },
         "tier": {
-          "anyOf": [{ "enum": ["run"] }, { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }],
+          "anyOf": [{ "enum": ["run"] }, { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }],
           "description": "dsl 0.27.0 §5: `season:<name>` resets the quest to `unset` when that season opens. dsl 0.22.0 §7: `run` for a `<quest tier=\"run\">` — its status and objectives reset to `unset` when a run starts (`newRun`). Omitted for the default `user` tier (status persists across runs)."
         },
         "activate": {
@@ -2561,7 +2561,7 @@
         },
         "on": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "dsl 0.21.0 §3.2: the occasion this entry answers, which makes it an entry beat (docs/runtime/beats-and-occasions.md). Absent when not authored."
         },
         "priority": {
@@ -2571,7 +2571,7 @@
         "once": {
           "anyOf": [
             { "enum": ["run", "user", "day", "slot", "week"] },
-            { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }
+            { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }
           ],
           "description": "dsl 0.22.0 §7, 0.24.0 §1: the entry beat's repetition policy — `run`: not eligible while `entry.<id>.read` is true; `user`: not eligible once `entry.<id>.everRead` is true; `day` / `slot`: not eligible again until the declared clock's day / slot changes after it was read. Absent when not authored: repeatable, as in 0.21."
         },
@@ -2581,7 +2581,7 @@
         },
         "share": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "dsl 0.25.0 §2: the shared-spend key, as sceneBeat.share — reading this entry spends every beat of the key, and any of them being presented spends this entry, for the common `once` period. Absent when not authored."
         },
         "body": {
@@ -2691,7 +2691,7 @@
         },
         "on": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "the occasion this beat answers (the sceneBeat.on shape)."
         },
         "target": {
@@ -2717,7 +2717,7 @@
         "once": {
           "anyOf": [
             { "enum": ["run", "user", "none", "day", "slot", "week"] },
-            { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }
+            { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }
           ],
           "description": "repetition policy, as sceneBeat.once: `run` (default), `user`, `none` (source `once=false`), `day` / `slot` (dsl 0.24.0 §1). Spent when the beat is presented."
         },
@@ -2731,7 +2731,7 @@
         },
         "share": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "dsl 0.25.0 §2: the shared-spend key, as sceneBeat.share. Absent when not authored."
         },
         "after": {
@@ -2960,7 +2960,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_.-]+$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*(\\.[A-Za-z0-9_][A-Za-z0-9_-]*)*$",
           "description": "dsl 0.19.0 §2.1: the lore document's authored `id:` verbatim (same shape as a scene `id:`). The document's ProjectIndex key. Absent when not authored."
         },
         "title": {
@@ -2968,7 +2968,7 @@
         },
         "series": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "dsl 0.19.0 §2.1 (D-K): the document-level `series:` — every entry of the document belongs to it, ordered by position in the file. Each entry record already carries the resolved `series`/`order`. Absent when not authored."
         },
         "contentLang": {
@@ -3043,7 +3043,7 @@
         },
         "on": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$"
         },
         "target": {
           "type": "string"
@@ -3055,7 +3055,7 @@
         "once": {
           "anyOf": [
             { "enum": ["run", "user", "none", "day", "slot", "week"] },
-            { "type": "string", "pattern": "^season:[A-Za-z][A-Za-z0-9_]*$" }
+            { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }
           ],
           "description": "the beat's repetition policy: always present on a scene or bundle row; on an entry row the authored `once` (`run`/`user`, dsl 0.22.0 §7; `day`/`slot`, dsl 0.24.0 §1), absent = repeatable."
         },
@@ -3073,7 +3073,7 @@
         },
         "share": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "dsl 0.25.0 §2: the beat's shared-spend key — every row of one key is spent when any of them is presented (an entry: read). Absent when not authored."
         }
       },
@@ -3130,7 +3130,7 @@
           "oneOf": [
             {
               "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+              "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
               "description": "one occasion, raised after every advance where the clock stops (the map form's `slot`)."
             },
             {
@@ -3139,17 +3139,17 @@
               "properties": {
                 "slot": {
                   "type": "string",
-                  "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                  "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
                   "description": "raised once after every advance, where the clock stops."
                 },
                 "dayStart": {
                   "type": "string",
-                  "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                  "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
                   "description": "raised at every midnight an advance crosses, after it — at the next day's first slot."
                 },
                 "dayEnd": {
                   "type": "string",
-                  "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                  "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
                   "description": "raised at every midnight an advance crosses, before it — at the day's last slot, the day not yet advanced."
                 }
               }

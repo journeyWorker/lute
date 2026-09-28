@@ -104,24 +104,25 @@ fn deserialize_set<'de, D: Deserializer<'de>>(
     Ok(Some(set))
 }
 
-fn valid_ident(value: &str, allow_hyphen: bool) -> bool {
+/// A directive or bridge name: a letter, then letters, digits, `_` or `-`.
+fn valid_hyphenated(value: &str) -> bool {
     let mut bytes = value.bytes();
     matches!(bytes.next(), Some(c) if c.is_ascii_alphabetic())
-        && bytes.all(|c| c.is_ascii_alphanumeric() || c == b'_' || (allow_hyphen && c == b'-'))
+        && bytes.all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
 }
 
 fn valid_directive(value: &str) -> bool {
-    value == "*" || valid_ident(value, true)
+    value == "*" || valid_hyphenated(value)
 }
 
 fn valid_relation(value: &str) -> bool {
-    value == "*" || valid_ident(value, false)
+    value == "*" || crate::ident::is_name(value)
 }
 
 fn valid_state_path(value: &str, require_dot: bool) -> bool {
     let mut count = 0usize;
     for segment in value.split('.') {
-        if !valid_ident(segment, false) {
+        if !crate::ident::is_name(segment) {
             return false;
         }
         count += 1;
@@ -146,7 +147,7 @@ fn valid_bridge(value: &str) -> bool {
     let Some((service, operation)) = value.split_once('/') else {
         return false;
     };
-    !operation.contains('/') && valid_ident(service, true) && valid_ident(operation, true)
+    !operation.contains('/') && valid_hyphenated(service) && valid_hyphenated(operation)
 }
 
 impl PermissionSet {
@@ -347,7 +348,8 @@ mod tests {
             "directives: ['::bg']",
             "stateWrites: [scene]",
             "stateWrites: [scene.*.value]",
-            "factWrites: [found-clue]",
+            "factWrites: [found.clue]",
+            "factWrites: [-found]",
             "bridges: [dialogue.respond]",
             "bridges: [dialogue/respond/extra]",
         ] {

@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! FactPattern ::= Ident "(" FactArg ("," FactArg)* ")"
-//! FactArg     ::= Ident | "true" | "false" | "_" | "@" Ident | "occasion.target"
+//! FactArg     ::= Ident | Quoted | "true" | "false" | "_" | "@" Ident | "occasion.target"
 //!                 (* "@" Ident: a component param; "occasion.target": the member a kind
 //!                    or `for=` beat runs for *)
 //! Rule        ::= Atom ":-" Literal ("," Literal)*
@@ -18,10 +18,12 @@
 //!               | "countDistinct(" Atom ("," Var)+ ")" CountOp Nat
 //! CountOp     ::= ">=" | ">" | "<=" | "<" | "==" | "=" | "!="
 //! Atom        ::= Ident "(" Term ("," Term)* ")"
-//! Term        ::= Ident | "true" | "false" | "_"
+//! Term        ::= Ident | Quoted | "true" | "false" | "_"
 //!                 (* "_" in a rule BODY atom is a fresh anonymous variable (dsl 0.24 T3-9);
 //!                    it is Malformed in a rule head and in a comparison *)
-//! Ident       ::= [A-Za-z][A-Za-z0-9_]*       (* CelIdent — no "-" *)
+//! Ident       ::= [A-Za-z][A-Za-z0-9_]*
+//! Quoted      ::= "\"" Name "\"" | "'" Name "'"   (* any name, `lab-b2`; the same name as
+//!                                                     its bare spelling; always a constant *)
 //! CelString   ::= "\"" ([^"\\] | \\.)* "\""
 //! ```
 
@@ -374,6 +376,26 @@ fn parse_arg_list<T>(
 /// After a term ident, flags a nested call `f(` or an adjacent arithmetic
 /// operator `+ - * /` as the distinct `FunctionTerm` error (§7.1).
 fn check_function_or_op(c: &mut Cur, at: usize, name: &str) -> Option<DatalogError> {
+    // `lab-b2` written bare: one name only when quoted.
+    if !name.starts_with(|c: char| c.is_ascii_uppercase())
+        && c.peek() == Some(b'-')
+        && c.b
+            .get(c.i + 1)
+            .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_')
+    {
+        let end = c.i
+            + c.b[c.i..]
+                .iter()
+                .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+                .count();
+        let glued = String::from_utf8_lossy(&c.b[at..end]);
+        return Some(DatalogError::Malformed {
+            at,
+            msg: format!(
+                "`{glued}` is a name that is not an identifier — write it quoted: \"{glued}\""
+            ),
+        });
+    }
     c.ws();
     if c.peek() == Some(b'(') {
         return Some(DatalogError::FunctionTerm {
@@ -392,10 +414,30 @@ fn check_function_or_op(c: &mut Cur, at: usize, name: &str) -> Option<DatalogErr
     None
 }
 
+/// A quoted name at the cursor (`"lab-b2"` / `'lab-b2'`): the name, cursor
+/// past the closing quote. The quoted and bare spellings of a name are the
+/// same name. `Ok(None)` when the cursor is not at a quote.
+fn quoted_term(c: &mut Cur) -> Result<Option<String>, DatalogError> {
+    if !matches!(c.peek(), Some(b'"' | b'\'')) {
+        return Ok(None);
+    }
+    let at = c.i;
+    let text = std::str::from_utf8(&c.b[at..]).unwrap_or_default();
+    let (name, len) = crate::path::read_quoted(text).ok_or_else(|| DatalogError::Malformed {
+        at,
+        msg: "unclosed quote in an argument".to_string(),
+    })?;
+    c.i += len;
+    Ok(Some(name))
+}
+
 fn parse_fact_term(c: &mut Cur) -> Result<FactTerm, DatalogError> {
     if c.peek() == Some(b'_') {
         c.i += 1;
         return Ok(FactTerm::Wildcard);
+    }
+    if let Some(name) = quoted_term(c)? {
+        return Ok(FactTerm::Ident(name));
     }
     let at = c.i;
     if c.peek() == Some(b'@') {
@@ -408,8 +450,8 @@ fn parse_fact_term(c: &mut Cur) -> Result<FactTerm, DatalogError> {
     }
     let (name, _) = c.ident().ok_or_else(|| DatalogError::Malformed {
         at,
-        msg: "expected an argument (identifier, `true`, `false`, `_`, a component \
-              `@param`, or `occasion.target`)"
+        msg: "expected an argument (identifier, a quoted name, `true`, `false`, `_`, a \
+              component `@param`, or `occasion.target`)"
             .to_string(),
     })?;
     if name == "occasion" && eat_str(c, ".target") {
@@ -458,10 +500,13 @@ fn parse_rule_term(c: &mut Cur) -> Result<RuleTerm, DatalogError> {
         c.anon += 1;
         return Ok(RuleTerm::Var(name));
     }
+    if let Some(name) = quoted_term(c)? {
+        return Ok(RuleTerm::Const(name));
+    }
     let at = c.i;
     let (name, _) = c.ident().ok_or_else(|| DatalogError::Malformed {
         at,
-        msg: "expected a term (identifier, `true`, or `false`)".to_string(),
+        msg: "expected a term (identifier, a quoted name, `true`, or `false`)".to_string(),
     })?;
     if let Some(err) = check_function_or_op(c, at, &name) {
         return Err(err);
@@ -547,6 +592,9 @@ fn parse_body_literal(c: &mut Cur) -> Result<BodyLiteral, DatalogError> {
     c.ws();
     let lit_start = c.i;
     let at = c.i;
+    if let Some(name) = quoted_term(c)? {
+        return parse_cmp(c, RuleTerm::Const(name), lit_start);
+    }
     let (name, _) = c.ident().ok_or_else(|| DatalogError::Malformed {
         at,
         msg: "expected a body literal (atom, `not` atom, `cel(...)`, or a comparison)".to_string(),
@@ -598,7 +646,12 @@ fn parse_body_literal(c: &mut Cur) -> Result<BodyLiteral, DatalogError> {
     if let Some(err) = check_function_or_op(c, at, &name) {
         return Err(err);
     }
-    let lhs = classify_rule_term(name);
+    parse_cmp(c, classify_rule_term(name), lit_start)
+}
+
+/// The rest of a comparison literal after its left term: `=`/`!=` and the
+/// right term.
+fn parse_cmp(c: &mut Cur, lhs: RuleTerm, lit_start: usize) -> Result<BodyLiteral, DatalogError> {
     c.ws();
     let negated = if eat_str(c, "!=") {
         true
@@ -780,6 +833,50 @@ mod tests {
     fn parses_cel_guard() {
         let r = parse_rule("act1Site(L) :- location(L), site(L), cel(\"run.act == 1\")").unwrap();
         assert!(matches!(&r.body[2], BodyLiteral::Guard { cel, .. } if cel == "run.act == 1"));
+    }
+
+    /// A quoted name is the name its bare spelling is, in a fact pattern, a
+    /// rule head or body, and a comparison — and always a constant.
+    #[test]
+    fn quoted_names_are_the_bare_names() {
+        let f = parse_fact("at(\"lab-b2\", 'maud')").unwrap();
+        assert_eq!(
+            f.args.iter().map(|a| a.term.clone()).collect::<Vec<_>>(),
+            vec![
+                FactTerm::Ident("lab-b2".into()),
+                FactTerm::Ident("maud".into())
+            ]
+        );
+        let r = parse_rule("near(X, \"lab-b2\") :- at(X, 'lab-b2'), \"Maud\" != X").unwrap();
+        assert_eq!(r.head.terms[1], RuleTerm::Const("lab-b2".into()));
+        assert!(
+            matches!(&r.body[0], BodyLiteral::Pos(a) if a.terms[1] == RuleTerm::Const("lab-b2".into()))
+        );
+        assert!(matches!(
+            &r.body[1],
+            BodyLiteral::Cmp { lhs: RuleTerm::Const(c), negated: true, .. } if c == "Maud"
+        ));
+    }
+
+    #[test]
+    fn a_bare_hyphenated_name_asks_for_quotes() {
+        for (text, fact) in [("at(lab-b2)", true), ("near(X) :- at(X, lab-b2)", false)] {
+            let err = if fact {
+                parse_fact(text).unwrap_err()
+            } else {
+                parse_rule(text).unwrap_err()
+            };
+            match err {
+                DatalogError::Malformed { msg, .. } => {
+                    assert!(msg.contains("write it quoted: \"lab-b2\""), "{text}: {msg}")
+                }
+                other => panic!("{text}: {other:?}"),
+            }
+        }
+        assert!(matches!(
+            parse_fact("at(\"lab-b2)"),
+            Err(DatalogError::Malformed { .. })
+        ));
     }
 
     #[test]

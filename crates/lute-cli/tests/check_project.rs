@@ -856,12 +856,13 @@ fn a_dotted_quest_id_is_reported_once_at_its_declaration() {
     );
 }
 
-/// A quest id with a `-` is the same: its read `quest.lamp-duty.state`
-/// parses as a subtraction. Across the project the declaration's
-/// `E-PATH-IDENT` is the one report; checked alone, the read is one
-/// `E-PATH-IDENT` naming the path, not the subtraction's findings.
+/// A quest id with a `-` is a name (dsl 0.30.0): its declaration is clean.
+/// A read that writes it after a `.` (`quest.lamp-duty.state`) parses as a
+/// subtraction, so it is one `E-PATH-IDENT` at the read naming the quoted
+/// spelling — across the project and checked alone — and the quoted read
+/// checks clean.
 #[test]
-fn a_hyphenated_quest_id_is_reported_once_at_its_declaration() {
+fn a_hyphenated_quest_id_read_after_a_dot_names_the_quoted_spelling() {
     let dir = temp_dir("hyphen-quest-reads");
     write(
         &dir,
@@ -875,29 +876,43 @@ fn a_hyphenated_quest_id_is_reported_once_at_its_declaration() {
          <quest id=\"lamp-duty\" title=\"Lamps\" start=\"run.n >= 1\" tier=\"run\">\n  \
          <objective id=\"lit\" title=\"Lit\" done=\"run.n >= 2\"/>\n</quest>\n",
     );
+    let scene = |when: &str| {
+        format!(
+            "---\nkind: scene\ncharacter: s\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+             @narrator{{when=\"{when}\"}}: Lit.\n"
+        )
+    };
+    let errors = |out: &std::process::Output| -> Vec<String> {
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| l.contains(": error ["))
+            .map(String::from)
+            .collect()
+    };
+    let bracket = "write `quest[\"lamp-duty\"].state`";
+    for when in ["quest.lamp-duty.state == 'active'", "quest.lamp-duty.state"] {
+        write(&dir, "a.lute", &scene(when));
+        for args in [
+            vec!["check-project", dir.to_str().unwrap()],
+            vec!["check", dir.join("a.lute").to_str().unwrap()],
+        ] {
+            let errs = errors(&run(&args));
+            assert_eq!(errs.len(), 1, "{when} {args:?}: {errs:?}");
+            assert!(
+                errs[0].contains("a.lute")
+                    && errs[0].contains("[E-PATH-IDENT]")
+                    && errs[0].contains(bracket),
+                "{when} {args:?}: {errs:?}"
+            );
+        }
+    }
     write(
         &dir,
         "a.lute",
-        "---\nkind: scene\ncharacter: s\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-         @narrator{when=\"quest.lamp-duty.state == 'active'\"}: Lit.\n",
+        &scene("quest['lamp-duty'].state == 'active'"),
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let errors: Vec<&str> = stdout.lines().filter(|l| l.contains(": error [")).collect();
-    assert_eq!(errors.len(), 1, "{stdout}");
-    assert!(
-        errors[0].contains("q.lute") && errors[0].contains("E-PATH-IDENT"),
-        "{stdout}"
-    );
-    let alone = run(&["check", dir.join("a.lute").to_str().unwrap()]);
-    let alone = String::from_utf8_lossy(&alone.stdout);
-    let errors: Vec<&str> = alone.lines().filter(|l| l.contains(": error [")).collect();
-    assert_eq!(errors.len(), 1, "{alone}");
-    assert!(
-        errors[0].contains("[E-PATH-IDENT] `quest.lamp-duty.state` has a `-`")
-            && errors[0].contains("write `quest.lampDuty.state`"),
-        "{alone}"
-    );
+    let errs = errors(&run(&["check-project", dir.to_str().unwrap()]));
+    assert!(errs.is_empty(), "{errs:?}");
 }
 
 #[test]
@@ -2936,7 +2951,7 @@ fn check_project_prints_causes_before_documents() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.mood: { type: { enum: [calm, very-calm] }, default: calm }\n",
+        "state:\n  run.mood: { type: { enum: [calm, very calm] }, default: calm }\n",
     );
     write(
         &dir,
@@ -2947,7 +2962,7 @@ fn check_project_prints_causes_before_documents() {
     write(
         &dir,
         "scenes/a.lute",
-        "---\nkind: scene\nid: a\n---\n## A\n<branch id=\"pick-one\" prompt=\"?\">\n  \
+        "---\nkind: scene\nid: a\n---\n## A\n<branch id=\"pick one\" prompt=\"?\">\n  \
          <choice id=\"x\" label=\"X\">\n    @n: x\n  </choice>\n</branch>\n",
     );
     let out = run(&["check-project", dir.to_str().unwrap()]);
@@ -2959,8 +2974,8 @@ fn check_project_prints_causes_before_documents() {
     };
     let order = [
         at("lute.project.yaml:6:3: warning [W-LUTE-VERSION-STALE]"),
-        at("world.schema.yaml:2:3: error [E-PATH-IDENT] enum member `very-calm`"),
-        at("a.lute:6:13: error [E-PATH-IDENT] branch id `pick-one`"),
+        at("world.schema.yaml:2:3: error [E-PATH-IDENT] enum member `very calm`"),
+        at("a.lute:6:13: error [E-PATH-IDENT] branch id `pick one`"),
         at("failed: "),
         at("b.lute (0 warning(s))"),
         at("project-wide diagnostics:"),

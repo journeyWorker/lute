@@ -133,7 +133,8 @@ pub fn value_to_json(v: &Value) -> Json {
     }
 }
 
-/// Parse a ground `"rel(a, b)"` fact.
+/// Parse a ground `"rel(a, b)"` fact. A quoted argument (`at("lab-b2")`,
+/// `at('lab-b2')`) is the same name written bare.
 pub fn parse_ground_fact(s: &str) -> Option<Fact> {
     let s = s.trim();
     let open = s.find('(')?;
@@ -148,9 +149,23 @@ pub fn parse_ground_fact(s: &str) -> Option<Fact> {
     let args = if inner.trim().is_empty() {
         Vec::new()
     } else {
-        inner.split(',').map(|a| a.trim().to_string()).collect()
+        inner
+            .split(',')
+            .map(|a| unquote(a.trim()).to_string())
+            .collect()
     };
     Some((rel.to_string(), args))
+}
+
+/// `"x"` / `'x'` → `x`; anything else as is.
+fn unquote(a: &str) -> &str {
+    [b'"', b'\'']
+        .iter()
+        .find_map(|&q| {
+            let b = a.as_bytes();
+            (b.len() >= 2 && b[0] == q && b[b.len() - 1] == q).then(|| &a[1..a.len() - 1])
+        })
+        .unwrap_or(a)
 }
 
 /// The lifecycle values `quest.<id>.state` takes (always assigned: a quest

@@ -145,7 +145,8 @@ pub(crate) fn parse_axis_flag(raw: &str) -> Result<(String, Vec<String>), String
     if values.iter().any(String::is_empty) {
         return Err(format!("`{raw}` has an empty value"));
     }
-    Ok((path.to_string(), values))
+    // `run.visits["lab-b2"]` names the member `run.visits.lab-b2` does.
+    Ok((lute_trace::state_key(path), values))
 }
 
 /// How an axis value reaches a cell.
@@ -2011,7 +2012,10 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
     // Two header rows: the axis paths and occasions, then the targets.
     let mut rows: Vec<Vec<String>> = Vec::with_capacity(cells.len() + 2);
     let targeted = columns.iter().any(|c| c.target.is_some() || c.any_target);
-    let mut head: Vec<String> = axes.iter().map(|a| a.path.clone()).collect();
+    let mut head: Vec<String> = axes
+        .iter()
+        .map(|a| crate::output::spelled_path(&a.path))
+        .collect();
     head.extend(columns.iter().map(|c| {
         if c.select == OccasionSelect::First {
             c.occasion.clone()

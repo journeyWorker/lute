@@ -80,8 +80,9 @@ pub fn hover_at(
             // A state path renders its `state:` decl (or the implicit choice path),
             // exactly as a CEL-slot path read does.
             InterpKind::Path => {
-                if is_state_path(&i.raw) {
-                    state_hover(&meta, &i.raw).or_else(|| choice_hover(&i.raw))
+                let path = super::interp_path(&i.raw);
+                if is_state_path(&path) {
+                    state_hover(&meta, &path).or_else(|| choice_hover(&path))
                 } else {
                     None
                 }
@@ -206,7 +207,11 @@ fn asset_segment_hover(kind: &AssetKindDecl, doc: &Document, off: usize) -> Opti
 /// Render a `state:` declaration (type + default).
 fn state_hover(meta: &lute_check::TypedMeta, path: &str) -> Option<String> {
     let decl = meta.state.decls.get(path)?;
-    let mut s = format!("**state** `{path}`: {}", type_label(&decl.ty));
+    let mut s = format!(
+        "**state** `{}`: {}",
+        lute_cel::path::bracket_spelling_of(path),
+        type_label(&decl.ty)
+    );
     if let Some(def) = &decl.default {
         s.push_str(&format!("\n\ndefault: {}", literal_label(def)));
     }

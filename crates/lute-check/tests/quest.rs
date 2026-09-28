@@ -404,9 +404,9 @@ fn quest_on_directive_slot_opens_scene_path() {
 // --- Review Finding 3: quest/objective id CelIdent validation (§8.4) -------
 
 #[test]
-fn quest_id_with_hyphen_errors() {
+fn quest_id_with_space_errors() {
     let cs = codes(
-        "---\nkind: quest\n---\n<quest id=\"bad-id\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+        "---\nkind: quest\n---\n<quest id=\"bad id\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
     );
     assert!(cs.contains(&"E-PATH-IDENT".to_string()), "{cs:?}");
 }
@@ -422,9 +422,9 @@ fn quest_id_with_dot_errors_at_declaration() {
 }
 
 #[test]
-fn objective_id_with_hyphen_errors() {
+fn objective_id_with_space_errors() {
     let cs = codes(
-        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"bad-oid\" done=\"run.d\"/>\n</quest>\n",
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"bad oid\" done=\"run.d\"/>\n</quest>\n",
     );
     assert!(cs.contains(&"E-PATH-IDENT".to_string()), "{cs:?}");
 }

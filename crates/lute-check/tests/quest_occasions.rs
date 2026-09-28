@@ -342,11 +342,11 @@ fn accept_without_quest_is_accept_target() {
 }
 
 #[test]
-fn accept_with_a_non_identifier_quest_is_accept_target() {
-    let src = scene_doc("haven.s01ep04", "", "::accept{quest=\"help-vesna\"}\n");
+fn accept_with_a_malformed_quest_is_accept_target() {
+    let src = scene_doc("haven.s01ep04", "", "::accept{quest=\"help vesna\"}\n");
     let ds = diags(&src);
     let d = only(&ds, "E-ACCEPT-TARGET");
-    assert_eq!(anchored(&src, d), "help-vesna");
+    assert_eq!(anchored(&src, d), "help vesna");
     assert!(with_code(&ds, "E-UNKNOWN-DIRECTIVE").is_empty(), "{ds:?}");
 }
 
@@ -418,6 +418,6 @@ fn project_accept_of_an_unknown_quest_is_accept_target() {
 
 #[test]
 fn project_accept_skips_a_malformed_target() {
-    let scene = scene_doc("haven.s01ep04", "", "::accept{quest=\"help-vesna\"}\n");
+    let scene = scene_doc("haven.s01ep04", "", "::accept{quest=\"help vesna\"}\n");
     assert!(accepts(&[("scene.lute", &scene)]).is_empty());
 }

@@ -32,7 +32,7 @@ CEL. A bool def reads as a guard; a number def reads as a staging value:
 ```
 
 A `@ref` must appear in a position whose required type matches the def's declared `type`, and its
-name must be declared in `defs`. Def names and param names are CEL identifiers (no `-`).
+name must be declared in `defs`. Def names and param names are identifiers (a letter or `_`, then letters, digits or `_`): a condition reads them bare, like a JavaScript variable, so `lamp-lit` is `E-PATH-IDENT` naming `lampLit`.
 
 In a directive attribute the ref is **bare** — `zoom=@closeUp`. A quoted `zoom="@closeUp"` is the
 literal string `@closeUp`, which a number attribute rejects as `E-ATTR-TYPE`. An attribute value is
