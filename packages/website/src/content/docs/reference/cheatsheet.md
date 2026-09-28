@@ -648,6 +648,12 @@ mark ids, document id segments, `share` keys, seasons, relations, defs, enum and
 their members, component params, and the occasions and events a plugin declares. A `-` is an error
 at the name, under that slot's code, naming the camelCase spelling (`lamp-duty` → `lampDuty`).
 
+A name Lute declares is an identifier; an id the **engine** owns is written as the engine spells it,
+the way a CEL map key is string data. A `target` whose members no `entities:` kind lists (no
+occasion, an occasion declared `target: true`, an `open:` kind) and an entry's `category` keep `-`:
+`target="item.rusty-key"`, `category="key-item"`. A target on a kind that lists its `members:`
+names a declared member, so it is an identifier (`npc.old-man` is outside the domain).
+
 Where CEL goes: `<match on>`, `<when test>`, `when=` on a line or choice, `::set` right-hand sides
 and `when=`, `when=` on any other directive that takes it (0.26.0), `::next when`, beat `when:`, entry `when=`, quest `start` / `fail`, objective `done` /
 `by` / `until` / `visibleWhen`, `<on when>`, `<reward when>`, and a cast entry's `present:`. In a directive

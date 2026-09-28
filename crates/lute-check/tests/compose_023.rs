@@ -191,7 +191,7 @@ fn objective_target_follows_the_beat_target_rule() {
         (
             "on=\"talk\" target=\"npc maud\"",
             "npc maud",
-            "must be a dotted id",
+            "must be an engine id",
         ),
         ("target=\"npc.maud\"", "npc.maud", "`target` requires `on`"),
         (

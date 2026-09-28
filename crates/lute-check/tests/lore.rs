@@ -151,21 +151,23 @@ fn non_string_id_is_entry_attr_once() {
     assert!(anchored(&src, &ds[0]).starts_with("id"));
 }
 
+/// An entry's `target` on an untargeted occasion is an id the engine owns,
+/// written as the engine spells it (`item.rusty-key`); only its shape is
+/// checked.
 #[test]
 fn malformed_target_is_entry_attr() {
-    for bad in [
-        "item..key",
-        "9item.key",
-        "item.",
-        "item.rusty key",
-        "place.lab-b2",
-        "item.9",
-    ] {
+    for bad in ["item..key", "9item.key", "item.", "item.rusty key"] {
         let (src, ds) = entry_attr_diags(&format!("<entry id=\"e\" target=\"{bad}\">"));
         assert_eq!(ds.len(), 1, "{bad}: {ds:?}");
         assert_eq!(anchored(&src, &ds[0]), bad);
     }
-    for good in ["npc", "item.rusty_key", "place.labB2"] {
+    for good in [
+        "npc",
+        "item.rusty_key",
+        "item.rusty-key",
+        "place.lab-b2",
+        "item.9",
+    ] {
         let (_, ds) = entry_attr_diags(&format!("<entry id=\"e\" target=\"{good}\">"));
         assert!(ds.is_empty(), "{good}: {ds:?}");
     }
@@ -179,6 +181,13 @@ fn non_ident_category_and_series_are_entry_attr() {
     let (src, ds) = entry_attr_diags("<entry id=\"e\" series=\"log.1\">");
     assert_eq!(ds.len(), 1, "{ds:?}");
     assert_eq!(anchored(&src, &ds[0]), "log.1");
+    // A category is engine vocabulary, spelled as the engine spells it; a
+    // series is a name the document declares, so an identifier.
+    let (_, ds) = entry_attr_diags("<entry id=\"e\" category=\"field-note\">");
+    assert!(ds.is_empty(), "{ds:?}");
+    let (src, ds) = entry_attr_diags("<entry id=\"e\" series=\"field-log\">");
+    assert_eq!(ds.len(), 1, "{ds:?}");
+    assert_eq!(anchored(&src, &ds[0]), "field-log");
 }
 
 #[test]

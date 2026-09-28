@@ -23,9 +23,9 @@ use crate::cel_paths::E_PATH_IDENT;
 use crate::meta::{Namespace, StateDecl};
 
 /// `<entry>` attribute shape (§3): missing/non-ident `id`, malformed
-/// `target`, non-ident `category`/`series`, `order` that is not a
-/// non-negative integer, `order` without `series`, or a non-string value for
-/// any string attribute. Anchored at the attribute.
+/// `target`, a `category` that is no engine id, a non-ident `series`, `order`
+/// that is not a non-negative integer, `order` without `series`, or a
+/// non-string value for any string attribute. Anchored at the attribute.
 pub const E_ENTRY_ATTR: &str = "E-ENTRY-ATTR";
 /// Two entries with the same `id` (§3) — per document in `lute check`,
 /// project-wide in `check-project`.
@@ -81,10 +81,12 @@ pub fn parse_entry_order(raw: &str) -> Option<u32> {
     raw.parse().ok()
 }
 
-/// `target ::= Ident ("." Ident)*` — shape-only, never checked against a
-/// vocabulary.
+/// `target ::= EngineId ("." Part)*` — an id the engine owns, written as the
+/// engine spells it ([`lute_manifest::ident::is_engine_ref`]); shape-only.
+/// Where an occasion's target domain lists an entity kind's members, the
+/// member must be one of them (`occasion_target_ok`), so it is an identifier.
 pub fn is_entry_target(s: &str) -> bool {
-    lute_manifest::ident::is_dotted_ident(s)
+    lute_manifest::ident::is_engine_ref(s)
 }
 
 /// dsl 0.26.0 §5: `kind:<Ident>` — a beat or entry that answers its occasion
@@ -560,7 +562,8 @@ fn check_entry_shape(entry: &Entry, doc_series: Option<&str>, diags: &mut Vec<Di
         }
     }
     if let Some((v, span)) = &entry.category {
-        if let Some(fault) = lute_manifest::ident::ident_fault("`<entry>` `category`", v) {
+        // Engine vocabulary (dsl 0.19.0 §3): the engine's spelling.
+        if let Some(fault) = lute_manifest::ident::engine_id_fault("`<entry>` `category`", v) {
             diags.push(attr_diag(fault, *span));
         }
     }

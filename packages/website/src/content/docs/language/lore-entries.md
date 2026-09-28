@@ -57,8 +57,8 @@ heading, no `## ` shots, no `<quest>`.
 | Attr | Meaning |
 |---|---|
 | `id` | required; unique across the project |
-| `target` | the engine-owned thing it belongs to — `item.rusty_key`, `place.lab_b2`, `npc.vesna`; on an entry beat also `kind:<kind>`, every member of a kind (dsl 0.26.0 §5) |
-| `category` | what kind of text it is — `note`, `item`, `place`, `codex`, `bark`, … (engine vocabulary) |
+| `target` | the engine-owned thing it belongs to — `item.rusty_key`, `place.lab-b2`, `npc.vesna`, written as the engine spells it (letters, digits, `_` or `-` in `.`-separated parts); on an occasion whose target domain lists a kind's members, one of those members; on an entry beat also `kind:<kind>`, every member of a kind (dsl 0.26.0 §5) |
+| `category` | what kind of text it is — `note`, `item`, `place`, `codex`, `bark`, `key-item`, … (engine vocabulary, spelled as the engine spells it) |
 | `title` | display title, localized like a quest title |
 | `series` / `order` | multi-part text: `order` is the position within `series` (a document-level `series:` can supply both — see below) |
 | `when` | eligibility: the entry may be presented only while this holds |

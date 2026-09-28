@@ -169,12 +169,12 @@ fn malformed_target_is_beat_attr() {
         let src = scene("a.b", &format!("on: talk\ntarget: {target}\n"));
         let ds = diags(&src);
         let d = only(&ds, "E-BEAT-ATTR");
-        assert!(
-            d.message.contains("`target:` must be a dotted id"),
-            "{}",
-            d.message
-        );
+        assert!(d.message.contains("`target:` must be"), "{}", d.message);
     }
+    // An untyped target is an id the engine owns, spelled its way.
+    let src = scene("a.b", "on: talk\ntarget: item.rusty-key\n");
+    let ds = diags(&src);
+    assert!(ds.iter().all(|d| d.code != "E-BEAT-ATTR"), "{ds:#?}");
 }
 
 #[test]

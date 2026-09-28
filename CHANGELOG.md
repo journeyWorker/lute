@@ -36,6 +36,12 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Fixed
+
+- The 0.29 identifier rule no longer reaches ids the engine owns. A name Lute declares is an identifier; an id the engine owns is written as the engine spells it, the way a CEL map key is string data. A `target` on an `<entry>`, `<beat>`, `<objective>`, `<on>` or scene `target:` whose members no `entities:` kind lists (no occasion, an occasion declared `target: true`, an `open:` kind) and an entry's `category` (engine vocabulary) accept `-` again, as in 0.28.1: `<entry id="key" target="item.rusty-key">` checks clean instead of `E-ENTRY-ATTR`, and the target message describes the shape it checks. A target on a kind that lists its `members:` names a declared member, so `npc.old-man` stays `E-BEAT-ATTR` (outside the domain).
+
 ## [0.29.0] - 2026-09-28
 
 **One identifier rule, intent you can state, games as examples.**

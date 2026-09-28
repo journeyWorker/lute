@@ -78,7 +78,7 @@ fn beat_shape_faults_are_beat_attr() {
         ),
         (
             "<beat id=\"a\" on=\"talk\" target=\"npc..x\">",
-            "must be a dotted id",
+            "must be an engine id",
         ),
     ] {
         let ds = with_code(&doc(&format!("{open}\n@n: hi\n</beat>\n")), "E-BEAT-ATTR");

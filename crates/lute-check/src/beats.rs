@@ -3145,8 +3145,7 @@ fn beat_diag(
 
 /// What a target looks like, for messages: the shape `is_entry_target`
 /// accepts, in words.
-pub(crate) const TARGET_SHAPE: &str = "a dotted id such as `npc.maud` — an identifier, then one \
-     or more `.`-separated parts of letters, digits, `_` or `-`";
+pub(crate) const TARGET_SHAPE: &str = lute_manifest::ident::ENGINE_REF_SHAPE;
 
 /// Why `t` is no target of `what` (`` `<objective>` ``, `` `<beat>` `` …).
 /// `kind_ok`: `what` also takes `kind:<entity kind>` (beats and entries);
