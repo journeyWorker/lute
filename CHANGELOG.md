@@ -8,11 +8,13 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.30.0`, the grammar and semantics the checker
+- **Language** — currently `0.31.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.30.0`) and gated on by consuming engines.
+  artifact (currently `0.31.0`) and gated on by consuming engines.
+
+
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -35,6 +37,35 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.31.0] - 2026-09-29
+
+**Declared beat clock movement and schedule diagnostics.**
+
+`advances: slot`, `advances: day`, or `advances: <n>` lets a scene, lore entry,
+or bundle beat declare that presenting it moves the project clock. `lute play`
+performs the move with the same quest settlement and clock raises as an explicit
+`advance:` step. A duplicate explicit step is retained for compatibility but
+emits a note; remove it so the declaration remains the source of truth.
+
+### Added
+
+- `W-OBJECTIVE-STRANDED` warns when a required objective's only completing beats
+  have clock-bounded windows but the objective has no `until=` or `by=` failure
+  deadline. Run-tier quests report this as informational because a new run
+  retries them.
+- `W-SLOT-CONTENTION` warns when two required run-tier objectives in one quest
+  can only complete at the same single clock position and each completing beat
+  advances the clock.
+- `lute play` includes a lifecycle beat raised by an `advances:` beat in the
+  presented list and transcript, including when the advancing beat ends through
+  a choice branch.
+
+### Compatibility and migration
+
+- Existing content without `advances` is unchanged.
+- Migrate plugin `spendsSlot: true` to `advances: slot`; migrate
+  `spendsSlots: n` to `advances: n`. The engine, not the plugin, moves time.
 
 ## [0.30.0] - 2026-09-28
 

@@ -1,0 +1,8 @@
+state:
+  run.day: { type: number, default: 1, owner: engine }
+  run.slot: { type: { enum: [morning, evening] }, default: morning, owner: engine }
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [morning, evening]
+  raise: slotStart

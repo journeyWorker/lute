@@ -191,6 +191,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
                     return finish(start, steps, h, s.world);
                 }
             }
+            let previous_beat_advanced = std::mem::take(&mut s.world.clock_advanced_by_beat);
             let was_terminal = s.terminal();
             let (body, quests, halt) = run_step(&mut s, step);
             let leftover = std::mem::take(&mut s.world.bridges.step);
@@ -214,12 +215,21 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
             if matches!(step.action, Action::NewRun(_)) {
                 run_start = s.clock_at();
             }
-            let mut notes: Vec<String> =
-                clock_raised_note(&s, &step.action, &plan[i + 1..], run_start)
-                    .into_iter()
-                    .chain(closed_raise_notes(&body))
-                    .chain(passed_raise_note(&s, &body))
-                    .collect();
+            let duplicate_advance_note = if previous_beat_advanced
+                && matches!(step.action, Action::Advance { .. })
+            {
+                Some("this `advance:` follows a beat that already declared `advances`; \
+                      both moves apply, so remove this step if it duplicates that movement"
+                    .to_string())
+            } else {
+                None
+            };
+            let mut notes: Vec<String> = duplicate_advance_note
+                .into_iter()
+                .chain(clock_raised_note(&s, &step.action, &plan[i + 1..], run_start))
+                .chain(closed_raise_notes(&body))
+                .chain(passed_raise_note(&s, &body))
+                .collect();
             // dsl 0.27.0 §4: the step that ended the game says so; a new run
             // that did not reopen it says so too.
             let ended_game = halt.is_none() && s.terminal() && !was_terminal;

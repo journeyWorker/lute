@@ -426,6 +426,9 @@ pub struct BeatIr {
     /// if it turns false again. Omitted when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spent_by: Option<CelPair>,
+    /// dsl 0.31.0 §1: clock movement performed when the beat is presented.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advances: Option<lute_check::AdvanceSpec>,
 }
 
 /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat, resolved against the
@@ -1592,6 +1595,9 @@ pub struct EntryCmd {
     /// dsl 0.27.0 §5: as [`BeatIr::spent_by`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spent_by: Option<CelPair>,
+    /// dsl 0.31.0 §1: clock movement performed when the beat is presented.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advances: Option<lute_check::AdvanceSpec>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1642,6 +1648,9 @@ pub struct BeatCmd {
     /// dsl 0.27.0 §5: as [`BeatIr::spent_by`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spent_by: Option<CelPair>,
+    /// dsl 0.31.0 §1: clock movement performed when the beat is presented.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advances: Option<lute_check::AdvanceSpec>,
     pub body: String,
     #[serde(flatten)]
     pub stamp: Stamp,

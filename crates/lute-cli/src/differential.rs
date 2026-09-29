@@ -965,6 +965,7 @@ fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
                 Some((doc.clone(), prepare(doc, rel, project.as_deref(), &gates)))
             })
             .collect();
+        eprintln!("DIFF_PREPARED_ROOT {} docs={}", root.dir.display(), prepared.len());
         for (doc, subject) in prepared {
             let Some(subject) = subject else { continue };
             let subject = Arc::new(subject);
@@ -1035,6 +1036,7 @@ fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
                 .plays_failed
                 .push(format!("{}: {e}", rel_slash(&play, &root.dir))),
         }
+        eprintln!("DIFF_PLAY_DONE {}", play.display());
     }
     corpus
 }
@@ -1187,11 +1189,11 @@ fn presentation_cases(
         let mut obs = Observation {
             said: said_of(&pr.transcript, art),
             state: pr
-                .state_after
+                .state_after_body
                 .iter()
                 .map(|(k, v)| (k.clone(), value_text(v)))
                 .collect(),
-            facts: pr.facts_after.iter().map(render_fact).collect(),
+            facts: pr.facts_after_body.iter().map(render_fact).collect(),
             quests: BTreeMap::new(),
             ir: Vec::new(),
             exit: match pb.halted {

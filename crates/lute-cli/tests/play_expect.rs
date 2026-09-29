@@ -1463,3 +1463,22 @@ fn a_visited_seed_spends_the_scenes_once_user() {
     let out = lute(&["play", d, "--script", script.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 }
+
+#[test]
+fn presented_advancing_beat_moves_clock_settles_quest_and_raises_slot() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/play-advance");
+    let script = fixture.join("plays/advance.play.yaml");
+    let out = lute(&[
+        "play",
+        fixture.to_str().unwrap(),
+        "--script",
+        script.to_str().unwrap(),
+    ]);
+    let shown = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{shown}");
+    assert!(shown.contains("expect: every expectation held"), "{shown}");
+    assert!(
+        shown.contains("both moves apply, so remove this step if it duplicates that movement"),
+        "{shown}"
+    );
+}

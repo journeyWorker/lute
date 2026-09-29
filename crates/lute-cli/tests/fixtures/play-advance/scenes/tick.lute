@@ -1,0 +1,8 @@
+---
+kind: scene
+id: tick
+on: tick
+---
+## Tick
+@narrator: Morning arrives.
+::set{run.raised = true}

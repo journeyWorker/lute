@@ -2983,3 +2983,124 @@ fn check_project_prints_causes_before_documents() {
     ];
     assert!(order.windows(2).all(|w| w[0] < w[1]), "{order:?}\n{stdout}");
 }
+/// dsl 0.31.0 §3/§4: required objective clock-window diagnostics use the
+/// calendar position and distinguish a reset-per-run info from a contention
+/// warning. The deadline variant is the clean counterpart.
+#[test]
+fn check_project_reports_sera_kato_contention_and_stranded_info() {
+    let dir = temp_dir("objective-clock-windows");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  luteVersion: \"0.31.0\"\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+         run.slot: { type: { enum: [morning, evening] }, default: evening, owner: engine }\n  \
+         run.sera: { type: bool, default: false }\n  run.kato: { type: bool, default: false }\n\
+         clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, evening]\n  raise: tick\n  raiseAtStart: true\n",
+    );
+    write(
+        &dir,
+        "quests/sera-kato.lute",
+        "---\nkind: quest\nid: seraKato\n---\n<quest id=\"seraKato\" tier=\"run\" start=\"true\">\n\
+         <objective id=\"sera\" done=\"run.sera\"/>\n\
+         <objective id=\"kato\" done=\"run.kato\"/>\n</quest>\n",
+    );
+    write(
+        &dir,
+        "scenes/sera.lute",
+        "---\nkind: scene\nid: sera\non: tick\nwhen: \"clock.index == 1\"\npriority: 10\nadvances: slot\n---\n\
+         ## Sera\n@narrator: Sera takes the evening watch.\n::set{run.sera = true}\n",
+    );
+    write(
+        &dir,
+        "scenes/kato.lute",
+        "---\nkind: scene\nid: kato\non: tick\nwhen: \"clock.index == 1\"\npriority: 9\nadvances: slot\n---\n\
+         ## Kato\n@narrator: Kato takes the evening watch.\n::set{run.kato = true}\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{text}");
+    let stranded: Vec<_> = text
+        .lines()
+        .filter(|line| line.contains("[W-OBJECTIVE-STRANDED]"))
+        .collect();
+    assert_eq!(stranded.len(), 2, "{text}");
+    assert!(
+        stranded.iter().all(|line| line.contains("info")),
+        "{text}"
+    );
+    let contention: Vec<_> = text
+        .lines()
+        .filter(|line| line.contains("[W-SLOT-CONTENTION]"))
+        .collect();
+    assert_eq!(contention.len(), 2, "{text}");
+    assert!(contention.iter().all(|line| line.contains("day 1 evening")), "{text}");
+
+    let clean = temp_dir("objective-clock-deadline");
+    write(
+        &clean,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  luteVersion: \"0.31.0\"\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &clean,
+        "world.schema.yaml",
+        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+         run.slot: { type: { enum: [morning, evening] }, default: evening, owner: engine }\n  \
+         run.done: { type: bool, default: false }\nclock:\n  day: run.day\n  slot: run.slot\n  \
+         slots: [morning, evening]\n  raise: tick\n  raiseAtStart: true\n",
+    );
+    write(
+        &clean,
+        "quests/main.lute",
+        "---\nkind: quest\nid: main\n---\n<quest id=\"main\" tier=\"user\" start=\"true\">\n\
+         <objective id=\"done\" done=\"run.done\" until=\"clock.index >= 2\"/>\n\
+         <on event=\"questFailed\">@narrator: missed.</on>\n</quest>\n",
+    );
+    write(
+        &clean,
+        "scenes/main.lute",
+        "---\nkind: scene\nid: main\non: tick\nwhen: \"clock.index == 1\"\nadvances: slot\n---\n\
+         ## Main\n@narrator: Main.\n::set{run.done = true}\n",
+    );
+    let clean_out = run(&["check-project", clean.to_str().unwrap()]);
+    let clean_text = String::from_utf8_lossy(&clean_out.stdout);
+    assert!(
+        !clean_text.contains("W-OBJECTIVE-STRANDED"),
+        "{clean_text}"
+    );
+}
+
+/// An unguarded repeatable beat on the clock's own raise must be rejected
+/// before runtime can recurse through an endless declared-advance cascade.
+#[test]
+fn check_project_rejects_repeatable_advance_cascade() {
+    let dir = temp_dir("advance-cascade");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  luteVersion: \"0.31.0\"\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+         run.slot: { type: { enum: [morning, evening] }, default: morning, owner: engine }\n\
+         clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, evening]\n  raise: tick\n",
+    );
+    write(
+        &dir,
+        "scenes/loop.lute",
+        "---\nkind: scene\nid: loop\non: tick\nonce: false\nadvances: slot\n---\n\
+         ## Loop\n@narrator: Loop.\n",
+    );
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(text.contains("[E-ADVANCE-CASCADE]"), "{text}");
+    assert!(text.contains("scene `loop`"), "{text}");
+}

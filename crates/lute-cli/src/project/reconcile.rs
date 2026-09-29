@@ -354,6 +354,19 @@ pub(crate) fn reconcile_collected(
             // A beat whose `when` holds only where the clock does not raise
             // its occasion (or only at a last `dayEnd` the game's end closes).
             Box::new(|| lute_check::clock_positions::check_project_unraised(group, &beat_foldeds)),
+            // A repeatable beat must not answer a clock raise and advance
+            // itself into the next raised position.
+            Box::new(|| {
+                lute_check::clock_positions::check_project_advance_cascades(
+                    group,
+                    &beat_foldeds,
+                )
+            }),
+            // dsl 0.31.0: required objective windows and same-slot
+            // advancement contention.
+            Box::new(|| {
+                lute_check::check_project_objective_clock_windows(group, &beat_foldeds)
+            }),
             // A `spentBy` another document's quest spends at the start, or
             // one whose condition can turn false again after it has held.
             Box::new(|| lute_check::spent_by::check_project_spent_by(root, group, &beat_foldeds)),

@@ -1,0 +1,10 @@
+---
+kind: scene
+id: b
+on: slotStart
+advances: slot
+---
+
+## B
+
+@narrator: B lifecycle line.

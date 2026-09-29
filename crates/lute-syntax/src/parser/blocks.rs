@@ -408,6 +408,7 @@ impl Parser<'_> {
         let once = take_str_spanned(&mut attrs, "once");
         let share = take_str_spanned(&mut attrs, "share");
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let advances = take_str_spanned(&mut attrs, "advances");
         let spent_by = take_cel(&mut attrs, "spentBy", CelKind::Condition);
         let outer = self.enter_top_block("entry", &id, &open);
         let (body, end_o) = self.parse_block_body("entry", &open);
@@ -427,6 +428,7 @@ impl Parser<'_> {
             share,
             when,
             spent_by,
+            advances,
             attrs,
             body,
             span: self.span_o(open.start_o, end_o),
@@ -455,6 +457,7 @@ impl Parser<'_> {
         let after = take_str_spanned(&mut attrs, "after");
         let also = take_flag(&mut attrs, "also");
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let advances = take_str_spanned(&mut attrs, "advances");
         let spent_by = take_cel(&mut attrs, "spentBy", CelKind::Condition);
         // dsl 0.27.0 §6: `use="<template>"`; its arguments stay in `attrs`.
         let template = take_str_spanned(&mut attrs, "use").map(|(name, span)| TemplateUse {
@@ -487,6 +490,7 @@ impl Parser<'_> {
             also,
             when,
             spent_by,
+            advances,
             attrs,
             template,
             body,
@@ -716,15 +720,17 @@ impl Parser<'_> {
     fn skip_block(&mut self, parent: &OpenTag, parent_tag: &str, tag: &str, trimmed: &str) {
         let one_line = trimmed.ends_with("/>") || trimmed.contains(&format!("</{tag}>"));
         self.skip_stray();
-        while !one_line {
-            self.skip_blanks();
-            if self.block_body_done(parent) || self.at_close(parent_tag) {
-                break;
-            }
-            let at_end = self.at_close(tag);
-            self.skip_stray();
-            if at_end {
-                break;
+        if !one_line {
+            loop {
+                self.skip_blanks();
+                if self.block_body_done(parent) || self.at_close(parent_tag) {
+                    break;
+                }
+                let at_end = self.at_close(tag);
+                self.skip_stray();
+                if at_end {
+                    break;
+                }
             }
         }
     }

@@ -342,6 +342,7 @@ pub const SCENE_KEYS: &[&str] = &[
     "share",
     "spentBy",
     "for",
+    "advances",
 ];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Quest` document: the optional

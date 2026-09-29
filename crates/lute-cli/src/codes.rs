@@ -189,6 +189,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.21.0 §7a.3", "dsl 0.24.0 §2", "dsl 0.25.0 §5"],
     },
     Code {
+        code: "E-ADVANCE-CASCADE",
+        summary: "A repeatable beat answers the clock raise that presents it and advances into the next position, creating a repeating nested `advances:` cascade.",
+        spec: &["dsl 0.31.0 §1"],
+    },
+    Code {
         code: "E-AGE-GATE",
         summary: r#"An age-gated `<match on="app.rating">` covers neither a `teen` arm nor an `<otherwise>`, so a release build could hit no matching case."#,
         spec: &["dsl §11.2"],
@@ -1624,6 +1629,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.4.0 §5.3"],
     },
     Code {
+        code: "W-OBJECTIVE-STRANDED",
+        summary: "A required objective can only be completed by beats whose clock-bounded windows may all close, but the objective has no `until=` or `by=` deadline with a failure handler.",
+        spec: &["dsl 0.31.0 §3"],
+    },
+    Code {
         code: "W-OTHERWISE-DEAD",
         summary: "A `<match>`'s `<otherwise>` arm is provably unreachable because earlier unguarded `is` arms already cover the subject's whole domain.",
         spec: &["dsl 0.4.0 §5.2"],
@@ -1687,6 +1697,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-SEASON-UNGATED",
         summary: "A beat with `once: season:<name>` (or a `tier=\"season:<name>\"` quest with a `start`) whose `when` (or `start`) does not imply the season's `live` condition: `once` only sets how long the beat stays spent, so it plays even while the season has never opened. Add the season's `live` condition (or a def that reads it) to the `when`.",
         spec: &["dsl 0.28.0 §7"],
+    },
+    Code {
+        code: "W-SLOT-CONTENTION",
+        summary: "Two required objectives in one run can only be completed by advancing beats at the same single clock position, so one presentation consumes the other objective's only slot.",
+        spec: &["dsl 0.31.0 §4"],
     },
     Code {
         code: "W-SPENT-BY-REVERSIBLE",

@@ -1,0 +1,10 @@
+steps:
+  - occasion: start
+    choose: { choice: go }
+    expect:
+      presented: [a, b, c]
+      state: { run.slot: morning }
+expect:
+  transcriptContains:
+    - "@narrator: B lifecycle line."
+    - "@narrator: C lifecycle line."

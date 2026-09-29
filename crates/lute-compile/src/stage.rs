@@ -1074,6 +1074,7 @@ pub fn walk_entry(
 ) {
     let label = em.fresh();
     let text = |v: &Option<(String, lute_core_span::Span)>| v.as_ref().map(|(s, _)| s.clone());
+    let advances = lute_check::advances_from_attr(entry.advances.as_ref(), &mut Vec::new());
     let mut cmd = Command::Entry(EntryCmd {
         addr: String::new(),
         id: entry.id.clone(),
@@ -1123,6 +1124,7 @@ pub fn walk_entry(
         }),
         // dsl 0.27.0 §5: already `@def`-expanded, like `when`.
         spent_by: entry.spent_by.as_ref().map(|s| CelPair::from_raw(&s.raw)),
+        advances,
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -1149,6 +1151,7 @@ pub fn walk_bundle_beat(
 ) {
     let label = em.fresh();
     let title = beat.title.as_ref().map(|(t, _)| t.clone());
+    let advances = lute_check::advances_from_attr(beat.advances.as_ref(), &mut Vec::new());
     let mut cmd = Command::Beat(BeatCmd {
         addr: String::new(),
         id: key.to_string(),
@@ -1184,6 +1187,7 @@ pub fn walk_bundle_beat(
             )
         }),
         spent_by: beat.spent_by.as_ref().map(|s| CelPair::from_raw(&s.raw)),
+        advances,
         body: label.sym(),
         stamp: Stamp::default(),
     });

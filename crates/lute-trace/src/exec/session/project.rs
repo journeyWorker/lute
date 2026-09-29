@@ -506,6 +506,7 @@ impl ExecProject {
                 .pointer("/spentBy/raw")
                 .and_then(Json::as_str)
                 .map(str::to_string),
+            advances: None,
         })
     }
 }

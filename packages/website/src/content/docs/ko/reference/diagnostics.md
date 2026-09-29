@@ -18,6 +18,12 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 `::accept` 지시어가 퀘스트를 지정하지 않았거나, `quest` 값이 인용된 퀘스트 id가 아니거나, `at` 값이 `"nextRun"`이 아니거나, 이미 부모와 함께 활성화되는 `accept="external"` 퀘스트를 대상으로 지정해 수락이 아무 효과가 없습니다.
 
 명세: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
+### E-ADVANCE-CASCADE
+
+반복 가능한 비트가 자신을 표시한 클록 상승 이벤트에 응답하면서 다음 위치로 시간을 이동해, 반복되는 중첩 `advances:` 연쇄를 만듭니다.
+
+명세: [dsl 0.31.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
+
 
 ### E-AGE-GATE
 
@@ -1611,11 +1617,17 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 명세: [dsl 0.15.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md)
 
+
 ### W-OBJECTIVE-HIDDEN
 
 필수(`!optional`) 목표(objective)의 `visibleWhen` 표시 조건이 결코 참이 될 수 없어, 완료 판정에는 여전히 관여하면서도 결코 표시되거나 추적될 수 없습니다.
 
 명세: [dsl 0.4.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
+### W-OBJECTIVE-STRANDED
+
+필수 목표가 시계로 제한된 비트로만 완료될 수 있고 그 비트들의 시간 창이 모두 닫힐 수 있지만, 목표에 `until=`이나 `by=` 기한이 없습니다. 기한과 `failedBy` 처리기를 추가하거나 기한 실패를 처리하는 콘텐츠를 작성하세요. run 계층 퀘스트에서는 다음 실행에서 다시 시도하므로 정보성 진단입니다.
+
+명세: [dsl 0.31.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
 
 ### W-OTHERWISE-DEAD
 
@@ -1688,6 +1700,11 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 `once: season:<name>`인 비트(또는 `start`가 있는 `tier="season:<name>"` 퀘스트)의 `when`(또는 `start`)이 그 시즌의 `live` 조건을 함의하지 않습니다. `once`는 비트가 얼마나 오래 소진된 상태로 남는지만 정하므로, 시즌이 한 번도 열리지 않았어도 비트가 재생됩니다. 시즌의 `live` 조건(또는 그것을 읽는 def)을 `when`에 더하세요.
 
 명세: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+### W-SLOT-CONTENTION
+
+한 퀘스트 안의 두 필수 run 계층 목표가 같은 하나의 시계 위치에서만 완료될 수 있고, 두 목표를 완료하는 비트가 모두 시간을 전진시킵니다. 하나를 표시하면 다른 목표가 완료될 유일한 슬롯도 소비됩니다.
+
+명세: [dsl 0.31.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
 
 ### W-SPENT-BY-REVERSIBLE
 

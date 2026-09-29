@@ -1,0 +1,14 @@
+---
+kind: scene
+id: a
+on: start
+advances: slot
+---
+
+## A
+
+<branch id="choice">
+  <choice id="go" label="Go">
+    @narrator: A choice.
+  </choice>
+</branch>

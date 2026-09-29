@@ -1,0 +1,7 @@
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+defaults:
+  luteVersion: "0.31.0"
+  uses: [world.schema.yaml]

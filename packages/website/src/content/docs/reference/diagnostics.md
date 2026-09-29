@@ -20,6 +20,12 @@ An `::accept` directive names no quest, gives `quest` a value that is not a quot
 
 Spec: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
 
+### E-ADVANCE-CASCADE
+
+A repeatable beat answers the clock raise that presents it and advances into the next position, creating a repeating nested `advances:` cascade.
+
+Spec: [dsl 0.31.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
+
 ### E-AGE-GATE
 
 An age-gated `<match on="app.rating">` covers neither a `teen` arm nor an `<otherwise>`, so a release build could hit no matching case.
@@ -1618,6 +1624,12 @@ A required (`!optional`) objective's `visibleWhen` visibility gate provably neve
 
 Spec: [dsl 0.4.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
 
+### W-OBJECTIVE-STRANDED
+
+A required objective can only be completed by beats whose clock-bounded windows may all close, but the objective has no `until=` or `by=` deadline with a failure handler.
+
+Spec: [dsl 0.31.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
+
 ### W-OTHERWISE-DEAD
 
 A `<match>`'s `<otherwise>` arm is provably unreachable because earlier unguarded `is` arms already cover the subject's whole domain.
@@ -1689,6 +1701,12 @@ Spec: [dsl 0.23.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/prop
 A beat with `once: season:<name>` (or a `tier="season:<name>"` quest with a `start`) whose `when` (or `start`) does not imply the season's `live` condition: `once` only sets how long the beat stays spent, so it plays even while the season has never opened. Add the season's `live` condition (or a def that reads it) to the `when`.
 
 Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-SLOT-CONTENTION
+
+Two required objectives in one run can only be completed by advancing beats at the same single clock position, so one presentation consumes the other objective's only slot.
+
+Spec: [dsl 0.31.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
 
 ### W-SPENT-BY-REVERSIBLE
 

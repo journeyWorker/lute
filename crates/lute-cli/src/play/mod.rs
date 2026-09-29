@@ -311,23 +311,19 @@ pub(crate) fn run_play_for_test(
     // A presented beat — an `occasion:` step's, or one the occasion an
     // `advance:` step's clock raised — and a quest document whose lifecycle
     // transitioned or whose handlers played during the play.
-    let beats: Vec<&Presented> = play
-        .steps
-        .iter()
-        .flat_map(|s| match s.body.occasion() {
-            Some(StepBody::Occasion { presented, .. }) => presented.iter().collect(),
-            _ => Vec::new(),
-        })
-        .chain(play.steps.iter().flat_map(|s| {
-            s.body
-                .days_played()
-                .into_iter()
-                .filter_map(|played| match played {
-                    Played::Beat(pr) => Some(pr),
-                    Played::Quest(_) => None,
-                })
-        }))
-        .collect();
+    let mut beats: Vec<&Presented> = Vec::new();
+    for s in &play.steps {
+        if let Some(StepBody::Occasion { presented, .. }) = s.body.occasion() {
+            for pr in presented {
+                collect_presented(pr, &mut beats);
+            }
+        }
+        for played in s.body.days_played() {
+            if let Played::Beat(pr) = played {
+                collect_presented(pr, &mut beats);
+            }
+        }
+    }
     let quests: Vec<(&str, &[Json])> = play
         .start
         .iter()
@@ -385,6 +381,13 @@ pub(crate) fn run_play_for_test(
     })
 }
 
+fn collect_presented<'a>(beat: &'a Presented, out: &mut Vec<&'a Presented>) {
+    out.push(beat);
+    for raised in &beat.raised {
+        collect_presented(raised, out);
+    }
+}
+
 /// One presentation a play made, as the differential harness replays it
 /// (`crate::differential`, docs/design/runtime-unification.md §4.3).
 #[cfg(test)]
@@ -435,7 +438,11 @@ pub(crate) fn presentations_for_diff(
                 Played::Quest(_) => None,
             })
             .chain(raised);
+        let mut presentations = Vec::new();
         for pr in beats {
+            collect_presented(pr, &mut presentations);
+        }
+        for pr in presentations {
             out.push(PlayedBeat {
                 presented: pr.clone(),
                 step_exclusive: false,

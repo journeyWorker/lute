@@ -12,7 +12,7 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 |---|---|---|---|
 | **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.30.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
 | **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.30.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.30.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.30.schema.json`](../schemas/lute-ir-0.30.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.30.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.31.schema.json`](../schemas/lute-ir-0.31.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.30.schema.json`](../schemas/lute-ir-0.30.schema.json)
+published as [`schemas/lute-ir-0.31.schema.json`](../schemas/lute-ir-0.31.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -906,7 +906,7 @@ dotted path, whose segments may now contain `-` or start with a digit and
 never contain `.`, and a condition's `raw` ships as written, which CEL over
 nested maps already reads. The schema file renames per release line
 (`lute-ir-0.29.schema.json` →
-[`lute-ir-0.30.schema.json`](../schemas/lute-ir-0.30.schema.json)), its name
+`lute-ir-0.30.schema.json`), its name
 patterns widened to the name rule. Artifacts whose names `0.29.1` accepted
 compile byte-identically apart from the version strings; `lute.core` does not
 move, so neither does `capabilityVersion`. Engines gate on MAJOR, so nothing

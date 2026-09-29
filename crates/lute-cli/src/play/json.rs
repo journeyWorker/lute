@@ -3,10 +3,10 @@
 use std::collections::BTreeMap;
 
 use lute_trace::exec::session::{
-    kind_label, value_to_json, Presented, QuestAdvance, StepBody, Verdict,
+    kind_label, value_to_json, Candidate, Presented, QuestAdvance, StepBody, Verdict,
 };
-use lute_trace::Value;
 use serde_json::{json, Value as Json};
+use lute_trace::Value;
 
 use super::human::pick_label;
 use super::run::Playthrough;
@@ -263,27 +263,41 @@ fn render_occasion_json(o: &mut serde_json::Map<String, Json>, body: &StepBody) 
     o.insert("winner".into(), json!(winner));
     // `presented` is the first presentation (the 0.22 shape); every later one
     // — a winner's `also` riders, the rest of a `select: sequence` — follows
-    // in `then`, in order (dsl 0.23.0 §3).
-    let pr_json = |pr: &Presented| {
-        let mut m = json!({
-            "id": pr.id,
-            "kind": kind_label(pr.kind),
-            "document": pr.document,
-            "commands": pr.transcript,
-            "stateDelta": state_delta(&pr.state_before, &pr.state_after),
-        });
-        if candidates.iter().any(|c| c.also && c.id == pr.id) {
-            m["also"] = json!(true);
-        }
-        m
-    };
+    // in `then`, in order (dsl 0.23.0 §3). A beat's declared clock movement
+    // carries its lifecycle presentations under `raised` (dsl 0.31.0 §1).
     if let Some((first, rest)) = presented.split_first() {
-        o.insert("presented".into(), pr_json(first));
+        o.insert("presented".into(), presented_json(candidates, first));
         if !rest.is_empty() {
             o.insert(
                 "then".into(),
-                Json::Array(rest.iter().map(pr_json).collect()),
+                Json::Array(
+                    rest.iter()
+                        .map(|pr| presented_json(candidates, pr))
+                        .collect(),
+                ),
             );
         }
     }
+}
+
+fn presented_json(candidates: &[Candidate], pr: &Presented) -> Json {
+    let mut m = json!({
+        "id": pr.id,
+        "kind": kind_label(pr.kind),
+        "document": pr.document,
+        "commands": pr.transcript,
+        "stateDelta": state_delta(&pr.state_before, &pr.state_after),
+    });
+    if candidates.iter().any(|c| c.also && c.id == pr.id) {
+        m["also"] = json!(true);
+    }
+    if !pr.raised.is_empty() {
+        m["raised"] = Json::Array(
+            pr.raised
+                .iter()
+                .map(|raised| presented_json(&[], raised))
+                .collect(),
+        );
+    }
+    m
 }

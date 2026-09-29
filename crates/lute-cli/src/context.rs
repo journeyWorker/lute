@@ -82,6 +82,11 @@ const BEAT_KEYS: &[(&str, &str, &str)] = &[
         "<component>",
         "bundle `<beat>`: its header from the component's `beat:` template, the component's params as attributes",
     ),
+    (
+        "advances",
+        "slot | day | <whole number ≥ 1>",
+        "moves the clock after this beat presents",
+    ),
 ];
 
 /// Descriptions of `<quest>` / `<objective>` / `<reward>` attributes, keyed

@@ -60,12 +60,14 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
                     .filter(|c| matches!(c.verdict, Verdict::Eligible))
                     .map(candidate_label)
                     .collect();
-                row.presented = presented
-                    .iter()
-                    .map(|pr| presented_label(candidates, &pr.id, pr.member.as_deref()))
-                    .collect();
                 for pr in presented {
+                    row.presented.push(presented_label(
+                        candidates,
+                        &pr.id,
+                        pr.member.as_deref(),
+                    ));
                     offered_options(p, &pr.document, &pr.transcript, &mut row.options);
+                    append_raised(p, pr, &mut row.presented, &mut row.options);
                 }
             }
             // Summer R2 / lighthouse N15, T3-8: an `advance:` step's
@@ -147,6 +149,24 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
         said_steps,
         ended: play.ended(),
         entry_aliases: p.entry_aliases.clone(),
+    }
+}
+
+/// A beat that declares `advances` may raise and present a lifecycle occasion
+/// before its own step returns. Include that nested presentation in the same
+/// play outcome, after its advancing beat (dsl 0.31.0 §1).
+fn append_raised(
+    p: &ExecProject,
+    beat: &lute_trace::exec::session::Presented,
+    presented: &mut Vec<String>,
+    options: &mut BTreeMap<String, BTreeSet<String>>,
+) {
+    let mut pending: Vec<&lute_trace::exec::session::Presented> =
+        beat.raised.iter().rev().collect();
+    while let Some(raised) = pending.pop() {
+        presented.push(raised.id.clone());
+        offered_options(p, &raised.document, &raised.transcript, options);
+        pending.extend(raised.raised.iter().rev());
     }
 }
 

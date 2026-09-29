@@ -744,6 +744,7 @@ state:
 | `when` | `run` / `user` / `app`, `quest.*`, `entry.*.read` / `entry.*.everRead`, 팩트, `visited()`에 대한 CEL. `scene.*`는 읽을 수 없습니다. 문자열을 비교할 때는 YAML 값을 큰따옴표로 감싸 CEL이 작은따옴표를 쓸 수 있게 하세요: `when: "run.slot == 'night' && user.runs >= 3"`. 두 층 모두 작은따옴표를 쓰면 `E-META-PARSE`입니다. |
 | `priority` | 정수, 기본값 `0`. 높은 쪽이 이깁니다. |
 | `once` | 씬: `run`(기본값), `user`(평생 한 번), `false`(반복 가능). 엔트리: `once="run"`(새 런이 `entry.<id>.read`를 초기화할 때까지) 또는 `once="user"`(`entry.<id>.everRead`가 설정되면 소진). 엔트리에 `once`가 없으면 반복됩니다. 시계를 선언했다면(0.24.0) `once: day` / `once: slot`(엔트리는 `once="day"` / `"slot"`)은 날이나 슬롯이 바뀔 때까지 소진 상태로 둡니다. 시계 없이 쓰면 `E-BEAT-ATTR`입니다. 엔트리의 쓰기는 한 런에서 처음 읽을 때만 적용되므로, `once` 없는 엔트리의 본문에 `::set` / `::retract`가 있으면 `W-ENTRY-WRITE-REREAD`입니다(0.26.0, `::assert`는 제외). 반복되어야 하는 쓰기는 `<beat once="false">`에 두세요. |
+| `advances` | 0.31.0. 씬 프론트매터, `<entry>`, `<beat>`에 `slot`, `day`, 또는 1 이상의 정수를 선언합니다. 비트가 제시되면 엔진이 그만큼 시계를 이동하고 퀘스트를 정산한 뒤 `raise:` 계기를 발생시킵니다. 프로젝트에 `clock:`이 없으면 오류입니다. |
 | `also` | 0.23.0. `select: first` 계기의 씬(`also: true`)과 번들 비트(`also`): 승자 뒤에, 또는 주 비트가 하나도 자격이 없을 때는 혼자 제시되며, 승자를 대신하지 않습니다. 엔트리에 쓰거나 `select: all` / `sequence` 계기에 쓰면 `E-BEAT-ATTR`입니다. `W-BEAT-SHADOWED`와 `W-BEAT-PRIORITY-TIE`는 `also` 비트를 무시합니다. |
 | `share` | 0.25.0. 씬(`share:`), 엔트리와 번들 비트(`share=`): 여러 곳에서 이야기되는 한 사건을 위한 프로젝트 전체의 키입니다. 키의 어느 비트든 제시되면(엔트리는 읽히면) 그 키의 모든 비트가 `once` 기간 동안 소진됩니다(`lute play`: `` once: user — `share: miraThanks` already spent … by cafe.talks.thanksCounter ``). `false`가 아닌 `once`를 함께 써야 하고, 한 키의 모든 비트는 같은 `once`를 선언해야 합니다. 그렇지 않으면 `E-BEAT-ATTR`입니다. `lute beats`는 `user, share miraThanks`로 보여 줍니다. |
 | `spentBy` | 0.27.0. 씬(`spentBy:`), 엔트리와 번들 비트(`spentBy=`): 제시 대신 비트를 소진하는 조건입니다(`spentBy: "holds(solved(valves))"`). 0.28.0부터 래치입니다. 한 번 성립하면 조건이 다시 거짓이 되어도 비트는 `once` 기간(쓰지 않으면 `run`, 주마다 초기화하려면 `once: week`) 동안 소진된 채로 남고, `lute play`는 ``spentBy: `run.solved` held — spent this run``으로 알립니다. `once: false`나 `share`와 함께 쓰면 `E-BEAT-ATTR`, 시작부터 성립하면 `W-BEAT-SPENT-AT-START`입니다. `once`를 쓰지 않았는데 조건이 다시 거짓이 될 수 있으면(철회되는 팩트, 시즌 상태, rearm되는 퀘스트) `W-SPENT-BY-REVERSIBLE`이며, `once: false` + `when: "!(…)"`, `once: season:<name>`, 또는 래치를 유지하는 `once: run`을 알려 줍니다. |
@@ -890,6 +891,11 @@ when: "clock.weekday < 5"
   `slot` 계기도 `dayStart`도 발생시키지 않습니다. `raiseAtStart: true`는 엔진이 그것을 발생시킨다고 밝히며,
   검사기와 캘린더는 그 위치를 발생한 것으로 셉니다. 이 키가 없으면 그 위치에서만 받는 비트는
   `W-BEAT-UNRAISED`이고, 경고가 이 키를 알려 줍니다.
+0.31.0부터 `advances: slot`, `advances: day`, `advances: <n>`을 제시되는 씬 프론트매터나 로어의 `<entry>`/`<beat>`에
+선언할 수 있습니다. 이 선언은 메타데이터일 뿐이며 제시 순간 엔진이 `advance:`와 같은 방식으로 시계를 옮기고
+퀘스트를 정산하며 `raise:` 계기를 발생시킵니다. 따라서 별도의 `advance:`를 바로 이어 쓰면 시간이 두 번 이동합니다.
+플레이는 이를 메모로 표시하므로 중복 스텝을 삭제하세요. 이 키는 선언된 프로젝트 시계가 필요하고, 이전 플러그인
+설정의 `spendsSlot: true`는 `advances: slot`으로, `spendsSlots: n`은 `advances: n`으로 옮깁니다.
 - 0.27.0: 계기는 `raisedWhen: "holds(canEnter(occasion.target))"`를 선언할 수 있습니다(플러그인
   `occasions/*.yaml`): 그 계기의 비트는 관문 아래에서 판정되고(`E-BEAT-UNREACHABLE`이 관문을 댐), `lute beats`는
   관문이 결코 성립하지 않는 대상을 표시하며, `lute play`는 관문이 거짓일 때 그 계기를 발생시키는 스텝을
