@@ -78,7 +78,7 @@ pub const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "outcome
 /// it to `crate::beats`, which reports it on an entry as `E-BEAT-ATTR`.
 pub const ENTRY_ATTRS: &[&str] = &[
     "id", "target", "category", "title", "series", "order", "when", "on", "priority", "once",
-    "share", "spentBy", "for",
+    "share", "spentBy", "for", "advances",
 ];
 /// dsl 0.2.0 §6.3 (+ `follows`, connectivity T2; `tier`, dsl 0.22.0 §7;
 /// `activate` / `complete`, dsl 0.24.0 §2; `accept`, dsl 0.25.0 §5):

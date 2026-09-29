@@ -185,6 +185,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("share", "string"),
             ("spentBy", "cel<bool>"),
             ("for", "\"kind:<kind>\""),
+            ("advances", "\"slot\" | \"day\" | <whole number ≥ 1>"),
         ],
         QuestConstruct::Beat => &[
             ("id", "string"),
@@ -203,6 +204,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
             ("after", "prereq"),
             ("use", "component (beat template)"),
             ("for", "\"kind:<kind>\""),
+            ("advances", "\"slot\" | \"day\" | <whole number ≥ 1>"),
         ],
         QuestConstruct::Hub => &[("id", "string"), ("prompt", "string")],
     }

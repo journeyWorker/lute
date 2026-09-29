@@ -347,9 +347,30 @@ raising the `slot` occasion or `dayStart` at the start carries a note saying the
 - `advance: day` moves to the first slot of the next day, whatever slot it starts from. It raises
   `dayEnd` where the clock stands; the rest of the day is skipped, its slots unsettled.
 
-On a clock without slots, all three move whole days. The step writes the clock paths, settles, and
-raises `slot`, taking the raised occasion's `pick:`, `choose:`, and selection `expect:` exactly as
-an `occasion:` step would. From Monday morning, fifteen slots is Saturday morning:
+On a clock without slots, all three move whole days.
+Presented beats may declare their own clock movement with `advances: slot`, `advances: day`, or
+`advances: <n>` in scene frontmatter, and as an attribute on `<entry>` / `<beat>`. The declaration
+is metadata; the engine performs the movement when that beat is presented, including quest settles
+and the clock's declared raises:
+
+```yaml
+---
+kind: scene
+id: square.market
+on: slotStart
+advances: slot
+---
+```
+
+This is equivalent to an `advance:` for clock movement. Do not put an explicit `advance:` immediately
+after the beat to repeat it: `lute play` allows both moves but emits a note explaining that the
+clock moved twice. The declaration requires a project clock. Migrate plugin settings
+`spendsSlot: true` to `advances: slot`, and `spendsSlots: n` to `advances: n`; the engine, not
+the plugin, owns the clock.
+
+For an explicit `advance:` step, the clock writes the clock paths, settles, and raises `slot`,
+taking the raised occasion's `pick:`, `choose:`, and selection `expect:` exactly as an `occasion:`
+step would. From Monday morning, fifteen slots is Saturday morning:
 
 ```yaml
 steps:

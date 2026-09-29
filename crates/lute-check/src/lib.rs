@@ -74,7 +74,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.30.0";
+pub const LUTE_LANG_VERSION: &str = "0.31.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -153,10 +153,10 @@ pub use accept::{
 };
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use beats::{
-    beat_target_restricts, check_project_beats, occasion_target_ok, parse_beat_priority,
-    project_beats, BeatMeta, BeatOnce, ProjectBeat, ProjectBeatKind, BEAT_KEYS, E_BEAT_ATTR,
-    E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE,
-    W_BEAT_SHADOWED,
+    advances_from_attr, beat_target_restricts, check_project_beats, occasion_target_ok,
+    parse_beat_priority, project_beats, AdvanceSpec, BeatMeta, BeatOnce, ProjectBeat,
+    ProjectBeatKind, BEAT_KEYS, E_BEAT_ATTR, E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN,
+    W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE, W_BEAT_SHADOWED,
 };
 pub use bundles::{
     bundle_beat_also, bundle_beat_key, bundle_beat_once, bundle_beat_priority, check_bundle_beats,
@@ -226,6 +226,10 @@ pub use project_check::{
     domain_reading_set, ComponentScope, E_QUEST_MULTI_PARENT, E_QUEST_REF_UNKNOWN,
     E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE, W_BRANCH_ID_SHARED, W_COMPONENT_UNVERIFIED,
     W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN, W_QUEST_TIER_IMPLICIT,
+};
+pub use clock_positions::{
+    check_project_advance_cascades, check_project_objective_clock_windows, E_ADVANCE_CASCADE,
+    W_OBJECTIVE_STRANDED, W_SLOT_CONTENTION,
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;

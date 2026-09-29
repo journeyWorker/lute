@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "quest",
-  "lute": "0.30.0",
-  "irVersion": "0.30.0",
+  "lute": "0.31.0",
+  "irVersion": "0.31.0",
   "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
   "meta": {
     "title": "Act 1 — Emerald Grove"

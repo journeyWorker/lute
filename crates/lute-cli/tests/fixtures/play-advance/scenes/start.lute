@@ -1,0 +1,9 @@
+---
+kind: scene
+id: start
+on: start
+advances: slot
+---
+## Start
+@narrator: The bell rings.
+::set{run.done = true}

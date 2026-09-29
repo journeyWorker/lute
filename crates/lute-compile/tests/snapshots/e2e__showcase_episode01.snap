@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.30.0",
-  "irVersion": "0.30.0",
+  "lute": "0.31.0",
+  "irVersion": "0.31.0",
   "capabilityVersion": "8f491b82147b612f6b90a1b688399e1f9ae9d232a251271d92be8bf20b8e1daa",
   "meta": {
     "id": "marina.s01ep01",

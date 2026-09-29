@@ -49,7 +49,7 @@ pub const W_BEAT_SHADOWED: &str = "W-BEAT-SHADOWED";
 /// The scene-frontmatter beat keys (dsl 0.21.0 §3.1). Scene-only, never
 /// defaultable: a beat is one scene's own declaration.
 pub const BEAT_KEYS: &[&str] = &[
-    "on", "target", "when", "priority", "once", "also", "share", "spentBy", "for",
+    "on", "target", "when", "priority", "once", "also", "share", "spentBy", "for", "advances",
 ];
 
 /// A scene beat's repetition policy (dsl 0.21.0 §3.1, D-F).
@@ -131,6 +131,112 @@ impl BeatOnce {
 pub const ONCE_VALUES: &str = "`run` (once per run, the default), `user` (once ever), \
      `day` / `slot` / `week` (once per clock day / slot / week), `season:<name>` (once per \
      window of a declared season), or `false` (repeatable)";
+/// How a presented beat moves the engine clock (dsl 0.31.0 §1). This is a
+/// declaration only; the engine performs the move when the beat is presented.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AdvanceSpec {
+    Slot,
+    Day,
+    Slots(u32),
+}
+
+impl AdvanceSpec {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Slot => "slot",
+            Self::Day => "day",
+            Self::Slots(_) => "n",
+        }
+    }
+}
+
+impl serde::Serialize for AdvanceSpec {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Slot => serializer.serialize_str("slot"),
+            Self::Day => serializer.serialize_str("day"),
+            Self::Slots(n) => serializer.serialize_u32(*n),
+        }
+    }
+}
+
+fn parse_advances(v: &serde_yaml::Value) -> Option<AdvanceSpec> {
+    match v {
+        serde_yaml::Value::String(s) if s == "slot" => Some(AdvanceSpec::Slot),
+        serde_yaml::Value::String(s) if s == "day" => Some(AdvanceSpec::Day),
+        serde_yaml::Value::Number(n) => n
+            .as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+            .filter(|n| *n >= 1)
+            .map(AdvanceSpec::Slots),
+        _ => None,
+    }
+}
+
+pub(crate) fn advances_from_yaml(
+    map: &serde_yaml::Mapping,
+    get_span: impl Fn(&str) -> Span,
+    diags: &mut Vec<Diagnostic>,
+) -> Option<AdvanceSpec> {
+    let Some(v) = map.get(serde_yaml::Value::String("advances".to_string())) else {
+        return None;
+    };
+    if let Some(spec) = parse_advances(v) {
+        return Some(spec);
+    }
+    diags.push(beat_diag(
+        E_BEAT_ATTR,
+        Severity::Error,
+        format!(
+            "`advances:` must be `slot`, `day`, or a whole number ≥ 1, got {} (dsl 0.31.0 §1)",
+            describe(v)
+        ),
+        get_span("advances"),
+        Layer::Content,
+    ));
+    None
+}
+
+pub fn advances_from_attr(
+    raw: Option<&(String, Span)>,
+    diags: &mut Vec<Diagnostic>,
+) -> Option<AdvanceSpec> {
+    let Some((raw, span)) = raw else { return None };
+    let v = match raw.as_str() {
+        "slot" => AdvanceSpec::Slot,
+        "day" => AdvanceSpec::Day,
+        n => match n.parse::<u32>() {
+            Ok(n) if n >= 1 => AdvanceSpec::Slots(n),
+            _ => {
+                diags.push(beat_diag(
+                    E_BEAT_ATTR,
+                    Severity::Error,
+                    format!(
+                        "`advances` must be `slot`, `day`, or a whole number ≥ 1, got `{raw}` \
+                         (dsl 0.31.0 §1)"
+                    ),
+                    *span,
+                    Layer::Logic,
+                ));
+                return None;
+            }
+        },
+    };
+    Some(v)
+}
+
+fn parse_advances_text(raw: &str) -> Option<AdvanceSpec> {
+    match raw {
+        "slot" => Some(AdvanceSpec::Slot),
+        "day" => Some(AdvanceSpec::Day),
+        n => n
+            .parse::<u32>()
+            .ok()
+            .filter(|n| *n >= 1)
+            .map(AdvanceSpec::Slots),
+    }
+}
+
 
 /// A scene's validated beat declaration (dsl 0.21.0 §3.1), lifted onto
 /// [`crate::meta::TypedMeta::beat`] only when `on:` is present and a name.
@@ -166,6 +272,8 @@ pub struct BeatMeta {
     /// presented once per member; raw text + value span, validated with the
     /// kinds in `check()` ([`crate::occasion_bind::for_kind_members`]).
     pub for_kind: Option<(String, Span)>,
+    /// dsl 0.31.0 §1: the clock movement performed when this beat presents.
+    pub advances: Option<AdvanceSpec>,
 }
 
 /// A beat `priority` (dsl 0.21.0 §3): an integer `-?[0-9]+` that fits `i64`.
@@ -428,6 +536,7 @@ pub(crate) fn lift_scene_beat(
             None
         }
     });
+    let advances = advances_from_yaml(map, |key| top_value_span(meta, key), diags);
 
     let on = on?;
     let mut occasion_diags = Vec::new();
@@ -473,6 +582,7 @@ pub(crate) fn lift_scene_beat(
         share,
         spent_by,
         for_kind,
+        advances,
     })
 }
 
@@ -495,7 +605,7 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
     let mut residual_on = false;
     let mut residual_once = false;
     for attr in &entry.attrs {
-        if matches!(attr.key.as_str(), "on" | "priority" | "once" | "share")
+        if matches!(attr.key.as_str(), "on" | "priority" | "once" | "share" | "advances")
             && !matches!(attr.value, AttrValue::Str(_))
         {
             residual_on |= attr.key == "on";
@@ -582,6 +692,27 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
                  occasion"
                     .to_string(),
                 spent_by.span,
+            );
+        }
+    }
+    if let Some((raw, span)) = &entry.advances {
+        let valid = matches!(raw.as_str(), "slot" | "day")
+            || raw.parse::<u32>().is_ok_and(|n| n >= 1);
+        if !valid {
+            push(
+                format!(
+                    "`advances` must be `slot`, `day`, or a whole number ≥ 1, got `{raw}` \
+                     (dsl 0.31.0 §1)"
+                ),
+                *span,
+            );
+        }
+        if entry.on.is_none() && !residual_on {
+            push(
+                "`<entry>` `advances` requires `on`; it moves the clock when a beat is presented \
+                 (dsl 0.31.0 §1)"
+                    .to_string(),
+                *span,
             );
         }
     }
@@ -1367,6 +1498,8 @@ pub struct ProjectBeat<'a> {
     pub title: Option<String>,
     /// The `on` key / attribute — where a beat diagnostic anchors.
     pub anchor: Span,
+    /// dsl 0.31.0 §1: the clock movement performed when this beat presents.
+    pub advances: Option<AdvanceSpec>,
     pub folded: &'a FoldedEnv,
     /// The unit the beat presents, as [`crate::cast::FactProducers`] keys
     /// its assert sites: `0` for a scene, else the entry's / bundle beat's
@@ -1602,6 +1735,7 @@ pub fn project_beats<'a>(
                     .map(|k| (k, top_value_span(&doc.meta, "share"))),
                 when_slot: beat.when.as_ref(),
                 when: expand(beat.when.as_ref()),
+                advances: beat.advances,
                 replaces_when: None,
                 spent_by: expand(beat.spent_by.as_ref()),
                 title,
@@ -1671,6 +1805,10 @@ pub fn project_beats<'a>(
                     once,
                     when_slot: entry.when.as_ref(),
                     when: expand(entry.when.as_ref()),
+                    advances: entry
+                        .advances
+                        .as_ref()
+                        .and_then(|(raw, _)| parse_advances_text(raw)),
                     replaces_when: None,
                     spent_by: expand(entry.spent_by.as_ref()),
                     title: entry.title.as_ref().map(|(t, _)| t.clone()),
@@ -1740,6 +1878,10 @@ pub fn project_beats<'a>(
                             .filter(|_| beat.once.as_ref().is_some_and(|(o, _)| o != "false")),
                         when_slot: beat.when.as_ref(),
                         when: expand(beat.when.as_ref()),
+                        advances: beat
+                            .advances
+                            .as_ref()
+                            .and_then(|(raw, _)| parse_advances_text(raw)),
                         replaces_when: beat
                             .template
                             .as_ref()

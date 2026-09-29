@@ -4,6 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_compile::index::{BeatKind, IndexBeat};
+use lute_manifest::clock::Advance;
 use serde_json::Value as Json;
 
 use super::eligibility::kind_label;
@@ -11,9 +12,14 @@ use super::project::ExecProject;
 use super::resolve::ever_read_path;
 use super::walk::{absorb, consumed_bridges, play_machine, walk_stop, PlayHalt, Walked};
 use super::world::{json_to_value, World};
+use super::step::StepBody;
 use crate::datalog::Fact;
 use crate::exec::{Carry, Seed};
 use crate::{MockSet, Value};
+/// Maximum depth of a declared-advance cascade before a likely cycle is
+/// rejected. Ordinary plays have one or a small finite chain; this is only a
+/// runtime guard against a beat raising itself (or a cycle of beats).
+pub const MAX_ADVANCE_CASCADE: usize = 64;
 
 /// One presented beat. `pub(crate)` with the `*_before` / `facts_after` /
 /// `bridges` / `member` captures for the differential harness
@@ -27,11 +33,14 @@ pub struct Presented {
     pub transcript: Vec<Json>,
     pub state_before: BTreeMap<String, Value>,
     pub state_after: BTreeMap<String, Value>,
+    pub state_after_body: BTreeMap<String, Value>,
+    pub facts_after_body: BTreeSet<Fact>,
     /// The member a kind-target beat was raised for (`occasion.target`).
     pub member: Option<String>,
     /// The world's base facts before and after the presentation.
     pub facts_before: BTreeSet<Fact>,
     pub facts_after: BTreeSet<Fact>,
+    pub raised: Vec<Presented>,
     /// The presented scenes `visited(…)` read before the presentation.
     pub visited_before: BTreeSet<String>,
     /// Quest id -> state before the presentation.
@@ -202,7 +211,53 @@ pub fn present(
         beat.id,
         beat.document
     );
-    let stop = walk_stop(result, &outcome, &what, doc_json);
+    let mut stop = walk_stop(result, &outcome, &what, doc_json);
+    let state_after_body = w.state.clone();
+    let facts_after_body = w.facts.clone();
+    let mut raised = Vec::new();
+    // dsl 0.31.0 §1: a declared beat advance is the same clock movement as
+    // an explicit `advance:` step.
+    if stop.is_none() {
+        if let Some(spec) = beat.advances {
+            if w.advance_cascade_depth >= MAX_ADVANCE_CASCADE {
+                stop = Some(PlayHalt::Error(format!(
+                    "E-ADVANCE-CASCADE: beat `{}` exceeded the maximum nested \
+                     `advances:` cascade depth ({MAX_ADVANCE_CASCADE}); the clock raise \
+                     likely loops back to this beat",
+                    beat.id
+                )));
+            } else if let Some(clock) = p.index.clock.as_ref() {
+                let by = match spec {
+                    lute_check::AdvanceSpec::Slot => Advance::Slots(1),
+                    lute_check::AdvanceSpec::Day => Advance::Day,
+                    lute_check::AdvanceSpec::Slots(n) => Advance::Slots(n),
+                };
+                let raise = clock
+                    .raise
+                    .as_ref()
+                    .map_or_else(Default::default, |r| r.moments());
+                w.advance_cascade_depth += 1;
+                let (advance_body, _, raised_stop) = super::advance::run_advance(
+                    p,
+                    w,
+                    w.step + 1,
+                    by,
+                    &Default::default(),
+                    &raise,
+                    &None,
+                    &BTreeMap::new(),
+                );
+                w.advance_cascade_depth -= 1;
+                if let StepBody::Advance { raised: Some(occasion), .. } = advance_body {
+                    if let StepBody::Occasion { presented, .. } = *occasion {
+                        raised = presented;
+                    }
+                }
+                w.clock_advanced_by_beat = true;
+                stop = raised_stop;
+            }
+        }
+    }
     let presented = Presented {
         id: beat.id.clone(),
         kind: beat.kind,
@@ -210,9 +265,12 @@ pub fn present(
         transcript: outcome.transcript,
         state_before,
         state_after: w.state.clone(),
+        state_after_body,
         member: member.map(str::to_string),
         facts_before,
         facts_after: w.facts.clone(),
+        facts_after_body,
+        raised,
         visited_before,
         quests_before,
         bridges: consumed_bridges(&bridges_before, &w.bridges),

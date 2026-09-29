@@ -6,7 +6,7 @@ description: The consolidated index of what the Lute language enforces today at 
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.30.0**:
+the consolidated **index** of what is *current* at language version **0.31.0**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 

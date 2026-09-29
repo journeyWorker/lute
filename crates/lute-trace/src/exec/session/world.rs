@@ -77,6 +77,14 @@ pub struct World {
     /// occasion's beats ([`run_deferred_handlers`](super::run_deferred_handlers)).
     pub defer_handlers: bool,
     pub deferred_handlers: Vec<(String, String)>,
+    /// dsl 0.31.0 §1: the last presentation moved the clock because its
+    /// beat declared `advances`; the play driver uses this to explain an
+    /// immediately following explicit `advance:` without suppressing it.
+    pub clock_advanced_by_beat: bool,
+    /// Number of nested `advances:` beat presentations in the current
+    /// clock-raise cascade. A declared beat can raise another declared beat;
+    /// this bounds a malformed cycle without changing ordinary play steps.
+    pub advance_cascade_depth: usize,
     /// dsl 0.27.0 §5: the seasons' and rearms' last observed conditions and
     /// the season-scoped spends.
     pub cadence: crate::exec::cadence::Cadence,
@@ -314,6 +322,8 @@ pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, Vec<Se
         defer_by: None,
         defer_handlers: false,
         deferred_handlers: Vec::new(),
+        clock_advanced_by_beat: false,
+        advance_cascade_depth: 0,
         cadence: Default::default(),
         step: 0,
         decisions: Vec::new(),

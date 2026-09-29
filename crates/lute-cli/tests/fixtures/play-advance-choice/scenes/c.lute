@@ -1,0 +1,10 @@
+---
+kind: scene
+id: c
+on: slotStart
+once: false
+---
+
+## C
+
+@narrator: C lifecycle line.

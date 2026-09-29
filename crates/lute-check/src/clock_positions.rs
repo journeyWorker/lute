@@ -16,11 +16,12 @@
 //! repeats. Bounded: a model needing more than [`MAX_POSITIONS`] positions
 //! is not built and nothing is claimed.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use cel_parser::ast::{operators as op, Expr, IdedExpr};
 use cel_parser::reference::Val;
-use lute_core_span::{Diagnostic, Severity};
+use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::clock::{Advance, ClockAt, ClockDecl, ClockValue};
 use lute_syntax::ast::{Document, Node, Objective};
 
@@ -157,7 +158,7 @@ fn build(expr: &Expr, ctx: &DecideCtx<'_>, clock: &ClockDecl, reads: &Reads<'_>)
                     if let (Some(resolve), Expr::Literal(Val::String(id))) =
                         (reads.visited, &a.expr)
                     {
-                        return match resolve(id) {
+                        return match resolve(&id) {
                             Some(at) => Formula::Visited(at),
                             None => Formula::Const(None),
                         };
@@ -1170,4 +1171,391 @@ pub(crate) fn chapter_window(
         ),
         format!("let its `when` hold at a later raise of `{occasion}` too"),
     ))
+}
+
+/// `W-OBJECTIVE-STRANDED`: a required objective whose only known completion
+/// beats all have finite clock windows, but no deadline turns a missed window
+/// into a failure. Conservative: an unclocked `when` leaves an open path.
+pub const W_OBJECTIVE_STRANDED: &str = "W-OBJECTIVE-STRANDED";
+
+/// `W-SLOT-CONTENTION`: required objectives in one run compete for the same
+/// single clock position, and every beat that can complete either consumes time.
+pub const W_SLOT_CONTENTION: &str = "W-SLOT-CONTENTION";
+/// `E-ADVANCE-CASCADE`: an unguarded beat answers the clock occasion that
+/// raises at each position and advances by a period that lets it answer again.
+/// The runtime still bounds every cascade, but this is an authoring error: a
+/// clock raise should hand off to another beat or have a guard/spend policy.
+pub const E_ADVANCE_CASCADE: &str = "E-ADVANCE-CASCADE";
+
+
+fn visited_ids(raw: &str, defs: &DefTable<'_>) -> BTreeSet<String> {
+    let mut arena = lute_cel::CelArena::default();
+    let Some(ided) = parse(raw, defs, &mut arena) else {
+        return BTreeSet::new();
+    };
+    fn walk(e: &Expr, out: &mut BTreeSet<String>) {
+        match e {
+            Expr::Call(c) => {
+                if let Some(id) = crate::cel_resolve::visited_call_target(c) {
+                    out.insert(id.to_string());
+                }
+                if let Some(t) = &c.target {
+                    walk(&t.expr, out);
+                }
+                for a in &c.args {
+                    walk(&a.expr, out);
+                }
+            }
+            Expr::Select(s) => walk(&s.operand.expr, out),
+            _ => {}
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(&ided.expr, &mut out);
+    out
+}
+
+fn done_paths(raw: &str, defs: &DefTable<'_>) -> BTreeSet<String> {
+    let mut arena = lute_cel::CelArena::default();
+    let Some(ided) = parse(raw, defs, &mut arena) else {
+        return BTreeSet::new();
+    };
+    crate::cel_paths::collect_path_uses(&ided.expr)
+        .into_iter()
+        .map(|u| u.path)
+        .collect()
+}
+
+fn collect_set_paths(nodes: &[Node], out: &mut BTreeSet<String>) {
+    for node in nodes {
+        match node {
+            Node::Set(s) => {
+                out.insert(s.path.clone());
+            }
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_set_paths(&c.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for body in h.bodies() {
+                    collect_set_paths(body, out);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    match arm {
+                        lute_syntax::ast::Arm::When { body, .. }
+                        | lute_syntax::ast::Arm::Otherwise { body, .. } => {
+                            collect_set_paths(body, out)
+                        }
+                    }
+                }
+            }
+            Node::Objective(o) => collect_set_paths(&o.body, out),
+            Node::On(o) => collect_set_paths(&o.body, out),
+            _ => {}
+        }
+    }
+}
+
+fn beat_set_paths(
+    pb: &crate::beats::ProjectBeat<'_>,
+    docs: &[(PathBuf, Document)],
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for (path, doc) in docs {
+        if path != pb.path {
+            continue;
+        }
+        match pb.kind {
+            crate::beats::ProjectBeatKind::Scene => {
+                for shot in &doc.shots {
+                    collect_set_paths(&shot.body, &mut out);
+                }
+            }
+            crate::beats::ProjectBeatKind::Entry => {
+                if let Some(entry) = doc
+                    .entries
+                    .iter()
+                    .find(|e| e.span.byte_start == pb.unit)
+                {
+                    collect_set_paths(&entry.body, &mut out);
+                }
+            }
+            crate::beats::ProjectBeatKind::Bundle => {
+                if let Some(beat) = doc.beats.iter().find(|b| b.span.byte_start == pb.unit) {
+                    collect_set_paths(&beat.body, &mut out);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn bounded_window<'a>(
+    pb: &crate::beats::ProjectBeat<'a>,
+    clock: &ClockDecl,
+) -> Option<Vec<ClockAt>> {
+    let raw = pb.when.as_deref().filter(|w| !w.trim().is_empty())?;
+    let defs = DefTable {
+        bodies: &pb.folded.def_bodies,
+        params: &pb.folded.env.def_params,
+    };
+    let params = Default::default();
+    let ctx = DecideCtx {
+        schema: &pb.folded.env.state,
+        dollar: None,
+        params: &params,
+        facts: None,
+    };
+    let mut arena = lute_cel::CelArena::default();
+    let ided = parse(raw, &defs, &mut arena)?;
+    let f = build(&ided.expr, &ctx, clock, &PLAIN);
+    if f.clock_atoms() == 0 {
+        return None;
+    }
+    let all = positions(clock, &pb.folded.env.state, &[&f], false)?;
+    let may: Vec<_> = all
+        .into_iter()
+        .filter(|at| f.eval(clock, *at, Settle::Within) != Some(false))
+        .collect();
+    (!may.is_empty()).then_some(may)
+}
+
+fn objective_completion_beats<'a>(
+    o: &Objective,
+    folded: &'a FoldedEnv,
+    beats: &'a [crate::beats::ProjectBeat<'a>],
+    docs: &[(PathBuf, Document)],
+) -> Vec<&'a crate::beats::ProjectBeat<'a>> {
+    let defs = DefTable {
+        bodies: &folded.def_bodies,
+        params: &folded.env.def_params,
+    };
+    let visited = visited_ids(&o.done.raw, &defs);
+    let paths = done_paths(&o.done.raw, &defs);
+    beats
+        .iter()
+        .filter(|pb| {
+            o.on
+                .as_ref()
+                .is_some_and(|(on, _)| pb.on == on)
+                || visited.contains(&pb.id)
+                || !paths.is_disjoint(&beat_set_paths(pb, docs))
+        })
+        .collect()
+}
+/// Find an unguarded beat that can be raised again after its own declared
+/// clock movement. A `once: run`/`user`/`week`/`season:*` beat is naturally
+/// spent for the current cascade; `once: day` is also safe for a slot move.
+pub fn check_project_advance_cascades(
+    docs: &[(PathBuf, Document)],
+    foldeds: &[&FoldedEnv],
+) -> Vec<(PathBuf, Diagnostic)> {
+    let mut out = Vec::new();
+    for pb in crate::beats::project_beats(docs, foldeds) {
+        let Some(spec) = pb.advances else { continue };
+        let Some(clock) = pb.folded.env.state.clock.as_ref() else {
+            continue;
+        };
+        if RaiseRule::of(clock, pb.on).is_none() || pb.spent_by.is_some() {
+            continue;
+        }
+        let repeats = match pb.once {
+            crate::beats::BeatOnce::None | crate::beats::BeatOnce::Slot => true,
+            crate::beats::BeatOnce::Day => matches!(spec, crate::beats::AdvanceSpec::Day),
+            _ => false,
+        };
+        if !repeats {
+            continue;
+        }
+        let can_repeat = match pb.when.as_deref().map(str::trim) {
+            None | Some("") => true,
+            Some(raw) => match RaiseModel::new(raw, None, pb.on, pb.folded) {
+                Some((model, _)) => {
+                    let by = match spec {
+                        crate::beats::AdvanceSpec::Slot => Advance::Slots(1),
+                        crate::beats::AdvanceSpec::Day => Advance::Day,
+                        crate::beats::AdvanceSpec::Slots(n) => Advance::Slots(n),
+                    };
+                    model.all.iter().any(|at| {
+                        model.open(*at)
+                            && model.may(*at)
+                            && {
+                                let next = clock.advance(*at, by);
+                                model.open(next) && model.may(next)
+                            }
+                    })
+                }
+                None => false,
+            },
+        };
+        if !can_repeat {
+            continue;
+        }
+        let first = crate::clock::first_at(clock, &pb.folded.env.state);
+        if clock.last_at().is_some_and(|last| first >= last) {
+            continue;
+        }
+        let amount = match spec {
+            crate::beats::AdvanceSpec::Slot => "one slot".to_string(),
+            crate::beats::AdvanceSpec::Day => "one day".to_string(),
+            crate::beats::AdvanceSpec::Slots(n) => format!("{n} slots"),
+        };
+        out.push((
+            pb.path.clone(),
+            crate::reachability::diag(
+                E_ADVANCE_CASCADE,
+                Severity::Error,
+                format!(
+                    "{} answers the clock's `{}` raise and advances {amount}, but has no \
+                     `when`, `spentBy`, or repetition limit that stops it being eligible at \
+                     the next raised position; this creates a repeating `advances:` cascade — \
+                     add a guard or make the beat hand off to another beat",
+                    pb.name(),
+                    pb.on,
+                ),
+                pb.anchor,
+            ),
+        ));
+    }
+    out
+}
+
+
+fn run_tier(q: &lute_syntax::ast::Quest) -> bool {
+    q.tier
+        .as_ref()
+        .is_some_and(|(t, _)| t == "run" || t.starts_with("season:"))
+}
+
+/// Run W-OBJECTIVE-STRANDED and W-SLOT-CONTENTION over one project root.
+pub fn check_project_objective_clock_windows(
+    docs: &[(PathBuf, Document)],
+    foldeds: &[&FoldedEnv],
+) -> Vec<(PathBuf, Diagnostic)> {
+    let beats = crate::beats::project_beats(docs, foldeds);
+    let mut out = Vec::new();
+    let mut parents = std::collections::BTreeMap::<String, String>::new();
+    for (_, doc) in docs {
+        for q in &doc.quests {
+            for node in &q.body {
+                if let Node::Objective(o) = node {
+                    if let Some(child) = &o.quest {
+                        parents.entry(child.clone()).or_insert_with(|| q.id.clone());
+                    }
+                }
+            }
+        }
+    }
+    let tree_root = |id: &str| {
+        let mut root = id.to_string();
+        let mut seen = BTreeSet::new();
+        while let Some(parent) = parents.get(&root) {
+            if !seen.insert(root.clone()) {
+                break;
+            }
+            root = parent.clone();
+        }
+        root
+    };
+    let mut singletons: Vec<(PathBuf, String, bool, Span, ClockAt)> = Vec::new();
+    for ((path, doc), folded) in docs.iter().zip(foldeds) {
+        let Some(clock) = folded.env.state.clock.as_ref() else {
+            continue;
+        };
+        for q in &doc.quests {
+            for node in &q.body {
+                let Node::Objective(o) = node else { continue };
+                if o.optional || o.id.is_empty() {
+                    continue;
+                }
+                let has_deadline = o.until.as_ref().is_some_and(|x| !x.raw.trim().is_empty())
+                    || o.by.as_ref().is_some_and(|x| !x.raw.trim().is_empty());
+                let candidates = objective_completion_beats(o, folded, &beats, docs);
+                if candidates.is_empty() {
+                    continue;
+                }
+                let mut windows = Vec::new();
+                let mut bounded = true;
+                for pb in candidates {
+                    let Some(window) = bounded_window(pb, clock) else {
+                        bounded = false;
+                        break;
+                    };
+                    windows.push((pb, window));
+                }
+                if !bounded || windows.is_empty() {
+                    continue;
+                }
+                let positions: BTreeSet<ClockAt> =
+                    windows.iter().flat_map(|(_, w)| w.iter().copied()).collect();
+                let Some(first) = positions.iter().next().copied() else {
+                    continue;
+                };
+                let reset = run_tier(q);
+                if !has_deadline {
+                    out.push((
+                        path.clone(),
+                        crate::reachability::diag(
+                            W_OBJECTIVE_STRANDED,
+                            if reset { Severity::Info } else { Severity::Warning },
+                            format!(
+                                "required objective `{}` can only be completed by clock-bounded beats \
+                                 whose windows close at {}; it has no `until=` or `by=` — {} \
+                                 (dsl 0.31.0 §3)",
+                                o.id,
+                                clock.describe(first),
+                                if reset {
+                                    "the next run retries"
+                                } else {
+                                    "add `until=` or `by=` so a missed window fails the objective"
+                                }
+                            ),
+                            o.span,
+                        ),
+                    ));
+                }
+                if positions.len() == 1
+                    && windows.iter().all(|(pb, w)| pb.advances.is_some() && w.len() == 1)
+                {
+                    singletons.push((path.clone(), q.id.clone(), reset, o.span, first));
+                }
+            }
+        }
+    }
+    for i in 0..singletons.len() {
+        for j in i + 1..singletons.len() {
+            let (path_a, quest_a, run_a, span_a, pos_a) = &singletons[i];
+            let (path_b, quest_b, run_b, span_b, pos_b) = &singletons[j];
+            if tree_root(quest_a) != tree_root(quest_b) || !run_a || !run_b || pos_a != pos_b {
+                continue;
+            }
+            let Some(clock) = foldeds
+                .iter()
+                .find_map(|f| f.env.state.clock.as_ref())
+            else {
+                continue;
+            };
+            let message = format!(
+                "required objectives in quest `{}` contend for the same only clock position {}: \
+                 each can complete only by an `advances` beat there (dsl 0.31.0 §4)",
+                quest_a,
+                clock.describe(*pos_a)
+            );
+            for (path, span) in [(path_a, span_a), (path_b, span_b)] {
+                out.push((
+                    path.clone(),
+                    crate::reachability::diag(
+                        W_SLOT_CONTENTION,
+                        Severity::Warning,
+                        message.clone(),
+                        *span,
+                    ),
+                ));
+            }
+        }
+    }
+    out
 }

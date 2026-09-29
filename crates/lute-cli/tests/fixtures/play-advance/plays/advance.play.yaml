@@ -1,0 +1,9 @@
+steps:
+  - occasion: start
+    expect:
+      winner: start
+      clock: { day: 2, slot: morning }
+      quests: { main: complete }
+      state: { run.raised: true }
+  - advance: slot
+    expect: { clock: { day: 2, slot: evening } }

@@ -7,10 +7,10 @@ use std::collections::BTreeMap;
 
 use lute_manifest::schema::OccasionSelect;
 use lute_trace::exec::session::{
-    kind_label, value_to_json, Candidate, ExecProject, Pick, Played, StepBody, Verdict,
+    kind_label, value_to_json, Candidate, ExecProject, Pick, Played, Presented, StepBody, Verdict,
 };
-use lute_trace::exec::{line_head, render_attrs};
 use serde_json::Value as Json;
+use lute_trace::exec::{line_head, render_attrs};
 
 use super::run::Playthrough;
 
@@ -907,8 +907,19 @@ fn render_occasion_human(
     }
     for pr in presented {
         render_records(out, p, view, &pr.document, &pr.transcript);
+        render_raised(out, p, view, pr);
     }
 }
+
+fn render_raised(out: &mut String, p: &ExecProject, view: View, beat: &Presented) {
+    for raised in &beat.raised {
+        out.push_str(&format!("  ↻ {} (clock raise)\n", raised.id));
+        render_records(out, p, view, &raised.document, &raised.transcript);
+        render_raised(out, p, view, raised);
+    }
+}
+
+
 
 /// The play's presented content, one canonical `@speaker{delivery}: text`
 /// line ([`lute_trace::exec::said_line`], the head the human transcript
@@ -951,6 +962,7 @@ pub(super) fn said(p: &ExecProject, play: &Playthrough) -> (String, Vec<usize>) 
         if let Some(StepBody::Occasion { presented, .. }) = s.body.occasion() {
             for pr in presented {
                 push(&mut acc, &pr.document, &pr.transcript);
+                said_raised(p, &mut acc, pr);
             }
         }
         for q in &s.quests {
@@ -958,4 +970,23 @@ pub(super) fn said(p: &ExecProject, play: &Playthrough) -> (String, Vec<usize>) 
         }
     }
     (acc.0, steps)
+}
+
+fn said_raised(p: &ExecProject, acc: &mut (String, usize), beat: &Presented) {
+    for raised in &beat.raised {
+        let cmds = DocCmds::new(p, &raised.document, false);
+        for rec in raised
+            .transcript
+            .iter()
+            .filter(|r| str_of(r, "kind") == "line")
+        {
+            acc.0.push_str(&lute_trace::exec::said_line(
+                rec,
+                cmds.get(str_of(rec, "addr")),
+            ));
+            acc.0.push('\n');
+            acc.1 += 1;
+        }
+        said_raised(p, acc, raised);
+    }
 }

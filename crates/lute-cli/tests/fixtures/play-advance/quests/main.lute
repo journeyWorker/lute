@@ -1,0 +1,7 @@
+---
+kind: quest
+id: main
+---
+<quest id="main" tier="run" start="true">
+  <objective id="done" done="run.done"/>
+</quest>

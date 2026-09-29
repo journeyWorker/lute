@@ -26,7 +26,7 @@ use lute_manifest::ident::is_name;
 /// or `E-FLAG-VALUE` for `also="maybe"`; every OTHER key is `E-UNKNOWN-ATTR`.
 pub const BUNDLE_BEAT_ATTRS: &[&str] = &[
     "id", "on", "target", "title", "when", "priority", "once", "also", "share", "after", "spentBy",
-    "use", "for",
+    "use", "for", "advances",
 ];
 
 /// The canonical id of bundle beat `beat_id` in the lore document whose
@@ -250,6 +250,7 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
         ("target", &beat.target),
         ("priority", &beat.priority),
         ("once", &beat.once),
+        ("advances", &beat.advances),
     ] {
         if let Some((raw, span)) = value {
             diags.extend(value_faults(key, raw, *span));
@@ -280,6 +281,16 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
     if let Some((after, span)) = &beat.after {
         diags.extend(value_faults("after", after, *span));
     }
+    if let Some((_, span)) = &beat.advances {
+        if beat.on.is_none() && !residual.contains("on") {
+            diags.push(beat_attr(
+                "`<beat>` `advances` requires `on`; it moves the clock when a beat is presented \
+                 (dsl 0.31.0 §1)"
+                    .to_string(),
+                *span,
+            ));
+        }
+    }
 }
 
 /// The shape of one `<beat>` header value on its own ([`E_BEAT_ATTR`],
@@ -287,6 +298,11 @@ fn check_shape(beat: &BundleBeat, diags: &mut Vec<Diagnostic>) {
 /// [`check_shape`] and a beat template's header (`crate::templates`, dsl
 /// 0.27.0 §6) share. Keys without a shape of their own yield nothing.
 pub(crate) fn value_faults(key: &str, raw: &str, span: Span) -> Vec<Diagnostic> {
+    if key == "advances" {
+        let mut out = Vec::new();
+        crate::beats::advances_from_attr(Some(&(raw.to_string(), span)), &mut out);
+        return out;
+    }
     let message = match key {
         "on" if !is_name(raw) => crate::beats::occasion_malformed("`<beat>`", raw),
         "target" if !is_beat_target(raw) => crate::beats::malformed_target("`<beat>`", raw, true),

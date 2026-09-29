@@ -48,7 +48,7 @@ project/
 ```
 
 - 플러그인 매니페스트는 `docs/examples/arcia-project/plugins/arcia.minigame/`을 복사해 개명하는 게 가장 빠르고 정확하다. tactus의 실전 사례: `~/Workspace/tactus/story/plugins/tactus.battle/`.
-- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, 그리고 현재 IR 스키마 [`schemas/lute-ir-0.30.schema.json`](../schemas/lute-ir-0.30.schema.json)(파일명은 릴리스 라인마다 개명되므로 `schemas/`의 실제 파일을 정본으로 삼아라).
+- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, 그리고 현재 IR 스키마 [`schemas/lute-ir-0.31.schema.json`](../schemas/lute-ir-0.31.schema.json)(파일명은 릴리스 라인마다 개명되므로 `schemas/`의 실제 파일을 정본으로 삼아라).
 - 컴파일 스크립트에서 ajv는 **draft 2020-12** 필요: `import Ajv from 'ajv/dist/2020'`.
 
 ## 4. 저작 규칙 (check를 통과하는 형태)

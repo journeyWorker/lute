@@ -357,6 +357,8 @@ pub struct Entry {
     /// dsl 0.27.0 §5: `spentBy="<condition>"` — instead of `once`, the beat
     /// stays eligible until the condition holds.
     pub spent_by: Option<CelSlot>,
+    /// dsl 0.31.0 §1: optional clock movement performed on presentation.
+    pub advances: Option<(String, Span)>,
     /// Residual (post-extraction) attrs, mirroring [`Quest`]; normally empty.
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
@@ -399,6 +401,8 @@ pub struct BundleBeat {
     pub when: Option<CelSlot>,
     /// dsl 0.27.0 §5: `spentBy="<condition>"`, as [`Entry::spent_by`].
     pub spent_by: Option<CelSlot>,
+    /// dsl 0.31.0 §1: optional clock movement performed on presentation.
+    pub advances: Option<(String, Span)>,
     /// Residual (post-extraction) attrs; normally empty. On a template use
     /// (`template` is `Some`), the template's arguments until expansion.
     pub attrs: Vec<Attr>,

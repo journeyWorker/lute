@@ -145,6 +145,9 @@ pub struct IndexBeat {
     /// period. Omitted when not authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spent_by: Option<String>,
+    /// dsl 0.31.0 §1: clock movement performed when this beat is presented.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advances: Option<lute_check::AdvanceSpec>,
 }
 
 impl IndexBeat {
@@ -482,6 +485,7 @@ pub fn build_index(
                     target_kind: b.target_kind.clone(),
                     for_kind: b.for_kind.clone(),
                     spent_by: b.spent_by.as_ref().map(|s| s.raw.clone()),
+                    advances: b.advances,
                 }),
                 ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => None,
             };
@@ -500,6 +504,7 @@ pub fn build_index(
                     target_kind: e.target_kind.clone(),
                     for_kind: e.for_kind.clone(),
                     spent_by: e.spent_by.as_ref().map(|s| s.raw.clone()),
+                    advances: e.advances,
                 }),
                 Command::Beat(b) => Some(IndexBeat {
                     id: b.id.clone(),
@@ -515,6 +520,7 @@ pub fn build_index(
                     target_kind: b.target_kind.clone(),
                     for_kind: b.for_kind.clone(),
                     spent_by: b.spent_by.as_ref().map(|s| s.raw.clone()),
+                    advances: b.advances,
                 }),
                 _ => None,
             });
@@ -898,6 +904,7 @@ mod tests {
                     share: None,
                     target_kind: None,
                     for_kind: None,
+                    advances: None,
                     spent_by: None,
                     stamp: Stamp::default(),
                 })
@@ -997,6 +1004,7 @@ mod tests {
             share: None,
             target_kind: None,
             for_kind: None,
+            advances: None,
             spent_by: None,
         })
     }

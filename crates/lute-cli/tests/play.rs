@@ -16,6 +16,10 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/play-hub")
 }
 
+fn advancing_choice_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/play-advance-choice")
+}
+
 fn temp_dir(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU32, Ordering};
     static N: AtomicU32 = AtomicU32::new(0);
@@ -101,6 +105,45 @@ fn presented(v: &Json, n: usize) -> &Vec<Json> {
     step(v, n)["presented"]["commands"]
         .as_array()
         .unwrap_or_else(|| panic!("step {n} presented nothing: {}", step(v, n)))
+}
+
+#[test]
+fn a_choice_beat_advance_presents_the_lifecycle_beat() {
+    let script = include_str!("fixtures/play-advance-choice/plays/choice.play.yaml");
+    let out = play_in(
+        &advancing_choice_fixture(),
+        "advance-choice-human",
+        script,
+        false,
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+    assert!(stdout(&out).contains("↻ b (clock raise)"), "{}", stdout(&out));
+    assert!(stdout(&out).contains("↻ c (clock raise)"), "{}", stdout(&out));
+    assert!(
+        stdout(&out).contains("@narrator: B lifecycle line."),
+        "{}",
+        stdout(&out)
+    );
+    assert!(
+        stdout(&out).contains("@narrator: C lifecycle line."),
+        "{}",
+        stdout(&out)
+    );
+
+    let out = play_in(
+        &advancing_choice_fixture(),
+        "advance-choice-json",
+        script,
+        true,
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+    let json: Json = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["steps"][0]["presented"]["raised"][0]["id"], "b", "{json}");
+    assert_eq!(
+        json["steps"][0]["presented"]["raised"][0]["raised"][0]["id"],
+        "c",
+        "{json}"
+    );
 }
 
 #[test]
@@ -2872,4 +2915,40 @@ fn a_refused_pick_names_the_producer_of_its_missing_fact() {
         ),
         "{t}"
     );
+}
+
+#[test]
+fn declared_advance_cascade_has_a_runtime_bound() {
+    let dir = temp_dir("advance-cascade-runtime");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  luteVersion: \"0.31.0\"\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  token: { members: [marker] }\n\
+         state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+         run.slot: { type: { enum: [morning, evening] }, default: morning, owner: engine }\n\
+         relations:\n  looping: { args: [token], tier: run }\n\
+         facts: [\"looping(marker)\"]\n\
+         clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, evening]\n  raise: tick\n",
+    );
+    write(
+        &dir,
+        "scenes/loop.lute",
+        "---\nkind: scene\nid: loop\non: tick\nonce: false\nwhen: \"holds(looping(marker))\"\n\
+         advances: slot\n---\n## Loop\n@narrator: Loop.\n",
+    );
+    let out = play_in(
+        &dir,
+        "advance-cascade-runtime",
+        "steps:\n  - advance: slot\n",
+        false,
+    );
+    let text = format!("{}{}", stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(text.contains("E-ADVANCE-CASCADE"), "{text}");
+    assert!(text.contains("loop"), "{text}");
 }

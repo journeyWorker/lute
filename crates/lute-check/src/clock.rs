@@ -715,11 +715,30 @@ pub fn check_once_needs_clock(
     beat: Option<&crate::beats::BeatMeta>,
     clock: Option<&ClockDecl>,
 ) -> Vec<Diagnostic> {
+    if beat.is_some_and(|b| b.advances.is_some())
+        || doc.entries.iter().any(|e| e.advances.is_some())
+        || doc.beats.iter().any(|b| b.advances.is_some())
+    {
+        if clock.is_none() {
+            return vec![Diagnostic {
+                code: crate::beats::E_BEAT_ATTR.to_string(),
+                severity: Severity::Error,
+                message: "`advances` moves the declared clock, but the project declares no \
+                    `clock:` — declare one in a schema (dsl 0.31.0 §1)"
+                    .to_string(),
+                span: doc.meta.span,
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            }];
+        }
+    }
     let has_week = clock.is_some_and(|c| c.week.is_some());
     if has_week {
         return Vec::new();
     }
-    // `instead`: what the construct accepts without a clock — an entry has
     // no `once="false"` (omitting `once` is its never-spent form).
     let needs = |written: String, once: &str, instead: &str| {
         if clock.is_some() {
