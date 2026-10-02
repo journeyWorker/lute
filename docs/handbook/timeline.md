@@ -4,17 +4,17 @@
 
 ## Constructs and rules
 
-- **Timeline/track/clip:** `<timeline duration>` contains tracks and timed directives/`::set`; each track has a local cursor, omitted `at` follows its previous end, and `at` plus `delay` is invalid.
-- **Ordering:** clips flatten to ordinary records with `Stamp{timeline, at, duration, delay}` and sort by absolute `at`, then track index. Same-track overlaps and conflicting cross-track writes are diagnostics.
-- **Barrier:** timeline completion emits a `barrier` that joins all clips before the next command; engines must not advance past it early.
+- **Timeline/track/clip:** `<timeline>` contains tracks and timed directives/`::set`; each track has a local placement cursor and omitted `at` follows its previous end.
+- **Ordering:** clips flatten to records carrying `Stamp.timeline` and `Stamp.at`, then sort by absolute placement and track index. Same-track overlaps and conflicting cross-track writes are diagnostics.
+- **Barrier:** a `barrier` joins all clips before the walk continues. Per-command `wait`, `duration`, and `delay` are owned by the command's semantic id (`lute.staging/1` for staging directives, otherwise `lute.core/1`), not by `lute.timeline/1`.
 
 ## Evaluation and lowering
 
-Timeline validation and flattening precede execution; local clocks schedule clips, then the barrier returns to ordinary command order. The current reference executor records a barrier without a real timeline clock; see [module ordering](../design/modules.md#timeline).
+Timeline validation and flattening preserve clip placement and barrier joins before ordinary command order. The current reference executor records a barrier without a real timeline clock; per-command timing remains with the owning command. See [module ordering](../design/modules.md#timeline).
 
 ## Diagnostics
 
-Duration/at/delay types, duplicate tracks, overlaps, cross-track write conflicts and timeline-only admissions are checked. Async bridge failure/timeout policy belongs to the bridge host, not timeline syntax.
+Placement/`Stamp.timeline`/`Stamp.at`, duplicate tracks, overlaps, cross-track write conflicts and timeline-only admissions are checked. Command-level blocking and durations are checked by the owning command module.
 
 ## Example
 

@@ -125,7 +125,7 @@ are static guarantees only; **obligation** is what a conforming engine must do.
 
 | construct | syntax | IR | reads | writes | evaluation point | static guarantees | engine obligation | semantic id |
 |---|---|---|---|---|---|---|---|---|
-| timeline/track/clip/barrier | `<timeline>`, `<track>`, `at/duration`, `::set` | stamped flattened commands and `kind: barrier` | local clocks and track writes | staged effects/allowed sets | sort `(at, track index)`; barrier join | overlap/conflict checks | run concurrent tracks and wait at barrier | `lute.timeline/1` |
+| timeline/track/clip/barrier | `<timeline>`, `<track>`, `at`; `::set` | stamped flattened commands and `kind: barrier` | `Stamp.timeline`, `Stamp.at`, barrier timeline/at | clip placement and barrier join | sort clips by timeline placement; barrier joins before walk continuation | timeline placement/track overlap and barrier shape checks | preserve ordering and joins independently of payload; per-command `wait`/`duration`/`delay` stay with owning command | `lute.timeline/1` |
 
 ### `core` (plugin wire)
 

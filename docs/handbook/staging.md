@@ -4,9 +4,9 @@
 
 ## Constructs and rules
 
-- **Core directives:** `::bg`, `::music`, `::sfx`, `::vfx` lower to presentation records and execute in command order, subject to authored timing/wait.
+- **Core directives:** `::bg`, `::music`, `::sfx`, `::vfx` lower to presentation records and execute in command order. Their `wait`, `duration`, and `delay` timing belongs to `lute.staging/1`; timeline placement is `lute.timeline/1`.
 - **Character staging:** `::auto{character,...}` and injected sprite records manage stage membership, action, emotion, costume, anchor and deterministic show/reposition/hide lifetime.
-- **Media:** `::camera`, `::cut`, and `::video` lower to media records with typed assets and blocking/timing fields.
+- **Media:** `::camera`, `::cut`, and `::video` lower to media records with typed assets. Their blocking and command-level timing belong to `lute.staging/1`.
 
 ## Evaluation and lowering
 
