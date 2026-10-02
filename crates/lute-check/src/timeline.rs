@@ -726,7 +726,7 @@ mod tests {
                 },
                 PathSegment::Literal(last.into()),
             ],
-            value: WriteValue::Literal(Literal::Num(0.0)),
+            value: WriteValue::Literal(Literal::Double(0.0)),
         };
         snap.directives.insert(
             "writer".into(),

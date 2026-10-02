@@ -68,7 +68,7 @@ fn setexpr_nested_path_mismatch_flags_ref_type() {
         StateDecl {
             ty: Type::Record(vec![Field {
                 name: "hp".to_string(),
-                ty: Type::Number,
+                ty: Type::Int,
                 default: None,
                 required: false,
                 shape: None,
@@ -95,8 +95,8 @@ fn condition_number_def_flags_ref_type() {
     // A `def num: number` used as a `<when test>` guard (Condition ⇒ Bool) is a
     // clear mismatch: number is not bool.
     let t = format!(
-        "{HDR}state:\n  scene.n: {{ type: number, default: 0 }}\n\
-         defs:\n  num: {{ type: number, cel: \"scene.n\" }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  scene.n: {{ type: int, default: 0 }}\n\
+         defs:\n  num: {{ type: int, cel: \"scene.n\" }}\n---\n## Shot 1.\n\
          <match on=\"scene.n\">\n\
          <when test=\"@num\">@narrator: a\n</when>\n\
          <otherwise>@narrator: b\n</otherwise>\n\
@@ -134,7 +134,7 @@ fn marina_style_fond_bool_def_is_clean() {
     // bool guard position ⇒ must NOT gain E-REF-TYPE.
     let t = format!(
         "{HDR}state:\n  \
-         scene.affect.marina: {{ type: number, default: 0 }}\n  \
+         scene.affect.marina: {{ type: int, default: 0 }}\n  \
          scene.choices.number: {{ type: string, default: \"\" }}\n\
          defs:\n  fond: {{ type: bool, cel: \"scene.affect.marina >= 1\" }}\n---\n## Shot 1.\n\
          <match on=\"scene.choices.number\">\n\
@@ -229,7 +229,7 @@ fn plugin_def_ref_type_mismatch_flags() {
         "count".into(),
         DefDecl {
             name: "count".into(),
-            ty: Type::Number,
+            ty: Type::Int,
             params: Default::default(),
             cel: "1".into(),
             min: None,
@@ -259,7 +259,7 @@ fn call_form_whole_slot_number_def_in_bool_guard_flags_ref_type() {
         "countAtLeast".into(),
         DefDecl {
             name: "countAtLeast".into(),
-            ty: Type::Number,
+            ty: Type::Int,
             params: Default::default(),
             cel: "1".into(),
             min: None,
@@ -288,7 +288,7 @@ fn compound_call_comparison_is_not_whole_slot() {
         "toNum".into(),
         DefDecl {
             name: "toNum".into(),
-            ty: Type::Number,
+            ty: Type::Int,
             params: Default::default(),
             cel: "1".into(),
             min: None,
@@ -296,7 +296,7 @@ fn compound_call_comparison_is_not_whole_slot() {
             values: None,
         },
     );
-    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@toNum(scene.n) == @toNum(2)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: int, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@toNum(scene.n) == @toNum(2)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
     let codes = check_codes(scene, snap);
     assert!(
         !codes.contains(&"E-REF-TYPE".to_string()),
@@ -315,7 +315,7 @@ fn arity_mismatch_flags() {
             ty: Type::Bool,
             params: vec![lute_manifest::schema::DefParam {
                 name: "n".into(),
-                ty: Type::Number,
+                ty: Type::Int,
             }],
             cel: "true".into(),
             min: None,
@@ -337,7 +337,7 @@ fn arity_match_is_clean() {
             ty: Type::Bool,
             params: vec![lute_manifest::schema::DefParam {
                 name: "n".into(),
-                ty: Type::Number,
+                ty: Type::Int,
             }],
             cel: "true".into(),
             min: None,
@@ -379,7 +379,7 @@ fn arg_type_mismatch_flags() {
             ty: Type::Bool,
             params: vec![lute_manifest::schema::DefParam {
                 name: "n".into(),
-                ty: Type::Number,
+                ty: Type::Int,
             }],
             cel: "true".into(),
             min: None,
@@ -401,7 +401,7 @@ fn arg_type_match_is_clean() {
             ty: Type::Bool,
             params: vec![lute_manifest::schema::DefParam {
                 name: "n".into(),
-                ty: Type::Number,
+                ty: Type::Int,
             }],
             cel: "true".into(),
             min: None,
@@ -424,7 +424,7 @@ fn unresolvable_arg_is_not_flagged() {
             ty: Type::Bool,
             params: vec![lute_manifest::schema::DefParam {
                 name: "n".into(),
-                ty: Type::Number,
+                ty: Type::Int,
             }],
             cel: "true".into(),
             min: None,
@@ -432,6 +432,6 @@ fn unresolvable_arg_is_not_flagged() {
             values: None,
         },
     );
-    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(scene.n + 1)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: int, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(scene.n + 1)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
     assert!(!check_codes(scene, snap).contains(&"E-REF-ARG-TYPE".to_string()));
 }

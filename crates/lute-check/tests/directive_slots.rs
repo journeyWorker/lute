@@ -17,8 +17,8 @@ fn snapshot_with_minigame() -> CapabilitySnapshot {
             fields: vec![
                 Field {
                     name: "score".into(),
-                    ty: Type::Number,
-                    default: Some(Literal::Num(0.0)),
+                    ty: Type::Int,
+                    default: Some(Literal::Int(0)),
                     required: false,
                     shape: None,
                 },
@@ -43,8 +43,8 @@ fn snapshot_with_minigame() -> CapabilitySnapshot {
                 },
                 Field {
                     name: "attempts".into(),
-                    ty: Type::Number,
-                    default: Some(Literal::Num(0.0)),
+                    ty: Type::Int,
+                    default: Some(Literal::Int(0)),
                     required: false,
                     shape: None,
                 },

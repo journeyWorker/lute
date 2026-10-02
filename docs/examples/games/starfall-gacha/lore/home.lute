@@ -23,7 +23,7 @@ title: Home screen taps
    next rank is (the roster's rule table: 100 / 300 / 600). */
 <beat id="bondNotYet" on="bondStory" target="kind:hero" once="false" priority="-10">
   @narrator: {{occasion.target}} smiles, but doesn't say anything else yet. Spend more time together.
-  @narrator{when="!holds(bondRank(occasion.target, r1))"}: Bond {{user.bond[occasion.target]}} of 100 to the first story.
-  @narrator{when="holds(bondRank(occasion.target, r1)) && !holds(bondRank(occasion.target, r2))"}: Bond {{user.bond[occasion.target]}} of 300 to the next story.
-  @narrator{when="holds(bondRank(occasion.target, r2)) && !holds(bondRank(occasion.target, r3))"}: Bond {{user.bond[occasion.target]}} of 600 to the last story.
+  @narrator{when="!holds('bondRank', [occasion.target, 'r1'])"}: Bond {{user.bond[occasion.target]}} of 100 to the first story.
+  @narrator{when="holds('bondRank', [occasion.target, 'r1']) && !holds('bondRank', [occasion.target, 'r2'])"}: Bond {{user.bond[occasion.target]}} of 300 to the next story.
+  @narrator{when="holds('bondRank', [occasion.target, 'r2']) && !holds('bondRank', [occasion.target, 'r3'])"}: Bond {{user.bond[occasion.target]}} of 600 to the last story.
 </beat>

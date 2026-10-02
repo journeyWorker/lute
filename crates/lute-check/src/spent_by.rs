@@ -476,8 +476,6 @@ struct Reads {
 }
 
 impl Reads {
-    /// Record `e` when it is a `holds` / `count` / `countDistinct` query,
-    /// its atom at polarity `pol`.
     fn atom(&mut self, e: &Expr, pol: Pol) -> bool {
         let Expr::Call(q) = e else { return false };
         if q.target.is_some()
@@ -485,14 +483,12 @@ impl Reads {
         {
             return false;
         }
-        if let Some(Expr::Call(atom)) = q.args.first().map(|a| &a.expr) {
-            if atom.target.is_none() {
-                self.atoms.push(Atom {
-                    rel: atom.func_name.clone(),
-                    args: crate::cast::atom_args(atom),
-                    pol,
-                });
-            }
+        if let Some(query) = crate::fact_env::QueryPattern::from_call(q) {
+            self.atoms.push(Atom {
+                rel: query.relation,
+                args: query.args,
+                pol,
+            });
         }
         true
     }
@@ -749,7 +745,8 @@ fn start_values(folded: &FoldedEnv) -> BTreeMap<String, Val> {
         .filter_map(|(path, d)| {
             let v = match d.default.as_ref()? {
                 Literal::Bool(b) => Val::Boolean(*b),
-                Literal::Num(n) => Val::Double(*n),
+                Literal::Int(n) => Val::Int(*n),
+                Literal::Double(n) => Val::Double(*n),
                 Literal::Str(s) => Val::String(s.clone()),
                 Literal::List(_) | Literal::Map(_) => return None,
             };

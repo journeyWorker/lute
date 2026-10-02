@@ -482,9 +482,11 @@ pub fn apply_writes(w: &mut World, writes: &Writes) -> Result<Vec<Json>, String>
         let v = match write {
             Write::Set(v) => v.clone(),
             Write::Add(d) => match w.state.get(path) {
-                Some(Value::Num(n)) => Value::Num(n + d),
-                _ => return Err(format!("`{path}` has no number value to add {d} to")),
-            },
+                Some(Value::Int(n)) => n.checked_add(*d as i64).map(Value::Int),
+                Some(Value::Double(n)) => Some(Value::Double(n + d)),
+                _ => None,
+            }
+            .ok_or_else(|| format!("`{path}` has no number value to add {d} to"))?,
         };
         records.push(json!({ "kind": "set", "path": path, "value": value_to_json(&v) }));
         w.state.insert(path.clone(), v);

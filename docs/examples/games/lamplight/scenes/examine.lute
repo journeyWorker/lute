@@ -13,7 +13,7 @@ title: What the inspector looks at
   @inspector{code="0020" mono}: A quarter past one. Crane said Solt said the same. Everybody agrees very quickly tonight.
 </beat>
 
-<beat id="watchAgain" on="examine" target="obj.watch" title="The pocket watch, again" when="holds(falseClue(watch))" priority="10">
+<beat id="watchAgain" on="examine" target="obj.watch" title="The pocket watch, again" when="holds('falseClue', ['watch'])" priority="10">
   @narrator{code="0010"}: You turn the watch over. The crown is pulled out to the setting position, and the crack in the crystal has no dent behind it. Glass cracked by a fall bends the case. This case is untouched.
   @inspector{code="0010" mono}: He was alive at five to two, ringing for tea. Somebody wound these hands back to a quarter past one and cracked the glass with a thumbnail.
   @inspector{code="0020" mono}: Nobody sets a clock back to protect themselves. They set it back to hang somebody else. Who stood at that door at a quarter past one?
@@ -34,7 +34,7 @@ title: What the inspector looks at
   @inspector{code="0020" mono}: A cufflink, though. A woman who travels with her own cufflinks, or a man's cufflink that a woman's initials were put on.
 </beat>
 
-<beat id="medkit" on="examine" target="obj.medkit" title="The doctor's bag" when="holds(lied(solt))">
+<beat id="medkit" on="examine" target="obj.medkit" title="The doctor's bag" when="holds('lied', ['solt'])">
   ::bg{location="compartment_5" time="night"}
   @narrator{code="0010"}: Solt's bag sits on the rack, black calf, clasp polished by years of a thumb. Inside, in felt loops: forceps, a stethoscope, a row of brown bottles.
   @narrator{code="0020"}: TINCT. OPII. The bottle is a third empty and the cork is still damp.

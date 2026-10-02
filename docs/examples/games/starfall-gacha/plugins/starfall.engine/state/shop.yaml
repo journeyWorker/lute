@@ -2,4 +2,4 @@ stateShapes:
   - name: purchaseResult
     fields:
       - { name: bought,    type: bool,   default: false }
-      - { name: remaining, type: number, default: 0 }
+      - { name: remaining, type: int, default: 0 }

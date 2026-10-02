@@ -32,9 +32,9 @@ after: 'visited("spine.home")'
   </choice>
 </branch>
 
-@rival{when="holds(rivalChose(cindle))"}: Then I'll take Cindle. Fire burns grass, everybody knows that.
-@rival{when="holds(rivalChose(dewpup))"}: Then I'll take Dewpup. Water puts fire out. Sorry, not sorry.
-@rival{when="holds(rivalChose(sproutle))"}: Then I'll take Sproutle. Roots drink water. Look it up.
+@rival{when="holds('rivalChose', ['cindle'])"}: Then I'll take Cindle. Fire burns grass, everybody knows that.
+@rival{when="holds('rivalChose', ['dewpup'])"}: Then I'll take Dewpup. Water puts fire out. Sorry, not sorry.
+@rival{when="holds('rivalChose', ['sproutle'])"}: Then I'll take Sproutle. Roots drink water. Look it up.
 ::use{component="obtain" item="monDex"}
 @profAlder: That Dex records every monster you see and every one you catch. Fill it for me, would you? Ten kinds would be a fine start.
 ::accept{quest="dexProject"}

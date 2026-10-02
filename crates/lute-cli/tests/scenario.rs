@@ -60,7 +60,7 @@ fn core_only_project_yaml() -> String {
 fn scene_sets_run_a(character: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n\
-         state:\n  run.a: {{ type: number }}\n---\n## Shot 1.\n::set{{run.a = 1}}\n"
+         state:\n  run.a: {{ type: int }}\n---\n## Shot 1.\n::set{{run.a = 1}}\n"
     )
 }
 
@@ -79,7 +79,7 @@ fn scene_after(character: &str, after_key: &str) -> String {
 fn scene_sets_run_z(character: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n\
-         state:\n  run.z: {{ type: number }}\n---\n## Shot 1.\n::set{{run.z = 1}}\n"
+         state:\n  run.z: {{ type: int }}\n---\n## Shot 1.\n::set{{run.z = 1}}\n"
     )
 }
 
@@ -91,7 +91,7 @@ fn scene_reading_run_z_after_or(character: &str, a_key: &str, b_key: &str) -> St
     format!(
         "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n\
          after: 'visited(\"{a_key}\") || visited(\"{b_key}\")'\n\
-         state:\n  run.z: {{ type: number }}\n  run.out: {{ type: number }}\n---\n\
+         state:\n  run.z: {{ type: int }}\n  run.out: {{ type: int }}\n---\n\
          ## Shot 1.\n::set{{run.out = run.z}}\n"
     )
 }
@@ -154,7 +154,7 @@ fn scenario_envelope_scene_falls_back_to_dd_floor_when_graph_cycle_empties_envs(
     // never empty tables.
     let dir = temp_dir("scenario-envelope-cycle-floor");
     let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
-             after: 'visited(\"q.s01ep01\")'\nstate:\n  run.known: { type: number, default: 0 }\n\
+             after: 'visited(\"q.s01ep01\")'\nstate:\n  run.known: { type: int, default: 0 }\n\
              ---\n## Shot 1.\n@narrator: hi\n";
     let q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\n\
              after: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
@@ -193,7 +193,7 @@ fn scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded() {
     // (like `reach`'s cyclic case) still exit 0.
     let dir = temp_dir("scenario-envelope-cycle-announce");
     let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
-             after: 'visited(\"q.s01ep01\")'\nstate:\n  run.known: { type: number, default: 0 }\n\
+             after: 'visited(\"q.s01ep01\")'\nstate:\n  run.known: { type: int, default: 0 }\n\
              ---\n## Shot 1.\n@narrator: hi\n";
     let q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\n\
              after: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
@@ -278,7 +278,7 @@ fn scenario_cycle_independent_scene_keeps_real_reach_and_envelope() {
     // SIBLING pair was cyclic.
     let dir = temp_dir("scenario-cycle-independent");
     let ind = "---\nkind: scene\ncharacter: ind\nseason: 1\nepisode: 1\n\
-               state:\n  run.known: { type: number, default: 0 }\n---\n## Shot 1.\n@narrator: hi\n";
+               state:\n  run.known: { type: int, default: 0 }\n---\n## Shot 1.\n@narrator: hi\n";
     let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
              after: 'visited(\"q.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
     let q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\n\
@@ -1065,8 +1065,8 @@ fn dead_relation_start_reads_unreachable() {
         &dir,
         "q.lute",
         "---\nkind: quest\nentities:\n  crew: { members: [toma] }\nrelations:\n  \
-         sealed: { args: [crew], tier: run }\nstate:\n  run.n: { type: number, default: 0 }\n\
-         ---\n<quest id=\"deadStart\" start=\"holds(sealed(toma))\">\n\
+         sealed: { args: [crew], tier: run }\nstate:\n  run.n: { type: int, default: 0 }\n\
+         ---\n<quest id=\"deadStart\" start=\"holds('sealed', ['toma'])\">\n\
          <objective id=\"o\" done=\"run.n >= 1\"/>\n</quest>\n",
     );
 
@@ -1540,14 +1540,14 @@ fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
         &dir,
         "q.lute",
         "---\nkind: quest\nentities:\n  crew: { members: [toma] }\nrelations:\n  \
-         sealed: { args: [crew], tier: run }\nstate:\n  run.n: { type: number, default: 0 }\n\
-         ---\n<quest id=\"deadStart\" start=\"holds(sealed(toma))\">\n\
+         sealed: { args: [crew], tier: run }\nstate:\n  run.n: { type: int, default: 0 }\n\
+         ---\n<quest id=\"deadStart\" start=\"holds('sealed', ['toma'])\">\n\
          <objective id=\"o\" done=\"run.n >= 1\"/>\n</quest>\n",
     );
     write(
         &dir,
         "end.lute",
-        "---\nkind: lore\nid: end\nstate:\n  run.lost: { type: number, default: 0 }\n  \
+        "---\nkind: lore\nid: end\nstate:\n  run.lost: { type: int, default: 0 }\n  \
          run.mood: { type: { enum: [calm, wild] }, default: calm }\n---\n\n\
          <beat id=\"good\" on=\"finale\" after=\"visited('a.s01ep01')\" when=\"run.a == 1\">\n  \
          @narrator: Good.\n  ::end{reason=\"good\"}\n</beat>\n\n\

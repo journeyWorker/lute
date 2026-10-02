@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_compile::Artifact;
+use lute_compile::ExecutionIr;
 use lute_manifest::schema::OccasionDecl;
 use lute_trace::exec::record::NeedleVocab;
 use lute_trace::exec::session::ExecProject;
@@ -94,7 +94,7 @@ pub(super) fn compile_project(project_dir: &Path, gate: Gate) -> Result<ExecProj
         .map(|p| p.identity)
         .unwrap_or_default();
 
-    let mut compiled: BTreeMap<String, Artifact> = BTreeMap::new();
+    let mut compiled: BTreeMap<String, ExecutionIr> = BTreeMap::new();
     let mut occasions: BTreeMap<String, OccasionDecl> = BTreeMap::new();
     let mut failures: BTreeMap<PathBuf, String> = BTreeMap::new();
     let policy = crate::DenyPolicy::default();

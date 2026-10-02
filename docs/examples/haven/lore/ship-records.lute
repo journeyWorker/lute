@@ -1,6 +1,6 @@
 ---
 kind: lore
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 id: haven.shipRecords
 title: Haven's records
 uses: ../world.schema.yaml
@@ -20,6 +20,6 @@ uses: ../world.schema.yaml
   </match>
 </entry>
 
-<entry id="vesnaManifestBark" target="npc.vesna" category="bark" when="holds(knows(vesna, manifest))">
+<entry id="vesnaManifestBark" target="npc.vesna" category="bark" when="holds('knows', ['vesna', 'manifest'])">
   @vesna{code="0010"}: Two pods that were never loaded. Somebody lied on paper, and I keep reading it.
 </entry>

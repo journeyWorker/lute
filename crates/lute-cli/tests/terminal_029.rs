@@ -225,7 +225,7 @@ fn the_ir_carries_terminal_persists() {
     let out = lute(&dir, &["compile", "--all", ".", "-o", "out"]);
     assert!(out.status.success(), "{}", text(&out));
     let index = read(&dir, "out/project.index.json");
-    assert_eq!(index["terminal"]["raw"], "user.crowned", "{index:#}");
+    assert_eq!(index["terminal"]["cel"], "user.crowned", "{index:#}");
     assert_eq!(index["terminalPersists"], true, "{index:#}");
     let artifact = read(&dir, "out/scenes/crown.lute.json");
     assert_eq!(artifact["terminalPersists"], true, "{artifact:#}");
@@ -237,7 +237,7 @@ fn the_ir_carries_terminal_persists() {
     let out = lute(&dir, &["compile", "--all", ".", "-o", "out"]);
     assert!(out.status.success(), "{}", text(&out));
     let index = read(&dir, "out/project.index.json");
-    assert_eq!(index["terminal"]["raw"], "run.over", "{index:#}");
+    assert_eq!(index["terminal"]["cel"], "run.over", "{index:#}");
     assert!(index.get("terminalPersists").is_none(), "{index:#}");
     let artifact = read(&dir, "out/scenes/crown.lute.json");
     assert!(artifact.get("terminalPersists").is_none(), "{artifact:#}");

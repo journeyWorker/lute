@@ -60,7 +60,7 @@ fn snapshot_with_assets() -> CapabilitySnapshot {
                 ),
                 seg("outfit", None, Some(Type::Str)),
                 seg("expression", None, Some(Type::Str)),
-                seg("variant", None, Some(Type::Number)),
+                seg("variant", None, Some(Type::Int)),
             ],
             provider: None,
             match_: vec![],

@@ -128,7 +128,7 @@ impl<D: Driver> Machine<D> {
                             .and_then(Json::as_str)
                             .unwrap_or("")
                             .to_string(),
-                        when: cel_raw(cmd.get("when")),
+                        when: cel_raw(cmd.get("when")).map(str::to_string),
                         body: cmd
                             .get("body")
                             .and_then(Json::as_str)
@@ -308,6 +308,7 @@ impl<D: Driver> Machine<D> {
                 break;
             }
             let (name, target) = crate::split_occasion(occasion);
+            self.bind_occasion_target(target);
             if !self.quest_resume {
                 let mut rec = json!({ "kind": "occasion", "occasion": name });
                 if let Some(t) = target {
@@ -320,11 +321,13 @@ impl<D: Driver> Machine<D> {
                 // its target.
                 self.fire_event(name, None, target, &handlers, &seg_starts);
                 if self.stopped() {
+                    self.bind_occasion_target(None);
                     break;
                 }
             }
             self.judge_occasion(occasion, &quests, &seg_starts, &mut done);
             self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
+            self.bind_occasion_target(None);
         }
 
         // Incomplete if an active quest is stuck on an undecidable required
@@ -630,6 +633,9 @@ impl<D: Driver> Machine<D> {
         handlers: &[Handler],
         seg_starts: &[usize],
     ) {
+        // The first activation in a save is instance 1. Reset paths advance
+        // this value before returning the quest to `unset`.
+        self.quest_instances.entry(id.to_string()).or_insert(1);
         self.driver.observe(json!({
             "kind": "quest", "quest": id, "outcome": "active",
             "guard": guard.map(str::trim), "forced": by_accept,
@@ -963,7 +969,8 @@ impl<D: Driver> Machine<D> {
         rewards: &[RewardRec],
         event: GrantEvent,
     ) {
-        for r in rewards {
+        let instance = *self.quest_instances.entry(quest_id.to_string()).or_insert(1);
+        for (index, r) in rewards.iter().enumerate() {
             if r.kind.trim().is_empty() {
                 continue;
             }
@@ -999,9 +1006,11 @@ impl<D: Driver> Machine<D> {
             let mut rec = serde_json::Map::new();
             rec.insert("kind".into(), Json::String("grant".into()));
             rec.insert("quest".into(), Json::String(quest_id.to_string()));
+            rec.insert("instance".into(), json!(instance));
             if let Some(oid) = objective_id {
                 rec.insert("objective".into(), Json::String(oid.to_string()));
             }
+            rec.insert("index".into(), json!(index));
             rec.insert("reward".into(), Json::Object(reward));
             // dsl 0.23.0 §8: a kind that credits a path adds the amount there
             // (an unknown or absent current value stays unknown, as `+=`
@@ -1012,7 +1021,7 @@ impl<D: Driver> Machine<D> {
                     Read::Value(v) => v,
                     Read::Unset => Value::Unknown,
                 };
-                let after = fold_op("+=", &before, &Value::Num(n as f64));
+                let after = fold_op("+=", &before, &Value::Int(n));
                 rec.insert(
                     "credited".into(),
                     json!({ "path": path, "value": value_to_json(&after) }),
@@ -1133,28 +1142,25 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
             arr.iter()
                 .map(|o| Obj {
                     id: o.get("id").and_then(Json::as_str).unwrap_or("").to_string(),
-                    done: o
-                        .get("done")
-                        .and_then(|d| d.get("raw"))
-                        .and_then(Json::as_str)
-                        .unwrap_or("")
-                        .to_string(),
+                    done: cel_raw(o.get("done"))
+                        .map(str::to_string)
+                        .unwrap_or_default(),
                     optional: o.get("optional").and_then(Json::as_bool).unwrap_or(false),
                     body: o.get("body").and_then(Json::as_str).map(str::to_string),
                     quest: o.get("quest").and_then(Json::as_str).map(str::to_string),
                     rewards: parse_rewards(o),
                     on: o.get("on").and_then(Json::as_str).map(str::to_string),
-                    by: cel_raw(o.get("by")),
+                    by: cel_raw(o.get("by")).map(str::to_string),
                     target: o.get("target").and_then(Json::as_str).map(str::to_string),
-                    until: cel_raw(o.get("until")),
+                    until: cel_raw(o.get("until")).map(str::to_string),
                 })
                 .collect()
         })
         .unwrap_or_default();
     QuestDecl {
         id,
-        start: cel_raw(cmd.get("start")),
-        fail: cel_raw(cmd.get("fail")),
+        start: cel_raw(cmd.get("start")).map(str::to_string),
+        fail: cel_raw(cmd.get("fail")).map(str::to_string),
         objectives,
         rewards: parse_rewards(cmd),
         accept_activated: cmd.get("activate").and_then(Json::as_str) == Some("accept"),
@@ -1189,7 +1195,7 @@ fn parse_reward(r: &Json) -> RewardRec {
         amount: r.get("amount").and_then(Json::as_i64),
         amount_min: r.get("amountMin").and_then(Json::as_i64),
         amount_max: r.get("amountMax").and_then(Json::as_i64),
-        when: cel_raw(r.get("when")),
+        when: cel_raw(r.get("when")).map(str::to_string),
         outcome: r.get("outcome").and_then(Json::as_str).map(str::to_string),
         credits: r.get("credits").and_then(Json::as_str).map(str::to_string),
     }

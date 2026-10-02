@@ -44,12 +44,12 @@ fn c5_nested_match_on_dollar_is_error() {
 
 #[test]
 fn c4_disjunctive_guard_does_not_prove_read() {
-    // isSet(run.x) is under `||`, so it does NOT prove `run.x`; the `run.x > 0`
+    // has(run.x) is under `||`, so it does NOT prove `run.x`; the `run.x > 0`
     // read of a non-defaulted run tier is E-MAYBE-UNSET (dsl §9.4).
     let t = format!(
-        "{HDR}state:\n  run.x: {{ type: number }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  run.x: {{ type: int }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
          <match on=\"scene.y\">\n\
-         <when test=\"isSet(run.x) || run.x > 0\">@narrator: a\n</when>\n\
+         <when test=\"has(run.x) || run.x > 0\">@narrator: a\n</when>\
          <otherwise>@narrator: b\n</otherwise>\n\
          </match>\n"
     );
@@ -62,11 +62,11 @@ fn c4_disjunctive_guard_does_not_prove_read() {
 
 #[test]
 fn c4_conjunctive_guard_still_proves_read() {
-    // Regression guard: a top-level / conjunctive `isSet` MUST still prove.
+    // Regression guard: a top-level / conjunctive `has` MUST still prove.
     let t = format!(
-        "{HDR}state:\n  run.x: {{ type: number }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  run.x: {{ type: int }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
          <match on=\"scene.y\">\n\
-         <when test=\"isSet(run.x) && run.x > 0\">@narrator: a\n</when>\n\
+         <when test=\"has(run.x) && run.x > 0\">@narrator: a\n</when>\
          <otherwise>@narrator: b\n</otherwise>\n\
          </match>\n"
     );
@@ -123,7 +123,7 @@ fn c2_exhaustive_match_without_otherwise_folds_assignment() {
     // Domain-exhaustive bool match (default false so not maybe-unset), both arms
     // assign scene.x; the read AFTER the match must be proven (no E-MAYBE-UNSET).
     let t = format!(
-        "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n  scene.x: {{ type: number }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n  scene.x: {{ type: int }}\n---\n## Shot 1.\n\
          <match on=\"scene.g\">\n\
          <when test=\"$ == true\">\n::set{{scene.x = 1}}\n</when>\n\
          <when test=\"$ == false\">\n::set{{scene.x = 2}}\n</when>\n\
@@ -142,7 +142,7 @@ fn c2b_nonexhaustive_match_does_not_fold_assignment() {
     // REGRESSION GUARD: a NON-exhaustive match (one arm only, no otherwise) must
     // NOT fold — the read after is genuinely maybe-unset.
     let t = format!(
-        "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n  scene.x: {{ type: number }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n  scene.x: {{ type: int }}\n---\n## Shot 1.\n\
          <match on=\"scene.g\">\n\
          <when test=\"$ == true\">\n::set{{scene.x = 1}}\n</when>\n\
          </match>\n\

@@ -637,7 +637,7 @@ fn check_project_clean_project_still_exits_zero_with_quest_refs_present() {
 fn scene_reading_run_z(character: &str, after_expr: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n{after_expr}\
-         state:\n  run.z: {{ type: number }}\n  run.out: {{ type: number }}\n---\n\
+         state:\n  run.z: {{ type: int }}\n  run.out: {{ type: int }}\n---\n\
          ## Shot 1.\n::set{{run.out = run.z}}\n"
     )
 }
@@ -649,7 +649,7 @@ fn envelope_guaranteed_read_drops_the_reconciled_maybe_unset_and_exits_zero() {
     // `E-MAYBE-UNSET` (it can't see the project); at project scope that
     // diagnostic MUST be reconciled away with no replacement.
     let dir = temp_dir("envelope-guaranteed");
-    let y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
+    let y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: int }\n---\n## Shot 1.\n::set{run.z = 1}\n";
     write(&dir, "y.lute", y);
     write(
         &dir,
@@ -698,7 +698,7 @@ fn envelope_possible_not_guaranteed_read_is_fully_suppressed_by_default() {
     // (error or otherwise) anywhere in the default (human or --json)
     // output -- and no `envelope_warnings` key at all (T14 territory).
     let dir = temp_dir("envelope-possible-not-guaranteed");
-    let a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
+    let a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: int }\n---\n## Shot 1.\n::set{run.z = 1}\n";
     let b =
         "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
     write(&dir, "a.lute", a);
@@ -804,8 +804,8 @@ fn envelope_unavailable_engine_path_is_not_told_to_add_an_after() {
         &dir,
         "x.lute",
         &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n").replace(
-            "run.z: { type: number }",
-            "run.z: { type: number, owner: engine }",
+            "run.z: { type: int }",
+            "run.z: { type: int, owner: engine }",
         ),
     );
     let out = run(&["check-project", dir.to_str().unwrap()]);
@@ -833,7 +833,7 @@ fn a_dotted_quest_id_is_reported_once_at_its_declaration() {
     write(
         &dir,
         "q.lute",
-        "---\nkind: quest\nid: wing\nstate:\n  run.n: { type: number, default: 0 }\n---\n\
+        "---\nkind: quest\nid: wing\nstate:\n  run.n: { type: int, default: 0 }\n---\n\
          <quest id=\"wing.hush\" title=\"Hush\" start=\"run.n >= 1\" tier=\"run\">\n  \
          <objective id=\"bed\" title=\"Bed\" done=\"run.n >= 2\"/>\n</quest>\n",
     );
@@ -872,7 +872,7 @@ fn a_hyphenated_quest_id_read_after_a_dot_names_the_quoted_spelling() {
     write(
         &dir,
         "q.lute",
-        "---\nkind: quest\nid: wing\nstate:\n  run.n: { type: number, default: 0 }\n---\n\
+        "---\nkind: quest\nid: wing\nstate:\n  run.n: { type: int, default: 0 }\n---\n\
          <quest id=\"lamp-duty\" title=\"Lamps\" start=\"run.n >= 1\" tier=\"run\">\n  \
          <objective id=\"lit\" title=\"Lit\" done=\"run.n >= 2\"/>\n</quest>\n",
     );
@@ -1076,7 +1076,7 @@ fn envelope_out_of_scope_scene_maybe_unset_survives_check_project() {
     write(
         &dir,
         "x.lute",
-        "---\nkind: scene\ncharacter: x6\nseason: 1\nepisode: 1\nstate:\n  scene.local: { type: number }\n---\n## Shot 1.\n@narrator: value {{scene.local}}\n",
+        "---\nkind: scene\ncharacter: x6\nseason: 1\nepisode: 1\nstate:\n  scene.local: { type: int }\n---\n## Shot 1.\n@narrator: value {{scene.local}}\n",
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
@@ -1305,7 +1305,7 @@ fn dead_required_objective_relational_marks_completed_gate_unreachable() {
         "deadrelquest.lute",
         "---\nkind: quest\nentities:\n  loc: { members: [a] }\nrelations:\n  \
          neverProduced: { args: [loc], tier: run }\n---\n<quest id=\"deadRelQuest\" start=\"true\">\n\
-         <objective id=\"o\" done=\"holds(neverProduced(a))\"/>\n</quest>\n",
+         <objective id=\"o\" done=\"holds('neverProduced', ['a'])\"/>\n</quest>\n",
     );
     write(
         &dir,
@@ -1608,7 +1608,7 @@ fn fixpoint_closure_propagates_through_a_multi_hop_chain() {
         "q2.lute",
         "---\nkind: quest\nentities:\n  loc: { members: [a] }\nrelations:\n  \
          chainRel: { args: [loc], tier: run }\n---\n<quest id=\"chainQ2\" start=\"true\">\n\
-         <objective id=\"checkChain\" done=\"holds(chainRel(a))\"/>\n</quest>\n",
+         <objective id=\"checkChain\" done=\"holds('chainRel', ['a'])\"/>\n</quest>\n",
     );
     write(
         &dir,
@@ -1647,7 +1647,7 @@ fn fixpoint_closure_propagates_through_a_multi_hop_chain() {
             d["code"] == "E-OBJECTIVE-UNSATISFIABLE"
                 && d["path"].as_str().unwrap().ends_with("q2.lute")
         }),
-        "round 2: chainQ2's holds(chainRel(a)) must be flagged dead once chainRel's sole \
+        "round 2: chainQ2's holds('chainRel', ['a']) must be flagged dead once chainRel's sole \
          producer (chainS) drops out: {v}"
     );
 }
@@ -1671,7 +1671,7 @@ fn dead_required_objective_never_drops_a_sibling_optional_objectives_live_assert
          <objective id=\"deadReq\" done=\"false\"/>\n\
          <objective id=\"liveOpt\" done=\"run.opt\" optional>\n\
          ::assert{ liveRel(a) }\n</objective>\n\
-         <objective id=\"checkLive\" done=\"holds(liveRel(a))\"/>\n</quest>\n",
+         <objective id=\"checkLive\" done=\"holds('liveRel', ['a'])\"/>\n</quest>\n",
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
@@ -1713,7 +1713,7 @@ fn dead_required_objective_never_drops_a_sibling_optional_objectives_live_assert
     assert_eq!(
         objective_diags.len(),
         1,
-        "exactly `deadReq` must be flagged dead -- `checkLive` (holds(liveRel(a))) must stay \
+        "exactly `deadReq` must be flagged dead -- `checkLive` (holds('liveRel', ['a'])) must stay \
          live, since `liveOpt`'s `::assert{{liveRel(a)}}` is still a REAL producer (the quest \
          still activates and runs it): {v}"
     );
@@ -1881,7 +1881,7 @@ fn a_canonical_defaults_path_never_reaches_a_serialised_surface() {
     .unwrap();
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.k: { type: number, default: 0 }\n",
+        "state:\n  run.k: { type: int, default: 0 }\n",
     )
     .unwrap();
     std::fs::write(
@@ -1999,12 +1999,12 @@ fn a_documents_own_key_overrides_the_default_entire() {
     .unwrap();
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.world: { type: number, default: 0 }\n",
+        "state:\n  run.world: { type: int, default: 0 }\n",
     )
     .unwrap();
     std::fs::write(
         dir.join("wake.schema.yaml"),
-        "state:\n  run.wake: { type: number, default: 0 }\n",
+        "state:\n  run.wake: { type: int, default: 0 }\n",
     )
     .unwrap();
     // Declares its own `uses:`, so it gets `run.wake` and NOT `run.world`.
@@ -2045,7 +2045,7 @@ fn an_empty_authored_value_overrides_the_default() {
     .unwrap();
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.world: { type: number, default: 0 }\n",
+        "state:\n  run.world: { type: int, default: 0 }\n",
     )
     .unwrap();
     std::fs::write(
@@ -2165,7 +2165,7 @@ fn a_subject_less_mock_is_reported_once_then_its_seed_is_caught() {
     .unwrap();
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.pressure: { type: number, default: 0 }\n",
+        "state:\n  run.pressure: { type: int, default: 0 }\n",
     )
     .unwrap();
     std::fs::write(
@@ -2329,7 +2329,7 @@ fn a_mis_keyed_mock_surface_is_reported_by_check_project() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.pressure: { type: number, default: 0 }\n",
+        "state:\n  run.pressure: { type: int, default: 0 }\n",
     );
     write(
         &dir,
@@ -2525,8 +2525,8 @@ fn check_project_flags_a_line_guard_over_a_never_asserted_fact() {
         "bridge.lute",
         &format!(
             "---\nkind: scene\ncharacter: haven\nseason: 1\nepisode: 2\n{FACT_VOCAB}---\n\
-             ## Shot 1.\n@vesna{{when=\"holds(knows(vesna, manifest))\"}}: Two pods.\n\
-             @vesna{{when=\"holds(knows(toma, heading))\"}}: So you read the log.\n"
+             ## Shot 1.\n@vesna{{when=\"holds('knows', ['vesna', 'manifest'])\"}}: Two pods.\n\
+             @vesna{{when=\"holds('knows', ['toma', 'heading'])\"}}: So you read the log.\n"
         ),
     );
 
@@ -2557,7 +2557,7 @@ fn check_project_flags_a_line_guard_over_a_never_asserted_fact() {
         diags[0]["message"]
             .as_str()
             .unwrap()
-            .contains("no seed, assert, rule, or engine relation produces `knows(toma, heading)`"),
+            .contains("no seed, assert, rule, or engine relation produces `holds('knows', ['toma', 'heading'])`"),
         "{v}"
     );
 }
@@ -2574,7 +2574,7 @@ fn argument_level_dead_objective_marks_completed_gate_unreachable() {
         "q.lute",
         &format!(
             "---\nkind: quest\n{FACT_VOCAB}---\n<quest id=\"q\" start=\"true\">\n\
-             <objective id=\"o\" done=\"holds(knows(toma, heading))\"/>\n</quest>\n"
+             <objective id=\"o\" done=\"holds('knows', ['toma', 'heading'])\"/>\n</quest>\n"
         ),
     );
     write(
@@ -2649,7 +2649,7 @@ fn deny_of_the_removed_unproven_relational_code_is_a_usage_error() {
 /// heading)`, a relation that IS asserted but never with those arguments.
 fn wip_lore(with_dead_match: bool) -> String {
     let extra = if with_dead_match {
-        "<entry id=\"heading\" when=\"holds(knows(toma, heading))\">\n  @vesna: The heading.\n</entry>\n\
+        "<entry id=\"heading\" when=\"holds('knows', ['toma', 'heading'])\">\n  @vesna: The heading.\n</entry>\n\
          <entry id=\"note\">\n  @vesna: Noted.\n  ::assert{knows(toma, manifest)}\n</entry>\n"
     } else {
         ""
@@ -2658,7 +2658,7 @@ fn wip_lore(with_dead_match: bool) -> String {
         "---\nkind: lore\ntitle: Records\nentities:\n  crew: {{ members: [vesna, toma] }}\n  \
          topic: {{ members: [heading, manifest] }}\nrelations:\n  found: {{ args: [crew], tier: run }}\n  \
          knows: {{ args: [crew, topic], tier: run }}\n---\n\
-         <entry id=\"found\" when=\"holds(found(toma))\">\n  @vesna: Found him.\n</entry>\n{extra}"
+         <entry id=\"found\" when=\"holds('found', ['toma'])\">\n  @vesna: Found him.\n</entry>\n{extra}"
     )
 }
 
@@ -2731,7 +2731,7 @@ fn wip_reports_a_beat_dead_under_the_terminal_once() {
         &dir,
         "notes.lute",
         "---\nkind: lore\nid: notes\ntitle: Records\n---\n\
-         <entry id=\"found\" on=\"chime\" when=\"holds(found(toma))\">\n  @narrator: Found him.\n</entry>\n",
+         <entry id=\"found\" on=\"chime\" when=\"holds('found', ['toma'])\">\n  @narrator: Found him.\n</entry>\n",
     );
     for (flag, code) in [(None, "E-ENTRY-UNREACHABLE"), (Some("--wip"), "W-WIP")] {
         let mut args = vec!["check-project"];
@@ -2806,12 +2806,12 @@ fn replaced_default_uses_is_named_on_the_errors_it_causes() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.world: { type: number, default: 0 }\n",
+        "state:\n  run.world: { type: int, default: 0 }\n",
     );
     write(
         &dir,
         "wake.schema.yaml",
-        "state:\n  run.wake: { type: number, default: 0 }\n",
+        "state:\n  run.wake: { type: int, default: 0 }\n",
     );
     write(
         &dir,
@@ -2997,7 +2997,7 @@ fn check_project_reports_sera_kato_contention_and_stranded_info() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
          run.slot: { type: { enum: [morning, evening] }, default: evening, owner: engine }\n  \
          run.sera: { type: bool, default: false }\n  run.kato: { type: bool, default: false }\n\
          clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, evening]\n  raise: tick\n  raiseAtStart: true\n",
@@ -3049,7 +3049,7 @@ fn check_project_reports_sera_kato_contention_and_stranded_info() {
     write(
         &clean,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
          run.slot: { type: { enum: [morning, evening] }, default: evening, owner: engine }\n  \
          run.done: { type: bool, default: false }\nclock:\n  day: run.day\n  slot: run.slot\n  \
          slots: [morning, evening]\n  raise: tick\n  raiseAtStart: true\n",
@@ -3088,7 +3088,7 @@ fn check_project_rejects_repeatable_advance_cascade() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n\
          run.slot: { type: { enum: [morning, evening] }, default: morning, owner: engine }\n\
          clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, evening]\n  raise: tick\n",
     );

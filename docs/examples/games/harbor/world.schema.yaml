@@ -1,15 +1,15 @@
 # Harbor Days — a two-week live event on a small fishing harbor.
 state:
-  run.day:        { type: number, default: 1, owner: engine }
+  run.day:        { type: int, default: 1, owner: engine }
   run.slot:       { type: { enum: [dawn, noon, dusk] }, default: dawn, owner: engine }
-  run.coins:      { type: number, default: 0 }
-  run.weekFish:   { type: number, default: 0, owner: engine }
+  run.coins:      { type: int, default: 0 }
+  run.weekFish:   { type: int, default: 0, owner: engine }
   run.storm:      { type: { domain: weather }, default: calm }
   user.festivalOn: { type: bool, default: false, owner: engine }
-  user.bond:      { type: number, default: 0, per: villager }
-  user.days:      { type: number, default: 0 }
-  season.lanterns.hung:   { type: number, default: 0 }
-  season.lanterns.wishes: { type: number, default: 0 }
+  user.bond:      { type: int, default: 0, per: villager }
+  user.days:      { type: int, default: 0 }
+  season.lanterns.hung:   { type: int, default: 0 }
+  season.lanterns.wishes: { type: int, default: 0 }
 
 enums:
   weather: [calm, squall, wrecked]

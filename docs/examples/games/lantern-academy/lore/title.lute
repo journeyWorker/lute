@@ -22,11 +22,11 @@ title: The title screen
   </match>
 </beat>
 
-<beat id="keeperWaits" on="title" title="Every route cleared" priority="20" once="false" when="quest.fourLanterns.state == 'complete' && !holds(cgSeen(cgKeeperEnd))">
+<beat id="keeperWaits" on="title" title="Every route cleared" priority="20" once="false" when="quest.fourLanterns.state == 'complete' && !holds('cgSeen', ['cgKeeperEnd'])">
   @narrator: Lantern Academy. Every lantern on the lake is lit. On the far jetty, the girl has turned round, and is looking at you.
   @hotaru{vo}: Next term. The one without a lantern.
 </beat>
 
-<beat id="freed" on="title" title="The keeper set free" priority="30" once="false" when="holds(cgSeen(cgKeeperEnd))">
+<beat id="freed" on="title" title="The keeper set free" priority="30" once="false" when="holds('cgSeen', ['cgKeeperEnd'])">
   @narrator: Lantern Academy. The lake is dark. On the jetty, a crowd of students, and one of them, in an old uniform, waves.
 </beat>

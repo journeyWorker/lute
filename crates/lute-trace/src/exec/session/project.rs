@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_compile::index::{build_index, BeatKind, IndexBeat, IndexInput, ProjectIndex};
-use lute_compile::{Artifact, BeatOnce};
+use lute_compile::{ExecutionIr, BeatOnce};
 use lute_manifest::relations::{EntityKindDecl, KindShape};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use serde_json::{json, Value as Json};
@@ -115,7 +115,7 @@ impl ExecProject {
     /// a persistent path declared with two types, an artifact that does not
     /// serialize.
     pub fn assemble(
-        compiled: &BTreeMap<String, Artifact>,
+        compiled: &BTreeMap<String, ExecutionIr>,
         occasions: BTreeMap<String, OccasionDecl>,
         world_events: BTreeSet<String>,
         bridge_types: BridgeReads,
@@ -503,7 +503,7 @@ impl ExecProject {
             target_kind: None,
             for_kind: None,
             spent_by: cmd
-                .pointer("/spentBy/raw")
+                .pointer("/spentBy/cel")
                 .and_then(Json::as_str)
                 .map(str::to_string),
             advances: None,
@@ -540,7 +540,8 @@ pub fn state_entry_type(doc_json: &Json, path: &str) -> Option<lute_manifest::ty
         .find(|e| e.get("path").and_then(Json::as_str) == Some(path))?;
     Some(match entry.get("type")?.as_str()? {
         "bool" => Type::Bool,
-        "number" => Type::Number,
+        "int" => Type::Int,
+        "double" | "number" => Type::Double,
         "string" => Type::Str,
         "enum" => Type::Enum(
             entry

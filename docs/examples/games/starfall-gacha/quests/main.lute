@@ -33,5 +33,5 @@ id: mainQuests
   <objective id="shore" title="Reach the shore" done="visited('main.c4s1')"/>
   <objective id="watch" title="Choose who keeps watch" done="visited('main.c4s2')"/>
   <objective id="deep" title="Find the deep lantern" done="visited('main.c4s3')"/>
-  <objective id="codex" title="Read about the Frost King" done="holds(learned(frostKing))" optional/>
+  <objective id="codex" title="Read about the Frost King" done="holds('learned', ['frostKing'])" optional/>
 </quest>

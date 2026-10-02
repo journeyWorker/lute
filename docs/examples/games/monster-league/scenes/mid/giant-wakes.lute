@@ -5,7 +5,7 @@ title: The sleeping giant
 on: enterRoute
 target: route.r12
 priority: 20
-when: "holds(hasItem(wakingFlute))"
+when: "holds('hasItem', ['wakingFlute'])"
 ---
 
 // Slumbear, asleep across Route 12 since anyone can remember. East's

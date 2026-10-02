@@ -1036,7 +1036,8 @@ fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
 fn state_matches(want: &Yaml, actual: Option<&Value>) -> bool {
     match (want, actual) {
         (Yaml::Bool(w), Some(Value::Bool(a))) => w == a,
-        (Yaml::Number(w), Some(Value::Num(a))) => w.as_f64() == Some(*a),
+        (Yaml::Number(w), Some(Value::Int(a))) => w.as_i64() == Some(*a),
+        (Yaml::Number(w), Some(Value::Double(a))) => w.as_f64() == Some(*a),
         (Yaml::String(w), Some(Value::Str(a))) => w == a,
         _ => false,
     }
@@ -1046,10 +1047,11 @@ fn state_matches(want: &Yaml, actual: Option<&Value>) -> bool {
 fn value_text(v: &Value) -> String {
     match v {
         Value::Bool(b) => b.to_string(),
-        Value::Num(n) if n.fract() == 0.0 && n.abs() < 1e15 => format!("{}", *n as i64),
-        Value::Num(n) => n.to_string(),
+        Value::Int(n) => n.to_string(),
+        Value::Double(n) => n.to_string(),
         Value::Str(s) => format!("{s:?}"),
         Value::Unknown => "unknown".to_string(),
+        Value::Error(e) => format!("error: {e}"),
     }
 }
 
@@ -1094,7 +1096,7 @@ mod tests {
             ],
             end: WorldView {
                 state: BTreeMap::from([
-                    ("run.day".to_string(), Value::Num(3.0)),
+                    ("run.day".to_string(), Value::Int(3)),
                     ("run.outcome".to_string(), Value::Str("fell".into())),
                     ("user.met".to_string(), Value::Bool(true)),
                     ("run.fog".to_string(), Value::Unknown),

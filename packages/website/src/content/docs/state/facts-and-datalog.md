@@ -32,7 +32,7 @@ Content writes **deltas** with the leaf directives `::assert` and `::retract`; t
 
 A reserved relation may also say *when* the engine changes it: `changedOn: [battleEnd]` names the occasions whose raise may write it (dsl 0.25.0 §6). It is a checker input, not an IR field, and it matters to cast presence: see [Presence after engine events](/language/dialogue-and-cast/#presence-after-engine-events-changedon). `changedOn` on a relation that is not `reserved: true`, or naming an occasion no plugin declares, is `E-RELATION-DECL`.
 
-A relation cannot take the name of a CEL call, macro or keyword — `has`, `holds`, `count`, `isSet`, `now`, and the like — nor of an `after:` call (`completed`, `active`) or a rule word (`cel`, `not`). `holds(has(lamp))` could never be written, so declaring such a relation is `E-RESERVED-NAME` at its declaration, with a name to use instead (`visited` → `wasAt`). Every reserved name is on the [Reserved names](/reference/reserved-names/) page.
+A relation cannot take the name of a CEL call, macro or keyword — `has`, `holds`, `count`, `has`, `now`, and the like — nor of an `after:` call (`completed`, `active`) or a rule word (`cel`, `not`). `has(lamp)` could never be written, so declaring such a relation is `E-RESERVED-NAME` at its declaration, with a name to use instead (`visited` → `wasAt`). Every reserved name is on the [Reserved names](/reference/reserved-names/) page.
 
 ### Sub-kinds: `subsetOf:`
 
@@ -59,7 +59,7 @@ rules:
 
 ::assert{ inParty(isolde) }
 ::assert{ trusts(isolde, player) }
-@isolde{when="holds(loyal(isolde))"}: I'm with you.
+@isolde{when="holds('loyal', ['isolde'])"}: I'm with you.
 ```
 
 A sub-kind's members are members of its parent (dsl 0.26.0 §2.3): a member it shares with its parent, or with a sibling sub-kind, is no clash, and the parent need not list it again (restating it there is allowed and is no duplicate). A sub-kind is legal wherever a kind is: a relation argument, a `per:` index ([State model](/state/state-model/)), an occasion's target domain, a [kind target](/language/beats/#kind-targets). A value of the sub-kind is also a value of the parent, so `trusts(isolde, player)` is legal and the rule above joins a `companion` with a `person` argument. The reverse does not hold: `::assert{ inParty(hollis) }` is `E-FACT-DOMAIN`, because `hollis` is a person but not a companion.
@@ -95,8 +95,8 @@ The declaration is symmetric: `fell` excludes `seenAfter` without restating it, 
 
 Exclusion is an invariant the author declares, not something the checker infers from the rules. `check-project` then uses it everywhere it decides a relational guard ([below](#how-check-project-analyzes-relational-guards)):
 
-- `holds(A(x)) && holds(B(x))` is false, so a guard that needs both is dead: `E-ARM-DEAD` on a line or arm, `E-BEAT-UNREACHABLE` on a beat, and the message names the exclusion;
-- `!holds(B(x))` follows from `holds(A(x))`: in the same guard, in an enclosing one, or because `A(x)` holds on every route to the guard. Such a guard is `W-FACT-GUARANTEED`, and [cast presence](/language/dialogue-and-cast/#presence-present) reads it the same way. A guard over an engine `reserved:` relation counts too, inside the region it guards;
+- `holds('A', ['x']) && holds('B', ['x'])` is false, so a guard that needs both is dead: `E-ARM-DEAD` on a line or arm, `E-BEAT-UNREACHABLE` on a beat, and the message names the exclusion;
+- `!holds('B', ['x'])` follows from `holds('A', ['x'])`: in the same guard, in an enclosing one, or because `A(x)` holds on every route to the guard. Such a guard is `W-FACT-GUARANTEED`, and [cast presence](/language/dialogue-and-cast/#presence-present) reads it the same way. A guard over an engine `reserved:` relation counts too, inside the region it guards;
 - an `::assert{A(x)}` where `B(x)` holds on every route to it is the new **`E-FACT-EXCLUSIVE`**;
 - a rule that can only break the exclusion is the new **`E-RULE-EXCLUSIVE`**, at the rule: `dark(X) :- lit(X)` with `dark` excluding `lit` derives `dark` only where `lit` holds on the same arguments, so every derivation breaks the exclusion. Fix the rule or the declaration.
 
@@ -105,15 +105,15 @@ A relation named in an `excludes:` pair counts as read, so declaring the pair ne
 A storm scene asserts `at(elias, gallery)` and `damaged(gallery)`, and `panicked(maren)` on every route. Then a dawn scene sequenced `after: 'visited("storm")'`:
 
 ```lute
-@narrator{when="holds(seenAfter(elias)) && holds(fell(elias))"}: Both at once.
-@narrator{when="holds(seenAfter(elias)) && !holds(fell(elias))"}: Elias walks on.
+@narrator{when="holds('seenAfter', ['elias']) && holds('fell', ['elias'])"}: Both at once.
+@narrator{when="holds('seenAfter', ['elias']) && !holds('fell', ['elias'])"}: Elias walks on.
 ::assert{ calm(maren) }
 ```
 
 <!-- lute-diagnostics unverified="verbatim check-project output; the relational E-ARM-DEAD message names its code through the reachability::E_ARM_DEAD constant, so the scraper cannot pair quote and code" -->
 ```
-./scenes/dawn.lute:20:17: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(seenAfter(elias)) && holds(fell(elias))` is provably false — `seenAfter(elias)` and `fell(elias)` can never hold together (`seenAfter` excludes `fell`)
-./scenes/dawn.lute:21:17: warning [W-FACT-GUARANTEED] guard `holds(seenAfter(elias)) && !holds(fell(elias))` is redundant: `!holds(fell(elias))` follows from this guard's `holds(seenAfter(elias))`: `seenAfter` excludes `fell`
+./scenes/dawn.lute:20:17: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds('seenAfter', ['elias']) && holds('fell', ['elias'])` is provably false — `seenAfter(elias)` and `fell(elias)` can never hold together (`seenAfter` excludes `fell`)
+./scenes/dawn.lute:21:17: warning [W-FACT-GUARANTEED] guard `holds('seenAfter', ['elias']) && !holds('fell', ['elias'])` is redundant: `!holds('fell', ['elias'])` follows from this guard's `holds('seenAfter', ['elias'])`: `seenAfter` excludes `fell`
 ./scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] `::assert{calm(maren)}` would make `calm(maren)` and `panicked(maren)` both hold: `panicked(maren)` is asserted on every route to here (./scenes/storm.lute:14), and `calm` excludes `panicked` — retract `panicked(maren)` first, or assert only where it does not hold
 ```
 
@@ -121,7 +121,7 @@ When both facts are only *possible*, say `panicked(maren)` is asserted down one 
 
 ## Querying history with `validAt`
 
-Because every fact carries a valid-time interval, a guard can ask whether a fact held *at a past instant* rather than right now: `validAt(rel(args), t)`, beside the valid-now `holds(rel(args))` and `count(rel(args)) OP n` (see [CEL expressions](/state/cel/)). It is admitted over base relations, and over derived ones whose rules carry no CEL guard in any feeding stratum — a guard reads scalar state, scalars keep no history, so a point-in-the-past derivation through one is ill-defined (`E-VALIDAT-DERIVED`).
+Because every fact carries a valid-time interval, a guard can ask whether a fact held *at a past instant* rather than right now: `validAt('rel', ['args'], t)`, beside the valid-now `holds('rel', ['args'])` and `count('rel', ['args']) OP n` (see [CEL expressions](/state/cel/)). It is admitted over base relations, and over derived ones whose rules carry no CEL guard in any feeding stratum — a guard reads scalar state, scalars keep no history, so a point-in-the-past derivation through one is ill-defined (`E-VALIDAT-DERIVED`).
 
 `t` must be a `narrativeTime` expression, and there is exactly one an author can write: **`quest.<id>.activatedAt`**, the instant the engine stamps when a quest goes `unset` → `active` (see [Quests & scenes](/language/quests-and-scenes/)). Declaring a `narrativeTime` path of your own is `E-TEMPORAL-ARG`, so before 0.8.0 reserved that slot `validAt` had no anchor to point at and the query was unusable in practice.
 
@@ -129,7 +129,7 @@ Together they express the gate a quest actually wants — not *did this ever hap
 
 ```lute
 <quest id="theCoffeeDebt" title="Settle the coffee debt">
-  <objective id="visitedSinceAccept" title="Go back to the station" done="holds(arrivedSpace(station_front)) && !validAt(arrivedSpace(station_front), quest.theCoffeeDebt.activatedAt)"/>
+  <objective id="visitedSinceAccept" title="Go back to the station" done="holds('arrivedSpace', ['station_front']) && !validAt('arrivedSpace', ['station_front'], quest.theCoffeeDebt.activatedAt)"/>
 </quest>
 ```
 
@@ -152,10 +152,10 @@ A rule is `head :- body`, where the body is a comma-separated conjunction of the
 | relation atom | `atLocation(C, L)` | a base or derived fact matches; variables are capitalized, constants are entity members |
 | entity kind | `character(C)` | `C` ranges over the members of the entity kind `character`: a membership test, never a fact lookup |
 | negation | `not awake(P)` | no matching fact holds (stratified: `awake` must not depend on this head) |
-| anonymous variable | `sawAt(W, _, _)` | each `_` is a fresh variable that matches anything (dsl 0.24.0); under `not`, no matching tuple exists at all |
+| anonymous variable | `sawAt(W, '_', _)` | each `_` is a fresh variable that matches anything (dsl 0.24.0); under `not`, no matching tuple exists at all |
 | inequality | `A != B` | two bound terms differ |
 | scalar guard | `cel("run.act == 1")` | a CEL condition over scalar state, never a fact query |
-| count | `count(hasBadge(_)) >= 7` | dsl 0.26.0 §6: the number of matching facts compared with `>=` `>` `<=` `<` `==` `!=`; also `countDistinct(R(…), V) op n`. See [Counts in a rule body](#counts-in-a-rule-body) |
+| count | `count(hasBadge(_)) >= 7` | dsl 0.26.0 §6: the number of matching facts compared with `>=` `>` `<=` `<` `==` `!=`; also `countDistinct(R(…), V…) op n`. See [Counts in a rule body](#counts-in-a-rule-body) |
 
 ```yaml
 rules:
@@ -170,9 +170,11 @@ An entity-kind atom is a test against the kind's members, never a lookup of `cha
 
 ### The anonymous variable and `countDistinct`
 
-A `_` in a rule body stands for a value the rule does not care about. Each `_` is its own fresh variable, so the two in `sawAt(W, _, _)` need not be equal. It never needs binding, so it does not affect safety. Under `not` it is existential: `not sawAt(W, _, _)` holds when `W` saw nobody, anywhere. A `_` in a rule head is `E-DATALOG-PARSE`, because a head argument must be a bound variable or a constant, and so is a `_` in a comparison (`X != _`).
+A `_` in a rule body stands for a value the rule does not care about. Each `_` is its own fresh variable, so the two in `sawAt(W, '_', _)` need not be equal. It never needs binding, so it does not affect safety. Under `not` it is existential: `not sawAt(W, '_', _)` holds when `W` saw nobody, anywhere. A `_` in a rule head is `E-DATALOG-PARSE`, because a head argument must be a bound variable or a constant, and so is a `_` in a comparison (`X != _`).
 
-A condition that counts matching facts has two forms. `count(<pattern>)` counts tuples, and `countDistinct(<pattern>, <Var>)` counts the distinct values at the position the variable `<Var>` names:
+A condition that counts matching facts uses list-form calls. `count('R', ['_'])`
+counts tuples, and `countDistinct('R', ['_', '_'], 0)` counts distinct values
+at the zero-based position (the list element at that position must be `_`):
 
 ```lute check
 ---
@@ -198,16 +200,16 @@ facts:
 
 ## Shot 1.
 
-@narrator{when="count(sawAt(_, _, _)) >= 3"}: Three sightings are on record.
-@narrator{when="countDistinct(sawAt(W, _, _), W) >= 2"}: At least two witnesses came forward.
-@narrator{when="holds(testified(bram)) && holds(silent(dora))"}: Bram spoke. Dora saw nothing at all.
+@narrator{when="count('sawAt', ['_', '_', '_']) >= 3"}: Three sightings are on record.
+@narrator{when="countDistinct('sawAt', ['_', '_', '_'], 0) >= 2"}: At least two witnesses came forward.
+@narrator{when="holds('testified', ['bram']) && holds('silent', ['dora'])"}: Bram spoke. Dora saw nothing at all.
 ```
 
 Three sightings, two witnesses: `ada` saw two people and `bram` one. `<Var>` must be a variable that appears in the pattern, otherwise the call is `E-CEL-PROFILE`. `check-project` decides `countDistinct` from its fact envelope as it does `count`, and trace, test and play evaluate it. Like `count` and `holds`, it reads the fact store, so it is forbidden in a rule guard (`E-DATALOG-GUARD-FACT`).
 
 ### Counts in a rule body
 
-Since dsl 0.26.0 §6 a rule body may count, with the same two forms a condition uses: `count(R(…)) <op> n` and `countDistinct(R(…), V…) <op> n`, where `<op>` is `>=`, `>`, `<=`, `<`, `==` or `!=`. A variable another literal of the rule binds is read, so the count is per binding; any other variable ranges over the facts:
+Since dsl 0.26.0 §6 a rule body may count, using Datalog ground/pattern notation: `count(R(…)) <op> n` and `countDistinct(R(…), V…) <op> n`, where `<op>` is `>=`, `>`, `<=`, `<`, `==` or `!=`. A variable another literal of the rule binds is read, so the count is per binding; any other variable ranges over the facts:
 
 ```lute check
 ---
@@ -231,9 +233,9 @@ facts:
 
 ## The verdict
 
-@narrator{when="holds(corroborated(cole))"}: Two people put Cole at the scene.
-@narrator{when="holds(caseOpen(dock))"}: Two witnesses were at the dock.
-@narrator{when="!holds(corroborated(dora))"}: Only one saw Dora.
+@narrator{when="holds('corroborated', ['cole'])"}: Two people put Cole at the scene.
+@narrator{when="holds('caseOpen', ['dock'])"}: Two witnesses were at the dock.
+@narrator{when="!holds('corroborated', ['dora'])"}: Only one saw Dora.
 ```
 
 `lute trace` takes all three arms. The IR carries a count literal as `{ kind: "count", atom, distinct?, op, n }`, and `trace`, `test`, `play` and `run` evaluate it one stratum above the counted relation, so the count is final before the head is derived. A count over a relation that depends on the rule's own head has no such stratum and is **`E-RULE-AGGREGATE-CYCLE`**:
@@ -254,7 +256,7 @@ A rule guard may call any def a condition may, arguments included. Since 0.24.0 
 kind: scene
 id: lamp.room
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 defs:
   firstDay: { type: bool, cel: "run.day == 1" }
 entities:
@@ -269,21 +271,21 @@ rules:
 
 ## Shot 1.
 
-@narrator{when="holds(lit(lamp))"}: The lamp is already burning.
+@narrator{when="holds('lit', ['lamp'])"}: The lamp is already burning.
 ```
 
 Before 0.24.0 this passed `check` and then never derived: the guard was evaluated unexpanded, read as undecided, and the rule was silently dropped. The expanded body still has to pass the firewall, so a def that queries facts is `E-DATALOG-GUARD-FACT` there. A def the guard cannot expand is `E-RULE-GUARD-DEF`: an undefined name, a wrong argument count, or a `$`, which has no match subject in a rule. When a guard is still undecided at play time, a condition that queries the rule's relation reads unknown rather than false, and play halts there and names what would decide it.
 
 ### Entity-indexed state in a rule guard
 
-A path declared with [`per:`](/state/state-model/) holds one number per member of a kind. A document names the member (`run.approval.isolde`), and a component's `::set` may index it through a param (`run.approval[@who]`, checked at each `::use`; see [the state model](/state/state-model/)). In a rule `cel()` guard, `run.approval[P]` reads the member bound to the rule variable `P` (dsl 0.24.0 §3):
+A path declared with [`per:`](/state/state-model/) holds one `int` or `double` per member of a kind. A document names the member (`run.approval.isolde`), and a component's `::set` may index it through a param (`run.approval[@who]`, checked at each `::use`; see [the state model](/state/state-model/)). In a rule `cel()` guard, `run.approval[P]` reads the member bound to the rule variable `P` (dsl 0.24.0 §3):
 
 ```lute check
 ---
 kind: scene
 id: camp.fire
 state:
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 entities:
   person:    { members: [isolde, corvin, hollis] }
   companion: { subsetOf: person, members: [isolde, corvin] }
@@ -300,7 +302,7 @@ rules:
 
 ::assert{ inParty(isolde) }
 ::set{run.approval.isolde += 5}
-@isolde{when="holds(devoted(isolde))"}: I would follow you anywhere.
+@isolde{when="holds('devoted', ['isolde'])"}: I would follow you anywhere.
 ```
 
 `P` must be bound by a positive body atom that ranges it over the index kind or one of its sub-kinds. Here `inParty(P)` ranges it over `companion`. Each way of getting that wrong has its own code:
@@ -342,7 +344,7 @@ rules:
 As with an indexed path, `S` must be bound by a positive body atom (`adjacent(R, S)` ranges it over
 `room`), and the rule compiles grounded: one IR rule per member, its guard a plain comparison,
 `run.stalker == 'chapel'` with `raw` suffixed `[S = chapel]`. A kind beat asks the question of its
-own member with `holds(close(occasion.target))`. Two shapes are `E-CEL-PROFILE`: comparing the
+own member with `holds('close', [occasion.target])`. Two shapes are `E-CEL-PROFILE`: comparing the
 variable in any other way (`run.hp > S`), and comparing it with a path that is not typed by a kind
 (`run.hp == S`). The path may also be typed by an enum that lists some of the kind's members
 (`run.route: { type: { domain: route } }` with `route: [none, ren, mika]`, beside
@@ -367,7 +369,7 @@ rules:
   - "canMend(I) :- knows(I), not broken(I)"
 ```
 
-a guard `holds(canMend(lamp))` is decided by the rule: mock `knows(lamp)` and it holds, add `broken(lamp)` and it does not. You never mock the conclusion, and "false because a negated premise holds" is testable. A mocked derived atom is still accepted; it joins the base facts like a seed. When a rule's `cel(…)` guard reads state the trace has not decided, that rule derives nothing, and the trace reports the conclusion unknown and names the state path that would decide it.
+a guard `holds('canMend', ['lamp'])` is decided by the rule: mock `knows(lamp)` and it holds, add `broken(lamp)` and it does not. You never mock the conclusion, and "false because a negated premise holds" is testable. A mocked derived atom is still accepted; it joins the base facts like a seed. When a rule's `cel(…)` guard reads state the trace has not decided, that rule derives nothing, and the trace reports the conclusion unknown and names the state path that would decide it.
 
 `derive: false` — a key of a trace mock, a `*.test.yaml`, or a play script — or the `--no-derive` flag, which wins over the key, restores the 0.21 model: the seed `facts:` are not loaded, an unmocked derived atom is unknown, and a note names each derived relation read. A test written against that model (an unmocked derived atom reading unknown, or a seeded relation reading empty) pins `derive: false` to keep its verdict. See the [Tracing guide](/tooling/tracing/) and [Playing a story](/tooling/play/).
 
@@ -391,7 +393,7 @@ explain canMend(lamp): does not hold
 
 ## How `check-project` analyzes relational guards
 
-A guard that presumes knowledge is the right tool — `@eris{when="holds(knows(player, lumen))"}` shows the line only once the player knows. Since 0.20.0, `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::next` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`visibleWhen` — as one of three verdicts:
+A guard that presumes knowledge is the right tool — `@eris{when="holds('knows', ['player', 'lumen'])"}` shows the line only once the player knows. Since 0.20.0, `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::next` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`visibleWhen` — as one of three verdicts:
 
 - **impossible** — no seed, assert, rule, or engine relation anywhere in the project can produce a matching fact;
 - **guaranteed** — a matching fact holds on **every** declared route reaching the guard;
@@ -399,7 +401,7 @@ A guard that presumes knowledge is the right tool — `@eris{when="holds(knows(p
 
 The verdicts come from two sets:
 
-- **May** — project-wide and flow-insensitive: every ground fact that can be live at any point of any run. The `facts:` seeds, the fact of every `::assert` anywhere in the project root (scenes, quest `<on>`/`<objective>` bodies, lore entries) whose document is not proven unreachable, every fact of a `reserved:` relation (the engine may populate any of them), and whatever the `rules:` derive over that set. May only knows *that* some route can produce a fact, not when. It reads a negated body atom as satisfiable, with one exception (dsl 0.23.0): a negation over a seed fact that nothing in the project retracts or displaces through its `key:` is false. With the seed `inParty(shadowheart)`, `suspect(P) :- character(P), not inParty(P)` can never conclude `suspect(shadowheart)`, so a guard `holds(suspect(shadowheart))` is dead, while `suspect(astarion)` still follows. Once any `::retract{inParty(shadowheart)}` exists, the negation is satisfiable again.
+- **May** — project-wide and flow-insensitive: every ground fact that can be live at any point of any run. The `facts:` seeds, the fact of every `::assert` anywhere in the project root (scenes, quest `<on>`/`<objective>` bodies, lore entries) whose document is not proven unreachable, every fact of a `reserved:` relation (the engine may populate any of them), and whatever the `rules:` derive over that set. May only knows *that* some route can produce a fact, not when. It reads a negated body atom as satisfiable, with one exception (dsl 0.23.0): a negation over a seed fact that nothing in the project retracts or displaces through its `key:` is false. With the seed `inParty(shadowheart)`, `suspect(P) :- character(P), not inParty(P)` can never conclude `suspect(shadowheart)`, so a guard `holds('suspect', ['shadowheart'])` is dead, while `suspect(astarion)` still follows. Once any `::retract{inParty(shadowheart)}` exists, the negation is satisfiable again.
 - **Must** — path-sensitive: the facts live on every route to one program point. Within a document it is a forward walk: `::assert` adds a fact (and drops the one its `key:` supersedes), `::retract` removes every match, `<branch>`/`<match>` arms **intersect** where they rejoin (a branch with no unguarded choice, or a non-exhaustive match, also intersects with the set before the block, because no arm may run), and a `<hub>` body may run zero or more times. Across scenes it follows the `after:` graph, exactly like the [scalar envelope](/connectivity/envelopes/): a scene starts from the seeds plus the facts its `after:` formula guarantees — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, and `completed(q)`/`active(q)` contribute nothing. Quest bodies and lore entry bodies run at engine-chosen times, so they start from the seeds plus their own guards.
 
 Three rules keep Must sound:
@@ -422,7 +424,7 @@ and a scene that offers a choice only to a player who has read it:
 ```lute
 <branch id="ask">
   <choice id="press" label="Ask about the log" when="entry.keeperLog.read">
-    @narrator{when="holds(suspects(isolde))"}: The log named her.
+    @narrator{when="holds('suspects', ['isolde'])"}: The log named her.
   </choice>
   <choice id="leave" label="Leave">
     @narrator: You leave the office.
@@ -434,10 +436,10 @@ The inner guard can only hold, so `check-project` reports it redundant and names
 
 <!-- lute-diagnostics -->
 ```
-./scenes/office.lute:13:21: warning [W-FACT-GUARANTEED] guard `holds(suspects(isolde))` is redundant: `suspects(isolde)` is asserted on every route to here (./lore/harbor.lute:9)
+./scenes/office.lute:13:21: warning [W-FACT-GUARANTEED] guard `holds('suspects', ['isolde'])` is redundant: `suspects(isolde)` is asserted on every route to here (./lore/harbor.lute:9)
 ```
 
-Its negation, `!holds(suspects(isolde))`, would be a dead guard. An assert down only one arm of the entry's `<match>` guarantees nothing. `entry.X.everRead` only says the entry was read in some run, possibly an earlier one, so it adds only the entry's `tier: user` and `tier: app` facts, which a new run keeps. A run-tier fact like `suspects` is not added under `everRead`.
+Its negation, `!holds('suspects', ['isolde'])`, would be a dead guard. An assert down only one arm of the entry's `<match>` guarantees nothing. `entry.X.everRead` only says the entry was read in some run, possibly an earlier one, so it adds only the entry's `tier: user` and `tier: app` facts, which a new run keeps. A run-tier fact like `suspects` is not added under `everRead`.
 
 The verdict feeds the same decision procedure that already reports dead scalar guards, so a relational guard that can never hold is reported through the code its slot already owns, and a guaranteed one inside a guard is flagged as redundant:
 
@@ -474,24 +476,24 @@ The bridge is sequenced `after: 'visited("demo.archive")'` and guards three line
 ```lute
 ## The Bridge
 
-@eris{when="holds(knows(player, lumen))"}: So you read the log.
-@eris{when="holds(knows(player, heading))"}: Then you know where we are going.
-@eris{when="holds(knows(eris, heading))"}: I changed it myself.
+@eris{when="holds('knows', ['player', 'lumen'])"}: So you read the log.
+@eris{when="holds('knows', ['player', 'heading'])"}: Then you know where we are going.
+@eris{when="holds('knows', ['eris', 'heading'])"}: I changed it myself.
 ```
 
 `check-project` settles the first and third and leaves the second alone — `knows(player, heading)` holds only if the player chose `readOn`, which is exactly what that guard is for:
 
 <!-- lute-diagnostics -->
 ```
-./scenes/bridge.lute:10:13: warning [W-FACT-GUARANTEED] guard `holds(knows(player, lumen))` is redundant: `knows(player, lumen)` is asserted on every route to here (./scenes/archive.lute:10)
+./scenes/bridge.lute:10:13: warning [W-FACT-GUARANTEED] guard `holds('knows', ['player', 'lumen'])` is redundant: `knows(player, lumen)` is asserted on every route to here (./scenes/archive.lute:10)
 ```
 
 <!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
 ```
-./scenes/bridge.lute:12:13: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds(knows(eris, heading))` is provably false — no seed, assert, rule, or engine relation produces `knows(eris, heading)` under your declared routes
+./scenes/bridge.lute:12:13: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds('knows', ['eris', 'heading'])` is provably false — no seed, assert, rule, or engine relation produces `knows(eris, heading)` under your declared routes
 ```
 
-The same two sets decide counts: after the archive, `count(knows(player, _))` lies between 1 and 2, so a guard `count(knows(player, _)) >= 3` is dead and `count(knows(player, _)) >= 1` is redundant.
+The same two sets decide counts: after the archive, `count('knows', ['player', '_'])` lies between 1 and 2, so a guard `count('knows', ['player', '_']) >= 3` is dead and `count('knows', ['player', '_']) >= 1` is redundant.
 
 The analysis needs the whole project — an assert in a sibling document is invisible to a single file, and claiming "never asserted" from one file would be false — so it runs in `check-project` only. Single-file `lute check` leaves each relational query undecided, but still sees a contradiction between two queries in one condition: `holds(P) && !holds(P)` is false whatever holds (dsl 0.23.0, see [How a `when` is decided](/language/beats/#how-a-when-is-decided)). To see why a guard was judged guaranteed, `lute scenario <dir> envelope <scene>` lists the **guaranteed facts** at the scene's entry beside the scalar tables (see [envelopes](/connectivity/envelopes/#guaranteed-facts)). To see which documents produce the facts a guard queries, `lute scenario <dir> knowledge` traces each queried atom through the rules to its producers, or to **no producer** (see [Overviews](/tooling/overviews/#lute-scenario-knowledge)).
 

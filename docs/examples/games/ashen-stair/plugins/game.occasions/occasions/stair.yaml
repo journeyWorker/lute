@@ -6,7 +6,7 @@ occasions:
   hubVisit:     { select: first, raisedWhen: "run.floor == 0", description: Wren wakes at the Hearth after a run (or at the very start) }
   talk:         { select: first, target: { prefix: npc, entity: npc }, raisedWhen: "run.floor == 0", description: Wren speaks to a Hearth NPC }
   runStart:     { select: first, description: Wren sets foot on the first step of the Stair }
-  runEnd:       { select: first, payload: { lilies: number }, description: "The run is over; run.outcome says how. payload.lilies: ash-lilies she carried down (0 outside the Ashfall)" }
+  runEnd:       { select: first, payload: { lilies: int }, description: "The run is over; run.outcome says how. payload.lilies: ash-lilies she carried down (0 outside the Ashfall)" }
   bossDefeated: { select: first, target: { prefix: boss, entity: foe }, raisedWhen: "run.outcome == 'climbing'", description: A floor guardian falls (boss.gatekeeper / boss.warden) }
   hearthBoard:  { select: all, description: Notes pinned to the board by the Hearth door }
   departure:    { select: sequence, description: Wren leaves the Hearth for the Stair; whoever has something to say calls after her }

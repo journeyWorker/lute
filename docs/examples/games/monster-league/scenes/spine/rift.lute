@@ -5,7 +5,7 @@ title: The Rift Cavern
 on: enterPlace
 target: place.riftCavern
 once: false
-when: "@champion && !holds(caught(aethon))"
+when: "@champion && !holds('caught', ['aethon'])"
 ---
 
 ## The deepest chamber

@@ -1,8 +1,8 @@
 {
   "kind": "lore",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "title": "Ship's records"
   },
@@ -26,7 +26,7 @@
     },
     {
       "path": "run.logsRead",
-      "type": "number",
+      "type": "int",
       "default": 0
     }
   ],
@@ -75,20 +75,29 @@
     {
       "kind": "match",
       "addr": "001-0200",
-      "subject": "run.labBurned",
+      "subject": {
+        "cel": "run.labBurned",
+        "expr": {
+          "path": "run.labBurned"
+        }
+      },
       "arms": [
         {
-          "test": "",
-          "target": "001-0300",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "run.labBurned"
+          "is": "true",
+          "test": {
+            "cel": "(run.labBurned == true)",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "run.labBurned"
+              },
+              "r": {
+                "bool": true
+              }
             },
-            "r": {
-              "lit": true
-            }
-          }
+            "authored": "is=true"
+          },
+          "target": "001-0300"
         }
       ],
       "otherwise": "001-0500",
@@ -136,9 +145,11 @@
       "addr": "001-0800",
       "path": "run.logsRead",
       "op": "+=",
-      "value": "1",
-      "expr": {
-        "lit": 1.0
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
       }
     },
     {
@@ -150,7 +161,7 @@
       "series": "scientistLog",
       "order": 2,
       "when": {
-        "raw": "entry.scientistLog1.read",
+        "cel": "entry.scientistLog1.read",
         "expr": {
           "path": "entry.scientistLog1.read"
         }
@@ -166,5 +177,19 @@
       "lineId": "scientistLog2.scientist_0010",
       "voiceKey": "scientistLog2.scientist-0010"
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "entry",
+        "type": "map(string, dyn)"
+      },
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
 }

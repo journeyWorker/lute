@@ -24,7 +24,7 @@ title: This term's errands
     @soren{emotion="happy"}: You'll be fine. Better than fine. Don't tell anyone I said so; they'll all want sessions.
   </on>
   <on event="questFailed">
-    @soren{emotion="sad" when="!holds(locked(soren))"}: We ran out of evenings. You'll still be fine. Probably.
+    @soren{emotion="sad" when="!holds('locked', ['soren'])"}: We ran out of evenings. You'll still be fine. Probably.
   </on>
 </quest>
 

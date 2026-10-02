@@ -8,7 +8,7 @@
 //!   on: bondStory
 //!   target: "hero.@hero"
 //!   once: user
-//!   when: "holds(bondRank(@hero, @rank))"
+//!   when: "holds('bondRank', [@hero, @rank])"
 //!   after: "@prev"        # omitted when empty
 //! ```
 //!
@@ -396,11 +396,28 @@ fn substitute(raw: &str, args: &BTreeMap<String, String>) -> String {
             continue;
         };
         let indexed = s > 0 && b[s - 1] == b'[' && b.get(e) == Some(&b']');
+        let list_context = raw[..s]
+            .rmatch_indices('[')
+            .next()
+            .is_some_and(|(open, _)| {
+                raw[..s]
+                    .rmatch_indices(']')
+                    .next()
+                    .is_none_or(|(close, _)| open > close)
+            });
         let member = lute_manifest::ident::is_ident(text);
-        if indexed && member {
+        if indexed && member && !list_context {
             out.replace_range(s - 1..e + 1, &format!(".{text}"));
         } else {
-            out.replace_range(s..e, text);
+            let replacement = if list_context
+                && member
+                && !matches!(text.as_str(), "true" | "false")
+            {
+                crate::component_effects::cel_string_literal(text)
+            } else {
+                text.clone()
+            };
+            out.replace_range(s..e, &replacement);
         }
     }
     out
@@ -409,8 +426,8 @@ fn substitute(raw: &str, args: &BTreeMap<String, String>) -> String {
 /// A condition's text with every bound `@param` replaced, conjunct by
 /// top-level `&&` conjunct: a conjunct that held a `@param` and comes out
 /// empty or `true` (an optional extra condition left at its default) is
-/// dropped, so `!holds(defeated(@who)) && (@only)` with `only` empty reads
-/// `!holds(defeated(r3))`, never `… && (true)`. A condition whose every
+/// dropped, so `!holds('defeated', [@who]) && (@only)` with `only` empty reads
+/// `!holds('defeated', [r3])`, never `… && (true)`. A condition whose every
 /// conjunct drops is empty — the key is then omitted.
 fn substitute_condition(raw: &str, args: &BTreeMap<String, String>) -> String {
     let parts = top_level_and(raw);

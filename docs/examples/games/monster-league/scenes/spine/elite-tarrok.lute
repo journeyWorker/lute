@@ -5,7 +5,7 @@ title: The Elite Four — Tarrok
 on: challenge
 target: arena.fistChamber
 once: false
-when: "@badgeCount >= 8 && holds(defeated(frostine)) && !holds(defeated(tarrok))"
+when: "@badgeCount >= 8 && holds('defeated', ['frostine']) && !holds('defeated', ['tarrok'])"
 ---
 
 ## The chamber

@@ -58,9 +58,11 @@ pub fn hover_at(
             directive: Some(dir),
             key,
         } => attr_hover(snapshot, dir, key),
-        Cursor::SetPath { path, .. } => state_hover(&meta, path),
         Cursor::Cel { slot, .. } => {
-            if let Some(r) = ref_at(slot, off) {
+            let local = off.saturating_sub(slot.span.byte_start);
+            if let Some(host) = host_hover(&slot.raw, local) {
+                Some(host)
+            } else if let Some(r) = ref_at(slot, off) {
                 if r.is_dollar {
                     Some("`$` — the `<match>` subject".to_string())
                 } else {
@@ -101,7 +103,7 @@ pub fn hover_at(
             .map(|domain| format!("**pattern** — domain: {}", domain.join(", ")))
             .or_else(|| {
                 super::subject_is_number(&meta, subject_path).then(|| {
-                    "**pattern** — domain: number; literals are points (`3`, `-1.5`) or \
+                    "**pattern** — domain: int or double; literals are points (`3`, `-1.5`) or \
                      inclusive ranges (`1..3`, `2..`, `..0`)"
                         .to_string()
                 })
@@ -114,8 +116,9 @@ pub fn hover_at(
             directive: None, ..
         }
         | Cursor::Speaker => None,
-        Cursor::OnEventValue(event) => event_hover(snapshot, event),
+        Cursor::SetPath { path } => state_hover(&meta, path),
         Cursor::ConstructAttrArea { construct } => Some(construct_hover(construct)),
+        Cursor::OnEventValue(event) => event_hover(snapshot, event),
     }?;
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
@@ -124,6 +127,29 @@ pub fn hover_at(
         }),
         range: None,
     })
+}
+
+fn host_hover(raw: &str, local: usize) -> Option<String> {
+    const SIGS: &[(&str, &str)] = &[
+        ("holds", "holds(string, list(dyn)) -> bool"),
+        ("count", "count(string, list(dyn)) -> int"),
+        ("countDistinct", "countDistinct(string, list(dyn), int) -> int"),
+        ("validAt", "validAt(string, list(dyn), int) -> bool"),
+        ("now", "now() -> int"),
+        ("visited", "visited(string) -> bool"),
+        ("has", "has(select) -> bool"),
+        ("int", "int(int|double) -> int"),
+        ("double", "double(int|double) -> double"),
+    ];
+    let end = local.min(raw.len());
+    for (name, sig) in SIGS {
+        if raw[..end].ends_with(name)
+            && raw[end..].chars().next().is_none_or(|c| !c.is_ascii_alphanumeric())
+        {
+            return Some(format!("**{name}** — `{sig}`"));
+        }
+    }
+    None
 }
 
 /// Render a directive's declaration: name, layer, each attribute (type +
@@ -400,7 +426,7 @@ mod tests {
         text.find(needle).expect("needle present") + 1
     }
 
-    const WITH_DEF_FOND: &str = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.marina\">\n  <when test=\"@fond\">\n    @fixer: gently.\n  </when>\n  <otherwise>\n    @fixer: bluntly.\n  </otherwise>\n</match>\n";
+    const WITH_DEF_FOND: &str = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: int, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.marina\">\n  <when test=\"@fond\">\n    @fixer: gently.\n  </when>\n  <otherwise>\n    @fixer: bluntly.\n  </otherwise>\n</match>\n";
 
     #[test]
     fn hover_on_ref_shows_def_cel() {
@@ -431,14 +457,14 @@ mod tests {
 
     #[test]
     fn hover_on_state_path_shows_type_and_default() {
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 3 }\n---\n## Shot 1.\n::set{scene.affect.marina += 1}\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: int, default: 3 }\n---\n## Shot 1.\n::set{scene.affect.marina += 1}\n";
         let doc = parsed(text);
         // Cursor on the `::set` target path (first occurrence in the body).
         let body_start = text.find("::set{").unwrap();
         let off = text[body_start..].find("scene.affect.marina").unwrap() + body_start + 2;
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
-        assert!(s.contains("number"), "shows the type: {s}");
+        assert!(s.contains("int"), "shows the type: {s}");
         assert!(s.contains("3"), "shows the default: {s}");
     }
 
@@ -446,7 +472,7 @@ mod tests {
     /// hovers like one in the expression.
     #[test]
     fn hover_on_state_path_in_set_guard() {
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.a: { type: number, default: 0 }\n  scene.gate: { type: bool, default: false }\n---\n## Shot 1.\n::set{scene.a += 1 when=\"scene.gate\"}\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.a: { type: int, default: 0 }\n  scene.gate: { type: bool, default: false }\n---\n## Shot 1.\n::set{scene.a += 1 when=\"scene.gate\"}\n";
         let doc = parsed(text);
         let off = pos_on(text, "scene.gate\"}");
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
@@ -542,7 +568,7 @@ mod tests {
                 AssetSegment {
                     name: "variant".to_string(),
                     r#const: None,
-                    ty: Some(Type::Number),
+                    ty: Some(Type::Int),
                 },
             ],
             provider: None,
@@ -601,7 +627,7 @@ mod tests {
         imports.state.decls.insert(
             "run.gold".to_string(),
             StateDecl {
-                ty: Type::Number,
+                ty: Type::Int,
                 default: None,
                 namespace: Namespace::Run,
                 owner: None,
@@ -624,7 +650,7 @@ mod tests {
         let h = hover_at(&doc, &load_core_snapshot(), &schema_imports(), off).unwrap();
         let s = contents_text(&h);
         assert!(s.contains("run.gold"), "names the imported path: {s}");
-        assert!(s.contains("number"), "shows the imported type: {s}");
+        assert!(s.contains("int"), "shows the imported type: {s}");
     }
 
     #[test]
@@ -654,8 +680,8 @@ mod tests {
         let s = contents_text(&h);
         assert!(s.contains("run.gold"), "names the path: {s}");
         assert!(
-            s.contains("number"),
-            "imported type (number) wins over inline (string): {s}"
+            s.contains("int"),
+            "imported type (int) wins over inline (string): {s}"
         );
         assert!(
             !s.contains("string"),
@@ -665,7 +691,7 @@ mod tests {
 
     /// A content line with all three interp kinds (dsl §7.6): a reserved token,
     /// a state path, and an `@ref` — over a doc that declares `run.coins` + `@fond`.
-    const WITH_INTERPS: &str = "---\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  run.coins: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"run.coins >= 1\" }\n---\n## Shot 1.\n@marina: Hi {{userName}}, {{run.coins}} — {{@fond}}.\n";
+    const WITH_INTERPS: &str = "---\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  run.coins: { type: int, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"run.coins >= 1\" }\n---\n## Shot 1.\n@marina: Hi {{userName}}, {{run.coins}} — {{@fond}}.\n";
 
     /// Byte offset just inside the referent of the `{{whole}}` interp in `text`.
     fn interp_off(text: &str, whole: &str) -> usize {
@@ -681,7 +707,7 @@ mod tests {
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
         assert!(s.contains("run.coins"), "names the path: {s}");
-        assert!(s.contains("number"), "shows the state type: {s}");
+        assert!(s.contains("int"), "shows the state type: {s}");
     }
 
     /// D1: hover inside `{{@fond}}` renders the def hover (type + CEL).
@@ -731,14 +757,14 @@ mod tests {
     /// inclusive — there is no finite member menu to list.
     #[test]
     fn hover_on_when_is_range_shows_number_domain() {
-        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.hp: { type: number }\n---\n## Shot 1.\n<match on=\"scene.hp\">\n<when is=\"..0 | 5..\">\n@fixer: edge.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.hp: { type: int }\n---\n## Shot 1.\n<match on=\"scene.hp\">\n<when is=\"..0 | 5..\">\n@fixer: edge.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"..0").unwrap() + "is=\"".len() + 1; // inside "..0"
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
         assert!(
-            s.contains("number") && s.contains("inclusive"),
-            "hover names the number domain and inclusive ranges: {s}"
+            s.contains("int or double") && s.contains("inclusive"),
+            "hover names the numeric domain and inclusive ranges: {s}"
         );
     }
 

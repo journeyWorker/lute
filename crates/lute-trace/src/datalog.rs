@@ -226,6 +226,16 @@ impl Program {
             .iter()
             .any(|r| r.body.iter().any(|l| matches!(l, Lit::Guard { .. })))
     }
+    /// Whether a rule guard text mentions the canonical state path.
+    pub fn reads_state_path(&self, path: &str) -> bool {
+        let bracket = lute_cel::path::bracket_spelling_of(path);
+        self.rules.iter().any(|r| {
+            r.body.iter().any(|lit| match lit {
+                Lit::Guard { cel } => cel.contains(path) || cel.contains(&bracket),
+                _ => false,
+            })
+        })
+    }
 
     /// `true` when some rule concludes `rel`.
     pub fn derives(&self, rel: &str) -> bool {
@@ -657,9 +667,13 @@ fn ir_lit(l: &Json) -> Option<Lit> {
             rhs: ir_term(l.get("rhs")?)?,
             negated,
         }),
-        "guard" => Some(Lit::Guard {
-            cel: l.get("cel").and_then(Json::as_str)?.to_string(),
-        }),
+        "guard" => {
+            // CEL slots are `{cel, expr}` pairs in the 0.32 artifact.
+            let cel = l.get("cel")?.get("cel").and_then(Json::as_str)?;
+            Some(Lit::Guard {
+                cel: cel.to_string(),
+            })
+        },
         "count" => Some(Lit::Count {
             atom: ir_atom(l.get("atom")?)?,
             distinct: l
@@ -1110,5 +1124,28 @@ fn render_test(lit: &Lit, b: &Binding) -> String {
             };
             format!("{call} {} {n}", op.as_str())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ir_lit, Lit};
+    use serde_json::json;
+
+    #[test]
+    fn ir_guard_reads_cel_from_compiled_pair() {
+        let lit = json!({
+            "kind": "guard",
+            "cel": {
+                "cel": "user.bond.sable >= 2",
+                "expr": {"op": ">=", "l": {"path": "user.bond.sable"}, "r": {"int": 2}}
+            }
+        });
+        assert_eq!(
+            ir_lit(&lit),
+            Some(Lit::Guard {
+                cel: "user.bond.sable >= 2".to_string()
+            })
+        );
     }
 }

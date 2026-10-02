@@ -1,8 +1,8 @@
 {
   "kind": "quest",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "title": "Subquest cascade fail"
   },
@@ -70,13 +70,13 @@
       "title": "Find the key",
       "titleLineId": "parentQ.title",
       "start": {
-        "raw": "true",
+        "cel": "true",
         "expr": {
-          "lit": true
+          "bool": true
         }
       },
       "fail": {
-        "raw": "(run.giveUp) || quest.findKey.state == 'failed'",
+        "cel": "(run.giveUp) || quest.findKey.state == 'failed'",
         "expr": {
           "op": "||",
           "l": {
@@ -88,7 +88,7 @@
               "path": "quest.findKey.state"
             },
             "r": {
-              "lit": "failed"
+              "string": "failed"
             }
           }
         }
@@ -99,14 +99,14 @@
           "title": "Get the key",
           "titleLineId": "parentQ.delegate",
           "done": {
-            "raw": "quest.findKey.state == 'complete'",
+            "cel": "quest.findKey.state == 'complete'",
             "expr": {
               "op": "==",
               "l": {
                 "path": "quest.findKey.state"
               },
               "r": {
-                "lit": "complete"
+                "string": "complete"
               }
             }
           },
@@ -135,7 +135,7 @@
           "title": "Found the key",
           "titleLineId": "findKey.found",
           "done": {
-            "raw": "run.gotKey",
+            "cel": "run.gotKey",
             "expr": {
               "path": "run.gotKey"
             }
@@ -152,5 +152,19 @@
         }
       ]
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "quest",
+        "type": "map(string, dyn)"
+      },
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
 }

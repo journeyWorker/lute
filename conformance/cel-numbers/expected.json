@@ -1,0 +1,57 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "kind": "match",
+      "result": "arm 1"
+    },
+    {
+      "addr": "001-0200",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "arithmetic"
+    },
+    {
+      "addr": "001-0500",
+      "kind": "match",
+      "result": "arm 1"
+    },
+    {
+      "addr": "001-0600",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "integer division"
+    },
+    {
+      "addr": "001-0900",
+      "kind": "match",
+      "result": "arm 1"
+    },
+    {
+      "addr": "001-1000",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "ternary"
+    },
+    {
+      "addr": "001-1300",
+      "kind": "match",
+      "result": "arm 1"
+    },
+    {
+      "addr": "001-1400",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "unary and list"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.32",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.d": 3.5,
+    "run.i": 3
+  }
+}

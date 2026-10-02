@@ -207,7 +207,7 @@ fn write_stamp_attrs_pkg(root: &std::path::Path, dup: bool) {
     fs::write(
         root.join("stampattrs/a.yaml"),
         format!(
-            "stampAttrs:\n  - name: bonusId\n    type: string\n  - name: {second}\n    type: number\n"
+            "stampAttrs:\n  - name: bonusId\n    type: string\n  - name: {second}\n    type: int\n"
         ),
     )
     .unwrap();
@@ -227,7 +227,7 @@ fn loads_stamp_attrs_export() {
     ));
     assert!(matches!(
         loaded.stamp_attrs[1].ty,
-        lute_manifest::types::Type::Number
+        lute_manifest::types::Type::Int
     ));
     fs::remove_dir_all(&tmp).ok();
 }
@@ -363,11 +363,11 @@ fn rejects_narrative_time_segment() {
 
 /// The four types a segment position actually admits — §7's own segment
 /// callout for `providerRef`, plus the unrestricted primitives `enum`,
-/// `number`, `string` (the exact set `validate_segments` enforces) — must
+/// `int`, `string` (the exact set `validate_segments` enforces) — must
 /// still load cleanly side by side, proving the fix narrowed the declaration
 /// surface without disturbing legitimate segment declarations.
 #[test]
-fn admits_enum_number_string_provider_ref_segments() {
+fn admits_enum_int_string_provider_ref_segments() {
     let tmp = std::env::temp_dir().join(format!("lute_pkg_segty_admit_{}", std::process::id()));
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(tmp.join("assetkinds")).unwrap();
@@ -385,10 +385,10 @@ fn admits_enum_number_string_provider_ref_segments() {
            - { name: characterId, type: { providerRef: character } }\n      \
            - { name: costume, type: string }\n      \
            - { name: emotion, type: { enum: [neutral, sad] } }\n      \
-           - { name: variant, type: number }\n",
+           - { name: variant, type: int }\n",
     )
     .unwrap();
-    let p = load_plugin_dir(&tmp).expect("providerRef/enum/number/string segments must load");
+    let p = load_plugin_dir(&tmp).expect("providerRef/enum/int/string segments must load");
     assert_eq!(p.asset_kinds[0].segments.len(), 5);
     fs::remove_dir_all(&tmp).ok();
 }
@@ -479,7 +479,7 @@ fn asset_segment_type_message_is_prose() {
         msg.contains("domain:slotDomain"),
         "must name the declared type: {msg}"
     );
-    for admitted in ["enum", "number", "string", "providerRef"] {
+    for admitted in ["enum", "int", "string", "providerRef"] {
         assert!(
             msg.contains(admitted),
             "must list admitted type `{admitted}`: {msg}"
@@ -1553,14 +1553,14 @@ fn occasion_payload_types_are_named_in_plain_words() {
         ),
         (
             "listof",
-            "{ list: number }",
+            "{ list: int }",
             "payload field `copies` cannot be a `list`",
         ),
         (
             "typo",
-            "nubmer",
-            "payload field `copies` has the type `nubmer`, which is not a payload type — did you \
-             mean `number`?",
+            "nit",
+            "payload field `copies` has the type `nit`, which is not a payload type — did you \
+             mean `int`?",
         ),
         (
             "bareenum",
@@ -1607,14 +1607,14 @@ fn occasion_payload_types_are_named_in_plain_words() {
     let tmp = one_export_pkg(
         "payload_ok",
         "occasions",
-        "occasions:\n  summon: { payload: { seen: bool, copies: number, note: string, \
+        "occasions:\n  summon: { payload: { seen: bool, copies: int, note: string, \
          mood: { enum: [calm, storm] }, to: { domain: route }, who: { entity: hero } } }\n",
     );
     let loaded = load_plugin_dir(&tmp).expect("every payload form loads");
     let payload = &loaded.occasions[0].payload;
     use lute_manifest::types::Type;
     assert_eq!(payload["seen"], Type::Bool);
-    assert_eq!(payload["copies"], Type::Number);
+    assert_eq!(payload["copies"], Type::Int);
     assert_eq!(payload["note"], Type::Str);
     assert_eq!(
         payload["mood"],

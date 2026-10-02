@@ -41,7 +41,7 @@ fn project() -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.floor: { type: number, default: 0 }\n  user.embers: { type: number, default: 0 }\n",
+        "state:\n  run.floor: { type: int, default: 0 }\n  user.embers: { type: int, default: 0 }\n",
     );
     write(
         &dir,
@@ -53,7 +53,7 @@ fn project() -> PathBuf {
         &dir,
         "scenes/hub.lute",
         "---\nkind: scene\nid: hub\non: hubVisit\nonce: false\n---\n## Shot 1.\n\
-         @narrator{when=\"isSet(prev.run.floor) && prev.run.floor >= 3\"}: High last time.\n\
+         @narrator{when=\"has(prev.run.floor) && prev.run.floor >= 3\"}: High last time.\n\
          @narrator: The hearth.\n",
     );
     dir

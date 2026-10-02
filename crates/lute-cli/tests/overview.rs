@@ -69,7 +69,7 @@ fn town(tag: &str) -> PathBuf {
     write(
         &d,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1 }\n  run.slot: { type: { enum: [morning, night] }, default: morning }\n\
+        "state:\n  run.day: { type: int, default: 1 }\n  run.slot: { type: { enum: [morning, night] }, default: morning }\n\
          entities:\n  person: { members: [ada, bo] }\n  place: { members: [inn, dock] }\n\
          relations:\n  present: { args: [person, place], derive: true }\n  met: { args: [person], tier: run }\n\
          \x20 rumor: { args: [person], tier: run }\n  trusted: { args: [person], derive: true }\n\
@@ -86,7 +86,7 @@ fn town(tag: &str) -> PathBuf {
         (
             "inn-again",
             "inn.again",
-            "on: placeVisit\ntarget: place.inn\nafter: 'visited(\"inn.ada\")'\nwhen: 'holds(trusted(ada))'\npriority: 30\n",
+            "on: placeVisit\ntarget: place.inn\nafter: 'visited(\"inn.ada\")'\nwhen: \"holds('trusted', ['ada'])\"\npriority: 30\n",
         ),
     ];
     for (file, id, keys) in beats {
@@ -101,7 +101,7 @@ fn town(tag: &str) -> PathBuf {
         "scenes/inn-ada.lute",
         &scene(
             "inn.ada",
-            "on: placeVisit\ntarget: place.inn\nwhen: 'holds(present(ada, inn))'\npriority: 20\n",
+            "on: placeVisit\ntarget: place.inn\nwhen: \"holds('present', ['ada', 'inn'])\"\npriority: 20\n",
             "@ada: Evening.\n::assert{met(ada)}",
         ),
     );
@@ -109,8 +109,8 @@ fn town(tag: &str) -> PathBuf {
         &d,
         "lore/barks.lute",
         "---\nkind: lore\nid: town.barks\n---\n\n\
-         <entry id=\"innShut\" on=\"placeVisit\" target=\"place.inn\" when=\"!holds(present(ada, inn))\">\n  @narrator: The inn is quiet.\n</entry>\n\n\
-         <entry id=\"dockBo\" on=\"placeVisit\" target=\"place.dock\" when=\"holds(present(bo, dock))\">\n  @bo: Morning.\n</entry>\n\n\
+         <entry id=\"innShut\" on=\"placeVisit\" target=\"place.inn\" when=\"!holds('present', ['ada', 'inn'])\">\n  @narrator: The inn is quiet.\n</entry>\n\n\
+         <entry id=\"dockBo\" on=\"placeVisit\" target=\"place.dock\" when=\"holds('present', ['bo', 'dock'])\">\n  @bo: Morning.\n</entry>\n\n\
          <entry id=\"noteA\" on=\"board\" target=\"place.inn\" priority=\"5\" title=\"Notice A\" when=\"run.day == 1\">\n  @narrator: A.\n</entry>\n\n\
          <entry id=\"noteB\" on=\"board\" target=\"place.inn\" title=\"Notice B\">\n  @narrator: B.\n</entry>\n",
     );
@@ -701,8 +701,8 @@ fn calendar_family_axes_set_every_member_or_the_one_another_axis_names() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1 }\n  run.slot: { type: { enum: [morning, night] }, default: morning }\n\
-         \x20 run.aff: { type: number, default: 0, per: person }\n\
+        "state:\n  run.day: { type: int, default: 1 }\n  run.slot: { type: { enum: [morning, night] }, default: morning }\n\
+         \x20 run.aff: { type: int, default: 0, per: person }\n\
          \x20 run.route: { type: { enum: [none, ada, bo] }, default: none }\n\
          entities:\n  person: { members: [ada, bo] }\n  place: { members: [inn, dock] }\n\
          relations:\n  present: { args: [person, place], derive: true }\n  met: { args: [person], tier: run }\n\
@@ -933,7 +933,7 @@ fn beats_ladder_lists_selection_order_and_check_verdicts() {
     );
     let again = s.lines().find(|l| l.contains("inn.again")).unwrap();
     assert!(
-        again.contains("visited(\"inn.ada\")") && again.contains("holds(trusted(ada))"),
+        again.contains("visited(\"inn.ada\")") && again.contains("holds('trusted', ['ada'])"),
         "{again}"
     );
     let memo = String::from_utf8_lossy(&lute(&["beats", d]).stdout).to_string();
@@ -1186,7 +1186,7 @@ fn beats_show_the_authored_when_and_expand_on_request() {
     write(
         &dir,
         "world.schema.yaml",
-        &format!("{world}defs:\n  daysAtLeast: {{ type: bool, cel: \"run.day >= n\", params: {{ n: number }} }}\n"),
+        &format!("{world}defs:\n  daysAtLeast: {{ type: bool, cel: \"run.day >= n\", params: {{ n: int }} }}\n"),
     );
     write(
         &dir,

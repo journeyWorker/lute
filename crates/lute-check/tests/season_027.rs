@@ -67,7 +67,7 @@ fn with_code<'a>(ds: &'a [Diagnostic], code: &str) -> Vec<&'a str> {
         .collect()
 }
 
-const STATE: &str = "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+const STATE: &str = "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
                      run.open: { type: bool, default: false }\n";
 
 /// A schema declaring `harvest` (plus `extra`, the state and a clock).
@@ -208,8 +208,8 @@ fn a_state_path_under_an_undeclared_season_is_named() {
     let imps = imports(&[(
         "w.schema.yaml",
         &world(
-            "  season.harvest.tokens: { type: number, default: 0 }\n  \
-             season.harvst.gold: { type: number, default: 0 }\n",
+            "  season.harvest.tokens: { type: int, default: 0 }\n  \
+             season.harvst.gold: { type: int, default: 0 }\n",
             DAY,
         ),
     )]);
@@ -424,8 +424,8 @@ fn season_spent_entries_bundle_beats_and_season_tier_quests_need_the_gate() {
 /// not judged either way.
 #[test]
 fn a_modulo_season_window_is_implied_by_its_own_conjunct() {
-    let schema = "state:\n  user.runs: { type: number, default: 0 }\n  \
-                  run.day: { type: number, default: 1, owner: engine }\n\
+    let schema = "state:\n  user.runs: { type: int, default: 0 }\n  \
+                  run.day: { type: int, default: 1, owner: engine }\n\
                   clock:\n  day: run.day\n\
                   defs:\n  neapLive: \"user.runs % 6 >= 4\"\n\
                   seasons:\n  neap: { live: \"@neapLive\" }\n";

@@ -46,11 +46,11 @@ title: Wardenmere (the Venom Gym, Warden Holt, the Wildmoor gate)
 
 // ── people ────────────────────────────────────────────────────────────────
 
-<entry id="midHoltToothless" on="talk" target="npc.wardenHolt" category="bark" priority="-5" when="!holds(hasItem(goldTooth)) && !holds(hasItem(hmStrength))">
+<entry id="midHoltToothless" on="talk" target="npc.wardenHolt" category="bark" priority="-5" when="!holds('hasItem', ['goldTooth']) && !holds('hasItem', ['hmStrength'])">
   @wardenHolt{emotion="sad"}: Hwah? Ah'm the Warden of the Pweserve. Ah wost mah teef in thewe. Mah gold teef. Can't whishtle for mah Wanger without 'em.
 </entry>
 
-<entry id="midHoltThanks" on="talk" target="npc.wardenHolt" category="bark" priority="-5" when="holds(hasItem(hmStrength))">
+<entry id="midHoltThanks" on="talk" target="npc.wardenHolt" category="bark" priority="-5" when="holds('hasItem', ['hmStrength'])">
   @wardenHolt{emotion="happy"}: Ah, the young trainer who found my tooth! I've been whistling all week. The rangers are sick of it.
 </entry>
 
@@ -62,11 +62,11 @@ title: Wardenmere (the Venom Gym, Warden Holt, the Wildmoor gate)
   @wardenmereInnkeeper: You look like you slept on a boardwalk. Everybody does, first night. It's the frogs.
 </entry>
 
-<entry id="midKidBefore" on="talk" target="npc.wardenmereKid" category="bark" when="!holds(hasBadge(venom))">
+<entry id="midKidBefore" on="talk" target="npc.wardenmereKid" category="bark" when="!holds('hasBadge', ['venom'])">
   @wardenmereKid: My dad says Kessler's gym has walls you can't see. I walked into one once. It was the door. It was open.
 </entry>
 
-<entry id="midKidAfter" on="talk" target="npc.wardenmereKid" category="bark" when="holds(hasBadge(venom))">
+<entry id="midKidAfter" on="talk" target="npc.wardenmereKid" category="bark" when="holds('hasBadge', ['venom'])">
   @wardenmereKid: You beat Kessler?! Can I touch the badge? I won't lick it. I only licked the last one a little.
 </entry>
 

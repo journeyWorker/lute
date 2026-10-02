@@ -113,7 +113,7 @@ fn quest_reward_unknown_attr_is_e_unknown_attr() {
 #[test]
 fn reward_when_that_fails_to_parse_hits_e_cel_parse() {
     let cs = codes(
-        "---\nkind: quest\nstate:\n  run.x: { type: number, default: 0 }\n---\n\
+        "---\nkind: quest\nstate:\n  run.x: { type: int, default: 0 }\n---\n\
          <quest id=\"q\">\n<reward kind=\"gold\" amount=\"1\" when=\"run.x >\"/>\n</quest>\n",
     );
     assert!(

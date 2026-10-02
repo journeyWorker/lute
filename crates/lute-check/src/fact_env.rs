@@ -1,5 +1,5 @@
 //! Fact envelopes (dsl 0.20.0 §2–§5): the two sets that decide a relational
-//! query (`holds(P)` / `count(P)`) at a guard slot.
+//! query (`holds('rel', [args])` / `count('rel', [args])`) at a guard slot.
 //!
 //! - [`MaySet`] (§3) over-approximates every ground fact that can be live at
 //!   any point of any run of one project root: the least fixpoint of the
@@ -82,8 +82,9 @@ impl fmt::Display for GroundFact {
     }
 }
 
-/// The atom inside `holds(…)` / `count(…)` (§2): a relation with each
-/// argument either a ground member or the `_` wildcard (`None`).
+/// The atom inside a list-form `holds('rel', [args])` / `count('rel', [args])`
+/// (§2): a relation with each argument either a ground member or the `_`
+/// wildcard (`None`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueryPattern {
     pub relation: String,
@@ -91,14 +92,12 @@ pub struct QueryPattern {
 }
 
 impl QueryPattern {
-    /// The pattern of a well-shaped fact-query call's `args[0]`
-    /// (`crate::cel_resolve::is_profile_fact_query`). `None` when the pattern
-    /// is not compile-time ground (`E-CEL-PROFILE` owns that) — such a query
-    /// is never decided.
-    pub fn from_call(pattern: &CallExpr) -> Option<Self> {
-        let terms = crate::cel_resolve::pattern_terms(pattern)?;
+    /// The pattern of a well-shaped list-form fact-query call.
+    pub fn from_call(query: &CallExpr) -> Option<Self> {
+        let relation = crate::cel_resolve::query_relation(query)?;
+        let terms = crate::cel_resolve::pattern_terms(query)?;
         Some(QueryPattern {
-            relation: pattern.func_name.clone(),
+            relation: relation.to_string(),
             args: terms
                 .into_iter()
                 .map(|a| match a.term {
@@ -166,10 +165,7 @@ pub fn count_query(c: &CallExpr) -> Option<(QueryPattern, Option<usize>)> {
         "countDistinct" => Some(crate::cel_resolve::count_distinct_column(c)?),
         _ => return None,
     };
-    let cel_parser::ast::Expr::Call(p) = &c.args[0].expr else {
-        return None;
-    };
-    let mut q = QueryPattern::from_call(p)?;
+    let mut q = QueryPattern::from_call(c)?;
     if let Some(col) = column {
         q.args[col] = None;
     }
@@ -190,12 +186,20 @@ fn tally<'f>(facts: impl Iterator<Item = &'f [String]>, column: Option<usize>) -
 
 impl fmt::Display for QueryPattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let args: Vec<&str> = self
+        let quote = |s: &str| {
+            if matches!(s, "true" | "false") {
+                s.to_string()
+            } else {
+                format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'"))
+            }
+        };
+        let args = self
             .args
             .iter()
-            .map(|a| a.as_deref().unwrap_or("_"))
-            .collect();
-        write!(f, "{}({})", self.relation, args.join(", "))
+            .map(|a| quote(a.as_deref().unwrap_or("_")))
+            .collect::<Vec<_>>()
+            .join(", ");
+        write!(f, "('{}', [{}])", self.relation, args)
     }
 }
 

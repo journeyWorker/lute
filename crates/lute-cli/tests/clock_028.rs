@@ -82,7 +82,7 @@ fn project(tag: &str, schema: &str, occasions: &str, docs: &[(&str, &str)]) -> P
 /// hollow-ward's one-night clock, ending at `last_slot` on night 1.
 fn ward_schema(last_slot: &str) -> String {
     format!(
-        "state:\n  run.night: {{ type: number, default: 1, owner: engine }}\n  \
+        "state:\n  run.night: {{ type: int, default: 1, owner: engine }}\n  \
          run.hour: {{ type: {{ enum: [h23, h00, h01, h02, h03, h04, h05] }}, default: h23, owner: engine }}\n\
          clock:\n  day: run.night\n  slot: run.hour\n  slots: [h23, h00, h01, h02, h03, h04, h05]\n  \
          raise: {{ slot: hourStrikes, dayEnd: dawn }}\n{last_slot}"
@@ -212,7 +212,7 @@ const DIVE_OCCASIONS: &str = "  hub: { select: first }\n";
 
 fn dive(tag: &str, day: &str) -> PathBuf {
     let schema = format!(
-        "state:\n  {day}: {{ type: number, default: 1, owner: engine }}\n\
+        "state:\n  {day}: {{ type: int, default: 1, owner: engine }}\n\
          clock:\n  day: {day}\n  week: {{ length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }}\n"
     );
     let docs = [
@@ -368,7 +368,7 @@ fn clock_ended_turns_true_at_the_advance_that_ends_the_clock() {
 fn a_beat_only_a_raise_the_clock_never_makes_would_take_is_warned() {
     let clock_schema = |terminal: &str, extra: &str| {
         format!(
-            "state:\n  run.day: {{ type: number, default: 1, owner: engine }}\n  \
+            "state:\n  run.day: {{ type: int, default: 1, owner: engine }}\n  \
              run.slot: {{ type: {{ enum: [dawn, dusk] }}, default: dawn, owner: engine }}\n\
              {terminal}clock:\n  day: run.day\n  slot: run.slot\n  slots: [dawn, dusk]\n  \
              raise: {{ dayStart: morning, dayEnd: nightfall }}\n  last: {{ day: 2 }}\n{extra}"
@@ -507,7 +507,7 @@ fn a_season_tier_relation_resets_when_its_season_opens() {
                   entities:\n  crew: { members: [mira, ren] }\n\
                   relations:\n  wished: { args: [crew], tier: \"season:lanterns\" }\n\
                   seasons:\n  lanterns: { live: \"user.fest\" }\n";
-    let wish = "<match>\n  <when test=\"holds(wished(mira))\">\n    @narrator: Already wished.\n  </when>\n  \
+    let wish = "<match>\n  <when test=\"holds('wished', ['mira'])\">\n    @narrator: Already wished.\n  </when>\n  \
                 <otherwise>\n    @narrator: A wish.\n    ::assert{wished(mira)}\n  </otherwise>\n</match>";
     let docs = [(
         "scenes/wish.lute",
@@ -564,8 +564,8 @@ fn a_season_tier_relation_resets_when_its_season_opens() {
     // An undeclared season in `defaults.questTier` is the manifest's, reported
     // once there — not at each quest it applies to.
     let quests = "---\nkind: quest\nid: q.doc\n---\n\n\
-                  <quest id=\"a\" title=\"A\" start=\"true\">\n  <objective id=\"o\" title=\"O\" done=\"holds(wished(mira))\"/>\n</quest>\n\
-                  <quest id=\"b\" title=\"B\" start=\"true\">\n  <objective id=\"o\" title=\"O\" done=\"holds(wished(ren))\"/>\n</quest>\n";
+                  <quest id=\"a\" title=\"A\" start=\"true\" done=\"holds('wished', ['mira'])\"/>\n\
+                  <quest id=\"b\" title=\"B\" start=\"true\" done=\"holds('wished', ['ren'])\"/>\n";
     let mut docs = docs.clone();
     docs.push(("quests/q.lute", quests));
     let dir = project("season-quest-tier", schema, DIVE_OCCASIONS, &docs);
@@ -596,7 +596,7 @@ fn a_season_tier_relation_resets_when_its_season_opens() {
 /// them (a misspelt label, a missing one) without copying the list.
 #[test]
 fn a_component_param_can_name_the_clock_s_weekday_labels() {
-    let schema = "state:\n  run.day: { type: number, default: 1, owner: engine }\n\
+    let schema = "state:\n  run.day: { type: int, default: 1, owner: engine }\n\
                   clock:\n  day: run.day\n  week: { length: 3, first: 0, labels: [Mon, Tue, Wed] }\n\
                   defs:\n  today: \"clock.weekdayLabel\"\n";
     let card = |arms: &str| {

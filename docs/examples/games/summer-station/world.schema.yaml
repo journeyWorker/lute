@@ -3,12 +3,12 @@
 # The ENGINE owns the clock (day, slot), the weather it rolls each morning,
 # and where the player currently stands. Content only reads them.
 state:
-  run.day:     { type: number, default: 1, owner: engine }
+  run.day:     { type: int, default: 1, owner: engine }
   run.slot:    { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }
   run.weather: { type: { enum: [clear, fog, storm] }, default: clear, owner: engine }
 
   # Affection, per run (a new summer starts from zero): run.aff.sol, run.aff.wren.
-  run.aff: { type: number, default: 0, per: suitor }
+  run.aff: { type: int, default: 0, per: suitor }
   # Set by the day-6 confession; the festival reads it.
   run.route:    { type: { enum: [none, sol, wren] }, default: none }
 
@@ -16,14 +16,14 @@ state:
   run.forecastWritten:   { type: bool, default: false }
   run.forecastDelivered: { type: bool, default: false }
   # Careful morning readings logged this week.
-  run.readings: { type: number, default: 0 }
+  run.readings: { type: int, default: 0 }
 
   # How many summers the player has finished at the station.
-  user.summers: { type: number, default: 0 }
+  user.summers: { type: int, default: 0 }
 
   # The radiosonde: Ines lets the intern launch the afternoon balloon.
   run.balloonUp: { type: bool, default: false }
-  run.balloonTries: { type: number, default: 0 }
+  run.balloonTries: { type: int, default: 0 }
   # Set by the festival: the summer is over.
   run.summerOver: { type: bool, default: false }
 
@@ -101,7 +101,7 @@ defs:
 cast:
   player: { name: You }
   ines:   { name: Dr. Ines Halvorsen, emotions: [neutral, happy, stern, worried, tired, fond] }
-  sol:    { name: Sol, emotions: [neutral, happy, shy, tired, laughing, sad, surprised, fond], present: "holds(at(sol, radio)) || holds(at(sol, roof)) || holds(at(sol, village))" }
-  wren:   { name: Wren, emotions: [neutral, happy, shy, worried, laughing, sad, surprised, fond], present: "holds(at(wren, village)) || holds(at(wren, deck)) || @festivalNight || (run.day == 6 && run.slot == 'night')" }
-  pell:   { name: Pell, emotions: [happy, laughing, tired], present: "holds(at(pell, kitchen))" }
+  sol:    { name: Sol, emotions: [neutral, happy, shy, tired, laughing, sad, surprised, fond], present: "holds('at', ['sol', 'radio']) || holds('at', ['sol', 'roof']) || holds('at', ['sol', 'village'])" }
+  wren:   { name: Wren, emotions: [neutral, happy, shy, worried, laughing, sad, surprised, fond], present: "holds('at', ['wren', 'village']) || holds('at', ['wren', 'deck']) || @festivalNight || (run.day == 6 && run.slot == 'night')" }
+  pell:   { name: Pell, emotions: [happy, laughing, tired], present: "holds('at', ['pell', 'kitchen'])" }
   elder:  { name: Elder Maren, emotions: [stern, happy] }

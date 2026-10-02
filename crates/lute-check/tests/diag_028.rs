@@ -25,7 +25,7 @@ fn input(text: &str) -> CheckInput {
 
 const VOCAB: &str = "relations:\n  knows: { args: [person], tier: run }\n\
                      entities:\n  person: { members: [vesna] }\n\
-                     state:\n  run.day: { type: number, default: 0 }\n";
+                     state:\n  run.day: { type: int, default: 0 }\n";
 
 /// `(path, text)` documents → the project beat diagnostics with `code`.
 fn project(texts: &[&str], errors: &ReportedErrors, code: &str) -> Vec<Diagnostic> {
@@ -202,7 +202,7 @@ const NIGHT: &str = "---\nkind: lore\nid: night\n---\n\
 #[test]
 fn an_unparsable_schema_is_its_importers_only_report() {
     let schema = "cast:\n  nell: { name: Nell }\n\
-                  state:\n  run.hour: { type: number, default: 0 }\n\
+                  state:\n  run.hour: { type: int, default: 0 }\n\
                   clock:\n  day: run.hour\n  day: 1\n";
     assert_eq!(
         codes(NIGHT, schema_imports("yaml", schema)),
@@ -215,7 +215,7 @@ fn an_unparsable_schema_is_its_importers_only_report() {
 #[test]
 fn a_rejected_clock_is_not_reported_again_where_a_clock_is_needed() {
     let schema = "cast:\n  nell: { name: Nell }\n\
-                  state:\n  run.hour: { type: number, default: 0 }\n\
+                  state:\n  run.hour: { type: int, default: 0 }\n\
                   clock:\n  day: run.hour\n  week: { length: 2, labels: { 0: Work, 1: Rest } }\n";
     assert_eq!(
         codes(NIGHT, schema_imports("clock", schema)),
@@ -230,7 +230,7 @@ fn a_rejected_clock_is_not_reported_again_where_a_clock_is_needed() {
 fn a_reported_state_row_is_not_judged_again_at_its_reads() {
     let text = "---\nkind: scene\nid: a\nstate:\n\
                 \x20 run.route: { type: { enum: [none, ren, mika] }, default: rne }\n\
-                \x20 run.gold: { type: number, defualt: 0 }\n\
+                \x20 run.gold: { type: int, defualt: 0 }\n\
                 \x20 run.lock: { type: { enum: [open, unset] }, default: open }\n\
                 ---\n## One\n\
                 <match on=\"run.route\">\n<when is=\"ren\">\n@narrator: Ren.\n</when>\n\
@@ -383,7 +383,7 @@ fn a_refused_write_is_one_report() {
 /// subject; a bare `$` outside a `<match>` still is one (ledger INK-16).
 #[test]
 fn a_yarn_variable_is_one_report() {
-    let text = "---\nkind: scene\nid: y\nstate:\n  run.oil: { type: number, default: 1 }\n---\n\
+    let text = "---\nkind: scene\nid: y\nstate:\n  run.oil: { type: int, default: 1 }\n---\n\
                 ## Y\n@narrator{when=\"$oil > 2\"}: Lots.\n@narrator{when=\"$ > 2\"}: Some.\n";
     assert_eq!(
         codes(text, SchemaImports::default()),

@@ -28,6 +28,11 @@ pub trait Driver {
     /// without effect (shapes in `exec/mod.rs`). Only `lute trace` reports
     /// them; the default ignores them.
     fn observe(&mut self, _rec: Json) {}
+    /// Whether this driver is the three-valued trace preview rather than a
+    /// concrete run/play/test store.
+    fn is_preview(&self) -> bool {
+        false
+    }
     /// What changes one read of a scripted pick's closed guard, as the
     /// refusal names it after the read (`guard_premise`). The default: the
     /// mock entry ([`GuardRead::yaml_mock`]).
@@ -54,6 +59,9 @@ impl<D: Driver + ?Sized> Driver for &mut D {
     }
     fn observe(&mut self, rec: Json) {
         (**self).observe(rec)
+    }
+    fn is_preview(&self) -> bool {
+        (**self).is_preview()
     }
     fn premise_hint(&self, read: &GuardRead) -> String {
         (**self).premise_hint(read)

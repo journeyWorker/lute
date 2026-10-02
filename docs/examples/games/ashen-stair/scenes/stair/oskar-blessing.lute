@@ -6,7 +6,7 @@ on: runStart
 priority: 40
 once: run
 also: true
-when: 'holds(wields(hammer))'
+when: 'holds("wields", ["hammer"])'
 ---
 
 ## Weight, again

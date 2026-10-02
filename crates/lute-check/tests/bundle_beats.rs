@@ -38,7 +38,7 @@ fn with_code(text: &str, code: &str) -> Vec<Diagnostic> {
 }
 
 const HDR: &str =
-    "---\nkind: lore\nid: interviews\nstate:\n  run.trust: { type: number, default: 0 }\n---\n";
+    "---\nkind: lore\nid: interviews\nstate:\n  run.trust: { type: int, default: 0 }\n---\n";
 
 fn doc(body: &str) -> String {
     format!("{HDR}{body}")

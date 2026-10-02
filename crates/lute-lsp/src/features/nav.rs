@@ -347,7 +347,7 @@ mod tests {
                 AssetSegment {
                     name: "variant".to_string(),
                     r#const: None,
-                    ty: Some(Type::Number),
+                    ty: Some(Type::Int),
                 },
             ],
             provider: None,
@@ -400,7 +400,7 @@ mod tests {
         imports.state.decls.insert(
             "run.gold".to_string(),
             StateDecl {
-                ty: Type::Number,
+                ty: Type::Int,
                 default: None,
                 namespace: Namespace::Run,
                 owner: None,

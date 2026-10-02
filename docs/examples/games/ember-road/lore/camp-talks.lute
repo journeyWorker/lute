@@ -7,19 +7,19 @@ components: [../components/reaction.component.lute, ../components/idle.component
 
 /* ---------------------------------------------------------------- Isolde */
 
-<beat id="isoldeSold" on="talk" target="npc.isolde" title="Isolde, after the sale" priority="40" when="run.bridge == 'sold' && holds(inParty(isolde))">
+<beat id="isoldeSold" on="talk" target="npc.isolde" title="Isolde, after the sale" priority="40" when="run.bridge == 'sold' && holds('inParty', ['isolde'])">
   @isolde{emotion="angry"}: Don't. Whatever you are about to say, don't.
   @isolde: I have been the sword that did the Company's sums before. I know what it feels like from the inside. I didn't think I'd have to learn what it looks like from next to you.
 </beat>
 
-<beat id="isoldeRoll" on="talk" target="npc.isolde" title="The Coldwater roll" priority="30" when="holds(knows(roll)) && holds(inParty(isolde))">
+<beat id="isoldeRoll" on="talk" target="npc.isolde" title="The Coldwater roll" priority="30" when="holds('knows', ['roll']) && holds('inParty', ['isolde'])">
   @narrator: You hand Isolde the tin box. She reads the roll standing up, and then she sits down on the wagon step and reads it again.
   @isolde{emotion="sad"}: Hesketh. The miller. He gave us water. I did not know his name until now.
   @isolde: Thank you. I think. Ask me tomorrow.
   ::use{component="reaction" who="isolde" feel="adores"}
 </beat>
 
-<beat id="isoldeOath" on="talk" target="npc.isolde" title="Isolde's oath" priority="20" when="holds(inParty(isolde)) && run.approval.isolde >= 2 && quest.isoldeOath.state == 'unset'">
+<beat id="isoldeOath" on="talk" target="npc.isolde" title="Isolde's oath" priority="20" when="holds('inParty', ['isolde']) && run.approval.isolde >= 2 && quest.isoldeOath.state == 'unset'">
   @isolde: May I tell you something I have not told Brannoc?
   @isolde: I was at Coldwater. Company colours, Company horse. We were told it was a plague village. It wasn't. I rode out before the torches, and I have been riding out ever since.
   @isolde: I swore that the next time, I would stay and stand in the way. I would like someone to hold me to it.
@@ -52,7 +52,7 @@ components: [../components/reaction.component.lute, ../components/idle.component
 
 /* ---------------------------------------------------------------- Corvin */
 
-<beat id="corvinScheme" on="talk" target="npc.corvin" title="Corvin has an idea" priority="20" after="visited('bridge.arrival')" when="holds(inParty(corvin)) && run.bridge == 'held' && quest.toll.state == 'unset'">
+<beat id="corvinScheme" on="talk" target="npc.corvin" title="Corvin has an idea" priority="20" after="visited('bridge.arrival')" when="holds('inParty', ['corvin']) && run.bridge == 'held' && quest.toll.state == 'unset'">
   @corvin: Hypothetically. If a person knew where three of Maelis's deserters were sleeping, and a sack of her silver with them.
   @corvin: And hypothetically that person had helped them get there, for a fee, some months ago.
   @corvin: Then that person would be sitting on the price of a bridge. Hypothetically.
@@ -107,13 +107,13 @@ components: [../components/reaction.component.lute, ../components/idle.component
 /* Walking up to a companion who has left the party (a kind target over the
    member, dsl 0.27 §3: `departed` asked of `occasion.target`). The fallen are
    out of reach altogether: the engine does not raise `talk` for them. */
-<beat id="companionGone" on="talk" target="kind:companion" title="Gone" once="false" priority="-10" when="holds(departed(occasion.target))">
+<beat id="companionGone" on="talk" target="kind:companion" title="Gone" once="false" priority="-10" when="holds('departed', [occasion.target])">
   @narrator: {{occasion.target}}'s bedroll is gone from the wagon. So is {{occasion.target}}.
 </beat>
 
 /* Each night, every companion who trusts the Warden takes a turn at the watch
    unasked (`for`, dsl 0.27 §3: once per member, on the untargeted camp). */
-<beat id="watch" on="camp" for="kind:companion" title="The watch" once="false" priority="10" when="holds(loyal(occasion.target))">
+<beat id="watch" on="camp" for="kind:companion" title="The watch" once="false" priority="10" when="holds('loyal', [occasion.target])">
   @narrator: {{occasion.target}} takes a turn at the watch without being asked.
 </beat>
 
@@ -138,7 +138,7 @@ components: [../components/reaction.component.lute, ../components/idle.component
   </match>
 </beat>
 
-<beat id="brannocLedger" on="talk" target="npc.brannoc" title="Brannoc and the ledger" priority="10" when="holds(knows(ledger)) && run.bridge == 'held'">
+<beat id="brannocLedger" on="talk" target="npc.brannoc" title="Brannoc and the ledger" priority="10" when="holds('knows', ['ledger']) && run.bridge == 'held'">
   @brannoc{emotion="angry"}: Someone's been in the ninth wagon. The seal's cut clean, which means it wasn't the mules.
   @brannoc: Whatever you think you read, Warden, it's Company property. Put it back and we'll call it an accounting error.
   ::set{run.rep.company -= 1}

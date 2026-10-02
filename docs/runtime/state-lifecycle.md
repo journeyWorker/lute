@@ -1,16 +1,19 @@
 # State lifecycle
 
-The artifact's `state: StateEntry[]` (`ir.rs::StateEntry`) is the engine's
-**init/type table** — the resolved, folded state schema for one document. Each
-entry is:
+**execution IR `state` entry**
 
-| field        | meaning |
-| ------------ | ------- |
-| `path`       | the dotted state path, e.g. `run.metMira`, `scene.choices.sofaHelp`. |
-| `type`       | a value-level type label: `bool` / `number` / `string` / `enum` / `narrativeTime` / `list<…>` / `map<…>` / `record`. **An AUTHOR `state:` declaration is scalar-only** — `bool`/`number`/`string`/`enum` (dsl 0.8.0 §4, `E-STATE-COLLECTION`); `narrativeTime` and the collection labels appear only on engine-surfaced slots (a reserved quest slot, or a plugin `state_shapes` expansion). |
-| `domain`     | for an `enum`, its member set. An implicit branch slot or a `quest.<id>.state` slot appends `"unset"` to the domain. Absent for non-enums. |
-| `default`    | the initial value (any JSON scalar/array/object, integral-collapsed). **Absent** when the slot has no default — the slot is *maybe-unset* until written. |
-| `provenance` | `"branch:<id>"` for an implicit `<branch>`/`<hub>` choice slot, `"quest:<id>"` for a reserved quest slot, `"entry:<id>"` for a lore entry's reserved `entry.<id>.read` flag; absent for an author-declared slot. |
+| field | meaning |
+|---|---|
+| `path` | dotted state path |
+| `type` | `bool`, `int`, `double`, `string`, `enum`, or collection/engine type |
+| `domain` | enum members, when applicable |
+| `default` | initial typed value, when present |
+| `owner` | `"engine"` for `owner: engine` declarations; absent for content-owned paths |
+| `provenance` | compiler provenance, when applicable |
+
+Numeric state uses CEL `int` and `double`; `number` is no longer a type.
+The `owner: "engine"` marker is carried into the execution IR. Content may
+read engine-owned paths but never write them; the runner refuses such writes.
 
 The engine initializes each declared path from `default` where present, and
 treats a slot with **no `default` as unset** until the first write. Reading an
@@ -101,11 +104,10 @@ Two families of `quest.<id>.*` paths are **engine-owned**, not author-written
   `failed` / `unset`. Its `domain` in the state table appends `"unset"`, and
   its entry carries no `default`, but the slot is **always assigned**: an
   engine MUST read a quest it has not activated as `"unset"` (IR addendum
-  §3.1) — never as a missing value. The checker relies on this (since lute
-  `0.21.1`): a read needs no guard, `== 'unset'` is legal and means "not yet
-  activated", and `isSet(quest.<id>.state)` — always true — is
-  `W-QUEST-STATE-ISSET`. The engine *derives* every transition (see
-  [quest-lifecycle.md](./quest-lifecycle.md)).
+  §3.1) — never as a missing value. The checker relies on this: a read needs
+  no guard, `== 'unset'` is legal and means "not yet activated", and
+  `has(quest.<id>.state)` — always true — is `W-QUEST-STATE-HAS`. The engine
+  *derives* every transition (see [quest-lifecycle.md](./quest-lifecycle.md)).
 - `quest.<id>.objectives.<oid>.done` — a plain `bool`, recorded when the
   objective's `done` predicate first holds (monotonic within an instance).
 - `quest.<id>.activatedAt` — a `narrativeTime` (dsl 0.8.0 §5), populated by the
@@ -167,7 +169,7 @@ paths — it adds meaning, not storage (D-B):
 
 ```yaml
 clock:
-  day: run.day            # number path, owner: engine
+  day: run.day            # int path, owner: engine
   slot: run.slot          # optional: enum path, owner: engine
   slots: [morning, afternoon, night]   # with `slot`: the order; the slot enum's members
   raise: { slot: slotStart, dayStart: dayStart, dayEnd: dayEnd }  # optional; each key optional
@@ -179,7 +181,7 @@ The declaration is carried verbatim as `clock` on the artifact and on
 `ProjectIndex` (absent without one; two different clocks in one project are
 an index conflict). `day` and `slot` stay ordinary `StateEntry` rows,
 initialized and reset by their tier; the checker requires both
-`owner: engine`, a number `day`, an enum `slot` whose members are exactly
+`owner: engine`, an `int` `day`, an enum `slot` whose members are exactly
 `slots`, and declared `raise` occasions (`E-CLOCK-DECL`).
 
 **A day-granular clock** declares no `slot` / `slots`: every day is one
@@ -306,7 +308,7 @@ ended. The engine snapshots it at run end — copy every `run.*` value to
 `prev.run.*` (a path unset at run end is unset in the mirror), **then**
 reset the run tier. Before the first run ends every `prev.run.*` read is
 `unset`, so the checker treats the mirror as maybe-unset (a read needs
-`isSet(prev.run.x)` or an `unset` arm, `E-MAYBE-UNSET`), types it as the
+`has(prev.run.x)` or an `unset` arm, `E-MAYBE-UNSET`), types it as the
 `run.*` path it mirrors, and rejects a content write
 (`E-QUEST-RESERVED-WRITE`). The mirror is **not** in the artifact's state
 table — it is implied by the `run.*` entries. `lute play` snapshots at
@@ -315,7 +317,7 @@ after a run ended); a `lute trace` / `lute test` mock may seed it too.
 
 The snapshot MUST be atomic: all mirrors are written together, and a `run.*`
 path with a `default` always holds a value at run end. The checker relies on
-this (dsl 0.24.0): once any `prev.run.<p>` is known present (`isSet`, an arm
+this (dsl 0.24.0): once any `prev.run.<p>` is known present (`has`, an arm
 narrowing it, a beat `when:`), every `prev.run.<q>` whose `run.<q>` has a
 `default` is treated as present too.
 
@@ -323,7 +325,7 @@ narrowing it, a beat `when:`), every `prev.run.<q>` whose `run.<q>` has a
 
 A schema may declare named seasons (dsl 0.27.0 §5), each a state tier with
 a `live` condition. The artifact and `ProjectIndex` carry them as
-`seasons: [{ name, live: {raw, expr} }]`, name-sorted, `live` after `@def`
+`seasons: [{ name, live: {cel, expr, authored?} }]`, name-sorted, `live` after `@def`
 expansion (absent without seasons). Their state paths `season.<name>.<field>`
 are declared under `state:` with defaults, like any tier.
 
@@ -367,9 +369,9 @@ engine substitutes these against live state at present time; the raw text is
 kept so an uninterpolated fallback is always available.
 
 The artifact carries no defs table, so a `ref` placeholder carries its def
-body inlined as `expr` (a `{raw, expr}` pair like every other CEL slot, since
-lute 0.21.1): the engine renders `{{@twice}}` by evaluating `expr` against live
-state, exactly as it would a guard. A component `{{@param}}` never reaches the
+body inlined as `expr` (a `{cel, expr, authored?}` slot like every other CEL
+slot, since lute 0.21.1): the engine renders `{{@twice}}` by evaluating `expr`
+against live state, exactly as it would a guard. A component `{{@param}}` never
 artifact as a placeholder: a param is a compile-time constant, so each `::use`
 expansion's text already contains the bound literal (`Outside: grey.`). A
 param bound to a caller-side def stays a `ref` placeholder naming that def.
@@ -400,11 +402,11 @@ an ordinal word, which the engine localizes. The reference runner and
 fall back to the `ordinal` digits otherwise (`0th`, `21st`); a number with
 no ordinal renders unchanged.
 
-The checker admits `ordinal` and `ordinalWord` only on a number-typed
-referent (`E-REF-TYPE` otherwise) and no other hint (`E-CEL-PROFILE`). A
-component `{{@n:ordinal}}` bound to a literal number is rendered at compile
-time (`3rd`; `third` with `:ordinalWord`), since no placeholder survives the
-splice.
+The checker admits `ordinal` and `ordinalWord` only on an `int`- or
+`double`-typed referent (`E-REF-TYPE` otherwise) and no other hint
+(`E-CEL-PROFILE`). A component `{{@n:ordinal}}` bound to a numeric literal is
+rendered at compile time (`3rd`; `third` with `:ordinalWord`), since no
+placeholder survives the splice.
 
 A state path typed against a named enum (`run.wd: { type: { domain: weekday } }`)
 whose declaration carries `labels:` (`enums: { weekday: { members: [mon, sun],

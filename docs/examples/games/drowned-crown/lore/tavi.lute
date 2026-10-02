@@ -4,7 +4,7 @@ id: tavi
 title: Tavi's galley
 ---
 
-<beat id="bounty" on="talk" target="npc.tavi" title="Tavi's bounty" priority="30" when="!holds(felled(eel)) && quest.eelBounty.state != 'active'">
+<beat id="bounty" on="talk" target="npc.tavi" title="Tavi's bounty" priority="30" when="!holds('felled', ['eel']) && quest.eelBounty.state != 'active'">
   @tavi: That eel in the long hall. Kill it and drag a piece home and I'll pay you in pearls. And in dinner.
   <branch id="bountyAnswer" prompt="Tavi sharpens a knife meaningfully.">
     <choice id="take" label="Take the bounty">

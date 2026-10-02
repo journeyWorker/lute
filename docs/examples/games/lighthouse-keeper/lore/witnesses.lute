@@ -31,13 +31,13 @@ components: [../components/witness.component.lute]
     <choice id="thank" label="Thank her">
       @maren: Then we are done.
     </choice>
-    <choice id="tin" label="Ask who sent the keeper's supper" when="holds(implicates(supper_tin, ada))">
+    <choice id="tin" label="Ask who sent the keeper's supper" when="holds('implicates', ['supper_tin', 'ada'])">
       @maren{emotion="angry"}: Nobody sent anything. Ada could not stand, let alone row.
     </choice>
   </branch>
 </beat>
 
-<beat use="witness" id="marenConfronted" who="maren" title="Maren Hale, again" after="visited('witnesses.maren')" only="holds(liar(maren))">
+<beat use="witness" id="marenConfronted" who="maren" title="Maren Hale, again" after="visited('witnesses.maren')" only="holds('liar', ['maren'])">
   @inspector: The log has a page in Ada's hand, dated two in the morning. On the rock.
   @maren{emotion="sad"}: ...She took the skiff at dusk. I told her it was madness. She said he had not eaten in two days and the glass was falling.
   @maren: I lied because a keeper who leaves her post is finished. And one who was on the rock when the head keeper died is worse than finished.
@@ -65,7 +65,7 @@ components: [../components/witness.component.lute]
     <choice id="gentle" label="Ask how she is feeling">
       @ada: Better. I was ill. I was ashore.
     </choice>
-    <choice id="page" label="Show her the page in her hand" when="holds(onRock(ada, midnight))">
+    <choice id="page" label="Show her the page in her hand" when="holds('onRock', ['ada', 'midnight'])">
       @ada{emotion="sad"}: I went out at dusk with his supper. The lamp was turning when I tied up. At two it was dark.
       @ada: I went up. The rail was gone. I lit the lamp because that is what you do. Then I waited on the landing for the light to come.
       @ada: Someone in a skiff came close under the Teeth at dawn. I waved him off. I had Elias's... no. I had my own coat on.
@@ -73,7 +73,7 @@ components: [../components/witness.component.lute]
       ::pocket{item="torn_page" when="entry.keeperLogStub.read"}
       ::accept{quest="tornPage" when="entry.keeperLogStub.read"}
     </choice>
-    <choice id="coat" label="Hand her the oilskin" when="holds(carrying(oilskin))">
+    <choice id="coat" label="Hand her the oilskin" when="holds('carrying', ['oilskin'])">
       @ada{emotion="sad"}: That is mine. He made me wear it on the gallery. He never wore his own.
     </choice>
   </branch>

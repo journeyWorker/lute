@@ -166,10 +166,9 @@ fn literal_arg_folds_to_selected_arm() {
 
 #[test]
 fn otherwise_selected_when_no_is_matches() {
-    // A `number` param: `is=` arms use Number literals (legal per §7.3.1's
-    // grammar regardless of subject type); neither matches the bound `5`,
-    // so `<otherwise>` (REQUIRED for an infinite domain, §6.3) is spliced.
-    const LEVELED: &str = "---\ncomponent: leveled\nparams:\n  n: number\n---\n\
+    // An integral `int` param: `is=` arms use numeric literals; neither
+    // matches the bound `5`, so `<otherwise>` is spliced.
+    const LEVELED: &str = "---\ncomponent: leveled\nparams:\n  n: int\n---\n\
 ## Scene 1.\n\
 <match on=\"@n\">\n\
 <when is=\"10\">\n@narrator: exactly ten\n</when>\n\
@@ -221,7 +220,7 @@ defs:\n  currentTier: { type: { enum: [cold, warm, fond] }, cel: \"scene.tier\" 
     // The subject is the SUBSTITUTED def CEL (D4 expansion of `@currentTier`
     // against the caller's own def table) — `@`/`$`-free, per the existing
     // `assert_cel_clean` invariant (e2e.rs) that applies to every artifact.
-    let subject = m["subject"].as_str().unwrap();
+    let subject = m["subject"]["cel"].as_str().unwrap();
     assert!(
         subject.contains("scene.tier") && !subject.contains('@') && !subject.contains('$'),
         "residual match subject must be the expanded def CEL, `@`/`$`-free; got {subject:?}"

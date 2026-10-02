@@ -475,7 +475,7 @@ fn lore_report_binds_rules_components_and_labels_beats() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.aff: { type: number, default: 0, per: suitor }\n\
+        "state:\n  run.aff: { type: int, default: 0, per: suitor }\n\
          entities:\n  suitor: { members: [ren, mika] }\n\
          relations:\n  locked: { args: [suitor], tier: run }\n  \
          gifted: { args: [suitor], tier: run }\n  routeOpen: { args: [suitor], derive: true }\n\
@@ -497,7 +497,7 @@ fn lore_report_binds_rules_components_and_labels_beats() {
         &dir,
         "lore/fest.lute",
         "---\nkind: lore\nid: fest\ntitle: Festival\n---\n\n\
-         <entry id=\"renOpen\" on=\"talk\" when=\"holds(routeOpen(ren))\">\n  @narrator: Lit.\n</entry>\n\n\
+         <entry id=\"renOpen\" on=\"talk\" when=\"holds('routeOpen', ['ren'])\">\n  @narrator: Lit.\n</entry>\n\n\
          <beat id=\"word\" on=\"evening\" for=\"kind:suitor\">\n  @narrator: A word.\n</beat>\n",
     );
     let d = dir.to_str().unwrap();

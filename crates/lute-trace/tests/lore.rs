@@ -47,7 +47,7 @@ relations:
   knows: { args: [crew, topic], tier: run }
 state:
   run.labBurned: { type: bool, default: false }
-  run.logsRead: { type: number, default: 0 }
+  run.logsRead: { type: int, default: 0 }
 ---
 
 <entry id="scientistLog1" target="item.torn_note_1" category="note">

@@ -106,7 +106,7 @@ pub enum AssetIssue {
 /// pairing by POSITION with `kind.segments` (decompose emits segments in
 /// declared order, so index-pairing is the contract; a segment-less kind →
 /// empty zip → `[]`). Per segment: a `const` decl must match verbatim; otherwise
-/// the declared type decides — `enum` membership, `number` parses as `f64`,
+/// the declared type decides — `enum` membership, `int`/`double` parses,
 /// `str` accepts anything, `providerRef` resolves against `providers`
 /// (`Fresh` ok / `Stale` → [`AssetIssue::StaleProviderId`] / `Absent` →
 /// [`AssetIssue::UnknownProviderId`]). Any other type (or an untyped segment) is
@@ -140,7 +140,15 @@ pub fn validate_segments(
                     });
                 }
             }
-            Some(Type::Number) => {
+            Some(Type::Int) => {
+                if seg.value.parse::<i64>().is_err() {
+                    issues.push(AssetIssue::NotNumber {
+                        segment: decl.name.clone(),
+                        value: seg.value.clone(),
+                    });
+                }
+            }
+            Some(Type::Double) => {
                 if seg.value.parse::<f64>().is_err() {
                     issues.push(AssetIssue::NotNumber {
                         segment: decl.name.clone(),
@@ -235,7 +243,7 @@ mod tests {
                 AssetSegment {
                     name: "variant".to_string(),
                     r#const: None,
-                    ty: Some(Type::Number),
+                    ty: Some(Type::Int),
                 },
             ],
             provider: None,

@@ -12,6 +12,8 @@
       "quest": "reachGoal"
     },
     {
+      "index": 0,
+      "instance": 1,
       "kind": "grant",
       "objective": "arrive",
       "quest": "reachGoal",
@@ -26,6 +28,8 @@
       "state": "complete"
     },
     {
+      "index": 0,
+      "instance": 1,
       "kind": "grant",
       "quest": "reachGoal",
       "reward": {
@@ -48,7 +52,7 @@
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.31",
+  "irVersion": "0.32",
   "kind": "quest",
   "quests": {
     "reachGoal": "complete"

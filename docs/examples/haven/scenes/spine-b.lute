@@ -36,11 +36,11 @@ after: 'visited("haven.s01ep06")'
   See T8 in the drive-test findings log.
 */
 <match on="true">
-<when test="holds(knows(vesna, manifest))">
+<when test="holds('knows', ['vesna', 'manifest'])">
 @narrator{code="0080"}: Nobody had been down to five since the wake. The ring was where the yard left it, a finger's width off its seat, quietly wrong for eleven years and about to be asked a question.
 @vesna{code="0090" emotion="level"}: Brace. Whatever it does, it does it in the next four seconds.
 </when>
-<when test="holds(awake(toma))">
+<when test="holds('awake', ['toma'])">
 ::auto{character="toma" anchor="center" action="brace"}
 @toma{code="0100" emotion="level"}: Quarter turn, and it sat down. It's been sitting ever since.
 @toma{code="0110" emotion="clipped"}: Watch the seat, not the module. The module's already gone.
@@ -70,12 +70,12 @@ after: 'visited("haven.s01ep06")'
 </timeline>
 
 <match on="true">
-<when test="holds(knows(vesna, manifest))">
+<when test="holds('knows', ['vesna', 'manifest'])">
 @narrator{code="0140"}: It did not let go. It tore, and it took nine metres of spine on the way out, and nobody aboard had ever been down there to know it would.
 @vesna{code="0150" emotion="stricken"}: That wasn't a release.
 @ottavio{code="0160" emotion="hollowed"}: No. That was the ship being taken from.
 </when>
-<when test="holds(awake(toma))">
+<when test="holds('awake', ['toma'])">
 @narrator{code="0170"}: The coupling opened the way a door opens. One module, cleanly, and the rail under your hands never changed its note.
 @toma{code="0180" emotion="hollowed"}: Clean. That's what clean sounds like. Learn it — there's one more coming.
 @vesna{code="0190" emotion="level"}: Twelve years of keeping its joints honest, and that's what it bought. Say it's not nothing.
@@ -93,7 +93,7 @@ after: 'visited("haven.s01ep06")'
 @ottavio{code="0260" emotion="hollowed"}: Nine's the greenhouse. Nine's the room I've been sleeping in for six weeks.
 @vesna{code="0270" emotion="stricken"}: Nine is the water. After nine we're a hull with opinions.
 @vesna{code="0280" emotion="frayed" when="run.shedPressure >= 2"}: And it's ahead of its own schedule, because we kept handing it reasons.
-@ottavio{code="0290" emotion="level" when="count(awake(_)) >= 3"}: There are more of us up than it planned for. That has to be worth something.
+@ottavio{code="0290" emotion="level" when="count('awake', ['_']) >= 3"}: There are more of us up than it planned for. That has to be worth something.
 
 /*
   The choice a convergence point wants to make is a ROUTING choice — archive,

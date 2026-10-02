@@ -5,7 +5,7 @@ title: Ash Tower, the ground floor
 on: enterPlace
 target: place.ashTowerHall
 priority: 20
-when: "!holds(hasItem(spectralLens))"
+when: "!holds('hasItem', ['spectralLens'])"
 ---
 
 // The ground floor of Ash Tower, below the ashTowerStairs gate. The first

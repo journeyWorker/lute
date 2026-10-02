@@ -5,7 +5,7 @@ title: Goats on the deck
 on: visit
 target: place.deck
 priority: 20
-when: "holds(at(wren, deck))"
+when: "holds('at', ['wren', 'deck'])"
 ---
 
 ## Sunday afternoon

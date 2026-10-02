@@ -7,7 +7,7 @@ on: talk
 target: npc.sefa
 once: user
 priority: 40
-when: "holds(felled(eel)) && !holds(heard(sefa, eel))"
+when: "holds('felled', ['eel']) && !holds('heard', ['sefa', 'eel'])"
 ---
 
 ## Chart table

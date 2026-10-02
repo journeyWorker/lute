@@ -1,2 +1,2 @@
 state:
-  run.sanity: { type: number, default: 10, owner: engine }
+  run.sanity: { type: int, default: 10, owner: engine }

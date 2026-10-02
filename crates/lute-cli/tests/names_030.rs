@@ -64,7 +64,7 @@ fn slot_project(names: &[&str; 18]) -> PathBuf {
         (
             "world.schema.yaml",
             &format!(
-                "state:\n  run.day: {{ type: number, default: 1 }}\nenums:\n  tone: [soft, \"{member}\"]\n  \
+                "state:\n  run.day: {{ type: int, default: 1 }}\nenums:\n  tone: [soft, \"{member}\"]\n  \
                  \"{enum_name}\": [a, b]\nentities:\n  npc: {{ members: [mara, tomas, \"{entity}\"] }}\n  \
                  \"{kind}\": {{ members: [x] }}\nrelations:\n  \"{relation}\": {{ args: [npc], tier: run }}\n\
                  seasons:\n  \"{season}\": {{ live: \"run.day > 1\" }}\n"
@@ -185,7 +185,7 @@ fn a_def_and_a_component_param_are_identifiers() {
             ("lute.project.yaml", BARE_MANIFEST),
             (
                 "world.schema.yaml",
-                &format!("state:\n  run.day: {{ type: number, default: 1 }}\ndefs:\n  \"{def}\": \"run.day == 2\"\n"),
+                &format!("state:\n  run.day: {{ type: int, default: 1 }}\ndefs:\n  \"{def}\": \"run.day == 2\"\n"),
             ),
             (
                 "components/greet.component.lute",
@@ -252,7 +252,7 @@ fn a_plugin_declared_name_follows_the_rule() {
                 ),
                 (
                     "world.schema.yaml",
-                    "state:\n  run.day: { type: number, default: 1 }\n",
+                    "state:\n  run.day: { type: int, default: 1 }\n",
                 ),
                 (
                     "scenes/a.lute",
@@ -286,7 +286,7 @@ fn targets_and_categories_take_any_name() {
             ),
             (
                 "world.schema.yaml",
-                "state:\n  run.day: { type: number, default: 1 }\nentities:\n  \
+                "state:\n  run.day: { type: int, default: 1 }\nentities:\n  \
                  npc: { members: [mara, old-man] }\n  item: { open: engine }\n",
             ),
             (
@@ -335,7 +335,7 @@ fn a_reserved_name_is_still_refused() {
         ("lute.project.yaml", BARE_MANIFEST),
         (
             "world.schema.yaml",
-            "state:\n  run.day: { type: number, default: 1 }\nenums:\n  tone: [soft, unset]\n\
+            "state:\n  run.day: { type: int, default: 1 }\nenums:\n  tone: [soft, unset]\n\
              defs:\n  run: \"run.day == 2\"\n",
         ),
         (

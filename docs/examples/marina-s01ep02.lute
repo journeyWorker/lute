@@ -6,7 +6,7 @@ season: 1
 episode: 2
 title: Behold the Performance of All-Purpose Marina
 pov: fixer
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 
 # The project's content vocabulary (dsl 0.9.0): `emotion`/`action`/`anchor`/
 # `mood`/`volume`/`musicAction`/`vfxType` are compiler-declared SLOTS with no
@@ -15,7 +15,7 @@ luteVersion: "0.31.0"
 uses: base.schema.yaml
 
 state:
-  scene.affect.marina:  { type: number, default: 0 }
+  scene.affect.marina:  { type: int, default: 0 }
   scene.flags.saw_beam: { type: bool,   default: false }
 
 defs:

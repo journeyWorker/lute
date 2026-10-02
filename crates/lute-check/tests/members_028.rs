@@ -10,7 +10,7 @@ use lute_check::connectivity::{
 };
 use lute_check::{
     check, check_fact_guards, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv,
-    GroundFact, MaySet, Mode, RootVocab, SchemaImports,
+    MaySet, Mode, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
@@ -168,7 +168,7 @@ fn a_match_needs_no_arm_for_a_member_the_facts_rule_out() {
     let body = |arms: &str| {
         lore(&format!(
             "<beat id=\"warm\" on=\"visit\" target=\"kind:place\" once=\"false\" \
-             when=\"holds(at(mara, occasion.target))\">\n  <match on=\"occasion.target\">\n\
+             when=\"holds('at', ['mara', occasion.target])\">\n  <match on=\"occasion.target\">\n\
              {arms}  </match>\n</beat>\n"
         ))
     };
@@ -201,7 +201,7 @@ fn a_match_needs_no_arm_for_a_member_the_facts_rule_out() {
 fn a_for_beat_whose_when_holds_for_no_member_is_unreachable() {
     let p = project(&lore(
         "<beat id=\"lost\" on=\"hour\" for=\"kind:villager\" once=\"false\" \
-         when=\"holds(found(occasion.target))\">\n  @narrator: {{occasion.target}} is found.\n\
+         when=\"holds('found', [occasion.target])\">\n  @narrator: {{occasion.target}} is found.\n\
          </beat>\n",
     ));
     let dead = coded(&p.project, "E-BEAT-UNREACHABLE");

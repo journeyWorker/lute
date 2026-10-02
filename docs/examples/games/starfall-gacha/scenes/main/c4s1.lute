@@ -12,8 +12,8 @@ once: user
 
 @narrator: Past the Hollow Keep the ground stops. What comes after it is water, and every wave carries a lantern.
 @lumi{emotion="surprised"}: Those are the lanterns from the throne room. They floated all the way out here.
-@lumi{when="holds(learned(lanternSea))"}: You read the codex page, didn't you? Then you know: every lantern is a wish somebody gave up on.
-@lumi{when="!holds(learned(lanternSea))"}: I don't know what they are. There's a page about it in the Archive, if you're the reading type.
+@lumi{when="holds('learned', ['lanternSea'])"}: You read the codex page, didn't you? Then you know: every lantern is a wish somebody gave up on.
+@lumi{when="!holds('learned', ['lanternSea'])"}: I don't know what they are. There's a page about it in the Archive, if you're the reading type.
 ::assert{learned(lanternSea)}
 <branch id="c4s1Boat" prompt="A boat is tied to the last post.">
   <choice id="row" label="Row out.">

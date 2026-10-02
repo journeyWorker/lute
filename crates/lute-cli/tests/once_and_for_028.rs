@@ -91,7 +91,7 @@ fn a_kind_target_on_an_untargeted_occasion_points_at_for_and_is_one_report() {
             "lore/g.lute",
             &lore(
                 "<beat id=\"b\" on=\"evening\" target=\"kind:hero\" \
-                 when=\"holds(birthday(occasion.target))\">\n  @narrator: Hi, {{occasion.target}}.\n</beat>\n",
+                 when=\"holds('birthday', [occasion.target])\">\n  @narrator: Hi, {{occasion.target}}.\n</beat>\n",
             ),
         )],
     );

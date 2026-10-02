@@ -1,0 +1,14 @@
+---
+kind: scene
+luteVersion: "0.32.0"
+character: hero
+season: 1
+episode: 1
+title: Plugin bridge
+plugins:
+  bridge.demo: {}
+---
+## Bridge
+
+::demo{id="trial" resultKey="result" sync="false"}
+@narrator: The bridge is recorded.

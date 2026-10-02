@@ -51,7 +51,7 @@ fn ward(tag: &str, bound: &str, docs: &[(&str, &str)]) -> PathBuf {
         &dir,
         "world.schema.yaml",
         &format!(
-            "state:\n  run.night: {{ type: number, default: 1, owner: engine }}\n  \
+            "state:\n  run.night: {{ type: int, default: 1, owner: engine }}\n  \
              run.hour: {{ type: {{ enum: [h23, h00, h01, h02, h03, h04, h05] }}, default: h23, owner: engine }}\n\
              clock:\n  day: run.night\n  slot: run.hour\n  slots: [h23, h00, h01, h02, h03, h04, h05]\n  \
              raise: {{ slot: hourStrikes, dayEnd: dawn }}\n{bound}"
@@ -392,7 +392,7 @@ fn a_deadline_before_the_only_window_fails_the_objective() {
     let bound = "  last: { day: 2, slot: h05 }\nentities:\n  room: { members: [hall, cell] }\n\
                  relations:\n  lit: { args: [room], derive: true }\n\
                  rules:\n  - \"lit(hall) :- cel(\\\"run.night == 2 && run.hour == 'h03'\\\")\"\n";
-    let lamp = hour_scene("ward.lamp", "holds(lit(hall))");
+    let lamp = hour_scene("ward.lamp", "holds('lit', ['hall'])");
     let quest = "---\nkind: quest\nid: q\nuses: ../world.schema.yaml\n---\n\n\
                  <quest id=\"night\" title=\"Night\" start=\"true\">\n  \
                  <objective id=\"lamp\" title=\"Lamp\" done=\"visited('ward.lamp')\" by=\"clock.index > 8\"/>\n  \

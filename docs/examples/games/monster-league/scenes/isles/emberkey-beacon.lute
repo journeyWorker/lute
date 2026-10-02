@@ -5,7 +5,7 @@ title: The Emberkey beacon
 on: enterPlace
 target: place.emberkeyBeacon
 once: false
-when: "!holds(islesLensBack(emberkey))"
+when: "!holds('islesLensBack', ['emberkey'])"
 ---
 
 // AREA isles: the Dusk grunt holding the Emberkey lens. Repeatable until the

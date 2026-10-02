@@ -89,7 +89,7 @@ fn anchored<'s>(src: &'s str, d: &Diagnostic) -> &'s str {
     &src[d.span.byte_start..d.span.byte_end]
 }
 
-const VOCAB: &str = "state:\n  run.day: { type: number, default: 1 }\n  \
+const VOCAB: &str = "state:\n  run.day: { type: int, default: 1 }\n  \
     run.done: { type: bool, default: false }\n  run.maybe: { type: bool }\n\
     entities:\n  person: { members: [maud, oskar] }\n";
 
@@ -136,7 +136,7 @@ fn by_is_a_bool_condition_slot_like_done() {
 fn verdict(attrs: &str) -> String {
     format!(
         "---\nkind: quest\nstate:\n  run.v: {{ type: {{ enum: [undecided, fell, drowned] }}, default: undecided }}\n  \
-         run.day: {{ type: number, default: 1 }}\n\
+         run.day: {{ type: int, default: 1 }}\n\
          ---\n<quest id=\"q\" title=\"Q\">\n\
          <objective id=\"fate\" title=\"O\" done=\"run.v == 'fell'\" {attrs}/>\n</quest>\n"
     )

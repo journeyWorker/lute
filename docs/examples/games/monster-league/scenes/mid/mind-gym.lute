@@ -5,7 +5,7 @@ title: Mind Gym
 on: challenge
 target: arena.mindGym
 once: false
-when: "!holds(defeated(sabine))"
+when: "!holds('defeated', ['sabine'])"
 ---
 
 // CONTRACT BEAT (owned by mid): asserts hasBadge(mind). The engine keeps the
@@ -17,7 +17,7 @@ when: "!holds(defeated(sabine))"
 ::bg{location="mind-gym" time="day"}
 ::music{action="change" mood="eerie" volume="down"}
 @narrator: The Mind Gym is a maze of warp tiles. Step on one and the room turns inside out. Step on the right one and you are standing in front of Sabine.
-@narrator{when="holds(defeated(mindGymPsychicOren)) && holds(defeated(mindGymMediumSelke)) && holds(defeated(mindGymPsychicTamsin))"}: Her three students watch from the edges of the room. None of them look surprised to see you. They have all lost to you already.
+@narrator{when="holds('defeated', ['mindGymPsychicOren']) && holds('defeated', ['mindGymMediumSelke']) && holds('defeated', ['mindGymPsychicTamsin'])"}: Her three students watch from the edges of the room. None of them look surprised to see you. They have all lost to you already.
 
 ## Sabine
 

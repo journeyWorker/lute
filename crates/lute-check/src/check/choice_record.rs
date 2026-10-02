@@ -195,7 +195,8 @@ fn into_value_mismatch(ty: &Type, v: &Attr, into_path: &str) -> String {
                 .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
             format!("one of its members ({}){hint}", members.join(", "))
         }
-        Type::Number => "a number literal".to_string(),
+        Type::Int => "an integer literal".to_string(),
+        Type::Double => "a double literal".to_string(),
         Type::Str => "a string literal".to_string(),
         _ => "a literal of its declared type".to_string(),
     };
@@ -213,16 +214,17 @@ fn str_attr(attr: &Attr) -> Option<&str> {
 
 /// Coerce an `into` record `value` attr into a manifest [`Literal`] *in the
 /// resolved target type's domain* so [`type_accepts`] can judge it — mirroring
-/// the directive attr coercion (`directives::literal_of`). A `number` target
-/// parses the string as `f64`; a `bool` target accepts the bare `value` ident
-/// or the strings `"true"`/`"false"`; every other target (`enum`/`str`/…) keeps
-/// the value VERBATIM as [`Literal::Str`], so an enum member spelled like a bool
-/// or number (`"true"`, `"3"`) still resolves by string membership. Returns
-/// `None` when the value cannot inhabit the target's shape (a hard type error)
-/// or is a `@ref`.
+/// the directive attr coercion (`directives::literal_of`). An `int` target
+/// parses the string as `i64`; a `double` target parses it as `f64`; a `bool`
+/// target accepts the bare `value` ident or the strings `"true"`/`"false"`;
+/// every other target (`enum`/`str`/…) keeps the value VERBATIM as
+/// [`Literal::Str`], so an enum member spelled like a bool or number (`"true"`,
+/// `"3"`) still resolves by string membership. Returns `None` when the value
+/// cannot inhabit the target's shape (a hard type error) or is a `@ref`.
 pub(super) fn into_literal(ty: &Type, v: &AttrValue) -> Option<Literal> {
     match (ty, v) {
-        (Type::Number, AttrValue::Str(s)) => s.parse::<f64>().ok().map(Literal::Num),
+        (Type::Int, AttrValue::Str(s)) => s.parse::<i64>().ok().map(Literal::Int),
+        (Type::Double, AttrValue::Str(s)) => s.parse::<f64>().ok().map(Literal::Double),
         (Type::Bool, AttrValue::BoolTrue) => Some(Literal::Bool(true)),
         (Type::Bool, AttrValue::Str(s)) => match s.as_str() {
             "true" => Some(Literal::Bool(true)),

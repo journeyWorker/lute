@@ -1177,10 +1177,7 @@ fn held_fact(e: &Expr) -> Option<GroundFact> {
     if c.func_name != "holds" || !crate::cel_resolve::is_profile_fact_query(c) {
         return None;
     }
-    let Expr::Call(p) = &c.args[0].expr else {
-        return None;
-    };
-    QueryPattern::from_call(p)?.ground()
+    QueryPattern::from_call(c)?.ground()
 }
 
 /// `entry.X.read` / `entry.X.everRead` as a conjunct — bare or `== true` —

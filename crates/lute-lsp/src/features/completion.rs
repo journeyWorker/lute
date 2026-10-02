@@ -81,6 +81,8 @@ pub fn complete_at(
                 def_items(&meta, snapshot)
             } else if in_match_subject {
                 choice_path_items(doc)
+            } else if let Some(items) = host_items(&slot.raw, local, doc) {
+                items
             } else {
                 state_path_items(&meta)
             }
@@ -558,6 +560,56 @@ fn def_items(meta: &lute_check::TypedMeta, snapshot: &CapabilitySnapshot) -> Vec
             ..Default::default()
         })
         .collect()
+}
+
+fn host_items(raw: &str, local: usize, doc: &Document) -> Option<Vec<CompletionItem>> {
+    const HOSTS: &[(&str, &str)] = &[
+        ("holds", "holds(string, list(dyn)) -> bool"),
+        ("count", "count(string, list(dyn)) -> int"),
+        ("countDistinct", "countDistinct(string, list(dyn), int) -> int"),
+        ("validAt", "validAt(string, list(dyn), int) -> bool"),
+        ("now", "now() -> int"),
+        ("visited", "visited(string) -> bool"),
+        ("has", "has(select) -> bool"),
+        ("int", "int(int|double) -> int"),
+        ("double", "double(int|double) -> double"),
+    ];
+    let before = &raw[..local.min(raw.len())];
+    let open = before.rfind('(')?;
+    let name = before[..open].split(|c: char| !c.is_ascii_alphanumeric()).last()?;
+    if !HOSTS.iter().any(|(n, _)| *n == name) {
+        return None;
+    }
+    if matches!(name, "holds" | "count" | "countDistinct" | "validAt")
+        && before[open + 1..].trim_start().starts_with(['\'', '"'])
+    {
+        let mut names = Vec::new();
+        if let Ok(serde_yaml::Value::Mapping(map)) =
+            serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+        {
+            if let Some(serde_yaml::Value::Sequence(relations)) =
+                map.get(serde_yaml::Value::String("relations".into()))
+            {
+                for relation in relations {
+                    if let Some(n) = relation.get("name").and_then(|v| v.as_str()) {
+                        names.push(n.to_string());
+                    }
+                }
+            }
+        }
+        return Some(names.into_iter().map(|label| CompletionItem {
+            label,
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some("relation name".into()),
+            ..Default::default()
+        }).collect());
+    }
+    Some(HOSTS.iter().map(|(label, detail)| CompletionItem {
+        label: (*label).into(),
+        kind: Some(CompletionItemKind::FUNCTION),
+        detail: Some((*detail).into()),
+        ..Default::default()
+    }).collect())
 }
 
 /// Declared state paths (`scene.*`, `run.*`, …), kind `PROPERTY`.
@@ -1048,7 +1100,7 @@ mod tests {
 
     #[test]
     fn completion_of_state_paths_in_set_expr() {
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina = }\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: int, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina = }\n";
         let doc = parsed(text);
         // Cursor after the `=` (expr slot) — state paths are offered.
         let off = text.rfind("= }").unwrap() + 2;
@@ -1105,7 +1157,7 @@ mod tests {
                 AssetSegment {
                     name: "variant".to_string(),
                     r#const: None,
-                    ty: Some(Type::Number),
+                    ty: Some(Type::Int),
                 },
             ],
             provider: None,
@@ -1230,7 +1282,7 @@ mod tests {
         imports.state.decls.insert(
             "run.gold".to_string(),
             StateDecl {
-                ty: Type::Number,
+                ty: Type::Int,
                 default: None,
                 namespace: Namespace::Run,
                 owner: None,

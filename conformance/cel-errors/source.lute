@@ -1,0 +1,11 @@
+---
+kind: scene
+id: celErrors
+luteVersion: "0.32.0"
+title: CEL Errors
+uses: ./schema.yaml
+---
+## Errors
+@narrator{when="has(run.missing) && run.missing == 'ok'"}: absent is false
+@narrator{when="run.i != 0 && run.i / run.zero > 1"}: divide error is false
+@narrator{when="run.i == 3 || has(run.missing)"}: short circuit

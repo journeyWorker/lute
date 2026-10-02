@@ -42,7 +42,7 @@ title: Sable, by the water
   @sable{code="0010" emotion="fond"}: You say my name like it's a normal word. I like that.
 </entry>
 
-<entry id="sableBarkGate" on="talk" target="npc.sable" category="bark" priority="10" when="holds(saw(sable, gatekeeperFall)) && !holds(saw(sable, wardenFall))">
+<entry id="sableBarkGate" on="talk" target="npc.sable" category="bark" priority="10" when="holds('saw', ['sable', 'gatekeeperFall']) && !holds('saw', ['sable', 'wardenFall'])">
   @sable{code="0010" emotion="wry"}: I heard the Gatekeeper hit the floor from down here. The whole Stair rang like a bell.
 </entry>
 

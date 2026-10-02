@@ -19,6 +19,21 @@ unset ──start true / accept──▶ active ──all required objectives do
                                   └──── fail true / required by missed ─▶ failed
 ```
 
+## Instance and grant identity
+
+Each quest has a save-wide `instance` number: `1` on first activation and
+incremented on every re-instantiation (`newRun`, `rearm`, or season reset).
+Resets never clear the counter. A grant event carries `instance` and its
+owner-relative document-order reward `index`; `(quest, instance, objective,
+index)` is the idempotency key. Hosts MUST deduplicate that key across save,
+reload, retry, and repeatable runs.
+
+Play-script saves persist these counters with the top-level
+`questInstances:` mapping (`quest id` → positive integer), alongside the
+`quests:` statuses. Loading a save seeds the counter before lifecycle settling;
+resets then increment it rather than restarting at one. Omitting the mapping
+preserves the default first-activation behavior.
+
 ### Why a quest failed — `quest.<id>.failedBy`
 
 On every `→ failed` transition the engine records the reason in the reserved
@@ -46,7 +61,8 @@ as `false`. A run-tier quest's reset clears both.
 
 ### Activation — `start`
 
-`QuestCmd.start` is an optional `{raw, expr}` predicate (`CelPair`):
+`QuestCmd.start` is an optional `{cel, expr, authored?}` predicate
+(`CelPair`):
 
 - **absent** → the quest is *accept-driven* (below): it stays `unset` until it
   is accepted (or, for a referenced subquest, until its parent activates —
@@ -203,8 +219,8 @@ Two more resets reuse the run-tier reset above verbatim (the quest returns to
 - **`QuestCmd.tier: "season:<name>"`** — when the season `<name>` opens
   (its `live` condition in the artifact's `seasons` goes false→true;
   `state-lifecycle.md` §Seasons).
-- **`QuestCmd.rearm: {raw, expr}`** — the engine evaluates `rearm` at every
-  quest settle of a playthrough and remembers the last value. The first
+- **`QuestCmd.rearm: {cel, expr, authored?}`** — the engine evaluates
+  `rearm` at every quest settle of a playthrough and remembers the last value. The first
   observation is only the baseline. Each later false→true transition resets
   the quest, whatever its status, and deadlines are forgotten with its
   failure. The reset happens at the start of that settle, so a `start` that
@@ -253,15 +269,15 @@ Each `ObjectiveEntry` in `QuestCmd.objectives`:
 | field         | meaning |
 | ------------- | ------- |
 | `id`          | the objective id; recorded at `quest.<id>.objectives.<oid>.done`. |
-| `done`        | a `{raw, expr}` completion predicate over state (**required** field). |
-| `visibleWhen` | an optional `{raw, expr}` **visibility** condition (authored `visibleWhen=`) — it decides whether the objective is *shown/tracked*, **never** the completion obligation (dsl §6.3). |
+| `done`        | a `{cel, expr, authored?}` completion predicate over state (**required** field). |
+| `visibleWhen` | an optional `{cel, expr, authored?}` **visibility** condition (authored `visibleWhen=`) — it decides whether the objective is *shown/tracked*, **never** the completion obligation (dsl §6.3). |
 | `optional`    | `bool` (always present). A non-`optional` objective is *required*: it must be `done` for the quest to complete. |
 | `title` / `titleLineId` | present only when authored; `titleLineId` is `{questId}.{objectiveId}` for localization. |
 | `body`        | **always present**; the `addr` of the objective's completion-body segment, or `null` when the body is empty. |
 | `on`          | present only when authored (dsl 0.21.0 §7a.2): the occasion at which `done` is judged — see below. |
 | `target`      | present only when authored, always beside `on` (dsl 0.23.0 §2): the objective is judged only when `on` is raised for this target — see below. |
-| `by`          | present only when authored (dsl 0.23.0 §2): a `{raw, expr}` **deadline** predicate, judged at every evaluation instant — see below. |
-| `until`       | present only when authored, always beside `on` (dsl 0.24.0 §2.1): a `{raw, expr}` deadline judged only when the objective's occasion is raised — see below. |
+| `by`          | present only when authored (dsl 0.23.0 §2): a `{cel, expr, authored?}` **deadline** predicate, judged at every evaluation instant — see below. |
+| `until`       | present only when authored, always beside `on` (dsl 0.24.0 §2.1): a `{cel, expr, authored?}` deadline judged only when the objective's occasion is raised — see below. |
 
 **Monotonic completion (dsl §6.3).** Once an objective's `done` predicate holds,
 it stays recorded (`quest.<id>.objectives.<oid>.done = true`); a completed
@@ -365,10 +381,10 @@ set are in
 
 For every `<objective id="oid" quest="c"/>` the compiler synthesizes:
 
-- `ObjectiveEntry.done = { raw: "quest.c.state == 'complete'", expr: … }`.
-  The field stays the required, always-present `CelPair`, so an engine
-  unaware of subquests evaluates a subquest objective the same way it
-  evaluates any other — one predicate over `quest.<id>.state` (dsl §5.4).
+- `ObjectiveEntry.done = { cel: "quest.c.state == 'complete'", expr: … }`.
+  The field stays the required, always-present `{cel, expr, authored?}` slot,
+  so an engine unaware of subquests evaluates a subquest objective the same way
+  it evaluates any other — one predicate over `quest.<id>.state` (dsl §5.4).
   Derived quest completion ("all non-`optional` objectives `done`") is
   unchanged; marking the objective `optional` decouples the child from the
   parent's completion in both directions.
@@ -489,7 +505,7 @@ re-instantiation, alongside clearing the instance's other scratch fields.
 
 ### `when` is evaluated at the grant instant
 
-`RewardEntry.when` is the ordinary `{raw, expr}` CEL slot (checker
+`RewardEntry.when` is the ordinary `{cel, expr, authored?}` CEL slot (checker
 profile, `E-MAYBE-UNSET`, unset-sentinel guards, LSP hover/fill). The
 engine evaluates it against the same pre-transition state/fact snapshot
 the triggering transition observed — the reward is skipped exactly when
@@ -583,8 +599,8 @@ quest's declaration table):
   engine on the transitions above, **never** by a user (`E-TRACE-EVENT` guards
   hand-firing them). Other event names are capability/world events the host
   raises.
-- `when` — an optional `{raw, expr}` guard, evaluated against the pre-event
-  snapshot.
+- `when` — an optional `{cel, expr, authored?}` guard, evaluated against the
+  pre-event snapshot.
 - `target` — present only when authored (dsl 0.24.0 §2): the handler runs
   only when its event is raised as an occasion **for this target**
   (`<on event="bossDefeated" target="foe.regent">`, the beat target rule —

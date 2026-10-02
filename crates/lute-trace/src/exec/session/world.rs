@@ -3,6 +3,7 @@
 //! [`WorldView`] expectations judge, and the value and fact renderings.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 
 use lute_compile::index::BeatKind;
 use serde_json::{json, Value as Json};
@@ -12,8 +13,15 @@ use super::project::ExecProject;
 use super::resolve::{ever_read_path, resolve_bridges, resolve_fact, resolve_state};
 use super::walk::PlayDriver;
 use crate::datalog::Fact;
-use crate::exec::{BridgeQueues, Carry, Machine, Seed};
-use crate::{MockSet, Value};
+use crate::exec::{BridgeQueues, Carry, EvalSnapshot, Machine, Seed};
+use crate::{MockSet, UnresolvedAtom, Value};
+
+/// A shared observer for every CEL evaluation made during a play.
+///
+/// The callback is invoked synchronously while the machine still owns its
+/// evaluation snapshot; callers must not retain the snapshot references.
+pub type SessionEvalObserver =
+    Rc<dyn for<'a> Fn(&str, &Value, &[UnresolvedAtom], EvalSnapshot<'a>)>;
 
 /// Everything that carries from one step to the next.
 #[derive(Clone, Default)]
@@ -26,6 +34,9 @@ pub struct World {
     pub facts: BTreeSet<Fact>,
     /// quest id -> `unset`/`active`/`complete`/`failed`.
     pub quests: BTreeMap<String, String>,
+    /// Save-wide quest instance number, keyed by quest id. Reset paths
+    /// increment this map but never clear it.
+    pub quest_instances: BTreeMap<String, u64>,
     /// Canonical ids of every presented scene — the `visited(…)` set both
     /// `after:` and CEL `visited('<id>')` read (dsl 0.21.0 §7a.1).
     pub visited: BTreeSet<String>,
@@ -93,6 +104,8 @@ pub struct World {
     /// pick names beside a premise's producers.
     pub step: usize,
     pub decisions: Vec<super::producers::Decision>,
+    /// Optional observer shared by every machine this play constructs.
+    pub eval_observer: Option<SessionEvalObserver>,
 }
 
 impl World {
@@ -104,28 +117,42 @@ impl World {
         }
     }
 
-    /// The world as a [`Machine::resume`] carry: its state, facts, quests.
+    /// The world as a [`Machine::resume`] carry: its state, facts, quests and
+    /// save-wide quest instance counters.
     pub fn carry(&self) -> Carry {
-        Carry::world(self.state.clone(), self.facts.clone(), self.quests.clone())
+        let mut carry = Carry::world(self.state.clone(), self.facts.clone(), self.quests.clone());
+        carry.quest_instances = self.quest_instances.clone();
+        carry
     }
 
     /// A Machine over `art` resumed from this world that only evaluates
     /// (a `when`, the fact closure) — it never walks, so its driver has no
     /// script.
     pub fn evaluator(&self, art: &Json) -> Machine<PlayDriver> {
-        Machine::resume(
+        let machine = Machine::resume(
             art,
             Seed::from(&self.mock()),
             self.carry(),
             PlayDriver::default(),
-        )
+        );
+        self.observe_machine(machine)
+    }
+
+    /// Attach this world's observer to a machine, if one was configured.
+    pub fn observe_machine(&self, machine: Machine<PlayDriver>) -> Machine<PlayDriver> {
+        let Some(observer) = self.eval_observer.clone() else {
+            return machine;
+        };
+        machine.with_eval_observer(move |raw, value, atoms, snapshot| {
+            observer(raw, value, atoms, snapshot);
+        })
     }
 }
 
 pub fn json_to_value(j: &Json) -> Option<Value> {
     match j {
         Json::Bool(b) => Some(Value::Bool(*b)),
-        Json::Number(n) => n.as_f64().map(Value::Num),
+        Json::Number(n) => n.as_i64().map(Value::Int).or_else(|| n.as_f64().map(Value::Double)),
         Json::String(s) => Some(Value::Str(s.clone())),
         _ => None,
     }
@@ -134,10 +161,10 @@ pub fn json_to_value(j: &Json) -> Option<Value> {
 pub fn value_to_json(v: &Value) -> Json {
     match v {
         Value::Bool(b) => Json::Bool(*b),
-        Value::Num(n) if n.fract() == 0.0 && n.abs() < 1e15 => json!(*n as i64),
-        Value::Num(n) => json!(n),
+        Value::Int(n) => json!(*n),
+        Value::Double(n) => json!(*n),
         Value::Str(s) => Json::String(s.clone()),
-        Value::Unknown => Json::Null,
+        Value::Unknown | Value::Error(_) => Json::Null,
     }
 }
 
@@ -240,6 +267,8 @@ pub struct SaveSeed {
     pub presented_user: Vec<String>,
     pub presented_run: Vec<String>,
     pub quests: Vec<(String, String)>,
+    /// Save-wide quest instance counters, keyed by quest id.
+    pub quest_instances: Vec<(String, u64)>,
     pub entries_run: Vec<String>,
     pub entries_user: Vec<String>,
 }
@@ -304,6 +333,7 @@ pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, Vec<Se
         state: BTreeMap::new(),
         facts: p.seed_facts.clone(),
         quests: BTreeMap::new(),
+        quest_instances: BTreeMap::new(),
         visited: BTreeSet::new(),
         spent_run: BTreeSet::new(),
         spent_user: BTreeSet::new(),
@@ -327,6 +357,7 @@ pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, Vec<Se
         cadence: Default::default(),
         step: 0,
         decisions: Vec::new(),
+        eval_observer: None,
     };
     for (path, e) in &p.state_table {
         if path.starts_with("scene.") {
@@ -358,6 +389,26 @@ pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, Vec<Se
     for (id, status) in &save.quests {
         if let Err(e) = seed_quest(p, &mut w, &format!("`quests.{id}`"), id, status) {
             errs.push(SeedError::at(&["quests", id], e));
+        }
+    }
+    for (id, count) in &save.quest_instances {
+        if !p.quest_objectives.contains_key(id) {
+            errs.push(SeedError::at(
+                &["questInstances", id],
+                unknown_id(
+                    "`questInstances:`",
+                    id,
+                    "quest",
+                    p.quest_objectives.keys().map(String::as_str),
+                ),
+            ));
+        } else if *count == 0 {
+            errs.push(SeedError::at(
+                &["questInstances", id],
+                "a quest instance counter must be at least 1".to_string(),
+            ));
+        } else {
+            w.quest_instances.insert(id.clone(), *count);
         }
     }
     for (i, id) in save.visited.iter().enumerate() {

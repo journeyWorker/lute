@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "quest",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {},
   "state": [
     {
@@ -66,13 +66,13 @@ expression: json
       "title": "Rescue",
       "titleLineId": "rescueHalsin.title",
       "start": {
-        "raw": "run.act",
+        "cel": "run.act",
         "expr": {
           "path": "run.act"
         }
       },
       "fail": {
-        "raw": "run.dead",
+        "cel": "run.dead",
         "expr": {
           "path": "run.dead"
         }
@@ -83,7 +83,7 @@ expression: json
           "title": "Reach the Grove",
           "titleLineId": "rescueHalsin.reachGrove",
           "done": {
-            "raw": "run.region",
+            "cel": "run.region",
             "expr": {
               "path": "run.region"
             }
@@ -107,7 +107,7 @@ expression: json
           "title": "Free Halsin",
           "titleLineId": "rescueHalsin.freeHalsin",
           "done": {
-            "raw": "run.freed",
+            "cel": "run.freed",
             "expr": {
               "path": "run.freed"
             }
@@ -127,7 +127,7 @@ expression: json
           "amountMin": 50,
           "amountMax": 200,
           "when": {
-            "raw": "run.freed",
+            "cel": "run.freed",
             "expr": {
               "path": "run.freed"
             }
@@ -141,5 +141,15 @@ expression: json
         }
       ]
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
 }

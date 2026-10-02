@@ -7,7 +7,7 @@ pov: ilo
 on: sluice
 priority: 10
 once: false
-when: "holds(solved(sluice))"
+when: "holds('solved', ['sluice'])"
 ---
 
 ## Stacks

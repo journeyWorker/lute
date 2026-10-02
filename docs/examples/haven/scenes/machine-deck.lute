@@ -14,8 +14,8 @@ after: 'visited("haven.s01ep03")'
 
 @purser{code="0010" emotion="level" os}: Coupling five-six is outside tolerance. Release proceeds as scheduled.
 @narrator{code="0020"}: The ring had walked a finger's width off its seat. When the shed fired, module five would not let go — it would tear, and take the spine with it.
-@toma{code="0030" emotion="frayed" os when="holds(awake(toma))"}: Don't put a hand on that ring. It'll take the arm and thank you for it.
-@narrator{code="0040" when="!holds(awake(toma))"}: There was nobody down here to tell you which of the four handles was the one.
+@toma{code="0030" emotion="frayed" os when="holds('awake', ['toma'])"}: Don't put a hand on that ring. It'll take the arm and thank you for it.
+@narrator{code="0040" when="!holds('awake', ['toma'])"}: There was nobody down here to tell you which of the four handles was the one.
 
 /*
   The subject is a dummy. A relation may not be a `<match on>` subject
@@ -24,7 +24,7 @@ after: 'visited("haven.s01ep03")'
   guard never reads. See T7 in the drive-test findings log.
 */
 <match on="true">
-<when test="holds(awake(toma))">
+<when test="holds('awake', ['toma'])">
 ::auto{character="toma" anchor="port" action="brace"}
 @toma{code="0050" emotion="clipped"}: Shim's behind you. The steel one. Composite's for people who enjoy fires.
 @toma{code="0060" emotion="level"}: Quarter turn. Stop when it stops arguing with you.

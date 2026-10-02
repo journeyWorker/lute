@@ -3,8 +3,12 @@ title: The state model
 description: Lute's tiered scalar state — the run, user, and app lifetime namespaces (plus episode-local scene and schema-declared season tiers), how paths are declared (including enum-typed and per-entity paths), the path-sensitive definite-assignment rules that govern reads and writes, the paths only the engine writes, and prev.run / prev.season, the previous run's or season window's final values.
 ---
 
-Lute scalar state is a set of typed paths (`number`, `bool`, `string`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
+Lute scalar state is a set of typed paths (`int`, `double`, `bool`, `string`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
 
+
+As of 0.32, numeric state types are CEL `int` and `double`; `number` is
+removed. The compiled **execution IR** carries `owner: "engine"` for
+engine-owned declarations, and runtimes refuse content writes to those paths.
 | Namespace | Reset boundary | Typical use |
 |---|---|---|
 | `scene.*` | episode end (one `.lute` document; survives across its shots) | on-stage state, `scene.choices.*`, `scene.visited.*` |
@@ -42,13 +46,13 @@ Every path read *or written* MUST be declared with a `type` and an optional `def
 
 ```yaml
 state:
-  scene.affect.elena: { type: number, default: 0 }
+  scene.affect.elena: { type: int, default: 0 }
   run.choseHelp:      { type: bool,   default: false }
-  user.level:         { type: number, default: 1 }
+  user.level:         { type: int, default: 1 }
   app.rating:         { type: { enum: [teen, adult] }, default: teen }
 ```
 
-Author `state:` is **scalar-only** — `number`, `bool`, `string`, or `enum`, and nothing else. An `enum` path nests its members inside `type:` — `{ type: { enum: [teen, adult] } }`. A sibling `values:` key is not a declaration key at all: `{ type: enum, values: [teen, adult] }` is `E-STATE-DECL` on the schema, and a document that `uses:` that schema fails with `E-USES-PARSE` carrying the `E-STATE-DECL` beneath it. [`docs/examples/showcase/schema/base.schema.yaml:9`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/schema/base.schema.yaml) is the same declaration, written correctly. A declaration whose `type` is `list`, `record`, or `map` is `E-STATE-COLLECTION`, and the declaration is *not installed*: a later read of that path reports a plain `E-UNDECLARED` rather than resolving against a phantom collection-typed slot.
+Author `state:` is **scalar-only** — `int`, `double`, `bool`, `string`, or `enum`, and nothing else. An `enum` path nests its members inside `type:` — `{ type: { enum: [teen, adult] } }`. A sibling `values:` key is not a declaration key at all: `{ type: enum, values: [teen, adult] }` is `E-STATE-DECL` on the schema, and a document that `uses:` that schema fails with `E-USES-PARSE` carrying the `E-STATE-DECL` beneath it. [`docs/examples/showcase/schema/base.schema.yaml:9`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/schema/base.schema.yaml) is the same declaration, written correctly. A declaration whose `type` is `list`, `record`, or `map` is `E-STATE-COLLECTION`, and the declaration is *not installed*: a later read of that path reports a plain `E-UNDECLARED` rather than resolving against a phantom collection-typed slot.
 
 Enforcement is new in 0.8.0, but it removes an ambiguity rather than adding a restriction. The normative text always said scalar, but the shape validator accepted the whole type union and the runtime documentation described `list<…>` / `map<…>` / `record` as valid entry types — three sources, three answers. All three now agree. Collections were always meant to be modelled **relationally**: an inventory is `ownsItem(item)`, not a `list<string>`, so reach for [`relations:`](/state/facts-and-datalog/) instead. Collection-shaped entry types do still reach the compiled artifact, but only through a plugin `state_shapes` expansion — never from an author's `state:` block.
 
@@ -97,17 +101,17 @@ A condition compares it with a member, `run.stalker == 'ward'`, and in a beat th
 
 ### One path per entity: `per:`
 
-A number kept for each member of a group, such as a companion's approval, is one declaration with **`per:`** (dsl 0.24.0 §3) rather than one line per member:
+A number kept for each member of a group, such as a companion's approval, is one `int` or `double` declaration with **`per:`** (dsl 0.24.0 §3) rather than one line per member:
 
 ```yaml
 state:
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 entities:
   person:    { members: [isolde, corvin, hollis] }
   companion: { subsetOf: person, members: [isolde, corvin] }
 ```
 
-This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: number, default: 0 }`, and the compiled state table carries one entry per member. Content addresses a member by name: `::set{run.approval.isolde += 1}`, `when="run.approval.corvin >= 3"`, `{{run.approval.isolde}}`. The family itself is not a path, so `when="run.approval > 1"` is `E-UNDECLARED`, and the message says the path is entity-indexed and asks for a member. Three places reach a member through something other than its name:
+This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: int, default: 0 }`, and the compiled state table carries one entry per member. Content addresses a member by name: `::set{run.approval.isolde += 1}`, `when="run.approval.corvin >= 3"`, `{{run.approval.isolde}}`. The family itself is not a path, so `when="run.approval > 1"` is `E-UNDECLARED`, and the message says the path is entity-indexed and asks for a member. Three places reach a member through something other than its name:
 
 - A Datalog rule reads it through a variable, `cel("run.approval[P] >= 3")` (see [Facts and Datalog](/state/facts-and-datalog/#entity-indexed-state-in-a-rule-guard)).
 - A component, or a beat template's header, names it through a param, `F[@param]`. A component with `effects: true` writes `::set{run.approval[@who] += @delta}`, and each `::use` writes the member its argument names; an argument outside the kind is `E-COMPONENT-ARG` (see [Components](/language/components-and-extends/)). A [beat template](/language/beats/#beat-templates-use) header reads `when: "run.approval[@who] >= 3"`; the dot form `run.approval.@who` also works there, with a `W-TEMPLATE-DOT-PARAM` hint toward the brackets.
@@ -121,7 +125,7 @@ Members may start from different values. A map `default:` gives each member its 
 
 ```yaml
 state:
-  run.approval: { type: number, default: { _: 0, isolde: 2 }, per: companion }
+  run.approval: { type: int, default: { _: 0, isolde: 2 }, per: companion }
 entities:
   companion: { members: [isolde, corvin] }
 ```
@@ -132,7 +136,7 @@ entities:
 
 `::set{path <op> celExpr}` writes one path per directive (`=`, `+=`, `-=`, `*=`). Writes target `scene.*` / `run.*` / `user.*`; `app.*` is **content-read-only** (the settings layer owns it — `::set{app.*}` is a static error), and so is every path the engine writes ([below](#paths-the-engine-writes)).
 
-Definite assignment is **path-sensitive**. Reading an undeclared path is `E-UNDECLARED`. A `scene.*` read follows ordinary flow analysis. A `run`/`user`/`app` path is **maybe-unset at scene entry** unless it carries a schema `default`; after entry, a dominating `::set{p = …}` write or a guard (`has(p)` / `isSet(p)`) proves it — otherwise the read is `E-MAYBE-UNSET`. A compound assignment (`+=`/`-=`/`*=`) reads the old value first, so only `=` may be a path's first write. A defaulted path is always assigned; the checker and engine share the one schema snapshot, so they can never disagree.
+Definite assignment is **path-sensitive**. Reading an undeclared path is `E-UNDECLARED`. A `scene.*` read follows ordinary flow analysis. A `run`/`user`/`app` path is **maybe-unset at scene entry** unless it carries a schema `default`; after entry, a dominating `::set{p = …}` write or a guard (`has(p)` for identifier paths, or `'k' in m` for a non-identifier key) proves it — otherwise `E-MAYBE-UNSET`. A compound assignment (`+=`/`-=`/`*=`) reads the old value first, so only `=` may be a path's first write. A defaulted path is always assigned; the checker and engine share the one schema snapshot, so they can never disagree.
 
 A write may carry its own guard: `::set{run.best = run.floor when="run.floor > 3"}` (dsl 0.24.0 §1) writes only when the condition holds, like a one-arm `<match>` around it. Because the write may not happen, it is **never** a definite assignment. A later read of an undefaulted path it writes is still maybe-unset:
 
@@ -141,8 +145,8 @@ A write may carry its own guard: `::set{run.best = run.floor when="run.floor > 3
 kind: scene
 id: tower.landing
 state:
-  run.floor: { type: number, default: 1 }
-  run.best: { type: number }
+  run.floor: { type: int, default: 1 }
+  run.best: { type: int }
 ---
 
 ## The Landing
@@ -151,7 +155,7 @@ state:
 @narrator: Your best is floor {{run.best}}.
 ```
 
-Give `run.best` a default, or guard the read with `isSet(run.best)`. The `when=` is checked like a line's: a guard that can never hold is `E-ARM-DEAD`, and `when=` is the only attribute a `::set` takes, since everything else after the operator is the expression.
+Give `run.best` a default, or guard the read with `has(run.best)`. The `when=` is checked like a line's: a guard that can never hold is `E-ARM-DEAD`, and `when=` is the only attribute a `::set` takes, since everything else after the operator is the expression.
 
 ## Paths the engine writes
 
@@ -180,9 +184,9 @@ For state of your own that only the engine should write — a day counter, the r
 
 ```yaml
 state:
-  run.day:        { type: number, default: 1, owner: engine }
+  run.day:        { type: int, default: 1, owner: engine }
   run.outcome:    { type: { enum: [fell, fled, won] }, owner: engine }
-  user.bond.mara: { type: number, default: 0 }
+  user.bond.mara: { type: int, default: 0 }
 ```
 
 Reads are unrestricted: `when="run.day > 1"` and `{{run.day}}` are ordinary reads. A content `::set` of the path, or of a field under it, is `E-ENGINE-OWNED-WRITE`:
@@ -215,7 +219,7 @@ A hub between runs often wants to talk about the run that just ended: where the 
 kind: scene
 id: hearth.welcomeBack
 state:
-  run.floor: { type: number, default: 0 }
+  run.floor: { type: int, default: 0 }
   run.outcome: { type: { enum: [fell, fled, won] } }
 ---
 
@@ -237,11 +241,11 @@ state:
     @wren: First climb? Stay close to the wall.
   </when>
 </match>
-@wren{when="isSet(prev.run.floor) && prev.run.floor >= 5"}: Floor five, though. Better than most.
+@wren{when="has(prev.run.floor) && prev.run.floor >= 5"}: Floor five, though. Better than most.
 ```
 
 - **You declare nothing.** Every declared `run.<path>` gets a mirror `prev.run.<path>` of the same type. `prev.*` is reserved: declaring a path under it is `E-STATE-NAMESPACE`, and a typo such as `prev.run.flor` is `E-UNDECLARED` with a did-you-mean.
-- **It may be unset.** The mirror has no default, since no run has ended when the first one starts. Every read needs an `isSet(…)` guard or an `unset` arm, otherwise it is `E-MAYBE-UNSET`, even when `run.<path>` has a default. The `unset` arm above answers the first run, and a run that ended with `run.outcome` never set.
+- **It may be unset.** The mirror has no default, since no run has ended when the first one starts. Every read needs an `has(…)` guard or an `unset` arm, otherwise it is `E-MAYBE-UNSET`, even when `run.<path>` has a default. The `unset` arm above answers the first run, and a run that ended with `run.outcome` never set.
 - **It is read-only.** A content `::set` of it is `E-QUEST-RESERVED-WRITE`.
 - **The engine takes the snapshot.** When a run ends, the engine copies every `run.*` value into `prev.run.*` before the new run resets `run.*`. The mirror is a checker declaration, not a row of the compiled state table, so artifacts do not change.
 

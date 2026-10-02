@@ -5,7 +5,7 @@ title: Ash Tower, through the lens
 on: enterPlace
 target: place.ashTowerHall
 priority: 30
-when: "holds(hasItem(spectralLens)) && run.lair.towerSiege != 'cleared'"
+when: "holds('hasItem', ['spectralLens']) && run.lair.towerSiege != 'cleared'"
 ---
 
 // With the spectralLens (mid, mid.gameCorner) the thing on the stairs can be

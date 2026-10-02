@@ -541,6 +541,12 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 명세: [dsl 0.25.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
 
+### E-FACT-QUERY
+
+팩트 조회 호출(`holds`, `count`, `countDistinct`, `validAt`)이 0.32에서 요구하는 목록 형식 `name('relation', ['arg', …])`을 사용하지 않았습니다.
+
+명세: [dsl 0.32.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md)
+
 ### E-FACT-TIER-WRITE
 
 콘텐츠가 `app` 등급 기본 관계를 assert하거나 retract했지만, 이는 `app.*` 스칼라 상태와 마찬가지로 엔진 소유의 읽기 전용입니다.
@@ -833,7 +839,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-ASSET-SEGMENT-TYPE
 
-플러그인의 `assetKinds` export가 세그먼트 위치에서 허용되는 네 가지 타입(`enum`, `number`, `string`, `providerRef`) 밖의 세그먼트 타입을 선언했습니다.
+플러그인의 `assetKinds` export가 세그먼트 위치에서 허용되는 타입(`enum`, `int`, `double`, `string`, `providerRef`) 밖의 세그먼트 타입을 선언했습니다.
 
 ### E-PLUGIN-DUP-ACROSS
 
@@ -1007,7 +1013,7 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 ### E-REF-TYPE
 
-`@ref`가 채우는 CEL 슬롯·컴포넌트 인자·`{{…}}` 보간 위치와 맞지 않는 타입을 산출합니다 — 렌더링 불가능한 산출 타입이거나, 숫자가 아닌 값에 `:number` 형식 힌트를 붙인 경우를 포함합니다.
+`@ref`가 채우는 CEL 슬롯·컴포넌트 인자·`{{…}}` 보간 위치와 맞지 않는 타입을 산출합니다 — 렌더링 불가능한 산출 타입이거나, `int`/`double`이 아닌 값에 숫자 형식 힌트를 붙인 경우를 포함합니다.
 
 명세: [dsl §8](/spec/), [dsl §7.6](/spec/), [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 
@@ -1101,15 +1107,19 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 규칙의 `cel("...")` 가드가 `@def`/`@def(args)` 참조를 전개할 수 없습니다 — def가 선언되지 않았거나, 인자 개수가 맞지 않거나, 가드에서 사용할 수 없는 형태입니다.
 
-### E-SEASON-DECL
+### E-RUN-OWNED-WRITE
 
-`seasons:` 선언이 잘못되었거나(맵이 아닌 항목, 없거나 빈 `live`, 알 수 없는 키, 잘못된 시즌 이름), 두 스키마가 한 시즌을 다르게 선언했거나, `season.<name>.*` 경로·`once: season:<name>`·`tier="season:<name>"`가 선언되지 않은 시즌을 가리키거나, 장면의 옛 `season:` 키(에피소드 번호)에 선언된 시즌 이름을 썼습니다. `prev.season.*`에 쓰는 것은 `E-QUEST-RESERVED-WRITE`입니다.
+`lute run`이 엔진 소유 상태 경로에 쓰거나 예약된 관계를 assert/retract하는 명령을 포함한 실행 IR을 받았습니다.
+
+명세: [dsl 0.32.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md)
+
+### E-SEASON-DECL
 
 명세: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
 
 ### E-SET-OP-TYPE
 
-`::set`의 복합 연산자(`+=`/`-=`/`*=`)가 선언된 타입이 `number`가 아닌 경로를 대상으로 합니다.
+`::set`의 복합 연산자(`+=`/`-=`/`*=`)가 선언된 타입이 `int`나 `double`이 아닌 경로를 대상으로 합니다.
 
 명세: [dsl §7.3.4](/spec/)
 
@@ -1211,7 +1221,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-TEMPORAL-ARG
 
-내러티브 시간 값(`now()` 등)이 다른 내러티브 시간 값과의 순서 비교나 `validAt`의 두 번째 인자가 아닌 다른 자리(단독 값, 산술, 인덱싱, 필드 접근, 리스트 리터럴, 또는 `!=`)에 사용되었습니다.
+내러티브 시간 값(`now()` 등)이 다른 내러티브 시간 값과의 순서 비교나 `validAt`의 세 번째 인자가 아닌 다른 자리(단독 값, 산술, 인덱싱, 필드 접근, 리스트 리터럴, 또는 `!=`)에 사용되었습니다.
 
 명세: [dsl 0.3.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
@@ -1669,9 +1679,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 명세: [dsl 0.5.1 §1.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md)
 
-### W-QUEST-STATE-ISSET
+### W-QUEST-STATE-HAS
 
-퀘스트의 상태는 항상 값을 가지고 있어(활성화 전에는 `unset`, 이후에는 실제 상태) `isSet(quest.<id>.state)` 조건은 항상 참이므로 아무것도 검증하지 않습니다.
+퀘스트의 상태는 항상 값을 가지고 있어(활성화 전에는 `unset`, 이후에는 실제 상태) `has(quest.<id>.state)` 조건은 항상 참이므로 아무것도 검증하지 않습니다.
 
 ### W-QUEST-TIER-IMPLICIT
 

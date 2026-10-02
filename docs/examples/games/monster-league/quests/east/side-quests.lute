@@ -14,8 +14,8 @@ title: Eastmarch side quests
 
 // ── The Meridian: beat every passenger who wants a battle ────────────────
 <quest id="eastMeridianPassengers" title="Every passenger aboard" start="visited('east.ferryRival')">
-  <objective id="crew" title="Beat the two sailors" done="holds(defeated(meridianSailorBram)) && holds(defeated(meridianSailorOona))"/>
-  <objective id="guests" title="Beat the four guests" done="holds(defeated(meridianGentlemanHale)) && holds(defeated(meridianLassPip)) && holds(defeated(meridianFisherTeo)) && holds(defeated(meridianBeautyCeline))"/>
+  <objective id="crew" title="Beat the two sailors" done="holds('defeated', ['meridianSailorBram']) && holds('defeated', ['meridianSailorOona'])"/>
+  <objective id="guests" title="Beat the four guests" done="holds('defeated', ['meridianGentlemanHale']) && holds('defeated', ['meridianLassPip']) && holds('defeated', ['meridianFisherTeo']) && holds('defeated', ['meridianBeautyCeline'])"/>
   <reward kind="MONEY" amount="2000"/>
   <on event="questComplete">
     @meridianSteward: Every passenger on the Meridian, beaten fair and square. The captain has asked me to present you with the ship's compliments, and something more practical.
@@ -25,7 +25,7 @@ title: Eastmarch side quests
 // ── Ashgrove: a lantern for the tower (either way closes it) ─────────────
 <quest id="eastLanterns" title="A lantern for Ash Tower" complete="any">
   <objective id="night" title="Walk with the lanterns on a Friday night" done="visited('east.lanternNight')"/>
-  <objective id="ghost" title="Or bring Yun a ghost to carry the light" on="talk" target="npc.ashgroveLanternMaker" done="holds(caughtType(ghost))"/>
+  <objective id="ghost" title="Or bring Yun a ghost to carry the light" on="talk" target="npc.ashgroveLanternMaker" done="holds('caughtType', ['ghost'])"/>
   <reward kind="ITEM" amount="1" target="spellTag"/>
   <on event="questComplete">
     @ashgroveLanternMaker: There. Now there's a light up there that's yours. Take this; it was my mother's. Ghosts like it. Well. Some ghosts.
@@ -51,7 +51,7 @@ title: Eastmarch side quests
 </quest>
 
 <quest id="eastGardensBees" title="A new queen for the hive" activate="accept">
-  <objective id="queen" title="Show Tom a waspire" on="talk" target="npc.bloomfieldBeekeeper" done="holds(caught(waspire))"/>
+  <objective id="queen" title="Show Tom a waspire" on="talk" target="npc.bloomfieldBeekeeper" done="holds('caught', ['waspire'])"/>
   <on event="questComplete">
     @bloomfieldBeekeeper: A waspire! Look at her. The hive'll follow her anywhere. Don't worry, she'll still be yours. They just like to know she's about.
   </on>
@@ -60,7 +60,7 @@ title: Eastmarch side quests
 // ── The board: Portvolt's flickering lights ──────────────────────────────
 <quest id="eastPowerOutage" title="Board: Portvolt's lights keep flickering" accept="external">
   <objective id="plant" title="Find the old power plant down Route 8" done="visited('east.powerPlant')"/>
-  <objective id="tamsin" title="Get past the council's engineer" done="holds(defeated(powerPlantEngineerTamsin))"/>
+  <objective id="tamsin" title="Get past the council's engineer" done="holds('defeated', ['powerPlantEngineerTamsin'])"/>
   <reward kind="MONEY" amount="3000"/>
   <on event="questComplete">
     @narrator: The council's note on the Center board has been stamped PAID. Somebody has drawn a small lightning bird in the corner.
@@ -69,7 +69,7 @@ title: Eastmarch side quests
 
 // ── Keeper Sol's storm bird ──────────────────────────────────────────────
 <quest id="eastThunderwing" title="The storm bird">
-  <objective id="catch" title="Find what sits on the power plant's chimney" done="holds(caught(thunderwing))"/>
+  <objective id="catch" title="Find what sits on the power plant's chimney" done="holds('caught', ['thunderwing'])"/>
   <on event="questComplete">
     @portvoltKeeper{vo}: So it was real. I'll sleep tonight, for the first time in forty years.
   </on>

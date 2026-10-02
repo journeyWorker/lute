@@ -82,7 +82,7 @@ one piece of the lore surface against the same world schema the scenes use:
   plaque selects its text with an ordinary `<match on="run.shedPressure">`
   (range arms `2..` / `1` / `<otherwise>`). `vesnaManifestBark` is an NPC bark
   attached to `npc.vesna`, eligible only while
-  `holds(knows(vesna, manifest))` — the fact the ledger (and several scenes)
+  `holds('knows', ['vesna', 'manifest'])` — the fact the ledger (and several scenes)
   reveal.
 
 `lute lore docs/examples/haven` prints the resulting map: entries by target and
@@ -162,7 +162,7 @@ findings, and a reader who "fixes" one deletes the evidence.
    stays because it is the corpus's only worked example of what the
    connectivity layer does with a bare quest, and because it is honest about the
    story — the coupling can be held the moment somebody who can halt the shed is
-   awake, which `start="holds(can_halt(toma))"` already says, so there is no
+   awake, which `start="holds('can_halt', ['toma'])"` already says, so there is no
    route prerequisite to declare (**T4.7**, and the *T4 controller decision*).
 
 Separately, this tree used to trigger 14 project-wide `W-UNPROVEN-RELATIONAL`

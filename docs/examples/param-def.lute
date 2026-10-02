@@ -4,10 +4,10 @@ character: demo
 season: 1
 episode: 3
 state:
-  scene.score: { type: number, default: 0 }
+  scene.score: { type: int, default: 0 }
   scene.flag: { type: bool, default: false }
 defs:
-  atLeast: { type: bool, params: { n: number }, cel: "scene.score >= 1" }
+  atLeast: { type: bool, params: { n: int }, cel: "scene.score >= 1" }
 ---
 
 ## The Parameterized Guard

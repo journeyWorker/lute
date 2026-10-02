@@ -1,0 +1,8 @@
+{
+  "name": "lute-cel-equivalence",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": { "check": "node check.mjs", "test": "node check.mjs ../testdata/sample.jsonl" },
+  "dependencies": { "@bufbuild/cel": "0.6.1" }
+}

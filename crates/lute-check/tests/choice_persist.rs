@@ -87,10 +87,10 @@ fn into_bool_default_records_clean_on_hub_choice() {
 
 #[test]
 fn into_number_requires_value() {
-    // `run.score: number` — `value` is REQUIRED for a number path; omitting it
+    // `run.score: int` — `value` is REQUIRED for an int path; omitting it
     // is `E-INTO-VALUE`.
     let t = format!(
-        "{HDR}state:\n  run.score: {{ type: number }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  run.score: {{ type: int }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
          <choice id=\"c\" label=\"Score\" into=\"run.score\">\n\
          </choice>\n\
@@ -98,16 +98,16 @@ fn into_number_requires_value() {
     );
     assert!(
         codes(&t).contains(&"E-INTO-VALUE".to_string()),
-        "a number record path without `value` must flag E-INTO-VALUE; got {:?}",
+        "an int record path without `value` must flag E-INTO-VALUE; got {:?}",
         codes(&t)
     );
 }
 
 #[test]
-fn into_number_value_ok() {
-    // `run.score: number` with `value="3"` — a numeric literal is compatible → clean.
+fn into_int_value_ok() {
+    // `run.score: int` with `value="3"` — an integer literal is compatible → clean.
     let t = format!(
-        "{HDR}state:\n  run.score: {{ type: number }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  run.score: {{ type: int }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
          <choice id=\"c\" label=\"Score\" into=\"run.score\" value=\"3\">\n\
          </choice>\n\

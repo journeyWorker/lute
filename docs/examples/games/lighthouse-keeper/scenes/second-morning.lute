@@ -23,4 +23,4 @@ after: 'visited("rock.arrival")'
   </when>
 </match>
 @inspector{mono}: {{clock.weekdayLabel}}. One more day before the Board wants my report. Hollis will bring whoever is willing to talk.
-@inspector{mono,when="holds(liar(maren))"}: And Maren Hale has some explaining to do.
+@inspector{mono,when="holds('liar', ['maren'])"}: And Maren Hale has some explaining to do.

@@ -64,7 +64,7 @@ fn scene(body: &str) -> String {
 #[test]
 fn per_member_defaults_reach_play() {
     let schema = format!(
-        "state:\n  run.rep: {{ type: number, default: {{ _: 0, sefa: 2, tavi: -1 }}, per: npc }}\n{KINDS}{GIFTED}"
+        "state:\n  run.rep: {{ type: int, default: {{ _: 0, sefa: 2, tavi: -1 }}, per: npc }}\n{KINDS}{GIFTED}"
     );
     let body = scene(
         "@narrator: {{run.rep.sefa}} {{run.rep.quill}} {{run.rep.tavi}}.\n\
@@ -82,8 +82,8 @@ fn per_member_defaults_reach_play() {
 #[test]
 fn per_member_default_maps_are_checked() {
     let bad = format!(
-        "state:\n  run.rep: {{ type: number, default: {{ sefa: 2, zed: 1, quill: x }}, per: npc }}\n  \
-         run.flat: {{ type: number, default: {{ a: 1 }} }}\n{KINDS}{GIFTED}"
+        "state:\n  run.rep: {{ type: int, default: {{ sefa: 2, zed: 1, quill: x }}, per: npc }}\n  \
+         run.flat: {{ type: int, default: {{ a: 1 }} }}\n{KINDS}{GIFTED}"
     );
     let dir = project("per-bad", &bad, &[("s.lute", &scene("@narrator: hi\n"))]);
     let (_, t) = run(&dir, &["check-project", "."]);
@@ -102,7 +102,7 @@ fn per_member_default_maps_are_checked() {
 #[test]
 fn kind_reads_and_schema_anchor() {
     let schema = format!(
-        "state:\n  user.bond: {{ type: number, default: 0, per: bonded }}\n\
+        "state:\n  user.bond: {{ type: int, default: 0, per: bonded }}\n\
          entities:\n  npc: {{ members: [sefa, quill, tavi] }}\n  item: {{ members: [compass, shell] }}\n  \
          bonded: {{ subsetOf: npc, members: [sefa, quill] }}\n  confidant: {{ subsetOf: bonded, members: [sefa] }}\n  \
          unused: {{ members: [x] }}\n\
@@ -111,7 +111,7 @@ fn kind_reads_and_schema_anchor() {
     );
     let body = scene(
         "/* holds(unused(x)) */\n// holds(unused(x))\n\
-         @narrator{when=\"holds(trusts(sefa))\"}: Trusted.\n@narrator: x\n",
+         @narrator{when=\"holds('trusts', ['sefa'])\"}: Trusted.\n@narrator: x\n",
     );
     let dir = project("unread", &schema, &[("s.lute", &body)]);
     let (_, t) = run(&dir, &["check-project", "."]);
@@ -131,7 +131,7 @@ fn component_params_bind_into_fact_atoms() {
     let schema = format!("{KINDS}{GIFTED}");
     let ok = scene(
         "::use{component=\"gift\" who=\"sefa\" item=\"compass\"}\n\
-         @narrator{when=\"holds(gifted(sefa, compass))\"}: Gifted.\n@narrator: x\n",
+         @narrator{when=\"holds('gifted', ['sefa', 'compass'])\"}: Gifted.\n@narrator: x\n",
     );
     let dir = project("param-ok", &schema, &[("s.lute", &ok)]);
     let (code, t) = run(&dir, &["check-project", "."]);
@@ -206,7 +206,7 @@ const CORE: &str = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\nd
 /// argument must be a member of the family's kind.
 #[test]
 fn a_component_indexes_a_per_family_by_its_param() {
-    let schema = "state:\n  run.approval: { type: number, default: 0, per: companion }\n\
+    let schema = "state:\n  run.approval: { type: int, default: 0, per: companion }\n\
                   entities:\n  companion: { members: [isolde, corvin] }\n\
                   cast:\n  isolde: { name: Isolde }\n  corvin: { name: Corvin }\n  oda: { name: Oda }\n";
     let comp = "---\ncomponent: react\neffects: true\nparams:\n  who: speaker\n---\n\n## R\n\n\
@@ -320,7 +320,7 @@ fn a_cast_present_on_an_undeclared_path_is_an_error() {
 #[test]
 fn a_component_write_produces_only_at_its_use_sites() {
     let schema = format!(
-        "{KINDS}{GIFTED}cast:\n  sefa: {{ name: Sefa, present: \"!holds(gifted(sefa, compass))\" }}\n"
+        "{KINDS}{GIFTED}cast:\n  sefa: {{ name: Sefa, present: \"!holds('gifted', ['sefa', 'compass'])\" }}\n"
     );
     let a = "---\nkind: scene\nid: a\non: visit\n---\n\n## A\n\n@sefa: Before the gift.\n::assert{gifted(sefa, compass)}\n";
     let other = |who: &str| {

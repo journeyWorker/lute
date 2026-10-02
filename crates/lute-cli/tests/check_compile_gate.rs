@@ -61,9 +61,9 @@ fn scene_with_a_def_cycle(tag: &str, cycle: bool) -> PathBuf {
         &file,
         format!(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
-             state:\n  run.n: {{ type: number, default: 0 }}\n\
-             defs:\n  a:\n    cel: \"@b + 1\"\n    type: number\n\
-             \x20 b:\n    cel: \"{b}\"\n    type: number\n---\n\n\
+             state:\n  run.n: {{ type: int, default: 0 }}\n\
+             defs:\n  a:\n    cel: \"@b + 1\"\n    type: int\n\
+             \x20 b:\n    cel: \"{b}\"\n    type: int\n---\n\n\
              ## Shot 1.\n::set{{run.n = @a}}\n@x: hi\n"
         ),
     )
@@ -147,8 +147,8 @@ fn the_compile_gate_runs_only_past_the_check_gate() {
     std::fs::write(
         &file,
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
-         defs:\n  a:\n    cel: \"@b + 1\"\n    type: number\n\
-         \x20 b:\n    cel: \"@a + 1\"\n    type: number\n---\n\n\
+         defs:\n  a:\n    cel: \"@b + 1\"\n    type: int\n\
+         \x20 b:\n    cel: \"@a + 1\"\n    type: int\n---\n\n\
          ## Shot 1.\n::set{run.n = @a}\n@x: hi\n",
     )
     .unwrap();
@@ -308,7 +308,7 @@ fn scene_with_imported_def(tag: &str, ready_decl: &str) -> PathBuf {
     let dir = temp_dir(tag);
     std::fs::write(
         dir.join("world.schema.yaml"),
-        format!("state:\n  run.n: {{ type: number, default: 0 }}\ndefs:\n  ready: {ready_decl}\n"),
+        format!("state:\n  run.n: {{ type: int, default: 0 }}\ndefs:\n  ready: {ready_decl}\n"),
     )
     .unwrap();
     let file = dir.join("s.lute");

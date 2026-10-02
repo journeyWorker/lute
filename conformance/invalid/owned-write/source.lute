@@ -1,0 +1,9 @@
+---
+kind: scene
+id: ownedWrite
+luteVersion: "0.32.0"
+title: Invalid Owned Write
+uses: ./schema.yaml
+---
+## Invalid
+::set{run.day = 2}

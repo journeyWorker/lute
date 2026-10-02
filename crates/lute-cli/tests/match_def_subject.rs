@@ -104,8 +104,8 @@ fn a_def_subject_without_a_portable_expr_takes_its_true_arm_in_play() {
          <otherwise>\n    @narrator: (match otherwise) Alone.\n  </otherwise>\n</match>",
     );
     let arms = arms_of(&dir);
-    assert_eq!(arms[0]["test"], "(visited('find')) == true", "{arms:#?}");
-    assert!(arms[0].get("expr").is_none(), "{arms:#?}");
+    assert_eq!(arms[0]["test"]["cel"], "(visited(\"find\") == true)", "{arms:#?}");
+    assert_eq!(arms[0]["test"]["authored"], "is=true", "{arms:#?}");
 
     let (code, out) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
     assert_eq!(code, Some(0), "{out}");
@@ -124,7 +124,7 @@ fn an_is_arm_with_an_unportable_test_still_compares_its_subject() {
     );
     let arms = arms_of(&dir);
     assert_eq!(
-        arms[0]["test"], "run.mood == 'calm' && (visited('find'))",
+        arms[0]["test"]["cel"], "((run.mood == \"calm\") && visited(\"find\"))",
         "{arms:#?}"
     );
 

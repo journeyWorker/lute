@@ -82,8 +82,8 @@ fn errors(ds: &[Diagnostic]) -> Vec<(&str, &str)> {
         .collect()
 }
 
-const WORLD: &str = "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
-                     run.oil: { type: number, default: 1 }\n  \
+const WORLD: &str = "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
+                     run.oil: { type: int, default: 1 }\n  \
                      run.knows: { type: bool, default: false }\n  \
                      run.name: { type: string, default: \"minsu\" }\n  \
                      run.hour: { type: { enum: [h02, h03, h04] }, default: h02 }\n  \
@@ -112,16 +112,16 @@ fn a_comparison_between_types_is_a_type_error() {
             "visited('l') > 2",
             &["`visited('l')` is a bool", "not how often"][..],
         ),
-        ("visited('l') == 1", &["compares a bool with a number"]),
+        ("visited('l') == 1", &["compares a bool with an int"]),
         (
             "run.oil == true",
-            &["compares a number with a bool", "never true"],
+            &["compares an int with a bool", "never true"],
         ),
         (
             "run.hour >= 'h03'",
             &["`>=` compares numbers", "`run.hour in ['h03', 'h04']`"],
         ),
-        ("run.day == 'monday'", &["compares a number with a string"]),
+        ("run.day == 'monday'", &["compares an int with a string"]),
         (
             "run.oil == '3'",
             &["write the number without quotes: `run.oil == 3`"],
@@ -355,7 +355,7 @@ fn a_nested_def_fault_names_the_def_that_writes_it() {
 /// family's type.
 #[test]
 fn an_indexed_family_read_has_the_family_type() {
-    let family = "  user.bond: { type: number, default: 0, per: place }\n";
+    let family = "  user.bond: { type: int, default: 0, per: place }\n";
     let schema = WORLD.replacen("state:\n", &format!("state:\n{family}"), 1);
     let imps = imports(&[(
         "world.schema.yaml",
@@ -509,16 +509,19 @@ fn an_engine_path_typo_names_the_engine_shapes() {
     }
 }
 
-/// T3-4: a CEL-profile refusal names the fix — `holds(…)` for a bare
-/// relation atom or `has(atom)`, the quest state for `completed()` in a
-/// condition, a quoted `visited()` id, and no internal operator names in
-/// `after:`.
+/// T3-4: a CEL-profile refusal names the fix for a quest-state shortcut,
+/// a quoted `visited()` id, and no internal operator names in `after:`.
+///
+/// Bare relation atoms and `has(relation(...))` were removed in 0.32; the
+/// list-form fact-query contract is exercised by `fact_query.rs`.
 #[test]
 fn a_profile_refusal_names_the_fix() {
     let rels = "relations:\n  knows: { args: [place], tier: run }\n";
     for (when, fix) in [
-        ("knows(village)", "holds(knows(village))"),
+        ("knows(village)", "holds('knows', ['village'])"),
         ("has(knows(village))", "holds(knows(village))"),
+        ("holds(knows(village))", "wrong list-form fact-query arity"),
+        ("isSet(run.x)", "isSet` was removed"),
         ("completed('q1')", "quest.q1.state == 'complete'"),
         ("visited(village.gate)", "visited('village.gate')"),
         ("$oil > 1", "did you mean `run.oil`?"),
@@ -561,7 +564,7 @@ fn a_per_family_may_index_a_kind_another_schema_declares() {
         "entities:\n  place: { members: [village, lighthouse] }\n",
         "",
     );
-    let family = "  user.bond: { type: number, default: 0, per: place }\n";
+    let family = "  user.bond: { type: int, default: 0, per: place }\n";
     let world = world.replacen("state:\n", &format!("state:\n{family}"), 1);
     let imps = imports(&[
         (
@@ -599,8 +602,8 @@ fn schemas_are_cross_checked() {
                 entities:\n  slot: { members: [a, b] }\n---\n<beat id=\"b\" on=\"chime\" once=\"false\">\n  @narrator: x\n</beat>\n";
     let ds = diagnostics(text, world(""), "");
     assert!(ds.iter().any(|d| d.code == "E-DOMAIN-NAME-CLASH"), "{ds:?}");
-    let prefix = "  run.lanterns: { type: number, default: 0 }\n  \
-                  run.lanterns.gold: { type: number, default: 0 }\n";
+    let prefix = "  run.lanterns: { type: int, default: 0 }\n  \
+                  run.lanterns.gold: { type: int, default: 0 }\n";
     let schema = WORLD.replacen("state:\n", &format!("state:\n{prefix}"), 1);
     let ds = diagnostics(
         &beat("  @narrator: x\n"),

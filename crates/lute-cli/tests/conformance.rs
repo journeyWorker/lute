@@ -59,18 +59,23 @@ fn corpus_dir() -> PathBuf {
 /// `[ -f "$d/artifact.json" ] || continue` filter. Name-sorted so failure
 /// reports are deterministic.
 fn fixtures() -> Vec<(String, PathBuf)> {
-    let root = corpus_dir();
-    let mut found: BTreeMap<String, PathBuf> = BTreeMap::new();
-    let entries = std::fs::read_dir(&root)
-        .unwrap_or_else(|e| panic!("cannot read corpus dir {}: {e}", root.display()));
-    for entry in entries {
-        let path = entry.expect("corpus dir entry").path();
-        if !path.join("artifact.json").is_file() {
-            continue;
+    fn visit(root: &Path, dir: &Path, found: &mut BTreeMap<String, PathBuf>) {
+        let entries = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("cannot read corpus dir {}: {e}", dir.display()));
+        for entry in entries {
+            let path = entry.expect("corpus dir entry").path();
+            if path.join("artifact.json").is_file() {
+                let rel = path.strip_prefix(root).unwrap();
+                let name = rel.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/");
+                found.insert(name, path);
+            } else if path.is_dir() {
+                visit(root, &path, found);
+            }
         }
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        found.insert(name, path);
     }
+    let root = corpus_dir();
+    let mut found = BTreeMap::new();
+    visit(&root, &root, &mut found);
     found.into_iter().collect()
 }
 
@@ -93,13 +98,15 @@ fn scratch(fixture: &str) -> PathBuf {
     dir
 }
 
-/// The README's exit-code table: a complete walk exits `0`, an incomplete one
-/// exits `3` (the §4.5 incomplete convention).
+/// The README's exit-code table, plus numeric codes for invalid-fixture
+/// transcripts that intentionally exercise runner rejection.
 fn expected_code(exit: &str) -> i32 {
     match exit {
         "complete" => 0,
         "incomplete" => 3,
-        other => panic!("unknown `exit` value {other:?} in a fixture transcript"),
+        other => other
+            .parse()
+            .unwrap_or_else(|_| panic!("unknown `exit` value {other:?} in a fixture transcript")),
     }
 }
 
@@ -125,11 +132,14 @@ fn every_fixture_replays_byte_identically() {
         let expected = read(&expected_path);
         let transcript: serde_json::Value = serde_json::from_str(&expected)
             .unwrap_or_else(|e| panic!("fixture {name}: expected.json is not JSON: {e}"));
-        let want_code = expected_code(
-            transcript["exit"]
-                .as_str()
-                .unwrap_or_else(|| panic!("fixture {name}: transcript has no `exit`")),
-        );
+        let want_code = match transcript["exit"].as_i64() {
+            Some(code) => code as i32,
+            None => expected_code(
+                transcript["exit"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("fixture {name}: transcript has no `exit`")),
+            ),
+        };
 
         let mock = dir.join("mock.yaml");
         let mut args = vec!["run".to_string(), path_arg(&dir.join("artifact.json"))];
@@ -144,6 +154,11 @@ fn every_fixture_replays_byte_identically() {
         if entry.is_file() {
             args.push("--entry".into());
             args.push(read(&entry).trim().to_string());
+        }
+        let beat = dir.join("beat.txt");
+        if beat.is_file() {
+            args.push("--beat".into());
+            args.push(read(&beat).trim().to_string());
         }
         args.push("--json".into());
 
@@ -163,6 +178,16 @@ fn every_fixture_replays_byte_identically() {
             continue;
         }
 
+        if name.starts_with("invalid/") {
+            let want = transcript["error"].as_str().unwrap_or("");
+            let got = String::from_utf8_lossy(&out.stderr);
+            if !got.contains(want) {
+                failures.push(format!(
+                    "{name}: stderr does not contain expected error {want:?}: {got}"
+                ));
+            }
+            continue;
+        }
         let got = String::from_utf8_lossy(&out.stdout).into_owned();
         if got != expected {
             failures.push(format!(
@@ -215,6 +240,9 @@ fn every_fixture_carries_live_stamps() {
             ("irVersion", lute_compile::LUTE_IR_VERSION),
             ("lute", lute_compile::LUTE_LANG_VERSION),
         ] {
+            if name == "invalid/stale-minor" && field == "irVersion" {
+                continue;
+            }
             let got = recorded[field].as_str().unwrap_or("<missing>");
             if got != live {
                 failures.push(format!(
@@ -228,6 +256,9 @@ fn every_fixture_carries_live_stamps() {
         // The `--json` transcript pins the major.minor IR line the engine
         // gated on, so it drifts on an IR bump the same way the artifact does.
         let transcript = json_at(&dir.join("expected.json"));
+        if name.starts_with("invalid/") {
+            continue;
+        }
         let live_line = ir_line(lute_compile::LUTE_IR_VERSION);
         let got_line = transcript["irVersion"].as_str().unwrap_or("<missing>");
         if got_line != live_line {
@@ -255,6 +286,9 @@ fn every_fixture_carries_live_stamps() {
             None => failures.push(format!(
                 "{name}: source.lute carries no `luteVersion:` stamp",
             )),
+        }
+        if name.starts_with("invalid/") {
+            continue;
         }
 
         let scratch = scratch(name);
@@ -330,6 +364,25 @@ fn every_fixture_has_the_documented_layout() {
         "malformed conformance fixture(s):\n{}",
         failures.join("\n")
     );
+}
+/// Grant records expose the §6 idempotency coordinates on every reward event.
+#[test]
+fn grant_identity_fields_are_recorded() {
+    for fixture in ["grant-instance", "grant-replay"] {
+        let transcript = json_at(&corpus_dir().join(fixture).join("expected.json"));
+        let grants = transcript["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|command| command["kind"] == "grant")
+            .collect::<Vec<_>>();
+        assert!(!grants.is_empty(), "{fixture} has no grant records");
+        for grant in grants {
+            assert!(grant["quest"].is_string());
+            assert!(grant["instance"].is_u64());
+            assert!(grant["index"].is_u64());
+        }
+    }
 }
 
 /// The major.minor line of a full `x.y.z` version — what the `--json`

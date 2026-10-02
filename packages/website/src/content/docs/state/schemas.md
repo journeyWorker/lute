@@ -15,8 +15,8 @@ since `0.27.0` its `seasons:` and its [`terminal:`](#the-end-of-the-game-termina
 ```yaml
 state:
   run.choseHelp: { type: bool, default: false }
-  run.day:       { type: number, default: 1, owner: engine }
-  user.level:    { type: number, default: 1 }
+  run.day:       { type: int, default: 1, owner: engine }
+  user.level:    { type: int, default: 1 }
 defs:
   helped: { type: bool, cel: "run.choseHelp" }
 ```
@@ -37,9 +37,9 @@ A schema for a party game with a day clock uses most of them at once:
 
 ```yaml
 state:
-  run.day:      { type: number, default: 1, owner: engine }
+  run.day:      { type: int, default: 1, owner: engine }
   run.slot:     { type: { domain: slot }, default: dawn, owner: engine }
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 enums:
   slot:
     members: [dawn, noon, dusk]
@@ -55,8 +55,8 @@ clock:
   slot: run.slot
   slots: [dawn, noon, dusk]
 cast:
-  isolde: { name: Isolde, present: "holds(inParty(isolde))", emotions: [calm, fierce] }
-  corvin: { name: "Corvin Hale", present: "holds(inParty(corvin))" }
+  isolde: { name: Isolde, present: "holds('inParty', ['isolde'])", emotions: [calm, fierce] }
+  corvin: { name: "Corvin Hale", present: "holds('inParty', ['corvin'])" }
   hollis: { name: Hollis }
 ```
 
@@ -75,10 +75,10 @@ says when it is live:
 
 ```yaml
 state:
-  user.month:             { type: number, default: 1, owner: engine }
+  user.month:             { type: int, default: 1, owner: engine }
   user.starfallOn:        { type: bool, default: false, owner: engine }
-  season.harvest.bushels: { type: number, default: 0 }
-  season.starfall.wishes: { type: number, default: 0 }
+  season.harvest.bushels: { type: int, default: 0 }
+  season.starfall.wishes: { type: int, default: 0 }
 defs:
   harvestLive:  { type: bool, cel: "user.month >= 9 && user.month <= 10" }
   starfallLive: { type: bool, cel: "user.starfallOn" }
@@ -92,7 +92,7 @@ Each season is a named state tier:
 - **`season.<name>.<field>`** paths are declared under `state:` like `run.*` and `user.*`, with
   defaults, and content reads and writes them (`::set{season.harvest.bushels += 1}`).
 - **`prev.season.<name>.<field>`** is a read-only mirror: the values the season's previous window
-  ended with. It is unset until the season has opened a second time, so guard a read with `isSet`,
+  ended with. It is unset until the season has opened a second time, so guard a read with `has`,
   as for [`prev.run.*`](/state/state-model/#the-previous-run). Writing it is `E-QUEST-RESERVED-WRITE`, as for `prev.run.*`.
 - **`once: season:<name>`** on a scene beat (`once="season:<name>"` on an entry or bundle beat)
   spends the beat until the season opens again. See [Beats](/language/beats/#scene-beat-keys).
@@ -112,12 +112,12 @@ season harvest closes
 ```
 
 ```lute
-@narrator{when="isSet(prev.season.harvest.bushels)"}: Last harvest you brought in {{prev.season.harvest.bushels}} bushels.
+@narrator{when="has(prev.season.harvest.bushels)"}: Last harvest you brought in {{prev.season.harvest.bushels}} bushels.
 ::set{season.harvest.bushels += 1}
 ```
 
 The compiled artifact and `project.index.json` carry the declarations as
-`seasons: [{ name, live: {raw, expr} }]`, with the `live` condition after `@def` expansion, so an
+`seasons: [{ name, live: {cel, expr, authored?} }]`, with the `live` condition after `@def` expansion, so an
 engine opens and resets each season from the same source the checker read.
 
 Everything wrong with a season is `E-SEASON-DECL`: a `seasons:` entry that is not a map, has a
@@ -135,7 +135,7 @@ occasion, a title screen or a menu between runs included, unless the occasion de
 ```yaml
 state:
   run.fate:   { type: { domain: fate }, default: open }
-  run.sanity: { type: number, default: 10 }
+  run.sanity: { type: int, default: 10 }
 enums:
   fate: [open, escaped, taken]
 terminal: "run.fate == 'taken' || run.sanity <= 0"
@@ -175,7 +175,7 @@ content never ends the game; see [The game is over](/tooling/play/#the-game-is-o
 meaning of "end".
 
 The compiled artifact and `project.index.json` carry the condition at the top level as
-`terminal: { raw, expr }`, after `@def` expansion and joined with `||` when several schemas
+`terminal: { cel, expr, authored? }`, after `@def` expansion and joined with `||` when several schemas
 declare one, so an engine stops raising occasions from the same source the checker read. Beside
 it, `terminalPersists: true` marks an ending that persists (omitted otherwise): an engine that
 offers a new run after the game is over does not offer one then.

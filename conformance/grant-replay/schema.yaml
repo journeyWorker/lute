@@ -1,0 +1,3 @@
+state:
+  run.ready: { type: bool, default: false }
+  run.finished: { type: bool, default: false }

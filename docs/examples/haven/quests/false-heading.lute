@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 uses: ../world.schema.yaml
 title: The False Heading
 ---
@@ -19,8 +19,8 @@ title: The False Heading
   enough ahead that a filed heading eleven years stale stops being the problem
   in the room.
 */
-<quest id="falseHeading" tier="run" title="The False Heading" start="holds(awake(ilsabet))" fail="run.shedPressure >= 3" follows="visited('haven.s01ep02') && active('whoWakes')">
-<objective id="hearTheNavigator" title="Hear where the ship is actually going" done="holds(knows(ilsabet, true_heading))"/>
+<quest id="falseHeading" tier="run" title="The False Heading" start="holds('awake', ['ilsabet'])" fail="run.shedPressure >= 3" follows="visited('haven.s01ep02') && active('whoWakes')">
+<objective id="hearTheNavigator" title="Hear where the ship is actually going" done="holds('knows', ['ilsabet', 'true_heading'])"/>
 <objective id="findThePaper" title="Put the filed voyage in front of somebody who can read it" done="@vesnaHasPaper" visibleWhen="quest.falseHeading.objectives.hearTheNavigator.done"/>
 <objective id="countTheYears" title="Be trusted enough to be believed about it" done="run.vesnaTrust >= 2" optional/>
 <on event="questComplete">

@@ -13,8 +13,8 @@ after: 'visited("ren.date")'
 ::bg{location="council" time="night"}
 ::auto{character="ren" anchor="center" action="fadeInUp"}
 @ren{emotion="sad"}: I'm leaving the council at the end of term. My father wants me on the mainland. He has a register of his own.
-@ren{emotion="fond" when="holds(cleared(ren, bittersweet))"}: I have the strangest feeling I told you this once before, and you let me go. Don't let me go.
-@ren{emotion="flustered" when="isSet(prev.run.route) && prev.run.route == 'ren'"}: Why do you look like you already know what I'm about to say?
+@ren{emotion="fond" when="holds('cleared', ['ren', 'bittersweet'])"}: I have the strangest feeling I told you this once before, and you let me go. Don't let me go.
+@ren{emotion="flustered" when="has(prev.run.route) && prev.run.route == 'ren'"}: Why do you look like you already know what I'm about to say?
 
 <branch id="renAsk" prompt="Ren has never asked anyone for anything.">
   <choice id="stay" label="Ask him to choose the island, for himself">

@@ -335,6 +335,7 @@ fn main() -> ExitCode {
             json,
             entry,
             beat,
+            dump_conditions,
         } => runner::run_artifact(
             &artifact,
             mock.as_deref(),
@@ -342,6 +343,7 @@ fn main() -> ExitCode {
             json,
             entry.as_deref(),
             beat.as_deref(),
+            dump_conditions.as_deref(),
         ),
         Command::Play {
             dir,
@@ -351,7 +353,17 @@ fn main() -> ExitCode {
             explain,
             ir,
             quiet,
-        } => play::run_play(&dir, &script, json, no_derive, &explain, ir, quiet),
+            dump_conditions,
+        } => play::run_play(
+            &dir,
+            &script,
+            json,
+            no_derive,
+            &explain,
+            ir,
+            quiet,
+            dump_conditions.as_deref(),
+        ),
         Command::Test {
             dir,
             json,

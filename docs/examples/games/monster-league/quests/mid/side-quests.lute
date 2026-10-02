@@ -10,9 +10,9 @@ title: Midlands side quests
 // The engine's Center board accepts it; Night Watchman Elbert on Route 10
 // points players at the notice.
 <quest id="midNightPatrol" title="Board: the Mill Road Riders" accept="external">
-  <objective id="grit" title="Beat Biker Grit on Route 10, at night" done="holds(defeated(r10BikerGrit))"/>
-  <objective id="vanya" title="Beat Biker Vanya on Route 10, at night" done="holds(defeated(r10BikerVanya))"/>
-  <objective id="jolene" title="Beat Rocker Jolene, who leads the singing" done="holds(defeated(r10RockerJolene))"/>
+  <objective id="grit" title="Beat Biker Grit on Route 10, at night" done="holds('defeated', ['r10BikerGrit'])"/>
+  <objective id="vanya" title="Beat Biker Vanya on Route 10, at night" done="holds('defeated', ['r10BikerVanya'])"/>
+  <objective id="jolene" title="Beat Rocker Jolene, who leads the singing" done="holds('defeated', ['r10RockerJolene'])"/>
   <reward kind="MONEY" amount="3000"/>
   <on event="questComplete">
     @r10Watchman{vo}: The Riders are asleep by ten now. The board says the bounty's yours. Enjoy the quiet, I know I will.
@@ -23,11 +23,11 @@ title: Midlands side quests
 // Accepted when the flute wakes Slumbear on Route 12 (mid.giantWakes). Catch
 // it, or let it go: the battle ends with Slumbear seen but not caught.
 <quest id="midSleepingGiant" title="The sleeping giant" complete="any">
-  <objective id="caught" title="Catch Slumbear" done="holds(caught(slumbear))"/>
-  <objective id="letGo" title="Let Slumbear go back to the hills" on="battleEnd" done="holds(seen(slumbear)) && !holds(caught(slumbear))"/>
+  <objective id="caught" title="Catch Slumbear" done="holds('caught', ['slumbear'])"/>
+  <objective id="letGo" title="Let Slumbear go back to the hills" on="battleEnd" done="holds('seen', ['slumbear']) && !holds('caught', ['slumbear'])"/>
   <on event="questComplete">
-    @narrator{when="holds(caught(slumbear))"}: The ball rocks once, twice, three times, and Lake Hush goes quiet. The giant that slept across Route 12 for a hundred years is yours now.
-    @narrator{when="!holds(caught(slumbear))"}: Slumbear shakes itself, yawns so wide the reeds flatten, and lumbers off toward the hills. The road to the sea gate is open.
+    @narrator{when="holds('caught', ['slumbear'])"}: The ball rocks once, twice, three times, and Lake Hush goes quiet. The giant that slept across Route 12 for a hundred years is yours now.
+    @narrator{when="!holds('caught', ['slumbear'])"}: Slumbear shakes itself, yawns so wide the reeds flatten, and lumbers off toward the hills. The road to the sea gate is open.
   </on>
 </quest>
 
@@ -45,22 +45,22 @@ title: Midlands side quests
 </quest>
 
 <quest id="midGhostTheater" title="The theater ghost" activate="accept">
-  <objective id="see" title="Look through the Spectral Lens in the old Silvercrest theater" done="holds(midGhostSeen(silvercrestTheater))"/>
+  <objective id="see" title="Look through the Spectral Lens in the old Silvercrest theater" done="holds('midGhostSeen', ['silvercrestTheater'])"/>
 </quest>
 
 <quest id="midGhostWell" title="The well ghost" activate="accept">
-  <objective id="see" title="Look through the Spectral Lens down the Wardenmere well" done="holds(midGhostSeen(wardenmereWell))"/>
+  <objective id="see" title="Look through the Spectral Lens down the Wardenmere well" done="holds('midGhostSeen', ['wardenmereWell'])"/>
 </quest>
 
 <quest id="midGhostLighthouse" title="The lighthouse ghost" activate="accept">
-  <objective id="see" title="Look through the Spectral Lens at the top of the Fairhaven lighthouse" done="holds(midGhostSeen(fairhavenLighthouse))"/>
+  <objective id="see" title="Look through the Spectral Lens at the top of the Fairhaven lighthouse" done="holds('midGhostSeen', ['fairhavenLighthouse'])"/>
 </quest>
 
 // ── The day care's runaway ────────────────────────────────────────────────
 // Grandpa Tobbe (Fairhaven) asks; the Mothfuzz goes back to Grandma Ilse.
 <quest id="midDayCareRunaway" title="The day care's runaway">
-  <objective id="catch" title="Catch a Mothfuzz in the Wildmoor Preserve" done="holds(caught(mothfuzz))"/>
-  <objective id="theReturn" title="Show it to Grandma Ilse at the day care" on="talk" target="npc.fairhavenDayCareLady" done="holds(caught(mothfuzz))"/>
+  <objective id="catch" title="Catch a Mothfuzz in the Wildmoor Preserve" done="holds('caught', ['mothfuzz'])"/>
+  <objective id="theReturn" title="Show it to Grandma Ilse at the day care" on="talk" target="npc.fairhavenDayCareLady" done="holds('caught', ['mothfuzz'])"/>
   <reward kind="ITEM" amount="1" target="luckyEgg"/>
   <on event="questComplete">
     @fairhavenDayCareLady{vo}: That's not our Mothfuzz, dear. Ours came home on its own last night. But yours is lovely too. Keep it, and take this for your trouble.

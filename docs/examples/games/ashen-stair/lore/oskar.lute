@@ -24,7 +24,7 @@ title: Oskar, at the anvil
   @oskar{code="0020"}: That I liked this. Go on, get out of my light. I've got work.
 </beat>
 
-<beat id="hammerRack" on="talk" target="npc.oskar" title="The hammer on the rack" priority="65" when="user.hammerReforged && !holds(wields(hammer))">
+<beat id="hammerRack" on="talk" target="npc.oskar" title="The hammer on the rack" priority="65" when="user.hammerReforged && !holds('wields', ['hammer'])">
   ::bg{location="forge" time="night"}
   @oskar{code="0010"}: It's on the rack. It's always on the rack for you. Take it or don't.
   <branch id="rack" prompt="The reforged hammer hangs by the forge.">
@@ -73,7 +73,7 @@ title: Oskar, at the anvil
   </branch>
 </beat>
 
-<entry id="oskarBarkGate" on="talk" target="npc.oskar" category="bark" priority="20" once="user" when="holds(everSlew(gatekeeper))">
+<entry id="oskarBarkGate" on="talk" target="npc.oskar" category="bark" priority="20" once="user" when="holds('everSlew', ['gatekeeper'])">
   @oskar{code="0010" emotion="grim"}: You put the Gatekeeper down. Good. He was a friend of mine, once. Put him down again next time.
 </entry>
 

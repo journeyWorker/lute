@@ -5,8 +5,8 @@ title: The torn page
 ---
 
 <quest id="tornPage" title="Find out what the torn page said" tier="run">
-  <objective id="piece" title="Piece the burnt page together" done="holds(pieced(torn_page))"/>
-  <objective id="answer" title="Find the Board's answer" done="holds(refusedRepair(gallery_rail))"/>
+  <objective id="piece" title="Piece the burnt page together" done="holds('pieced', ['torn_page'])"/>
+  <objective id="answer" title="Find the Board's answer" done="holds('refusedRepair', ['gallery_rail'])"/>
   <objective id="file" title="Tell the Board what the rail cost" on="inquest" done="run.verdictCause == 'neglect'" until="run.verdictCause != 'undecided'"/>
   <on event="questComplete">
     @narrator: The Board's own letter goes into the record, under its own seal.

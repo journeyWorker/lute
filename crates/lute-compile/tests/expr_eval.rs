@@ -19,8 +19,9 @@
 //!      `<when is>`-synthesized shapes (C2 `synth_arm_expr`) have no `cel`
 //!      source and are hand-written; they skip invariant 2.
 //!
-//! Numeric model: all numbers are f64 (Lute-CEL double model). Literals and
-//! `state` numbers alike are compared as f64.
+//! Numeric model: integer literals and state values retain JSON integer shape;
+//! decimal literals and arithmetic results use JSON doubles.
+//! Literals and `state` numbers are compared numerically.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -40,8 +41,8 @@ struct Fixture {
     cel: Option<String>,
     /// The portable `expr` AST under test (raw wire JSON).
     expr: Value,
-    /// Flat map of dotted path -> JSON value. `has`/`isSet` are true iff the
-    /// key is present; all numbers are read as f64.
+    /// Flat map of dotted path -> JSON value. `has` is true iff the key is present;
+    /// numeric values preserve their JSON integer/double shape.
     state: Map<String, Value>,
     /// The value the `expr` must evaluate to under `state`.
     expected: Value,
@@ -56,7 +57,7 @@ fn eval(expr: &Value, state: &Map<String, Value>) -> Value {
         .as_object()
         .unwrap_or_else(|| panic!("expr node must be a JSON object, got: {expr}"));
 
-    if let Some(v) = obj.get("lit") {
+    if let Some(v) = obj.get("int").or_else(|| obj.get("double")).or_else(|| obj.get("bool")).or_else(|| obj.get("string")) {
         return v.clone();
     }
     if let Some(p) = obj.get("path") {
@@ -68,9 +69,6 @@ fn eval(expr: &Value, state: &Map<String, Value>) -> Value {
     }
     if let Some(p) = obj.get("has") {
         return Value::Bool(state.contains_key(as_key(p, "has")));
-    }
-    if let Some(p) = obj.get("isSet") {
-        return Value::Bool(state.contains_key(as_key(p, "isSet")));
     }
     if let Some(list) = obj.get("list") {
         let elems = list
@@ -156,7 +154,7 @@ fn eval(expr: &Value, state: &Map<String, Value>) -> Value {
     panic!("expr node is outside the closed Lute-CEL profile: {expr}");
 }
 
-/// A `path`/`has`/`isSet` payload must be a string key.
+/// A `path`/`has` payload must be a string key.
 fn as_key<'a>(v: &'a Value, kind: &str) -> &'a str {
     v.as_str()
         .unwrap_or_else(|| panic!("`{kind}` payload must be a string, got: {v}"))
@@ -168,7 +166,9 @@ fn as_bool(v: &Value) -> bool {
         .unwrap_or_else(|| panic!("expected a boolean value, got: {v}"))
 }
 
-/// Coerce any JSON number (int or float) to f64 — the Lute-CEL double model.
+/// The expression test harness coerces JSON numeric values to `f64` for its
+/// arithmetic helper; this is a harness representation, not the 0.32 language
+/// model, which distinguishes `int` and `double`.
 fn as_f64(v: &Value) -> f64 {
     v.as_f64()
         .unwrap_or_else(|| panic!("expected a numeric value, got: {v}"))
@@ -179,8 +179,8 @@ fn number(x: f64) -> Value {
     Value::Number(Number::from_f64(x).expect("arithmetic produced a non-finite number"))
 }
 
-/// Equality across the profile: numbers compare as f64 (so state `5` == lit
-/// `5.0`); everything else is structural JSON equality.
+/// Equality across the test harness: numeric values compare as f64; everything
+/// else is structural JSON equality.
 fn json_eq(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(_), Value::Number(_)) => a.as_f64() == b.as_f64(),

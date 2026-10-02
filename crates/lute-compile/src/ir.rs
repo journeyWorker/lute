@@ -13,7 +13,7 @@ use crate::expr::ExprNode;
 /// DECLARATION ORDER is the serialized order (byte-stability contract).
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Artifact {
+pub struct ExecutionIr {
     /// Document kind discriminator (dsl 0.2.0 §2/§3.1) — FIRST field, the
     /// byte-stability contract (IR addendum §1): most fundamental
     /// discriminator, read before anything else to know `meta`'s shape.
@@ -105,8 +105,36 @@ pub struct Artifact {
     /// dsl 0.28.0 (T2-9): the occasions declared `outsideRun: true`,
     /// name-sorted — the engine raises these even after `terminal` holds (a
     /// title screen, a gallery). Omitted when none. After `seasons`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub outside_run: Vec<String>,
+    pub cel_env: CelEnv,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CelEnv {
+    pub variables: Vec<CelVariable>,
+    pub functions: Vec<CelFunction>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CelVariable {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CelFunction {
+    pub name: String,
+    pub overloads: Vec<CelOverload>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CelOverload {
+    pub params: Vec<&'static str>,
+    pub result: &'static str,
 }
 
 /// dsl 0.27.0 §4: one occasion's `raisedWhen` gate.
@@ -293,7 +321,7 @@ pub enum BodyEntry {
         negated: bool,
     },
     Guard {
-        cel: String,
+        cel: CelPair,
     },
     Cmp {
         lhs: TermEntry,
@@ -317,7 +345,7 @@ pub enum BodyEntry {
 
 /// Kind-polymorphic envelope `meta` (dsl 0.2.0, IR addendum §1; dsl 0.15.0
 /// §2): untagged so the wire shape is exactly `SceneMeta`'s, `QuestMeta`'s,
-/// or `LoreMeta`'s own fields — the consumer reads `Artifact.kind` to know
+/// or `LoreMeta`'s own fields — the consumer reads `ExecutionIr.kind` to know
 /// which. Since IR
 /// `0.15.0` the discriminator for a scene is `SceneMeta.id` (always present,
 /// the resolved canonical scene key); legacy `character`/`season`/`episode`/
@@ -647,6 +675,10 @@ pub struct StateEntry {
     pub domain: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<serde_json::Value>,
+    /// dsl 0.22.0 §1.2: `engine` when the engine, rather than content, writes
+    /// this state path. Omitted for content-owned paths.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<lute_manifest::types::Owner>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provenance: Option<String>,
     /// dsl 0.24.0 §1: display label per value, from the named enum the path
@@ -835,7 +867,7 @@ pub enum Placeholder {
     /// A `@def` / `@fn(args)` reference; the referent includes the leading `@`.
     /// `expr` is the def body inlined at compile time (the artifact carries no
     /// defs table), so an engine renders the value by evaluating it like any
-    /// other `{raw, expr}` slot. Filled by `expand::inline_ref_placeholders`;
+    /// other `{cel, expr}` slot. Filled by `expand::inline_ref_placeholders`;
     /// always present in a compiled artifact. A family read indexed by the
     /// raised member (`user.bond[occasion.target]`, dsl 0.27.0 §3) is a `ref`
     /// too: its referent has no `@` and `expr` is the read itself.
@@ -880,9 +912,14 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
         // dsl 0.27.0 §3: `{{user.bond[occasion.target]}}` is a computed read,
         // so it ships as CEL an engine evaluates like any `ref` body.
         InterpKind::Path if lute_check::cel_paths::occasion_indexed_family(&i.raw).is_some() => {
+            let slot = lute_syntax::ast::CelSlot::raw(
+                lute_syntax::ast::CelKind::AttrValue,
+                i.raw.clone(),
+                i.span,
+            );
             Placeholder::Ref {
                 reference: i.raw.clone(),
-                expr: Some(CelPair::from_raw(&i.raw)),
+                expr: Some(CelPair::from_slot(&slot)),
                 format: i.format.clone(),
                 forms: i.forms.clone(),
             }
@@ -1082,9 +1119,7 @@ pub struct SetCmd {
     pub addr: String,
     pub path: String,
     pub op: String,
-    pub value: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expr: Option<ExprNode>,
+    pub value: CelPair,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1154,7 +1189,7 @@ pub struct ChoiceCmd {
     pub options: Vec<ChoiceOption>,
     pub converge: String,
     /// dsl 0.11.0: the choice-situation sentence for the UI. Absent unless
-    /// authored (skip-if-empty, matching `ChoiceOption::when`/`expr`).
+    /// authored (skip-if-empty, matching `ChoiceOption::when`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
     /// dsl 0.11.0: the countdown, in whole seconds, matching the wire's
@@ -1172,9 +1207,7 @@ pub struct ChoiceOption {
     pub label: String,
     pub line_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub when: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expr: Option<ExprNode>,
+    pub when: Option<CelPair>,
     pub target: String,
     /// IR A3: `{{…}}` interpolations in `label`, in left-to-right order. Absent
     /// when the label has none (skip-if-empty). Label text stays verbatim.
@@ -1213,7 +1246,7 @@ pub struct HubCmd {
 }
 
 /// One `<hub>` option: a `<choice>` option plus always-present `once`/`exit`
-/// revisit flags. `when`/`expr` appear only when the choice is guarded.
+/// revisit flags. `when` is a single CEL slot object when the choice is guarded.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HubOption {
@@ -1223,9 +1256,7 @@ pub struct HubOption {
     pub once: bool,
     pub exit: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub when: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expr: Option<ExprNode>,
+    pub when: Option<CelPair>,
     pub target: String,
     /// IR A3: `{{…}}` interpolations in `label`, in left-to-right order. Absent
     /// when the label has none (skip-if-empty). Label text stays verbatim.
@@ -1241,7 +1272,8 @@ pub struct HubOption {
 #[serde(rename_all = "camelCase")]
 pub struct MatchCmd {
     pub addr: String,
-    pub subject: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<CelPair>,
     pub arms: Vec<MatchArm>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub otherwise: Option<String>,
@@ -1252,10 +1284,12 @@ pub struct MatchCmd {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MatchArm {
-    pub test: String,
-    pub target: String,
+    /// The authored `is=` shorthand, when this arm came from that form.
+    /// Unlike `test.authored`, this is semantic IR data.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expr: Option<ExprNode>,
+    pub is: Option<String>,
+    pub test: CelPair,
+    pub target: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1656,31 +1690,46 @@ pub struct BeatCmd {
     pub stamp: Stamp,
 }
 
-/// A CEL slot's raw text + its portable lowered form (IR A7 `ExprNode`
-/// shape), reused for every 0.2.0 quest-kind CEL attr (`start`/`fail`/
-/// `done`/`when`/`on.when`) — the `{raw, expr}` dual-field shape
-/// (`HubOption.when`/`.expr`, flattened for a choice option, nested here).
+/// A CEL slot's standard text (`cel`) plus its portable lowered form.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CelPair {
+    #[serde(rename = "cel")]
     pub raw: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expr: Option<ExprNode>,
-    /// A seam condition (a gate, `terminal:`, a season's `live`) as the
-    /// author wrote it, when `@def` expansion changed it (`@stageReleased`
-    /// beside the expanded `raw` an engine evaluates) — what messages show.
-    /// Omitted otherwise.
+    pub expr: ExprNode,
+    /// A seam condition as the author wrote it when expansion changed it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authored: Option<String>,
 }
 
 impl CelPair {
-    /// Lower a raw CEL fragment via [`crate::expr::lower_expr`] into the
-    /// `{raw, expr}` pair — `expr` is `None` for empty/out-of-profile CEL.
+    /// Build a pair from a checked, possibly expanded syntax slot.
+    pub fn from_slot(slot: &lute_syntax::ast::CelSlot) -> Self {
+        let cel = slot.raw.clone();
+        Self {
+            raw: cel,
+            expr: crate::expr::lower_expr(&slot.raw)
+                .unwrap_or_else(|| panic!("invalid CEL slot reached compilation: {}", slot.raw)),
+            authored: slot.authored.clone(),
+        }
+    }
+
+    /// Build a pair for a compiler-synthesized condition.
+    pub fn from_expr(expr: ExprNode, authored: Option<String>) -> Self {
+        let raw = expr_to_cel(&expr);
+        Self {
+            raw,
+            expr,
+            authored,
+        }
+    }
+
+    /// Build a pair from a raw CEL fragment used by synthetic/test helpers.
     pub fn from_raw(raw: &str) -> Self {
         CelPair {
             raw: raw.to_string(),
-            expr: crate::expr::lower_expr(raw),
+            expr: crate::expr::lower_expr(raw)
+                .unwrap_or_else(|| panic!("invalid CEL slot reached compilation: {raw}")),
             authored: None,
         }
     }
@@ -1691,6 +1740,70 @@ impl CelPair {
         self.authored.as_deref().unwrap_or(&self.raw)
     }
 }
+
+
+fn expr_to_cel(expr: &ExprNode) -> String {
+    match expr {
+        ExprNode::Lit { lit } => match lit {
+            crate::expr::LitVal::Int(v) => v.to_string(),
+            crate::expr::LitVal::Num(v) => {
+                let text = v.to_string();
+                if v.is_finite() && v.fract() == 0.0 && !text.contains('.') {
+                    format!("{text}.0")
+                } else {
+                    text
+                }
+            }
+            crate::expr::LitVal::Bool(v) => v.to_string(),
+            crate::expr::LitVal::Str(v) => cel_quote(v),
+        },
+        ExprNode::Path { path } => path.clone(),
+        ExprNode::Unary { op, l } => format!("({op}{})", expr_to_cel(l)),
+        ExprNode::Binary { op, l, r } => {
+            format!("({} {op} {})", expr_to_cel(l), expr_to_cel(r))
+        }
+        ExprNode::Cond {
+            cond,
+            then,
+            otherwise,
+        } => format!(
+            "({} ? {} : {})",
+            expr_to_cel(cond),
+            expr_to_cel(then),
+            expr_to_cel(otherwise)
+        ),
+        ExprNode::List { list } => format!(
+            "[{}]",
+            list.iter().map(expr_to_cel).collect::<Vec<_>>().join(", ")
+        ),
+        ExprNode::Index { index, key } => {
+            format!("{}[{}]", expr_to_cel(index), expr_to_cel(key))
+        }
+        ExprNode::Call { call, args } => format!(
+            "{call}({})",
+            args.iter().map(expr_to_cel).collect::<Vec<_>>().join(", ")
+        ),
+        ExprNode::Has { has } => format!("has({has})"),
+    }
+}
+
+fn cel_quote(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
 
 /// One `<reward/>` entry inlined in `QuestCmd.rewards` / `ObjectiveEntry.rewards`
 /// (dsl 0.16.0 §2/§3). Pure declaration data — the engine grants at the
@@ -1759,7 +1872,7 @@ impl RewardEntry {
             amount,
             amount_min,
             amount_max,
-            when: reward.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+            when: reward.when.as_ref().map(CelPair::from_slot),
             outcome,
             credits: None,
         }

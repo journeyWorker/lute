@@ -52,7 +52,7 @@ fn project(tag: &str, value: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.sanity: { type: number, default: 10, owner: engine }\n",
+        "state:\n  run.sanity: { type: int, default: 10, owner: engine }\n",
     );
     write(
         &dir,
@@ -69,7 +69,7 @@ fn project(tag: &str, value: &str) -> PathBuf {
         &dir,
         "plugins/p/directives/d.yaml",
         &format!(
-            "directives:\n  - name: fright\n    attrs:\n      - {{ name: amount, type: number }}\n      \
+"directives:\n  - name: fright\n    attrs:\n      - {{ name: amount, type: int }}\n      \
              - {{ name: mood, type: string }}\n    effects:\n      writes:\n        \
              - {{ scope: run, path: [sanity], value: {value} }}\n"
         ),
@@ -146,7 +146,7 @@ fn a_from_attr_must_name_a_declared_attr_and_a_by_one_a_number() {
         ),
         (
             "{ op: increment, by: { fromAttr: mood } }",
-            "needs a `type: number` attr",
+            "needs an `int` attr",
         ),
     ] {
         let dir = project("bad-attr", value);
@@ -171,12 +171,12 @@ fn an_omitted_param_default_def_is_judged_for_definite_assignment_at_the_use() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.depth: { type: number, default: 0 }\ndefs:\n  lastFathoms: \"prev.run.depth * 10\"\n",
+        "state:\n  run.depth: { type: int, default: 0 }\ndefs:\n  lastFathoms: \"prev.run.depth * 10\"\n",
     );
     write(
         &dir,
         "gauge.component.lute",
-        "---\ncomponent: gauge\nparams:\n  fathoms: { type: number, default: \"@lastFathoms\" }\n---\n\n\
+        "---\ncomponent: gauge\nparams:\n  fathoms: { type: int, default: \"@lastFathoms\" }\n---\n\n\
          ## Gauge\n\n@narrator: The gauge shows {{@fathoms}} fathoms.\n",
     );
     write(

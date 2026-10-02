@@ -174,7 +174,7 @@ both files and lines, and `lute play` refuses a project that declares one path w
 
 <!-- lute-diagnostics -->
 ```
-./scenes/spine/dock.lute:6:3: error [E-STATE-DECL-CONFLICT] state path `run.tide` is declared as bool, default false at `./scenes/north/lighthouse.lute:6` but as number, default 0 at `./scenes/spine/dock.lute:6`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import)
+./scenes/spine/dock.lute:6:3: error [E-STATE-DECL-CONFLICT] state path `run.tide` is declared as bool, default false at `./scenes/north/lighthouse.lute:6` but as int, default 0 at `./scenes/spine/dock.lute:6`; every declaration of one path must agree on type, default, per and owner — they share one runtime value (declare it once in a schema both documents import)
 ```
 
 ## Ids: prefix everything that is project-wide
@@ -256,12 +256,12 @@ params:
   intro: string
   win: string
   lose: string
-  prize: { type: number, default: 100 }
+  prize: { type: int, default: 100 }
 beat:
   on: trainerSpotted
   target: "trainer.@who"
   once: user                          # once beaten, gone for good
-  spentBy: "holds(defeated(@who))"    # a lost fight spends nothing
+  spentBy: "holds('defeated', [@who])"
 ---
 
 @@who: {{@intro}}
@@ -286,7 +286,7 @@ comes from the cast:
 ```
 
 The header gives the beat `on: trainerSpotted`, `target: trainer.r3YoungsterAda` and
-`spentBy: holds(defeated(r3YoungsterAda))`, and `lute beats` lists it that way. A beat with
+`spentBy: holds('defeated', ['r3YoungsterAda'])`, and `lute beats` lists it that way. A beat with
 `spentBy` is not spent by being presented: it is spent once its condition has held, here at the
 first win, and `once: user` keeps it spent for good. A lost fight spends nothing, so the trainer
 is still there for a rematch.

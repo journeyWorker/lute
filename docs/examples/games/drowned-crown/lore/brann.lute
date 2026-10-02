@@ -23,7 +23,7 @@ title: Captain Brannoch
   </branch>
 </beat>
 
-<beat id="regentTold" on="talk" target="npc.brann" title="Telling Brann" priority="50" once="user" after="visited('hub.regentFell')" when="holds(felled(regent)) && !holds(told(brann, regent))">
+<beat id="regentTold" on="talk" target="npc.brann" title="Telling Brann" priority="50" once="user" after="visited('hub.regentFell')" when="holds('felled', ['regent']) && !holds('told', ['brann', 'regent'])">
   @ilo: The Regent is dead. I killed it.
   @brann{emotion="surprised"}: ...Say that again, slower.
   @ilo: It came apart in the current. It said the crown would drown me slower than the sea did.

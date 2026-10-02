@@ -1,0 +1,12 @@
+---
+kind: lore
+luteVersion: "0.32.0"
+id: lifecycle
+uses: ./schema.yaml
+---
+
+<beat id="signal" on="talk" target="npc.hero" title="Signal">
+  ::accept{quest="signalQuest"}
+  ::retract{seen(hero)}
+  @narrator: The signal is received.
+</beat>

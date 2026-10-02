@@ -27,12 +27,11 @@ fn unique_dir() -> PathBuf {
 }
 
 const BOND: &str = "---\ncomponent: bondStory\n\
-params:\n  who: { type: string }\n  need: { type: number, default: 0 }\n  prev: { type: string, default: \"\" }\n\
-beat:\n  on: bond\n  once: user\n  when: \"user.bond >= @need\"\n  after: \"@prev\"\n  priority: 2\n---\n\
+params:\n  who: { type: string }\n  need: { type: int, default: 0 }\n  prev: { type: string, default: \"\" }\nbeat:\n  on: bond\n  once: user\n  when: \"user.bond >= @need\"\n  after: \"@prev\"\n  priority: 2\n---\n\
 ## Bond\n@narrator: A bond story begins.\n";
 
 const LORE_HEAD: &str = "---\nkind: lore\nid: bonds\ncomponents: [bond.lute]\n\
-state:\n  user.bond: { type: number, default: 0 }\n---\n\n";
+state:\n  user.bond: { type: int, default: 0 }\n---\n\n";
 
 /// `lore` checked against `bond.lute` (the `BOND` template unless
 /// `component` overrides it), components resolved from disk. Returns the

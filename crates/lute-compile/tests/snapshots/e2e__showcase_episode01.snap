@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "8f491b82147b612f6b90a1b688399e1f9ae9d232a251271d92be8bf20b8e1daa",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "78d59b6eecff9af7a879a6964fdd66579ce6cd468fdf79efd55d2fccee16b035",
   "meta": {
     "id": "marina.s01ep01",
     "character": "marina",
@@ -35,12 +35,12 @@ expression: json
     },
     {
       "path": "run.affection",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
       "path": "run.chapter",
-      "type": "number",
+      "type": "int",
       "default": 1
     },
     {
@@ -58,7 +58,7 @@ expression: json
     },
     {
       "path": "scene.affect.marina",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
@@ -80,7 +80,7 @@ expression: json
     },
     {
       "path": "scene.serve.debut.attempts",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
@@ -101,12 +101,12 @@ expression: json
     },
     {
       "path": "scene.serve.debut.score",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
       "path": "user.level",
-      "type": "number",
+      "type": "int",
       "default": 2
     }
   ],
@@ -254,9 +254,11 @@ expression: json
       "addr": "002-0800",
       "path": "scene.saw_demo",
       "op": "=",
-      "value": "true",
-      "expr": {
-        "lit": true
+      "value": {
+        "cel": "true",
+        "expr": {
+          "bool": true
+        }
       }
     },
     {
@@ -310,45 +312,58 @@ expression: json
     {
       "kind": "match",
       "addr": "003-0200",
-      "subject": "scene.serve.debut.rank",
+      "subject": {
+        "cel": "scene.serve.debut.rank",
+        "expr": {
+          "path": "scene.serve.debut.rank"
+        }
+      },
       "arms": [
         {
-          "test": "",
-          "target": "003-0300",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "scene.serve.debut.rank"
+          "is": "gold",
+          "test": {
+            "cel": "(scene.serve.debut.rank == \"gold\")",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "scene.serve.debut.rank"
+              },
+              "r": {
+                "string": "gold"
+              }
             },
-            "r": {
-              "lit": "gold"
-            }
-          }
+            "authored": "is=gold"
+          },
+          "target": "003-0300"
         },
         {
-          "test": "",
-          "target": "003-0600",
-          "expr": {
-            "op": "||",
-            "l": {
-              "op": "==",
+          "is": "silver|bronze",
+          "test": {
+            "cel": "((scene.serve.debut.rank == \"silver\") || (scene.serve.debut.rank == \"bronze\"))",
+            "expr": {
+              "op": "||",
               "l": {
-                "path": "scene.serve.debut.rank"
+                "op": "==",
+                "l": {
+                  "path": "scene.serve.debut.rank"
+                },
+                "r": {
+                  "string": "silver"
+                }
               },
               "r": {
-                "lit": "silver"
+                "op": "==",
+                "l": {
+                  "path": "scene.serve.debut.rank"
+                },
+                "r": {
+                  "string": "bronze"
+                }
               }
             },
-            "r": {
-              "op": "==",
-              "l": {
-                "path": "scene.serve.debut.rank"
-              },
-              "r": {
-                "lit": "bronze"
-              }
-            }
-          }
+            "authored": "is=silver|bronze"
+          },
+          "target": "003-0600"
         }
       ],
       "otherwise": "003-0900",
@@ -370,9 +385,11 @@ expression: json
       "addr": "003-0400",
       "path": "scene.affect.marina",
       "op": "+=",
-      "value": "1",
-      "expr": {
-        "lit": 1.0
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
       }
     },
     {
@@ -396,9 +413,11 @@ expression: json
       "addr": "003-0700",
       "path": "run.affection",
       "op": "+=",
-      "value": "1",
-      "expr": {
-        "lit": 1.0
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
       }
     },
     {
@@ -446,9 +465,12 @@ expression: json
           "id": "soft",
           "label": "Ask gently",
           "lineId": "marina.s01ep01.approach.soft",
-          "when": "(true)",
-          "expr": {
-            "lit": true
+          "when": {
+            "cel": "(true)",
+            "expr": {
+              "bool": true
+            },
+            "authored": "@showcaseReady"
           },
           "target": "004-0500"
         },
@@ -456,15 +478,18 @@ expression: json
           "id": "linger",
           "label": "Ask, and linger a while",
           "lineId": "marina.s01ep01.approach.linger",
-          "when": "(user.level >= 1)",
-          "expr": {
-            "op": ">=",
-            "l": {
-              "path": "user.level"
+          "when": {
+            "cel": "(user.level >= 1)",
+            "expr": {
+              "op": ">=",
+              "l": {
+                "path": "user.level"
+              },
+              "r": {
+                "int": 1
+              }
             },
-            "r": {
-              "lit": 1.0
-            }
+            "authored": "@atLeast(1)"
           },
           "target": "004-0900"
         }
@@ -499,9 +524,11 @@ expression: json
       "addr": "004-0600",
       "path": "scene.affect.marina",
       "op": "+=",
-      "value": "1",
-      "expr": {
-        "lit": 1.0
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
       }
     },
     {
@@ -509,9 +536,11 @@ expression: json
       "addr": "004-0700",
       "path": "run.metHelpfully",
       "op": "=",
-      "value": "true",
-      "expr": {
-        "lit": true
+      "value": {
+        "cel": "true",
+        "expr": {
+          "bool": true
+        }
       }
     },
     {
@@ -533,9 +562,11 @@ expression: json
       "addr": "004-1000",
       "path": "run.affection",
       "op": "+=",
-      "value": "1",
-      "expr": {
-        "lit": 1.0
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
       }
     },
     {
@@ -543,9 +574,11 @@ expression: json
       "addr": "004-1100",
       "path": "run.sofaOutcome",
       "op": "=",
-      "value": "'warm'",
-      "expr": {
-        "lit": "warm"
+      "value": {
+        "cel": "'warm'",
+        "expr": {
+          "string": "warm"
+        }
       }
     },
     {
@@ -573,33 +606,45 @@ expression: json
     {
       "kind": "match",
       "addr": "005-0100",
-      "subject": "scene.choices.approach",
+      "subject": {
+        "cel": "scene.choices.approach",
+        "expr": {
+          "path": "scene.choices.approach"
+        }
+      },
       "arms": [
         {
-          "test": "(scene.affect.marina >= 1)",
-          "target": "005-0200",
-          "expr": {
-            "op": ">=",
-            "l": {
-              "path": "scene.affect.marina"
+          "test": {
+            "cel": "(scene.affect.marina >= 1)",
+            "expr": {
+              "op": ">=",
+              "l": {
+                "path": "scene.affect.marina"
+              },
+              "r": {
+                "int": 1
+              }
             },
-            "r": {
-              "lit": 1.0
-            }
-          }
+            "authored": "@fond"
+          },
+          "target": "005-0200"
         },
         {
-          "test": "",
-          "target": "005-0400",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "scene.choices.approach"
+          "is": "blunt",
+          "test": {
+            "cel": "(scene.choices.approach == \"blunt\")",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "scene.choices.approach"
+              },
+              "r": {
+                "string": "blunt"
+              }
             },
-            "r": {
-              "lit": "blunt"
-            }
-          }
+            "authored": "is=blunt"
+          },
+          "target": "005-0400"
         }
       ],
       "otherwise": "005-0600",
@@ -647,33 +692,46 @@ expression: json
     {
       "kind": "match",
       "addr": "005-0800",
-      "subject": "run.metHelpfully",
+      "subject": {
+        "cel": "run.metHelpfully",
+        "expr": {
+          "path": "run.metHelpfully"
+        }
+      },
       "arms": [
         {
-          "test": "",
-          "target": "005-0900",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "run.metHelpfully"
+          "is": "true",
+          "test": {
+            "cel": "(run.metHelpfully == true)",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "run.metHelpfully"
+              },
+              "r": {
+                "bool": true
+              }
             },
-            "r": {
-              "lit": true
-            }
-          }
+            "authored": "is=true"
+          },
+          "target": "005-0900"
         },
         {
-          "test": "",
-          "target": "005-1100",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "run.metHelpfully"
+          "is": "false",
+          "test": {
+            "cel": "(run.metHelpfully == false)",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "run.metHelpfully"
+              },
+              "r": {
+                "bool": false
+              }
             },
-            "r": {
-              "lit": false
-            }
-          }
+            "authored": "is=false"
+          },
+          "target": "005-1100"
         }
       ],
       "converge": "005-1300"
@@ -713,20 +771,29 @@ expression: json
     {
       "kind": "match",
       "addr": "005-1300",
-      "subject": "run.sofaOutcome",
+      "subject": {
+        "cel": "run.sofaOutcome",
+        "expr": {
+          "path": "run.sofaOutcome"
+        }
+      },
       "arms": [
         {
-          "test": "",
-          "target": "005-1400",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "run.sofaOutcome"
+          "is": "warm",
+          "test": {
+            "cel": "(run.sofaOutcome == \"warm\")",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "run.sofaOutcome"
+              },
+              "r": {
+                "string": "warm"
+              }
             },
-            "r": {
-              "lit": "warm"
-            }
-          }
+            "authored": "is=warm"
+          },
+          "target": "005-1400"
         }
       ],
       "otherwise": "005-1600",
@@ -767,20 +834,29 @@ expression: json
     {
       "kind": "match",
       "addr": "006-0100",
-      "subject": "app.rating",
+      "subject": {
+        "cel": "app.rating",
+        "expr": {
+          "path": "app.rating"
+        }
+      },
       "arms": [
         {
-          "test": "",
-          "target": "006-0200",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "app.rating"
+          "is": "teen",
+          "test": {
+            "cel": "(app.rating == \"teen\")",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "app.rating"
+              },
+              "r": {
+                "string": "teen"
+              }
             },
-            "r": {
-              "lit": "teen"
-            }
-          }
+            "authored": "is=teen"
+          },
+          "target": "006-0200"
         }
       ],
       "otherwise": "006-0400",
@@ -815,33 +891,44 @@ expression: json
     {
       "kind": "match",
       "addr": "006-0600",
-      "subject": "scene.affect.marina",
+      "subject": {
+        "cel": "scene.affect.marina",
+        "expr": {
+          "path": "scene.affect.marina"
+        }
+      },
       "arms": [
         {
-          "test": "(user.level >= 3)",
-          "target": "006-0700",
-          "expr": {
-            "op": ">=",
-            "l": {
-              "path": "user.level"
+          "test": {
+            "cel": "(user.level >= 3)",
+            "expr": {
+              "op": ">=",
+              "l": {
+                "path": "user.level"
+              },
+              "r": {
+                "int": 3
+              }
             },
-            "r": {
-              "lit": 3.0
-            }
-          }
+            "authored": "@atLeast(3)"
+          },
+          "target": "006-0700"
         },
         {
-          "test": "(user.level >= 2)",
-          "target": "006-0900",
-          "expr": {
-            "op": ">=",
-            "l": {
-              "path": "user.level"
+          "test": {
+            "cel": "(user.level >= 2)",
+            "expr": {
+              "op": ">=",
+              "l": {
+                "path": "user.level"
+              },
+              "r": {
+                "int": 2
+              }
             },
-            "r": {
-              "lit": 2.0
-            }
-          }
+            "authored": "@veteran"
+          },
+          "target": "006-0900"
         }
       ],
       "otherwise": "006-1100",
@@ -930,20 +1017,29 @@ expression: json
     {
       "kind": "match",
       "addr": "006-1800",
-      "subject": "app.lang",
+      "subject": {
+        "cel": "app.lang",
+        "expr": {
+          "path": "app.lang"
+        }
+      },
       "arms": [
         {
-          "test": "",
-          "target": "006-1900",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "app.lang"
+          "is": "ko",
+          "test": {
+            "cel": "(app.lang == \"ko\")",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "app.lang"
+              },
+              "r": {
+                "string": "ko"
+              }
             },
-            "r": {
-              "lit": "ko"
-            }
-          }
+            "authored": "is=ko"
+          },
+          "target": "006-1900"
         }
       ],
       "otherwise": "006-2100",
@@ -1001,5 +1097,27 @@ expression: json
       "shot": 6,
       "heading": "Content Gates"
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "app",
+        "type": "map(string, dyn)"
+      },
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      },
+      {
+        "name": "scene",
+        "type": "map(string, dyn)"
+      },
+      {
+        "name": "user",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
 }

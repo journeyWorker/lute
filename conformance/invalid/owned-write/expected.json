@@ -1,0 +1,4 @@
+{
+  "error": "E-RUN-OWNED-WRITE: command writes engine-owned state path `run.day`",
+  "exit": 1
+}

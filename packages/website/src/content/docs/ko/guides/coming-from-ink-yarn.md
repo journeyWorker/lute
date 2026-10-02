@@ -28,7 +28,7 @@ Ink와 Yarn Spinner는 흐름(flow)입니다: 텍스트가 위에서 아래로 �
 | 한 번만 고르는 `* [choice]` | `-> option <<once>>` | 허브의 `<choice … once>`. `<branch>`는 어차피 한 번만 묻습니다 |
 | 계속 남는 `+ [choice]` | `-> option` | `<hub>` 안의 평범한 `<choice>` |
 | `- gather` | 선택지 다음 줄들 | `</branch>` 다음 줄들. 어느 선택지를 골랐든 실행됩니다 |
-| `VAR oil = 1` | `<<declare $oil = 1>>` | 스키마나 프런트매터의 `state:` 아래 `run.oil: { type: number, default: 1 }` |
+| `VAR oil = 1` | `<<declare $oil = 1>>` | 스키마나 프런트매터의 `state:` 아래 `run.oil: { type: int, default: 1 }` |
 | `CONST MAX = 5` | — | `defs:` 아래의 def. `@MAX`로 읽습니다 |
 | `LIST mood = calm, stormy` | — | enum 타입 경로: `run.mood: { type: { enum: [calm, stormy] }, default: calm }` |
 | `~ oil = oil + 2` | `<<set $oil to $oil + 2>>` | `::set{run.oil += 2}` |
@@ -37,7 +37,7 @@ Ink와 Yarn Spinner는 흐름(flow)입니다: 텍스트가 위에서 아래로 �
 | `{x: a \| b}` | `<<if>> … <<else>>` | 가드를 단 줄 두 개, 또는 `<otherwise>` 갈래가 있는 `<match>` |
 | `{a \| b \| c}`, `{&a \| b}`, `{!a \| b}` | `<<once>> … <<else>>` | `scene.*` 카운터와 그것을 읽는 `<match>`([아래](#바뀌는-텍스트)) |
 | `{~a \| b}` | 줄 그룹(`=>`), `dice()`, `random()` | Lute에는 무작위 선택이 없습니다([아래](#바뀌는-텍스트)) |
-| 방문 횟수 `{knot}`, `{knot > 2}` | `visited_count("Node")` | 직접 `::set{… += 1}` 하는 number 경로. `visited('<id>')`는 참/거짓뿐입니다 |
+| 방문 횟수 `{knot}`, `{knot > 2}` | `visited_count("Node")` | 직접 `::set{… += 1}` 하는 `int` 경로. `visited('<id>')`는 참/거짓뿐입니다 |
 | `-> DONE` | `<<stop>>` | `::end`, 또는 그냥 장면의 끝 |
 | `-> END` | 이야기의 끝 | `::set`이 참으로 만드는 스키마의 `terminal:` 조건([아래](#이야기-끝내기)) |
 | 터널 `-> knot ->` | — | 컴포넌트: `::use{component="…"}` |
@@ -87,8 +87,8 @@ kind: scene
 id: lamp
 title: The Lamp Room
 state:
-  run.oil:           { type: number, default: 1 }
-  scene.ledgerReads: { type: number, default: 0 }
+  run.oil:           { type: int, default: 1 }
+  scene.ledgerReads: { type: int, default: 0 }
 ---
 
 ## The Lamp Room
@@ -194,9 +194,9 @@ kind: scene
 id: harbor
 title: The Harbor
 state:
-  scene.looks: { type: number, default: 0 }
+  scene.looks: { type: int, default: 0 }
 defs:
-  weather: { type: number, cel: "scene.looks % 3" }
+  weather: { type: int, cel: "scene.looks % 3" }
 ---
 
 ## The Harbor
@@ -304,7 +304,7 @@ Lute에는 자유 형식 태그가 없습니다. Ink나 Yarn 태그가 엔진에
 $ lute check ink.lute
 ink.lute:10:1: error [E-UNCLASSIFIED] unrecognized line: `=== lamp_room ===` is an Ink knot; a Lute scene is its own `.lute` file (`kind: scene` and `id: lamp_room` in its frontmatter), and a section inside a scene is a `## lamp_room` heading
 ink.lute:11:1: error [E-UNCLASSIFIED] unrecognized line: `= stitch` is an Ink stitch; a section inside a scene is a `## stitch` heading
-ink.lute:12:1: error [E-UNCLASSIFIED] unrecognized line: `VAR` declares an Ink global; Lute declares state under `state:` in the frontmatter (`run.oil: { type: number, default: 1 }`) and writes it with `::set{…}`
+ink.lute:12:1: error [E-UNCLASSIFIED] unrecognized line: `VAR` declares an Ink global; Lute declares state under `state:` in the frontmatter (`run.oil: { type: int, default: 1 }`) and writes it with `::set{…}`
 ink.lute:13:1: error [E-UNCLASSIFIED] unrecognized line: `~ run.oil = run.oil + 2` is Ink logic; Lute writes state with `::set{run.oil = run.oil + 2}`, and the path is declared under `state:` in the frontmatter
 ink.lute:14:1: error [E-UNCLASSIFIED] unrecognized line: a content line needs a speaker: narration is `@narrator: …`, dialogue `@<speaker>: …`
 ink.lute:15:1: error [E-UNCLASSIFIED] unrecognized line: `* [Read the ledger]` is an Ink choice; Lute choices are `<choice id="…" label="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice); Ink's once-only `*` in a loop is a `<hub>` choice with the `once` flag
@@ -320,7 +320,7 @@ Yarn도 마찬가지입니다:
 <!-- lute-diagnostics unverified="byte-exact lute check output; each E-UNCLASSIFIED hint is composed from per-shape parts, several of which contain a literal … that the matcher reads as an elision" -->
 ```
 $ lute check yarn.lute
-yarn.lute:10:1: error [E-UNCLASSIFIED] unrecognized line: `<<declare $oil = 1>>` is a Yarn declaration; Lute declares state under `state:` in the frontmatter (`run.oil: { type: number, default: 1 }`) and writes it with `::set{…}`
+yarn.lute:10:1: error [E-UNCLASSIFIED] unrecognized line: `<<declare $oil = 1>>` is a Yarn declaration; Lute declares state under `state:` in the frontmatter (`run.oil: { type: int, default: 1 }`) and writes it with `::set{…}`
 yarn.lute:11:1: error [E-UNCLASSIFIED] unrecognized line: `<<set $oil to 3>>` is a Yarn command; Lute writes state with `::set{run.oil = 3}`, and the path is declared under `state:` in the frontmatter
 yarn.lute:12:1: error [E-UNCLASSIFIED] unrecognized line: `<<if $oil > 2>>` is a Yarn conditional; Lute chooses between lines with `<match on="…">` and its `<when is="…">`/`<when test="…">` arms, or guards one line: `@narrator{when="run.oil > 2"}: …`
 yarn.lute:13:1: error [E-UNCLASSIFIED] unrecognized line: `<<jump Lamp_Room>>` is a Yarn jump; Lute has no diverts: `::next{to="Lamp_Room"}` jumps forward to a `::mark{id="Lamp_Room"}` later in this document, a `<hub>` repeats its choices until an `exit` choice, and another scene is reached through the occasion it answers (`on:` in its frontmatter)
@@ -355,9 +355,9 @@ flow.lute:18:12: error [E-NEXT-UNDEFINED] `::next` targets `Gallery`, which no `
 failed: flow.lute (3 error(s), 0 warning(s))
 $ lute check cond.lute
 cond.lute:5:7: error [E-CEL-PROFILE] `once` is not a condition: how often a beat plays is its own key, `once` — `once: run` (once per run, the default), `once: user` (once ever) or `once: false` (every time); on a `<beat>` or `<entry>` it is `once="run"` — drop this `when`
-cond.lute:12:17: error [E-CEL-TYPE] `visited('gallery') > 2`: `>` compares numbers, and `visited('gallery')` is a bool — `visited('gallery')` is a bool, whether the scene was ever presented, not how often; count visits in a `number` path you `::set` (for example `::set{run.visits += 1}`)
+cond.lute:12:17: error [E-CEL-TYPE] `visited('gallery') > 2`: `>` compares numbers, and `visited('gallery')` is a bool — `visited('gallery')` is a bool, whether the scene was ever presented, not how often; count visits in an `int` path you `::set` (for example `::set{run.visits += 1}`)
 cond.lute:13:17: error [E-CEL-PROFILE] `$oil`: a state path takes no `$` (`$` alone is the `<match>` subject) — write the path with its tier — did you mean `run.oil`?
-cond.lute:14:17: error [E-CEL-TYPE] `run.oil == true` compares a number with a bool, so it is never true
+cond.lute:14:17: error [E-CEL-TYPE] `run.oil == true` compares an int with a bool, so it is never true
 failed: cond.lute (4 error(s), 0 warning(s))
 ```
 

@@ -22,7 +22,7 @@ after: 'visited("lamplight.discovery")'
   <choice id="table" label="Miss Dace's table" once>
     @narrator{code="0040"}: A cold cup, a crumpled napkin, a lamp with a black-sooted chimney. From here the piano is six feet away. Nobody at this table could have left it in the dark without walking into the singer.
   </choice>
-  <choice id="steward" label="Ask the steward about the doctor" when="holds(empty(cab5, tunnel))" once>
+  <choice id="steward" label="Ask the steward about the doctor" when="holds('empty', ['cab5', 'tunnel'])" once>
     @inspector{code="0010"}: Mr. Crane thought the doctor came through for a brandy during the tunnel.
     @steward{code="0010"}: Not through here, ma'am. I had the only lit match in the car, for the singer's music. I'd have seen a doctor.
     @inspector{code="0020" mono}: So the berth was empty and the dining car was empty of him too. Which leaves the corridor.

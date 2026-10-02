@@ -55,14 +55,14 @@ directives:
   - name: camera
     attrs:
       - { name: focus, type: string }
-      - { name: zoom, type: number }
-      - { name: moveX, type: number }
-      - { name: moveY, type: number }
-      - { name: shake, type: number }
+      - { name: zoom, type: double }
+      - { name: moveX, type: double }
+      - { name: moveY, type: double }
+      - { name: shake, type: double }
       - { name: reset, type: bool }
-      - { name: duration, type: number }
+      - { name: duration, type: double }
       - { name: easing, type: string }
-      - { name: delay, type: number }
+      - { name: delay, type: double }
       - { name: wait, type: bool, default: false }
     lower: { kind: builtin, name: cameraTransform }
   - name: end

@@ -64,7 +64,7 @@ title: Frostharbor
   ::accept{quest="northLighthouse"}
 </beat>
 
-<beat id="maudRelight" on="talk" target="npc.frostharborKeeper" title="The lamp" priority="20" when="quest.northLighthouse.state == 'active' && holds(caughtType(fire))">
+<beat id="maudRelight" on="talk" target="npc.frostharborKeeper" title="The lamp" priority="20" when="quest.northLighthouse.state == 'active' && holds('caughtType', ['fire'])">
   ::bg{location="frostharbor-lighthouse" time="night"}
   @narrator: Maud climbs the lighthouse stairs ahead of {{userName}}, one hand on the rail and one on her back.
   @frostharborKeeper: There. The wick. Let your little one breathe on it. Gently, now.
@@ -73,7 +73,7 @@ title: Frostharbor
   @frostharborKeeper{emotion="happy"}: Oh. Oh, look at that. He'd have liked you.
 </beat>
 
-<entry id="northMaudWaiting" on="talk" target="npc.frostharborKeeper" category="bark" priority="10" when="quest.northLighthouse.state == 'active' && !holds(caughtType(fire))">
+<entry id="northMaudWaiting" on="talk" target="npc.frostharborKeeper" category="bark" priority="10" when="quest.northLighthouse.state == 'active' && !holds('caughtType', ['fire'])">
   @frostharborKeeper: No fire monster yet? The volcano island east of here is full of them. Mind the steam.
 </entry>
 
@@ -122,11 +122,11 @@ title: Frostharbor
   @frostharborCaveGuide: The Frostharbor caverns run under half the headland. On Fridays, something with a long neck comes up in the big pool. Nobody's ever caught it.
 </entry>
 
-<entry id="northHalvardFriday" on="talk" target="npc.frostharborCaveGuide" category="bark" priority="5" when="clock.weekday == 4 && !holds(caught(shellnessie))">
+<entry id="northHalvardFriday" on="talk" target="npc.frostharborCaveGuide" category="bark" priority="5" when="clock.weekday == 4 && !holds('caught', ['shellnessie'])">
   @frostharborCaveGuide: It's Friday! The pool in the caverns is already rippling. If you want to see the swimmer, go now, and go quiet.
 </entry>
 
-<entry id="northHalvardCaught" on="talk" target="npc.frostharborCaveGuide" category="bark" priority="6" when="holds(caught(shellnessie))">
+<entry id="northHalvardCaught" on="talk" target="npc.frostharborCaveGuide" category="bark" priority="6" when="holds('caught', ['shellnessie'])">
   @frostharborCaveGuide: You caught the Friday swimmer? Forty years of tours and I'll have to rewrite the whole script.
 </entry>
 

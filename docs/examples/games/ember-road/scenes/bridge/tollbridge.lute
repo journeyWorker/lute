@@ -17,8 +17,8 @@ components: [../../components/reaction.component.lute]
 ::auto{character="maelis" anchor="center" action="fadeInUp"}
 @maelis: Company wagons. Eleven. You're a day early, Warden. I'd almost be flattered.
 @maelis: The toll is simple. The strongbox in the ninth wagon, or the wagons stay on this side of the gorge until the crows have them.
-@isolde{when="holds(inParty(isolde))"}: Maelis of Coldwater. I knew your brother.
-@maelis{when="holds(inParty(isolde))"}: Then you know how he died, Vane. You were wearing the same colours as the men who did it.
+@isolde{when="holds('inParty', ['isolde'])"}: Maelis of Coldwater. I knew your brother.
+@maelis{when="holds('inParty', ['isolde'])"}: Then you know how he died, Vane. You were wearing the same colours as the men who did it.
 
 <hub id="chain" prompt="Maelis waits on the chain.">
   <choice id="why" label="Why the Company? Why this road?" once>
@@ -34,7 +34,7 @@ components: [../../components/reaction.component.lute]
     @maelis: So was my brother, once.
   </choice>
   <choice id="strongbox" label="Hand over the Company's strongbox." exit>
-    @corvin{when="holds(inParty(corvin))"}: Oh, I like this version of you.
+    @corvin{when="holds('inParty', ['corvin'])"}: Oh, I like this version of you.
     ::use{component="reaction" who="corvin" feel="adores"}
     ::set{run.rep.company -= 3}
     ::set{run.rep.dusk += 1}

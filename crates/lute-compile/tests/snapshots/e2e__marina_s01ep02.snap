@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "id": "marina.s01ep02",
     "character": "marina",
@@ -23,7 +23,7 @@ expression: json
     },
     {
       "path": "scene.affect.marina",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
@@ -397,9 +397,11 @@ expression: json
       "addr": "003-1200",
       "path": "scene.flags.saw_beam",
       "op": "=",
-      "value": "true",
-      "expr": {
-        "lit": true
+      "value": {
+        "cel": "true",
+        "expr": {
+          "bool": true
+        }
       }
     },
     {
@@ -539,9 +541,11 @@ expression: json
       "addr": "004-0700",
       "path": "scene.affect.marina",
       "op": "+=",
-      "value": "1",
-      "expr": {
-        "lit": 1.0
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
       }
     },
     {
@@ -745,33 +749,45 @@ expression: json
     {
       "kind": "match",
       "addr": "005-1000",
-      "subject": "scene.choices.number",
+      "subject": {
+        "cel": "scene.choices.number",
+        "expr": {
+          "path": "scene.choices.number"
+        }
+      },
       "arms": [
         {
-          "test": "(scene.affect.marina >= 1)",
-          "target": "005-1100",
-          "expr": {
-            "op": ">=",
-            "l": {
-              "path": "scene.affect.marina"
+          "test": {
+            "cel": "(scene.affect.marina >= 1)",
+            "expr": {
+              "op": ">=",
+              "l": {
+                "path": "scene.affect.marina"
+              },
+              "r": {
+                "int": 1
+              }
             },
-            "r": {
-              "lit": 1.0
-            }
-          }
+            "authored": "@fond"
+          },
+          "target": "005-1100"
         },
         {
-          "test": "",
-          "target": "005-1300",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "scene.choices.number"
+          "is": "blunt",
+          "test": {
+            "cel": "(scene.choices.number == \"blunt\")",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "scene.choices.number"
+              },
+              "r": {
+                "string": "blunt"
+              }
             },
-            "r": {
-              "lit": "blunt"
-            }
-          }
+            "authored": "is=blunt"
+          },
+          "target": "005-1300"
         }
       ],
       "otherwise": "005-1500",
@@ -858,5 +874,15 @@ expression: json
       "shot": 5,
       "heading": "Filed as a Mishap"
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "scene",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
 }

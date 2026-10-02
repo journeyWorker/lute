@@ -3,7 +3,7 @@ bridgeCapabilities:
     operation: enter
     replay: recorded
     result:
-      - { name: entered, type: number }   # the digits typed, as a number
+      - { name: entered, type: int }   # the digits typed, as a number
   - service: chase
     operation: evade
     replay: recorded

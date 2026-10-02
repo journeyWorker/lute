@@ -37,15 +37,15 @@ title: Pebbleton — services, the east road, and its people
 
 // ── The east road (gate pebbletonEast opens with the Stone Badge) ────────
 
-<entry id="southPebbletonEastShut" on="obstacle" target="gate.pebbletonEast" category="bark" when="!holds(canPass(pebbletonEast))">
+<entry id="southPebbletonEastShut" on="obstacle" target="gate.pebbletonEast" category="bark" when="!holds('canPass', ['pebbletonEast'])">
   @pebbletonDobbs: Hold it. East road's for trainers who've seen Petra. Not beaten, necessarily. Seen. Well. Beaten. That's the rule.
 </entry>
 
-<entry id="southDobbsShut" on="talk" target="npc.pebbletonDobbs" category="bark" when="!holds(canPass(pebbletonEast))">
+<entry id="southDobbsShut" on="talk" target="npc.pebbletonDobbs" category="bark" when="!holds('canPass', ['pebbletonEast'])">
   @pebbletonDobbs: Nobody goes east without the Stone Badge. That boy Kai tried to tell me he had it in his other trousers.
 </entry>
 
-<entry id="southDobbsOpen" on="talk" target="npc.pebbletonDobbs" category="bark" priority="5" when="holds(canPass(pebbletonEast))">
+<entry id="southDobbsOpen" on="talk" target="npc.pebbletonDobbs" category="bark" priority="5" when="holds('canPass', ['pebbletonEast'])">
   @pebbletonDobbs: The Stone Badge! Go on through, then. Moonstone Cave's up the ridge. Mind the Eclipse lot, if they're still there.
 </entry>
 

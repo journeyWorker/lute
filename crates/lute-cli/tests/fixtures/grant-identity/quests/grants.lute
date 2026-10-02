@@ -1,0 +1,23 @@
+---
+kind: quest
+id: grants
+uses: ../world.schema.yaml
+---
+<quest id="repeat" tier="run" start="run.ready == true">
+  <reward kind="RUN" amount="1"/>
+  <objective id="finish" done="run.finished == true">
+    <reward kind="FIRST" amount="1"/>
+    <reward kind="FILTERED" amount="2" when="run.filter == true"/>
+    <reward kind="LAST" amount="3"/>
+  </objective>
+</quest>
+<quest id="rearmable" start="run.ready == true" rearm="run.rearm == true">
+  <objective id="finish" done="run.finished == true">
+    <reward kind="REARM" amount="1"/>
+  </objective>
+</quest>
+<quest id="seasonal" tier="season:harvest" start="run.day >= 2">
+  <objective id="finish" done="run.finished == true">
+    <reward kind="SEASON" amount="1"/>
+  </objective>
+</quest>

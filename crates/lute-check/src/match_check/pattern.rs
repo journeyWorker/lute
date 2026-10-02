@@ -17,7 +17,8 @@ pub(super) struct ArmCoverage {
 /// Analyze a `<when test>` and extract the finite-domain values it provably
 /// matches. Kept CONSERVATIVE (only forms we can prove): `$ == <lit>` /
 /// `<lit> == $`, bare `$` (bool true) and `!$` (bool false), `$ in [<lit>,…]`,
-/// `$ == null` and `!isSet($)`/`!has(p)` (`unset`). Anything else (a `@ref`
+/// `$ == null` and `!has(p)` (`unset`). The legacy 0.31 `isSet` form is
+/// recognized only for compatibility with old ASTs. Anything else (a `@ref`
 /// guard, a relational test) yields no coverage — soundly leaving the domain
 /// under-covered rather than falsely claiming exhaustiveness.
 fn analyze_arm(raw: &str, subject: Option<&str>) -> ArmCoverage {
@@ -122,7 +123,7 @@ pub(crate) fn is_pattern_proves_set(is: Option<&IsPattern>, subject: Option<&str
 
 /// dsl 0.23.1 (ashen N3): `true` iff the `<when>` arm provably takes EVERY
 /// unset subject value (`is="unset"` with no narrowing `test`, or a test
-/// like `!isSet($)`) — no later arm and no `<otherwise>` sees the subject
+/// like `!has($)`) — no later arm and no `<otherwise>` sees the subject
 /// unset.
 pub(crate) fn arm_takes_unset(
     is: Option<&IsPattern>,
@@ -242,11 +243,17 @@ pub(crate) fn literal_is_foreign(lit: &IsLiteral, dom: &DomainInfo) -> bool {
         (IsLiteral::Unset, _) => !dom.maybe_unset,
         (IsLiteral::Range(_) | IsLiteral::Num(_), Domain::IntRange { lo, hi }) => {
             let iv = Interval::of(lit).expect("a numeric literal has an interval");
+            let fractional = (iv.lo.is_finite() && iv.lo.fract() != 0.0)
+                || (iv.hi.is_finite() && iv.hi.fract() != 0.0);
             let first = iv.lo.ceil().max(*lo as f64);
             let last = iv.hi.floor().min(*hi as f64);
-            first > last
+            fractional || first > last
         }
-        (IsLiteral::Range(_), domain) => !matches!(domain, Domain::Number),
+        (IsLiteral::Num(n), Domain::IntNumber) => !n.is_finite() || n.fract() != 0.0,
+        (IsLiteral::Range(r), Domain::IntNumber) => {
+            r.lo.is_some_and(|n| n.is_finite() && n.fract() != 0.0)
+                || r.hi.is_some_and(|n| n.is_finite() && n.fract() != 0.0)
+        }
         // A member spelled `true`/`false` (a choice id or enum member) is
         // already refused by `E-RESERVED-NAME`, which owns the root: the
         // literal naming it is not a second fault.
@@ -257,12 +264,10 @@ pub(crate) fn literal_is_foreign(lit: &IsLiteral, dom: &DomainInfo) -> bool {
         (IsLiteral::Str(s), Domain::Finite(vals)) => !vals
             .iter()
             .any(|v| matches!(v, DomainValue::Str(x) if x == s)),
-        // `Domain::Finite` is always bool/enum; a Num never fits.
         (IsLiteral::Num(_), Domain::Finite(_)) => true,
         (IsLiteral::Bool(_) | IsLiteral::Str(_), Domain::IntRange { .. }) => true,
-        // dsl 0.28.0 §1 (T1-4): a number subject is matched by numbers and
-        // ranges; `<=3` or `high` is compared as text and never matches.
-        (IsLiteral::Bool(_) | IsLiteral::Str(_), Domain::Number) => true,
+        (IsLiteral::Bool(_) | IsLiteral::Str(_), Domain::Number | Domain::IntNumber) => true,
+        (IsLiteral::Range(_), domain) => !matches!(domain, Domain::Number | Domain::IntNumber),
         (_, Domain::Number | Domain::Infinite) => false,
     }
 }
@@ -286,7 +291,7 @@ pub(super) fn foreign_literal_message(
             "`{lit_display}` matches none of the subject's values, the whole numbers {lo}..{hi} \
              (dsl 0.24.0 §1)"
         ),
-        (IsLiteral::Bool(_) | IsLiteral::Str(_), Domain::Number) => {
+        (IsLiteral::Bool(_) | IsLiteral::Str(_), Domain::Number | Domain::IntNumber) => {
             let bound = |p: &str| lit_display.strip_prefix(p).map(str::trim);
             let hint = if let Some(n) = bound("<=") {
                 format!(" — write `..{n}`")
@@ -328,8 +333,11 @@ pub(super) fn foreign_literal_message(
                  (dsl 0.4 §5.2)"
             )
         }
-        (_, Domain::Number | Domain::Infinite) => {
-            unreachable!("rule 4: a non-finite domain only ever flags `unset` or a range")
+        (_, Domain::Number | Domain::IntNumber | Domain::Infinite) => {
+            format!(
+                "`{lit_display}` is not a valid literal for this numeric subject; integer \
+                 subjects require whole-number points and range bounds (dsl 0.32.0)"
+            )
         }
     }
 }
@@ -428,13 +436,14 @@ fn is_subject(expr: &Expr, subject: Option<&str>) -> bool {
     }
 }
 
-/// True when `expr` is a presence test of the subject (`isSet($)` or `has(p)`) —
-/// negating it (in `analyze_expr`) is what covers the `unset` case.
+/// True when `expr` is a presence test of the subject (`has(p)`) — negating
+/// it (in `analyze_expr`) is what covers the `unset` case. The legacy 0.31
+/// `isSet` call remains recognized for compatibility with old ASTs.
 fn is_unset_test(expr: &Expr, subject: Option<&str>) -> bool {
     match expr {
         // `has(p)` expands to a test-only Select of the subject path.
         Expr::Select(sel) if sel.test => crate::cel_paths::select_path(expr).as_deref() == subject,
-        // `isSet($)` — a DSL global with the subject as its sole argument.
+        // `isSet($)` — a legacy 0.31 DSL global with the subject as its sole argument.
         Expr::Call(c)
             if c.target.is_none()
                 && c.func_name.eq_ignore_ascii_case("isSet")

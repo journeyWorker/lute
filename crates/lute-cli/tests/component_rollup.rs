@@ -529,7 +529,7 @@ fn write_defaults_components(tag: &str) -> PathBuf {
     .unwrap();
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.aff: { type: number, default: 0, per: suitor }\n\
+        "state:\n  run.aff: { type: int, default: 0, per: suitor }\n\
          entities:\n  suitor: { members: [ren, kai] }\n",
     )
     .unwrap();
@@ -662,8 +662,8 @@ fn a_schema_fault_is_headed_at_the_schema_line() {
     let dir = write_defaults_components("t3-4-schema");
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  user.n: { type: number, default: { a: 1 } }\n  \
-         run.aff: { type: number, default: 0, per: suitor }\n\
+        "state:\n  user.n: { type: int, default: { a: 1 } }\n  \
+         run.aff: { type: int, default: 0, per: suitor }\n\
          entities:\n  suitor: { members: [ren, kai] }\n",
     )
     .unwrap();

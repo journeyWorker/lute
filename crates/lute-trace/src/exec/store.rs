@@ -85,6 +85,8 @@ pub(crate) struct Store {
     derive: bool,
     /// Some rule body reads state: a write can change the closure.
     rules_read_state: bool,
+    /// Whether a rule guard reads the ephemeral occasion target.
+    rules_read_occasion_target: bool,
     /// Seeds ∪ asserted − retracted.
     base: BTreeSet<Fact>,
     /// `base` ∪ the derived least fixpoint (valid unless `dirty`).
@@ -101,8 +103,11 @@ pub(crate) struct Store {
     /// it resolved (what `lute trace`'s foreign-quest notes name).
     reserved_reads: BTreeMap<String, ReservedReadKind>,
     /// dsl 0.22.0 §6: derived relations a query read under `derive: false`
-    /// (looked up, not derived).
     derived_reads: BTreeSet<String>,
+    /// Whether the caller installed a CEL evaluation observer that needs the
+    /// paths and values read by the most recent expression.
+    capture_reads: bool,
+    pub(crate) last_reads: Vec<(String, Read)>,
 }
 
 impl Store {
@@ -135,7 +140,7 @@ impl Store {
             if let Some(forms) = e.get("labelForms") {
                 label_forms.insert(path.to_string(), LabelForms::map_of(forms));
             }
-            if let Some(v) = e.get("default").and_then(json_to_value) {
+            if let Some(v) = e.get("default").and_then(|j| typed_json_to_value(j, ty)) {
                 values.insert(path.to_string(), v);
             }
         }
@@ -238,6 +243,7 @@ impl Store {
             schema: StateSchema::default(),
             vocab,
             rules_read_state: derive && program.reads_state(),
+            rules_read_occasion_target: derive && program.reads_state_path("occasion.target"),
             program,
             derive,
             base,
@@ -251,7 +257,13 @@ impl Store {
                 .and_then(|c| serde_json::from_value(c.clone()).ok()),
             reserved_reads: BTreeMap::new(),
             derived_reads: BTreeSet::new(),
+            capture_reads: false,
+            last_reads: Vec::new(),
         }
+    }
+
+    pub(crate) fn enable_read_capture(&mut self) {
+        self.capture_reads = true;
     }
 
     /// Replace the live world with a carried one (`lute play`'s resume).
@@ -261,27 +273,22 @@ impl Store {
         self.dirty = true;
     }
 
-    /// Coerce a raw seed literal against a path's declared value-type.
+    /// Coerce a raw seed literal against the declared value-type. `prev.*`
+    /// is the previous-run view of the corresponding `run.*` declaration.
     pub(crate) fn coerce_literal(&self, path: &str, lit: &str) -> Value {
-        match self.types.get(path).map(String::as_str) {
+        let type_path = path.strip_prefix("prev.").unwrap_or(path);
+        match self.types.get(type_path).map(String::as_str) {
             Some("bool") => match lit {
                 "true" => Value::Bool(true),
                 "false" => Value::Bool(false),
                 _ => Value::Str(lit.to_string()),
             },
-            Some("number") => lit
-                .parse::<f64>()
-                .map(Value::Num)
-                .unwrap_or(Value::Str(lit.to_string())),
-            // enum / string / reserved / unknown: keep verbatim, but recognize
-            // an obvious bool/number so an un-typed seed still evaluates.
+            Some("int") => lit.parse::<i64>().map(Value::Int).unwrap_or_else(|_| Value::Str(lit.to_string())),
+            Some("double") => lit.parse::<f64>().map(Value::Double).unwrap_or_else(|_| Value::Str(lit.to_string())),
             _ => match lit {
                 "true" => Value::Bool(true),
                 "false" => Value::Bool(false),
-                _ => lit
-                    .parse::<f64>()
-                    .map(Value::Num)
-                    .unwrap_or(Value::Str(lit.to_string())),
+                _ => Value::Str(lit.to_string()),
             },
         }
     }
@@ -302,14 +309,17 @@ impl Store {
 
     /// Set a value with no consequence (a seed, a carried value).
     pub(crate) fn put(&mut self, path: String, v: Value) {
+        let is_occasion_target = path == lute_check::beats::OCCASION_TARGET;
         self.values.insert(path, v);
-        self.dirty |= self.rules_read_state;
+        self.dirty |= self.rules_read_state
+            && (!is_occasion_target || self.rules_read_occasion_target);
     }
 
     /// Forget a value (an unbound `occasion.target`).
     pub(crate) fn remove(&mut self, path: &str) {
         if self.values.remove(path).is_some() {
-            self.dirty |= self.rules_read_state;
+            self.dirty |= self.rules_read_state
+                && (path != lute_check::beats::OCCASION_TARGET || self.rules_read_occasion_target);
         }
     }
 
@@ -317,7 +327,8 @@ impl Store {
     /// moved the clock (dsl 0.24.0 §1).
     pub(crate) fn write(&mut self, path: &str, v: Value) {
         self.values.insert(path.to_string(), v);
-        self.dirty |= self.rules_read_state;
+        self.dirty |= self.rules_read_state
+            && (path != lute_check::beats::OCCASION_TARGET || self.rules_read_occasion_target);
         if self
             .clock
             .as_ref()
@@ -372,7 +383,12 @@ impl Store {
     pub(crate) fn eval(&mut self, raw: &str) -> (Value, Vec<UnresolvedAtom>) {
         match parse(raw) {
             Some(expr) => self.eval_expr(&expr),
-            None => (Value::Unknown, Vec::new()),
+            None => {
+                if self.capture_reads {
+                    self.last_reads.clear();
+                }
+                (Value::Unknown, Vec::new())
+            }
         }
     }
 
@@ -385,11 +401,14 @@ impl Store {
 
     pub(crate) fn eval_expr(&mut self, expr: &Expr) -> (Value, Vec<UnresolvedAtom>) {
         self.derive();
-        let eff = EffectiveState::new(&self.schema, self.values.clone());
-        let mut fs = FactStore::new(&self.vocab).with_undecided(self.undecided.clone());
-        for (rel, args) in &self.all {
-            fs.assert(rel, args);
-        }
+        let eff = if self.capture_reads {
+            EffectiveState::new(&self.schema, self.values.clone()).with_read_log()
+        } else {
+            EffectiveState::new(&self.schema, self.values.clone())
+        };
+        let mut fs = FactStore::new(&self.vocab)
+            .with_facts(&self.all)
+            .with_undecided(self.undecided.clone());
         for id in &self.visited {
             fs.visit(id);
         }
@@ -399,6 +418,9 @@ impl Store {
         };
         let mut atoms = Vec::new();
         let v = eval(expr, &env, &mut atoms);
+        if self.capture_reads {
+            self.last_reads = eff.reads();
+        }
         for (path, kind) in eff.reserved_reads() {
             self.reserved_reads.entry(path).or_insert(kind);
         }
@@ -523,11 +545,18 @@ pub fn render_fact(rel: &str, args: &[String]) -> String {
     format!("{rel}({})", args.join(", "))
 }
 
+fn typed_json_to_value(j: &Json, ty: &str) -> Option<Value> {
+    match ty {
+        "int" => j.as_i64().map(Value::Int),
+        "double" => j.as_f64().map(Value::Double),
+        _ => json_to_value(j),
+    }
+}
 /// A JSON artifact scalar → a [`Value`]; `None` for a non-scalar.
 pub(crate) fn json_to_value(j: &Json) -> Option<Value> {
     match j {
         Json::Bool(b) => Some(Value::Bool(*b)),
-        Json::Number(n) => n.as_f64().map(Value::Num),
+        Json::Number(n) => n.as_i64().map(Value::Int).or_else(|| n.as_f64().map(Value::Double)),
         Json::String(s) => Some(Value::Str(s.clone())),
         _ => None,
     }

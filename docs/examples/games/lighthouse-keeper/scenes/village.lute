@@ -14,5 +14,5 @@ after: 'visited("rock.arrival")'
 ::music{action="change" mood="sad" volume="down"}
 @narrator: Twelve houses, a chapel, the post office and Hollis's bar, all turned away from the sea like people refusing to look at something.
 @narrator: At the end of the quay, a rusted mooring ring. A short end of rope still hangs from it, chafed to a brush.
-@inspector{mono,when="holds(suspect(tobias))"}: Everyone here has already decided Tobias Crane did something. I have not.
-@inspector{mono,when="holds(cleared(tobias))"}: Tobias was on Hollis's end stool all night. Whatever happened out there, it did not happen by his hand.
+@inspector{mono,when="holds('suspect', ['tobias'])"}: Everyone here has already decided Tobias Crane did something. I have not.
+@inspector{mono,when="holds('cleared', ['tobias'])"}: Tobias was on Hollis's end stool all night. Whatever happened out there, it did not happen by his hand.

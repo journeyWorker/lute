@@ -2,7 +2,7 @@
 kind: lore
 title: Achilles barks
 state:
-  user.runs: { type: number, default: 0 }
+  user.runs: { type: int, default: 0 }
 ---
 
 <entry id="achillesBark3" on="talk" once="user" target="npc.achilles" category="bark" priority="10" when="user.runs >= 3">

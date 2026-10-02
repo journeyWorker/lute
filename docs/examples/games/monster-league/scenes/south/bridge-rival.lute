@@ -5,7 +5,7 @@ title: Kai on the Tidewell bridge
 on: enterRoute
 target: route.r4
 after: 'visited("spine.lab")'
-when: "!holds(rivalFought(bridge))"
+when: "!holds('rivalFought', ['bridge'])"
 ---
 
 // CONTRACT BEAT (seeded by the lead; owned by south): asserts rivalFought(bridge).

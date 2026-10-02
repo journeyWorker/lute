@@ -9,14 +9,14 @@ series: palaceCodex
   @narrator: Four hundred steps down from the sea-gate. The first hundred are still carpeted.
 </entry>
 
-<entry id="codexHall" target="place.hall" category="codex" title="The long hall" when="holds(felled(eel))">
+<entry id="codexHall" target="place.hall" category="codex" title="The long hall" when="holds('felled', ['eel'])">
   @narrator: A hall the length of a ship, lit by windows that face nothing. Something long used to keep it.
 </entry>
 
-<entry id="codexChoir" target="place.choir" category="codex" title="The choir loft" when="holds(felled(choir))">
+<entry id="codexChoir" target="place.choir" category="codex" title="The choir loft" when="holds('felled', ['choir'])">
   @narrator: The singers drowned mid-hymn. They have been finishing it ever since.
 </entry>
 
-<entry id="codexThrone" target="place.throne" category="codex" title="The throne of tides" when="holds(felled(regent))">
+<entry id="codexThrone" target="place.throne" category="codex" title="The throne of tides" when="holds('felled', ['regent'])">
   @narrator: The crown sits on the throne. Nobody sits under it. Not any more.
 </entry>

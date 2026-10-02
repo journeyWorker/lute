@@ -52,23 +52,23 @@ produce the fact), *guaranteed* (it holds on every declared route to the
 guard), or *possible*. The crime scene asserts `foundClue(ledger)` and
 `foundClue(letter)` on its only route, and the interview is sequenced `after:`
 it, so both facts hold on entry to the interview. Give `pressLedger` the guard
-`when="holds(foundClue(ledger))"` and `pressLetter` a guard on a clue nobody
-logs, `when="holds(foundClue(knife))"`, and `check-project` reports the first
+`when="holds('foundClue', ['ledger'])"` and `pressLetter` a guard on a clue nobody
+logs, `when="holds('foundClue', ['knife'])"`, and `check-project` reports the first
 as redundant (it can never close) and the second as dead (it can never open):
 
 <!-- lute-diagnostics -->
 ```
-docs/examples/investigation/scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (docs/examples/investigation/scenes/crime-scene.lute:15)
+docs/examples/investigation/scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds('foundClue', ['ledger'])` is redundant: `foundClue(ledger)` is asserted on every route to here (docs/examples/investigation/scenes/crime-scene.lute:15)
 ```
 
 <!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
 ```
-docs/examples/investigation/scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes
+docs/examples/investigation/scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds('foundClue', ['knife'])` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes
 ```
 
 That is why `pressLedger` / `pressLetter` carry no `when=`, and why the crime
-scene's last line carries no `when="holds(points(blake))"`. The quest's
-optional `followClues` objective, `done="holds(points(blake))"`, is decided the
+scene's last line carries no `when="holds('points', ['blake'])"`. The quest's
+optional `followClues` objective, `done="holds('points', ['blake'])"`, is decided the
 same way: the rule derives `points(blake)` from the crime scene's asserts and a
 seed fact, so the objective is satisfiable; had no seed, assert, or rule
 produced it, the objective would be `E-OBJECTIVE-UNSATISFIABLE`. (A `done` is a predicate, not a
@@ -164,7 +164,7 @@ cargo run -q -p lute-cli -- compile docs/examples/investigation/scenes/crime-sce
   --project docs/examples/investigation -o /tmp/crime-scene.json
 ```
 
-Exit `0`; the artifact is stamped `"lute": "0.31.0"` / `"irVersion": "0.31.0"`.
+Exit `0`; the artifact is stamped `"lute": "0.32.0"` / `"irVersion": "0.32.0"`.
 Every document in the project compiles (`scenes/*.lute` and
 `quests/identify-killer.lute`) — swap the path above.
 

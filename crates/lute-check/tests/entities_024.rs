@@ -41,7 +41,7 @@ fn scene(front: &str, body: &str) -> String {
 
 const PARTY: &str = "\
 state:
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 entities:
   person: { members: [isolde, corvin, oda] }
   companion: { subsetOf: person, members: [isolde, corvin] }
@@ -180,7 +180,7 @@ fn per_state_folds_into_the_schema_with_defaults_and_prev_run_mirrors() {
 #[test]
 fn per_over_an_open_or_unknown_kind_is_a_state_decl_error() {
     let all = diags(&scene(
-        "state:\n  run.a: { type: number, default: 0, per: npc }\n  run.b: { type: number, default: 0, per: nobody }\nentities:\n  npc: { open: engine }\n",
+        "state:\n  run.a: { type: int, default: 0, per: npc }\n  run.b: { type: int, default: 0, per: nobody }\nentities:\n  npc: { open: engine }\n",
         "@narrator: hi\n",
     ));
     let decl = with_code(&all, "E-STATE-DECL");
@@ -201,7 +201,7 @@ fn per_over_an_open_or_unknown_kind_is_a_state_decl_error() {
 fn a_rule_guard_reads_indexed_state_by_a_bound_variable() {
     let all = diags(&party(
         RULES,
-        "@narrator{when=\"holds(loyal(isolde))\"}: loyal\n",
+        "@narrator{when=\"holds('loyal', ['isolde'])\"}: loyal\n",
     ));
     let errors: Vec<_> = all.iter().filter(|(c, _)| c.starts_with("E-")).collect();
     assert!(errors.is_empty(), "{all:?}");
@@ -228,7 +228,7 @@ fn a_rule_guard_index_needs_a_positive_binding_and_an_indexed_family() {
     let rules = "  - \"inParty(P) :- companion(P), recruited(P)\"\n  - \"loyal(P) :- inParty(P), cel(\\\"run.approval[Q] >= 3 && run.gold[P] > 1\\\")\"\n";
     let front = PARTY.replacen(
         "state:\n",
-        "state:\n  run.gold: { type: number, default: 0 }\n",
+        "state:\n  run.gold: { type: int, default: 0 }\n",
         1,
     );
     let all = diags(&scene(

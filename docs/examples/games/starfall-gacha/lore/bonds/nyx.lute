@@ -15,7 +15,7 @@ title: Nyx, Keeper of the Frostlight (limited SSR)
   @lumi{emotion="happy"}: Right off the {{occasion.payload.banner}} banner! The rate-up worked!
 </beat>
 
-<beat id="nyxDupe" on="summon" target="hero.nyx" once="false" priority="3" when="holds(owned(nyx)) && occasion.payload.copies <= 6">
+<beat id="nyxDupe" on="summon" target="hero.nyx" once="false" priority="3" when="holds('owned', ['nyx']) && occasion.payload.copies <= 6">
   @nyx{emotion="happy"}: Another me? Good. Twice the candles. {{occasion.payload.copies:plural(# copy|# copies)}} of me now.
 </beat>
 
@@ -24,7 +24,7 @@ title: Nyx, Keeper of the Frostlight (limited SSR)
   @nyx{when="@frostLive"}: The sea's frozen. That's my week. Come walk on it with me.
 </beat>
 
-<beat id="nyxBirthday" on="dailyReset" once="day" when="holds(celebrate(nyx))">
+<beat id="nyxBirthday" on="dailyReset" once="day" when="holds('celebrate', ['nyx'])">
   @nyx{emotion="happy"}: A birthday candle? For me? I'll... I'll keep it lit. I'm good at that.
 </beat>
 

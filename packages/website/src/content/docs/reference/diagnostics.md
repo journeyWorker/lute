@@ -542,6 +542,12 @@ An `::assert{A(x)}` targets arguments where a fact of a mutually exclusive relat
 
 Spec: [dsl 0.25.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
 
+### E-FACT-QUERY
+
+A fact-query call (`holds`, `count`, `countDistinct`, or `validAt`) does not use the required 0.32 list form `name('relation', ['arg', …])`.
+
+Spec: [dsl 0.32.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md)
+
 ### E-FACT-TIER-WRITE
 
 Content asserts or retracts an `app`-tier base relation, though it is engine-owned/read-only to content, exactly like `app.*` scalar state.
@@ -1101,6 +1107,12 @@ Spec: [dsl 0.25.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/prop
 ### E-RULE-GUARD-DEF
 
 A rule's `cel("...")` guard cannot expand its `@def`/`@def(args)` references — the def is undeclared, its arity is wrong, or it is otherwise not usable in a guard.
+
+### E-RUN-OWNED-WRITE
+
+`lute run` received an execution IR whose commands write an engine-owned state path or assert/retract a reserved relation.
+
+Spec: [dsl 0.32.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md)
 
 ### E-SEASON-DECL
 
@@ -1670,9 +1682,9 @@ A reserved `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` reference (or
 
 Spec: [dsl 0.5.1 §1.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md)
 
-### W-QUEST-STATE-ISSET
+### W-QUEST-STATE-HAS
 
-An `isSet(quest.<id>.state)` guard is always true, since a quest's state is always assigned — `unset` until activation, then a real state — so the check tests nothing.
+A `has(quest.<id>.state)` guard is always true, since a quest's state is always assigned — `unset` until activation, then a real state — so the check tests nothing.
 
 ### W-QUEST-TIER-IMPLICIT
 

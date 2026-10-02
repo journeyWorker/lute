@@ -170,25 +170,24 @@ fn walk(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>)
                 return;
             }
 
-            // `holds`/`count`/`validAt`/`now` (dsl 0.3.0 §6/§8, T11): the
-            // pattern argument (`holds`/`count`'s sole arg, `validAt`'s first
-            // arg) is a relation Call, never a CEL sub-expression — mirrors
-            // `cel_resolve::check_fact_queries`'s own exemption.
+            // `holds`/`count`/`validAt` (dsl 0.3.0 §6/§8, T11): the
+            // pattern is the first two data arguments (`relation`, `list`).
+            // Only `validAt`'s third argument is a genuine CEL expression.
             if is_profile_fact_query(c) {
                 if name == "validAt" {
-                    let t = &c.args[1].expr;
+                    let t = &c.args[2].expr;
                     if is_nt(t, ctx) {
                         return;
                     }
                     diags.push(diag(
                         E_TEMPORAL_ARG,
-                        "`validAt`'s second argument must be a narrative-time \
+                        "`validAt`'s third argument must be a narrative-time \
                          expression (dsl 0.3.0 §6)"
                             .to_string(),
                         slot.span,
                     ));
-                    // T may itself independently misuse a narrative-time value
-                    // (e.g. `validAt(rel, now() + 1)`) — keep walking it.
+                    // T may itself independently misuse a narrative-time
+                    // value (e.g. `validAt('rel', ['a'], now() + 1)`).
                     walk(t, slot, ctx, diags);
                 }
                 return;
@@ -206,7 +205,7 @@ fn walk(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>)
                     E_TEMPORAL_ARG,
                     "a narrative-time value admits no arithmetic, indexing, or \
                      other operator/function use — only an ordering comparison \
-                     against another narrative-time value, or `validAt`'s second \
+                     against another narrative-time value, or `validAt`'s third \
                      argument (dsl 0.3.0 §6)"
                         .to_string(),
                     slot.span,

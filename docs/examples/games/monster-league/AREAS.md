@@ -102,7 +102,7 @@ and the professor are the spine's.
 
 The rules are in `world.schema.yaml`. `lore/spine/obstacles.lute` has a fallback bark for every
 gate at priority `-10`, eligible only while the gate is shut. Answer your own gates at priority
-`0` with your own wording (same `when="!holds(canPass(<gate>))"`).
+`0` with your own wording (same `when="!holds('canPass', ['<gate>'])"`).
 
 | Gate | Area | Opens when |
 |---|---|---|
@@ -216,7 +216,7 @@ frontmatter**: a document that writes the key replaces the default entirely.
 `labels:` entry of its kind in `world.schema.yaml` (an area labels the members it `add:`s, beside
 the `add:`), and the components take the member, never a display string: `town="pebbleton"`,
 `badge="stone"`, `item="volcanoKey"` — each checked against its kind. A component body cannot
-read a def or state; pass a def as a param default (`lit: { type: number, default: "@islesLit" }`).
+read a def or state; pass a def as a param default (`lit: { type: int, default: "@islesLit" }`).
 
 Rules that come from the language, not taste:
 
@@ -236,7 +236,7 @@ Rules that come from the language, not taste:
 
 A route trainer (a one-line template beat for the battle, an entry for the after-battle line).
 (0.27) `trainerBattle` is a beat template: `<beat use="trainerBattle" id="<who>" who="<who>" …/>`
-answers `trainerSpotted@trainer.<who>` with `spentBy="holds(defeated(<who>))"`, so a trainer stays
+answers `trainerSpotted@trainer.<who>` with `spentBy="holds('defeated', ['<who>'])"`, so a trainer stays
 repeatable until beaten. The defeat check is the spend condition, not the `when`, so an extra
 condition is an ordinary `when=` on the use (`when="@isNight"`, `when="run.lair.quarryDig ==
 'found'"`). (Before round 6 it lived in `when`, and uses wrote `only=` so as not to replace it.)
@@ -253,7 +253,7 @@ title: Route 3 trainers
 
 <beat use="trainerBattle" id="r3YoungsterAda" when="!@isNight" who="r3YoungsterAda" intro="I like shorts! They're comfy and easy to wear!" win="Aww, my shorts are torn." lose="Shorts win again!" prize="160"/>
 
-<entry id="southR3YoungsterAdaAfter" on="talk" target="npc.r3YoungsterAda" category="bark" when="holds(defeated(r3YoungsterAda))">
+<entry id="southR3YoungsterAdaAfter" on="talk" target="npc.r3YoungsterAda" category="bark" when="holds('defeated', ['r3YoungsterAda'])">
   @r3YoungsterAda: Are you storing your monsters on a PC? Each box holds twenty!
 </entry>
 ```
@@ -371,11 +371,11 @@ Clock: day 1 is a Monday; `clock.weekday` 0 = Monday … 6 = Sunday; slots `morn
 |---|---|---|
 | arriving somewhere | `enterTown` / `enterRoute` / `enterPlace` | first visit `once: run`; repeats as `once: day` entries |
 | someone the player presses A on | `talk@npc.<person>` | trainers too, for the after-battle line |
-| a trainer battle | `trainerSpotted@trainer.<trainer>` | (0.27) `<beat use="trainerBattle" …/>` writes `spentBy="holds(defeated(<id>))"` |
+| a trainer battle | `trainerSpotted@trainer.<trainer>` | (0.27) `<beat use="trainerBattle" …/>` writes `spentBy="holds('defeated', ['<id>'])"` |
 | a gym leader | `challenge@arena.<gym>` | the seeded contract beat |
 | Center / Mart | `heal@town.<town>` / `shop@town.<town>` | components `nurse` / `shop`; the spine's fallback Center is a `kind:town` beat at `-100` |
 | the Isle Ferry (isles) | `sail@isle.<island>` | raised only once `@champion` holds (`raisedWhen`) |
-| a blocked path | `obstacle@gate.<gate>` | `when="!holds(canPass(<gate>))"` |
+| a blocked path | `obstacle@gate.<gate>` | `when="!holds('canPass', ['<gate>'])"` |
 | using a key item | `useItem@item.<keyItem>` | |
 | a catch reaction | `caught@mon.<species>` | the engine asserted `caught` before raising |
 | a time event | `dayStart` / `slotStart` (both `select: sequence`), `dayEnd` | `once: day` / `once: slot` |

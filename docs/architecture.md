@@ -1,3 +1,12 @@
+| Surface | Stability |
+|---|---|
+| execution IR (schema, `irVersion`) | public, versioned |
+| CLI commands and `--json` outputs | public, versioned |
+| bridge protocol | public, versioned |
+| `lute context` output | public, versioned |
+| semantic-model query API | experimental |
+| AST, checker and compiler internals | internal |
+
 # Lute — Architecture (compiler · AST · validation · LSP)
 
 **Status:** the language and tooling are **shipped and implemented in Rust** — crates
@@ -329,7 +338,7 @@ macro expansion to inline CEL.** validator validates each `@ref` against its use
 ```yaml
 defs:
   warm:    { type: bool,   cel: "scene.affect.elena >= 2" }
-  closeUp: { type: number, cel: "scene.affect.elena >= 5 ? 1.35 : 1.15", min: 1.0, max: 1.6 }
+  closeUp: { type: double, cel: "scene.affect.elena >= 5 ? 1.35 : 1.15", min: 1.0, max: 1.6 }
   chose:   { type: bool, params: { q: choiceRef, opt: choiceId }, cel: "scene.choices[q] == opt" }   # intra-episode; choices are episode-scoped (§11.1)
 ```
 
@@ -349,7 +358,8 @@ type. This keeps staging non-Turing-complete.
 - **Definite-assignment analysis (path-sensitive):** every read resolves to a declared default /
   dominating write / guard / def param. Reading an undeclared path = compile error
   (`E-UNDECLARED`, never null/false). Non-`scene` paths are **maybe-unset at scene entry** unless
-  schema-defaulted; a dominating `::set{p=…}` or guard (`isSet()`/`has()`) proves them after.
+  schema-defaulted; a dominating `::set{p=…}` or guard (`has(p)` for identifier paths, or
+  `'k' in a.b` for non-identifier keys) proves them after.
   Compound `::set` (`+=`/`-=`/`*=`) carries an implicit read. Diagnostics distinguish
   `E-UNDECLARED` from `E-MAYBE-UNSET`.
 
@@ -669,7 +679,7 @@ set, never an evaluation:**
 
 ### The CEL fact-query surface (spec §8)
 
-`holds(rel(args))`, `count(rel(args))`, `validAt(rel(args), narrativeTimeExpr)`, and `now()` are
+`holds('rel', ['args'])`, `count('rel', ['args'])`, `validAt('rel', ['args…'], narrativeTimeExpr)`, and `now()` are
 closed CEL-profile additions (`cel_resolve.rs`), condition-surface only (guard-firewalled per
 above, never a rule-body dependency):
 
@@ -904,7 +914,7 @@ result (overflow, `/0`) also stays undecided rather than deciding to `NaN`/`inf`
 - **R4 (connectives)** — `&&`/`||` short-circuit on a decided-false/decided-true side even
   with an undecided other side (K2); `!d` negates; `c ? x : y` with a decided `c` decides to
   the chosen branch's decision.
-- **R5 (everything else undecided)** — a state-path read, `isSet()`/`has()`, any fact query
+ - **R5 (everything else undecided)** — a state-path read, `has(a.b)`, any fact query
   (`holds`/`count`/`validAt`), `now()`, comprehensions — `None`, always. No assumption about
   runtime values is ever made.
 
@@ -1163,7 +1173,7 @@ any difference in transcript, final state, facts, quest states or exit.
    `true || unknown = true`, otherwise unknown; a comparison/arithmetic/`?:` node with an
    unknown operand is unknown. The ONE shared seam with `decide()` is `apply_op` (D3) — R3's
    ground-operation semantics, lifted over `Unknown` here, written once in `lute-check`.
-   `isSet()`/`has()` are **definite** (D19 — see below); a bare value read of an unset path is
+   `has(a.b)` is **definite** (D19 — see below); a bare value read of an unset path is
    `unknown`.
 
 **Walk (§4.4, `trace::trace_document`).** The document is gated, its mocks validated, then
@@ -1213,10 +1223,10 @@ matches), `E-COMPONENT-ARG`/`-UNDECLARED`/`-CYCLE`/`-DUP`/`-PARSE`, `E-UNKNOWN-A
 
 **Designer-ratified interpretations (confirmed for 0.4.0; normative):**
 
-- **D19** — `isSet()`/`has()` in `trace` are **definite** (true iff an effective value exists
-  via trace-write → mock seed → schema default; false on unset), while a *value* read of an
-  unset path is `unknown`. This keeps both inside §4.3's "Evaluated" list and lets
-  `!isSet(run.x)` decide on a fresh mock world with no seeded state.
+ - **D19** — `has(a.b)` in `trace` is **definite** (true iff an effective value exists
+  via trace-write → mock seed → schema default; false on unset). For non-identifier keys,
+  use `'k' in a.b`. A bare value read of an unset path is `unknown`. This keeps both inside
+  §4.3's "Evaluated" list and lets `!has(run.x)` decide on a fresh mock world with no seeded state.
 - **D13** — the version-stamp reading of B2's "byte-identical" (above).
 
 **Worked example:** [`examples/gated-line.lute`](examples/gated-line.lute) (§7.2) and

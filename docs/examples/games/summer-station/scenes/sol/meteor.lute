@@ -5,7 +5,7 @@ title: The Perseids
 on: visit
 target: place.roof
 priority: 40
-when: "run.day == 4 && holds(at(sol, roof)) && quest.meteor.state == 'active'"
+when: "run.day == 4 && holds('at', ['sol', 'roof']) && quest.meteor.state == 'active'"
 ---
 
 ## Thursday night

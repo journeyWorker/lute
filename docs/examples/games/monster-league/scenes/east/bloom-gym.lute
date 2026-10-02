@@ -5,7 +5,7 @@ title: Bloom Gym
 on: challenge
 target: arena.bloomGym
 once: false
-when: "!holds(defeated(fern))"
+when: "!holds('defeated', ['fern'])"
 ---
 
 // CONTRACT BEAT (seeded by the lead; owned by east): asserts hasBadge(bloom)
@@ -16,7 +16,7 @@ when: "!holds(defeated(fern))"
 ::bg{location="bloom-gym" time="day"}
 ::music{action="change" mood="calm" volume="down"}
 @narrator: The Bloom Gym is a greenhouse full of sleeping flowers. At the far end, in a wicker chair, a woman is also asleep.
-@narrator{when="holds(defeated(bloomGymLassRose)) && holds(defeated(bloomGymBeautyLily)) && holds(defeated(bloomGymPicnickerIvy))"}: Her trainers cough, loudly and together. She wakes.
+@narrator{when="holds('defeated', ['bloomGymLassRose']) && holds('defeated', ['bloomGymBeautyLily']) && holds('defeated', ['bloomGymPicnickerIvy'])"}: Her trainers cough, loudly and together. She wakes.
 
 ## Fern
 

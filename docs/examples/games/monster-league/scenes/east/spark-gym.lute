@@ -5,7 +5,7 @@ title: Spark Gym
 on: challenge
 target: arena.sparkGym
 once: false
-when: "!holds(defeated(volta))"
+when: "!holds('defeated', ['volta'])"
 ---
 
 // CONTRACT BEAT (seeded by the lead; owned by east): asserts hasBadge(spark).
@@ -17,7 +17,7 @@ when: "!holds(defeated(volta))"
 ::bg{location="spark-gym" time="day"}
 ::music{action="change" mood="tense" volume="normal"}
 @narrator: The gym floor hums. Every lamp in the room is wired to a switch on the far wall, and the switches are wired to something that crackles.
-@narrator{when="holds(defeated(sparkGymEngineerWatts)) && holds(defeated(sparkGymSailorFlint)) && holds(defeated(sparkGymRockerJolt))"}: Volta's whole crew is watching from the switches, rubbing their singed eyebrows.
+@narrator{when="holds('defeated', ['sparkGymEngineerWatts']) && holds('defeated', ['sparkGymSailorFlint']) && holds('defeated', ['sparkGymRockerJolt'])"}: Volta's whole crew is watching from the switches, rubbing their singed eyebrows.
 
 ## Lt. Volta
 

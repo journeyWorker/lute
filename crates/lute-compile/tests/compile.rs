@@ -17,12 +17,35 @@ fn input(text: &str) -> CheckInput {
     }
 }
 
-/// Unwrap a scene artifact's untagged `meta` (0.2.0 kind envelope) — these
+/// Unwrap a scene execution IR's untagged `meta` (0.2.0 kind envelope) — these
 /// pre-0.2.0 tests exercise `kind: scene` docs only.
-fn scene_meta(a: &lute_compile::Artifact) -> &lute_compile::SceneMeta {
+fn scene_meta(a: &lute_compile::ExecutionIr) -> &lute_compile::SceneMeta {
     match &a.meta {
         ArtifactMeta::Scene(m) => m,
         ArtifactMeta::Quest(_) | ArtifactMeta::Lore(_) => panic!("expected scene meta"),
+    }
+}
+
+fn assert_no_unresolved_at(value: &serde_json::Value, path: &str) {
+    match value {
+        serde_json::Value::Object(fields) => {
+            for (field, child) in fields {
+                if field != "authored" {
+                    assert_no_unresolved_at(child, &format!("{path}.{field}"));
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for (index, child) in items.iter().enumerate() {
+                assert_no_unresolved_at(child, &format!("{path}[{index}]"));
+            }
+        }
+        _ => {
+            assert!(
+                !value.to_string().contains('@'),
+                "unexpanded/unresolved in {path}: {value}"
+            );
+        }
     }
 }
 
@@ -33,7 +56,7 @@ season: 1
 episode: 2
 title: Compile me
 state:
-  scene.affect.marina: { type: number, default: 0 }
+  scene.affect.marina: { type: int, default: 0 }
 defs:
   fond: { type: bool, cel: "scene.affect.marina >= 1" }
 ---
@@ -57,7 +80,7 @@ defs:
   <when test="@fond">
     @fixer{mono}: Nice.
   </when>
-  <when test="$ == 'blunt'">
+  <when is="blunt">
     @fixer{mono}: Flat.
   </when>
   <otherwise>
@@ -76,6 +99,35 @@ fn error_doc_emits_no_artifact() {
 }
 
 #[test]
+fn state_entry_carries_engine_owner_only_when_declared() {
+    let text = r#"---
+kind: scene
+character: owner
+season: 1
+episode: 1
+state:
+  run.day: { type: int, default: 1, owner: engine }
+  run.mood: { type: int, default: 0 }
+---
+
+## Shot 1.
+@narrator: Hello.
+"#;
+    let ir = compile(&input(text)).expect("owner declaration compiles");
+    let day = ir.state.iter().find(|entry| entry.path == "run.day").unwrap();
+    let mood = ir.state.iter().find(|entry| entry.path == "run.mood").unwrap();
+    assert_eq!(
+        day.owner,
+        Some(lute_manifest::types::Owner::Engine),
+        "engine-owned state carries its owner in the execution IR"
+    );
+    assert_eq!(mood.owner, None, "content-owned state omits its owner");
+    let json = serde_json::to_value(&ir).unwrap();
+    assert_eq!(json["state"][0]["owner"], "engine");
+    assert!(json["state"][1].get("owner").is_none());
+}
+
+#[test]
 fn valid_hub_doc_compiles_to_hub_record() {
     // Plan C: `<hub>` now LOWERS to a `hub` record (IR A2). A check-passing hub
     // doc COMPILES — the transitional compile-time hub gate is gone.
@@ -85,7 +137,7 @@ character: b
 season: 1
 episode: 1
 state:
-  scene.affect.b: { type: number, default: 0 }
+  scene.affect.b: { type: int, default: 0 }
 ---
 
 ## Shot 1.
@@ -126,7 +178,7 @@ state:
     let opt = |id: &str| hub.options.iter().find(|o| o.id == id).expect("option");
     let ask = opt("ask");
     assert!(ask.once && !ask.exit, "ask: once, not exit");
-    assert!(ask.when.is_none() && ask.expr.is_none(), "ask is unguarded");
+    assert!(ask.when.is_none(), "ask is unguarded");
     let curious = opt("curious");
     assert!(
         !curious.once && !curious.exit,
@@ -134,11 +186,11 @@ state:
     );
     assert!(
         curious.when.is_some(),
-        "guarded option carries the raw `when`"
+        "guarded option carries one CEL slot object"
     );
     assert!(
-        curious.expr.is_some(),
-        "guarded option carries the lowered A7 expr"
+        curious.when.as_ref().is_some_and(|slot| !slot.raw.is_empty()),
+        "guarded option slot carries CEL"
     );
     let leave = opt("leave");
     assert!(!leave.once && leave.exit, "leave: exit, not once");
@@ -222,13 +274,15 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.31.0");
-    assert_eq!(artifact.ir_version, "0.31.0");
+    assert_eq!(artifact.lute, "0.32.0");
+    assert_eq!(artifact.ir_version, "0.32.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
         "capabilityVersion must be a non-empty snapshot stamp"
     );
+    let envelope = serde_json::to_value(&artifact).unwrap();
+    assert!(envelope["celEnv"].is_object(), "compiled envelope carries celEnv");
     assert_eq!(scene_meta(&artifact).character.as_deref(), Some("marina"));
     // A4/A9: episodeId normalized lowercase to match the lineId episode segment.
     assert_eq!(scene_meta(&artifact).episode_id.as_deref(), Some("s01ep02"));
@@ -248,7 +302,7 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     // can init the branch record key before any choice is taken.
     assert_eq!(choice_entry.default, Some(serde_json::json!("unset")));
     let affect = &artifact.state[0];
-    assert_eq!(affect.ty, "number");
+    assert_eq!(affect.ty, "int");
     assert_eq!(affect.default, Some(serde_json::json!(0)));
 
     // First record: the bg, addressed densely.
@@ -265,14 +319,24 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
             _ => None,
         })
         .expect("match record");
-    assert_eq!(m.arms[0].test, "(scene.affect.marina >= 1)");
-    assert_eq!(m.arms[1].test, "scene.choices.number == 'blunt'");
+    assert_eq!(m.arms[0].test.raw, "(scene.affect.marina >= 1)");
+    assert!(!m.arms[1].test.raw.is_empty());
+    assert_eq!(
+        serde_json::to_value(&m.arms[1].test.expr).unwrap(),
+        serde_json::json!({
+            "op": "==",
+            "l": { "path": "scene.choices.number" },
+            "r": { "string": "blunt" }
+        })
+    );
     assert!(m.otherwise.is_some());
 
-    // No symbolic labels or DSL tokens survive anywhere.
-    let all = serde_json::to_string(&artifact).unwrap();
-    assert!(!all.contains("\"@"), "unexpanded/unresolved: {all}");
-    assert!(!all.contains("textUnitId"));
+    // Authored provenance may intentionally retain `@def` text; emitted CEL
+    // and control-flow targets must not retain unresolved DSL tokens.
+    for command in &artifact.commands {
+        let value = serde_json::to_value(command).unwrap();
+        assert_no_unresolved_at(&value, "command");
+    }
 
     // Back-filled thought-line ids (fixer max authored 0010 -> 0020/0030/0040),
     // monologue => no voiceKey.
@@ -417,7 +481,7 @@ season: 1
 episode: 3
 state:
   run.seen: { type: bool }
-  scene.affect.marina: { type: number, default: 0 }
+  scene.affect.marina: { type: int, default: 0 }
 ---
 
 ## Shot 1.
@@ -485,7 +549,7 @@ character: marina
 season: 1
 episode: 2
 state:
-  run.coins: { type: number, default: 0 }
+  run.coins: { type: int, default: 0 }
 defs:
   fond: { type: bool, cel: "run.coins >= 1" }
 ---
@@ -518,8 +582,8 @@ defs:
                 "kind": "ref",
                 "ref": "@fond",
                 "expr": {
-                    "raw": "(run.coins >= 1)",
-                    "expr": { "op": ">=", "l": { "path": "run.coins" }, "r": { "lit": 1.0 } }
+                    "cel": "(run.coins >= 1)",
+                    "expr": { "op": ">=", "l": { "path": "run.coins" }, "r": { "int": 1 } }
                 }
             }
         ]),
@@ -538,9 +602,9 @@ character: marina
 season: 1
 episode: 2
 state:
-  user.deaths: { type: number, default: 0 }
+  user.deaths: { type: int, default: 0 }
 defs:
-  next: { type: number, cel: "user.deaths + 1" }
+  next: { type: int, cel: "user.deaths + 1" }
 ---
 
 ## Shot 1.
@@ -569,8 +633,8 @@ defs:
                 "kind": "ref",
                 "ref": "@next",
                 "expr": {
-                    "raw": "(user.deaths + 1)",
-                    "expr": { "op": "+", "l": { "path": "user.deaths" }, "r": { "lit": 1.0 } }
+                    "cel": "(user.deaths + 1)",
+                    "expr": { "op": "+", "l": { "path": "user.deaths" }, "r": { "int": 1 } }
                 },
                 "format": "ordinal"
             },
@@ -610,7 +674,7 @@ character: b
 season: 1
 episode: 1
 state:
-  run.coins: { type: number, default: 0 }
+  run.coins: { type: int, default: 0 }
 ---
 
 ## Shot 1.
@@ -856,7 +920,7 @@ fn rewards_serialize_in_declaration_order_with_wire_names() {
         serde_json::json!({"kind":"XP","amount":100}),
         "scalar reward serializes with `amount` alone"
     );
-    // Range amount: `amountMin`/`amountMax`; `amount` skipped; `when.raw` verbatim.
+    // Range amount: `amountMin`/`amountMax`; `amount` skipped; `when.cel` verbatim.
     assert_eq!(
         quest_rewards[1]["kind"], "GOLD",
         "second reward kind preserved in declaration order"
@@ -870,8 +934,8 @@ fn rewards_serialize_in_declaration_order_with_wire_names() {
     assert_eq!(quest_rewards[1]["amountMin"], 50);
     assert_eq!(quest_rewards[1]["amountMax"], 200);
     assert_eq!(
-        quest_rewards[1]["when"]["raw"], "run.freed",
-        "when.raw preserved verbatim (wire contract)"
+        quest_rewards[1]["when"]["cel"], "run.freed",
+        "when.cel preserved verbatim (wire contract)"
     );
     // `outcome="failed"` reaches the wire on a quest-level entry, default amount=1.
     assert_eq!(
@@ -1212,7 +1276,7 @@ state:
     );
     let set = set.unwrap();
     assert_eq!(set.op, "=");
-    assert_eq!(set.value, "true");
+    assert_eq!(set.value.raw, "true");
 }
 
 #[test]
@@ -1728,6 +1792,7 @@ title: Legacy
     let art = compile(&input(DOC)).expect("legacy doc compiles");
     let capability_version = art.capability_version.clone();
     let actual = serde_json::to_value(&art).unwrap();
+    assert!(actual["celEnv"].is_object(), "compiled envelope carries celEnv");
 
     // What a 0.14 emit would have produced for the SAME document: the same
     // envelope, minus `meta.id`, with `lute`/`irVersion` pinned to 0.14.0.
@@ -1736,6 +1801,8 @@ title: Legacy
     expected["irVersion"] = serde_json::json!("0.14.0");
     let expected_meta = expected["meta"].as_object_mut().unwrap();
     expected_meta.remove("id");
+    // `celEnv` is a deliberate additive 0.32 field, so the legacy comparison ignores it.
+    expected.as_object_mut().unwrap().remove("celEnv");
 
     // Reconstruct the pinned 0.14 shape from the ground up (not from the
     // 0.15 output) to prove `expected` isn't tautologically = actual.
@@ -1754,6 +1821,7 @@ title: Legacy
         "state": actual["state"].clone(),
         "commands": actual["commands"].clone(),
         "shots": actual["shots"].clone(),
+        "outsideRun": actual["outsideRun"].clone(),
     });
     assert_eq!(
         expected, pinned_014,
@@ -1771,8 +1839,8 @@ title: Legacy
     assert_eq!(actual["meta"]["episodeId"], pinned_014["meta"]["episodeId"]);
     assert_eq!(actual["meta"]["title"], pinned_014["meta"]["title"]);
     assert_eq!(actual["meta"]["id"], serde_json::json!("marina.s01ep02"));
-    assert_eq!(actual["lute"], serde_json::json!("0.31.0"));
-    assert_eq!(actual["irVersion"], serde_json::json!("0.31.0"));
+    assert_eq!(actual["lute"], serde_json::json!("0.32.0"));
+    assert_eq!(actual["irVersion"], serde_json::json!("0.32.0"));
 }
 
 /// dsl 0.15.0 §3: the authored `extra:` block lands under `meta.extra`
@@ -1893,4 +1961,78 @@ id: haven.s01ep01
             v["meta"]
         );
     }
+}
+
+#[test]
+fn all_condition_slots_are_cel_pairs_and_authored_tracks_expansion() {
+    let text = r#"---
+kind: scene
+id: slot-shapes
+state:
+  run.n: { type: int, default: 1 }
+entities:
+  flag: { members: [yes] }
+relations:
+  ready: { args: [flag], derive: true }
+rules:
+  - "ready(yes) :- cel(\"run.n == 1\")"
+defs:
+  threshold: "run.n > 0"
+---
+## Shot 1.
+<branch id="b">
+  <choice id="expanded" label="Expanded" when="@threshold">
+    @narrator: Expanded.
+  </choice>
+  <choice id="plain" label="Plain" when="run.n > 0">
+    @narrator: Plain.
+  </choice>
+  <choice id="open" label="Open">
+    @narrator: Open.
+  </choice>
+</branch>
+<match on="run.n">
+  <when is="1">
+    @narrator: One.
+  </when>
+  <otherwise>
+    @narrator: Other.
+  </otherwise>
+</match>
+"#;
+    let v = serde_json::to_value(&compile(&input(text)).expect("slot-shapes compiles")).unwrap();
+    let choice = v["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "choice")
+        .unwrap();
+    let options = choice["options"].as_array().unwrap();
+    for option in options {
+        if let Some(when) = option.get("when") {
+            assert!(when.is_object() && when.get("expr").is_some(), "{option}");
+        }
+    }
+    let expanded = options
+        .iter()
+        .find(|o| o["id"] == "expanded")
+        .unwrap();
+    assert_eq!(expanded["when"]["authored"], "@threshold");
+    let plain = options.iter().find(|o| o["id"] == "plain").unwrap();
+    assert!(plain["when"].get("authored").is_none(), "{plain}");
+
+    let matched = v["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "match")
+        .unwrap();
+    assert!(matched["subject"].get("expr").is_some());
+    let arm = &matched["arms"][0]["test"];
+    assert!(arm.is_object() && arm.get("expr").is_some(), "{arm}");
+    assert_eq!(arm["authored"], "is=1");
+
+    let guard = &v["rules"][0]["body"][0]["cel"];
+    assert!(guard.is_object() && guard.get("expr").is_some(), "{guard}");
+    assert!(guard.get("authored").is_none(), "{guard}");
 }

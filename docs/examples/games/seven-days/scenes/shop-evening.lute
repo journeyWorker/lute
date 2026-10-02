@@ -55,7 +55,7 @@ once: false
     </branch>
   </when>
   <otherwise>
-    @pell{when="isSet(run.lantern.wish)"}: Don't read your wish back. It's bad luck. I made that up, but still.
+    @pell{when="has(run.lantern.wish)"}: Don't read your wish back. It's bad luck. I made that up, but still.
   </otherwise>
 </match>
 

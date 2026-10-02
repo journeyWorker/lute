@@ -120,7 +120,7 @@ title: Silvercrest (the Mind Gym, the Game Corner, Helix Tower, the department s
 
 // ── gates ────────────────────────────────────────────────────────────────
 
-<entry id="midGateMindGymDoor" on="obstacle" target="gate.mindGymDoor" category="bark" when="!holds(canPass(mindGymDoor))">
+<entry id="midGateMindGymDoor" on="obstacle" target="gate.mindGymDoor" category="bark" when="!holds('canPass', ['mindGymDoor'])">
   @narrator: The Mind Gym's doors are chained. A notice in Eclipse lettering: CLOSED BY ORDER OF THE DIRECTOR. HELIX TOWER THANKS YOU FOR YOUR PATIENCE.
   @narrator: Through the glass, Sabine is sitting cross-legged on a warp tile, perfectly still. She opens one eye, looks at you, and closes it again.
 </entry>

@@ -120,13 +120,13 @@ title: Tidewell — services, the derby, the pier, the lighthouse and the cape
 
 <beat use="trainerBattle" id="tidewellFishermanNed" who="tidewellFishermanNed" intro="You made my float bob! That's the only bite I've had all day and it was you! Battle!" win="Still no bite." lose="At least I caught a win!" prize="340"/>
 
-<entry id="southTidewellFishermanNedAfter" on="talk" target="npc.tidewellFishermanNed" category="bark" when="holds(defeated(tidewellFishermanNed))">
+<entry id="southTidewellFishermanNedAfter" on="talk" target="npc.tidewellFishermanNed" category="bark" when="holds('defeated', ['tidewellFishermanNed'])">
   @tidewellFishermanNed: An Old Rod catches Goldfinn, and only Goldfinn. Old Salt gives one to anyone who sits with him. He gave me one forty years ago.
 </entry>
 
 <beat use="trainerBattle" id="tidewellFishermanOskar" who="tidewellFishermanOskar" intro="I've won the derby six times! Six! Want to see my trophy? Battle me first!" win="Seven times, next Sunday. Watch." lose="Six-time champion!" prize="360"/>
 
-<entry id="southTidewellFishermanOskarAfter" on="talk" target="npc.tidewellFishermanOskar" category="bark" when="holds(defeated(tidewellFishermanOskar))">
+<entry id="southTidewellFishermanOskarAfter" on="talk" target="npc.tidewellFishermanOskar" category="bark" when="holds('defeated', ['tidewellFishermanOskar'])">
   <match on="quest.southDerby.state">
     <when is="complete">
       @tidewellFishermanOskar: You got a Seahorsling on derby day. On your first try. I'm going to need a minute. A long minute. Maybe a week.
@@ -139,7 +139,7 @@ title: Tidewell — services, the derby, the pier, the lighthouse and the cape
 
 <beat use="trainerBattle" id="tidewellSailorBrett" who="tidewellSailorBrett" intro="Ahoy! A landlubber on my dock! Hands up and monsters out!" win="Sunk! Clean sunk!" lose="Back to shore with you!" prize="320"/>
 
-<entry id="southTidewellSailorBrettAfter" on="talk" target="npc.tidewellSailorBrett" category="bark" when="holds(defeated(tidewellSailorBrett))">
+<entry id="southTidewellSailorBrettAfter" on="talk" target="npc.tidewellSailorBrett" category="bark" when="holds('defeated', ['tidewellSailorBrett'])">
   @tidewellSailorBrett: The Meridian? Finest ferry in Verdane. Captain Orla runs her tight as a drum. You'll need a ticket, and tickets are rarer than Seahorslings this month.
 </entry>
 
@@ -151,11 +151,11 @@ title: Tidewell — services, the derby, the pier, the lighthouse and the cape
 
 <beat use="trainerBattle" id="capeBirdKeeperWyn" who="capeBirdKeeperWyn" intro="Shh! I'm counting Galewings for Cassius. You made me lose count. Now I have to battle you and start again." win="One, two... never mind." lose="Right. From the top. One..." prize="300"/>
 
-<entry id="southCapeBirdKeeperWynAfter" on="talk" target="npc.capeBirdKeeperWyn" category="bark" when="holds(defeated(capeBirdKeeperWyn))">
+<entry id="southCapeBirdKeeperWynAfter" on="talk" target="npc.capeBirdKeeperWyn" category="bark" when="holds('defeated', ['capeBirdKeeperWyn'])">
   @capeBirdKeeperWyn: The flocks go around the Eclipse boats. A whole mile around. Birds know. Cassius says birds always know.
 </entry>
 
-<entry id="southCassiusAfter" on="talk" target="npc.cassius" category="bark" when="holds(hasItem(ferryTicket))">
+<entry id="southCassiusAfter" on="talk" target="npc.cassius" category="bark" when="holds('hasItem', ['ferryTicket'])">
   <match>
     <when test="@badgeCount >= 3">
       @cassius{emotion="happy"}: You've been across! Did you see the Sealpups off Portvolt? Did you count them? Never mind. Tell me about the sea.

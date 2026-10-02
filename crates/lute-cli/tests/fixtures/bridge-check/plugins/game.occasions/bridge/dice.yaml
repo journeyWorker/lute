@@ -5,4 +5,4 @@ bridgeCapabilities:
     replay: recorded
     result:
       - { name: passed, type: bool }
-      - { name: margin, type: number }
+      - { name: margin, type: int }

@@ -897,32 +897,31 @@ fn eval_asset_exists(
 // ---------------------------------------------------------------------------
 
 fn num(n: f64) -> Value {
-    Value::Num(n)
+    Value::Double(n)
+}
+
+fn int(n: u32) -> Value {
+    Value::Int(n as i64)
 }
 
 fn line_value(l: &LineRow) -> Value {
     let mut m = BTreeMap::new();
-    m.insert("words".into(), num(l.words as f64));
-    m.insert("chars".into(), num(l.chars as f64));
+    m.insert("words".into(), int(l.words));
+    m.insert("chars".into(), int(l.chars));
     m.insert("speaker".into(), Value::Str(l.speaker.clone()));
     let mut attrs = BTreeMap::new();
-    for (k, v) in &l.attrs {
-        attrs.insert(k.clone(), Value::Str(v.clone()));
-    }
+    for (k, v) in &l.attrs { attrs.insert(k.clone(), Value::Str(v.clone())); }
     m.insert("attrs".into(), Value::Map(attrs));
     Value::Map(m)
 }
 
 fn shot_value(s: &ShotRow) -> Value {
     let mut m = BTreeMap::new();
-    m.insert("index".into(), num(s.index as f64));
+    m.insert("index".into(), int(s.index));
     m.insert("title".into(), Value::Str(s.title.clone()));
-    m.insert("dialogueLines".into(), num(s.dialogueLines as f64));
-    m.insert("words".into(), num(s.words as f64));
-    m.insert(
-        "firstStagingTag".into(),
-        Value::Str(s.firstStagingTag.clone()),
-    );
+    m.insert("dialogueLines".into(), int(s.dialogueLines));
+    m.insert("words".into(), int(s.words));
+    m.insert("firstStagingTag".into(), Value::Str(s.firstStagingTag.clone()));
     m.insert("kind".into(), Value::Str(s.kind.clone()));
     Value::Map(m)
 }
@@ -930,14 +929,14 @@ fn shot_value(s: &ShotRow) -> Value {
 fn scene_value(s: &SceneRow) -> Value {
     let mut m = BTreeMap::new();
     m.insert("kind".into(), Value::Str(s.kind.clone()));
-    m.insert("dialogueLines".into(), num(s.dialogueLines as f64));
-    m.insert("words".into(), num(s.words as f64));
-    m.insert("bodyNodes".into(), num(s.bodyNodes as f64));
-    m.insert("directives".into(), num(s.directives as f64));
-    m.insert("sets".into(), num(s.sets as f64));
-    m.insert("choices".into(), num(s.choices as f64));
-    m.insert("shots".into(), num(s.shots as f64));
-    m.insert("maxLineWords".into(), num(s.maxLineWords as f64));
+    m.insert("dialogueLines".into(), int(s.dialogueLines));
+    m.insert("words".into(), int(s.words));
+    m.insert("bodyNodes".into(), int(s.bodyNodes));
+    m.insert("directives".into(), int(s.directives));
+    m.insert("sets".into(), int(s.sets));
+    m.insert("choices".into(), int(s.choices));
+    m.insert("shots".into(), int(s.shots));
+    m.insert("maxLineWords".into(), int(s.maxLineWords));
     m.insert("avgLineWords".into(), num(s.avgLineWords));
     m.insert("dialogueRatio".into(), num(s.dialogueRatio));
     Value::Map(m)
@@ -946,28 +945,24 @@ fn scene_value(s: &SceneRow) -> Value {
 fn speaker_value(s: &SpeakerRow) -> Value {
     let mut m = BTreeMap::new();
     m.insert("speaker".into(), Value::Str(s.speaker.clone()));
-    m.insert("lines".into(), num(s.lines as f64));
-    m.insert("words".into(), num(s.words as f64));
+    m.insert("lines".into(), int(s.lines));
+    m.insert("words".into(), int(s.words));
     let mut axis = BTreeMap::new();
-    for (k, v) in &s.axis {
-        axis.insert(k.clone(), axis_value(v));
-    }
+    for (k, v) in &s.axis { axis.insert(k.clone(), axis_value(v)); }
     m.insert("axis".into(), Value::Map(axis));
     let mut share = BTreeMap::new();
-    for (k, v) in &s.attrShare {
-        share.insert(k.clone(), num(*v));
-    }
+    for (k, v) in &s.attrShare { share.insert(k.clone(), num(*v)); }
     m.insert("attrShare".into(), Value::Map(share));
     Value::Map(m)
 }
 
 fn axis_value(ax: &AxisStats) -> Value {
     let mut m = BTreeMap::new();
-    m.insert("run".into(), num(ax.run as f64));
+    m.insert("run".into(), int(ax.run));
     m.insert("runValue".into(), Value::Str(ax.runValue.clone()));
-    m.insert("streaks".into(), num(ax.streaks as f64));
+    m.insert("streaks".into(), int(ax.streaks));
     m.insert("streakAvg".into(), num(ax.streakAvg));
-    m.insert("distinct".into(), num(ax.distinct as f64));
+    m.insert("distinct".into(), int(ax.distinct));
     m.insert("top".into(), top_value(&ax.top));
     Value::Map(m)
 }
@@ -975,7 +970,7 @@ fn axis_value(ax: &AxisStats) -> Value {
 fn top_value(t: &TopStats) -> Value {
     let mut m = BTreeMap::new();
     m.insert("value".into(), Value::Str(t.value.clone()));
-    m.insert("count".into(), num(t.count as f64));
+    m.insert("count".into(), int(t.count));
     m.insert("share".into(), num(t.share));
     Value::Map(m)
 }
@@ -984,14 +979,14 @@ fn group_value(g: &GroupRow) -> Value {
     let mut m = BTreeMap::new();
     m.insert("attr".into(), Value::Str(g.attr.clone()));
     m.insert("key".into(), Value::Str(g.key.clone()));
-    m.insert("count".into(), num(g.count as f64));
-    m.insert("speakers".into(), num(g.speakers as f64));
+    m.insert("count".into(), int(g.count));
+    m.insert("speakers".into(), int(g.speakers));
     Value::Map(m)
 }
 
 fn project_value(p: &ProjectRow) -> Value {
     let mut m = BTreeMap::new();
-    m.insert("scenes".into(), num(p.scenes as f64));
+    m.insert("scenes".into(), int(p.scenes));
     let mut sw = BTreeMap::new();
     sw.insert("min".into(), num(p.sceneWords.min));
     sw.insert("max".into(), num(p.sceneWords.max));
@@ -1017,7 +1012,9 @@ fn yaml_to_value(v: &serde_yaml::Value) -> Value {
     match v {
         serde_yaml::Value::Null => Value::Null,
         serde_yaml::Value::Bool(b) => Value::Bool(*b),
-        serde_yaml::Value::Number(n) => n.as_f64().map(Value::Num).unwrap_or(Value::Null),
+        serde_yaml::Value::Number(n) => {
+            if let Some(i) = n.as_i64() { Value::Int(i) } else { n.as_f64().map(Value::Double).unwrap_or(Value::Null) }
+        },
         serde_yaml::Value::String(s) => Value::Str(s.clone()),
         serde_yaml::Value::Sequence(seq) => Value::List(seq.iter().map(yaml_to_value).collect()),
         serde_yaml::Value::Mapping(m) => mapping_to_value(m),

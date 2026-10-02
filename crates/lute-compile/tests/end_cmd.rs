@@ -20,7 +20,7 @@ fn input(text: &str) -> CheckInput {
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n";
 
-fn artifact(text: &str) -> lute_compile::Artifact {
+fn artifact(text: &str) -> lute_compile::ExecutionIr {
     match compile(&input(text)) {
         Ok(a) => a,
         Err(diags) => panic!("compile must be clean: {diags:?}"),

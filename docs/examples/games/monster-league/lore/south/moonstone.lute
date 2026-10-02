@@ -17,13 +17,13 @@ title: Moonstone Cave — the cave, its trainers, and the dig's ramp crew
 
 <beat use="trainerBattle" id="moonstoneHikerBrom" who="moonstoneHikerBrom" intro="WHOA! Don't sneak up on a man in a cave! Now I'm rattled. Rattled men battle!" win="I'm still rattled. Different reasons." lose="Nothing like a cave battle to settle the nerves!" prize="320"/>
 
-<entry id="southMoonstoneHikerBromAfter" on="talk" target="npc.moonstoneHikerBrom" category="bark" when="holds(defeated(moonstoneHikerBrom))">
+<entry id="southMoonstoneHikerBromAfter" on="talk" target="npc.moonstoneHikerBrom" category="bark" when="holds('defeated', ['moonstoneHikerBrom'])">
   @moonstoneHikerBrom: Lunafae live deep down, where the moonstones are. You'll hear them before you see them. They sound like wind chimes somebody is sad about.
 </entry>
 
 <beat use="trainerBattle" id="moonstoneSuperNerdPell" who="moonstoneSuperNerdPell" intro="I came for the fossils and there are PEOPLE IN BLACK taking all the fossils. I am upset. I will battle you about it." win="I feel slightly less upset." lose="That helped a lot, actually." prize="336"/>
 
-<entry id="southMoonstoneSuperNerdPellAfter" on="talk" target="npc.moonstoneSuperNerdPell" category="bark" when="holds(defeated(moonstoneSuperNerdPell))">
+<entry id="southMoonstoneSuperNerdPellAfter" on="talk" target="npc.moonstoneSuperNerdPell" category="bark" when="holds('defeated', ['moonstoneSuperNerdPell'])">
   <match on="run.lair.quarryDig">
     <when is="cleared">
       @moonstoneSuperNerdPell: You chased them out! If you took a fossil, take it to Dr. Kell at the Pebbleton museum. She can bring them back. Back to LIFE.
@@ -36,7 +36,7 @@ title: Moonstone Cave — the cave, its trainers, and the dig's ramp crew
 
 <beat use="trainerBattle" id="moonstoneLassTilly" who="moonstoneLassTilly" intro="I'm looking for a moonstone for my Lunafae. Have you got one? No? Then you've got a battle." win="No moonstone and no win. Great day." lose="Still no moonstone. At least I won." prize="160"/>
 
-<entry id="southMoonstoneLassTillyAfter" on="talk" target="npc.moonstoneLassTilly" category="bark" when="holds(defeated(moonstoneLassTilly))">
+<entry id="southMoonstoneLassTillyAfter" on="talk" target="npc.moonstoneLassTilly" category="bark" when="holds('defeated', ['moonstoneLassTilly'])">
   @moonstoneLassTilly: The Lunafae crowd round the old moonstone seam at night. I'd wait, but my mum said home by dark, and it's always dark in here.
 </entry>
 
@@ -46,7 +46,7 @@ title: Moonstone Cave — the cave, its trainers, and the dig's ramp crew
   @moonstoneGruntSable: Hey! This ramp is closed! By order of Eclipse! Which is me!
 </beat>
 
-<entry id="southMoonstoneGruntSableAfter" on="talk" target="npc.moonstoneGruntSable" category="bark" when="holds(defeated(moonstoneGruntSable))">
+<entry id="southMoonstoneGruntSableAfter" on="talk" target="npc.moonstoneGruntSable" category="bark" when="holds('defeated', ['moonstoneGruntSable'])">
   @moonstoneGruntSable: The Director doesn't care about fossils. He cares about what's under the fossils. Don't tell anyone I said that. Don't tell anyone I said anything.
 </entry>
 
@@ -54,7 +54,7 @@ title: Moonstone Cave — the cave, its trainers, and the dig's ramp crew
   @moonstoneGruntFlint: A kid! In the dig! Do you know how many forms I have to fill in if you get hurt?
 </beat>
 
-<entry id="southMoonstoneGruntFlintAfter" on="talk" target="npc.moonstoneGruntFlint" category="bark" when="holds(defeated(moonstoneGruntFlint))">
+<entry id="southMoonstoneGruntFlintAfter" on="talk" target="npc.moonstoneGruntFlint" category="bark" when="holds('defeated', ['moonstoneGruntFlint'])">
   @moonstoneGruntFlint: I joined Eclipse for the dental plan. There is no dental plan.
 </entry>
 
@@ -62,6 +62,6 @@ title: Moonstone Cave — the cave, its trainers, and the dig's ramp crew
   @moonstoneGruntMarl: The Digmaster said nobody gets past the third ramp. I'm the third ramp.
 </beat>
 
-<entry id="southMoonstoneGruntMarlAfter" on="talk" target="npc.moonstoneGruntMarl" category="bark" when="holds(defeated(moonstoneGruntMarl))">
+<entry id="southMoonstoneGruntMarlAfter" on="talk" target="npc.moonstoneGruntMarl" category="bark" when="holds('defeated', ['moonstoneGruntMarl'])">
   @moonstoneGruntMarl: Go on down, then. The Digmaster's in the pit. She's worse than me. Much worse. Good luck.
 </entry>

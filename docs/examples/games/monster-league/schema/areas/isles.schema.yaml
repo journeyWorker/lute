@@ -9,9 +9,9 @@
 state:
   # the Sunport Battle Tower: wins in a row this week (the engine sets it back
   # to 0 on Monday; a loss sets it to 0 here)
-  run.islesTowerStreak: { type: number, default: 0 }
+  run.islesTowerStreak: { type: int, default: 0 }
   # the Mistral windmill puzzle: vanes turned into the wind (3 opens the loft)
-  run.islesVanes: { type: number, default: 0 }
+  run.islesVanes: { type: int, default: 0 }
 
 relations:
   # a beacon's lens is back in the player's bag (won from its Dusk grunt)
@@ -27,7 +27,7 @@ defs:
   # the tide is out in the morning: the Coralreach sea cave is walkable
   islesLowTide: "run.slot == 'morning'"
   # how many beacons burn
-  islesLit: "count(islesRelit(_))"
+  islesLit: "count('islesRelit', ['_'])"
   # the Battle Tower takes challengers at the weekend
   islesTowerOpen: "clock.weekday >= 5"
 

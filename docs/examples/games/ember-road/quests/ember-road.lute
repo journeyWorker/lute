@@ -27,7 +27,7 @@ title: The Ember Road
 /* Rescue. Taken up from Oda at the ford; it joins the journal only then. */
 <quest id="hostages" title="The Miller's Children" activate="accept">
   <reward kind="GOLD" amount="30"/>
-  <objective id="find" title="Learn where the Duskbound hold the twins" done="holds(knows(passage))"/>
+  <objective id="find" title="Learn where the Duskbound hold the twins" done="holds('knows', ['passage'])"/>
   <objective id="free" title="Bring the twins home before they are moved on" done="run.hostagesFreed" by="run.night >= 3"/>
   <on event="questComplete">
     ::set{run.rep.marrow += 2}
@@ -60,8 +60,8 @@ title: The Ember Road
     ::assert{sidedWith(dusk)}
     ::retract{sidedWith(company)}
     ::assert{wronged(company)}
-    @narrator{when="holds(knows(ledger))"}: The ledger is in Maelis's hands now. Somewhere in Ostwick a Company clerk will have a very bad month.
-    @narrator{when="!holds(knows(ledger))"}: The Coldwater roll is in Maelis's hands now. The Company kept no count of Coldwater. Coldwater did.
+    @narrator{when="holds('knows', ['ledger'])"}: The ledger is in Maelis's hands now. Somewhere in Ostwick a Company clerk will have a very bad month.
+    @narrator{when="!holds('knows', ['ledger'])"}: The Coldwater roll is in Maelis's hands now. The Company kept no count of Coldwater. Coldwater did.
   </on>
   <on event="questFailed">
     @narrator: Whatever Maelis wanted to say, nobody is listening now.
@@ -80,6 +80,6 @@ title: The Ember Road
     @narrator: The bridge chain drops. Behind you, at the ford, a door is being kicked in.
   </on>
   <on event="questFailed">
-    @corvin{when="holds(inParty(corvin))"}: Shame. It was a good plan. Terrible, but good.
+    @corvin{when="holds('inParty', ['corvin'])"}: Shame. It was a good plan. Terrible, but good.
   </on>
 </quest>

@@ -7,11 +7,11 @@ state:
   # means the question has not been put yet.
   run.accused:     { type: { enum: [nobody, silence, mirela, lise, crane, solt] }, default: nobody }
   run.soltRattled: { type: bool, default: false }
-  user.casesClosed: { type: number, default: 0 }   # credited by the CASE reward kind
+  user.casesClosed: { type: int, default: 0 }   # credited by the CASE reward kind
   # Which office the inspector wired from Harl junction (the 4 o'clock stop).
   run.wired: { type: { enum: [none, board, varn] }, default: none }
   # The corridor clock. The engine moves it; one night, from the knock to Ossery.
-  run.night: { type: number, default: 1, owner: engine }
+  run.night: { type: int, default: 1, owner: engine }
   run.hour:  { type: { enum: [h02, h03, h04, h05, h06] }, default: h02, owner: engine }
 
 clock:
@@ -103,10 +103,10 @@ rules:
   - "outOfBerth(P, S) :- berth(P, L), empty(L, S)"
 
 defs:
-  timeFixed: "holds(deathIn(tunnel))"
+  timeFixed: "holds('deathIn', ['tunnel'])"
   solved: "run.accused == 'solt'"
-  unaccounted: "count(opportunity(_))"
-  emptyBerths: "count(outOfBerth(_, tunnel))"
+  unaccounted: "count('opportunity', ['_'])"
+  emptyBerths: "count('outOfBerth', ['_', 'tunnel'])"
 
 # Who may speak. `@narrator` needs no entry; anyone else is checked (E-CAST-UNKNOWN).
 cast:

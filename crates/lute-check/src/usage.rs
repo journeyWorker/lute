@@ -252,8 +252,8 @@ pub fn schema_sources(foldeds: &[&FoldedEnv]) -> BTreeSet<PathBuf> {
 /// line-leading `//` comments blanked (dsl §4.2, [`lute_syntax::lex::strip_comments`]).
 /// The text-scan read counters — [`W_RELATION_UNREAD`], [`W_DEF_UNUSED`],
 /// `W-DOMAIN-UNREAD`'s kind queries, the bridge result fields content reads —
-/// scan this, so a `holds(r(…))` or `@name` written only in a comment is not a
-/// read.
+/// scan this, so a `holds('r', […])` or `@name` written only in a comment is
+/// not a read.
 pub fn document_read_view(text: &str) -> String {
     let (front, body_start) = match lute_syntax::lex::peel_frontmatter(text) {
         Ok((Some((yaml, _)), start)) => (yaml_read_view(&yaml), start),
@@ -294,11 +294,10 @@ pub fn yaml_read_view(text: &str) -> String {
         Err(_) => text.to_string(),
     }
 }
-
-/// Every relation `text` queries: `holds(R(`, `count(R(`, `countDistinct(R(`,
-/// whitespace allowed. Textual on purpose; callers pass a source's
-/// [`document_read_view`] / [`yaml_read_view`], so a use in a comment is not a
-/// read.
+/// Every relation `text` query: `holds('R', [`, `count('R', [`,
+/// `countDistinct('R', [`, whitespace allowed. Textual on purpose; callers
+/// pass a source's [`document_read_view`] / [`yaml_read_view`], so a use in a
+/// comment is not a read.
 pub(crate) fn queried_relations(text: &str, out: &mut BTreeSet<String>) {
     for f in ["holds", "count", "countDistinct"] {
         let mut rest = text;
@@ -313,6 +312,16 @@ pub(crate) fn queried_relations(text: &str, out: &mut BTreeSet<String>) {
                 continue;
             };
             let inner = inner.trim_start();
+            if let Some(quote @ ('\'' | '"')) = inner.chars().next() {
+                let rest = &inner[quote.len_utf8()..];
+                if let Some(end) = rest.find(quote) {
+                    let name = &rest[..end];
+                    if rest[end + quote.len_utf8()..].trim_start().starts_with(",") {
+                        out.insert(name.to_string());
+                    }
+                }
+                continue;
+            }
             let name: String = inner.chars().take_while(|c| is_ident_char(*c)).collect();
             if !name.is_empty() && inner[name.len()..].trim_start().starts_with('(') {
                 out.insert(name);

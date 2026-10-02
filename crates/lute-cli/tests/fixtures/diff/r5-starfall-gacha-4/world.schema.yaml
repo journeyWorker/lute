@@ -1,5 +1,5 @@
 state:
-  user.n: { type: number, default: 0 }
+  user.n: { type: int, default: 0 }
 entities:
   hero:    { members: [aria, cyra] }
   ssr:     { subsetOf: hero, members: [aria, cyra] }

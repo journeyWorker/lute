@@ -9,6 +9,8 @@ use crate::eval::Read;
 use crate::exec::driver::{Driver, SiteKind};
 use crate::Value;
 
+
+
 impl<D: Driver> Machine<D> {
     /// Present ONE lore entry (dsl 0.19.0 §6, `docs/runtime/lore-entries.md`
     /// `present()`): `firstRead = !entry.<id>.read`; run the body segment —

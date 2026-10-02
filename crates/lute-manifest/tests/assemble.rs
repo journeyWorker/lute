@@ -979,7 +979,7 @@ fn stamp_attrs_merge_and_participate_in_capability_version() {
         AttrDecl {
             name: "bonusScore".into(),
             required: false,
-            ty: Type::Number,
+            ty: Type::Int,
             default: None,
         },
     ];
@@ -1009,7 +1009,7 @@ fn stamp_attrs_merge_and_participate_in_capability_version() {
     assert!(errs.is_empty(), "{errs:?}");
     assert!(matches!(
         stamped.stamp_attrs.get("bonusScore").map(|a| &a.ty),
-        Some(Type::Number)
+        Some(Type::Int)
     ));
     assert_ne!(
         plain.version, stamped.version,

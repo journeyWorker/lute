@@ -74,11 +74,11 @@ fn standalone_component_param_ref_resolves_no_type_error() {
 
 #[test]
 fn standalone_component_param_type_mismatch_flags_ref_type() {
-    // A `number`-typed param used where `::auto`'s `character` attr expects a
+    // An `int`-typed param used where `::auto`'s `character` attr expects a
     // `string` is a produced-type mismatch (dsl §8) — proves `def_types`
     // (not merely `defs`) is seeded from `params:` for the standalone walk.
     let cs = codes(
-        "---\ncomponent: greet\nparams:\n  n: number\n---\n## Scene 1.\n\
+        "---\ncomponent: greet\nparams:\n  n: int\n---\n## Scene 1.\n\
          ::auto{character=@n action=\"fadeInUp\"}\n@narrator: hi\n",
     );
     assert!(cs.contains(&"E-REF-TYPE".to_string()), "{cs:?}");

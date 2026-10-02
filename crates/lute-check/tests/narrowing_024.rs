@@ -43,12 +43,12 @@ fn with_code<'a>(ds: &'a [Diagnostic], code: &str) -> Vec<&'a Diagnostic> {
 }
 
 const STATE: &str = "state:\n  \
-    run.depth: { type: number, default: 0 }\n  \
+    run.depth: { type: int, default: 0 }\n  \
     run.outcome: { type: { enum: [diving, died, surfaced] }, default: diving }\n  \
     run.o: { type: { enum: [won, lost] } }\n  \
-    run.a: { type: number, default: 0 }\n  \
+    run.a: { type: int, default: 0 }\n  \
     run.wd: { type: { enum: [a, b, c] }, default: a }\n  \
-    run.odd: { type: number }\n";
+    run.odd: { type: int }\n";
 
 fn scene(meta: &str, body: &str) -> String {
     format!("---\nkind: scene\nid: probe.s\n{STATE}{meta}---\n## Shot 1.\n{body}")
@@ -89,8 +89,8 @@ fn a_def_body_read_is_checked_at_every_use_site() {
         );
     }
     for body in [
-        "@narrator{when=\"isSet(prev.run.depth)\"}: Deep: {{@lastF}}.\n",
-        "@narrator{when=\"isSet(prev.run.depth) && @lastF > 30\"}: Deep.\n",
+        "@narrator{when=\"has(prev.run.depth)\"}: Deep: {{@lastF}}.\n",
+        "@narrator{when=\"has(prev.run.depth) && @lastF > 30\"}: Deep.\n",
     ] {
         let ds = run(&scene(defs, body));
         assert!(
@@ -174,7 +174,7 @@ const DIVE_BODY: &str = "<match on=\"prev.run.outcome\">\n\
 
 #[test]
 fn a_beat_when_is_an_assumption_for_the_body() {
-    let when = "isSet(prev.run.outcome) && run.outcome == 'diving'";
+    let when = "has(prev.run.outcome) && run.outcome == 'diving'";
     let ds = run(&beat(when, DIVE_BODY));
     assert!(with_code(&ds, "E-UNSET-UNCOVERED").is_empty(), "{ds:#?}");
     assert!(with_code(&ds, "E-MAYBE-UNSET").is_empty(), "{ds:#?}");
@@ -208,8 +208,8 @@ fn a_write_in_the_body_retracts_the_value_assumption() {
 fn entry_and_bundle_beat_when_are_assumptions() {
     let src = format!(
         "---\nkind: lore\nid: notes\n{STATE}---\n\
-         <entry id=\"e\" when=\"isSet(run.o)\">\n@n: {{{{run.o}}}}\n</entry>\n\
-         <beat id=\"b\" on=\"hubVisit\" when=\"isSet(run.o) && run.o == 'won'\">\n\
+         <entry id=\"e\" when=\"has(run.o)\">\n@n: {{{{run.o}}}}\n</entry>\n\
+         <beat id=\"b\" on=\"hubVisit\" when=\"has(run.o) && run.o == 'won'\">\n\
          <match on=\"run.o\">\n<when is=\"won\">\n@n: w\n</when>\n\
          <when is=\"lost\">\n@n: l\n</when>\n</match>\n</beat>\n"
     );
@@ -312,7 +312,7 @@ fn a_disjunction_or_membership_when_narrows_like_equality() {
 // --- T1-7 (b): short-circuit narrowing ---------------------------------------------
 
 fn line_reads(when: &str) -> usize {
-    let defs = "defs:\n  won: \"isSet(run.o) && run.o == 'won'\"\n";
+    let defs = "defs:\n  won: \"has(run.o) && run.o == 'won'\"\n";
     let ds = run(&scene(defs, &format!("@narrator{{when=\"{when}\"}}: x.\n")));
     with_code(&ds, "E-MAYBE-UNSET").len()
 }
@@ -320,22 +320,21 @@ fn line_reads(when: &str) -> usize {
 #[test]
 fn a_presence_guard_proves_the_reads_its_short_circuit_protects() {
     for when in [
-        "isSet(run.o) && run.o == 'won'",
-        "(isSet(run.o) && run.o == 'won')",
-        "run.a == 1 || (isSet(run.o) && run.o == 'won')",
-        "(isSet(run.o) && run.o == 'won') || run.a == 1",
-        "isSet(run.o) ? run.o == 'won' : false",
-        "run.a == 1 || @won",
-        "!isSet(run.o) || run.o == 'won'",
-        "!isSet(run.o) ? false : run.o == 'won'",
         "has(run.o) && run.o == 'won'",
+        "(has(run.o) && run.o == 'won')",
+        "run.a == 1 || (has(run.o) && run.o == 'won')",
+        "(has(run.o) && run.o == 'won') || run.a == 1",
+        "has(run.o) ? run.o == 'won' : false",
+        "run.a == 1 || @won",
+        "!has(run.o) || run.o == 'won'",
+        "!has(run.o) ? false : run.o == 'won'",
     ] {
         assert_eq!(line_reads(when), 0, "{when}");
     }
     for when in [
-        "isSet(run.o) || run.o == 'won'",
-        "run.o == 'won' && isSet(run.o)",
-        "isSet(run.o) ? false : run.o == 'won'",
+        "has(run.o) || run.o == 'won'",
+        "run.o == 'won' && has(run.o)",
+        "has(run.o) ? false : run.o == 'won'",
     ] {
         assert_eq!(line_reads(when), 1, "{when}");
     }
@@ -345,7 +344,7 @@ fn a_presence_guard_proves_the_reads_its_short_circuit_protects() {
 fn a_short_circuit_proof_does_not_leak_into_the_body() {
     let ds = run(&scene(
         "",
-        "@narrator{when=\"run.a == 2 || isSet(run.o)\"}: {{run.o}}.\n",
+        "@narrator{when=\"run.a == 2 || has(run.o)\"}: {{run.o}}.\n",
     ));
     assert_eq!(with_code(&ds, "E-MAYBE-UNSET").len(), 1, "{ds:#?}");
 }
@@ -356,7 +355,7 @@ fn a_short_circuit_proof_does_not_leak_into_the_body() {
 fn one_present_prev_run_path_proves_every_defaulted_mirror() {
     let ok = run(&scene(
         "",
-        "@narrator{when=\"isSet(prev.run.outcome) && prev.run.depth > 3\"}: x.\n\
+        "@narrator{when=\"has(prev.run.outcome) && prev.run.depth > 3\"}: x.\n\
          <match on=\"prev.run.outcome\">\n<when is=\"died\">\n@n: {{prev.run.depth}}\n</when>\n\
          <otherwise>\n@n: o\n</otherwise>\n</match>\n",
     ));
@@ -364,7 +363,7 @@ fn one_present_prev_run_path_proves_every_defaulted_mirror() {
     // `run.odd` has no default: it may be unset when the run ends.
     let ds = run(&scene(
         "",
-        "@narrator{when=\"isSet(prev.run.outcome) && prev.run.odd > 3\"}: x.\n",
+        "@narrator{when=\"has(prev.run.outcome) && prev.run.odd > 3\"}: x.\n",
     ));
     let hits = with_code(&ds, "E-MAYBE-UNSET");
     assert_eq!(hits.len(), 1, "{ds:#?}");

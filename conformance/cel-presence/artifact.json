@@ -1,0 +1,140 @@
+{
+  "kind": "scene",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "meta": {
+    "id": "celPresence",
+    "title": "CEL Presence"
+  },
+  "state": [
+    {
+      "path": "run.tip",
+      "type": "string"
+    },
+    {
+      "path": "run.visits",
+      "type": "bool"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "match",
+      "addr": "001-0100",
+      "subject": {
+        "cel": "has(run.tip)",
+        "expr": {
+          "has": "run.tip"
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(has(run.tip))",
+            "expr": {
+              "has": "run.tip"
+            },
+            "authored": "$"
+          },
+          "target": "001-0200"
+        }
+      ],
+      "otherwise": "001-0400",
+      "converge": "001-0500"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "tip exists",
+      "lineId": "celPresence.narrator_0010"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0300",
+      "target": "001-0500"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0400",
+      "target": "001-0500"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0500",
+      "subject": {
+        "cel": "!has(run.tip) && has(run.visits)",
+        "expr": {
+          "op": "&&",
+          "l": {
+            "op": "!",
+            "l": {
+              "has": "run.tip"
+            }
+          },
+          "r": {
+            "has": "run.visits"
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(!has(run.tip) && has(run.visits))",
+            "expr": {
+              "op": "&&",
+              "l": {
+                "op": "!",
+                "l": {
+                  "has": "run.tip"
+                }
+              },
+              "r": {
+                "has": "run.visits"
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-0600"
+        }
+      ],
+      "otherwise": "001-0800",
+      "converge": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0600",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "keyed presence",
+      "lineId": "celPresence.narrator_0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0700",
+      "target": "001-0900"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0800",
+      "target": "001-0900"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "Presence"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

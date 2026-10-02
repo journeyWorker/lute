@@ -6,5 +6,5 @@ on: hubVisit
 
 ## A
 
-@narrator{when="holds(bonded(ivo))"}: Ivo trusts you.
+@narrator{when="holds('bonded', ['ivo'])"}: Ivo trusts you.
 @narrator: The end.

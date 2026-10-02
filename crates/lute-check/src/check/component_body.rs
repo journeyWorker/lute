@@ -1290,7 +1290,8 @@ pub(super) fn component_def_reads(
 fn param_type_spelling(ty: Option<&Type>) -> String {
     match ty {
         Some(Type::Bool) => "bool".to_string(),
-        Some(Type::Number) => "number".to_string(),
+        Some(Type::Int) => "int".to_string(),
+        Some(Type::Double) => "double".to_string(),
         Some(Type::Str) => "string".to_string(),
         Some(Type::Enum(members)) => format!("{{ enum: [{}] }}", members.join(", ")),
         Some(Type::Domain(d)) => format!("{{ domain: {d} }}"),

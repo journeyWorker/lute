@@ -12,7 +12,7 @@ title: Storm watch
   ::sfx{sound="a steel cable singing in the wind"}
   @narrator: The hatch nearly takes your fingers. On your knees, one arm round the guard rail, you get two turns of rope round the anemometer mast before the rain finds your collar.
   ::set{season.storm.mast = true}
-  @narrator{when="isSet(prev.season.storm.mast)"}: You tie the same bowline you tied last storm. Your hands remember before you do.
+  @narrator{when="has(prev.season.storm.mast)"}: You tie the same bowline you tied last storm. Your hands remember before you do.
 </beat>
 
 <beat id="shutters" on="visit" target="place.kitchen" title="The kitchen shutters" priority="30" once="season:storm" when="run.weather == 'storm'">

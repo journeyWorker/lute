@@ -75,7 +75,7 @@ fn quest_rejects_scene_triad_key() {
 #[test]
 fn quest_scratch_path_is_a_declared_tier() {
     // declaring quest.q.count in state: and reading it must NOT be E-STATE-NAMESPACE / E-UNDECLARED.
-    let cs = codes("---\nkind: quest\nstate:\n  quest.q.count: { type: number, default: 0 }\n---\n\
+    let cs = codes("---\nkind: quest\nstate:\n  quest.q.count: { type: int, default: 0 }\n---\n\
                     <quest id=\"q\">\n<objective id=\"o\" done=\"quest.q.count >= 1\"/>\n</quest>\n");
     assert!(
         !cs.iter()
@@ -693,24 +693,24 @@ fn quest_state_reads_and_unset_comparison_are_clean() {
     assert!(cs.is_empty(), "{cs:?}");
 }
 
-/// `isSet(quest.X.state)` is always true (the engine writes `unset`), so the
-/// guard the checker used to recommend is now `W-QUEST-STATE-ISSET`.
+/// `has(quest.X.state)` is always true (the engine writes `unset`), so the
+/// guard the checker used to recommend is now `W-QUEST-STATE-HAS`.
 #[test]
-fn isset_on_quest_state_warns() {
+fn has_on_quest_state_warns() {
     let r = run(&format!(
-        "{T11_SCENE}@x{{when=\"!isSet(quest.qq.state)\"}}: not yet\n"
+        "{T11_SCENE}@x{{when=\"!has(quest.qq.state)\"}}: not yet\n"
     ));
     let w: Vec<_> = r
         .diagnostics
         .iter()
-        .filter(|d| d.code == "W-QUEST-STATE-ISSET")
+        .filter(|d| d.code == "W-QUEST-STATE-HAS")
         .collect();
     assert_eq!(w.len(), 1, "{:?}", r.diagnostics);
     assert!(w[0].message.contains("== 'unset'"), "{}", w[0].message);
     assert!(
         r.diagnostics
             .iter()
-            .all(|d| d.code == "W-QUEST-STATE-ISSET"),
+            .all(|d| d.code == "W-QUEST-STATE-HAS"),
         "{:?}",
         r.diagnostics
     );

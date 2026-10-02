@@ -419,7 +419,7 @@ pub(crate) fn project_compile_pass(
     #[derive(Default)]
     struct RootBuild {
         snapshots: Vec<(String, String)>,
-        artifacts: Vec<(String, lute_compile::Artifact)>,
+        artifacts: Vec<(String, lute_compile::ExecutionIr)>,
     }
     let mut roots: BTreeMap<PathBuf, RootBuild> = BTreeMap::new();
     let mut identities = BTreeMap::new();
@@ -467,7 +467,7 @@ pub(crate) fn project_compile_pass(
     // applied in file order so artifacts and merged diagnostics are exactly
     // the sequential ones.
     let results: &[(PathBuf, lute_check::CheckResult)] = file_results;
-    let outcomes: Vec<Result<lute_compile::Artifact, Vec<Diagnostic>>> = jobs
+    let outcomes: Vec<Result<lute_compile::ExecutionIr, Vec<Diagnostic>>> = jobs
         .par_iter()
         .map(|&(i, root, _, component)| {
             let (path, result) = &results[i];

@@ -185,7 +185,7 @@ pub enum ManifestError {
     },
     /// dsl 0.27.0 §2 (T1-4): an `effects.writes` value reads `fromAttr: <a>`
     /// but the directive declares no attr `a`, or a `by: { fromAttr: a }`
-    /// names an attr that is not `type: number`.
+    /// names an attr that is not `type: int`.
     EffectWrite {
         directive: String,
         detail: String,
@@ -290,7 +290,7 @@ pub fn validate_effects(d: &DirectiveDecl) -> Vec<ManifestError> {
 }
 
 /// dsl 0.27.0 §2 (T1-4): every `fromAttr` a write's value reads names one of
-/// the directive's own attrs, and a `by:` one is `type: number`. The value's
+/// the directive's own attrs, and a `by:` one is `type: int`. The value's
 /// SHAPE was already checked when the file parsed ([`WriteValue`]).
 fn validate_effect_writes(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
     for w in d.effects.iter().flat_map(|e| &e.writes) {
@@ -315,8 +315,8 @@ fn validate_effect_writes(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
                     declared.join(", ")
                 )
             }
-            Some(a) if in_by && a.ty != Type::Number => format!(
-                "`by: {{ fromAttr: {attr} }}` needs a `type: number` attr, but `{attr}` is not a number"
+            Some(a) if in_by && a.ty != Type::Int => format!(
+                "`by: {{ fromAttr: {attr} }}` needs an `int` attr, but `{attr}` is not an int"
             ),
             Some(_) => continue,
         };

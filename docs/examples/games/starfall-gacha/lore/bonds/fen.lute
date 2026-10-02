@@ -11,7 +11,7 @@ title: Fen, the Last Arrow (SR)
   @fen{emotion="shy"}: ...Hello.
 </beat>
 
-<beat id="fenDupe" on="summon" target="hero.fen" once="false" priority="3" when="holds(owned(fen)) && occasion.payload.copies <= 6">
+<beat id="fenDupe" on="summon" target="hero.fen" once="false" priority="3" when="holds('owned', ['fen']) && occasion.payload.copies <= 6">
   @fen: Again.
 </beat>
 
@@ -19,7 +19,7 @@ title: Fen, the Last Arrow (SR)
   @narrator: There's a small pinecone on your pillow. Fen is very carefully not looking at you.
 </beat>
 
-<beat id="fenBirthday" on="dailyReset" once="day" when="holds(celebrate(fen))">
+<beat id="fenBirthday" on="dailyReset" once="day" when="holds('celebrate', ['fen'])">
   @fen{emotion="shy"}: Birthday. Mine.
   @fen{emotion="happy"}: ...Cake?
 </beat>

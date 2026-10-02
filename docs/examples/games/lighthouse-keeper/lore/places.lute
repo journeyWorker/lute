@@ -24,15 +24,15 @@ title: Around the rock
   @narrator: Curtains move as you pass. Nobody comes out.
 </beat>
 
-<beat id="thoughtsAlibi" on="nightfall" title="Thinking it over" when="holds(liar(maren)) && !holds(onRock(ada, midnight))">
+<beat id="thoughtsAlibi" on="nightfall" title="Thinking it over" when="holds('liar', ['maren']) && !holds('onRock', ['ada', 'midnight'])">
   @inspector{mono}: Maren lied for someone. People lie for family.
 </beat>
 
-<beat id="thoughtsFigure" on="nightfall" title="Thinking it over" when="holds(misidentified(tobias, elias, dawn))">
+<beat id="thoughtsFigure" on="nightfall" title="Thinking it over" when="holds('misidentified', ['tobias', 'elias', 'dawn'])">
   @inspector{mono}: Tobias did not lie. He saw a coat on the landing and put a dead man inside it.
 </beat>
 
-<beat id="thoughtsSuspect" on="nightfall" for="kind:person" title="Thinking it over" once="false" when="holds(suspect(occasion.target))">
+<beat id="thoughtsSuspect" on="nightfall" for="kind:person" title="Thinking it over" once="false" when="holds('suspect', [occasion.target])">
   @inspector{mono}: {{occasion.target}}. The island has already hanged them in its mind. I have not, yet.
 </beat>
 

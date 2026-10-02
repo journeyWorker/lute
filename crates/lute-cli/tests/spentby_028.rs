@@ -34,8 +34,8 @@ fn text(o: &Output) -> String {
 }
 
 const SCHEMA: &str = "state:\n  run.done: { type: bool, default: false }\n  \
-     run.day: { type: number, default: 1, owner: engine }\n  \
-     season.frost.vigils: { type: number, default: 0 }\n\
+     run.day: { type: int, default: 1, owner: engine }\n  \
+     season.frost.vigils: { type: int, default: 0 }\n\
      clock:\n  day: run.day\n\
      defs:\n  frostLive: \"run.day >= 2 && run.day <= 3\"\n\
      seasons:\n  frost: { live: \"@frostLive\" }\n\
@@ -197,14 +197,14 @@ fn a_retracted_fact_warns_that_the_beat_stays_spent() {
         let refs: Vec<(&str, &str)> = docs.iter().map(|(p, t)| (*p, t.as_str())).collect();
         project(tag, &refs)
     };
-    let dir = make("retract", "spentBy: \"holds(solved(drawer))\"\n");
+    let dir = make("retract", "spentBy: \"holds('solved', ['drawer'])\"\n");
     let out = check_project(&dir);
     let found = lines(&out, "W-SPENT-BY-REVERSIBLE");
     assert_eq!(found.len(), 1, "{out}");
     assert!(
         found[0].contains("scenes/puzzle.lute")
             && found[0].contains("`::retract{solved(drawer)}` (scenes/storm.lute:")
-            && found[0].contains("`once: false` with `when: \"!holds(solved(drawer))\"`")
+            && found[0].contains("`once: false` with `when: \"!holds('solved', ['drawer'])\"`")
             && found[0].contains("`once: run`"),
         "{out}"
     );
@@ -213,7 +213,7 @@ fn a_retracted_fact_warns_that_the_beat_stays_spent() {
          - occasion: storm\n  - occasion: visit\n    expect: { winner: puzzle }\n";
     let rewritten = make(
         "retract-rewritten",
-        "once: false\nwhen: \"!holds(solved(drawer))\"\n",
+        "once: false\nwhen: \"!holds('solved', ['drawer'])\"\n",
     );
     let out = check_project(&rewritten);
     assert!(lines(&out, "W-SPENT-BY-REVERSIBLE").is_empty(), "{out}");
@@ -222,7 +222,7 @@ fn a_retracted_fact_warns_that_the_beat_stays_spent() {
 
     let on_purpose = make(
         "retract-once",
-        "once: run\nspentBy: \"holds(solved(drawer))\"\n",
+        "once: run\nspentBy: \"holds('solved', ['drawer'])\"\n",
     );
     let out = check_project(&on_purpose);
     assert!(lines(&out, "W-SPENT-BY-REVERSIBLE").is_empty(), "{out}");
@@ -233,9 +233,9 @@ fn a_retracted_fact_warns_that_the_beat_stays_spent() {
 /// asserted), or a `count(…) >= n` only asserts can move, stays quiet.
 #[test]
 fn a_directive_effect_retract_warns_and_a_monotone_fact_does_not() {
-    let beats = "<beat id=\"launch\" on=\"visit\" spentBy=\"holds(caught(marlin))\">\n  \
+    let beats = "<beat id=\"launch\" on=\"visit\" spentBy=\"holds('caught', ['marlin'])\">\n  \
          @narrator: Out to sea.\n  ::assert{caught(marlin)}\n</beat>\n\
-         <beat id=\"haul\" on=\"visit\" priority=\"-1\" spentBy=\"count(solved(_)) >= 1\">\n  \
+         <beat id=\"haul\" on=\"visit\" priority=\"-1\" spentBy=\"count('solved', ['_']) >= 1\">\n  \
          @narrator: The drawer.\n  ::assert{solved(drawer)}\n</beat>\n";
     let market = scene(
         "market",

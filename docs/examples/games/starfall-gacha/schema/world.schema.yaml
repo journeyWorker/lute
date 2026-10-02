@@ -3,26 +3,26 @@ state:
   # --- the server calendar (engine) -------------------------------------
   # day 1 is launch day, a Monday. The engine moves it at the daily reset
   # (04:00 server time); content never writes it.
-  user.day:         { type: number, default: 1, owner: engine }
+  user.day:         { type: int, default: 1, owner: engine }
   # --- the account (engine) ---------------------------------------------
-  user.loginStreak: { type: number, default: 1, owner: engine }   # consecutive days, this login included
-  user.loginTotal:  { type: number, default: 1, owner: engine }   # distinct days logged in, ever
-  user.daysAway:    { type: number, default: 0, owner: engine }   # days since the previous login
-  user.gems:        { type: number, default: 0, owner: engine }
-  user.playerRank:  { type: number, default: 1, owner: engine }
-  user.towerFloors: { type: number, default: 0, owner: engine }   # Hollow Tower floors cleared this week (the engine zeroes it at the weekly reset)
+  user.loginStreak: { type: int, default: 1, owner: engine }   # consecutive days, this login included
+  user.loginTotal:  { type: int, default: 1, owner: engine }   # distinct days logged in, ever
+  user.daysAway:    { type: int, default: 0, owner: engine }   # days since the previous login
+  user.gems:        { type: int, default: 0, owner: engine }
+  user.playerRank:  { type: int, default: 1, owner: engine }
+  user.towerFloors: { type: int, default: 0, owner: engine }   # Hollow Tower floors cleared this week (the engine zeroes it at the weekly reset)
   # --- the festival seasons (schema/calendar.schema.yaml seasons:) -------
   # reset each time the festival's window opens; prev.season.<name>.* keeps
   # what the last window ended with.
-  season.harvest.tokens:  { type: number, default: 0, owner: engine }   # moon tokens (the harvest stall's currency)
-  season.harvest.pulls:   { type: number, default: 0, owner: engine }   # pulls on the Harvest Moon banner
-  season.starfall.tokens: { type: number, default: 0, owner: engine }   # comet tokens
-  season.frost.tokens:    { type: number, default: 0, owner: engine }   # frost candles
-  season.frost.pulls:     { type: number, default: 0, owner: engine }   # pulls on the Frostlight banner
-  season.frost.vigils:    { type: number, default: 0 }                  # content: vigil nights kept this window
+  season.harvest.tokens:  { type: int, default: 0, owner: engine }   # moon tokens (the harvest stall's currency)
+  season.harvest.pulls:   { type: int, default: 0, owner: engine }   # pulls on the Harvest Moon banner
+  season.starfall.tokens: { type: int, default: 0, owner: engine }   # comet tokens
+  season.frost.tokens:    { type: int, default: 0, owner: engine }   # frost candles
+  season.frost.pulls:     { type: int, default: 0, owner: engine }   # pulls on the Frostlight banner
+  season.frost.vigils:    { type: int, default: 0 }                  # content: vigil nights kept this window
   # --- content-owned ----------------------------------------------------
   user.tutorialDone:  { type: bool, default: false }
-  user.greetedEvents: { type: number, default: 0 }
+  user.greetedEvents: { type: int, default: 0 }
 
 enums:
   banner:

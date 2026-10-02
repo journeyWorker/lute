@@ -4,7 +4,7 @@ id: camp.wrenLeaves
 title: Wren goes home
 on: camp
 priority: 50
-when: "holds(inParty(wren)) && (quest.toll.state == 'complete' || run.approval.wren <= -3)"
+when: "holds('inParty', ['wren']) && (quest.toll.state == 'complete' || run.approval.wren <= -3)"
 ---
 
 ## The Edge of the Firelight

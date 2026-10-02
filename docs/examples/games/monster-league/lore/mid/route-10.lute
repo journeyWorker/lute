@@ -34,7 +34,7 @@ title: Route 10, the Mill Road (Silvercrest to Wardenmere)
   @r10Watchman: The Riders again. Every night, up and down, up and down. The Center in Silvercrest has a notice up: a bounty for anybody who beats all three.
 </entry>
 
-<entry id="midR10WatchmanQuiet" on="talk" target="npc.r10Watchman" category="bark" priority="20" when="holds(defeated(r10BikerGrit)) && holds(defeated(r10BikerVanya)) && holds(defeated(r10RockerJolene))">
+<entry id="midR10WatchmanQuiet" on="talk" target="npc.r10Watchman" category="bark" priority="20" when="holds('defeated', ['r10BikerGrit']) && holds('defeated', ['r10BikerVanya']) && holds('defeated', ['r10RockerJolene'])">
   @r10Watchman: Quiet nights now. I've started reading. Did you know the mill used to grind apples? Nobody knows why.
 </entry>
 
@@ -46,19 +46,19 @@ title: Route 10, the Mill Road (Silvercrest to Wardenmere)
 
 <beat use="trainerBattle" id="r10GentlemanAubrey" when="!@isNight" who="r10GentlemanAubrey" intro="A battle before luncheon? How very sporting of you." win="Splendid! Utterly splendid. I've lost my appetite, in the best way." lose="Well played, young one, though not well enough." prize="1200"/>
 
-<entry id="midR10GentlemanAubreyAfter" on="talk" target="npc.r10GentlemanAubrey" category="bark" when="holds(defeated(r10GentlemanAubrey)) && !@isNight">
+<entry id="midR10GentlemanAubreyAfter" on="talk" target="npc.r10GentlemanAubrey" category="bark" when="holds('defeated', ['r10GentlemanAubrey']) && !@isNight">
   @r10GentlemanAubrey: I used to play the slots at the Game Corner. Then they hired those fellows in black caps. The machines have been so very unlucky since.
 </entry>
 
 <beat use="trainerBattle" id="r10BeautyCelestine" when="!@isNight" who="r10BeautyCelestine" intro="Don't look at my monsters like that. Look at them like THIS: in awe." win="Awe. Yes. That's the look I meant, just on me." lose="Stunning, as usual." prize="880"/>
 
-<entry id="midR10BeautyCelestineAfter" on="talk" target="npc.r10BeautyCelestine" category="bark" when="holds(defeated(r10BeautyCelestine)) && !@isNight">
+<entry id="midR10BeautyCelestineAfter" on="talk" target="npc.r10BeautyCelestine" category="bark" when="holds('defeated', ['r10BeautyCelestine']) && !@isNight">
   @r10BeautyCelestine: I walk down this hill every day for my complexion. The marsh air, you know. Also I live at the bottom.
 </entry>
 
 <beat use="trainerBattle" id="r10CyclistRuna" when="!@isNight" who="r10CyclistRuna" intro="Forty laps before breakfast! You're lap forty-one!" win="Lap forty-one: lost. Lap forty-two: lunch." lose="Personal best! Don't tell my coach it was against you." prize="560"/>
 
-<entry id="midR10CyclistRunaAfter" on="talk" target="npc.r10CyclistRuna" category="bark" when="holds(defeated(r10CyclistRuna)) && !@isNight">
+<entry id="midR10CyclistRunaAfter" on="talk" target="npc.r10CyclistRuna" category="bark" when="holds('defeated', ['r10CyclistRuna']) && !@isNight">
   @r10CyclistRuna: I'm out of here by sunset. The Riders don't like sharing the hill, and they don't use lights.
 </entry>
 
@@ -66,18 +66,18 @@ title: Route 10, the Mill Road (Silvercrest to Wardenmere)
 
 <beat use="trainerBattle" id="r10BikerGrit" when="@isNight" who="r10BikerGrit" intro="This is Riders' road after dark. You want through, you ride through me." win="Aw, man. My bike's fine. My pride's got a flat." lose="Go home, kid. Take the long way." prize="960"/>
 
-<entry id="midR10BikerGritAfter" on="talk" target="npc.r10BikerGrit" category="bark" when="holds(defeated(r10BikerGrit)) && @isNight">
+<entry id="midR10BikerGritAfter" on="talk" target="npc.r10BikerGrit" category="bark" when="holds('defeated', ['r10BikerGrit']) && @isNight">
   @r10BikerGrit: We're not a gang. We're a club. A club with jackets. And a secret handshake nobody remembers.
 </entry>
 
 <beat use="trainerBattle" id="r10BikerVanya" when="@isNight" who="r10BikerVanya" intro="Smell that? Smogball exhaust. Best smell on the road." win="Cough. That's not the exhaust, that's losing." lose="Breathe it in, kid!" prize="960"/>
 
-<entry id="midR10BikerVanyaAfter" on="talk" target="npc.r10BikerVanya" category="bark" when="holds(defeated(r10BikerVanya)) && @isNight">
+<entry id="midR10BikerVanyaAfter" on="talk" target="npc.r10BikerVanya" category="bark" when="holds('defeated', ['r10BikerVanya']) && @isNight">
   @r10BikerVanya: Kessler used to ride with us. Before he got all serious about poison and gyms. He still has the jacket. He just doesn't wear it where you can see.
 </entry>
 
 <beat use="trainerBattle" id="r10RockerJolene" when="@isNight" who="r10RockerJolene" intro="I lead the Riders! Well, I lead the singing. Same thing, louder!" win="Encore? No? Nobody? Fine." lose="Thank you, Mill Road! Goodnight!" prize="1040"/>
 
-<entry id="midR10RockerJoleneAfter" on="talk" target="npc.r10RockerJolene" category="bark" when="holds(defeated(r10RockerJolene)) && @isNight">
+<entry id="midR10RockerJoleneAfter" on="talk" target="npc.r10RockerJolene" category="bark" when="holds('defeated', ['r10RockerJolene']) && @isNight">
   @r10RockerJolene: You beat the whole club. That makes you an honorary Rider. There's no jacket. We ran out of jackets.
 </entry>

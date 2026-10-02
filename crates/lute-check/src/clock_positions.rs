@@ -74,8 +74,8 @@ enum Settle {
 
 /// How relational calls read while building a formula.
 struct Reads<'r> {
-    /// A pure-schedule derived `holds(rel(c…))` reads as its rules'
-    /// `cel()` guards.
+    /// A pure-schedule derived list-form `holds('rel', [c…])` reads as its
+    /// rules' `cel()` guards.
     schedule: Option<(&'r RelVocab, &'r DefTable<'r>)>,
     /// `visited('<id>')` reads as the earliest position its beat can be
     /// eligible at; `None` leaves it unknown.
@@ -122,7 +122,7 @@ fn value_at(clock: &ClockDecl, at: ClockAt, key: &str) -> Option<Decided> {
         .into_iter()
         .find(|(k, _)| *k == key)
         .map(|(_, v)| match v {
-            ClockValue::Num(n) => Decided::Num(n as f64),
+            ClockValue::Int(n) => Decided::Num(n as f64),
             ClockValue::Str(s) => Decided::Str(s),
         })
 }
@@ -146,10 +146,10 @@ fn build(expr: &Expr, ctx: &DecideCtx<'_>, clock: &ClockDecl, reads: &Reads<'_>)
                         build(&b.expr, ctx, clock, reads),
                     ])
                 }
-                ("holds", [a]) => {
+                ("holds", [_, _]) if crate::cel_resolve::is_profile_fact_query(c) => {
                     if let Some(f) = reads
                         .schedule
-                        .and_then(|(vocab, defs)| schedule(&a.expr, vocab, defs, ctx, clock))
+                        .and_then(|(vocab, defs)| schedule(c, vocab, defs, ctx, clock))
                     {
                         return f;
                     }
@@ -189,33 +189,22 @@ fn build(expr: &Expr, ctx: &DecideCtx<'_>, clock: &ClockDecl, reads: &Reads<'_>)
     })
 }
 
-/// A positive `holds(rel(c…))` of a pure-schedule atom — `rel` is `derive:
-/// true` and not engine-reserved, no seed fact is the atom, and every rule
-/// whose head unifies with it is a ground head over `cel()` guards only —
-/// holds exactly when one of those rules' guards all do. `None` otherwise.
+/// A positive list-form `holds('rel', [c…])` query of a pure-schedule atom —
+/// `rel` is `derive: true` and not engine-reserved, no seed fact is the atom,
+/// and every rule whose head unifies with it is a ground head over `cel()`
+/// guards only — holds exactly when one of those rules' guards all do.
+/// `None` otherwise.
 fn schedule(
-    atom: &Expr,
+    query: &cel_parser::ast::CallExpr,
     vocab: &RelVocab,
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
     clock: &ClockDecl,
 ) -> Option<Formula> {
     use lute_syntax::datalog::{BodyLiteral, FactTerm, RuleTerm};
-    let Expr::Call(atom) = atom else { return None };
-    if atom.target.is_some() {
-        return None;
-    }
-    let consts = atom
-        .args
-        .iter()
-        .map(|a| match &a.expr {
-            Expr::Ident(n) => Some(n.clone()),
-            Expr::Literal(Val::String(s)) => Some(s.to_string()),
-            Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
-            _ => None,
-        })
-        .collect::<Option<Vec<String>>>()?;
-    let rel = atom.func_name.as_str();
+    let query = crate::fact_env::QueryPattern::from_call(query)?;
+    let consts = query.args.iter().cloned().collect::<Option<Vec<String>>>()?;
+    let rel = query.relation.as_str();
     if !vocab
         .relations
         .get(rel)

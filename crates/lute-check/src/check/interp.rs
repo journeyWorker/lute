@@ -185,7 +185,7 @@ pub(super) fn check_interp_referent(
 pub(super) fn is_renderable(ty: &Type) -> bool {
     matches!(
         ty,
-        Type::Number | Type::Bool | Type::Enum(_) | Type::EnumFromOption(_)
+        Type::Int | Type::Double | Type::Bool | Type::Enum(_) | Type::EnumFromOption(_)
     )
 }
 
@@ -367,25 +367,24 @@ pub(super) fn check_interp_format(
         };
         let text_hint = lute_syntax::ast::INTERP_TEXT_FORMATS.contains(&format);
         match ty {
-            _ if type_flagged => return,
-            Some(ty) if text_hint && matches!(ty, Type::Number | Type::Bool) => (
+            Some(ty) if text_hint && matches!(ty, Type::Int | Type::Double | Type::Bool) => (
                 "E-REF-TYPE",
                 format!(
                     "`:{format}` formats text, but `{raw}` is {} — write `{{{{{raw}}}}}` \
                      without the hint{}",
                     crate::cel_resolve::ty_desc(&ty),
-                    if ty == Type::Number {
-                        ", or a number hint (`:cardinalWord`, `:ordinal`)"
+                    if matches!(ty, Type::Int | Type::Double) {
+                        ", or an int/double hint (`:cardinalWord`, `:ordinal`)"
                     } else {
                         ""
                     }
                 ),
             ),
-            Some(ty) if !text_hint && ty != Type::Number => (
+            Some(ty) if !text_hint && !matches!(ty, Type::Int | Type::Double) => (
                 "E-REF-TYPE",
                 format!(
-                    "`:{format}` formats a number, but `{raw}` is {} — write `{{{{{raw}}}}}` \
-                     without the hint, or interpolate a number{}",
+                    "`:{format}` formats an int or double, but `{raw}` is {} — write `{{{{{raw}}}}}` \
+                     without the hint, or interpolate an int or double{}",
                     crate::cel_resolve::ty_desc(&ty),
                     if ty == Type::Bool {
                         ""
@@ -397,6 +396,9 @@ pub(super) fn check_interp_format(
             _ => return,
         }
     };
+    if type_flagged {
+        return;
+    }
     diags.push(Diagnostic {
         code: code.to_string(),
         severity: Severity::Error,

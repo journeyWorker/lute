@@ -96,7 +96,7 @@ A value that fails its declared type is **`E-PLUGIN-OPTION-TYPE`**. Every violat
 ```
 $ lute check scene.lute --project .
 lute: E-PLUGIN-OPTION-TYPE: option `arcia.bonus.resultScope` expects enum(scene|run), got "galaxy"
-lute: E-PLUGIN-OPTION-TYPE: option `arcia.bonus.rounds` expects number, got "three"
+lute: E-PLUGIN-OPTION-TYPE: option `arcia.bonus.rounds` expects int, got "three"
 ```
 
 Both describe the project rather than a span in any one file, and both are errors: they print without a file position and they set the CLI exit code. They travel the same resolution channel as load errors and unresolved `depends`, so the CLI, the checker, and the LSP observe them identically.

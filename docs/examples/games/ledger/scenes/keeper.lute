@@ -3,8 +3,8 @@ kind: scene
 id: keeper
 title: The Lamp Room
 state:
-  scene.ledgerReads: { type: number, default: 0 }
-  scene.gallery:     { type: number, default: 0 }
+  scene.ledgerReads: { type: int, default: 0 }
+  scene.gallery:     { type: int, default: 0 }
 ---
 
 ## The Lamp Room

@@ -12,7 +12,7 @@ character: marina
 season: 1
 episode: 2
 state:
-  scene.affect.marina: { type: number, default: 0 }
+  scene.affect.marina: { type: int, default: 0 }
 defs:
   fond: { type: bool, cel: "scene.affect.marina >= 1" }
 ---

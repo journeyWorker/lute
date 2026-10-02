@@ -11,7 +11,7 @@ const CODE: &str = "W-WHEN-TEST-LITERAL";
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
     run.rank: { type: { enum: [fail, bronze, silver, gold] }, default: fail }\n  \
-    run.n: { type: number, default: 0 }\n---\n## Shot 1.\n";
+    run.n: { type: int, default: 0 }\n---\n## Shot 1.\n";
 
 fn diagnose(text: &str) -> CheckResult {
     check(&CheckInput {

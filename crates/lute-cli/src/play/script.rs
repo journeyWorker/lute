@@ -19,6 +19,7 @@ pub(crate) const SCRIPT_KEYS: &[&str] = &[
     "expect",
     "facts",
     "presented",
+    "questInstances",
     "quests",
     "state",
     "steps",
@@ -619,6 +620,30 @@ fn parse_top<'v>(
                         continue;
                     };
                     save.quests.push((id.to_string(), status.to_string()));
+                }
+            }
+            "questInstances" => {
+                let serde_yaml::Value::Mapping(m) = v else {
+                    refuse(
+                        &[key],
+                        "`questInstances:` must be a mapping of quest id -> positive integer"
+                            .to_string(),
+                    );
+                    continue;
+                };
+                for (id, count) in m {
+                    let Some(id) = id.as_str() else {
+                        refuse(&[key], "`questInstances:` keys must be quest ids".to_string());
+                        continue;
+                    };
+                    let Some(count) = count.as_u64().filter(|n| *n > 0) else {
+                        refuse(
+                            &[key, id],
+                            "`questInstances:` values must be positive integers".to_string(),
+                        );
+                        continue;
+                    };
+                    save.quest_instances.push((id.to_string(), count));
                 }
             }
             "expect" => {

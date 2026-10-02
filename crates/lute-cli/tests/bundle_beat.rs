@@ -15,7 +15,7 @@ const SOURCE: &str = r#"---
 kind: lore
 id: interviews
 state:
-  run.porterTrust: { type: number, default: 0 }
+  run.porterTrust: { type: int, default: 0 }
 ---
 
 <entry id="porterNote" target="item.porter_note">
@@ -41,19 +41,19 @@ state:
 /// source order, each head record followed by its body segment.
 const ARTIFACT: &str = r#"{
   "kind": "lore",
-  "lute": "0.30.0",
-  "irVersion": "0.30.0",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
   "meta": { "id": "interviews" },
   "state": [
     { "path": "entry.porterNote.read", "type": "bool", "default": false, "provenance": "entry:porterNote" },
     { "path": "entry.lastNote.read", "type": "bool", "default": false, "provenance": "entry:lastNote" },
-    { "path": "run.porterTrust", "type": "number", "default": 0 }
+    { "path": "run.porterTrust", "type": "int", "default": 0 }
   ],
   "commands": [
     { "kind": "entry", "addr": "001-0100", "id": "porterNote", "target": "item.porter_note", "body": "001-0200" },
     { "kind": "line", "addr": "001-0200", "role": "narration", "speaker": "narrator", "text": "A note about the porter." },
     { "kind": "beat", "addr": "002-0100", "id": "interviews.porter", "on": "talk", "target": "npc.porter",
-      "when": { "raw": "run.porterTrust >= 0" }, "priority": 0, "once": "run", "body": "002-0200" },
+      "when": { "cel": "run.porterTrust >= 0" }, "priority": 0, "once": "run", "body": "002-0200" },
     { "kind": "line", "addr": "002-0200", "role": "dialogue", "speaker": "porter", "text": "You again." },
     { "kind": "choice", "addr": "002-0300", "branchId": "porterTalk", "recordKey": "scene.choices.porterTalk",
       "options": [
@@ -62,7 +62,7 @@ const ARTIFACT: &str = r#"{
       ],
       "converge": "002-0900" },
     { "kind": "line", "addr": "002-0400", "role": "dialogue", "speaker": "porter", "text": "I saw nothing." },
-    { "kind": "set", "addr": "002-0500", "path": "run.porterTrust", "op": "+=", "value": "1", "expr": { "lit": 1.0 } },
+    { "kind": "set", "addr": "002-0500", "path": "run.porterTrust", "op": "+=", "value": { "cel": "1", "expr": { "int": 1 } } },
     { "kind": "jump", "addr": "002-0600", "target": "002-0900" },
     { "kind": "line", "addr": "002-0700", "role": "dialogue", "speaker": "porter", "text": "Good." },
     { "kind": "jump", "addr": "002-0800", "target": "002-0900" },
@@ -270,7 +270,7 @@ fn run_bundle_beat_usage_errors() {
 
     let (code, stdout, stderr) = lute(&["run", &art]);
     assert_eq!(code, Some(2), "stdout: {stdout}");
-    assert!(stderr.contains("is a lore artifact"), "{stderr}");
+    assert!(stderr.contains("is a lore execution IR"), "{stderr}");
     assert!(stderr.contains("`--beat <id>`"), "{stderr}");
 
     let (code, _, stderr) = lute(&["run", &art, "--beat", "nope"]);
@@ -281,7 +281,7 @@ fn run_bundle_beat_usage_errors() {
     let (code, _, stderr) = lute(&["run", SCENE_ARTIFACT, "--beat", "porter"]);
     assert_eq!(code, Some(2));
     assert!(
-        stderr.contains("`--beat porter` needs a lore artifact"),
+        stderr.contains("`--beat porter` needs a lore execution IR"),
         "{stderr}"
     );
 

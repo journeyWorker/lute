@@ -33,8 +33,8 @@ title: The three islands
 <beat use="beaconKeeper" id="brandRelight" isle="emberkey" keeper="emberkeyKeeper" thanks="My lens! Hand it here, hand it here. Up we go."/>
 
 <entry id="islesBrandBark" on="talk" target="npc.emberkeyKeeper" category="bark">
-  @emberkeyKeeper{when="!holds(islesRelit(emberkey))"}: A grunt went up my tower with a sack and came down with my lens. He's still up there, if you can stand the heat.
-  @emberkeyKeeper{when="holds(islesRelit(emberkey))"}: She burns like the old days. Look at her go.
+  @emberkeyKeeper{when="!holds('islesRelit', ['emberkey'])"}: A grunt went up my tower with a sack and came down with my lens. He's still up there, if you can stand the heat.
+  @emberkeyKeeper{when="holds('islesRelit', ['emberkey'])"}: She burns like the old days. Look at her go.
 </entry>
 
 // ── Keeper Sorrel, Mistral Isle ─────────────────────────────────────────────

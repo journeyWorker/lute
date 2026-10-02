@@ -1,5 +1,5 @@
 //! `E-STATE-COLLECTION` (dsl 0.8.0 §4): author `state:` is SCALAR
-//! (`number|bool|string|enum`).
+//! (`int|double|bool|string|enum`).
 //!
 //! Before 0.8.0 three sources contradicted each other — the normative text
 //! (`docs/proposals/scenario-dsl/0.2.0.md`/`0.3.0.md`) said scalar-only, the
@@ -65,7 +65,7 @@ fn list_typed_author_state_is_rejected_and_not_installed() {
     assert_eq!(
         collection[0].message,
         "state path `run.bag` cannot declare a collection type (`list`/`record`/`map`); \
-         author state is scalar (number|bool|string|enum) — model collections as \
+         author state is (int|double|bool|string|enum) — model collections as \
          `relations:` (dsl 0.3.0 §3) or a plugin `state_shapes` slot"
     );
 
@@ -83,7 +83,7 @@ fn list_typed_author_state_is_rejected_and_not_installed() {
 #[test]
 fn record_and_map_typed_author_state_are_rejected() {
     let record = scene(
-        "state:\n  run.player: { type: { record: [ { name: hp, type: number } ] } }\n",
+        "state:\n  run.player: { type: { record: [ { name: hp, type: int } ] } }\n",
         "run.hp",
     );
     assert!(
@@ -93,7 +93,7 @@ fn record_and_map_typed_author_state_are_rejected() {
     );
 
     let map = scene(
-        "state:\n  run.tally: { type: { map: { key: string, value: number } } }\n",
+        "state:\n  run.tally: { type: { map: { key: string, value: int } } }\n",
         "run.other",
     );
     assert!(
@@ -108,7 +108,7 @@ fn scalar_author_state_is_unaffected() {
     // Regression: every scalar the normative text admits still folds, reads
     // clean, and never trips the new code.
     for (decl, cond) in [
-        ("run.n: { type: number, default: 0 }", "run.n > 0"),
+        ("run.n: { type: int, default: 0 }", "run.n > 0"),
         ("run.b: { type: bool, default: false }", "run.b"),
         ("run.s: { type: string, default: \"\" }", "run.s == 'x'"),
         (

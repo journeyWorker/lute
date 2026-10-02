@@ -32,15 +32,15 @@ use crate::Ctx;
 use lute_manifest::types::Type;
 
 /// A CEL construct outside the closed Lute-CEL profile (dsl §8.4): any function
-/// or macro call other than the `isSet()` extension (the valid `has()` macro
-/// parses as an `Expr::Select`, not a call), plus comprehension macros and
-/// map/struct literals. Emitted at the slot span. New in 0.1.0.
+/// or macro call other than the supported list-form host calls (`holds`, `count`,
+/// `validAt`, `now`, `visited`) and the `has()` presence macro, plus
+/// comprehension macros and map/struct literals. Emitted at the slot span.
 pub const E_CEL_PROFILE: &str = "E-CEL-PROFILE";
 
-/// dsl 0.24.0 §1: an operand of integer `%` that is not an integer — a
-/// non-`number` operand (`'a' % 2`, `run.flag % 2`) or a fractional literal
-/// (`run.day % 2.5`). A `number` path is accepted: whether its value is
-/// integral is a runtime question (`%` of a fractional value is unknown).
+/// dsl 0.32.0 §1: an operand of integer `%` that is not an integer — a
+/// non-numeric operand (`'a' % 2`, `run.flag % 2`) or a fractional literal
+/// (`run.day % 2.5`). An `int` path is accepted: whether its value is integral
+/// is a runtime question (`%` of a fractional `double` value is unknown).
 /// Emitted at the slot span.
 pub const E_CEL_TYPE: &str = "E-CEL-TYPE";
 
@@ -211,7 +211,7 @@ pub fn check_cel_slot(
         if let Some(decl) = ctx.env.state.decls.get(path).filter(|_| bare) {
             if !compatible(&decl.ty, &ExpectedType::Bool) {
                 let example = match &decl.ty {
-                    Type::Number => format!("{path} > 0"),
+                    Type::Int | Type::Double => format!("{path} > 0"),
                     Type::Str => format!("{path} != ''"),
                     Type::Enum(members) if !members.is_empty() => {
                         format!("{path} == '{}'", members[0])
@@ -233,8 +233,8 @@ pub fn check_cel_slot(
 
     // dsl 0.27.0 §3: a slot reading `occasion.target` as a fact-query
     // argument or family index is judged once per member of its kind beat
-    // (`holds(owned(aria))`, `user.bond.aria`, …). Outside any kind beat the
-    // read is `E-UNDECLARED` (a lore document's stray read is already
+    // (`holds('owned', ['aria'])`, `user.bond.aria`, …). Outside any kind beat
+    // the read is `E-UNDECLARED` (a lore document's stray read is already
     // `check_occasion_target_scope`'s).
     if crate::occasion_bind::binds_target(&slot.raw) {
         match ctx
@@ -322,8 +322,6 @@ fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec
     if let Some(mh) = lute_cel::parse_slot_marked_refs(&mut marked, &slot.raw) {
         if let Some(mroot) = marked.get(mh) {
             check_cel_profile(&mroot.expr, slot, &ProfileScope::of(ctx), diags);
-            // 0.21.1 T1-1: `isSet(quest.<id>.state)` is always true.
-            check_quest_state_isset(&mroot.expr, slot.span, diags);
             // Vocabulary-aware fact-query pass (dsl 0.3.0 §6/§8, T11):
             // `holds`/`count`/`validAt` patterns against `RelVocab`
             // (E-RELATION-UNKNOWN/-ARITY/E-FACT-DOMAIN), the
@@ -340,7 +338,7 @@ fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec
             // comparison against another narrative-time value, or as
             // `validAt`'s second argument (`E-TEMPORAL-ARG`).
             crate::temporal::check_temporal(&mroot.expr, slot, ctx, diags);
-            // dsl 0.24.0 §1: both operands of `%` are integers.
+            check_quest_state_isset(&mroot.expr, slot.span, diags);
             check_modulo_operands(&mroot.expr, slot.span, &ctx.env.state, diags);
             // dsl 0.28.0 §1 (T1-4): comparisons, logical operands and the
             // condition itself are typed.
@@ -359,10 +357,10 @@ fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec
 /// member ([`crate::occasion_bind::instantiate_bound`]). A finding every
 /// member shares is reported once. So is one that several members hit and
 /// that differs only by the member's name (the swapped arguments of
-/// `holds(bondRank(r1, occasion.target))` fail for every hero alike): it
-/// reads `occasion.target` where the member stood and lists the members. A
-/// finding only one member hits names it (`… (for occasion.target =
-/// bram)`), since the beat is still raised for the others.
+/// `holds('bondRank', ['r1', occasion.target])` fail for every hero alike):
+/// it reads `occasion.target` where the member stood and lists the members.
+/// A finding only one member hits names it (`… (for occasion.target = bram)`),
+/// since the beat is still raised for the others.
 fn check_per_member(slot: &CelSlot, ctx: &Ctx<'_>, members: &[String]) -> Vec<Diagnostic> {
     group_per_member(members, |m| {
         let raw = crate::occasion_bind::instantiate_bound(&slot.raw, m);
@@ -644,7 +642,7 @@ pub fn expand_rule_guards(
 /// passed `check` while the same CEL inline was `E-CEL-PROFILE` — and the
 /// runner, which cannot evaluate it, silently took `<otherwise>`. The body
 /// now gets the SAME [`check_cel_profile`] walk (plus the reserved-marker,
-/// [`W_QUEST_STATE_ISSET`] and integer-`%` [`E_CEL_TYPE`] checks) an inline
+/// [`W_QUEST_STATE_HAS`] and integer-`%` [`E_CEL_TYPE`] checks) an inline
 /// slot gets, with the def's own
 /// `params` admitted as bare identifiers. Every diagnostic lands at `span`
 /// (the def's key) and names the def. A body that does not parse returns
@@ -706,36 +704,35 @@ pub(crate) fn check_def_body(
     diags
 }
 
-/// 0.21.1 T1-1: `quest.<id>.state` is an ALWAYS-ASSIGNED lifecycle enum —
+/// 0.32.0: `quest.<id>.state` is an ALWAYS-ASSIGNED lifecycle enum —
 /// `unset | active | complete | failed`, the engine writing `unset` for every
-/// quest before it activates — so `isSet(quest.<id>.state)` is always true
-/// and `!isSet(…)` never holds. The checker used to recommend exactly that
-/// guard, and it read "not yet accepted" as false at runtime. A warning at
-/// the slot span, naming the comparison that means what the author wanted.
-pub const W_QUEST_STATE_ISSET: &str = "W-QUEST-STATE-ISSET";
+/// quest before it activates — so `has(quest.<id>.state)` is always true.
+/// The warning names the comparison that means what the author wanted.
+pub const W_QUEST_STATE_HAS: &str = "W-QUEST-STATE-HAS";
 
 fn check_quest_state_isset(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) {
     match expr {
-        Expr::Call(c) => {
-            if is_profile_isset_call(c) {
-                if let Some(path) = crate::cel_paths::select_path(&c.args[0].expr)
-                    .filter(|p| crate::cel_paths::is_reserved_quest_state(p))
-                {
-                    diags.push(Diagnostic {
-                        severity: Severity::Warning,
-                        ..diag(
-                            W_QUEST_STATE_ISSET,
-                            format!(
-                                "`isSet({path})` is always true: a quest's state is always \
-                                 assigned — `unset` until the quest activates, then `active`, \
-                                 `complete` or `failed`. Test `{path} == 'unset'` (or \
-                                 `!= 'unset'`) instead"
-                            ),
-                            span,
-                        )
-                    });
-                }
+        Expr::Select(sel) if sel.test => {
+            if let Some(path) = crate::cel_paths::select_path(expr)
+                .filter(|p| crate::cel_paths::is_reserved_quest_state(p))
+            {
+                diags.push(Diagnostic {
+                    severity: Severity::Warning,
+                    ..diag(
+                        W_QUEST_STATE_HAS,
+                        format!(
+                            "`has({path})` is always true: a quest's state is always \
+                             assigned — `unset` until the quest activates, then `active`, \
+                             `complete` or `failed`. Test `{path} == 'unset'` (or \
+                             `!= 'unset'`) instead"
+                        ),
+                        span,
+                    )
+                });
             }
+            check_quest_state_isset(&sel.operand.expr, span, diags);
+        }
+        Expr::Call(c) => {
             if let Some(t) = &c.target {
                 check_quest_state_isset(&t.expr, span, diags);
             }
@@ -800,13 +797,14 @@ fn check_guard_fact_access(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>)
     }
 }
 
-/// The Lute-CEL profile gate (dsl §8.4). The environment is **closed**: the only
-/// callable function is the `isSet()` Lute extension. Everything else the profile
-/// permits — a fixed set of CEL operators, literals, list literals, the `in`
-/// membership operator, and the ternary conditional — is *not* a user-callable
-/// function. Any other function/method call (`size`, `matches`, `startsWith`, …)
-/// or comprehension macro (`map`, `filter`, `exists`, `all`, `existsOne`) is a
-/// static error ([`E_CEL_PROFILE`]) at the slot span.
+/// The Lute-CEL profile gate (dsl §8.4). The environment is **closed**: host
+/// calls use their dedicated list-form signatures (`holds('rel', [args])`,
+/// `count('rel', [args])`, and the other declared host calls). Everything else
+/// the profile permits — a fixed set of CEL operators, literals, list literals,
+/// the `in` membership operator, and the ternary conditional — is *not* a
+/// user-callable function. Any other function/method call (`size`, `matches`,
+/// `startsWith`, …) or comprehension macro (`map`, `filter`, `exists`, `all`,
+/// `existsOne`) is a static error ([`E_CEL_PROFILE`]) at the slot span.
 ///
 /// Runs over the **marker re-parse** (`parse_slot_marked_refs`), where each DSL
 /// `@ref` sigil was rewritten to [`lute_cel::REF_MARKER`]. That distinction is
@@ -817,12 +815,12 @@ fn check_guard_fact_access(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>)
 ///   `size`). A same-named *runtime* call keeps its bare name and is NOT exempt,
 ///   closing the `@gate && gate(x)` bypass.
 /// * CEL lowers operators to synthetic `Call` names ([`is_profile_operator`]),
-///   matched against an EXPLICIT allow-list — leading-dot global calls and
-///   the optional operators are therefore rejected, not blanket-accepted.
+///   matched against an EXPLICIT allow-list — leading-dot global calls and the
+///   optional operators are therefore rejected, not blanket-accepted.
 /// * the valid `has(path)` macro parses as a test-only [`Expr::Select`], never a
 ///   `Call` — so a residual `Call` named `has` (`has(x,y)`, `x.has()`) is NOT the
-///   macro and IS rejected. The only allowed `Call` is `isSet(<path>)` with NO
-///   receiver and exactly one arg ([`is_profile_isset_call`]).
+///   macro and IS rejected. Host calls are recognized separately by their
+///   list-form signatures.
 /// * comprehension macros lower to [`Expr::Comprehension`]; map/struct literals
 ///   to [`Expr::Map`]/[`Expr::Struct`] (only *list* literals are in profile) —
 ///   all rejected.
@@ -846,34 +844,29 @@ fn check_cel_profile(
     match expr {
         Expr::Call(c) => {
             let name = c.func_name.as_str();
-            // Exempt: a compile-time `@ref(args)` macro (marker-prefixed name;
-            // §8.1 owns its arity), a profile operator, a well-formed
-            // `isSet(<path>)` call, a well-shaped fact-query/`now()` call
-            // (dsl 0.3.0 §6/§8), or — in a condition slot — a
-            // `visited('<scene id>')` call (dsl 0.21.0 §7a.1). Anything else
-            // — including `scene.x.isSet()` (receiver), `isSet(a, b)` (wrong
-            // arity), `holds()` (wrong arity), `holds(scene.x)` (non-call
-            // pattern arg), and `visited(scene.x)` (non-literal id) — is out
-            // of profile.
-            let visited = slot.kind == CelKind::Condition && visited_call_target(c).is_some();
+            let visited =
+                slot.kind == CelKind::Condition && visited_call_target(c).is_some();
             if name.starts_with(lute_cel::REF_MARKER)
                 || is_profile_operator(name)
-                || is_profile_isset_call(c)
+                || is_fact_query_name(c)
                 || is_profile_fact_query(c)
+                || is_profile_conversion(c)
                 || visited
             {
                 if visited {
                     // A string-literal leaf: nothing to recurse into.
-                } else if is_profile_fact_query(c) {
-                    // A fact-query/now() call: do NOT recurse into the
-                    // pattern arg (args[0], a relation Call — validated by
-                    // check_fact_queries, never a CEL sub-expression).
-                    // `validAt`'s second arg IS a genuine CEL expr and gets
-                    // the ordinary recursion.
-                    if name == "validAt" {
-                        if let Some(t) = c.args.get(1) {
+                } else if is_fact_query_name(c) {
+                    // Relation names and pattern lists are data, not CEL
+                    // expressions. Malformed shapes are diagnosed by the
+                    // fact-query pass with E-FACT-QUERY.
+                    if c.func_name == "validAt" && is_profile_fact_query(c) {
+                        if let Some(t) = c.args.get(2) {
                             check_cel_profile(&t.expr, slot, scope, diags);
                         }
+                    }
+                } else if is_profile_conversion(c) {
+                    for a in &c.args {
+                        check_cel_profile(&a.expr, slot, scope, diags);
                     }
                 } else {
                     // Structural — recurse into target + args to catch any
@@ -885,29 +878,22 @@ fn check_cel_profile(
                         check_cel_profile(&a.expr, slot, scope, diags);
                     }
                 }
-            } else if name == VISITED_FN && slot.kind != CelKind::Condition {
-                // dsl 0.21.0 §7a.1: `visited()` is a condition-slot function
-                // only — it answers "has this scene been presented", never a
-                // value to store or match on.
-                diags.push(diag(
-                    E_CEL_PROFILE,
-                    "`visited(…)` is legal only in a condition slot (quest `start` / `fail`, \
-                     objective `done`, beat and entry `when`, content-line and branch `when=`, \
-                     `<when test>`) (dsl 0.21.0 §7a.1)"
-                        .to_string(),
-                    slot.span,
-                ));
             } else {
                 // An out-of-profile function/method call. Report and stop
                 // descending (the whole call is rejected).
+                let hint = if name == VISITED_FN && slot.kind != CelKind::Condition {
+                    " — `visited(…)` is only legal in a condition slot".to_string()
+                } else {
+                    call_hint(c, scope)
+                };
                 diags.push(diag(
                     E_CEL_PROFILE,
                     format!(
                         "`{name}(…)` is outside the Lute-CEL profile{} — the profile has \
-                         operators, literals, lists, `?:`, `in`, `has()`, `isSet()`, `holds()`, \
-                         `count()`, `countDistinct(<pattern>, <Var>)`, `validAt()`, `now()`, and \
-                         `visited('<scene id>')`",
-                        call_hint(c, scope)
+                         operators, int/double/bool/string literals, lists, `?:`, `in`, \
+                         `has()`, `int()`, `double()`, `holds()`, `count()`, \
+                         `countDistinct(string, list, int)`, `validAt()`, `now()`, and `visited(string)`",
+                        hint
                     ),
                     slot.span,
                 ));
@@ -917,7 +903,7 @@ fn check_cel_profile(
             E_CEL_PROFILE,
             "comprehension macros (map/filter/exists/all/existsOne) are outside the \
              Lute-CEL profile — only operators, literals, lists, `?:`, `in`, \
-             `has()`, and `isSet()` are permitted (dsl §8.4)"
+             `has()`, `int()`, and `double()` are permitted (dsl §8.4)"
                 .to_string(),
             slot.span,
         )),
@@ -982,6 +968,16 @@ fn check_cel_profile(
                 diags.push(diag(E_CEL_PROFILE, message, slot.span));
             }
         }
+        Expr::Literal(Val::UInt(_) | Val::Bytes(_) | Val::Null) => diags.push(diag(
+            E_CEL_PROFILE,
+            "uint, bytes, and null literals are outside the Lute-CEL profile".to_string(),
+            slot.span,
+        )),
+        Expr::Literal(Val::Int(n)) if n.unsigned_abs() > (1_u64 << 53) => diags.push(diag(
+            E_CEL_PROFILE,
+            "int literals must be within ±2^53".to_string(),
+            slot.span,
+        )),
         Expr::Literal(_) | Expr::Unspecified => {}
     }
 }
@@ -1017,19 +1013,25 @@ impl<'a> ProfileScope<'a> {
 }
 
 /// dsl 0.28.0 (T3-4): what an out-of-profile call was likely meant as — a
-/// relation atom asked with `holds(…)`, `completed()` / `active()` read as
-/// the quest's state, or an unquoted `visited()` id.
+/// relation atom asked with the 0.32 list form, `isSet` replaced by `has`/`in`,
+/// `completed()` / `active()` read as the quest's state, or an unquoted
+/// `visited()` id.
 fn call_hint(c: &cel_parser::ast::CallExpr, scope: &ProfileScope<'_>) -> String {
     let name = c.func_name.as_str();
+    if name.eq_ignore_ascii_case("isSet") {
+        return isset_hint(c);
+    }
+    if matches!(name, "holds" | "count" | "countDistinct" | "validAt") {
+        if let Some(hint) = legacy_fact_hint(c) {
+            return hint;
+        }
+    }
     if c.target.is_none() && scope.relations.is_some_and(|r| r.contains_key(name)) {
-        let args: Vec<String> = c
-            .args
-            .iter()
-            .map(|a| crate::cel_types::show(&a.expr))
-            .collect();
-        let atom = format!("{name}({})", args.join(", "));
+        let args = legacy_atom_args(c);
         return format!(
-            " — `{name}` is a relation, and a fact is asked about with `holds({atom})`"
+            " — `{name}` is a relation, and a fact is asked about with \
+             `holds('{name}', [{}])`",
+            args.join(", ")
         );
     }
     let id = match c.args.as_slice() {
@@ -1039,7 +1041,6 @@ fn call_hint(c: &cel_parser::ast::CallExpr, scope: &ProfileScope<'_>) -> String 
         },
         _ => None,
     };
-    // A near miss (`complete('q1')`) is read as the function it misspells.
     let meant = match name {
         "completed" | "active" | VISITED_FN => Some(name),
         _ if c.target.is_none() => {
@@ -1056,11 +1057,7 @@ fn call_hint(c: &cel_parser::ast::CallExpr, scope: &ProfileScope<'_>) -> String 
         (Some(m @ ("completed" | "active")), Some(id)) => format!(
             " — `{m}()`{not} belongs to `after:`; a condition reads the quest's state: \
              `quest.{id}.state == '{}'`",
-            if m == "completed" {
-                "complete"
-            } else {
-                "active"
-            }
+            if m == "completed" { "complete" } else { "active" }
         ),
         (Some(VISITED_FN), Some(id)) if meant == Some(name) => {
             format!(" — the scene id is quoted: `visited('{id}')`")
@@ -1068,6 +1065,74 @@ fn call_hint(c: &cel_parser::ast::CallExpr, scope: &ProfileScope<'_>) -> String 
         (Some(VISITED_FN), Some(id)) => format!(" — did you mean `visited('{id}')`?"),
         _ => String::new(),
     }
+}
+
+fn isset_hint(c: &cel_parser::ast::CallExpr) -> String {
+    let Some(arg) = c.args.first().map(|a| &a.expr) else {
+        return " — `isSet` was removed; use `has(a.b)` or `'k' in a.b`".to_string();
+    };
+    if let Expr::Call(index) = arg {
+        use cel_parser::ast::operators as op;
+        if index.func_name == op::INDEX && index.args.len() == 2 {
+            if let (Some(path), Expr::Literal(Val::String(key))) = (
+                crate::cel_paths::select_path(&index.args[0].expr),
+                &index.args[1].expr,
+            ) {
+                return format!(
+                    " — `isSet` was removed; use `'{key}' in {path}`"
+                );
+            }
+        }
+    }
+    let path = crate::cel_paths::select_path(arg).unwrap_or_else(|| "a.b".to_string());
+    format!(" — `isSet` was removed; use `has({path})` or `'k' in a.b`")
+}
+
+fn legacy_fact_hint(c: &cel_parser::ast::CallExpr) -> Option<String> {
+    let pattern = match &c.args.first()?.expr {
+        Expr::Call(atom) => atom,
+        _ => return None,
+    };
+    let args = legacy_atom_args(pattern).join(", ");
+    let relation = &pattern.func_name;
+    let suffix = match c.func_name.as_str() {
+        "validAt" => c
+            .args
+            .get(1)
+            .map(|arg| format!(", {}", crate::cel_types::show(&arg.expr)))
+            .unwrap_or_default(),
+        "countDistinct" => {
+            let column = c.args.get(1).and_then(|arg| match &arg.expr {
+                Expr::Ident(name) => pattern.args.iter().position(|p| {
+                    matches!(&p.expr, Expr::Ident(candidate) if candidate == name)
+                }),
+                _ => None,
+            });
+            format!(", {}", column.unwrap_or(0))
+        }
+        _ => String::new(),
+    };
+    Some(format!(
+        " — use `{}('{relation}', [{}]{suffix})`",
+        c.func_name, args
+    ))
+}
+
+fn legacy_atom_args(c: &cel_parser::ast::CallExpr) -> Vec<String> {
+    c.args
+        .iter()
+        .map(|arg| match &arg.expr {
+            Expr::Ident(name)
+                if name == "_" || name.chars().next().is_some_and(char::is_uppercase) =>
+            {
+                "'_'".to_string()
+            }
+            Expr::Ident(name) => format!("'{name}'"),
+            Expr::Literal(Val::Boolean(value)) => value.to_string(),
+            Expr::Literal(Val::String(value)) => format!("'{value}'"),
+            expr => crate::cel_types::show(expr),
+        })
+        .collect()
 }
 
 /// True when `func_name` is one of the CEL built-in **operators** the Lute-CEL
@@ -1147,19 +1212,11 @@ fn check_modulo_operands(
     }
 }
 
-/// True when this `Call` is the in-profile `isSet(<path>)` extension (dsl §8.4):
-/// named `isSet` (case-insensitively, as elsewhere), with NO receiver, EXACTLY
-/// one argument, and that argument is a **static state path** — a pure
-/// `Ident`/`Select` chain (`crate::cel_paths::select_path` returns `Some`, which
-/// also admits the substituted `$` subject `Ident("_")`). `scene.x.isSet()`
-/// (receiver), `isSet(a, b)` (arity), and `isSet(1 + 2)` / `isSet(scene.x + 1)`
-/// (non-path argument) are all out of profile. `has()` is never here — its valid
-/// form is an `Expr::Select`, not a `Call`.
-fn is_profile_isset_call(c: &cel_parser::ast::CallExpr) -> bool {
-    c.func_name.eq_ignore_ascii_case("isSet")
+/// Standard CEL numeric conversions, with one argument and no receiver.
+fn is_profile_conversion(c: &cel_parser::ast::CallExpr) -> bool {
+    matches!(c.func_name.as_str(), "int" | "double")
         && c.target.is_none()
         && c.args.len() == 1
-        && crate::cel_paths::select_path(&c.args[0].expr).is_some()
 }
 
 /// The Lute-CEL name of the presentation-history query (dsl 0.21.0 §7a.1).
@@ -1224,55 +1281,49 @@ pub fn visited_targets(expr: &Expr) -> Vec<String> {
     out
 }
 
-/// True iff `c` is a structurally well-shaped fact-query/narrative-time call
-/// (dsl 0.3.0 §6/§8): `holds(Call)` | `count(Call)` | `validAt(Call, expr)` |
-/// `now()` — NO receiver, EXACT arity, and (for `holds`/`count`/`validAt`) a
-/// `Call`-shaped first argument (the relation pattern — its OWN shape/
-/// vocabulary validity is [`check_fact_queries`]'s job, never recursed into
-/// here). Matched by EXACT name (mirrors [`GUARD_FIREWALL_CALLS`], not
-/// [`is_profile_isset_call`]'s case-insensitive match). A malformed shape —
-/// wrong arity, a non-`Call` pattern arg (`holds(scene.x)`), a receiver
-/// (`x.holds(…)`), or an unrecognized name — is NOT admitted here and falls
-/// into the ordinary [`E_CEL_PROFILE`] rejection.
-/// `pub(crate)`: reused verbatim by `temporal.rs`'s own walk (Task 12) so the
-/// two independent passes agree on exactly which calls exempt their pattern
-/// argument from ordinary CEL-subexpression treatment.
+/// Whether `c` names a host fact-query function, regardless of its shape.
+/// Shape validation belongs to [`check_fact_query_call`] so malformed queries
+/// receive `E-FACT-QUERY`, not the generic profile error.
+pub(crate) fn is_fact_query_name(c: &cel_parser::ast::CallExpr) -> bool {
+    c.target.is_none()
+        && matches!(
+            c.func_name.as_str(),
+            "holds" | "count" | "countDistinct" | "validAt"
+        )
+}
+
+/// A list-form host query. Argument contents and the numeric column/time
+/// types are checked separately so malformed queries retain their own code.
 pub(crate) fn is_profile_fact_query(c: &cel_parser::ast::CallExpr) -> bool {
-    if c.target.is_some() {
-        return false;
+    if !is_fact_query_name(c) {
+        return c.target.is_none() && c.func_name == "now" && c.args.is_empty();
     }
     match c.func_name.as_str() {
-        "holds" | "count" => c.args.len() == 1 && matches!(c.args[0].expr, Expr::Call(_)),
-        "countDistinct" => count_distinct_column(c).is_some(),
-        "validAt" => c.args.len() == 2 && matches!(c.args[0].expr, Expr::Call(_)),
-        "now" => c.args.is_empty(),
+        "holds" | "count" => c.args.len() == 2,
+        "countDistinct" | "validAt" => c.args.len() == 3,
         _ => false,
     }
 }
 
-/// dsl 0.24 T3-9: `countDistinct(<pattern>, V)` counts the distinct values of
-/// the pattern position named by the capitalised variable `V` among the
-/// matching facts (`countDistinct(sawAt(W, _, _, _), W)` — witnesses, not
-/// tuples). `Some(column)` when the call is well-shaped: no receiver, a
-/// relation pattern, and a capitalised identifier that names EXACTLY one
-/// pattern position; every other position is ground or `_` as in `count`.
+pub(crate) fn query_relation(c: &cel_parser::ast::CallExpr) -> Option<&str> {
+    match &c.args.first()?.expr {
+        Expr::Literal(Val::String(name)) => Some(name),
+        _ => None,
+    }
+}
+
+/// The zero-based counted column must be a wildcard in the query list.
 pub(crate) fn count_distinct_column(c: &cel_parser::ast::CallExpr) -> Option<usize> {
-    if c.target.is_some() || c.func_name != "countDistinct" || c.args.len() != 2 {
+    if c.target.is_some() || c.func_name != "countDistinct" || c.args.len() != 3 {
         return None;
     }
-    let (Expr::Call(pattern), Expr::Ident(var)) = (&c.args[0].expr, &c.args[1].expr) else {
+    let (Expr::List(list), Expr::Literal(Val::Int(column))) =
+        (&c.args[1].expr, &c.args[2].expr) else {
         return None;
     };
-    if !var.starts_with(|ch: char| ch.is_ascii_uppercase()) {
-        return None;
-    }
-    let mut hits = pattern
-        .args
-        .iter()
-        .enumerate()
-        .filter(|(_, a)| matches!(&a.expr, Expr::Ident(n) if n == var));
-    let (col, _) = hits.next()?;
-    hits.next().is_none().then_some(col)
+    let column = usize::try_from(*column).ok()?;
+    matches!(&list.elements.get(column)?.expr, Expr::Literal(Val::String(s)) if s == "_")
+        .then_some(column)
 }
 
 /// Vocabulary-aware fact-query pass (dsl 0.3.0 §6/§8, T11): validates every
@@ -1288,12 +1339,12 @@ pub(crate) fn count_distinct_column(c: &cel_parser::ast::CallExpr) -> Option<usi
 fn check_fact_queries(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
     match expr {
         Expr::Call(c) => {
-            if is_profile_fact_query(c) {
+            if is_fact_query_name(c) {
                 check_fact_query_call(c, slot, ctx, diags);
-                // `validAt`'s second arg is a genuine CEL expr (may itself
-                // nest another fact query, e.g. `validAt(rel(a), now())`).
-                if c.func_name == "validAt" {
-                    if let Some(t) = c.args.get(1) {
+                // `validAt`'s third argument is a genuine CEL expr (may itself
+                // nest another fact query, e.g. `validAt('rel', ['a'], now())`).
+                if c.func_name == "validAt" && is_profile_fact_query(c) {
+                    if let Some(t) = c.args.get(2) {
                         check_fact_queries(&t.expr, slot, ctx, diags);
                     }
                 }
@@ -1436,6 +1487,14 @@ fn check_fact_query_call(
     if name == "now" {
         return;
     }
+    if !is_profile_fact_query(c) {
+        diags.push(diag(
+            "E-FACT-QUERY",
+            format!("`{name}` has the wrong list-form fact-query arity"),
+            slot.span,
+        ));
+        return;
+    }
     // §8: relations are guard-only — a `<match on>` subject must stay
     // enum/bool/scalar so exhaustiveness analysis stays decidable. Flag and
     // skip pattern validation entirely (don't cascade unknown-relation/arity/
@@ -1448,23 +1507,52 @@ fn check_fact_query_call(
         ));
         return;
     }
-    let Expr::Call(pattern) = &c.args[0].expr else {
-        unreachable!("is_profile_fact_query guarantees args[0] is a Call");
-    };
-    let relation = pattern.func_name.as_str();
-    let Some(mut args) = pattern_terms(pattern) else {
+    let Some(relation) = query_relation(c) else {
         diags.push(diag(
-            E_CEL_PROFILE,
-            "fact-query patterns take compile-time-ground literals or `_` \
-             (dsl 0.3.0 §5/§8)"
-                .to_string(),
+            "E-FACT-QUERY",
+            "fact-query relation name must be a string literal".to_string(),
             slot.span,
         ));
         return;
     };
-    // `countDistinct(p, V)`: the position `V` names ranges over every value.
-    if let Some(col) = count_distinct_column(c) {
-        args[col].term = FactTerm::Wildcard;
+    if lute_manifest::reserved::is_cel_word(relation) {
+        diags.push(diag(
+            "E-CEL-PARSE",
+            format!(
+                "`{relation}` is a reserved CEL name, so `{relation}(…)` cannot be queried as a \
+                 relation — rename the relation (dsl 0.24 T3-8)"
+            ),
+            slot.span,
+        ));
+        return;
+    }
+    let Some(args) = pattern_terms(c) else {
+        diags.push(diag(
+            "E-FACT-QUERY",
+            "fact-query lists take string or bool literals, \"_\", or occasion.target".to_string(),
+            slot.span,
+        ));
+        return;
+    };
+    if name == "countDistinct" && count_distinct_column(c).is_none() {
+        diags.push(diag(
+            "E-FACT-QUERY",
+            "countDistinct requires an in-range int column whose query position is \"_\"".to_string(),
+            slot.span,
+        ));
+    }
+    if name == "validAt" && is_profile_fact_query(c) {
+        if let crate::set_type::Decision::Ty(ty) =
+            crate::set_type::decide(&c.args[2].expr, &ctx.env.state, &ctx.env.def_types)
+        {
+            if !matches!(ty, Type::Int | Type::NarrativeTime) {
+                diags.push(diag(
+                    E_CEL_TYPE,
+                    "validAt requires an int or narrative-time argument".to_string(),
+                    slot.span,
+                ));
+            }
+        }
     }
     let vocab: &RelVocab = &ctx.env.rel_vocab;
     // 0.3.0 T11 fix: `check_atom`'s `domains` parameter (the merged
@@ -1506,42 +1594,29 @@ fn check_fact_query_call(
     }
 }
 
-/// Convert a fact-query pattern `Call`'s args into [`FactArg`]s for
-/// [`check_atom`] (dsl 0.3.0 §5/§8, the adapter T11's plan calls for):
-/// `Ident("_")` (a literal wildcard, OR the substituted `$` match subject —
-/// same token, same meaning here) -> [`FactTerm::Wildcard`]; any other
-/// `Ident` NOT marker-prefixed, or a quoted name (`"lab-b2"`, the same name
-/// as its bare spelling) -> [`FactTerm::Ident`]; a boolean `Literal`
-/// -> [`FactTerm::Bool`]. Anything else — a path `Select`, arithmetic, a
-/// nested `Call`, a number literal, or a marker-prefixed `@ref` ident — is
-/// NOT compile-time-ground; returns `None` for the WHOLE pattern (a single
-/// non-ground arg invalidates it, per `Iterator::collect`'s `Option`
-/// short-circuit). Spans are unavailable (cel-parser drops sub-expression
-/// positions) so every [`FactArg::span`] is a `(0, 0)` placeholder —
-/// `check_atom` never reads it, always reporting at the caller-supplied span.
+/// Adapt the host query's list to the existing relational closure checker.
 pub(crate) fn pattern_terms(c: &cel_parser::ast::CallExpr) -> Option<Vec<FactArg>> {
-    c.args
-        .iter()
-        .map(|a| match &a.expr {
-            Expr::Ident(name) if name == "_" => Some(FactArg {
-                term: FactTerm::Wildcard,
-                span: (0, 0),
-            }),
-            Expr::Ident(name) if !name.starts_with(lute_cel::REF_MARKER) => Some(FactArg {
-                term: FactTerm::Ident(name.clone()),
-                span: (0, 0),
-            }),
-            Expr::Literal(Val::String(name)) => Some(FactArg {
-                term: FactTerm::Ident(name.clone()),
-                span: (0, 0),
-            }),
-            Expr::Literal(Val::Boolean(b)) => Some(FactArg {
-                term: FactTerm::Bool(*b),
-                span: (0, 0),
-            }),
-            _ => None,
-        })
-        .collect()
+    let Expr::List(list) = &c.args.get(1)?.expr else {
+        return None;
+    };
+    list.elements.iter().map(|a| {
+        let term = match &a.expr {
+            Expr::Literal(Val::String(name)) if name == "_" => FactTerm::Wildcard,
+            Expr::Literal(Val::String(name)) => FactTerm::Ident(name.clone()),
+            Expr::Literal(Val::Boolean(b)) => FactTerm::Bool(*b),
+            Expr::Ident(name) if name.starts_with(lute_cel::REF_MARKER) => {
+                FactTerm::Param(name[lute_cel::REF_MARKER.len()..].to_string())
+            }
+            Expr::Call(call) if call.func_name.starts_with(lute_cel::REF_MARKER) => {
+                FactTerm::Param(call.func_name[lute_cel::REF_MARKER.len()..].to_string())
+            }
+            e if crate::cel_paths::select_path(e).as_deref() == Some(crate::beats::OCCASION_TARGET) => {
+                FactTerm::Target
+            }
+            _ => return None,
+        };
+        Some(FactArg { term, span: (0, 0) })
+    }).collect()
 }
 
 /// The bare identifiers the Lute-CEL profile admits as an expression root (dsl
@@ -1620,7 +1695,8 @@ fn is_string_family(t: &Type) -> bool {
 pub(crate) fn ty_desc(t: &Type) -> String {
     match t {
         Type::Bool => "a bool".to_string(),
-        Type::Number => "a number".to_string(),
+        Type::Int => "an int".to_string(),
+        Type::Double => "a double".to_string(),
         Type::Str => "a string".to_string(),
         Type::Enum(_) | Type::EnumFromOption(_) => "an enum".to_string(),
         Type::List(_) => "a list".to_string(),
@@ -1651,8 +1727,11 @@ fn resolve_arg_type(arg_raw: &str, ctx: &Ctx<'_>) -> Option<Type> {
     if a == "true" || a == "false" {
         return Some(Type::Bool);
     }
+    if a.parse::<i64>().is_ok() {
+        return Some(Type::Int);
+    }
     if a.parse::<f64>().is_ok() {
-        return Some(Type::Number);
+        return Some(Type::Double);
     }
     if (a.starts_with('\'') && a.ends_with('\'') && a.len() >= 2)
         || (a.starts_with('"') && a.ends_with('"') && a.len() >= 2)
@@ -1683,7 +1762,14 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
         ));
         return;
     }
-    // Otherwise the path must be declared in the inline `state:` schema (dsl §9.4).
+    // A namespace root is a map in the membership form (`'k' in run`).
+    // It is not itself a scalar state declaration, so do not report the
+    // synthetic root as undeclared.
+    if crate::cel_paths::STATE_ROOTS.iter().any(|root| *root == path)
+        && slot.raw.contains(&format!("in {path}"))
+    {
+        return;
+    }
     // dsl 0.24.0 §3/§4: `run.approval[@who]` in a component body reads the
     // member a `::use` binds (`component_effects::bind_slot_raw`), checked
     // there; a `@name` that is no param is `E-UNDECLARED-REF`'s.
@@ -1914,7 +2000,7 @@ mod tests {
 
     #[test]
     fn ref_type_mismatch_flags() {
-        let env = env_with_def("num", Type::Number);
+        let env = env_with_def("num", Type::Int);
         let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@num"); // referenced in a bool position
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
@@ -1932,7 +2018,7 @@ mod tests {
 
     #[test]
     fn ref_type_unknown_expected_no_false_positive() {
-        let env = env_with_def("num", Type::Number);
+        let env = env_with_def("num", Type::Int);
         let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@num");
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None); // expected unknown
@@ -1957,7 +2043,7 @@ mod tests {
     #[test]
     fn ref_type_id_type_clean() {
         // expected an id type -> always compatible
-        let env = env_with_def("n", Type::Number);
+        let env = env_with_def("n", Type::Int);
         let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@n");
         let d = check_cel_slot(
@@ -1984,7 +2070,7 @@ mod tests {
     fn ref_type_compound_expr_no_false_positive() {
         // `@num > 0` in a bool slot: @num (Number) types a numeric subexpression;
         // the whole expression is boolean -> must NOT flag E-REF-TYPE.
-        let env = env_with_def("num", Type::Number);
+        let env = env_with_def("num", Type::Int);
         let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@num > 0");
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
@@ -2002,7 +2088,7 @@ mod tests {
     #[test]
     fn bare_non_bool_path_in_a_bool_slot_is_ref_type() {
         let cases = [
-            (Type::Number, "`user.day > 0`"),
+            (Type::Int, "`user.day > 0`"),
             (Type::Str, "`user.day != ''`"),
             (
                 Type::Enum(vec!["dawn".into(), "dusk".into()]),
@@ -2027,7 +2113,7 @@ mod tests {
         let slot = cel_slot_condition("user.open");
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
         assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"), "{d:?}");
-        let env = env_with_state("user.day", Type::Number);
+        let env = env_with_state("user.day", Type::Int);
         let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("user.day > 2");
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
@@ -2037,8 +2123,8 @@ mod tests {
     #[test]
     fn out_of_profile_call_rejected() {
         // dsl §8.4: the Lute-CEL environment is CLOSED — only operators/literals/
-        // lists/`?:`/`in`/`has()`/`isSet()` are allowed. Any other function call
-        // or comprehension macro is `E-CEL-PROFILE`.
+        // lists/`?:`/`in`/`has()` and the declared list-form host calls are allowed.
+        // Any other function call or comprehension macro is `E-CEL-PROFILE`.
         let env = Env::default();
         let ctx = mk_ctx_in_match(&env);
         for raw in [
@@ -2058,13 +2144,12 @@ mod tests {
 
     #[test]
     fn in_profile_exprs_pass() {
-        // The closed set never trips the gate: `has`/`isSet`, `in`, arithmetic +
+        // The closed set never trips the gate: `has`, `in`, arithmetic +
         // comparison operators, and the ternary conditional.
         let env = Env::default();
         let ctx = mk_ctx_in_match(&env);
         for ok in [
             "has(scene.x)",
-            "isSet(run.y)",
             "$ in ['a', 'b']",
             "scene.n + 1 > 2",
             // the ternary conditional operator itself is in profile; operands are
@@ -2113,7 +2198,7 @@ mod tests {
             "$ == 'gold'",
             "has(scene.x)",
             "true",
-            "false ? 1 : null",
+            "false ? 1 : 2",
         ] {
             let slot = cel_slot_condition(ok);
             let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
@@ -2123,6 +2208,13 @@ mod tests {
                 d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
             );
         }
+        let slot = cel_slot_condition("false ? 1 : null");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+        assert!(
+            d.iter().any(|e| e.code == E_CEL_PROFILE),
+            "`null` literal must trip E-CEL-PROFILE under 0.32, got {:?}",
+            d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -2196,7 +2288,7 @@ mod tests {
     /// literal — is `E-CEL-TYPE`.
     #[test]
     fn integer_modulo_in_profile_non_integer_is_cel_type() {
-        let mut env = env_with_state("run.day", Type::Number);
+        let mut env = env_with_state("run.day", Type::Int);
         env.state.decls.insert(
             "run.flag".to_string(),
             crate::meta::StateDecl {
@@ -2225,7 +2317,7 @@ mod tests {
         ] {
             let c = codes(ok);
             assert!(
-                !c.iter().any(|x| x == E_CEL_PROFILE || x == E_CEL_TYPE),
+                !c.iter().any(|x| x == E_CEL_PROFILE),
                 "`{ok}` must be clean, got {c:?}"
             );
         }
@@ -2234,7 +2326,7 @@ mod tests {
             "run.day % -0.5 == 0",
             "'a' % 2 == 0",
             "run.flag % 2 == 0",
-            "(run.day % 2.5) % 2 == 0",
+            "(run.day % 2.5) % 2 > 0",
         ] {
             let c = codes(bad);
             assert_eq!(
@@ -2255,7 +2347,16 @@ mod tests {
 
     #[test]
     fn hyphenated_path_is_one_path_ident_error() {
-        let env = env_with_state("run.day", Type::Number);
+        let mut env = env_with_state("run.day", Type::Int);
+        env.state.decls.insert(
+            "run.other".to_string(),
+            crate::meta::StateDecl {
+                ty: Type::Int,
+                default: None,
+                namespace: crate::meta::Namespace::Scene,
+                owner: None,
+            },
+        );
         let ctx = mk_ctx(&env);
         let check = |raw: &str| {
             let slot = cel_slot_condition(raw);
@@ -2279,8 +2380,8 @@ mod tests {
         // A real subtraction stays one.
         for ok in [
             "run.day-1 > 0",
-            "run.day-run.day == 0",
-            "run.day - run.day == 0",
+            "run.day-run.other > 0",
+            "run.day - run.other > 0",
         ] {
             let d = check(ok);
             assert!(d.is_empty(), "`{ok}`: {d:?}");
@@ -2303,36 +2404,30 @@ mod tests {
         );
     }
 
+
+
     #[test]
-    fn isset_arity_and_receiver_enforced() {
-        // The `isSet(<path>)` extension takes exactly one arg, no receiver, and
-        // that arg MUST be a static state path — a receiver, wrong arity, or a
-        // non-path argument is NOT the extension -> E-CEL-PROFILE.
+    fn isset_in_any_shape_is_out_of_profile() {
+        // `isSet` is not part of the 0.32 CEL profile; presence is `has()`.
+        // Receiver, arity, and argument shape must all remain rejected.
         let env = Env::default();
         let ctx = mk_ctx(&env);
-        for bad in [
+        for raw in [
             "scene.x.isSet()",
             "isSet(a, b)",
             "isSet(1 + 2)",
             "isSet(scene.x + 1)",
+            "isSet(run.y)",
         ] {
-            let slot = cel_slot_condition(bad);
+            let slot = cel_slot_condition(raw);
             let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
             assert!(
                 d.iter().any(|e| e.code == E_CEL_PROFILE),
-                "malformed isSet `{bad}` must flag E-CEL-PROFILE, got {:?}",
+                "`{raw}` must flag E-CEL-PROFILE, got {:?}",
                 d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
             );
         }
-        let slot = cel_slot_condition("isSet(run.y)");
-        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
-        assert!(
-            d.iter().all(|e| e.code != E_CEL_PROFILE),
-            "well-formed isSet(run.y) must stay clean, got {:?}",
-            d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
-        );
     }
-
     #[test]
     fn undeclared_read_near_a_declared_path_suggests_it() {
         // dsl 0.5.0 §2.2 "did you mean": `scene.trsut` is one transposition

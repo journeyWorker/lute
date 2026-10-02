@@ -228,7 +228,7 @@ fn resolver_surfaces_option_and_lowering_diagnostics_end_to_end() {
         root.join("plugins/arcia.vn/plugin.yaml"),
         "id: arcia.vn\nversion: 0.1.0\nkind: capability\n\
          exports:\n  directives: directives/\n\
-         options:\n  - { name: rounds, type: number }\n",
+         options:\n  - { name: rounds, type: int }\n",
     )
     .unwrap();
     fs::write(
@@ -261,7 +261,7 @@ fn resolver_surfaces_option_and_lowering_diagnostics_end_to_end() {
         vec![
             (
                 "E-PLUGIN-OPTION-TYPE",
-                "option `arcia.vn.rounds` expects number, got \"many\""
+                "option `arcia.vn.rounds` expects int, got \"many\""
             ),
             (
                 "E-LOWER-RECORD-UNKNOWN",

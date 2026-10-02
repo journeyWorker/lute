@@ -111,7 +111,7 @@ fn lore(body: &str) -> String {
 }
 
 fn quest_doc(body: &str) -> String {
-    format!("---\nkind: quest\nstate:\n  run.n: {{ type: number, default: 0 }}\n---\n{body}")
+    format!("---\nkind: quest\nstate:\n  run.n: {{ type: int, default: 0 }}\n---\n{body}")
 }
 
 // --- §1.2 owner: engine ----------------------------------------------------
@@ -120,8 +120,8 @@ fn quest_doc(body: &str) -> String {
 fn content_set_of_an_engine_owned_path_is_an_error_and_reads_are_free() {
     let src = scene(
         "a.one",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
-         run.mood: { type: number, default: 0 }\n",
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
+         run.mood: { type: int, default: 0 }\n",
         "::set{run.day += 1}\n::set{run.mood = run.day}\n@narrator: Day {{run.day}}.\n",
     );
     let ds = diags(&src);
@@ -142,7 +142,7 @@ fn content_set_of_an_engine_owned_path_is_an_error_and_reads_are_free() {
 fn owner_other_than_engine_is_a_state_decl_error() {
     let src = scene(
         "a.two",
-        "state:\n  run.day: { type: number, default: 1, owner: content }\n",
+        "state:\n  run.day: { type: int, default: 1, owner: content }\n",
         "@narrator: Hi.\n",
     );
     let ds = diags(&src);
@@ -159,7 +159,7 @@ fn owner_other_than_engine_is_a_state_decl_error() {
 fn engine_owned_decl_is_lifted_onto_the_schema() {
     let src = scene(
         "a.three",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n",
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n",
         "@narrator: Hi.\n",
     );
     let input = input(&src);
@@ -429,9 +429,9 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
     )
 }
 
-const STATE: &str = "state:\n  run.day: { type: number, default: 1 }\n  \
+const STATE: &str = "state:\n  run.day: { type: int, default: 1 }\n  \
     run.slot: { type: { enum: [morning, night] }, default: morning }\n  \
-    user.runs: { type: number, default: 0 }\n";
+    user.runs: { type: int, default: 0 }\n";
 
 fn beat(id: &str, fm: &str) -> String {
     scene(id, &format!("{fm}{STATE}"), "@narrator: Hi.\n")
@@ -499,22 +499,22 @@ fn exclusive_whens_different_priorities_targets_or_select_all_do_not_tie() {
     let facts = project_beats(&[
         &beat(
             "a.one",
-            &format!("on: hubVisit\nwhen: 'holds(here(maud))'\n{rel}"),
+            &format!("on: hubVisit\nwhen: \"holds('here', ['maud'])\"\n{rel}"),
         ),
         &beat(
             "a.two",
-            &format!("on: hubVisit\nwhen: '!holds(here(maud))'\n{rel}"),
+            &format!("on: hubVisit\nwhen: \"!holds('here', ['maud'])\"\n{rel}"),
         ),
     ]);
     assert_eq!(codes(&facts, "W-BEAT-PRIORITY-TIE"), 0, "{facts:?}");
     let other = project_beats(&[
         &beat(
             "a.one",
-            &format!("on: hubVisit\nwhen: 'holds(here(maud))'\n{rel}"),
+            &format!("on: hubVisit\nwhen: \"holds('here', ['maud'])\"\n{rel}"),
         ),
         &beat(
             "a.two",
-            &format!("on: hubVisit\nwhen: '!holds(here(oskar))'\n{rel}"),
+            &format!("on: hubVisit\nwhen: \"!holds('here', ['oskar'])\"\n{rel}"),
         ),
     ]);
     assert_eq!(codes(&other, "W-BEAT-PRIORITY-TIE"), 1, "{other:?}");
@@ -562,7 +562,7 @@ fn once_run_beat_gated_only_on_user_state_is_advised() {
         "on: hubVisit\nwhen: 'user.runs >= 3 && visited(\"a.two\")'\n",
         "on: hubVisit\n",
         "on: hubVisit\nonce: run\nwhen: 'user.runs >= 3'\n",
-        "on: hubVisit\nwhen: 'user.runs >= 3 && isSet(prev.run.day)'\n",
+        "on: hubVisit\nwhen: 'user.runs >= 3 && has(prev.run.day)'\n",
     ] {
         let out = project_beats(&[&beat("a.one", fm)]);
         assert_eq!(codes(&out, "W-BEAT-ONCE-RUN-USER"), 0, "{fm}: {out:?}");

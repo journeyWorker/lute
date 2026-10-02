@@ -28,7 +28,7 @@ title: The boiler and the furnace
   </branch>
 </beat>
 
-<beat id="furnace" on="examine" target="fixture.furnace" priority="10" spentBy="holds(burned(ledger))" when="holds(holding(ledger)) && holds(holding(matches))">
+<beat id="furnace" on="examine" target="fixture.furnace" priority="10" spentBy="holds('burned', ['ledger'])" when="holds('holding', ['ledger']) && holds('holding', ['matches'])">
   @narrator: The furnace latch is cold. Inside, a grate and forty years of ash.
   <branch id="burn" prompt="The admissions ledger is heavy in your bag.">
     <choice id="burn" label="Burn the ledger">

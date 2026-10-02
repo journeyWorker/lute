@@ -1,0 +1,47 @@
+{
+  "kind": "scene",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "250eb0ca8d10dc71752999a7e82ca5174c1d6e5da107f1ba2040199004d4d23a",
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Plugin bridge"
+  },
+  "state": [],
+  "commands": [
+    {
+      "kind": "plugin",
+      "addr": "001-0100",
+      "tag": "demo",
+      "plugin": "bridge.demo",
+      "fields": {
+        "id": "trial",
+        "resultKey": "result",
+        "sync": false
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The bridge is recorded.",
+      "lineId": "hero.s01ep01.narrator_0010"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "Bridge"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

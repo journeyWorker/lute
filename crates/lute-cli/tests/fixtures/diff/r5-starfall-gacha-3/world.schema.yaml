@@ -1,6 +1,6 @@
 state:
-  user.bond:     { type: number, default: 0, per: hero }
-  user.birthday: { type: number, per: hero, default: { _: 0, aria: 3 } }
+  user.bond:     { type: int, default: 0, per: hero }
+  user.birthday: { type: int, per: hero, default: { _: 0, aria: 3 } }
 entities:
   hero: { members: [] }
   ssr:  { subsetOf: hero, members: [aria] }

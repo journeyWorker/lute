@@ -1,0 +1,54 @@
+{
+  "commands": [
+    {
+      "kind": "quest",
+      "quest": "grantInstance",
+      "state": "active"
+    },
+    {
+      "done": true,
+      "kind": "objective",
+      "objective": "finish",
+      "quest": "grantInstance"
+    },
+    {
+      "index": 0,
+      "instance": 1,
+      "kind": "grant",
+      "objective": "finish",
+      "quest": "grantInstance",
+      "reward": {
+        "amount": 1,
+        "kind": "GOLD"
+      }
+    },
+    {
+      "kind": "quest",
+      "quest": "grantInstance",
+      "state": "complete"
+    },
+    {
+      "index": 0,
+      "instance": 1,
+      "kind": "grant",
+      "quest": "grantInstance",
+      "reward": {
+        "amount": 10,
+        "kind": "XP"
+      }
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.32",
+  "kind": "quest",
+  "quests": {
+    "grantInstance": "complete"
+  },
+  "state": {
+    "quest.grantInstance.objectives.finish.done": true,
+    "quest.grantInstance.state": "complete",
+    "run.finished": true,
+    "run.ready": true
+  }
+}

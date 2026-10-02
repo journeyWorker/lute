@@ -147,6 +147,7 @@ impl PathDomain {
             kind: match &info.domain {
                 Domain::Finite(values) => Kind::Finite(values.clone()),
                 Domain::Number => Kind::Number,
+                Domain::IntNumber => Kind::Number,
                 Domain::IntRange { lo, hi } => Kind::Ints(*lo, *hi),
                 Domain::Infinite => Kind::Open,
             },
@@ -381,14 +382,13 @@ pub(crate) fn subset(a: &SolutionSet, b: &SolutionSet) -> bool {
 /// a literal of the wrong type, a non-scalar declaration).
 pub(crate) fn solution_set(declared: &Type, opname: &str, lit: &Val) -> Option<SolutionSet> {
     match declared {
-        Type::Number => {
-            let v = match lit {
-                Val::Int(i) => *i as f64,
-                Val::UInt(u) => *u as f64,
-                Val::Double(d) => *d,
-                _ => return None,
-            };
-            number_set(opname, v)
+        Type::Int => {
+            let Val::Int(v) = lit else { return None };
+            number_set(opname, *v as f64)
+        }
+        Type::Double => {
+            let Val::Double(v) = lit else { return None };
+            number_set(opname, *v)
         }
         // Finite domains. An ordering has no meaning over an unordered
         // member set, so `<`/`<=`/`>`/`>=` are OUT OF DOMAIN rather than

@@ -22,5 +22,5 @@ priority: 100
     @narrator: The {{run.night:ordinalWord}} night, within sight of the Tollbridge. Nobody sings.
   </otherwise>
 </match>
-@narrator{when="count(inParty(_)) <= 1"}: The fire is too big for the people left around it.
-@narrator{when="count(inParty(_)) >= 3"}: Three companions, one fire, and at least four opinions about everything.
+@narrator{when="count('inParty', ['_']) <= 1"}: The fire is too big for the people left around it.
+@narrator{when="count('inParty', ['_']) >= 3"}: Three companions, one fire, and at least four opinions about everything.

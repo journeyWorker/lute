@@ -1455,7 +1455,7 @@ fn check_project_fixture(texts: &[(&str, &str)]) -> Vec<(PathBuf, Diagnostic)> {
 
 // Canonical false-positive guard (spec §4.2's own worked counterexample):
 // `docs/examples/quest-rescue-halsin.lute:31` gates
-// `done="holds(canReach(player, grove))"`; `canReach` is `derive: true`
+// `done="holds('canReach', ['player', 'grove'])"`; `canReach` is `derive: true`
 // (`act1.schema.yaml:14`), derived from `atLocation`/`connected`, BOTH
 // unconditionally `facts:`-seeded -- producible from load, independent of
 // any episode. A naive `::assert`-site-only search would falsely kill this
@@ -1486,7 +1486,7 @@ fn objective_on_never_producible_relation_is_dead() {
                 neverSeeded: { args: [c], tier: run }\n  dead: { args: [c], derive: true }\n\
                 rules:\n  - \"dead(X) :- neverSeeded(X)\"\n---\n\
                 <quest id=\"q\" start=\"true\">\n\
-                <objective id=\"o\" done=\"holds(dead(ana))\"/>\n</quest>\n";
+                <objective id=\"o\" done=\"holds('dead', ['ana'])\"/>\n</quest>\n";
     let diags = check_project_fixture(&[("dead.lute", text)]);
     let hit = diags
         .iter()
@@ -1515,7 +1515,7 @@ fn objective_on_facts_seeded_base_relation_is_not_dead() {
                 seeded: { args: [c], tier: run }\n\
                 facts:\n  - \"seeded(ana)\"\n---\n\
                 <quest id=\"q\" start=\"true\">\n\
-                <objective id=\"o\" done=\"holds(seeded(ana))\"/>\n</quest>\n";
+                <objective id=\"o\" done=\"holds('seeded', ['ana'])\"/>\n</quest>\n";
     let diags = check_project_fixture(&[("seeded.lute", text)]);
     assert!(
         !diags
@@ -1619,80 +1619,80 @@ fn dead_relation_fixture(done: &str) -> String {
     )
 }
 
-// `count(deadR) > 0` -- decides to `0 > 0` -- decides false -- DEAD.
+// `count('deadR', ['_']) > 0` -- decides to `0 > 0` -- decides false -- DEAD.
 // A top-level-only match would MISS this (the top-level node is `_>_`, not
 // a bare fact-query call).
 #[test]
 fn count_comparison_greater_than_zero_over_dead_relation_is_dead() {
-    let text = dead_relation_fixture("count(neverSeeded(ana)) > 0");
+    let text = dead_relation_fixture("count('neverSeeded', ['ana']) > 0");
     let diags = check_project_fixture(&[("count_gt.lute", text.as_str())]);
     assert!(
         diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "count(deadR) > 0 decides to 0 > 0 -- provably false -- must be flagged: {diags:?}"
+        "count('deadR', ['_']) > 0 decides to 0 > 0 -- provably false -- must be flagged: {diags:?}"
     );
 }
 
-// `count(deadR) >= 0` -- decides to `0 >= 0` -- decides TRUE -- the
+// `count('deadR', ['_']) >= 0` -- decides to `0 >= 0` -- decides TRUE -- the
 // SAME dead relation, a DIFFERENT comparison, is fine: never flagged. This
 // is exactly why deciding through `decide()` (not a nested "any dead call" scan)
 // is required for soundness.
 #[test]
 fn count_comparison_greater_equal_zero_over_dead_relation_is_not_dead() {
-    let text = dead_relation_fixture("count(neverSeeded(ana)) >= 0");
+    let text = dead_relation_fixture("count('neverSeeded', ['ana']) >= 0");
     let diags = check_project_fixture(&[("count_gte.lute", text.as_str())]);
     assert!(
         !diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "count(deadR) >= 0 decides to 0 >= 0 -- provably TRUE, not dead: {diags:?}"
+        "count('deadR', ['_']) >= 0 decides to 0 >= 0 -- provably TRUE, not dead: {diags:?}"
     );
 }
 
-// `holds(deadR) && x` -- AND short-circuits to false regardless of `x` --
+// `holds('deadR', ['_']) && x` -- AND short-circuits to false regardless of `x` --
 // DEAD.
 #[test]
 fn and_with_dead_relation_short_circuits_dead() {
-    let text = dead_relation_fixture("holds(neverSeeded(ana)) && holds(live(ana))");
+    let text = dead_relation_fixture("holds('neverSeeded', ['ana']) && holds('live', ['ana'])");
     let diags = check_project_fixture(&[("and_dead.lute", text.as_str())]);
     assert!(
         diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "holds(deadR) && holds(liveR) decides to false && Undecided -- AND short-circuits \
+        "holds('deadR', ['_']) && holds('live', ['_']) decides to false && Undecided -- AND short-circuits \
          to false -- must be flagged: {diags:?}"
     );
 }
 
-// `holds(deadR) || holds(liveR)` -- OR never proves false from one dead
+// `holds('deadR', ['_']) || holds('live', ['_'])` -- OR never proves false from one dead
 // arm -- NOT dead. The naive "any nested dead call" scan would wrongly
 // flag this.
 #[test]
 fn or_with_one_live_relation_is_not_dead() {
-    let text = dead_relation_fixture("holds(neverSeeded(ana)) || holds(live(ana))");
+    let text = dead_relation_fixture("holds('neverSeeded', ['ana']) || holds('live', ['ana'])");
     let diags = check_project_fixture(&[("or_live.lute", text.as_str())]);
     assert!(
         !diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "holds(deadR) || holds(liveR) decides to false || Undecided -- OR never proves \
+        "holds('deadR', ['_']) || holds('live', ['_']) decides to false || Undecided -- OR never proves \
          false from one dead arm -- must NOT be flagged: {diags:?}"
     );
 }
 
-// `holds(deadR) || holds(unknownR)` -- `unknownR` is UNDECLARED (never
+// `holds('deadR', ['_']) || holds('unknownR', ['_'])` -- `unknownR` is UNDECLARED (never
 // decided, stays Undecided per R5) -- OR still can't prove false -- NOT
 // dead.
 #[test]
 fn or_with_one_undeclared_relation_is_not_dead() {
-    let text = dead_relation_fixture("holds(neverSeeded(ana)) || holds(unknownR(ana))");
+    let text = dead_relation_fixture("holds('neverSeeded', ['ana']) || holds('unknownR', ['ana'])");
     let diags = check_project_fixture(&[("or_unknown.lute", text.as_str())]);
     assert!(
         !diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "holds(deadR) || holds(unknownR) -- unknownR stays Undecided -- OR can't prove false: \
+        "holds('deadR', ['_']) || holds('unknownR', ['_']) -- unknownR stays Undecided -- OR can't prove false: \
          {diags:?}"
     );
 }
@@ -1741,24 +1741,24 @@ fn numeric_literal_comparison_done_has_no_dead_relation_liveness_scan_stays_sile
     );
 }
 
-// `done="holds(deadR)"` alone -- without the fact envelope `decide()` is
+// `done="holds('deadR', ['_'])"` alone -- without the fact envelope `decide()` is
 // `Undecided` (R5); with it the query decides false. The envelope is the
 // ONLY reason the guard flips to false -- load-bearing -- and the pass must
 // emit.
 #[test]
 fn pure_dead_relation_guard_is_load_bearing_and_emits() {
-    let text = dead_relation_fixture("holds(neverSeeded(ana))");
+    let text = dead_relation_fixture("holds('neverSeeded', ['ana'])");
     let diags = check_project_fixture(&[("pure_dead.lute", text.as_str())]);
     assert!(
         diags
             .iter()
             .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
-        "holds(deadR) alone -- Undecided without facts, false with them -- the fact envelope is \
+        "holds('deadR', ['_']) alone -- Undecided without facts, false with them -- the fact envelope is \
          load-bearing -- must be flagged: {diags:?}"
     );
 }
 
-// `done="false && holds(deadR)"` -- the literal `false` alone already
+// `done="false && holds('deadR', ['_'])"` -- the literal `false` alone already
 // decides the guard false via AND short-circuit (`decide()`'s R4) without
 // the fact envelope -- the dead relation is NOT load-bearing. The relational
 // pass must stay silent; the ordinary per-file reachability pass
@@ -1767,7 +1767,7 @@ fn pure_dead_relation_guard_is_load_bearing_and_emits() {
 // land on this objective total -- never a relational duplicate.
 #[test]
 fn false_and_dead_relation_relational_cause_suppressed_non_relational_owns_it() {
-    let text = dead_relation_fixture("false && holds(neverSeeded(ana))");
+    let text = dead_relation_fixture("false && holds('neverSeeded', ['ana'])");
     let ordinary = check(&input_for(&text)).diagnostics;
     let liveness = check_project_fixture(&[("false_and_dead.lute", text.as_str())]);
     let ordinary_unsat = ordinary
@@ -1780,7 +1780,7 @@ fn false_and_dead_relation_relational_cause_suppressed_non_relational_owns_it() 
         .count();
     assert_eq!(
         ordinary_unsat, 1,
-        "the ordinary per-file reachability pass must independently prove `false && holds(deadR)` \
+        "the ordinary per-file reachability pass must independently prove `false && holds('deadR', ['_'])` \
          dead via decide_slot's AND short-circuit on the raw guard: {ordinary:?}"
     );
     assert_eq!(
@@ -1823,10 +1823,10 @@ fn kind_bodied_rule_fixture(done: &str) -> String {
 // `false`, making the clause unsatisfiable and `viaKind` permanently
 // non-producible -- a real false positive (a kind can have runtime
 // members with no author-side "producer" signal at all). An
-// `<objective done="holds(viaKind(ana))">` must NOT be flagged dead.
+// `<objective done="holds('viaKind', ['ana'])">` must NOT be flagged dead.
 #[test]
 fn entity_kind_bodied_rule_relation_is_producible_no_false_positive() {
-    let text = kind_bodied_rule_fixture("holds(viaKind(ana))");
+    let text = kind_bodied_rule_fixture("holds('viaKind', ['ana'])");
     let diags = check_project_fixture(&[("kind_rule.lute", text.as_str())]);
     assert!(
         !diags
@@ -1855,7 +1855,7 @@ fn read_never_set_on_any_route_errors() {
     // must earn `E-STATE-MAYBE-UNAVAILABLE` at ERROR grade, by default.
     let y =
         "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
-    let x = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nafter: 'visited(\"y.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let x = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nafter: 'visited(\"y.s01ep01\")'\nstate:\n  run.z: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let res = check_project_fixture(&[("y.lute", y), ("x.lute", x)]);
     let (_p, d) = res
         .iter()
@@ -1874,7 +1874,7 @@ fn read_never_set_on_any_route_errors() {
 fn maybe_unavailable_names_after_as_the_fix() {
     let y =
         "---\nkind: scene\ncharacter: yf\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
-    let x = "---\nkind: scene\ncharacter: xf\nseason: 1\nepisode: 1\nafter: 'visited(\"yf.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let x = "---\nkind: scene\ncharacter: xf\nseason: 1\nepisode: 1\nafter: 'visited(\"yf.s01ep01\")'\nstate:\n  run.z: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let res = check_project_fixture(&[("yf.lute", y), ("xf.lute", x)]);
     let (_p, d) = res
         .iter()
@@ -1926,8 +1926,8 @@ fn read_set_on_all_routes_is_clean() {
     // Same shape as above, but `y` (the ONLY predecessor route)
     // unconditionally sets `run.z` -- `run.z` is guaranteed at `x`, so the
     // read must be clean.
-    let y = "---\nkind: scene\ncharacter: y2\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
-    let x = "---\nkind: scene\ncharacter: x2\nseason: 1\nepisode: 1\nafter: 'visited(\"y2.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let y = "---\nkind: scene\ncharacter: y2\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: int }\n---\n## Shot 1.\n::set{run.z = 1}\n";
+    let x = "---\nkind: scene\ncharacter: x2\nseason: 1\nepisode: 1\nafter: 'visited(\"y2.s01ep01\")'\nstate:\n  run.z: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let res = check_project_fixture(&[("y2.lute", y), ("x2.lute", x)]);
     assert!(
         !res.iter()
@@ -1948,7 +1948,7 @@ fn standalone_clean_file_not_newly_errored() {
     // single-file `check` reports clean.
     let y3 =
         "---\nkind: scene\ncharacter: y3\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
-    let x3_text = "---\nkind: scene\ncharacter: x3\nseason: 1\nepisode: 1\nafter: 'visited(\"y3.s01ep01\")'\nstate:\n  run.q: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.q = 5}\n::set{run.out = run.q}\n";
+    let x3_text = "---\nkind: scene\ncharacter: x3\nseason: 1\nepisode: 1\nafter: 'visited(\"y3.s01ep01\")'\nstate:\n  run.q: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n::set{run.q = 5}\n::set{run.out = run.q}\n";
 
     let single = check(&input_for(x3_text));
     assert!(
@@ -1978,7 +1978,7 @@ fn tainted_node_via_unresolvable_visited_target_skips_envelope_diagnostic() {
     // `x4` had a trustworthy `Env` -- but a tainted node's `Env` is a
     // `D`/`D` placeholder, never a real bound: `check_envelope` MUST emit
     // NO diagnostic for reads at a tainted node, provable-only.
-    let x4 = "---\nkind: scene\ncharacter: x4\nseason: 1\nepisode: 1\nafter: 'visited(\"ghost.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let x4 = "---\nkind: scene\ncharacter: x4\nseason: 1\nepisode: 1\nafter: 'visited(\"ghost.s01ep01\")'\nstate:\n  run.z: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let res = check_project_fixture(&[("x4.lute", x4)]);
     assert!(
         !res.iter()
@@ -1995,10 +1995,10 @@ fn possible_not_guaranteed_is_warning_grade_and_worded() {
     // at `x5`. Warning grade, still carries the wording qualifier verbatim
     // (dsl §2.6/§7) even though it is default-suppressed from the errors
     // surface.
-    let a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
+    let a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: int }\n---\n## Shot 1.\n::set{run.z = 1}\n";
     let b =
         "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
-    let x5 = "---\nkind: scene\ncharacter: x5\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\") || visited(\"b.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let x5 = "---\nkind: scene\ncharacter: x5\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\") || visited(\"b.s01ep01\")'\nstate:\n  run.z: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let res = check_project_fixture(&[("a.lute", a), ("b.lute", b), ("x5.lute", x5)]);
     let (_p, d) = res
         .iter()
@@ -2195,7 +2195,7 @@ fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachab
     // only declared route.
     let y =
         "---\nkind: scene\ncharacter: wy\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
-    let x = "---\nkind: scene\ncharacter: wx\nseason: 1\nepisode: 1\nafter: 'visited(\"wy.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let x = "---\nkind: scene\ncharacter: wx\nseason: 1\nepisode: 1\nafter: 'visited(\"wy.s01ep01\")'\nstate:\n  run.z: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let state_unavailable = check_project_fixture(&[("wy.lute", y), ("wx.lute", x)]);
     let state_diag = state_unavailable
         .iter()
@@ -2203,10 +2203,10 @@ fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachab
         .unwrap_or_else(|| panic!("expected E-STATE-MAYBE-UNAVAILABLE, got {state_unavailable:?}"));
 
     // (2) the relational-liveness cause on E-OBJECTIVE-UNSATISFIABLE: a
-    // `holds(deadR)` guard whose dead-relation substitution is load-bearing
+    // `holds('deadR', ['_'])` guard whose dead-relation substitution is load-bearing
     // (reused from `pure_dead_relation_guard_is_load_bearing_and_emits`'s
     // fixture shape).
-    let relational_text = dead_relation_fixture("holds(neverSeeded(ana))");
+    let relational_text = dead_relation_fixture("holds('neverSeeded', ['ana'])");
     let relational = check_project_fixture(&[("wrel.lute", relational_text.as_str())]);
     let relational_diag = relational
         .iter()

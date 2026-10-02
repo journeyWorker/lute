@@ -35,7 +35,7 @@ components: [../components/lamps-out.component.lute]
 </branch>
 
 <match on="run.accused">
-  <when is="solt" test="holds(prime(solt))">
+  <when is="solt" test="holds('prime', ['solt'])">
     @inspector{code="0070"}: Aurel Hask held your note for four hundred crowns and a story about a girl in Kessel that would have finished you.
     @inspector{code="0080"}: You put laudanum in the tea he rang for at five to two. You waited for the Orla. When the lamps went out you walked six feet down a dark corridor and held a pillow over a sleeping man.
     @inspector{code="0090"}: Then you set his watch back to a quarter past one, because you had heard Miss Varo at his door, and a watch is the first thing a doctor looks at.

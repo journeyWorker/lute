@@ -74,8 +74,8 @@ fn project(tag: &str, lore: &str) -> PathBuf {
         &dir,
         "w.schema.yaml",
         "entities:\n  fish: { members: [cod, eel] }\n  pal: { members: [ren, kai] }\n\
-         state:\n  run.count: { type: number, default: 0, per: fish }\n  \
-         run.bond: { type: number, default: 0, per: pal }\n\
+         state:\n  run.count: { type: int, default: 0, per: fish }\n  \
+         run.bond: { type: int, default: 0, per: pal }\n\
          relations:\n  caught: { args: [fish], tier: run }\n  hauled: { args: [fish], tier: run }\n  \
          met: { args: [pal], tier: run }\n\
          cast:\n  ren: { name: Ren }\n  kai: { name: Kai }\n",
@@ -126,7 +126,7 @@ fn a_kind_beat_writes_only_the_member_it_ran_for() {
 fn a_fact_written_through_the_target_is_producible_for_every_member() {
     let lore = format!(
         "{WRITES}\n<beat id=\"brag\" on=\"camp\" once=\"false\" \
-         when=\"holds(caught(eel)) && holds(hauled(cod))\">\n  @narrator: Brag.\n</beat>\n"
+         when=\"holds('caught', ['eel']) && holds('hauled', ['cod'])\">\n  @narrator: Brag.\n</beat>\n"
     );
     let dir = project("producer", &lore);
     let check = run(&dir, &["check-project", "."]);
@@ -137,7 +137,7 @@ fn a_fact_written_through_the_target_is_producible_for_every_member() {
 
 #[test]
 fn a_component_argument_passes_the_member_it_ran_for() {
-    let lore = "<beat id=\"join\" on=\"camp\" for=\"kind:pal\" once=\"false\" when=\"!holds(met(occasion.target))\">\n  \
+    let lore = "<beat id=\"join\" on=\"camp\" for=\"kind:pal\" once=\"false\" when=\"!holds('met', [occasion.target])\">\n  \
         ::assert{met(occasion.target)}\n  \
         ::use{component=\"reaction\" who=occasion.target mate=occasion.target}\n\
         </beat>\n";

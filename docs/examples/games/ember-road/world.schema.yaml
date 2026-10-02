@@ -4,9 +4,9 @@
 state:
   # --- the road: the engine moves the caravan, content only reads where it is ---
   # 1 the Ostwick road · 2 Harrow's Ford · 3 the Tollbridge · 4 the far bank
-  run.leg: { type: number, default: 1, owner: engine }
+  run.leg: { type: int, default: 1, owner: engine }
   # nights on the road; the engine advances it when the party breaks camp
-  run.night: { type: number, default: 1, owner: engine }
+  run.night: { type: int, default: 1, owner: engine }
 
   # --- the battle at the Tollbridge: the ENGINE fights it and writes the result ---
   # unset until a battle has been fought
@@ -14,10 +14,10 @@ state:
 
   # --- companion approval (run tier: a new playthrough starts cold) ---
   # one number per companion: run.approval.isolde, .corvin, .wren (dsl 0.24 §3)
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 
   # --- faction reputation: one number per faction ---
-  run.rep: { type: number, default: { _: 0, company: 1, dusk: -1 }, per: faction }
+  run.rep: { type: int, default: { _: 0, company: 1, dusk: -1 }, per: faction }
 
   # --- how the party chose to open the bridge ---
   run.bridge: { type: { enum: [held, parleyed, paid, sold, stormed] }, default: held }
@@ -26,13 +26,13 @@ state:
   run.maelisGrievance: { type: bool, default: false }
 
   # --- purse: GOLD rewards credit it ---
-  run.gold: { type: number, default: 40 }
+  run.gold: { type: int, default: 40 }
   # --- the caravan: a battle can burn wagons (the engine says how many) ---
-  run.wagons: { type: number, default: 11 }
+  run.wagons: { type: int, default: 11 }
 
   # --- across playthroughs ---
-  user.xp: { type: number, default: 0 }
-  user.chaptersCleared: { type: number, default: 0 }
+  user.xp: { type: int, default: 0 }
+  user.chaptersCleared: { type: int, default: 0 }
 
 # nights on the road as a declared, day-granular clock (dsl 0.24 §1). One
 # `advance: day` is one night: the party makes camp (dayEnd), the night passes,
@@ -98,11 +98,11 @@ rules:
 
 defs:
   bridgeOpen: "run.bridge != 'held'"
-  wonBattle: "isSet(run.battle.outcome) && run.battle.outcome == 'won'"
-  lostBattle: "isSet(run.battle.outcome) && run.battle.outcome == 'lost'"
-  wrenWithUs: "holds(inParty(wren))"
+  wonBattle: "has(run.battle.outcome) && run.battle.outcome == 'won'"
+  lostBattle: "has(run.battle.outcome) && run.battle.outcome == 'lost'"
+  wrenWithUs: "holds('inParty', ['wren'])"
   # what Maelis will take as proof: the Company's own ledger, or Coldwater's roll
-  hasProof: "holds(knows(ledger)) || holds(knows(roll))"
+  hasProof: "holds('knows', ['ledger']) || holds('knows', ['roll'])"
 
 cast:
   warden:  { name: The Warden }
@@ -111,9 +111,9 @@ cast:
   # reserved); a line after the battle needs its own guard.
   # Wren is a local before she is a companion: she can speak at the ford
   # before she is recruited, and afterwards only while she travels with us.
-  isolde:  { name: Isolde Vane, present: "holds(inParty(isolde))", assume: true, emotions: [neutral, angry, content, sad] }
-  corvin:  { name: Corvin, present: "holds(inParty(corvin))", assume: true, emotions: [neutral, delighted, angry] }
-  wren:    { name: Wren, present: "holds(inParty(wren)) || !holds(recruited(wren))", assume: true, emotions: [neutral, angry, sad] }
+  isolde:  { name: Isolde Vane, present: "holds('inParty', ['isolde'])", assume: true, emotions: [neutral, angry, content, sad] }
+  corvin:  { name: Corvin, present: "holds('inParty', ['corvin'])", assume: true, emotions: [neutral, delighted, angry] }
+  wren:    { name: Wren, present: "holds('inParty', ['wren']) || !holds('recruited', ['wren'])", assume: true, emotions: [neutral, angry, sad] }
   oda:     { name: Oda the Miller }
   maelis:  { name: Maelis of the Dusk }
   brannoc: { name: Captain Brannoc }

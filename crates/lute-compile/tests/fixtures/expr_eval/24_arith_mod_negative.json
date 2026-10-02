@@ -1,12 +1,18 @@
 {
   "name": "arith_mod_negative",
-  "desc": "Integer remainder is truncated — the sign of the dividend: -7 % 3 = -1.",
+  "desc": "Integer remainder is truncated \u2014 the sign of the dividend: -7 % 3 = -1.",
   "cel": "run.n % 3",
   "expr": {
     "op": "%",
-    "l": { "path": "run.n" },
-    "r": { "lit": 3.0 }
+    "l": {
+      "path": "run.n"
+    },
+    "r": {
+      "int": 3
+    }
   },
-  "state": { "run.n": -7 },
+  "state": {
+    "run.n": -7
+  },
   "expected": -1.0
 }

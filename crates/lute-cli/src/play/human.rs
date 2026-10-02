@@ -124,8 +124,16 @@ fn guarded<'a>(m: &Json, cmds: &DocCmds<'a>) -> Option<Guarded<'a>> {
     let [arm] = m.get("arms")?.as_array()?.as_slice() else {
         return None;
     };
-    let subject = str_of(m, "subject").trim();
-    let test = str_of(arm, "test").trim();
+    fn cel(v: &Json, key: &str) -> String {
+        v.get(key)
+            .and_then(|x| x.get("cel").and_then(Json::as_str))
+            .unwrap_or("")
+            .to_string()
+    }
+    let subject = cel(m, "subject");
+    let subject = subject.trim();
+    let test = cel(arm, "test");
+    let test = test.trim();
     if subject.is_empty() || (test != subject && test != format!("({subject})")) {
         return None;
     }
@@ -156,12 +164,13 @@ fn skipped(g: Guarded<'_>, cmds: &DocCmds<'_>) -> String {
         Guarded::Leaf(leaf) => leaf,
     };
     match str_of(leaf, "kind") {
-        "set" => format!(
-            "set {} {} {}",
-            str_of(leaf, "path"),
-            str_of(leaf, "op"),
-            str_of(leaf, "value")
-        ),
+        "set" => {
+            let value = leaf
+                .get("value")
+                .and_then(|v| v.get("cel").and_then(Json::as_str))
+                .unwrap_or("");
+            format!("set {} {} {}", str_of(leaf, "path"), str_of(leaf, "op"), value)
+        }
         "line" => format!(
             "{} \"{}\"",
             line_head(str_of(leaf, "speaker"), Some(leaf)),
@@ -475,8 +484,10 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 ),
                 None => String::new(),
             };
+            let instance = rec.get("instance").and_then(Json::as_u64).unwrap_or(0);
+            let index = rec.get("index").and_then(Json::as_u64).unwrap_or(0);
             format!(
-                "  grant {owner} {} {amount}{target}{on_failed}{credited}",
+                "  grant[#{instance} i{index}] {owner} {} {amount}{target}{on_failed}{credited}",
                 str_of(&reward, "kind")
             )
         }

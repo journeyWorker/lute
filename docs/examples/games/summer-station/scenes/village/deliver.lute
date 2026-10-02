@@ -5,7 +5,7 @@ title: The notice board
 on: visit
 target: place.village
 priority: 30
-when: "run.slot == 'afternoon' && run.forecastWritten && !run.forecastDelivered && quest.forecast.state == 'active' && !holds(pathShut(village))"
+when: "run.slot == 'afternoon' && run.forecastWritten && !run.forecastDelivered && quest.forecast.state == 'active' && !holds('pathShut', ['village'])"
 ---
 
 ## The village hall

@@ -508,10 +508,15 @@ impl TryFrom<serde_yaml::Value> for WriteValue {
         };
         match &v {
             Value::Bool(b) => Ok(WriteValue::Literal(Literal::Bool(*b))),
-            Value::Number(n) => match n.as_f64() {
-                Some(f) => Ok(WriteValue::Literal(Literal::Num(f))),
-                None => bad(format!("`{n}` is not a representable number")),
-            },
+            Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Ok(WriteValue::Literal(Literal::Int(i)))
+                } else if let Some(f) = n.as_f64() {
+                    Ok(WriteValue::Literal(Literal::Double(f)))
+                } else {
+                    bad(format!("`{n}` is not a representable number"))
+                }
+            }
             Value::String(s) => Ok(WriteValue::Literal(Literal::Str(s.clone()))),
             Value::Mapping(m) => {
                 let keys: Vec<&str> = m.keys().filter_map(Value::as_str).collect();
@@ -1301,7 +1306,7 @@ impl TryFrom<serde_yaml::Value> for OccasionTarget {
     }
 }
 
-const PAYLOAD_TYPE_FORMS: &str = "a payload field's type is `bool`, `number`, `string`, \
+const PAYLOAD_TYPE_FORMS: &str = "a payload field's type is `bool`, `int`, `double`, `string`, \
      `{ enum: [<member>, …] }`, `{ domain: <enum or entity kind> }` or `{ entity: <entity kind> }` \
      — a raise gives one value per field";
 
@@ -1385,13 +1390,15 @@ fn payload_fields<'de, D: serde::Deserializer<'de>>(
 /// One payload field's type; `Err` is the author-facing sentence.
 fn payload_type(field: &str, v: &serde_yaml::Value) -> Result<Type, String> {
     use serde_yaml::Value;
-    const SCALARS: [&str; 3] = ["bool", "number", "string"];
+    const SCALARS: [&str; 4] = ["bool", "int", "double", "string"];
     const FORMS: [&str; 3] = ["enum", "domain", "entity"];
     /// `Type` forms a single literal cannot carry.
     const MULTI: [&str; 3] = ["list", "record", "map"];
     let forms = SCALARS.iter().chain(FORMS.iter()).copied();
     let refuse = |name: &str| -> String {
-        if FORMS.contains(&name) {
+        if name == "number" {
+            format!("payload field `{field}`: {}", crate::types::NUMBER_TYPE_REMOVED)
+        } else if FORMS.contains(&name) {
             let arg = if name == "enum" {
                 "[<member>, …]"
             } else {
@@ -1411,7 +1418,8 @@ fn payload_type(field: &str, v: &serde_yaml::Value) -> Result<Type, String> {
     match v {
         Value::String(s) => match s.as_str() {
             "bool" => Ok(Type::Bool),
-            "number" => Ok(Type::Number),
+            "int" => Ok(Type::Int),
+            "double" => Ok(Type::Double),
             "string" => Ok(Type::Str),
             other => Err(refuse(other)),
         },
@@ -1536,18 +1544,32 @@ where
     use serde::de::Error;
     use serde::Deserialize;
     Ok(match serde_yaml::Value::deserialize(d)? {
-        serde_yaml::Value::Sequence(v) => v
-            .into_iter()
-            .filter_map(|v| serde_yaml::from_value::<DefParam>(v).ok())
-            .collect(),
-        serde_yaml::Value::Mapping(m) => m
-            .into_iter()
-            .filter_map(|(k, v)| {
-                let name = k.as_str()?.to_string();
-                let ty: Type = serde_yaml::from_value(v).ok()?;
-                Some(DefParam { name, ty })
-            })
-            .collect(),
+        serde_yaml::Value::Sequence(v) => {
+            let mut params = Vec::new();
+            for value in v {
+                match serde_yaml::from_value::<DefParam>(value.clone()) {
+                    Ok(param) => params.push(param),
+                    Err(_) if value.get("type").and_then(|v| v.as_str()) == Some("number") => {
+                        return Err(D::Error::custom(crate::types::NUMBER_TYPE_REMOVED));
+                    }
+                    Err(_) => {}
+                }
+            }
+            params
+        }
+        serde_yaml::Value::Mapping(m) => {
+            let mut params = Vec::new();
+            for (key, value) in m {
+                let Some(name) = key.as_str() else { continue };
+                if value.as_str() == Some("number") {
+                    return Err(D::Error::custom(crate::types::NUMBER_TYPE_REMOVED));
+                }
+                if let Ok(ty) = serde_yaml::from_value::<Type>(value) {
+                    params.push(DefParam { name: name.to_string(), ty });
+                }
+            }
+            params
+        }
         _ => {
             return Err(D::Error::custom(
                 "`params:` maps each parameter to its type (`params: { n: number }`) or lists \
@@ -1652,6 +1674,33 @@ fn default_sep() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn number_plugin_attr_type_names_int_and_double() {
+        let error = serde_yaml::from_str::<DirectivesFile>(
+            "directives:\n  - name: depth\n    attrs:\n      - { name: value, type: number }\n"
+        ).unwrap_err().to_string();
+        assert!(error.contains("type: int") && error.contains("type: double"), "{error}");
+    }
+
+    #[test]
+    fn number_payload_type_names_int_and_double() {
+        let error = serde_yaml::from_str::<OccasionsFile>(
+            "occasions:\n  dive: { select: first, payload: { depth: number } }\n"
+        ).unwrap_err().to_string();
+        assert!(error.contains("type: int") && error.contains("type: double"), "{error}");
+    }
+
+    #[test]
+    fn number_def_param_type_names_int_and_double() {
+        for params in ["{ depth: number }", "[{ name: depth, type: number }]"] {
+            let source = format!(
+                "defs:\n  - name: deep\n    type: bool\n    cel: 'depth > 0'\n    params: {params}\n"
+            );
+            let error = serde_yaml::from_str::<DefsFile>(&source).unwrap_err().to_string();
+            assert!(error.contains("type: int") && error.contains("type: double"), "{error}");
+        }
+    }
 
     const MINIGAME_DIR: &str = r#"
 directives:
@@ -1883,7 +1932,7 @@ assetKinds:
       - { name: characterId, type: { providerRef: character } }
       - { name: costume,     type: string }
       - { name: emotion,     type: { enum: [delighted, content, neutral] } }
-      - { name: variant,     type: number }
+      - { name: variant,     type: int }
     fallback: [emotionGroup, neutral, variant0]
     persistence: scene
 "#;
@@ -1915,7 +1964,7 @@ assetKinds:
                 "neutral".into(),
             ]))
         );
-        assert_eq!(d.segments[4].ty, Some(Type::Number));
+        assert_eq!(d.segments[4].ty, Some(Type::Int));
         assert_eq!(d.fallback, ["emotionGroup", "neutral", "variant0"]);
         assert_eq!(d.persistence.as_deref(), Some("scene"));
     }
@@ -1954,7 +2003,7 @@ assetKinds:
     fn def_params_mapping_deserializes_in_source_order() {
         // §8.1 `params:` MAPPING spelling — order MUST be preserved for positional
         // arg binding (serde_yaml::Mapping is insertion-ordered).
-        let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params: { a: number, b: bool }\n";
+        let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params: { a: int, b: bool }\n";
         let file: DefsFile = serde_yaml::from_str(src).unwrap();
         let d = &file.defs[0];
         assert_eq!(
@@ -1962,7 +2011,7 @@ assetKinds:
             vec![
                 DefParam {
                     name: "a".into(),
-                    ty: Type::Number
+                    ty: Type::Int
                 },
                 DefParam {
                     name: "b".into(),
@@ -1975,14 +2024,14 @@ assetKinds:
     #[test]
     fn def_params_sequence_spelling_deserializes() {
         // The plugin `defs.yaml` list spelling `[{ name, type }]` also works.
-        let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params:\n      - { name: a, type: number }\n      - { name: b, type: bool }\n";
+        let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params:\n      - { name: a, type: int }\n      - { name: b, type: bool }\n";
         let file: DefsFile = serde_yaml::from_str(src).unwrap();
         assert_eq!(
             file.defs[0].params,
             vec![
                 DefParam {
                     name: "a".into(),
-                    ty: Type::Number
+                    ty: Type::Int
                 },
                 DefParam {
                     name: "b".into(),
@@ -1997,13 +2046,13 @@ assetKinds:
         // §8.1 SEQUENCE spelling MUST be fail-soft: one malformed entry (here
         // missing `type`) is skipped, not fatal — the file still keeps its good
         // params rather than being rejected wholesale (mirrors the MAPPING path).
-        let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params:\n      - { name: a, type: number }\n      - { name: b }\n";
+        let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params:\n      - { name: a, type: int }\n      - { name: b }\n";
         let file: DefsFile = serde_yaml::from_str(src).unwrap();
         assert_eq!(
             file.defs[0].params,
             vec![DefParam {
                 name: "a".into(),
-                ty: Type::Number
+                ty: Type::Int
             }]
         );
     }

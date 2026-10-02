@@ -5,7 +5,7 @@ title: The Champion
 on: challenge
 target: arena.championHall
 once: false
-when: "count(beatElite(_)) >= 4 && !@champion"
+when: "count('beatElite', ['_']) >= 4 && !@champion"
 ---
 
 ## The hall

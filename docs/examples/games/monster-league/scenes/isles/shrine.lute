@@ -4,7 +4,7 @@ id: isles.shrine
 title: The Sunfall Shrine
 on: enterPlace
 target: place.sunfallShrine
-when: "holds(canPass(islesShrineDoor))"
+when: "holds('canPass', ['islesShrineDoor'])"
 ---
 
 // AREA isles: the three beacons light the shrine door; Admin Nyx is waiting

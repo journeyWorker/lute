@@ -14,7 +14,7 @@ after: 'visited("mika.date")'
 ::auto{character="mika" anchor="center" action="fadeInUp"}
 @mika{emotion="sad"}: The scout from the mainland came. He watched me walk. He left before I sat down.
 @mika{emotion="hurt"}: If I'm not the fast one, I don't know which one I am.
-@mika{emotion="fond" when="holds(cleared(mika, bittersweet))"}: Weird. I feel like I've sat here before and said the wrong thing. You too?
+@mika{emotion="fond" when="holds('cleared', ['mika', 'bittersweet'])"}: Weird. I feel like I've sat here before and said the wrong thing. You too?
 
 <branch id="mikaAsk" prompt="Mika is looking at his shoes.">
   <choice id="more" label="Tell him he's the one who makes everyone laugh at the finish line">

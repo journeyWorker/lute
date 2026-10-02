@@ -7,10 +7,10 @@ title: What the save remembers
 // The save's long quest: float a lantern with each of the four, in any term,
 // with any ending. It opens the keeper's route at the festival.
 <quest id="fourLanterns" title="Four lanterns on the lake" tier="user" start="true">
-  <objective id="ren" title="Float a lantern with Ren" done="count(cleared(ren, _)) >= 1"/>
-  <objective id="mika" title="Float a lantern with Mika" done="count(cleared(mika, _)) >= 1"/>
-  <objective id="soren" title="Float a lantern with Soren" done="count(cleared(soren, _)) >= 1"/>
-  <objective id="kai" title="Float a lantern with Kai" done="count(cleared(kai, _)) >= 1"/>
+  <objective id="ren" title="Float a lantern with Ren" done="count('cleared', ['ren', '_']) >= 1"/>
+  <objective id="mika" title="Float a lantern with Mika" done="count('cleared', ['mika', '_']) >= 1"/>
+  <objective id="soren" title="Float a lantern with Soren" done="count('cleared', ['soren', '_']) >= 1"/>
+  <objective id="kai" title="Float a lantern with Kai" done="count('cleared', ['kai', '_']) >= 1"/>
   <on event="questComplete">
     @hotaru{vo emotion="fond"}: Four lanterns. You carried every one of them back to me. Come to the jetty next term. I'll be the one without a lantern.
   </on>

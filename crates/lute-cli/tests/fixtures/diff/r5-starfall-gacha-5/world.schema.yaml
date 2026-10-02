@@ -1,5 +1,5 @@
 state:
-  user.day: { type: number, default: 1, owner: engine }
+  user.day: { type: int, default: 1, owner: engine }
 clock:
   day: user.day
   raise: { slot: dailyReset, dayEnd: dayClose }

@@ -10,7 +10,7 @@ components: [../components/soothe.component.lute]
   @nell: Not yet. Go to sleep, Edith.
 </beat>
 
-<beat use="soothe" id="walter" who="walter" bed="pellChair" tune="You wind the music box and set it on the arm of his chair." when="holds(holding(musicBox))">
+<beat use="soothe" id="walter" who="walter" bed="pellChair" tune="You wind the music box and set it on the arm of his chair." when="holds('holding', ['musicBox'])">
   @walter: My wife had one of those. She played it on visiting days.
 </beat>
 
@@ -18,7 +18,7 @@ components: [../components/soothe.component.lute]
   @june: You know my name. Nobody here knows my name.
 </beat>
 
-<beat id="breathing" on="lightsFlicker" for="kind:patient" once="false" after="visited('room.isolation')" when="holds(restless(occasion.target))">
+<beat id="breathing" on="lightsFlicker" for="kind:patient" once="false" after="visited('room.isolation')" when="holds('restless', [occasion.target])">
   @narrator: In the dark, {{occasion.target}} is sitting up in bed.
   /* the family is written member by member: one ::set per patient */
   <match on="occasion.target">

@@ -41,7 +41,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use crate::ir::{
-    Artifact, ArtifactMeta, BeatOnce, Command, DocKind, EntityKindEntry, EnumEntry,
+    ExecutionIr, ArtifactMeta, BeatOnce, Command, DocKind, EntityKindEntry, EnumEntry,
     PrereqEdgeEntry, RelationEntry, RuleEntry, SeedFactEntry,
 };
 
@@ -167,7 +167,7 @@ impl IndexBeat {
 }
 
 /// The `project.index.json` envelope. Field DECLARATION ORDER is the serialized
-/// order, exactly as [`Artifact`] does it — a `serde_json::Map` would sort the
+/// order, exactly as [`ExecutionIr`] does it — a `serde_json::Map` would sort
 /// keys alphabetically instead.
 ///
 /// The six vocabulary arrays are ALWAYS emitted, empty included: an engine
@@ -242,7 +242,7 @@ pub struct IndexInput<'a> {
     pub path: String,
     /// Artifact path, forward-slash relative to the output directory.
     pub artifact_path: String,
-    pub artifact: &'a Artifact,
+    pub artifact: &'a ExecutionIr,
 }
 
 /// Why an index could not be built. Both variants name BOTH offending
@@ -658,7 +658,7 @@ pub fn voice_key_collisions(docs: &[IndexInput<'_>]) -> Vec<VoiceKeyCollision> {
 /// `<quest id>` (`<entry id>`). A quest/lore document with neither has no
 /// key; that shape never survives the check gate, so the empty string is a
 /// total fallback, not a real output.
-pub fn document_key(artifact: &Artifact) -> String {
+pub fn document_key(artifact: &ExecutionIr) -> String {
     let authored = match &artifact.meta {
         ArtifactMeta::Scene(m) => return m.id.clone(),
         ArtifactMeta::Quest(m) => m.id.as_ref(),
@@ -683,8 +683,8 @@ mod tests {
     use super::*;
     use crate::ir::{AtomEntry, BeatIr, PrereqEdge, SceneMeta};
 
-    fn scene(character: &str, capability: &str) -> Artifact {
-        Artifact {
+    fn scene(character: &str, capability: &str) -> ExecutionIr {
+        ExecutionIr {
             kind: DocKind::Scene,
             lute: "0.11.0".to_string(),
             ir_version: "0.11.0".to_string(),
@@ -715,6 +715,7 @@ mod tests {
             terminal_persists: false,
             seasons: Vec::new(),
             outside_run: Vec::new(),
+            cel_env: Default::default(),
         }
     }
 
@@ -748,7 +749,7 @@ mod tests {
         }
     }
 
-    fn inputs<'a>(docs: &'a [(&str, Artifact)]) -> Vec<IndexInput<'a>> {
+    fn inputs<'a>(docs: &'a [(&str, ExecutionIr)]) -> Vec<IndexInput<'a>> {
         docs.iter()
             .map(|(p, a)| IndexInput {
                 path: (*p).to_string(),
@@ -871,7 +872,7 @@ mod tests {
         assert!(!json.contains("\"beats\""), "{json}");
     }
 
-    fn lore(capability: &str, entries: &[(&str, Option<&str>, Option<u32>)]) -> Artifact {
+    fn lore(capability: &str, entries: &[(&str, Option<&str>, Option<u32>)]) -> ExecutionIr {
         use crate::ir::{EntryCmd, LoreMeta, Stamp};
         let mut a = scene("unused", capability);
         a.kind = DocKind::Lore;
@@ -984,7 +985,7 @@ mod tests {
         assert_eq!(v["documents"][0]["kind"], "lore");
     }
 
-    fn beat_scene(id: &str, beat: Option<BeatIr>) -> Artifact {
+    fn beat_scene(id: &str, beat: Option<BeatIr>) -> ExecutionIr {
         let mut a = scene("unused", "cap-1");
         if let ArtifactMeta::Scene(m) = &mut a.meta {
             m.id = id.to_string();
@@ -1010,7 +1011,7 @@ mod tests {
     }
 
     /// `(id, on, priority)` per entry, in declaration order.
-    fn beat_lore(entries: &[(&str, Option<&str>, Option<i64>)]) -> Artifact {
+    fn beat_lore(entries: &[(&str, Option<&str>, Option<i64>)]) -> ExecutionIr {
         let plain: Vec<(&str, Option<&str>, Option<u32>)> =
             entries.iter().map(|(id, _, _)| (*id, None, None)).collect();
         let mut a = lore("cap-1", &plain);
@@ -1114,11 +1115,9 @@ mod tests {
     fn beats_rows_carry_when_and_title() {
         let mut scene_beat = beat("dayStart", None, 5, BeatOnce::Run);
         if let Some(b) = &mut scene_beat {
-            b.when = Some(crate::ir::CelPair {
-                raw: "run.day == 3 && run.slot == 'night'".to_string(),
-                expr: None,
-                authored: None,
-            });
+            b.when = Some(crate::ir::CelPair::from_raw(
+                "run.day == 3 && run.slot == \"night\"",
+            ));
         }
         let mut titled = beat_scene("wed.night", scene_beat);
         if let ArtifactMeta::Scene(m) = &mut titled.meta {
@@ -1127,11 +1126,7 @@ mod tests {
         let mut barks = beat_lore(&[("shopBark", Some("placeVisit"), None)]);
         if let Some(Command::Entry(e)) = barks.commands.first_mut() {
             e.title = Some("At the shop".to_string());
-            e.when = Some(crate::ir::CelPair {
-                raw: "run.slot != 'night'".to_string(),
-                expr: None,
-                authored: None,
-            });
+            e.when = Some(crate::ir::CelPair::from_raw("run.slot != \"night\""));
         }
         let docs = [
             ("scenes/wed.lute", titled),
@@ -1143,7 +1138,7 @@ mod tests {
         ];
         let index = build_index("0.23.0", &inputs(&docs)).expect("no conflicts");
         let v: serde_json::Value = serde_json::from_str(&index.to_json().unwrap()).unwrap();
-        assert_eq!(v["beats"][0]["when"], "run.slot != 'night'");
+        assert_eq!(v["beats"][0]["when"], "run.slot != \"night\"");
         assert_eq!(v["beats"][0]["title"], "At the shop");
         assert_eq!(v["beats"][1]["id"], "plain");
         assert!(
@@ -1151,7 +1146,7 @@ mod tests {
             "unauthored `when`/`title` are omitted: {}",
             v["beats"][1]
         );
-        assert_eq!(v["beats"][2]["when"], "run.day == 3 && run.slot == 'night'");
+        assert_eq!(v["beats"][2]["when"], "run.day == 3 && run.slot == \"night\"");
         assert_eq!(v["beats"][2]["title"], "Wednesday night");
     }
 }

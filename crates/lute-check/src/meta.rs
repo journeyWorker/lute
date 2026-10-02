@@ -1538,6 +1538,22 @@ pub fn parse_meta_kind_with_defaults(
     typed.components = get_ref_list(map, "components");
     typed.component = get_str(map, "component");
     let (params, speakers, defaults, params_malformed) = get_params(map, "params");
+    if let Some(raw_params) = map.get(yaml_key("params")).and_then(|v| v.as_mapping()) {
+        for (name, value) in raw_params {
+            let Some(name) = name.as_str() else { continue };
+            let ty = value.get("type").unwrap_or(value);
+            if ty.as_str() == Some("number") {
+                diags.push(err_at(
+                    "E-STATE-DECL",
+                    format!(
+                        "invalid component parameter `{name}`: {}",
+                        lute_manifest::types::NUMBER_TYPE_REMOVED
+                    ),
+                    meta_path_span(meta, &["params", name]),
+                ));
+            }
+        }
+    }
     // A component (and so beat-template) param is read bare as `@name`: an
     // identifier.
     for p in &params {
@@ -1699,8 +1715,8 @@ pub fn parse_meta_kind_with_defaults(
                                 E_STATE_COLLECTION,
                                 format!(
                                     "state path `{path}` cannot declare a collection type \
-                                     (`list`/`record`/`map`); author state is scalar \
-                                     (number|bool|string|enum) — model collections as \
+                                     (`list`/`record`/`map`); author state is \
+                                     (int|double|bool|string|enum) — model collections as \
                                      `relations:` (dsl 0.3.0 §3) or a plugin `state_shapes` slot"
                                 ),
                                 meta_key_span(meta, path),
@@ -1742,8 +1758,16 @@ pub fn parse_meta_kind_with_defaults(
                                                 key_span,
                                             ));
                                             None
-                                        }
-                                        other => scalar_default(path, other, &mut diags, key_span),
+                                        },
+                                        other => {
+                                            let authored = other.is_some();
+                                            let value =
+                                                scalar_default(path, &decl.ty, other, &mut diags, key_span);
+                                            if authored && value.is_none() {
+                                                typed.state.faulty.insert(path.to_string());
+                                            }
+                                            value
+                                        },
                                     };
                                     // dsl 0.28.0 §1 (T1-2): an inline enum's
                                     // `default:` must be one of its members —
@@ -1878,7 +1902,7 @@ fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String {
     let Some(map) = decl.as_mapping() else {
         return format!(
             "invalid state declaration for `{path}`: a declaration is a mapping with a \
-             `type:` key — `{{ type: number, default: 0 }}` — but this is {} \
+             `type:` key — `{{ type: int, default: 0 }}` — but this is {} \
              (dsl 0.8.0 §4)",
             yaml_shape(decl)
         );
@@ -1899,7 +1923,7 @@ fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String {
     let Some(ty) = map.get(yaml_key("type")) else {
         return format!(
             "invalid state declaration for `{path}`: the declaration has no `type:` key; \
-             author state is scalar, as `{{ type: number, default: 0 }}`, and an `enum` \
+             author state is scalar, as `{{ type: int, default: 0 }}`, and an `enum` \
              NESTS its members inside `type:`, as `{{ type: {{ enum: [...] }} }}` \
              (dsl 0.8.0 §4)"
         );
@@ -1907,8 +1931,9 @@ fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String {
     let Some(name) = ty.as_str() else {
         return format!(
             "invalid state declaration for `{path}`: the `type:` value is malformed; author \
-             state is scalar, as `{{ type: number, default: 0 }}`, and an `enum` NESTS its \
-             members inside `type:`, as `{{ type: {{ enum: [...] }} }}` (dsl 0.8.0 §4)"
+             state is scalar, as `{{ type: int, default: 0 }}`, and an `enum` NESTS its \
+             members inside `type:`, as `{{ type: {{ enum: [...] }} }}` \
+             (dsl 0.8.0 §4)"
         );
     };
     // `type: enum` is the one scalar type that is INCOMPLETE as a bare name —
@@ -1941,20 +1966,27 @@ fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String {
         return format!(
             "invalid state declaration for `{path}`: `type: {name}` is an incomplete \
              collection type, and author state cannot declare a collection type in any \
-             case; it is scalar (number|bool|string|enum) — model collections as \
+             case; it is scalar (int|double|bool|string|enum) — model collections as \
              `relations:` (dsl 0.3.0 §3) or a plugin `state_shapes` slot"
         );
     }
-    if matches!(name, "bool" | "number" | "string") {
+    if matches!(name, "bool" | "int" | "double" | "string") {
         return format!(
             "invalid state declaration for `{path}`: `type: {name}` is a valid type, so the \
              rest of the declaration is what is malformed; a declaration is \
              `{{ type: {name}, default: ... }}` and nothing else (dsl 0.8.0 §4)"
         );
     }
+    if name == "number" {
+        return format!(
+            "invalid state declaration for `{path}`: `type: number` is no longer a valid \
+             numeric type; use `type: int` for whole numbers or `type: double` for fractional \
+             values (dsl 0.8.0 §4)"
+        );
+    }
     format!(
         "invalid state declaration for `{path}`: unknown type `{name}`; author state is \
-         scalar — `number`, `bool`, `string`, or `enum`, and an `enum` NESTS its members \
+         scalar — `int`, `double`, `bool`, `string`, or `enum`, and an `enum` NESTS its members \
          inside `type:`, as `{{ type: {{ enum: [...] }} }}` (dsl 0.8.0 §4)"
     )
 }
@@ -2515,10 +2547,20 @@ fn state_decl_diag(message: String, span: Span) -> Diagnostic {
     }
 }
 
-/// The `default:` of a path with no `per:`: author state is scalar, so a
-/// list default is `E-STATE-DECL` and installs no default.
+const MAX_SAFE_INT_DEFAULT: i64 = 1_i64 << 53;
+
+fn int_default_in_range(ty: &Type, value: &Literal) -> bool {
+    !matches!(
+        (ty, value),
+        (Type::Int, Literal::Int(n))
+            if *n < -MAX_SAFE_INT_DEFAULT || *n > MAX_SAFE_INT_DEFAULT
+    )
+}
+/// A scalar default must match the declared type exactly (`int` and `double`
+/// are distinct); a list default is `E-STATE-DECL` and installs no default.
 fn scalar_default(
     path: &str,
+    ty: &Type,
     default: Option<Literal>,
     diags: &mut Vec<Diagnostic>,
     span: Span,
@@ -2528,13 +2570,38 @@ fn scalar_default(
             diags.push(state_decl_diag(
                 format!(
                     "invalid state declaration for `{path}`: `default:` is a list, but author \
-                     state is scalar (number|bool|string|enum) — give one value (dsl 0.8.0 §4)"
+                     state is scalar (int|double|bool|string|enum) — give one value (dsl 0.8.0 §4)"
                 ),
                 span,
             ));
             None
         }
-        other => other,
+        Some(value) if !type_accepts(ty, &value) => {
+            diags.push(state_decl_diag(
+                format!(
+                    "invalid state declaration for `{path}`: `default:` gives {}, which is not \
+                     a `{}` (dsl 0.8.0 §4)",
+                    lit_str(&value),
+                    type_str(ty)
+                ),
+                span,
+            ));
+            None
+        }
+        Some(Literal::Int(n))
+            if matches!(ty, Type::Int) && !int_default_in_range(ty, &Literal::Int(n)) =>
+        {
+            diags.push(state_decl_diag(
+                format!(
+                    "invalid state declaration for `{path}`: `default: {n}` is outside the \
+                     exact integer range ±2^53 (dsl 0.8.0 §4)"
+                ),
+                span,
+            ));
+            None
+        }
+        None => None,
+        Some(value) => Some(value),
     }
 }
 
@@ -2557,7 +2624,7 @@ fn per_member_defaults(
     let map = match default {
         Some(Literal::Map(map)) => map,
         other => {
-            let d = scalar_default(path, other, diags, span);
+            let d = scalar_default(path, ty, other, diags, span);
             return vec![d; members.len()];
         }
     };
@@ -2583,6 +2650,10 @@ fn per_member_defaults(
                 "`default:` gives `{key}` the value {}, which is not a `{}`",
                 lit_str(value),
                 type_str(ty)
+            ));
+        } else if !int_default_in_range(ty, value) {
+            bad(format!(
+                "`default:` gives `{key}` an integer outside the exact range ±2^53"
             ));
         } else {
             valid.insert(key.as_str(), value);
@@ -3037,7 +3108,7 @@ mod tests {
         let (meta, _d) = parse_meta_str(
             "component: greet\nparams:\n  a: { type: string }\n  \
              b: { type: { enum: [steady, rising] } }\n  \
-             c: { type: { providerRef: cast } }\n  d: number\n",
+             c: { type: { providerRef: cast } }\n  d: int\n",
         );
         assert!(!meta.params_malformed, "the long form is legal (§12.4)");
         assert_eq!(
@@ -3054,7 +3125,7 @@ mod tests {
             Type::Enum(vec!["steady".to_string(), "rising".to_string()])
         );
         assert_eq!(meta.params[2].ty, Type::ProviderRef("cast".to_string()));
-        assert_eq!(meta.params[3].ty, Type::Number);
+        assert_eq!(meta.params[3].ty, Type::Int);
     }
 
     /// dsl 0.26.0 §3.3: the long form takes `default:` — a literal, or a
@@ -3063,7 +3134,7 @@ mod tests {
     fn component_params_take_a_default_and_no_other_key() {
         let (meta, _d) = parse_meta_str(
             "component: greet\nparams:\n  a: { type: string, default: \"steady\" }\n  \
-             b: { type: bool, default: \"@wonFight\" }\n  c: { type: number, default: 3 }\n",
+             b: { type: bool, default: \"@wonFight\" }\n  c: { type: int, default: 3 }\n",
         );
         assert!(!meta.params_malformed);
         assert!(matches!(
@@ -3117,7 +3188,7 @@ mod tests {
 
     #[test]
     fn parses_state_decls_with_namespace() {
-        let yaml = "character: marina\nseason: 1\nepisode: 2\npov: fixer\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n";
+        let yaml = "character: marina\nseason: 1\nepisode: 2\npov: fixer\nstate:\n  scene.affect.marina: { type: int, default: 0 }\n";
         let (meta, diags) = parse_meta_str(yaml);
         assert!(diags.is_empty(), "{diags:?}");
         let d = meta.state.decls.get("scene.affect.marina").unwrap();
@@ -3234,7 +3305,7 @@ mod tests {
     #[test]
     fn component_params_preserve_source_order() {
         let (meta, _d) = parse_kind_str(
-            "component: c\nparams:\n  first: string\n  second: number\n  third: bool\n",
+            "component: c\nparams:\n  first: string\n  second: int\n  third: bool\n",
             MetaKind::Component,
         );
         let names: Vec<&str> = meta.params.iter().map(|p| p.name.as_str()).collect();
@@ -3290,7 +3361,7 @@ mod tests {
         let mut snap = CapabilitySnapshot::default();
         snap.frontmatter
             .insert("questTier".into(), Type::Enum(vec!["a".into(), "b".into()]));
-        snap.frontmatter.insert("difficulty".into(), Type::Number);
+        snap.frontmatter.insert("difficulty".into(), Type::Int);
         snap.frontmatter
             .insert("tags".into(), Type::List(Box::new(crate::meta::Type::Str)));
         snap
@@ -3322,7 +3393,7 @@ mod tests {
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert_eq!(
             hits[0].message,
-            "frontmatter key `difficulty` expects number (declared by an active plugin), got \"hard\""
+            "frontmatter key `difficulty` expects int (declared by an active plugin), got \"hard\""
         );
         assert_eq!(hits[0].severity, Severity::Error);
         // The span points at the offending KEY, not the whole frontmatter.
@@ -3382,7 +3453,7 @@ mod tests {
         assert_eq!(hits.len(), 1, "{diags:?}");
         assert_eq!(
             hits[0].message,
-            "frontmatter key `difficulty` expects number (declared by an active plugin), got null"
+            "frontmatter key `difficulty` expects int (declared by an active plugin), got null"
         );
     }
 

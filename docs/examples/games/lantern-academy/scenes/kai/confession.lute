@@ -14,7 +14,7 @@ after: 'visited("kai.date")'
 ::auto{character="kai" anchor="center" action="fadeInUp"}
 @kai{emotion="angry"}: They padlocked it. Maintenance, finally. Aoki didn't even have to win.
 @kai{emotion="sad"}: The piano's getting scrapped Friday. The song goes with it. Whatever. It was four and a half bars.
-@kai{emotion="fond" when="holds(cleared(kai, bittersweet))"}: Don't say anything. I've got a feeling you said something last time, and it was the wrong thing, and I walked.
+@kai{emotion="fond" when="holds('cleared', ['kai', 'bittersweet'])"}: Don't say anything. I've got a feeling you said something last time, and it was the wrong thing, and I walked.
 
 <branch id="kaiAsk" prompt="Kai has his forehead against the door.">
   <choice id="hum" label="Hum the fifth bar back to him">

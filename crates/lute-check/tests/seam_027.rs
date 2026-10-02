@@ -70,7 +70,7 @@ const VOCAB: &str = "entities:\n  room: { members: [hall, office] }\n\
                      relations:\n  canEnter: { args: [room], tier: run }\n\
                      enums:\n  fate: { members: [alive, taken] }\n\
                      state:\n  run.fate: { type: { domain: fate }, default: alive }\n  \
-                     run.hp: { type: number, default: 3 }\n";
+                     run.hp: { type: int, default: 3 }\n";
 
 fn lore(body: &str) -> String {
     format!("---\nkind: lore\nid: ward\ntitle: Ward\n{VOCAB}---\n{body}")
@@ -180,7 +180,7 @@ fn gate_and_terminal_texts_are_checked_like_conditions() {
         &[(
             "enter",
             true,
-            "holds(canEnter(occasion.target)) && run.hpp > 0",
+            "holds('canEnter', [occasion.target]) && run.hpp > 0",
         )],
         Some("run.fat == 'taken'"),
     ));
@@ -310,13 +310,13 @@ fn a_spent_by_that_holds_from_the_start_is_reported() {
             .any(|(c, m)| c == "E-BEAT-UNREACHABLE" && m.contains("`spentBy: true` holds always")),
         "{always:?}"
     );
-    let inverted = found("!holds(canEnter(hall))");
+    let inverted = found("!holds('canEnter', ['hall'])");
     assert!(
         inverted.iter().any(|(c, m)| c == "W-BEAT-SPENT-AT-START"
-            && m.contains("did you mean `spentBy: \"holds(canEnter(hall))\"`")),
+            && m.contains("did you mean `spentBy: \"holds('canEnter', ['hall'])\"`")),
         "{inverted:?}"
     );
-    let fine = found("holds(canEnter(hall))");
+    let fine = found("holds('canEnter', ['hall'])");
     assert!(
         !fine
             .iter()

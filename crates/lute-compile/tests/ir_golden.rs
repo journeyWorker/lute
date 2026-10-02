@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use lute_compile::*;
-
+use lute_compile::expr::{ExprNode, LitVal};
 fn j(cmd: &Command) -> String {
     serde_json::to_string(cmd).unwrap()
 }
@@ -129,7 +129,6 @@ fn choice_matches_spec_worked_example() {
             label: "Just ask, flatly".into(),
             line_id: "marina.s01ep02.number.blunt".into(),
             when: None,
-            expr: None,
             target: "004-0600".into(),
             placeholders: Vec::new(),
             labels: Default::default(),
@@ -162,7 +161,6 @@ fn hub_prompt_serializes_only_when_authored() {
                 once: false,
                 exit: true,
                 when: None,
-                expr: None,
                 target: "003-0300".into(),
                 placeholders: Vec::new(),
                 labels: Default::default(),
@@ -187,11 +185,11 @@ fn hub_prompt_serializes_only_when_authored() {
 fn match_jump_barrier_serialize() {
     let m = Command::Match(MatchCmd {
         addr: "005-0700".into(),
-        subject: "scene.choices.number".into(),
+        subject: Some(CelPair::from_raw("scene.choices.number")),
         arms: vec![MatchArm {
-            test: "(scene.affect.marina >= 1)".into(),
+            is: None,
+            test: CelPair::from_raw("(scene.affect.marina >= 1)"),
             target: "005-0800".into(),
-            expr: expr::lower_expr("(scene.affect.marina >= 1)"),
         }],
         otherwise: Some("005-1200".into()),
         converge: "005-1400".into(),
@@ -199,7 +197,7 @@ fn match_jump_barrier_serialize() {
     });
     assert_eq!(
         j(&m),
-        r#"{"kind":"match","addr":"005-0700","subject":"scene.choices.number","arms":[{"test":"(scene.affect.marina >= 1)","target":"005-0800","expr":{"op":">=","l":{"path":"scene.affect.marina"},"r":{"lit":1.0}}}],"otherwise":"005-1200","converge":"005-1400"}"#
+        r#"{"kind":"match","addr":"005-0700","subject":{"cel":"scene.choices.number","expr":{"path":"scene.choices.number"}},"arms":[{"test":{"cel":"(scene.affect.marina >= 1)","expr":{"op":">=","l":{"path":"scene.affect.marina"},"r":{"int":1}}},"target":"005-0800"}],"otherwise":"005-1200","converge":"005-1400"}"#
     );
     let jm = Command::Jump(JumpCmd {
         addr: "004-0700".into(),
@@ -245,13 +243,12 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
         addr: "004-0900".into(),
         path: "scene.affect.marina".into(),
         op: "+=".into(),
-        value: "1".into(),
-        expr: expr::lower_expr("1"),
+        value: CelPair::from_raw("1"),
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&set),
-        r#"{"kind":"set","addr":"004-0900","path":"scene.affect.marina","op":"+=","value":"1","expr":{"lit":1.0}}"#
+        r#"{"kind":"set","addr":"004-0900","path":"scene.affect.marina","op":"+=","value":{"cel":"1","expr":{"int":1}}}"#
     );
     let mut fields = BTreeMap::new();
     fields.insert(
@@ -399,7 +396,6 @@ fn retarget_and_addr_helpers_visit_every_flow_field() {
             label: "X".into(),
             line_id: String::new(),
             when: None,
-            expr: None,
             target: "@1".into(),
             placeholders: Vec::new(),
             labels: Default::default(),
@@ -430,7 +426,7 @@ fn retarget_and_addr_helpers_visit_every_flow_field() {
 
 #[test]
 fn envelope_serializes_with_state_entries() {
-    let a = Artifact {
+    let a = ExecutionIr {
         kind: DocKind::Scene,
         lute: "0.3.0".into(),
         ir_version: "0.3.0".into(),
@@ -452,6 +448,7 @@ fn envelope_serializes_with_state_entries() {
             domain: Some(vec!["blunt".into(), "soft".into(), "unset".into()]),
             default: None,
             provenance: Some("branch:number".into()),
+            owner: None,
             labels: BTreeMap::new(),
             label_forms: BTreeMap::new(),
             member_domain: None,
@@ -470,10 +467,11 @@ fn envelope_serializes_with_state_entries() {
         terminal_persists: false,
         seasons: Vec::new(),
         outside_run: Vec::new(),
+        cel_env: Default::default(),
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
-        r#"{"kind":"scene","lute":"0.3.0","irVersion":"0.3.0","capabilityVersion":"cap-sha","meta":{"id":"marina.s01ep02","character":"marina","season":1,"episode":2,"episodeId":"s01ep02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[]}"#
+        r#"{"kind":"scene","lute":"0.3.0","irVersion":"0.3.0","capabilityVersion":"cap-sha","meta":{"id":"marina.s01ep02","character":"marina","season":1,"episode":2,"episodeId":"s01ep02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[],"outsideRun":[],"celEnv":{"variables":[],"functions":[]}}"#
     );
 }
 
@@ -484,21 +482,13 @@ fn quest_record_serializes_per_spec() {
         id: "rescueHalsin".into(),
         title: Some("Rescue".into()),
         title_line_id: Some("rescueHalsin.title".into()),
-        start: Some(CelPair {
-            raw: "run.act == 1".into(),
-            expr: None,
-            authored: None,
-        }),
+        start: Some(CelPair::from_raw("run.act == 1")),
         fail: None,
         objectives: vec![ObjectiveEntry {
             id: "reachGrove".into(),
             title: Some("Reach".into()),
             title_line_id: Some("rescueHalsin.reachGrove".into()),
-            done: CelPair {
-                raw: "run.region == 'grove'".into(),
-                expr: None,
-                authored: None,
-            },
+            done: CelPair::from_raw("run.region == \"grove\""),
             visible_when: None,
             optional: false,
             body: None,
@@ -519,7 +509,68 @@ fn quest_record_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"quest","addr":"001-0100","id":"rescueHalsin","title":"Rescue","titleLineId":"rescueHalsin.title","start":{"raw":"run.act == 1"},"objectives":[{"id":"reachGrove","title":"Reach","titleLineId":"rescueHalsin.reachGrove","done":{"raw":"run.region == 'grove'"},"optional":false,"body":null}]}"#
+        r#"{"kind":"quest","addr":"001-0100","id":"rescueHalsin","title":"Rescue","titleLineId":"rescueHalsin.title","start":{"cel":"run.act == 1","expr":{"op":"==","l":{"path":"run.act"},"r":{"int":1}}},"objectives":[{"id":"reachGrove","title":"Reach","titleLineId":"rescueHalsin.reachGrove","done":{"cel":"run.region == \"grove\"","expr":{"op":"==","l":{"path":"run.region"},"r":{"string":"grove"}}},"optional":false,"body":null}]}"#
+    );
+}
+
+#[test]
+fn cel_pair_preserves_apostrophes_inside_double_quoted_strings() {
+    let pair = CelPair::from_raw(r#"occasion.text == "it's here""#);
+    assert_eq!(pair.raw, r#"occasion.text == "it's here""#);
+    assert_eq!(
+        serde_json::to_value(&pair).unwrap()["expr"],
+        serde_json::json!({
+            "op": "==",
+            "l": {"path": "occasion.text"},
+            "r": {"string": "it's here"}
+        })
+    );
+}
+
+#[test]
+fn synthesized_double_cel_preserves_double_literals() {
+    let expr = ExprNode::Binary {
+        op: ">=".into(),
+        l: Box::new(ExprNode::Path {
+            path: "run.score".into(),
+        }),
+        r: Box::new(ExprNode::Lit {
+            lit: LitVal::Num(1.0),
+        }),
+    };
+    let pair = CelPair::from_expr(expr, Some("is=1..".into()));
+    assert_eq!(pair.raw, "(run.score >= 1.0)");
+    assert!(pair.raw.contains("1.0"));
+    assert_eq!(
+        serde_json::to_value(&pair.expr).unwrap(),
+        serde_json::json!({
+            "op": ">=",
+            "l": {"path": "run.score"},
+            "r": {"double": 1.0}
+        })
+    );
+}
+
+#[test]
+fn synthesized_int_cel_preserves_integer_literals() {
+    let expr = ExprNode::Binary {
+        op: ">=".into(),
+        l: Box::new(ExprNode::Path {
+            path: "run.score".into(),
+        }),
+        r: Box::new(ExprNode::Lit {
+            lit: LitVal::Int(1),
+        }),
+    };
+    let pair = CelPair::from_expr(expr, Some("is=1..".into()));
+    assert_eq!(pair.raw, "(run.score >= 1)");
+    assert_eq!(
+        serde_json::to_value(&pair.expr).unwrap(),
+        serde_json::json!({
+            "op": ">=",
+            "l": {"path": "run.score"},
+            "r": {"int": 1}
+        })
     );
 }
 
@@ -555,17 +606,13 @@ fn reward_entry_range_serializes_amount_min_and_max() {
         amount: None,
         amount_min: Some(50),
         amount_max: Some(200),
-        when: Some(CelPair {
-            raw: "run.freed".into(),
-            expr: None,
-            authored: None,
-        }),
+        when: Some(CelPair::from_raw("run.freed")),
         outcome: None,
         credits: None,
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
-        r#"{"kind":"GOLD","target":"party","amountMin":50,"amountMax":200,"when":{"raw":"run.freed"}}"#
+        r#"{"kind":"GOLD","target":"party","amountMin":50,"amountMax":200,"when":{"cel":"run.freed","expr":{"path":"run.freed"}}}"#
     );
 }
 

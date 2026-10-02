@@ -16,5 +16,5 @@ when: 'user.ashfallOn'
 @narrator{code="0010"}: Ash is coming down the Stair like snow. It settles on the kettle, on the anvil, on the water, and does not melt.
 ::auto{character="maud" anchor="center" action="fadeInUp"}
 @maud{code="0010" emotion="warm"}: The Ashfall. Once in a long while the Stair sheds. Lilies come up through it on the landings — grey ones.
-@maud{code="0020" emotion="fond" when="isSet(prev.season.ashfall.lilies) && prev.season.ashfall.lilies > 0"}: Last time you brought me {{prev.season.ashfall.lilies:plural(one lily|# lilies)}}. The kettle has never tasted so strange.
+@maud{code="0020" emotion="fond" when="has(prev.season.ashfall.lilies) && prev.season.ashfall.lilies > 0"}: Last time you brought me {{prev.season.ashfall.lilies:plural(one lily|# lilies)}}. The kettle has never tasted so strange.
 @maud{code="0030"}: Bring me three. They make the only tea worth drinking down here.

@@ -2,7 +2,7 @@
 kind: quest
 id: haven.quests.shed
 state:
-  run.shedPressure: { type: number, default: 0 }
+  run.shedPressure: { type: int, default: 0 }
 ---
 
 <quest id="calmTheShed" title="Calm the shed" tier="run">

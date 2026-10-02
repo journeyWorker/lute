@@ -1299,11 +1299,11 @@ fn push_set(choice: &mut Choice, path: String, cel: String, span: Span) {
 }
 
 /// dsl §11.1.1 rule 4: bool target's value is optional (defaults `true`);
-/// number stays bare; everything else (enum/str) is a CEL string literal.
+/// numeric targets stay bare; everything else is a CEL string literal.
 fn into_value_cel(ty: &Type, value: Option<&str>) -> String {
     match ty {
         Type::Bool => value.unwrap_or("true").to_string(),
-        Type::Number => value.unwrap_or("0").to_string(),
+        Type::Int | Type::Double => value.unwrap_or("0").to_string(),
         _ => cel_string_literal(value.unwrap_or_default()),
     }
 }
@@ -1522,7 +1522,7 @@ episode: 1
         schema.decls.insert(
             "run.tip".to_string(),
             StateDecl {
-                ty: Type::Number,
+                ty: Type::Int,
                 default: None,
                 namespace: Namespace::Run,
                 owner: None,
@@ -1672,7 +1672,7 @@ params:
         table.insert(
             "reactor".to_string(),
             lute_check::ComponentDef {
-                params: vec![("n".to_string(), Type::Number)],
+                params: vec![("n".to_string(), Type::Int)],
                 speakers: Vec::new(),
                 defaults: BTreeMap::new(),
                 effects: false,

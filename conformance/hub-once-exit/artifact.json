@@ -1,8 +1,8 @@
 {
   "kind": "scene",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "id": "hero.s01ep01",
     "character": "hero",
@@ -14,7 +14,7 @@
   "state": [
     {
       "path": "run.probes",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
@@ -79,9 +79,11 @@
       "addr": "001-0300",
       "path": "run.probes",
       "op": "+=",
-      "value": "1",
-      "expr": {
-        "lit": 1.0
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
       }
     },
     {
@@ -112,5 +114,10 @@
       "shot": 1,
       "heading": "The Interrogation"
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
 }

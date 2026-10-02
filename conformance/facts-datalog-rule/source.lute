@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 character: detective
 season: 1
 episode: 1
@@ -14,5 +14,5 @@ uses: ./schema.yaml
 
 ::assert{ sawClue(map) }
 
-@detective{mono when="holds(suspected(mira))"}: The map points at Mira.
-@detective{mono when="!holds(suspected(mira))"}: No one is implicated yet.
+@detective{mono when="holds('suspected', ['mira'])"}: The map points at Mira.
+@detective{mono when="!holds('suspected', ['mira'])"}: No one is implicated yet.

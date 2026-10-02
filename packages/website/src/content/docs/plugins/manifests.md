@@ -38,7 +38,7 @@ options:                   # OPTIONAL — typed activation options
 
 ## Export files
 
-Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `number` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation.
+Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation.
 
 - `directives/*.yaml` — `::name` directive declarations (see [Bridge](/plugins/bridge/)).
 - `state/*.yaml` — reusable typed record shapes (`stateShapes:`) and structured path templates (`stateTemplates:`); one file may hold both (since 0.24.0; before, the second was dropped).
@@ -94,8 +94,8 @@ occasions:
   inbox:     { select: all, description: Letters waiting at the fountain }
   evening:   { select: sequence }
   dayEnd:    { select: first, judge: before }
-  enter:     { select: first, target: { prefix: room, entity: room }, raisedWhen: "holds(canEnter(occasion.target))" }
-  summon:    { select: first, target: { prefix: hero, entity: hero }, payload: { copies: number } }
+  enter:     { select: first, target: { prefix: room, entity: room }, raisedWhen: "holds('canEnter', [occasion.target])" }
+  summon:    { select: first, target: { prefix: hero, entity: hero }, payload: { copies: int } }
   title:     { select: first, outsideRun: true }
 ```
 
@@ -115,7 +115,7 @@ A domain's optional **`members:`** list narrows it to a subset of the kind: `bos
 
 An occasion's **`raisedWhen:`** (dsl 0.27.0 §4) says when the engine may raise it at all: `enter` above is raised for a room only once the player may enter it. See [Occasion gates](#occasion-gates-raisedwhen) below.
 
-An occasion's **`payload:`** declares the typed values each raise hands its beats, a map from field to a type of the manifest type system above (`copies: number`): a gacha pull says how many copies came with the hero drawn. Beats read them as `occasion.payload.<field>`, and so do an `<objective on=>` of that occasion and an `<on event=>` handler named like it (see [Occasion payloads](/language/beats/#occasion-payloads)). Every raise gives every field: a `lute play` step that leaves one out is a usage error naming it, `lute trace` and `lute test` halt incomplete on a line that reads a field the mock does not seed, and a clock `raise:` naming an occasion with a payload is `E-CLOCK-DECL`.
+An occasion's **`payload:`** declares the typed values each raise hands its beats, a map from field to a type of the manifest type system above (`copies: int`): a gacha pull says how many copies came with the hero drawn. Beats read them as `occasion.payload.<field>`, and so do an `<objective on=>` of that occasion and an `<on event=>` handler named like it (see [Occasion payloads](/language/beats/#occasion-payloads)). Every raise gives every field: a `lute play` step that leaves one out is a usage error naming it, `lute trace` and `lute test` halt incomplete on a line that reads a field the mock does not seed, and a clock `raise:` naming an occasion with a payload is `E-CLOCK-DECL`.
 
 An occasion's **`outsideRun: true`** marks a moment that lives outside any run, a title screen or a gallery between runs: the engine raises it even after the project's [`terminal:`](/state/schemas/#the-end-of-the-game-terminal) holds, and the checker does not judge its beats under `!terminal`. The compiled artifact lists such occasions under `outsideRun`.
 
@@ -154,7 +154,7 @@ relations:
   canEnter: { args: [room], tier: run }
 ```
 
-The gate may read **`occasion.target`**, the member the occasion is raised for. Raised for `room.office`, `occasion.target` is `office`, so the gate asks `holds(canEnter(office))`. An occasion raised for no target has no member to read: a gate that reads `occasion.target` on an untargeted occasion is `E-BEAT-ATTR`, reported at the `on` of a beat answering it. Declare the occasion's `target:` as `{ prefix, entity }`, or drop the read.
+The gate may read **`occasion.target`**, the member the occasion is raised for. Raised for `room.office`, `occasion.target` is `office`, so the gate asks `holds('canEnter', ['office'])`. An occasion raised for no target has no member to read: a gate that reads `occasion.target` on an untargeted occasion is `E-BEAT-ATTR`, reported at the `on` of a beat answering it. Declare the occasion's `target:` as `{ prefix, entity }`, or drop the read.
 
 A beat answering a gated occasion can only be presented while the gate holds, so the checker judges every beat and [entry beat](/language/beats/#entry-beats) that answers the occasion together with its gate, per member when the gate reads `occasion.target`:
 
@@ -169,14 +169,14 @@ A project's [`terminal:`](/state/schemas/#the-end-of-the-game-terminal) conditio
 
 [`lute play`](/tooling/play/) raises an occasion only as the engine would. An `occasion:` step that raises it while its gate is false halts the playthrough with `E-OCCASION-GATE` (exit 1): make the gate hold first, with an `engine:` write or an earlier step, or drop the step. A raise the clock makes (`raise.slot`, `dayStart`, `dayEnd`) while its gate is false is simply not made, and the step gets a note that the clock moved on without it.
 
-The compiled artifact and `project.index.json` carry the gates at the top level as `gates: [{ occasion, raisedWhen: { raw, expr } }]`, each condition after `@def` expansion, and omit the key when no occasion declares one.
+The compiled artifact and `project.index.json` carry the gates at the top level as `gates: [{ occasion, raisedWhen: { cel, expr, authored? } }]`, each condition after `@def` expansion, and omit the key when no occasion declares one.
 
 ### Rewards that credit state
 
 A reward is data: the engine grants it, and content never reads it. When a reward kind is a currency your own state tracks, `credits:` (dsl 0.23.0) names the state path a grant adds its amount to. The compiler stamps the path on every reward of that kind (`RewardEntry.credits` in the IR, omitted for a kind without one), and the engine owns that write, as it owns the grant itself. [`lute run`](/tooling/cli/#run) and [`lute play`](/tooling/play/) do the same for a **scalar** amount, and record the credit on the grant:
 
 ```
-grant climb EMBERS 100 (credits user.embers = 100.0)
+grant climb EMBERS 100 (credits user.embers = 100)
 ```
 
 A range amount (`amount="10..20"`) is the engine's roll, so the toolchain grants it without crediting anything. Crediting by hand as well pays twice: a content `::set` of the credited path in one of the same quest's `<on>` handlers or objective bodies is `W-REWARD-DOUBLE-CREDIT`:
@@ -200,7 +200,7 @@ scare that costs the player sanity:
 directives:
   - name: fright
     attrs:
-      - { name: amount, type: number }
+      - { name: amount, type: int }
     effects:
       writes:
         - { scope: run, path: [sanity], value: { op: decrement, by: { fromAttr: amount } } }
@@ -216,10 +216,10 @@ directives:
 
 | `value` | Writes |
 |---|---|
-| a bool, number, or string literal | that value |
+| a bool, int, double, or string literal | that value |
 | `{ fromAttr: <attr> }` | the value the call gives one of the directive's own attrs, or that attr's declared `default:`. A call that omits an attr with no default writes nothing. |
 | `{ fromBridgeResult: <field> }` | a field of the bridge's answer; see [Typed bridge directives](/plugins/bridge/) |
-| `{ op: increment \| decrement, by: <number> \| { fromAttr: <attr> } }` | adds `by` to the path, or subtracts it. An attr named in `by:` must be `type: number`. |
+| `{ op: increment \| decrement, by: <int> \| { fromAttr: <attr> } }` | adds `by` to the path, or subtracts it. An attr named in `by:` must be `type: int`. |
 
 Any other value fails the plugin load with `E-PLUGIN-PARSE`, and the message lists the four
 shapes. So does a `fromAttr` naming an attr the directive does not declare, with a did-you-mean.
@@ -280,7 +280,7 @@ of their facts: the project's [fact analysis](/state/facts-and-datalog/#how-chec
 (what may and what must hold), `W-RELATION-UNREAD`, `E-FACT-EXCLUSIVE` (which suggests declaring the
 `retracts:` the directive is missing), cast presence, `lute scenario --facts`,
 [`lute scenario knowledge`](/tooling/overviews/#lute-scenario-knowledge) and `lute lore`. A
-`holds(holding(brassKey))` guard is therefore satisfiable once some call of `::give` can assert it,
+`holds('holding', ['brassKey'])` guard is therefore satisfiable once some call of `::give` can assert it,
 with no `::assert` written anywhere.
 
 ### Engine ids typed by an entity kind
@@ -293,7 +293,7 @@ directives:
   - name: give
     attrs:
       - { name: item, required: true, type: { entity: bagItem } }
-      - { name: qty,  type: number, default: 1 }
+      - { name: qty,  type: int, default: 1 }
 ```
 
 The plugin names the kind and the project lists its members, the same split as an occasion's [target domain](/language/beats/#target-domains). The kind lives in a schema every document imports, typically one lead-owned file of the ids the engine ships:
@@ -363,7 +363,7 @@ Ordinary attributes are declared per directive. An engine that tags *every* reco
 ```yaml
 stampAttrs:
   - { name: bonusId,    type: string }
-  - { name: bonusScore, type: number }
+  - { name: bonusScore, type: int }
 ```
 
 Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default? }` shape a directive attr uses — but they are admissible on **every** directive *and* on content lines (`@speaker{…}: text`), on top of that surface's own attributes. Resolution is strict: the surface's own declarations win, then `stampAttrs`, then `E-UNKNOWN-ATTR`. Value typing rides the existing attribute path, so a mistyped one is a plain `E-ATTR-TYPE` / `E-BAD-ENUM` — no new rules.

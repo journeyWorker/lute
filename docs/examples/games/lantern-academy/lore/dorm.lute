@@ -10,15 +10,15 @@ title: Evenings with Nana
 <beat id="evening" on="slotStart" title="Lights out" once="day" when="run.slot == 'evening' && run.day <= 5">
   ::bg{location="dorm" time="night"}
   @nana{emotion="teasing"}: Report. Who's thinking about you right now? I have sources.
-  @nana{when="run.aff.ren >= 3 && !holds(locked(ren))"}: Ren re-alphabetised the council files twice today. He only does that when he's flustered.
-  @nana{when="run.aff.mika >= 3 && !holds(locked(mika))"}: Mika ran an extra lap past our window. Past. Our. Window.
-  @nana{when="run.aff.soren >= 3 && !holds(locked(soren))"}: Soren renewed a book he'd already renewed. Twice. That's a cry for help.
-  @nana{when="run.aff.kai >= 3 && !holds(locked(kai))"}: That piano played five notes tonight instead of four. Just saying.
-  @nana{emotion="worried" when="holds(locked(ren))"}: Ren crossed your name out of something. With a ruler.
-  @nana{emotion="worried" when="holds(locked(mika))"}: Mika's on the bench, and he isn't talking to you. Or the bench.
-  @nana{emotion="worried" when="holds(locked(soren))"}: Remedial study, huh. The library's going to be very quiet without you.
-  @nana{emotion="worried" when="holds(locked(kai))"}: Kai said a word about you I won't repeat. It rhymed with nothing.
-  @nana{emotion="happy" when="count(locked(_)) == 0"}: Nobody hates you yet. Honestly, a record for a transfer.
+  @nana{when="run.aff.ren >= 3 && !holds('locked', ['ren'])"}: Ren re-alphabetised the council files twice today. He only does that when he's flustered.
+  @nana{when="run.aff.mika >= 3 && !holds('locked', ['mika'])"}: Mika ran an extra lap past our window. Past. Our. Window.
+  @nana{when="run.aff.soren >= 3 && !holds('locked', ['soren'])"}: Soren renewed a book he'd already renewed. Twice. That's a cry for help.
+  @nana{when="run.aff.kai >= 3 && !holds('locked', ['kai'])"}: That piano played five notes tonight instead of four. Just saying.
+  @nana{emotion="worried" when="holds('locked', ['ren'])"}: Ren crossed your name out of something. With a ruler.
+  @nana{emotion="worried" when="holds('locked', ['mika'])"}: Mika's on the bench, and he isn't talking to you. Or the bench.
+  @nana{emotion="worried" when="holds('locked', ['soren'])"}: Remedial study, huh. The library's going to be very quiet without you.
+  @nana{emotion="worried" when="holds('locked', ['kai'])"}: Kai said a word about you I won't repeat. It rhymed with nothing.
+  @nana{emotion="happy" when="count('locked', ['_']) == 0"}: Nobody hates you yet. Honestly, a record for a transfer.
   <match on="run.lanterns">
     <when is="0">
       @nana{emotion="worried"}: Also, we have zero lanterns for the window. Zero. We need three.

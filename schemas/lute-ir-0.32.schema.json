@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.31.schema.json",
-  "title": "Lute compiled IR artifact (irVersion 0.31.x)",
-  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `Artifact`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec §4.1, A9; relaxed in 0.13.0): an engine gates on `irVersion` by MAJOR only — it MUST accept any artifact whose `irVersion` MAJOR it implements and MUST refuse one from a different MAJOR. Minor and patch are compatible-by-default (fields are append-only within a major line; unknown fields are ignored), and an unknown command `kind` is the hard error that catches a genuinely newer capability. Pre-1.0, a breaking change may still land in a minor (0.10.0's provenance rename); such changes are called out in the CHANGELOG and this schema rather than fenced by the gate. `lute` (the language version) is informational for the runtime and does not gate parsing. Forward compatibility: an engine MUST IGNORE unknown OBJECT FIELDS (new optional fields are added append-only within a minor line) so a newer PATCH artifact still loads on an older engine of the same major.minor; an engine MUST treat an unknown command `kind` as an ERROR (a new command kind is a real capability the engine cannot fake). Field declaration order in an artifact is a byte-stability contract of the compiler but carries no semantics for a consumer.\n\nIR 0.8.0: within one artifact every `addr` shares a field width, so lexicographic order over `addr` equals execution order (dsl 0.8.0 §2). Engines loading artifacts from mixed toolchain versions SHOULD still compare `addr` segment-wise numerically.\n\nIR 0.9.0: a PURE RESTAMP of 0.8.0 for release-wide version alignment (docs/versioning.md) — lute-ir-0.9.schema.json IS lute-ir-0.8.schema.json renamed, with no field added, renamed, moved, or retyped.\n\nIR 0.10.0: a REAL shape change, not a restamp (#36, dsl 0.10.0 Appendix B). `provenance.reason` is renamed to `provenance.explanation`; no command `kind` is added, renamed, or removed, and no other field changes. Because the gate above is by MAJOR.MINOR, an engine implementing IR 0.9 MUST refuse a 0.10.0 artifact; widening that gate and reading `provenance.explanation` are the only changes such an engine needs. lute-ir-0.9.schema.json is kept published for engines still on 0.9.\n\nIR 0.11.0: a PURE RESTAMP of 0.10.2 for release-wide version alignment (docs/versioning.md) — lute-ir-0.13.schema.json IS lute-ir-0.10.schema.json renamed, with no field added, renamed, moved, or retyped. Unlike 0.10.1/0.10.2, which shared major.minor 0.10 and needed no rename, this release moves the gated major.minor itself (0.10 → 0.11), so the file renames and an engine implementing IR 0.10 MUST widen its gate before it accepts a 0.11.0 artifact — reading no new field, because there is none. lute-ir-0.10.schema.json is kept published for engines still on 0.10.\n\nIR 0.15.0 reshapes sceneMeta (dsl 0.15.0 §2/§3, authored scene identity): sceneMeta gains the always-present `id` field (the resolved canonical scene key — authored `id:` verbatim, else the derived `{character}.{episodeId}` join); the four legacy identity keys (`character`/`season`/`episode`/`episodeId`) demote to optional; and BOTH sceneMeta and questMeta gain the descriptive `meta` block (an open mapping whose values are scalars or flat scalar arrays, key-sorted by the compiler, omitted when empty). The gated major.minor moves (0.14 → 0.15); lute-ir-0.14.schema.json is kept published for engines still on 0.14.\n\nIR 0.16.0 is ADDITIVE-ONLY over 0.15.1 (dsl 0.16.0 declarative rewards): cmdQuest and objectiveEntry each gain an optional `rewards` array of the new `rewardEntry` def. Both arrays are omitted when empty, so a pre-rewards artifact stays byte-identical to 0.15.1. A `rewardEntry` carries `kind`, optional `target`, exactly one of `amount` XOR (`amountMin` + `amountMax`) after amount defaulting (unauthored → `amount: 1`), an optional `when` CEL pair evaluated at the grant instant, and `on: \"failed\"` on a quest-level entry (objective-level entries never carry `on`). Range amounts are wire-verbatim — an engine never sees a pre-rolled scalar (spec D-C). The runtime contract emits deterministic `grant` transcript events at each fresh lifecycle transition (spec §3 D-D); the reference engine's shape is `{ \"kind\": \"grant\", \"quest\": <id>, \"objective\": <oid>?, \"reward\": { …rewardEntry sans when… }, \"onFailed\": true? }`. The per-release rename rule renames `lute-ir-0.15.schema.json` → `lute-ir-0.16.schema.json`; the gated MAJOR does not move under 0.13.0's MAJOR-only runtime contract, so a 0.15 engine parses a 0.16.0 artifact unchanged and simply does not ask for the added arrays.",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.32.schema.json",
+  "title": "Lute compiled execution IR (irVersion 0.32.x)",
+  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `ExecutionIr`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec §4.1, A9; relaxed in 0.13.0): an engine gates on `irVersion` by MAJOR only — it MUST accept any artifact whose `irVersion` MAJOR it implements and MUST refuse one from a different MAJOR. Minor and patch are compatible-by-default (fields are append-only within a major line; unknown fields are ignored), and an unknown command `kind` is the hard error that catches a stale runtime (IR A9). Spec §4.1 table summarizes what each minor/patch line added.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -12,7 +12,8 @@
     "capabilityVersion",
     "meta",
     "state",
-    "commands"
+    "commands",
+    "celEnv"
   ],
   "properties": {
     "kind": {
@@ -111,7 +112,7 @@
         "type": "object",
         "properties": {
           "occasion": { "type": "string" },
-          "raisedWhen": { "$ref": "#/$defs/celPair" }
+          "raisedWhen": { "$ref": "#/$defs/celSlot" }
         },
         "additionalProperties": false,
         "required": ["occasion", "raisedWhen"]
@@ -119,7 +120,7 @@
       "description": "dsl 0.27.0 §4 (T2-3): every occasion's declared `raisedWhen` gate, occasion-sorted, `@def`-expanded. The engine raises the occasion only while its gate holds; `occasion.target` in it reads the member the occasion is raised for (`room.office` → `office`). A clock raise (`raise.slot` / `dayStart` / `dayEnd`) whose gate is false is not made. Omitted when no occasion declares one; serialized after `clock`."
     },
     "terminal": {
-      "$ref": "#/$defs/celPair",
+      "$ref": "#/$defs/celSlot",
       "description": "dsl 0.27.0 §4 (T2-4): the project's `terminal:` condition (declared by a schema; several joined by `||`), `@def`-expanded. Once it holds the game is over: the engine raises no occasion and the clock does not advance until a new run. Omitted without one; serialized after `gates`."
     },
     "terminalPersists": {
@@ -132,7 +133,7 @@
         "type": "object",
         "properties": {
           "name": { "type": "string", "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$" },
-          "live": { "$ref": "#/$defs/celPair" }
+          "live": { "$ref": "#/$defs/celSlot" }
         },
         "additionalProperties": false,
         "required": ["name", "live"]
@@ -143,6 +144,10 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "dsl 0.28.0 (T2-9): the occasions declared `outsideRun: true`, name-sorted. The engine raises these even after `terminal` holds (a title screen, a gallery between runs); every other occasion stays closed once the game is over. Omitted when none; serialized after `seasons`."
+    },
+    "celEnv": {
+      "$ref": "#/$defs/celEnv",
+      "description": "dsl 0.32.0 §1.4 / §7: the CEL environment (variables and host function signatures) expressions were checked against."
     }
   },
   "allOf": [
@@ -234,23 +239,73 @@
       "description": "§4.3 component source stamp on component-expanded records (D8)."
     },
     "exprNode": {
-      "description": "Portable CEL expression AST (IR A7, expr.rs). Serialized as an UNTAGGED serde enum — each variant is a bare object distinguished by its keys. A plain JSON walker evaluates it; the parallel `raw`/string field carries the source CEL for debug. Absent whenever the CEL slot was empty or fell outside the closed Lute-CEL profile (dsl §8.4).",
+      "description": "Portable CEL expression AST (dsl 0.32.0 §7, expr.rs). Serialized as an UNTAGGED serde enum — each variant is a bare object distinguished by its keys. A plain JSON walker evaluates it; the parallel `cel` string field carries the standard CEL expression.",
       "oneOf": [
         {
           "type": "object",
           "properties": {
-            "lit": {
-              "type": [
-                "number",
-                "boolean",
-                "string"
-              ],
-              "description": "scalar literal; every numeric CEL literal collapses to a double."
+            "int": {
+              "type": "integer",
+              "minimum": -9007199254740992,
+              "maximum": 9007199254740992,
+              "description": "64-bit signed integer literal, constrained to ±2^53 for exact JSON representation."
             }
           },
           "additionalProperties": false,
           "required": [
-            "lit"
+            "int"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "double": {
+              "type": "number",
+              "description": "64-bit IEEE-754 floating-point literal."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "double"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "bool": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "bool"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "string": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "string"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "list": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/exprNode"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "list"
           ]
         },
         {
@@ -258,12 +313,42 @@
           "properties": {
             "path": {
               "type": "string",
-              "description": "static state/subject path a.b.c."
+              "description": "canonical dotted state path a.b.c."
             }
           },
           "additionalProperties": false,
           "required": [
             "path"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "index": {
+              "$ref": "#/$defs/exprNode"
+            },
+            "key": {
+              "$ref": "#/$defs/exprNode"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "index",
+            "key"
+          ],
+          "description": "computed index expression: subject[key]."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "has": {
+              "type": "string",
+              "description": "has(path) presence macro."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "has"
           ]
         },
         {
@@ -343,7 +428,11 @@
         {
           "type": "object",
           "properties": {
-            "list": {
+            "call": {
+              "type": "string",
+              "description": "function name: int, double, holds, count, countDistinct, validAt, now, visited, etc."
+            },
+            "args": {
               "type": "array",
               "items": {
                 "$ref": "#/$defs/exprNode"
@@ -352,57 +441,105 @@
           },
           "additionalProperties": false,
           "required": [
-            "list"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "isSet": {
-              "type": "string",
-              "description": "isSet(path) extension."
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "isSet"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "has": {
-              "type": "string",
-              "description": "has(path) macro."
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "has"
-          ]
+            "call",
+            "args"
+          ],
+          "description": "function call: int(), double(), or host function."
         }
       ]
     },
-    "celPair": {
+    "celSlot": {
       "type": "object",
       "properties": {
-        "raw": {
+        "cel": {
           "type": "string",
-          "description": "verbatim source CEL text."
+          "description": "standard CEL expression text after @def/$/is= expansion."
         },
         "expr": {
-          "$ref": "#/$defs/exprNode"
+          "$ref": "#/$defs/exprNode",
+          "description": "lowered portable expr AST."
         },
         "authored": {
           "type": "string",
-          "description": "A seam condition (`gates[].raisedWhen`, `terminal`, `seasons[].live`) as its author wrote it (`@stageReleased`), present only when `@def` expansion changed it. For messages; the engine evaluates `raw`."
+          "description": "source text when it differs from cel (e.g. authored shorthand or unexpanded text)."
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "required": [
-        "raw"
+        "cel",
+        "expr"
       ],
-      "description": "A CEL slot's raw text plus its optional portable lowered `expr` (IR A7). `expr` is absent for empty/out-of-profile CEL — including every slot that calls a fact query (`holds`/`count`/`validAt`) or `visited('<scene id>')` (dsl 0.21.0 §7a.1: true once that scene has been presented in this save); the engine evaluates such a slot from `raw`."
+      "description": "dsl 0.32.0 §7: CEL slot object carrying standard CEL expression text, lowered portable expr AST, and optional authored source text."
+    },
+    "celEnv": {
+      "type": "object",
+      "properties": {
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type"
+            ]
+          },
+          "description": "Environment variables checked against, e.g. root state namespaces typed as map(string, dyn)."
+        },
+        "functions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "overloads": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "params": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "result": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "params",
+                    "result"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "overloads"
+            ]
+          },
+          "description": "Host functions called by expressions with their overload signatures."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "variables",
+        "functions"
+      ],
+      "description": "dsl 0.32.0 §1.4 / §7: the CEL environment (variables and host function signatures) expressions were checked against."
     },
     "placeholder": {
       "description": "One {{…}} interpolation placeholder (IR A3), internally tagged on `kind` (lowercase). The runtime substitutes it against live state; the enclosing text/label keeps the verbatim {{…}} marker.",
@@ -440,7 +577,7 @@
               "description": "@def / @fn(args) reference, including the leading @."
             },
             "expr": {
-              "$ref": "#/$defs/celPair",
+              "$ref": "#/$defs/celSlot",
               "description": "The referenced def body, inlined at compile time (the artifact has no defs table). The engine renders the placeholder by evaluating it like any other CEL slot. Always emitted by lute 0.21.1+ compilers; optional so 0.21.0 artifacts stay valid."
             },
             "format": {
@@ -759,7 +896,7 @@
               "const": "guard"
             },
             "cel": {
-              "type": "string"
+              "$ref": "#/$defs/celSlot"
             }
           },
           "additionalProperties": true,
@@ -997,7 +1134,7 @@
           "description": "the scene is a candidate only when the occasion is raised for this target (dotted id, the entryCmd.target shape). Absent when the beat answers the occasion for any target."
         },
         "when": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "eligibility condition, `@def`-expanded; the beat is eligible only while this (and the scene's `after:`) holds. Absent when not authored."
         },
         "priority": {
@@ -1016,7 +1153,7 @@
           "description": "dsl 0.23.0 §3: on a `select: first` occasion, an eligible `also` beat is presented in addition to the winner, after it; it never wins. Absent when not authored."
         },
         "spentBy": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
         },
         "share": {
@@ -1093,7 +1230,7 @@
         },
         "type": {
           "type": "string",
-          "description": "value-level type label (bool/number/string/enum/list<…>/map<…>/record)."
+          "description": "value-level type label (bool/int/double/string/enum/list<…>/map<…>/record)."
         },
         "domain": {
           "type": "array",
@@ -1104,6 +1241,10 @@
         },
         "default": {
           "description": "initial value (any JSON scalar/array/object), integral-collapsed. Absent when the slot has no default (maybe-unset)."
+        },
+        "owner": {
+          "enum": ["engine"],
+          "description": "dsl 0.22.0 §1.2: the engine writes this state path; omitted for content-owned paths."
         },
         "provenance": {
           "type": "string",
@@ -1201,11 +1342,8 @@
           "type": "string"
         },
         "when": {
-          "type": "string",
-          "description": "raw guard CEL; present only when the option is guarded."
-        },
-        "expr": {
-          "$ref": "#/$defs/exprNode"
+          "$ref": "#/$defs/celSlot",
+          "description": "guard CEL slot; present only when the option is guarded."
         },
         "target": {
           "type": "string"
@@ -1224,7 +1362,7 @@
           "description": "dsl 0.8.0 §7: merged locale labels, locale tag → text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`/`label`."
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "required": [
         "id",
         "label",
@@ -1254,10 +1392,8 @@
           "description": "leaves the hub loop when taken."
         },
         "when": {
-          "type": "string"
-        },
-        "expr": {
-          "$ref": "#/$defs/exprNode"
+          "$ref": "#/$defs/celSlot",
+          "description": "guard CEL slot; present only when the option is guarded."
         },
         "target": {
           "type": "string"
@@ -1276,7 +1412,7 @@
           "description": "dsl 0.8.0 §7: merged locale labels, locale tag → text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`/`label`."
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "required": [
         "id",
         "label",
@@ -1290,18 +1426,19 @@
     "matchArm": {
       "type": "object",
       "properties": {
-        "test": {
+        "is": {
           "type": "string",
-          "description": "raw arm guard CEL (debug); the executable form is `expr`."
+          "description": "dsl 0.32.0 §7: authored `is=` shorthand, semantic rather than diagnostic. Absent on `test=` arms."
+        },
+        "test": {
+          "$ref": "#/$defs/celSlot",
+          "description": "arm guard CEL slot."
         },
         "target": {
           "type": "string"
-        },
-        "expr": {
-          "$ref": "#/$defs/exprNode"
         }
       },
-      "additionalProperties": true,
+      "additionalProperties": false,
       "required": [
         "test",
         "target"
@@ -1332,7 +1469,7 @@
           "description": "Upper bound of a range amount — see `amountMin` for the range contract."
         },
         "when": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "Optional CEL gate evaluated at the grant instant (spec §3). Grants fire iff `when` decides Bool(true); a `false`/`unknown` gate silently skips the entry once (a transition is monotone and fires at most once, so `when` is a one-shot filter, not a re-triable predicate)."
         },
         "outcome": {
@@ -1362,10 +1499,10 @@
           "type": "string"
         },
         "done": {
-          "$ref": "#/$defs/celPair"
+          "$ref": "#/$defs/celSlot"
         },
         "visibleWhen": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "visibility only: the objective is shown only while this holds. It never gates `done` (authored `visibleWhen=`). Absent when not authored."
         },
         "optional": {
@@ -1395,7 +1532,7 @@
           "description": "dsl 0.21.0 §7a.2: the occasion at which this objective is judged. The engine evaluates the objective's `done` only when it raises this occasion while the quest is `active`, never continuously (docs/runtime/quest-lifecycle.md). Absent when not authored: the objective is evaluated continuously, as before."
         },
         "by": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "dsl 0.23.0 §2, 0.24.0 §2.1: while the objective is not done, the first time this condition is true the objective FAILS (a required objective fails its quest; `quest.<id>.failedBy` = `by`). Judged at every lifecycle settle, `on` or not — a deadline is a moment, not a place; `done` wins a tie in the same settle. Absent when not authored."
         },
         "target": {
@@ -1403,7 +1540,7 @@
           "description": "dsl 0.23.0 §2: with `on`, the objective is judged only when the occasion is raised for this target (the beat target rule). Absent when not authored: judged whenever the occasion is raised, for any target."
         },
         "until": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "dsl 0.24.0 §2.1: the place-bound deadline (the checker requires `on`). Judged only when the objective's `on` occasion is raised (for `target`, when present) while the quest is `active`, after its `done`; the first time it is true there the objective FAILS (a required objective fails its quest; `quest.<id>.failedBy` = `until`). Absent when not authored."
         }
       },
@@ -1943,11 +2080,8 @@
           "description": "assignment op, e.g. \"=\", \"+=\"."
         },
         "value": {
-          "type": "string",
-          "description": "raw RHS text; the executable form is `expr`."
-        },
-        "expr": {
-          "$ref": "#/$defs/exprNode"
+          "$ref": "#/$defs/celSlot",
+          "description": "RHS CEL slot with standard text and portable expression."
         },
         "wait": {
           "type": "boolean"
@@ -2164,7 +2298,7 @@
           "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "subject": {
-          "type": "string"
+          "$ref": "#/$defs/celSlot"
         },
         "arms": {
           "type": "array",
@@ -2205,7 +2339,6 @@
       "required": [
         "kind",
         "addr",
-        "subject",
         "arms",
         "converge"
       ]
@@ -2392,10 +2525,10 @@
           "type": "string"
         },
         "start": {
-          "$ref": "#/$defs/celPair"
+          "$ref": "#/$defs/celSlot"
         },
         "fail": {
-          "$ref": "#/$defs/celPair"
+          "$ref": "#/$defs/celSlot"
         },
         "objectives": {
           "type": "array",
@@ -2411,7 +2544,7 @@
           "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this quest in declaration order. Quest grants fire at fresh `complete`/`failed` transitions (spec §3 D-D). A `<reward outcome=\"failed\"/>` entry fires ONLY on `failed` (authored fail OR §2.3 downward cascade); a default (no `outcome=`) entry fires ONLY on `complete`. Runs BEFORE the corresponding `questComplete`/`questFailed` handler bodies. Omitted when the quest authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
         },
         "rearm": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "dsl 0.27.0 §5: when this `@def`-expanded condition goes from false to true the quest returns to `unset` (objectives undone, `failedBy` cleared) and can be activated again. Omitted when not authored."
         },
         "tier": {
@@ -2476,7 +2609,7 @@
           "type": "string"
         },
         "when": {
-          "$ref": "#/$defs/celPair"
+          "$ref": "#/$defs/celSlot"
         },
         "body": {
           "type": "string",
@@ -2563,7 +2696,7 @@
           "description": "position within `series`; present only with `series`. The RESOLVED order (dsl 0.19.0 §2.1): the entry's 1-based position among the document's entries under a document-level `series:`, else its own `order=`."
         },
         "when": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "eligibility: the entry may be presented only while this holds."
         },
         "on": {
@@ -2583,7 +2716,7 @@
           "description": "dsl 0.22.0 §7, 0.24.0 §1: the entry beat's repetition policy — `run`: not eligible while `entry.<id>.read` is true; `user`: not eligible once `entry.<id>.everRead` is true; `day` / `slot`: not eligible again until the declared clock's day / slot changes after it was read. Absent when not authored: repeatable, as in 0.21."
         },
         "spentBy": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
         },
         "share": {
@@ -2721,7 +2854,7 @@
           "description": "`{id}.title`, present only when `title` is authored (the entryCmd convention)."
         },
         "when": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "eligibility condition, `@def`-expanded. Absent when not authored."
         },
         "priority": {
@@ -2740,7 +2873,7 @@
           "description": "as sceneBeat.also (dsl 0.23.0 §3). Absent when not authored."
         },
         "spentBy": {
-          "$ref": "#/$defs/celPair",
+          "$ref": "#/$defs/celSlot",
           "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
         },
         "share": {
@@ -3133,7 +3266,7 @@
       "properties": {
         "day": {
           "type": "string",
-          "description": "the day path — a `number` state path declared `owner: engine` (else `E-CLOCK-DECL`). Day 1 is the first day."
+          "description": "the day path — an `int` state path declared `owner: engine` (else `E-CLOCK-DECL`). Day 1 is the first day."
         },
         "slot": {
           "type": "string",

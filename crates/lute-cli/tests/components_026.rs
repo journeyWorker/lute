@@ -155,16 +155,16 @@ const SCHEMA: &str = r#"enums:
     default: center
 state:
   run.gate: { type: bool, default: false }
-  run.coins: { type: number, default: 0 }
+  run.coins: { type: int, default: 0 }
   run.maybe: { type: bool }
-  run.num: { type: number }
+  run.num: { type: int }
   run.adaHere: { type: bool, default: false }
 relations:
   met: { args: [person], tier: run }
 entities:
   person: { members: [joey, ada] }
 defs:
-  numDef: { type: number, cel: "run.num" }
+  numDef: { type: int, cel: "run.num" }
 "#;
 
 const CAST: &str = "  joey: { name: Youngster Joey, emotions: [happy] }\n  ada: { name: Lass Ada, emotions: [sad], present: \"run.adaHere\" }\n";
@@ -278,7 +278,7 @@ fn a_string_argument_keeps_its_placeholders_and_as_at_who_shows_the_cast_name() 
 
 // ── §3.3: param defaults and own results ────────────────────────────────
 
-const DUEL: &str = "---\ncomponent: duel\neffects: true\nparams:\n  prize: { type: number, default: \"3\" }\n  cheer: { type: string, default: \"Well fought.\" }\n---\n\n\
+const DUEL: &str = "---\ncomponent: duel\neffects: true\nparams:\n  prize: { type: int, default: \"3\" }\n  cheer: { type: string, default: \"Well fought.\" }\n---\n\n\
     ## Duel\n\n::battle{foe=\"joey\" resultKey=\"fight\"}\n<match on=\"scene.battle.fight.won\">\n\
     <when is=\"true\">\n@narrator: {{@cheer}}\n::set{run.coins += @prize}\n</when>\n\
     <otherwise>\n@narrator: Lost.\n</otherwise>\n</match>\n";
@@ -437,7 +437,7 @@ fn at_at_for_a_param_that_is_no_speaker_is_component_arg() {
 
 // ── §4: `when=` on directives ───────────────────────────────────────────
 
-const EFF: &str = "---\ncomponent: eff\neffects: true\nparams:\n  n: number\n---\n\n## Eff\n\n\
+const EFF: &str = "---\ncomponent: eff\neffects: true\nparams:\n  n: int\n---\n\n## Eff\n\n\
     @narrator: Effects {{@n}}.\n::set{run.coins += @n}\n::set{run.coins += 0}\n";
 
 const GUARDED: &str = "::give{item=\"potion\" when=\"run.gate\"}\n\
@@ -455,7 +455,7 @@ fn a_guarded_directive_compiles_to_a_one_arm_match() {
     let cmds = commands(&dir, "scenes/a.lute");
     let first = &cmds[0];
     assert_eq!(first["kind"], "match", "{cmds:#?}");
-    assert_eq!(first["subject"], "run.gate");
+    assert_eq!(first["subject"], serde_json::json!({"cel": "run.gate", "expr": {"path": "run.gate"}}));
     assert_eq!(first["arms"].as_array().unwrap().len(), 1);
     let target = first["arms"][0]["target"].as_str().unwrap();
     let leaf = cmds.iter().find(|c| c["addr"] == target).unwrap();
@@ -537,7 +537,7 @@ fn a_guarded_use_reports_its_guard_once_and_reads_its_arguments_under_it() {
             "a",
             "::use{component=\"eff\" n=\"2\" when=\"run.maybe\"}\n\
              ::use{component=\"eff\" n=\"3\" when=\"run.x +\"}\n\
-             ::use{component=\"eff\" n=@numDef when=\"isSet(run.num)\"}",
+             ::use{component=\"eff\" n=@numDef when=\"has(run.num)\"}",
         ),
     );
     let t = text(&run(&dir, &["check", "scenes/a.lute", "--project", "."]));
@@ -550,7 +550,7 @@ fn a_guarded_use_reports_its_guard_once_and_reads_its_arguments_under_it() {
 
 #[test]
 fn a_guarded_assert_is_no_guaranteed_fact() {
-    let cast = "  joey: { name: Youngster Joey, present: \"holds(met(joey))\" }\n";
+    let cast = "  joey: { name: Youngster Joey, present: \"holds('met', ['joey'])\" }\n";
     let dir = project("must", cast, SCHEMA, &[]);
     write(
         &dir,

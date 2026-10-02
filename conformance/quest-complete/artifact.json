@@ -1,8 +1,8 @@
 {
   "kind": "quest",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "title": "Quest Complete"
   },
@@ -36,7 +36,7 @@
     },
     {
       "path": "run.done",
-      "type": "number",
+      "type": "int",
       "default": 0
     }
   ],
@@ -48,9 +48,9 @@
       "title": "Reach the Goal",
       "titleLineId": "reachGoal.title",
       "start": {
-        "raw": "true",
+        "cel": "true",
         "expr": {
-          "lit": true
+          "bool": true
         }
       },
       "objectives": [
@@ -59,14 +59,14 @@
           "title": "Arrive at the goal",
           "titleLineId": "reachGoal.arrive",
           "done": {
-            "raw": "run.atGoal == true",
+            "cel": "run.atGoal == true",
             "expr": {
               "op": "==",
               "l": {
                 "path": "run.atGoal"
               },
               "r": {
-                "lit": true
+                "bool": true
               }
             }
           },
@@ -98,9 +98,11 @@
       "addr": "001-0300",
       "path": "run.done",
       "op": "+=",
-      "value": "1",
-      "expr": {
-        "lit": 1.0
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
       }
     },
     {
@@ -111,5 +113,15 @@
       "text": "The goal is reached.",
       "lineId": "reachGoal.narrator_0010"
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
 }

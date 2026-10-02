@@ -76,7 +76,7 @@ components: [c.lute]\n---\n## Shot 1.\n::use{component=\"c\"}\n";
 /// The `sprite` records — `::auto` lowers to ONE of them carrying the resolved
 /// `anchor`, whether the author wrote it or `auto-anchor-on-show` injected it.
 /// A double injection would show up here as a second record or a lost anchor.
-fn sprite_records(artifact: &lute_compile::Artifact) -> Vec<serde_json::Value> {
+fn sprite_records(artifact: &lute_compile::ExecutionIr) -> Vec<serde_json::Value> {
     artifact
         .commands
         .iter()
@@ -133,7 +133,7 @@ fn use_and_inline_lower_to_the_same_command_stream() {
     .unwrap();
     let inline = compile(&input_for(&dir, SCENE_INLINE)).expect("inline compiles");
     let via_use = compile(&input_for(&dir, SCENE_USE)).expect("::use compiles");
-    let kinds = |a: &lute_compile::Artifact| -> Vec<String> {
+    let kinds = |a: &lute_compile::ExecutionIr| -> Vec<String> {
         a.commands
             .iter()
             .map(|c| {

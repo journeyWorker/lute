@@ -4,7 +4,7 @@ id: skerry.tornPage
 title: The torn page
 ---
 
-<beat id="pieceThePage" on="examine" target="item.torn_page" title="The burnt scraps" spentBy="holds(pieced(torn_page))" when="holds(carrying(torn_page))">
+<beat id="pieceThePage" on="examine" target="item.torn_page" title="The burnt scraps" spentBy="holds('pieced', ['torn_page'])" when="holds('carrying', ['torn_page'])">
   @narrator: Seven scraps of the log's paper, browned at the edges. Ada tried to burn them and lost her nerve.
   <branch id="firstScrap" prompt="Which scrap begins the entry?">
     <choice id="aug" label="The one dated in August">
@@ -21,12 +21,12 @@ title: The torn page
   </branch>
 </beat>
 
-<entry id="tornPageRead" on="examine" target="item.torn_page" category="note" title="30 August" when="holds(pieced(torn_page))">
+<entry id="tornPageRead" on="examine" target="item.torn_page" category="note" title="30 August" when="holds('pieced', ['torn_page'])">
   @elias: Aug. 30th. Seaward rail rotten at both bolts. Wrote to the Board for a new one. Wrote again.
   @elias: If they will not pay, somebody tell them what it costs. Their answer is behind A.'s photograph.
 </entry>
 
-<entry id="boardLetter" on="examine" target="item.requisition" category="item" title="The Board's letter" once="run" when="holds(pieced(torn_page))">
+<entry id="boardLetter" on="examine" target="item.requisition" category="item" title="The Board's letter" once="run" when="holds('pieced', ['torn_page'])">
   @narrator: Behind the photograph over the stove, folded small: a letter on the Board's paper, dated 3rd September.
   @narrator: "The Board regrets that no funds can be allotted for the renewal of the gallery rail at Skerry Rock in the present year."
   ::assert{refusedRepair(gallery_rail)}

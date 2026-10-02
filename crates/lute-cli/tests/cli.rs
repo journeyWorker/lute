@@ -1582,7 +1582,7 @@ fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
         &dir,
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-         run.written: { type: number, default: 0 }\n  run.unwritten: { type: number }\n\
+         run.written: { type: int, default: 0 }\n  run.unwritten: { type: int }\n\
          ---\n\n## One\n\n::set{ run.written = 2 }\n@narrator: a.\n",
     );
     let run = |name: &str, body: &str| {
@@ -1892,7 +1892,7 @@ fn coverage_names_a_def_match_as_authored() {
         &dir,
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
-         state:\n  run.n: { type: number, default: 0 }\ndefs:\n  high: \"run.n >= 3\"\n---\n\n## One\n\n\
+         state:\n  run.n: { type: int, default: 0 }\ndefs:\n  high: \"run.n >= 3\"\n---\n\n## One\n\n\
          <match on=\"@high\">\n<when is=\"true\">\n@narrator: high\n</when>\n<otherwise>\n@narrator: low\n</otherwise>\n</match>\n",
     );
     write_at(
@@ -1941,7 +1941,7 @@ fn check_on_a_yaml_schema_checks_it_as_a_schema_not_as_a_scene() {
     let dir = temp_dir("check-schema-kind");
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.trust: { type: number, default: 0 }\n",
+        "state:\n  run.trust: { type: int, default: 0 }\n",
     )
     .unwrap();
     let out = Command::new(BIN)

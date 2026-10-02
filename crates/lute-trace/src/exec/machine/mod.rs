@@ -1,5 +1,5 @@
-//! The one walker over a COMPILED artifact (the executable counterpart of
-//! `docs/runtime/` + `schemas/lute-ir-0.30.schema.json`), parameterised by a
+//! The one walker over a COMPILED execution IR (the executable counterpart of
+//! `docs/runtime/` + `schemas/lute-ir-0.32.schema.json`), parameterised by a
 //! [`Driver`] (`docs/design/runtime-unification.md` §3.2). `lute run`
 //! (`RunDriver`), `lute play` (`PlayDriver`) and `lute trace` / `lute test`
 //! (`TraceDriver`) execute through it.
@@ -160,13 +160,17 @@ impl From<&MockSet> for Seed {
 }
 
 /// The world a walk hands to the next one ([`Machine::into_carry`]), and
-/// what [`Machine::resume`] starts from (its `state`, `base_facts` and
-/// `quest_status`; the walk's own flags start cleared).
+/// what [`Machine::resume`] starts from (its `state`, `base_facts`,
+/// `quest_status` and save-wide quest instance counters; the walk's own flags
+/// start cleared).
 #[derive(Clone, Debug, Default)]
 pub struct Carry {
     pub state: BTreeMap<String, Value>,
     pub base_facts: BTreeSet<Fact>,
     pub quest_status: BTreeMap<String, String>,
+    /// Save-wide quest instance number, keyed by quest id. The first
+    /// activation is instance 1; resets never clear this map.
+    pub quest_instances: BTreeMap<String, u64>,
     /// A decision was reached with no pick, or (quest advance) an active
     /// quest's required objective is undecidable, or the driver halted at
     /// an unknown.
@@ -202,10 +206,23 @@ impl Carry {
     }
 }
 
-/// The reference engine over one artifact. `lute play` drives one Machine
-/// per presented beat and per quest-lifecycle advance, threading
-/// state/facts/quest status across instances via [`Carry`] /
-/// [`Machine::resume`] — never a second dispatcher.
+/// A read-only snapshot supplied to an [`EvalObserver`].
+pub struct EvalSnapshot<'a> {
+    pub state: &'a BTreeMap<String, Value>,
+    pub state_types: &'a BTreeMap<String, String>,
+    pub base_facts: &'a BTreeSet<crate::datalog::Fact>,
+    pub facts: &'a BTreeSet<crate::datalog::Fact>,
+    pub visited: &'a BTreeSet<String>,
+    /// Bound engine occasion target, retained for condition dumps even when
+    /// the target is not part of the persistent state map.
+    pub occasion_target: Option<&'a str>,
+    pub quest_status: &'a BTreeMap<String, String>,
+    pub reads: &'a [(String, Read)],
+}
+
+/// A callback invoked for every CEL evaluation performed by a machine.
+pub type EvalObserver =
+    Box<dyn for<'a> FnMut(&str, &Value, &[UnresolvedAtom], EvalSnapshot<'a>)>;
 pub struct Machine<D: Driver> {
     driver: D,
     kind: String,
@@ -218,6 +235,7 @@ pub struct Machine<D: Driver> {
     /// placeholder renders a member by (`lute play` and `lute trace` fill
     /// it; empty renders the id).
     display_names: BTreeMap<String, String>,
+    occasion_target: Option<String>,
 
     /// State, facts, the closure and the visited set ([`Store`]).
     store: Store,
@@ -226,7 +244,8 @@ pub struct Machine<D: Driver> {
 
     /// Final quest statuses (quest-kind only).
     quest_status: BTreeMap<String, String>,
-
+    /// Save-wide quest instance numbers, carried with quest status.
+    quest_instances: BTreeMap<String, u64>,
     /// A `choice`/`hub` was reached with no decision (exit 3).
     incomplete: bool,
     /// An `end` record executed (dsl 0.8.0): the walk is OVER. Distinct from
@@ -249,6 +268,7 @@ pub struct Machine<D: Driver> {
     /// reads this; it exists for [`Carry`] to hand to `lute play`'s honesty
     /// gate (an unresolved surface halts it incomplete).
     unresolved: Vec<UnresolvedAtom>,
+    eval_observer: Option<EvalObserver>,
     /// `lute play` (dsl 0.21.0 §6, D-H): [`Machine::advance_quests`] RESUMES
     /// the quest lifecycle over carried-over state instead of starting a
     /// fresh walk — a quest keeps its carried status (only an `unset` quest
@@ -312,15 +332,45 @@ pub struct Machine<D: Driver> {
 }
 
 impl<D: Driver> Machine<D> {
+    /// Install an observer for every CEL evaluation in this walk.
+    pub fn with_eval_observer<F>(mut self, observer: F) -> Self
+    where
+        F: for<'a> FnMut(&str, &Value, &[UnresolvedAtom], EvalSnapshot<'a>) + 'static,
+    {
+        self.store.enable_read_capture();
+        self.eval_observer = Some(Box::new(observer));
+        self
+    }
+
     /// Evaluate a `raw` CEL fragment over live state + the closure, through
-    /// the one CEL evaluator. The one chokepoint every CEL evaluation in
-    /// this walk funnels through, so recording each produced
-    /// [`UnresolvedAtom`] into `self.unresolved` here covers guards, `::set`
-    /// values, and quest predicates alike. `lute play`'s honesty gate reads
-    /// it ([`Carry::unresolved`]); the returned atoms feed an
-    /// [`UnknownSite`].
+    /// the one CEL evaluator.
     fn eval_atoms(&mut self, raw: &str) -> (Value, Vec<UnresolvedAtom>) {
         let (v, atoms) = self.store.eval(raw);
+        if let Some(observer) = &mut self.eval_observer {
+            observer(
+                raw,
+                &v,
+                &atoms,
+                EvalSnapshot {
+                    state: &self.store.values,
+                    state_types: &self.store.types,
+                    base_facts: self.store.base_facts(),
+                    facts: self.store.all_facts(),
+                    visited: &self.store.visited,
+                    occasion_target: self
+                        .store
+                        .values
+                        .get(lute_check::beats::OCCASION_TARGET)
+                        .and_then(|v| match v {
+                            Value::Str(s) => Some(s.as_str()),
+                            _ => None,
+                        })
+                        .or(self.occasion_target.as_deref()),
+                    quest_status: &self.quest_status,
+                    reads: &self.store.last_reads,
+                },
+            );
+        }
         self.unresolved.extend(atoms.iter().cloned());
         (v, atoms)
     }
@@ -336,6 +386,7 @@ impl<D: Driver> Machine<D> {
         let (v, atoms) = self.eval_atoms(raw);
         match v {
             Value::Bool(b) => Some(b),
+            Value::Error(_) => Some(false),
             _ => {
                 self.at_unknown(site, raw, &atoms);
                 None
@@ -616,6 +667,7 @@ impl<D: Driver> Machine<D> {
         let before = self.unresolved.len();
         match self.eval_raw(raw) {
             Value::Bool(b) => Ok(b),
+            Value::Error(_) => Ok(false),
             _ => Err(self.unresolved.split_off(before)),
         }
     }
@@ -665,14 +717,22 @@ impl<'a> Site<'a> {
 /// divisor — is unknown (D5: never a guessed `0`).
 fn fold_op(op: &str, cur: &Value, by: &Value) -> Value {
     match (cur, by) {
-        (Value::Num(a), Value::Num(b)) => match op {
-            "+=" => Value::Num(a + b),
-            "-=" => Value::Num(a - b),
-            "*=" => Value::Num(a * b),
-            "/=" if *b != 0.0 => Value::Num(a / b),
-            _ => Value::Unknown,
+        (Value::Int(a), Value::Int(b)) => match op {
+            "+=" => a.checked_add(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())),
+            "-=" => a.checked_sub(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())),
+            "*=" => a.checked_mul(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())),
+            "/=" if *b != 0 => a.checked_div(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())),
+            "/=" => Value::Error("division by zero".into()),
+            _ => Value::Error("invalid compound assignment".into()),
         },
-        _ => Value::Unknown,
+        (Value::Double(a), Value::Double(b)) => match op {
+            "+=" => Value::Double(a + b),
+            "-=" => Value::Double(a - b),
+            "*=" => Value::Double(a * b),
+            "/=" => Value::Double(a / b),
+            _ => Value::Error("invalid compound assignment".into()),
+        },
+        _ => Value::Error("compound assignment requires matching numeric types".into()),
     }
 }
 
@@ -680,10 +740,31 @@ fn addr(cmd: &Json) -> &str {
     cmd.get("addr").and_then(Json::as_str).unwrap_or("")
 }
 
-/// The `raw` of a `{raw, expr}` CEL pair, when present and non-empty.
-fn cel_raw(pair: Option<&Json>) -> Option<String> {
-    pair.and_then(|p| p.get("raw"))
+/// The canonical CEL text of a slot in an execution-IR `{cel, expr}` pair.
+fn cel_raw(pair: Option<&Json>) -> Option<&str> {
+    pair.and_then(|p| p.get("cel"))
         .and_then(Json::as_str)
         .filter(|s| !s.trim().is_empty())
-        .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fold_op;
+    use crate::Value;
+
+    #[test]
+    fn compound_double_division_by_zero_follows_ieee() {
+        assert_eq!(
+            fold_op("/=", &Value::Double(1.0), &Value::Double(0.0)),
+            Value::Double(f64::INFINITY)
+        );
+        assert!(matches!(
+            fold_op("/=", &Value::Double(0.0), &Value::Double(0.0)),
+            Value::Double(v) if v.is_nan()
+        ));
+        assert!(matches!(
+            fold_op("/=", &Value::Int(1), &Value::Int(0)),
+            Value::Error(_)
+        ));
+    }
 }

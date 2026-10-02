@@ -4,10 +4,10 @@ id: lore.places
 title: Searching the ford
 ---
 
-<entry id="millPassage" on="explore" target="place.mill" category="search" title="The millrace" priority="10" spentBy="holds(knows(passage))" when="quest.hostages.state == 'active'">
+<entry id="millPassage" on="explore" target="place.mill" category="search" title="The millrace" priority="10" spentBy="holds('knows', ['passage'])" when="quest.hostages.state == 'active'">
   @narrator: The wheel is chained. Under it, the millrace should be loud, and it is not: someone has dammed it with sacking.
   @wren{when="@wrenWithUs"}: Smell that? Lamp oil. Nobody burns oil underwater unless there's air down there. There's a smugglers' cut under the race.
-  @corvin{when="holds(inParty(corvin))"}: There's always a smugglers' cut. I'm almost offended nobody told me.
+  @corvin{when="holds('inParty', ['corvin'])"}: There's always a smugglers' cut. I'm almost offended nobody told me.
   ::assert{knows(passage)}
 </entry>
 
@@ -15,7 +15,7 @@ title: Searching the ford
   @narrator: Flour dust, a cold hearth, and the black sun painted on the inside of the door as well. As if to be sure.
 </entry>
 
-<entry id="ninthWagon" on="explore" target="place.wagons" category="search" title="The twelfth crate" priority="10" spentBy="holds(knows(ledger))" when="holds(inParty(corvin)) && run.approval.corvin >= 1">
+<entry id="ninthWagon" on="explore" target="place.wagons" category="search" title="The twelfth crate" priority="10" spentBy="holds('knows', ['ledger'])" when="holds('inParty', ['corvin']) && run.approval.corvin >= 1">
   @corvin: Ninth wagon, twelfth crate. Keep the lantern low.
   @narrator: No silver. Paper. A Company ledger, stamped and sealed, listing farms by name: Coldwater, Pell's Reach, Harrow Top. Beside each name, one word. Burned.
   @corvin: Well. That's worth more than silver. To someone.

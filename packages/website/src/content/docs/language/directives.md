@@ -361,8 +361,8 @@ relations:
 @recruiter: Think it over. The pay is good.
 ::assert{hasItem(nugget) when="!run.pitchHeard"}
 ::set{run.pitchHeard = true}
-::accept{quest="recruiterJob" when="holds(hasItem(nugget))"}
-@narrator{when="holds(hasItem(nugget))"}: The nugget is heavy in your pocket.
+::accept{quest="recruiterJob" when="holds('hasItem', ['nugget'])"}
+@narrator{when="holds('hasItem', ['nugget'])"}: The nugget is heavy in your pocket.
 ```
 
 A guarded directive compiles to a one-arm `match` around it: when the condition is false, it is

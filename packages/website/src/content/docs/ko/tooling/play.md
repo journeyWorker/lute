@@ -351,9 +351,9 @@ rewardKinds:
 
 ```yaml
 state:
-  run.floor:   { type: number, default: 0, owner: engine }
-  user.runs:   { type: number, default: 0, owner: engine }
-  user.embers: { type: number, default: 0 }
+  run.floor:   { type: int, default: 0, owner: engine }
+  user.runs:   { type: int, default: 0, owner: engine }
+  user.embers: { type: int, default: 0 }
 entities:
   person: { members: [maud, oskar] }
   foe:    { members: [warden, hound] }
@@ -368,11 +368,11 @@ rules:
 ```
 
 비트: `town.idle`은 매번 `townVisit`에 응답하고(`once: false`), `town.victory`(priority 10,
-`when: "!holds(threat(warden))"`, 역시 `once: false`)는 워든이 더 이상 위협이 아니게 되는 순간 그보다
+`when: "!holds('threat', ['warden'])"`, 역시 `once: false`)는 워든이 더 이상 위협이 아니게 되는 순간 그보다
 앞섭니다. `maud.talk`는 `npc.maud`를 위한 `talk`에 응답하고, 오스카의 [번들 비트](#번들-비트) 둘 —
 `oskar.hunt`와 곁들이는 대사 `oskar.rumor` — 는 `npc.oskar`를 위한 `talk`에 응답합니다.
 `start.gear`(priority 10, `once: false`)와 `start.recap`(`once: false`,
-`when: "isSet(prev.run.floor)"`, [지난 런](#런-경계)의 층수)은 `runStart`에 응답하고, 엔트리 셋이
+`when: "has(prev.run.floor)"`, [지난 런](#런-경계)의 층수)은 `runStart`에 응답하고, 엔트리 셋이
 `board`에 응답합니다 — `notice`(`once="user"`), `memo`(`once="run"`), `old`
 (`when="entry.notice.everRead"`). 퀘스트 문서 하나에 퀘스트 셋이 있고, 모두 `start="true"`입니다:
 
@@ -399,8 +399,8 @@ rules:
 ```lute
 <quest id="houndHunt" title="The hound's collar">
   <reward kind="EMBERS" amount="50"/>
-  <objective id="collar" title="Take the collar before floor four" done="holds(slew(hound))" by="run.floor >= 4"/>
-  <objective id="report" title="Bring it to Oskar" on="talk" target="npc.oskar" done="holds(slew(hound))"/>
+  <objective id="collar" title="Take the collar before floor four" done="holds('slew', ['hound'])" by="run.floor >= 4"/>
+  <objective id="report" title="Bring it to Oskar" on="talk" target="npc.oskar" done="holds('slew', ['hound'])"/>
   <on event="questFailed">
     @oskar: Floor four already? Then it's gone to ground.
   </on>
@@ -469,11 +469,11 @@ expect:                                   # assert the end of the play
 문법을 씁니다.
 
 - `state:` 시드는 선언된 경로 — `scene.*`는 안 됨 — 를 가리키며, 값은 선언된 타입에 맞아야
-  합니다(`number`면 숫자, enum이면 멤버). 그 밖의 경우는 사용법 오류(종료 코드 2)입니다.
+  합니다(숫자 경로면 `int` 또는 `double`, enum이면 멤버). 그 밖의 경우는 사용법 오류(종료 코드 2)입니다.
   `quest.<id>.state` 시드(`state: { quest.lostCup.state: active }`)는 `quests:` 항목과 똑같이 처음부터
   그 퀘스트의 라이프사이클 상태가 되고, `quest.<id>.objectives.<oid>.done: true` 시드는 세이브가 이미
-  완료한 목표입니다 — [세이브에서 시작하기](#세이브에서-시작하기)를 보세요. `prev.run.<path>`
-  시드(dsl 0.23.0)는 지난 런이 끝났을 때 `run.<path>`가 가졌던 값이며, 그 run 경로의 타입을 따릅니다 —
+  완료한 목표입니다 — [세이브에서 시작하기](#세이브에서-시작하기)를 보세요. `prev.run.<path>` 시드(dsl 0.23.0)는
+  지난 런이 끝났을 때 `run.<path>`가 가졌던 값이며, 그 run 경로의 타입을 따릅니다 —
   [런 경계](#런-경계)를 보세요.
 - `facts:` 항목은 선언된 비파생 관계의 그라운드 원자로, 인자 수가 맞고 닫힌 인자 도메인의 멤버를 써야
   합니다. **예약된(reserved)** 관계도 허용됩니다 — 그것을 단언하는 주체가 바로 엔진입니다.
@@ -503,7 +503,7 @@ expect:                                   # assert the end of the play
   `engine: { facts: [canEnter(office)] }`를 가진 `- occasion: enter`는 한 스텝에 문을 열고 들어갑니다.
 - [`raisedWhen:` 관문](/plugins/manifests/)을 선언한 계기는 관문이 성립하는 동안에만 발생합니다(dsl 0.27.0 §4).
   관문이 거짓일 때 그 계기를 발생시키는 스텝은 플레이를 멈춥니다(종료 코드 1):
-  `` step 1: E-OCCASION-GATE: the engine raises `enter` for `room.office` only when `holds(canEnter(occasion.target))` (its `raisedWhen`), which is false here since `canEnter(office)` does not hold — make it hold first (an `engine:` write, an earlier step), or drop the step ``.
+  `` step 1: E-OCCASION-GATE: the engine raises `enter` for `room.office` only when `holds('canEnter', [occasion.target])` (its `raisedWhen`), which is false here since `canEnter(office)` does not hold — make it hold first (an `engine:` write, an earlier step), or drop the step ``.
   멈춤은 적힌 스텝 자리(`plays/locked.play.yaml:2:5: step 1: …`)에 위치가 잡히고, 관문을 거짓으로 만든 읽기를
   댑니다 — 유도 사실이면 그 규칙이 놓친 전제까지. `lute test`도 관문이 있는 계기의 비트를 같은 규칙으로
   판정합니다: 그런 비트에 대한 `eligible: true`는 관문과 그 거짓 읽기(또는 성립한 `terminal:`)를 대며
@@ -553,7 +553,7 @@ steps:
 
 `{ engine: { state?, facts?, retract?, accept? } }`는 엔진이 계기 사이에 하듯이 엔진이 소유한 것을 씁니다:
 
-- `state:` — 선언된 경로 → 리터럴, 또는 `number` 경로의 현재 값에 더하는 `{ add: <number> }`. 선언되지
+- `state:` — 선언된 경로 → 리터럴, 또는 `int` 경로의 현재 값에 더하는 `{ add: <int> }`. 선언되지
   않은 경로, `scene.*`, `quest.*` 경로는 거부됩니다: 퀘스트 상태는 전이가 핸들러와 보상을 발동시키는
   퀘스트 라이프사이클의 것이니, 세이브의 퀘스트 상태는 최상위 `quests:`로 시드하세요.
 - `facts:` / `retract:` — 선언된 기반 관계의 그라운드 원자, **예약된 관계 포함**. 최상위 `facts:`와 같은
@@ -847,7 +847,7 @@ steps:
 
 ```yaml
 state:
-  run.day:  { type: number, default: 1, owner: engine }
+  run.day:  { type: int, default: 1, owner: engine }
   run.slot: { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }
 clock:
   day: run.day
@@ -962,7 +962,7 @@ steps:
 
 ```yaml
 state:
-  run.day:  { type: number, default: 1, owner: engine }
+  run.day:  { type: int, default: 1, owner: engine }
   run.slot: { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }
 clock:
   day: run.day
@@ -1099,8 +1099,8 @@ it when a run starts, declare `raiseAtStart: true` on the clock ``. 시계가 `r
 
 ```yaml
 state:
-  run.day: { type: number, default: 1, owner: engine }
-  run.leg: { type: number, default: 0, owner: engine }
+  run.day: { type: int, default: 1, owner: engine }
+  run.leg: { type: int, default: 0, owner: engine }
 clock:
   day: run.day
   raise: { slot: morning, dayEnd: dusk }
@@ -1483,7 +1483,7 @@ steps:
 `climb`(`tier="run"`)은 처음부터 다시 시작하지만 `veteran`은 계속 셉니다.
 
 [`prev.run.<path>`](/state/state-model/#the-previous-run)는 읽기 전용이고 런이 한 번 끝나기 전까지
-`unset`이므로, 콘텐츠는 가드해야 합니다(`isSet(prev.run.floor)`). 탑의 `start.recap`이 그렇게 하며,
+`unset`이므로, 콘텐츠는 가드해야 합니다(`has(prev.run.floor)`). 탑의 `start.recap`이 그렇게 하며,
 [계기 조합하기](#계기-조합하기)가 `newRun` 뒤의 모습을 보여 줍니다. 세이브 중간에서 시작하는 스크립트는
 다른 경로처럼 시드합니다 — `state: { prev.run.floor: 5 }` — 그러면 첫 `runStart`가 회상을
 `Floor 5 last time.`로 재생합니다.
@@ -2049,7 +2049,7 @@ steps:
   없다면 `- { passed: true }`로 충분하고 아래의 힌트도 `passed`만 요구합니다. 읽지 않는 필드를 주어도 됩니다.
   알 수 없는 태그, 어떤 효과도 읽지 않는 필드, 콘텐츠가 읽는데 빠진 필드, 맞지 않는 값은 아무것도 재생하기
   전의 사용법 오류(종료 코드 2)입니다:
-  `` top level: `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }` (dsl 0.25.0 §7) ``.
+  `` top level: `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <int> }` (dsl 0.25.0 §7) ``.
   철자가 틀린 태그에는 did-you-mean이 붙습니다.
 - **스텝의 응답이 먼저.** 스텝 자신의 `bridges:`는 최상위 대기열보다 먼저 그 스텝의 호출이 소비합니다.
   스텝이 소비하지 않고 남긴 응답은 스텝을 실패시킵니다(종료 코드 1) — 무언가를 정하려고 쓴 응답이 아무것도
@@ -2076,7 +2076,7 @@ steps:
 ```
   → gate.guards
 ::check{skill="persuasion" dc="12" resultKey="guards"}        (bridge unanswered: passed, margin)
-── halted: scene `gate.guards` (scenes/gate/guards.lute): plugin call `check` reads a bridge result and has no answer — give one with `bridges: { check: [ { passed: <bool>, margin: <number> } ] }` (top level or on the step) ──────────────
+── halted: scene `gate.guards` (scenes/gate/guards.lute): plugin call `check` reads a bridge result and has no answer — give one with `bridges: { check: [ { passed: <bool>, margin: <int> } ] }` (top level or on the step) ──────────────
 ```
 
 `--json`에서 호출의 `plugin` 레코드에는 `"answered": [{ "field": "passed", "value": true }, …]`가, 워크가
@@ -2216,8 +2216,8 @@ $ lute play tower --script tower/plays/night.play.yaml --no-derive
   quest notices -> active
 ── step 1 · townVisit ──────────────
   ✓ town.idle [scene, priority 0]
-  ? town.victory [scene, priority 10] — when: unknown (`!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined)
-── halted: step 1: the `when` of scene `town.victory` (scenes/town-victory.lute) decides the townVisit outcome but `!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
+  ? town.victory [scene, priority 10] — when: unknown (`!holds('threat', ['warden'])` evaluates unknown: fact `threat(warden)` is undetermined)
+── halted: step 1: the `when` of scene `town.victory` (scenes/town-victory.lute) decides the townVisit outcome but `!holds('threat', ['warden'])` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
 ```
 
 `--explain <atom>`(반복 가능)은 플레이가 끝난 뒤 그라운드 원자가 끝에서 왜 성립하는지, 또는 왜 성립하지
@@ -2335,7 +2335,7 @@ explain safe(warden): holds
   `pick`.
 - `event:`가 선언된 월드 이벤트를 가리키지 않거나, 퀘스트 라이프사이클 이벤트를 가리킴.
 - `engine:`이나 `newRun` 쓰기가 선언되지 않았거나 `scene.*` / `quest.*`인 경로, 선언된 타입에 맞지 않는
-  값, `number`가 아닌 경로의 `{ add: … }`, 또는 그라운드가 아니거나 선언되지 않았거나 파생된 관계를
+  값, `int`가 아닌 경로의 `{ add: … }`, 또는 그라운드가 아니거나 선언되지 않았거나 파생된 관계를
   가리키거나 인자 수가 틀리거나 닫힌 도메인의 멤버가 아닌 팩트를 가짐. `engine: { accept }`가 수락 방식이
   아닌 퀘스트를 가리킴. 또는 아무것도 쓰지 않음.
 - `state:` / `facts:` 시드가 같은 검사에 실패하거나, 세이브 시드가 알 수 없는 id나 퀘스트 상태를 가리킴.
@@ -2784,8 +2784,8 @@ occasions:
 
 ```yaml
 state:
-  run.day:        { type: number, default: 1, owner: engine }
-  user.bond.mara: { type: number, default: 0 }
+  run.day:        { type: int, default: 1, owner: engine }
+  user.bond.mara: { type: int, default: 0 }
 
 entities:
   npc:  { members: [mara, tomas] }
@@ -2830,7 +2830,7 @@ defs:
 
 ```lute
 <quest id="lampOut" title="The lamp by the door">
-  <objective id="ask" title="Ask Tomas about the oil" done="holds(knows(lamp))"/>
+  <objective id="ask" title="Ask Tomas about the oil" done="holds('knows', ['lamp'])"/>
   <objective id="wait" title="Wait for the day to end" on="dayEnd" done="run.day >= 2"/>
   <on event="questComplete">
     @narrator: By morning the lamp by the door is burning again.

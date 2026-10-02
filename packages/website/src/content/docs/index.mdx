@@ -112,7 +112,7 @@ episode: 2
 title: The Hostess with a Name
 pov: fixer
 state:
-  scene.affect.marina: { type: number, default: 0 }
+  scene.affect.marina: { type: int, default: 0 }
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 defs:
@@ -201,7 +201,7 @@ relations:
   found:   { args: [clue], tier: run }
   accused: { args: [suspect], tier: run }
 state:
-  run.caseProgress: { type: number, default: 0 }
+  run.caseProgress: { type: int, default: 0 }
 ---
 
 ## The Study
@@ -213,7 +213,7 @@ state:
     @detective: A cufflink, wedged behind the drawer.
     ::assert{ found(cufflink) }
   </choice>
-  <choice id="confront" label="Confront Mireille with the ledger" when="holds(found(ledger))">
+  <choice id="confront" label="Confront Mireille with the ledger" when="holds('found', ['ledger'])">
     @mireille: ...You've read it, then. Fine.
     ::assert{ accused(mireille) }
     ::set{run.caseProgress += 1}
@@ -236,7 +236,7 @@ state:
 <div class="rpg-outcome" role="group" aria-label="Investigation outcome">
 
 **Clue discovered** — `found(cufflink)` lands in the run fact store; the `confront`
-choice unlocks because `holds(found(ledger))` already holds.
+choice unlocks because `holds('found', ['ledger'])` already holds.
 
 **Quest updated** — `run.caseProgress` advances, and the closing `<match>` flips to
 *"A name, a motive. The case has a spine now."*

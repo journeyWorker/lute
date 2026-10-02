@@ -215,7 +215,7 @@ When the engine raises occasion `O`, optionally for target `T`:
      `id`, evaluated as it is for any scene (`quest-lifecycle.md`); an entry
      has no `after:`;
    - its `when` is absent or evaluates true against live state and facts
-     (`evalSlot(when.raw, when.expr, …)`, `execution-model.md`) at the moment
+     (`evalSlot(when.cel, when.expr, …)`, `execution-model.md`) at the moment
      the occasion is raised;
    - a beat's `once` is not spent. A scene beat: `run` — not yet presented
      this run; `user` — never presented; `none` — never spent. An entry beat:
@@ -305,14 +305,14 @@ function isEligible(beat: IndexBeat, state, facts, presented: Presented) {
     if (beat.once === "run" && (state.get(`entry.${beat.id}.read`) || presented.run.has(beat.id))) return false;
     if (beat.once === "user" && (state.get(`entry.${beat.id}.everRead`) || presented.user.has(beat.id))) return false;
     const { when, spentBy } = entryRecord(beat.id);
-    if (spentBy && truthy(evalSlot(spentBy.raw, spentBy.expr, state, facts))) return false; // dsl 0.27.0 §5
-    return !when || truthy(evalSlot(when.raw, when.expr, state, facts));
+    if (spentBy && truthy(evalSlot(spentBy.cel, spentBy.expr, state, facts))) return false; // dsl 0.27.0 §5
+    return !when || truthy(evalSlot(when.cel, when.expr, state, facts));
   }
   const artifact = beatArtifact(beat);  // the scene's, or the lore artifact holding the `beat` record
   const { when, once, spentBy } = beatDecl(beat); // meta.beat, or the `beat` record
   if (!afterHolds(artifact, beat.id, state, facts)) return false; // prereqEdges row for beat.id
-  if (when && !truthy(evalSlot(when.raw, when.expr, state, facts))) return false;
-  if (spentBy && truthy(evalSlot(spentBy.raw, spentBy.expr, state, facts))) return false; // dsl 0.27.0 §5
+  if (when && !truthy(evalSlot(when.cel, when.expr, state, facts))) return false;
+  if (spentBy && truthy(evalSlot(spentBy.cel, spentBy.expr, state, facts))) return false; // dsl 0.27.0 §5
   if (once === "run" && presented.run.has(beat.id)) return false;
   if (once === "user" && presented.user.has(beat.id)) return false;
   return true;

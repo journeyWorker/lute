@@ -110,7 +110,7 @@ fn head_const_is_domain_checked() {
 
 #[test]
 fn guard_with_fact_query_is_guard_fact() {
-    let front = format!("{VOCAB}state:\n  run.act: {{ type: number, default: 1 }}\nrules:\n  - \"ally(A, A) :- faction(A), cel(\\\"holds(hostile(harpers, absolute))\\\")\"\n");
+    let front = format!("{VOCAB}state:\n  run.act: {{ type: int, default: 1 }}\nrules:\n  - \"ally(A, A) :- faction(A), cel(\\\"holds('hostile', ['harpers', 'absolute'])\\\")\"\n");
     let c = codes(&scene_with(&front));
     assert!(c.contains(&"E-DATALOG-GUARD-FACT".to_string()), "{c:?}");
 }
@@ -124,7 +124,7 @@ fn now_in_guard_is_guard_fact_and_clean_scalar_guard_is_fine() {
         now.contains(&"E-DATALOG-GUARD-FACT".to_string()),
         "D7: {now:?}"
     );
-    let ok = codes(&scene_with(&format!("{VOCAB}state:\n  run.act: {{ type: number, default: 1 }}\nrules:\n  - \"ally(A, A) :- faction(A), cel(\\\"run.act == 1\\\")\"\n")));
+    let ok = codes(&scene_with(&format!("{VOCAB}state:\n  run.act: {{ type: int, default: 1 }}\nrules:\n  - \"ally(A, A) :- faction(A), cel(\\\"run.act == 1\\\")\"\n")));
     assert!(
         !ok.iter()
             .any(|k| k == "E-DATALOG-GUARD-FACT" || k == "E-CEL-PROFILE"),
@@ -219,7 +219,7 @@ fn negation_cycle_spanning_two_files_is_caught_post_merge() {
 
 #[test]
 fn guard_taint_propagates_to_downstream_readers() {
-    let front = "entities:\n  faction: { members: [harpers, absolute] }\nrelations:\n  hostile: { args: [faction, faction], tier: run }\n  guarded: { args: [faction], derive: true }\n  downstream: { args: [faction], derive: true }\n  clean: { args: [faction], derive: true }\nstate:\n  run.act: { type: number, default: 1 }\nrules:\n  - \"guarded(A) :- faction(A), cel(\\\"run.act == 1\\\")\"\n  - \"downstream(A) :- guarded(A)\"\n  - \"clean(A) :- faction(A)\"\n";
+    let front = "entities:\n  faction: { members: [harpers, absolute] }\nrelations:\n  hostile: { args: [faction, faction], tier: run }\n  guarded: { args: [faction], derive: true }\n  downstream: { args: [faction], derive: true }\n  clean: { args: [faction], derive: true }\nstate:\n  run.act: { type: int, default: 1 }\nrules:\n  - \"guarded(A) :- faction(A), cel(\\\"run.act == 1\\\")\"\n  - \"downstream(A) :- guarded(A)\"\n  - \"clean(A) :- faction(A)\"\n";
     let tainted = guard_tainted(&scene_with(front));
     assert!(tainted.contains("guarded"), "directly guarded: {tainted:?}");
     assert!(

@@ -15,7 +15,7 @@ title: Eastmarch routes 5-8
 
 <beat id="r5First" on="enterRoute" target="route.r5" title="Route 5" priority="20">
   @narrator: Route 5 climbs out of Portvolt through long meadow grass. Far ahead, a dark mouth in the hillside: the Lantern Tunnel.
-  @narrator{when="!holds(canPass(rockTunnel))"}: Even from here the tunnel looks black all the way through.
+  @narrator{when="!holds('canPass', ['rockTunnel'])"}: Even from here the tunnel looks black all the way through.
 </beat>
 
 <entry id="eastR5Morning" on="enterRoute" target="route.r5" category="ambient" priority="5" once="day" when="@isMorning">

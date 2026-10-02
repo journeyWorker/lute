@@ -21,7 +21,7 @@ use crate::project::gate::project_gate_result;
 /// `--all` REQUIRES the project directory — `--project <dir>`, or the
 /// positional `<dir>` (it has no other way to know which documents belong
 /// to the project, and the capability snapshot resolves per project) — and
-/// `-o <dir>` (there is no single artifact to put on stdout). It takes no
+/// `-o <dir>` (there is no single execution IR to put on stdout). It takes no
 /// `<file>`: naming one would imply the other documents are somehow
 /// secondary, which they are not. Every violation is exit `2`, the
 /// usage tier — clap cannot express these dependencies itself, so they are
@@ -69,7 +69,7 @@ pub(crate) fn dispatch_compile(
         usage.push("--all requires the project directory, `--all <DIR>` or `--project <DIR>` (the document set and capability snapshot both resolve per project)".to_string());
     }
     if out.is_none() {
-        usage.push("--all requires -o <DIR>, an output DIRECTORY (there is no single artifact to write to stdout)".to_string());
+        usage.push("--all requires -o <DIR>, an output DIRECTORY (there is no single execution IR to write to stdout)".to_string());
     }
     if let Some(file) = file {
         usage.push(format!(
@@ -100,15 +100,15 @@ pub(crate) fn dispatch_compile(
     )
 }
 
-/// Run `compile` over one file. Exit `0` with the artifact on stdout (or
+/// Run `compile` over one file. Exit `0` with the execution IR on stdout (or
 /// `-o <FILE>`), `1` when the check gate fails (diagnostics to stdout,
 /// human or `--json`), `2` on I/O or serialization failure.
 ///
-/// With `--locales <bundle.json>` the compiled artifact additionally carries
+/// With `--locales <bundle.json>` the compiled execution IR additionally carries
 /// per-record locale texts ([`load_locale_bundle`] then
 /// [`lute_compile::locale::merge_locales`], dsl 0.8.0 §7). Any resulting
-/// `W-L10N-MISSING` prints to STDERR — stdout may be carrying the artifact —
-/// and, when `--deny` promotes it, flips the verdict to `1` with NO artifact
+/// `W-L10N-MISSING` prints to STDERR — stdout may be carrying the execution IR —
+/// and, when `--deny` promotes it, flips the verdict to `1` with NO execution IR
 /// written.
 fn run_compile(
     file: &Path,
@@ -121,7 +121,7 @@ fn run_compile(
     policy: &DenyPolicy,
 ) -> ExitCode {
     // Loaded BEFORE the compile so a malformed bundle fails fast, before any
-    // work — and, with `-o`, before the previous artifact is overwritten.
+    // work — and, with `-o`, before the previous execution IR is overwritten.
     let bundle = match locales.map(load_locale_bundle).transpose() {
         Ok(b) => b,
         Err(code) => return code,
@@ -167,7 +167,7 @@ fn run_compile(
     };
 
     // A component is not a root document (see [`component_root_diag`]): there is
-    // no standalone artifact to emit. Refused AFTER the gate, so a component
+    // no standalone execution IR to emit. Refused AFTER the gate, so a component
     // with real check errors still reports them.
     let compiled = match component_name_of(file).filter(|_| gate.ok) {
         Some((component, at)) => Err(vec![component_root_diag(&component, at)]),
@@ -180,20 +180,20 @@ fn run_compile(
             // which is the ONLY key a bundle joins on.
             if let Some(bundle) = &bundle {
                 let missing = lute_compile::locale::merge_locales(&mut artifact, bundle);
-                // STDERR, not stdout: without `-o` the artifact itself is on
+                // STDERR, not stdout: without `-o` the execution IR itself is on
                 // stdout, and a warning line in the middle of it would make
                 // the compile output unparseable.
                 eprint!("{}", render_diagnostics(file, &missing, policy));
                 let denied = missing.iter().filter(|d| policy.denied(d)).count();
                 if denied > 0 {
-                    eprintln!("--deny promoted {denied} diagnostic(s); no artifact emitted");
+                    eprintln!("--deny promoted {denied} diagnostic(s); no execution IR emitted");
                     return ExitCode::FAILURE;
                 }
             }
             let mut s = match serde_json::to_string_pretty(&artifact) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("lute: failed to serialize artifact: {e}");
+                    eprintln!("lute: failed to serialize execution IR: {e}");
                     return ExitCode::from(2);
                 }
             };
@@ -243,7 +243,7 @@ fn run_compile(
                     .iter()
                     .filter(|d| d.severity == Severity::Error)
                     .count();
-                let _ = writeln!(s, "{errors} error(s); no artifact emitted");
+                let _ = writeln!(s, "{errors} error(s); no execution IR emitted");
                 s
             };
             if write_stdout(&s).is_err() {

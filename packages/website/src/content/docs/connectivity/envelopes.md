@@ -38,7 +38,7 @@ envelope for scene(narrator.s01ep02) (pre-entry — state available when control
   Guaranteed facts (hold on every declared route reaching this node):
     (none)
   Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
-    - ./scenes/whileActive.lute:13:36: state path `run.kaiFound` is set under your declared routes on SOME routes reaching this node, but not every one — not yet guaranteed; order this scene `after:` a scene every route passes that sets it, or guard the read with `isSet(run.kaiFound)`
+    - ./scenes/whileActive.lute:13:36: state path `run.kaiFound` is set under your declared routes on SOME routes reaching this node, but not every one — not yet guaranteed; order this scene `after:` a scene every route passes that sets it, or guard the read with `has(run.kaiFound)`
 ```
 
 Swap that node's `after` to `completed("findkai")` and `run.kaiFound` moves into Guaranteed, leaving `Possible \ Guaranteed` empty. (`run.greeted` carries a schema `default`, so it is in `D` and guaranteed under both.)
@@ -72,7 +72,7 @@ $ lute scenario docs/examples/haven envelope haven.s01ep09
 …
 ```
 
-Episode 6 asserts all three of Ottavio's facts outside any branch, and every route to ep09 passes through it, so a guard `holds(found(ottavio))` in ep09 could never close — which is why that scene's `listTheMass` choice carries none. `knows(vesna, manifest)` is absent even though three other documents assert it: none of them lies on every route to ep09 (hydroponics is one of two alternatives, the archive is optional, and the purser ledger's assert holds only inside its own lore entry, which the engine presents at a time of its choosing). When `check-project` reports `W-FACT-GUARANTEED` on a guard, this table is where the fact comes from. With `--format json` the same list is `envelope.guaranteedFacts`, an array of `{ "fact", "establishedBy" }` objects.
+Episode 6 asserts all three of Ottavio's facts outside any branch, and every route to ep09 passes through it, so a guard `holds('found', ['ottavio'])` in ep09 could never close — which is why that scene's `listTheMass` choice carries none. `knows(vesna, manifest)` is absent even though three other documents assert it: none of them lies on every route to ep09 (hydroponics is one of two alternatives, the archive is optional, and the purser ledger's assert holds only inside its own lore entry, which the engine presents at a time of its choosing). When `check-project` reports `W-FACT-GUARANTEED` on a guard, this table is where the fact comes from. With `--format json` the same list is `envelope.guaranteedFacts`, an array of `{ "fact", "establishedBy" }` objects.
 
 ## Quest addressing
 

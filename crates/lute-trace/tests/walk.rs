@@ -215,7 +215,7 @@ fn forcing_false_guard_is_refused() {
                 ---\n\
                 ## Shot 1.\n\
                 <branch id=\"approach\">\n\
-                <choice id=\"soft\" label=\"Soft\" when=\"holds(claims(halsin))\">\n@narrator: a\n</choice>\n\
+                <choice id=\"soft\" label=\"Soft\" when=\"holds('claims', ['halsin'])\">\n@narrator: a\n</choice>\n\
                 <choice id=\"blunt\" label=\"Blunt\">\n@narrator: b\n</choice>\n\
                 </branch>\n";
     let input = input_for(text, "forced-false", Path::new("."));
@@ -230,7 +230,7 @@ fn forcing_false_guard_is_refused() {
     // authored, the fact that does not hold, and the mock that opens it.
     assert!(
         d.message
-            .contains("its guard `holds(claims(halsin))` decided false")
+            .contains("its guard `holds('claims', ['halsin'])` decided false")
             && d.message.contains("`claims(halsin)` does not hold")
             && d.message.contains("(mock `--fact \"claims(halsin)\"`)"),
         "{}",
@@ -254,7 +254,7 @@ fn forcing_unknown_guard_is_forced() {
                 ---\n\
                 ## Shot 1.\n\
                 <branch id=\"approach\">\n\
-                <choice id=\"soft\" label=\"Soft\" when=\"holds(believes(halsin))\">\n@narrator: a\n</choice>\n\
+                <choice id=\"soft\" label=\"Soft\" when=\"holds('believes', ['halsin'])\">\n@narrator: a\n</choice>\n\
                 <choice id=\"blunt\" label=\"Blunt\">\n@narrator: b\n</choice>\n\
                 </branch>\n";
     let input = input_for(text, "forced-unknown", Path::new("."));
@@ -312,6 +312,25 @@ fn unknown_match_guard_halts_exit3() {
     assert!(report.decisions.iter().all(|d| d.construct != "match"));
 }
 
+/// An `is=` arm over an unset subject is definitely false in the trace
+/// preview (the shorthand compares a value the subject does not have), so an
+/// unseeded subject falls through to its `is="unset"` arm instead of halting —
+/// unlike the `test=` arm above, whose condition is opaque to the preview.
+#[test]
+fn is_arms_over_an_unset_subject_fall_through_to_the_unset_arm() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.y: { type: { enum: [eel, choir] } }\n---\n\
+                ## Shot 1.\n\
+                <match on=\"run.y\">\n\
+                <when is=\"eel\">\n@narrator: eel\n</when>\n\
+                <when is=\"choir\">\n@narrator: choir\n</when>\n\
+                <when is=\"unset\">\n@narrator: nobody knows\n</when>\n\
+                </match>\n";
+    let input = input_for(text, "unset-is-arms", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+    assert_eq!(match_decision(&report, "run.y").outcome, "arm 3");
+}
+
 // ---------------------------------------------------------------------
 // 6. no_arm_match_reports_and_continues — the §4.4 fourth outcome: every
 //    arm's guard decides `false` (none `unknown`), no `<otherwise>` ->
@@ -339,8 +358,8 @@ fn no_arm_match_reports_and_continues() {
                 ---\n\
                 ## Shot 1.\n\
                 <match on=\"run.flag\">\n\
-                <when is=\"true\" test=\"holds(claims(halsin))\">\n@narrator: true-gate\n</when>\n\
-                <when is=\"false\" test=\"holds(claims(halsin))\">\n@narrator: false-gate\n</when>\n\
+                <when is=\"true\" test=\"holds('claims', ['halsin'])\">\n@narrator: true-gate\n</when>\n\
+                <when is=\"false\" test=\"holds('claims', ['halsin'])\">\n@narrator: false-gate\n</when>\n\
                 </match>\n";
     let input = input_for(text, "no-arm-match", Path::new("."));
     // 0.21.1 (T1-12): `check` now refuses this shape — an `is=`+`test=` arm
@@ -411,7 +430,7 @@ fn hub_fixture() -> String {
 // 5/3" and "arms 1/3" (the last run overwrote the count).
 #[test]
 fn hub_loop_coverage_counts_distinct_picks_and_arms() {
-    let text = "---\nkind: scene\nid: lamp\nstate:\n  scene.n: { type: number, default: 0 }\n---\n\
+    let text = "---\nkind: scene\nid: lamp\nstate:\n  scene.n: { type: int, default: 0 }\n---\n\
                 ## Shot 1.\n\
                 <hub id=\"h\">\n\
                 <choice id=\"c1\" label=\"C1\">\n::set{scene.n += 1}\n\
@@ -845,7 +864,7 @@ fn never_completing_quest_text() -> String {
     "---\nkind: quest\nrelations:\n  claims: { args: [character], tier: run }\n\
      entities:\n  character: { members: [halsin] }\n---\n\
      <quest id=\"q\" start=\"true\">\n\
-     <objective id=\"o\" done=\"holds(claims(halsin))\"/>\n\
+     <objective id=\"o\" done=\"holds('claims', ['halsin'])\"/>\n\
      <on event=\"questActive\">\n@narrator: hi\n</on>\n\
      </quest>\n"
         .to_string()
@@ -886,7 +905,7 @@ fn matched_event_emits_no_unmatched_note() {
     let text = "---\nkind: quest\nrelations:\n  claims: { args: [character], tier: run }\n\
                 entities:\n  character: { members: [halsin] }\n---\n\
                 <quest id=\"q\" start=\"true\">\n\
-                <objective id=\"o\" done=\"holds(claims(halsin))\"/>\n\
+                <objective id=\"o\" done=\"holds('claims', ['halsin'])\"/>\n\
                 <on event=\"questActive\">\n@narrator: hi\n</on>\n\
                 <on event=\"npcSpoke\">\n@narrator: heard\n</on>\n\
                 </quest>\n";
@@ -1055,23 +1074,29 @@ fn mock_fact_over_asserted_relation_is_silent() {
 /// A number subject split into `..0`, `1..3`, `4..` plus `<otherwise>` —
 /// which arm fires pins down the inclusive-bound / open-end / real-gap
 /// semantics the trace runner reads through the shared classifier.
-fn range_match_text() -> String {
-    "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
-     state:\n  run.score: { type: number, default: 0 }\n---\n## Shot 1.\n\
-     <match on=\"run.score\">\n\
-     <when is=\"..0\">\n@narrator: low\n</when>\n\
-     <when is=\"1..3\">\n@narrator: mid\n</when>\n\
-     <when is=\"4..\">\n@narrator: high\n</when>\n\
-     <otherwise>\n@narrator: gap\n</otherwise>\n\
-     </match>\n"
-        .to_string()
+fn range_match_text(ty: &str) -> String {
+    let zero = if ty == "double" { "0.0" } else { "0" };
+    format!(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         state:\n  run.score: {{ type: {ty}, default: {zero} }}\n---\n## Shot 1.\n\
+         <match on=\"run.score\">\n\
+         <when is=\"..0\">\n@narrator: low\n</when>\n\
+         <when is=\"1..3\">\n@narrator: mid\n</when>\n\
+         <when is=\"4..\">\n@narrator: high\n</when>\n\
+         <otherwise>\n@narrator: gap\n</otherwise>\n\
+         </match>\n"
+    )
 }
 
-fn range_outcome(score: &str) -> String {
-    let input = input_for(&range_match_text(), "range-match", Path::new("."));
+fn range_outcome_typed(ty: &str, score: &str) -> String {
+    let input = input_for(&range_match_text(ty), "range-match", Path::new("."));
     let (report, exit) = trace_document(&input, state_mocks(&[("run.score", score)]));
     assert_complete(&exit);
     match_decision(&report, "run.score").outcome.clone()
+}
+
+fn range_outcome(score: &str) -> String {
+    range_outcome_typed("int", score)
 }
 
 #[test]
@@ -1090,9 +1115,10 @@ fn range_arm_open_ends_are_unbounded() {
 
 #[test]
 fn range_arms_leave_real_gaps_uncovered() {
-    // Numbers are real-valued: 3.5 sits between `1..3` and `4..`.
-    assert_eq!(range_outcome("3.5"), "otherwise");
-    assert_eq!(range_outcome("0.5"), "otherwise");
+    // A `double` subject is real-valued: 3.5 sits between `1..3` and `4..`.
+    assert_eq!(range_outcome_typed("double", "3.5"), "otherwise");
+    assert_eq!(range_outcome_typed("double", "0.5"), "otherwise");
+    assert_eq!(range_outcome_typed("double", "2.0"), "arm 2");
 }
 
 // ---------------------------------------------------------------------
@@ -1167,7 +1193,7 @@ fn a_branch_choose_list_is_consumed_in_presentation_order() {
 #[test]
 fn guarded_set_writes_only_when_its_guard_holds() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-                run.flag: { type: bool, default: false }\n  run.n: { type: number, default: 1 }\n---\n\
+                run.flag: { type: bool, default: false }\n  run.n: { type: int, default: 1 }\n---\n\
                 ## Shot 1.\n\
                 ::set{run.n += 4 when=\"run.flag\"}\n\
                 <match on=\"run.n\">\n<when test=\"$ == 5\">\n@narrator: five\n</when>\n\
@@ -1217,7 +1243,7 @@ fn guarded_set_writes_only_when_its_guard_holds() {
 /// content after the label plays, the content it skips does not, as in play.
 #[test]
 fn a_taken_next_continues_at_its_label() {
-    let text = "---\nkind: scene\nid: jump\nstate:\n  run.gold: { type: number, default: 0 }\n---\n\n## Door\n\n\
+    let text = "---\nkind: scene\nid: jump\nstate:\n  run.gold: { type: int, default: 0 }\n---\n\n## Door\n\n\
                 ::next{to=\"hall\" when=\"run.gold == 0\"}\n@narrator: The guard blocks the door.\n\n\
                 ## Hall\n\n::mark{id=\"hall\"}\n@narrator: The treasure hall.\n::set{run.gold += 10}\n";
     let input = input_for(text, "jump.lute", Path::new("."));
@@ -1236,7 +1262,7 @@ fn a_taken_next_continues_at_its_label() {
 /// the accept-driven sibling it names, as play does.
 #[test]
 fn a_handler_accept_activates_its_quest() {
-    let text = "---\nkind: quest\nstate:\n  run.fish: { type: number, default: 1 }\n---\n\n\
+    let text = "---\nkind: quest\nstate:\n  run.fish: { type: int, default: 1 }\n---\n\n\
                 <quest id=\"first\" start=\"true\">\n  <objective id=\"a\" done=\"run.fish >= 1\"/>\n\
                   <on event=\"questComplete\">\n    ::accept{quest=\"second\"}\n  </on>\n</quest>\n\n\
                 <quest id=\"second\">\n  <objective id=\"b\" done=\"run.fish >= 2\"/>\n</quest>\n";

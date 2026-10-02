@@ -9,7 +9,7 @@ title: Bram, the Anvil (SR)
   @bram: This is Doris. Doris is a hammer. Say hello to Doris.
 </beat>
 
-<beat id="bramDupe" on="summon" target="hero.bram" once="false" priority="3" when="holds(owned(bram)) && occasion.payload.copies <= 6">
+<beat id="bramDupe" on="summon" target="hero.bram" once="false" priority="3" when="holds('owned', ['bram']) && occasion.payload.copies <= 6">
   @bram{emotion="happy"}: Another me! Good. One of us can nap while the other hammers.
 </beat>
 
@@ -17,7 +17,7 @@ title: Bram, the Anvil (SR)
   @bram: Doris says your sword's gone dull. Doris is rarely wrong.
 </beat>
 
-<beat id="bramBirthday" on="dailyReset" once="day" when="holds(celebrate(bram))">
+<beat id="bramBirthday" on="dailyReset" once="day" when="holds('celebrate', ['bram'])">
   @bram{emotion="happy"}: A cake! With candles! Stand back, I'll light them with the forge.
   @lumi{emotion="surprised"}: Please do not light them with the forge.
 </beat>

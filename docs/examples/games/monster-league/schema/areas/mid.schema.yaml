@@ -7,11 +7,11 @@ state:
   # closed -> entered at the desk; back to closed when the bell rings (slotStart)
   run.midContest:      { type: { enum: [closed, entered] }, default: closed }
   # the best catch of today's entry: 0 nothing, 1 common, 2 fine, 3 rare
-  run.midContestScore: { type: number, default: 0 }
+  run.midContestScore: { type: int, default: 0 }
   # first prizes so far
-  run.midContestWins:  { type: number, default: 0 }
+  run.midContestWins:  { type: int, default: 0 }
   # the day of the last entry (one entry a day)
-  run.midContestDay:   { type: number, default: 0 }
+  run.midContestDay:   { type: int, default: 0 }
 
 entities:
   # the bug-catching contest's prize tiers (the twelve bug species); the

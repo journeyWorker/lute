@@ -10,7 +10,7 @@ beat:
   target: "place.@place"
   priority: 10
   once: "false"
-  when: "holds(locked(@who))"
+  when: "holds('locked', [@who])"
 ---
 
 ## Shut

@@ -4,7 +4,7 @@ id: pier.theo.meet
 title: The boy with the reed knife
 on: placeVisit
 target: place.pier
-when: 'holds(present(theo, pier))'
+when: 'holds("present", ["theo", "pier"])'
 priority: 20
 ---
 

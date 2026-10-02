@@ -18,10 +18,10 @@ title: The Orderly
     <choice id="freeze" label="Don't move">
       ::use{component="chase" tactic="freeze" flavor="You stand as still as a patient at inspection."}
     </choice>
-    <choice id="lantern" label="Turn the lantern up in his face" when="holds(holding(lantern)) && entry.orderlyFile.read">
+    <choice id="lantern" label="Turn the lantern up in his face" when="holds('holding', ['lantern']) && entry.orderlyFile.read">
       ::use{component="chase" tactic="lantern" flavor="You wind the wick all the way up and hold the light out like a cross."}
     </choice>
-    <choice id="needle" label="Use the syringe" when="holds(holding(sedative))">
+    <choice id="needle" label="Use the syringe" when="holds('holding', ['sedative'])">
       @narrator: You get the needle into the back of his hand. He looks at it, then at you, and sits down on the floor like a man who has been waiting forty years for permission.
       @orderly: Thank you, Sister. I'm ever so tired.
       ::consume{item="sedative"}

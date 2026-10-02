@@ -8,25 +8,25 @@ title: Stone Gym — trainers, guide, and Petra after the battle
 
 <beat use="trainerBattle" id="stoneGymHikerBo" who="stoneGymHikerBo" intro="Stop right there! You're a light-years away from facing Petra!" win="Light-years measure distance, not time. I knew that." lose="Light-years, I said!" prize="200"/>
 
-<entry id="southStoneGymHikerBoAfter" on="talk" target="npc.stoneGymHikerBo" category="bark" when="holds(defeated(stoneGymHikerBo))">
+<entry id="southStoneGymHikerBoAfter" on="talk" target="npc.stoneGymHikerBo" category="bark" when="holds('defeated', ['stoneGymHikerBo'])">
   @stoneGymHikerBo: Petra's rocks are slow but they hit like falling cliffs. Grass and water, friend. Grass and water.
 </entry>
 
 <beat use="trainerBattle" id="stoneGymCamperLiam" who="stoneGymCamperLiam" intro="The gravel's raked in a pattern. You walked through the pattern. Now we battle about it." win="I'll re-rake it. It's fine. It's calming." lose="Pattern restored!" prize="220"/>
 
-<entry id="southStoneGymCamperLiamAfter" on="talk" target="npc.stoneGymCamperLiam" category="bark" when="holds(defeated(stoneGymCamperLiam))">
+<entry id="southStoneGymCamperLiamAfter" on="talk" target="npc.stoneGymCamperLiam" category="bark" when="holds('defeated', ['stoneGymCamperLiam'])">
   @stoneGymCamperLiam: Petra rakes the whole hall herself every morning. It takes two hours. She says it's the only time nobody talks to her.
 </entry>
 
 <beat use="trainerBattle" id="stoneGymHikerDara" who="stoneGymHikerDara" intro="I'm the last stone before the leader. Crack me if you can!" win="Cracked! Clean through!" lose="Not a scratch!" prize="240"/>
 
-<entry id="southStoneGymHikerDaraAfter" on="talk" target="npc.stoneGymHikerDara" category="bark" when="holds(defeated(stoneGymHikerDara))">
+<entry id="southStoneGymHikerDaraAfter" on="talk" target="npc.stoneGymHikerDara" category="bark" when="holds('defeated', ['stoneGymHikerDara'])">
   @stoneGymHikerDara: Petra doesn't smile when she loses. She doesn't smile when she wins either. She smiled once. We still talk about it.
 </entry>
 
 // ── The Gym Guide ────────────────────────────────────────────────────────
 
-<entry id="southStoneGuideAfter" on="talk" target="npc.stoneGymGuide" category="bark" priority="5" when="holds(hasBadge(stone))">
+<entry id="southStoneGuideAfter" on="talk" target="npc.stoneGymGuide" category="bark" priority="5" when="holds('hasBadge', ['stone'])">
   @stoneGymGuide: You did it! I told you! Didn't I tell you? I tell everybody, so technically I told you.
 </entry>
 
@@ -36,10 +36,10 @@ title: Stone Gym — trainers, guide, and Petra after the battle
 
 // ── Petra, after the badge ───────────────────────────────────────────────
 
-<entry id="southPetraMorning" on="talk" target="npc.petra" category="bark" priority="10" when="holds(defeated(petra)) && @isMorning">
+<entry id="southPetraMorning" on="talk" target="npc.petra" category="bark" priority="10" when="holds('defeated', ['petra']) && @isMorning">
   @petra: I rake the gravel in the morning. Walk on the edges, please.
 </entry>
 
-<entry id="southPetraAfter" on="talk" target="npc.petra" category="bark" when="holds(defeated(petra))">
+<entry id="southPetraAfter" on="talk" target="npc.petra" category="bark" when="holds('defeated', ['petra'])">
   @petra: Marin in Tidewell will soak you if you let her. Don't let her. Or let her, and learn to swim.
 </entry>

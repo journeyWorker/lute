@@ -28,9 +28,9 @@ The engine owns the clock. Two rules place people by the time of day, and a thir
 
 ```yaml
 state:
-  run.day:     { type: number, default: 1, owner: engine }
+  run.day:     { type: int, default: 1, owner: engine }
   run.slot:    { type: { enum: [morning, evening] }, default: morning, owner: engine }
-  user.visits: { type: number, default: 0, owner: engine }
+  user.visits: { type: int, default: 0, owner: engine }
 entities:
   person: { members: [ada, bo] }
   place:  { members: [inn, dock] }
@@ -56,8 +56,8 @@ The beats:
 | `day.bell` | `scenes/day/bell.lute` | `dayStart` | priority 10, `title: The bell` | `false` |
 | `day.market` | `scenes/day/market.lute` | `dayStart` | `when: 'run.day == 3'`, `title: Market day` | `run` |
 | `day.farewell` | `scenes/day/farewell.lute` | `dayStart` | `after: 'completed("ferry")'` | `run` |
-| `inn.ada` | `scenes/inn/ada.lute` | `placeVisit` → `place.inn` | priority 20, `when: 'holds(present(ada, inn))'`; asserts `met(ada)` | `run` |
-| `inn.again` | `scenes/inn/again.lute` | `placeVisit` → `place.inn` | priority 30, `after: 'visited("inn.ada")'`, `when: 'holds(trusted(ada))'` | `run` |
+| `inn.ada` | `scenes/inn/ada.lute` | `placeVisit` → `place.inn` | priority 20, `when: 'holds('present', ['ada', 'inn'])'`; asserts `met(ada)` | `run` |
+| `inn.again` | `scenes/inn/again.lute` | `placeVisit` → `place.inn` | priority 30, `after: 'visited("inn.ada")'`, `when: 'holds('trusted', ['ada'])'` | `run` |
 | `inn.regular` | `scenes/inn/regular.lute` | `placeVisit` → `place.inn` | priority 10, `when: 'user.visits >= 3'` | `run` |
 | `dock.storm` | `scenes/dock/storm.lute` | `placeVisit` → `place.dock` | priority 50, `when: "run.slot == 'evening' && run.day == 2"` | `run` |
 | `innQuiet`, `dockBo`, `dockGulls`, `dockEmpty` (entries) | `lore/places.lute` | `placeVisit` | see below | — |
@@ -66,11 +66,11 @@ The beats:
 The entries in `lore/places.lute`:
 
 ```lute
-<entry id="innQuiet" on="placeVisit" target="place.inn" category="bark" when="!holds(present(ada, inn))">
+<entry id="innQuiet" on="placeVisit" target="place.inn" category="bark" when="!holds('present', ['ada', 'inn'])">
   @narrator: The inn is quiet at this hour.
 </entry>
 
-<entry id="dockBo" on="placeVisit" target="place.dock" category="bark" when="holds(present(bo, dock))">
+<entry id="dockBo" on="placeVisit" target="place.dock" category="bark" when="holds('present', ['bo', 'dock'])">
   @bo: Mind the nets.
 </entry>
 
@@ -90,7 +90,7 @@ The entries in `lore/places.lute`:
   @narrator: "Fair on the green, all week."
 </entry>
 
-<entry id="noteDocked" on="board" category="note" title="The ferry is in" priority="10" when="holds(arrived(dock))">
+<entry id="noteDocked" on="board" category="note" title="The ferry is in" priority="10" when="holds('arrived', ['dock'])">
   @narrator: "Ferry at the pier. Boarding now."
 </entry>
 ```
@@ -99,7 +99,7 @@ And one quest, `quests/ferry.lute`, which starts once you have met Ada at the in
 
 ```lute
 <quest id="ferry" title="Catch the ferry" start="visited('inn.ada')">
-  <objective id="word" title="Win Ada's trust" done="holds(trusted(ada))"/>
+  <objective id="word" title="Win Ada's trust" done="holds('trusted', ['ada'])"/>
   <objective id="board" title="Be at the dock on day three" done="run.day >= 3"/>
 </quest>
 ```
@@ -118,7 +118,7 @@ project root: .
 
   board — select: all
     #  priority  beat                          kind   once  verdict  after  when
-    1  10        noteDocked "The ferry is in"  entry  no    -        -      holds(arrived(dock))
+    1  10        noteDocked "The ferry is in"  entry  no    -        -      holds('arrived', ['dock'])
     2  5         noteFair "The fair"           entry  no    -        -      -
     3  0         noteFerry "Ferry times"       entry  no    -        -      run.day <= 2
 
@@ -131,16 +131,16 @@ project root: .
   placeVisit @ place.dock — select: first
     #  priority  beat        kind   once  verdict   after  when
     1  50        dock.storm  scene  run   -         -      run.slot == 'evening' && run.day == 2
-    2  0         dockBo      entry  no    -         -      holds(present(bo, dock))
+    2  0         dockBo      entry  no    -         -      holds('present', ['bo', 'dock'])
     3  0         dockGulls   entry  no    tied      -      -
     4  -1        dockEmpty   entry  no    shadowed  -      -
 
   placeVisit @ place.inn — select: first
     #  priority  beat                      kind   once  verdict        after               when
-    1  30        inn.again                 scene  run   -              visited("inn.ada")  holds(trusted(ada))
-    2  20        inn.ada "Ada at the inn"  scene  run   -              -                   holds(present(ada, inn))
+    1  30        inn.again                 scene  run   -              visited("inn.ada")  holds('trusted', ['ada'])
+    2  20        inn.ada "Ada at the inn"  scene  run   -              -                   holds('present', ['ada', 'inn'])
     3  10        inn.regular               scene  run   once-run-user  -                   user.visits >= 3
-    4  0         innQuiet                  entry  no    -              -                   !holds(present(ada, inn))
+    4  0         innQuiet                  entry  no    -              -                   !holds('present', ['ada', 'inn'])
 ```
 
 - **beat** — the id, followed by its `title` in quotes when it has one (a scene's `title:`, an entry's or bundle beat's `title=`).
@@ -151,7 +151,7 @@ project root: .
 
 A targeted occasion gets one ladder per target its beats name; a beat with no `target` answers every raise, so it appears in every target's ladder. When no beat names a target, the occasion has a single ladder headed `(any target)` (`"anyTarget": true` in JSON). Shadowing and ties are `select: first` notions, so a `select: all` or `sequence` ladder never shows them.
 
-**Covered fallbacks** (dsl 0.26.0 §8). A fallback that an earlier, never-spent beat whose `when` it implies always beats can never play, yet it is not shadowed — the beat above it is not always eligible. It is there on purpose (a lead's gate line, kept until an area answers the gate), so the verdict column says what covers it instead of warning: `covered by <id>` (`coveredBy` in `--json`). An area's `solGate` (priority 0) and the lead's `gateFallback` (priority -10) share the `when` `!holds(metWren(wren))`, and entries without `once` are never spent. A [kind beat](/tooling/play/#kind-targets) (dsl 0.26.0 §5) is listed in the ladder of every member some beat names — Gus's own beat outranks it there — and in a `kind:<kind>` ladder for the members no beat names on its own:
+**Covered fallbacks** (dsl 0.26.0 §8). A fallback that an earlier, never-spent beat whose `when` it implies always beats can never play, yet it is not shadowed — the beat above it is not always eligible. It is there on purpose (a lead's gate line, kept until an area answers the gate), so the verdict column says what covers it instead of warning: `covered by <id>` (`coveredBy` in `--json`). An area's `solGate` (priority 0) and the lead's `gateFallback` (priority -10) share the `when` `!holds('metWren', ['wren'])`, and entries without `once` are never spent. A [kind beat](/tooling/play/#kind-targets) (dsl 0.26.0 §5) is listed in the ladder of every member some beat names — Gus's own beat outranks it there — and in a `kind:<kind>` ladder for the members no beat names on its own:
 
 ```console
 $ lute beats . --occasion talk
@@ -164,8 +164,8 @@ project root: .
 
   talk @ npc.sol — select: first
     #  priority  beat          kind   once  verdict             after  when
-    1  0         solGate       entry  no    -                   -      !holds(metWren(wren))
-    2  -10       gateFallback  entry  no    covered by solGate  -      !holds(metWren(wren))
+    1  0         solGate       entry  no    -                   -      !holds('metWren', ['wren'])
+    2  -10       gateFallback  entry  no    covered by solGate  -      !holds('metWren', ['wren'])
 
   talk @ npc.wren — select: first
     #  priority  beat                          kind   once  verdict  after  when
@@ -187,7 +187,7 @@ project root: .
   placeVisit @ place.dock — select: first
     #  priority  beat        kind   once  verdict      after  when
     1  50        dock.storm  scene  run   unreachable  -      run.slot == 'morning' && run.slot == 'evening'
-    2  0         dockBo      entry  no    -            -      holds(present(bo, dock))
+    2  0         dockBo      entry  no    -            -      holds('present', ['bo', 'dock'])
     3  0         dockGulls   entry  no    tied         -      -
     4  -1        dockEmpty   entry  no    shadowed     -      -
 ```
@@ -362,10 +362,10 @@ Stopping before the way back, and asking whether a rumour about Ada would change
 
 ```console
 $ lute calendar . --script plays/evening.play.yaml --until "back at the inn" \
-    --axis 'holds(rumor(ada))=false,true' --occasion placeVisit --target place.inn
+    --axis 'holds('rumor', ['ada'])=false,true' --occasion placeVisit --target place.inn
 calendar: . — 2 cell(s) × 1 column(s), from the save in plays/evening.play.yaml, then its step 1 replayed (stopping before step 2, back at the inn)
 
-holds(rumor(ada))  placeVisit
+holds('rumor', ['ada'])  placeVisit
                    place.inn
 false              inn.again
 true               -
@@ -387,7 +387,7 @@ The replayed step presents `inn.ada`, which asserts `met(ada)` and starts `ferry
 An axis over a declared state path writes it as an `engine:` step would. Some things need more than a write, and each has an axis of its own:
 
 - `quest.<id>.state=unset,active,complete,failed` seeds the quest's **status**, as a save's `quests:` does; a plain write would be overwritten by the lifecycle the cell settles. `unset` and `active` also clear the objective progress a replayed route made, since the axis names a status, not the route's objectives. `quest.<id>.objectives.<oid>.done=false,true` is taken as written, as a save's objective progress. Any other `quest.*` path — `activatedAt`, say — is the lifecycle's own bookkeeping and a usage error, and so is an id no quest declares.
-- `holds(<fact>)=true,false` asserts (`true`) or retracts (`false`) a base fact before the rules derive, so derived facts follow it. The fact must be ground, of a declared relation, with members of its domains; a derived relation is refused, since the rules decide it. Quote the axis in the shell: `--axis 'holds(rumor(ada))=false,true'`.
+- `holds(<fact>)=true,false` asserts (`true`) or retracts (`false`) a base fact before the rules derive, so derived facts follow it. The fact must be ground, of a declared relation, with members of its domains; a derived relation is refused, since the rules decide it. Quote the axis in the shell: `--axis 'holds('rumor', ['ada'])=false,true'`.
 - `visited('<id>')=true,false` (dsl 0.24.0) puts a scene or bundle beat in or out of the cell's visited set, so a beat behind `after: visited(…)` can be read both ways without a route.
 - `clock=<d1>..<d2>` (dsl 0.24.0 §1) walks a declared clock: every slot of each day, in clock order — `clock=1..2` over `slots: [morning, afternoon, night]` is six cells, `1 Mon morning` through `2 Tue night` (the weekday label when the clock's `week:` has labels). Each cell writes the clock's `day` and `slot` paths, so `clock.index` and `clock.weekday` read that position. Bare `--axis clock` is one week from day 1 (day 1 alone without a `week:`). The clock axis cannot sit beside an axis over its own `day` or `slot` path, and a project without a clock refuses it.
 - `<family>.*=<values>` and `<family>[<axis>]=<values>` (since 0.27.0) vary a whole [`per:` family](/state/state-model/#one-path-per-entity-per) — see [A `per:` family as one axis](#a-per-family-as-one-axis).
@@ -397,18 +397,18 @@ Anything else is a usage error that lists the axis kinds (with a did-you-mean fo
 ```console
 $ lute calendar . --axis run.dya=1..3
 lute calendar: `--axis run.dya`: `run.dya` is not a declared state path in this project — did you mean `run.day`?; an axis is one of: a declared state path (`run.day=1..7`), every member of a `per:` family (`run.aff.*=6,7`) or the member another axis names (`run.aff[run.route]=6,7`), `quest.<id>.state=<status>,…`, `quest.<id>.objectives.<oid>.done=true,false`, `holds(<fact>)=true,false`, `visited('<scene or bundle-beat id>')=true,false`, `clock[=<d1>..<d2>]` (every slot of those days, in order)
-$ lute calendar . --axis 'holds(trusted(ada))=true,false'
-lute calendar: `--axis holds(trusted(ada))`: `trusted(ada)` is derived by rules and cannot be asserted
+$ lute calendar . --axis 'holds('trusted', ['ada'])=true,false'
+lute calendar: `--axis holds('trusted', ['ada'])`: `trusted(ada)` is derived by rules and cannot be asserted
 ```
 
 With the visit and the meeting as axes, `inn.again` wins only where both hold:
 
 ```console
-$ lute calendar . --axis "visited('inn.ada')=false,true" --axis 'holds(met(ada))=false,true' \
+$ lute calendar . --axis "visited('inn.ada')=false,true" --axis 'holds('met', ['ada'])=false,true' \
     --occasion placeVisit --target place.inn
 calendar: . — 4 cell(s) × 1 column(s), from declared defaults
 
-visited('inn.ada')  holds(met(ada))  placeVisit
+visited('inn.ada')  holds('met', ['ada'])  placeVisit
                                      place.inn
 false               false            innQuiet
 false               true             innQuiet
@@ -416,7 +416,7 @@ true                false            innQuiet
 true                true             inn.again +1
 
 shadowed (eligible, not presented):
-  visited('inn.ada')=true holds(met(ada))=true  placeVisit@place.inn: inn.again over innQuiet
+  visited('inn.ada')=true holds('met', ['ada'])=true  placeVisit@place.inn: inn.again over innQuiet
 
 never eligible in any cell: 2
   inn.ada [scene, scenes/inn/ada.lute] placeVisit@place.inn — when: false
@@ -449,7 +449,7 @@ eligible but never presented in any cell: none
 
 ### A `per:` family as one axis
 
-A [`per:` family](/state/state-model/#one-path-per-entity-per) — `run.aff: { type: number, default: 0, per: suitor }` — is one path per member (`run.aff.ren`, `run.aff.kai`, …), and an axis per member multiplies the grid by every one of them. Since 0.27.0 one axis covers the family:
+A [`per:` family](/state/state-model/#one-path-per-entity-per) — `run.aff: { type: int, default: 0, per: suitor }` — is one path per member (`run.aff.ren`, `run.aff.kai`, …), and an axis per member multiplies the grid by every one of them. Since 0.27.0 one axis covers the family:
 
 - `--axis 'run.aff.*=6,7'` gives **every** member the cell's value.
 - `--axis 'run.aff[run.route]=6,7'` gives it only to the member the value of `--axis run.route` names in that cell; the other members keep their seed or default. The indexing axis must be an `--axis` of the same calendar naming at least one member of the family's kind; at a value that names no member (a route outside the family, `hotaru`), the tied axis sets nothing: that one cell stands for all its values, its `run.aff[run.route]` column reads `(none)`, and a note says so.
@@ -563,7 +563,7 @@ eligible but never presented in any cell: none
 
 ### Undecided cells
 
-A cell is `?` when the reference runtime cannot decide a `when` that would decide it. Add a scene at the inn, priority 40, whose `when` is `validAt(met(ada), quest.ferry.activatedAt)` — a historical query `lute play` has no clock for — and the inn column cannot be answered:
+A cell is `?` when the reference runtime cannot decide a `when` that would decide it. Add a scene at the inn, priority 40, whose `when` is `validAt('met', ['ada'], quest.ferry.activatedAt)` — a historical query `lute play` has no clock for — and the inn column cannot be answered:
 
 ```console
 $ lute calendar . --axis run.slot=morning,evening --occasion placeVisit --target place.inn
@@ -579,8 +579,8 @@ and the `undecided` block says why, per cell:
 
 ```
 undecided (an unknown `when` decides the cell; play halts there):
-  run.slot=morning  placeVisit@place.inn: inn.oldFriend — `validAt(met(ada), quest.ferry.activatedAt)` evaluates unknown: now()/validAt(...) has no reference-runtime resolution
-  run.slot=evening  placeVisit@place.inn: inn.oldFriend — `validAt(met(ada), quest.ferry.activatedAt)` evaluates unknown: now()/validAt(...) has no reference-runtime resolution
+  run.slot=morning  placeVisit@place.inn: inn.oldFriend — `validAt('met', ['ada'], quest.ferry.activatedAt)` evaluates unknown: now()/validAt(...) has no reference-runtime resolution
+  run.slot=evening  placeVisit@place.inn: inn.oldFriend — `validAt('met', ['ada'], quest.ferry.activatedAt)` evaluates unknown: now()/validAt(...) has no reference-runtime resolution
 ```
 
 An unknown `when` below the winner does not make a cell undecided: the winner is presented whatever it evaluates to.
@@ -677,26 +677,26 @@ project root: .
 
   lore/places.lute
     entry `innQuiet`
-      when: !holds(present(ada, inn))
+      when: !holds('present', ['ada', 'inn'])
       not present(ada, inn) — holds unless defeated
         defeated when present(ada, inn) is derived ⇐ cel("run.slot == 'evening'")
         rule: present(ada, inn) :- cel("run.slot == 'evening'")
           cel("run.slot == 'evening'") — state condition on run.slot, decided at run time
 
     entry `dockBo`
-      when: holds(present(bo, dock))
+      when: holds('present', ['bo', 'dock'])
       present(bo, dock) — derived by 1 rule
         rule: present(P, dock) :- works(P, dock), cel("run.slot == 'morning' && run.day != 3")
           works(bo, dock) — seed facts works(bo, dock)
           cel("run.slot == 'morning' && run.day != 3") — state condition on run.day, run.slot, decided at run time
 
     entry `noteDocked`
-      when: holds(arrived(dock))
+      when: holds('arrived', ['dock'])
       arrived(dock) — reserved — the engine asserts it
 
   quests/ferry.lute
     objective `ferry.word`
-      done: holds(trusted(ada))
+      done: holds('trusted', ['ada'])
       trusted(ada) — derived by 1 rule
         rule: trusted(P) :- met(P), not rumor(P)
           met(ada) — asserted by scene `inn.ada` (scenes/inn/ada.lute)
@@ -704,12 +704,12 @@ project root: .
 
   scenes/inn/ada.lute
     scene `inn.ada`
-      when: holds(present(ada, inn))
+      when: holds('present', ['ada', 'inn'])
       present(ada, inn) — derived by 1 rule — traced above under entry `innQuiet` in lore/places.lute
 
   scenes/inn/again.lute
     scene `inn.again`
-      when: holds(trusted(ada))
+      when: holds('trusted', ['ada'])
       trusted(ada) — derived by 1 rule — traced above under objective `ferry.word` in quests/ferry.lute
 ```
 
@@ -724,7 +724,7 @@ project root: .
 
   quests/ferry.lute
     objective `ferry.word`
-      done: holds(trusted(ada))
+      done: holds('trusted', ['ada'])
       trusted(ada) — derived by 1 rule
         rule: trusted(P) :- person(P), met(P), not rumor(P)
           person(ada) — entity kind `person`; ada is a member
@@ -741,10 +741,10 @@ project root: .
 
   scenes/boat.lute
     scene `pier.boat`
-      when: holds(canPass(pier))
+      when: holds('canPass', ['pier'])
       canPass(pier) — derived by 1 rule
         rule: canPass(pier) :- count(hasItem(_)) >= 2
-          count(hasItem(_)) >= 2 — counts:
+          count('hasItem', ['_']) >= 2 — counts:
             hasItem(_) — asserted by scene `wren.talk` (scenes/wren.lute)
 ```
 
@@ -755,7 +755,7 @@ A negated premise the project **can** make false is followed by what would do it
             defeated when rumor(ada) is asserted by beat `town.gossip.whisper` (lore/gossip.lute)
 ```
 
-A derived defeater names the facts that join to produce it — here an entry guarded on `!holds(present(bo, dock))`:
+A derived defeater names the facts that join to produce it — here an entry guarded on `!holds('present', ['bo', 'dock'])`:
 
 ```console
       not present(bo, dock) — holds unless defeated
@@ -780,13 +780,13 @@ project root: .
 
   scenes/inn/ask.lute
     line `@ada` (line 9)
-      when: holds(present(ada, inn))
+      when: holds('present', ['ada', 'inn'])
       present(ada, inn) — derived by 1 rule
         rule: present(ada, inn) :- cel("run.slot == 'evening'")
           cel("run.slot == 'evening'") — state condition on run.slot, decided at run time
 
     choice `ask.ferry` (line 12)
-      when: holds(trusted(ada))
+      when: holds('trusted', ['ada'])
       trusted(ada) — derived by 1 rule
         rule: trusted(P) :- met(P), not rumor(P)
           met(ada) — asserted by scene `inn.ada` (scenes/inn/ada.lute)
@@ -861,7 +861,7 @@ Lore entries join the graph only as the source of a quest's `start` anchor, `ent
 $ lute scenario <dir> [--format text|json|dot] --facts
 ```
 
-Progress in a collecting game is gated by facts, not by visits: a gym opens on a badge, a tower on a lens. Those gates draw no `after:` edge, so the bare graph puts every gym in layer 0. `--facts` (dsl 0.26.0 §8) adds a **fact edge** `producer -> reader [fact]` wherever a scene's, beat's or quest's gate — its `when:` or `start=` — reads `holds(F)` and the producer asserts `F`; when `F` is derived, the edge runs from whatever asserts a fact the deriving rule needs and names the rule's conclusion, `[hasItem(goodRod), via canPass(pier)]`. The layers are then drawn over the fact edges too, wherever one closes no cycle, so what a fact unlocks sits below what gives it. Wren's scene gives a rod (`::assert{hasItem(goodRod)}`); the lake reads `holds(hasItem(goodRod))`, and the boat reads `holds(canPass(pier))`, which the rule `canPass(pier) :- hasItem(goodRod)` derives:
+Progress in a collecting game is gated by facts, not by visits: a gym opens on a badge, a tower on a lens. Those gates draw no `after:` edge, so the bare graph puts every gym in layer 0. `--facts` (dsl 0.26.0 §8) adds a **fact edge** `producer -> reader [fact]` wherever a scene's, beat's or quest's gate — its `when:` or `start=` — reads `holds(F)` and the producer asserts `F`; when `F` is derived, the edge runs from whatever asserts a fact the deriving rule needs and names the rule's conclusion, `[hasItem(goodRod), via canPass(pier)]`. The layers are then drawn over the fact edges too, wherever one closes no cycle, so what a fact unlocks sits below what gives it. Wren's scene gives a rod (`::assert{hasItem(goodRod)}`); the lake reads `holds('hasItem', ['goodRod'])`, and the boat reads `holds('canPass', ['pier'])`, which the rule `canPass(pier) :- hasItem(goodRod)` derives:
 
 ```console
 $ lute scenario .

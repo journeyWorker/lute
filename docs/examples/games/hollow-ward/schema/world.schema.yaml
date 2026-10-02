@@ -7,21 +7,21 @@
 
 state:
   # ── the clock: one night, one slot per hour (engine) ──
-  run.night: { type: number, default: 1, owner: engine }
+  run.night: { type: int, default: 1, owner: engine }
   run.hour:  { type: { domain: hour }, default: h23, owner: engine }
 
   # ── the meters and the Orderly (engine) ──
-  run.sanity:  { type: number, default: 10, owner: engine }
+  run.sanity:  { type: int, default: 10, owner: engine }
   run.stalker: { type: { domain: room }, default: morgue, owner: engine }
 
   # ── content-owned progress ──
   run.power:    { type: bool, default: false }   # the boiler relit, the lifts and surgery doors live
   run.bellRung: { type: bool, default: false }   # the chapel bell rung at the hour of the round
   run.fate:     { type: { domain: fate }, default: alive }
-  run.chases:   { type: number, default: 0 }     # encounters survived
+  run.chases:  { type: int, default: 0 }     # encounters survived
 
   # ── across nights ──
-  user.deaths: { type: number, default: 0 }
+  user.deaths: { type: int, default: 0 }
 
 enums:
   hour:
@@ -136,11 +136,11 @@ defs:
   lateNight: "clock.index >= 4"   # three o'clock on
   dead: "run.fate in ['taken', 'broken', 'drowned', 'burned', 'lost']"
   out: "run.fate in ['escaped', 'together', 'released']"
-  withToby: "holds(following(tobias))"
+  withToby: "holds('following', ['tobias'])"
 
 cast:
   nell:    { name: Nell }
-  tobias:  { name: Tobias, present: "holds(following(tobias))" }
+  tobias:  { name: Tobias, present: "holds('following', ['tobias'])" }
   orderly: { name: "The Orderly" }
   maud:    { name: "Sister Maud" }
   hale:    { name: "Dr. Hale" }

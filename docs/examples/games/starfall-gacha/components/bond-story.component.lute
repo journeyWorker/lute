@@ -14,7 +14,7 @@ beat:
   target: "hero.@who"
   once: user
   after: "@prev"
-  when: "holds(bondRank(@who, @rank))"
+  when: "holds('bondRank', [@who, @rank])"
 ---
 
 ## Bond story

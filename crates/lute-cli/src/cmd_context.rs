@@ -464,7 +464,8 @@ fn authoring_surface(
 fn state_type_str(is_implicit: bool, ty: &Type) -> (String, Option<Vec<String>>) {
     match ty {
         Type::Bool => ("bool".to_string(), None),
-        Type::Number => ("number".to_string(), None),
+        Type::Int => ("int".to_string(), None),
+        Type::Double => ("double".to_string(), None),
         Type::Str => ("string".to_string(), None),
         Type::Enum(members) => {
             let mut domain = members.clone();
@@ -495,7 +496,8 @@ fn state_type_str(is_implicit: bool, ty: &Type) -> (String, Option<Vec<String>>)
 pub(crate) fn attr_type_str(ty: &Type) -> (String, Option<Vec<String>>) {
     match ty {
         Type::Bool => ("bool".to_string(), None),
-        Type::Number => ("number".to_string(), None),
+        Type::Int => ("int".to_string(), None),
+        Type::Double => ("double".to_string(), None),
         Type::Str => ("string".to_string(), None),
         Type::Enum(members) => ("enum".to_string(), Some(members.clone())),
         Type::List(inner) => (format!("list<{}>", attr_type_str(inner).0), None),
@@ -533,10 +535,11 @@ fn namespace_str(ns: Namespace) -> &'static str {
 fn literal_json(l: &Literal) -> serde_json::Value {
     match l {
         Literal::Bool(b) => serde_json::Value::Bool(*b),
-        Literal::Num(n) if n.fract() == 0.0 && n.is_finite() && n.abs() < 9.0e15 => {
+        Literal::Int(n) => serde_json::Value::from(*n),
+        Literal::Double(n) if n.fract() == 0.0 && n.is_finite() && n.abs() < 9.0e15 => {
             serde_json::Value::from(*n as i64)
         }
-        Literal::Num(n) => serde_json::Value::from(*n),
+        Literal::Double(n) => serde_json::Value::from(*n),
         Literal::Str(s) => serde_json::Value::String(s.clone()),
         Literal::List(xs) => serde_json::Value::Array(xs.iter().map(literal_json).collect()),
         Literal::Map(m) => serde_json::Value::Object(
@@ -642,6 +645,20 @@ fn permissions_outline(p: &serde_json::Value) -> String {
 /// at-a-glance view.
 fn context_outline(surface: &serde_json::Value) -> String {
     let mut out = String::new();
+    out.push_str("\nCEL conditions (standard CEL profile):\n");
+    out.push_str("  numbers: int and double are distinct; arithmetic/comparison do not mix them; \
+use int(x) or double(x) explicitly; int / int truncates toward zero; % is int-only\n");
+    out.push_str("  presence: has(path) tests whether path has an effective value; \
+\"key\" in map tests key presence\n");
+    out.push_str("  host functions:\n");
+    out.push_str("    holds(string, list(dyn)) -> bool\n");
+    out.push_str("    count(string, list(dyn)) -> int\n");
+    out.push_str("    countDistinct(string, list(dyn), int) -> int\n");
+    out.push_str("    validAt(string, list(dyn), int) -> bool\n");
+    out.push_str("    now() -> int\n");
+    out.push_str("    visited(string) -> bool\n");
+    out.push_str("  relation arguments: use list form, e.g. holds('inParty', ['elena', '_']); \
+single quotes are required inside double-quoted attributes\n");
     let _ = writeln!(
         out,
         "capabilityVersion: {}",

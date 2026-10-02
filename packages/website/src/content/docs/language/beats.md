@@ -25,7 +25,7 @@ when: 'user.runs >= 10 && !run.giftRefused'
 priority: 50
 once: user
 state:
-  user.runs: { type: number, default: 0 }
+  user.runs: { type: int, default: 0 }
   run.giftRefused: { type: bool, default: false }
 ---
 
@@ -94,7 +94,7 @@ and `when`:
 kind: lore
 title: Achilles barks
 state:
-  user.runs: { type: number, default: 0 }
+  user.runs: { type: int, default: 0 }
 ---
 
 <entry id="achillesBark1" on="talk" target="npc.achilles" category="bark">
@@ -197,7 +197,7 @@ kind: lore
 id: interviews
 title: Station interviews
 state:
-  run.porterTrust: { type: number, default: 0 }
+  run.porterTrust: { type: int, default: 0 }
 ---
 
 <entry id="porterNote" target="item.porter_note" category="note">
@@ -274,7 +274,7 @@ whose frontmatter also declares a `beat:` header:
 
 ```yaml
 component: bondStory
-params: { who: { type: string }, need: { type: number, default: 0 }, prev: { type: string, default: "" } }
+params: { who: { type: string }, need: { type: int, default: 0 }, prev: { type: string, default: "" } }
 beat:
   on: bond
   once: user
@@ -310,9 +310,9 @@ A bundle beat names it with `use=` and passes the params as attributes:
   ``(replaces template `bondStory`'s `when: …`)`` (`replacesTemplateWhen` in `--json`). To
   keep both, write both in the use's `when=`. To let a use add a condition, give the template a
   param for it and conjoin it in the header:
-  `only: { type: string, default: "" }` and `when: "!holds(defeated(@who)) && (@only)"`. A use
+  `only: { type: string, default: "" }` and `when: "!holds('defeated', [@who]) && (@only)"`. A use
   writes `only="@isNight"`; a use that leaves it empty (or `true`) derives just
-  `!holds(defeated(<who>))`, with no `&& (true)` left behind.
+  `!holds('defeated', ['<who>'])`, with no `&& (true)` left behind.
 - A header value with no `@param` in it is the same for every use, so a fault in it (an unknown
   occasion, a bad `once:`) is reported once, at the header key in the component, and the uses
   derive nothing for that key.
@@ -423,7 +423,7 @@ A puzzle the player may fail and retry is not spent when it is shown. It is spen
 solved. Before 0.27.0 that took a repeatable beat and a guard on the result:
 
 ```lute
-<beat id="valves" on="townVisit" once="false" when="!holds(solved(valves))">
+<beat id="valves" on="townVisit" once="false" when="!holds('solved', ['valves'])">
   @narrator: Three valves, one pressure gauge. The needle waits.
 </beat>
 ```
@@ -433,12 +433,12 @@ instead of a presentation: the beat stays eligible, presentation after presentat
 condition holds, and from then on it is spent:
 
 ```lute
-<beat id="valves" on="townVisit" spentBy="holds(solved(valves))">
+<beat id="valves" on="townVisit" spentBy="holds('solved', ['valves'])">
   @narrator: Three valves, one pressure gauge. The needle waits.
 </beat>
 ```
 
-A scene writes it in frontmatter (`spentBy: "holds(solved(valves))"`), an entry and a bundle beat
+A scene writes it in frontmatter (`spentBy: "holds('solved', ['valves'])"`), an entry and a bundle beat
 as an attribute (`spentBy="…"`). The condition may read anything a `when` may. It is a latch:
 once it has held — in the settled world after any settle of the playthrough (every presentation,
 engine write, clock move and new run), or when the beat is judged — the beat is spent, and a
@@ -471,7 +471,7 @@ latch on purpose. Writing `once` states the period, so it silences the warning.
 `lute play`, `lute calendar`, and `lute test`'s `eligible:` report a spent beat as ineligible with
 the reason ``spentBy: `run.solved` holds`` while the condition holds and
 ``spentBy: `run.solved` held — spent this run`` once it has held (a kind beat's reason names the
-member: ``… held for cod — spent this run``). The condition reaches the IR as `spentBy: {raw, expr}` on
+member: ``… held for cod — spent this run``). The condition reaches the IR as `spentBy: {cel, expr, authored?}` on
 the scene `meta.beat`, the `beat` record, or the `entry` record, and as its raw text on the beat's
 `project.index.json` row; the beat's `once` there is how long it stays spent (`run` when unwritten
 on a scene or bundle beat, absent on an entry).
@@ -515,7 +515,7 @@ also: true
 when: 'run.day >= 2'
 once: false
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 ---
 
 # The fountain
@@ -744,12 +744,12 @@ its `project.index.json` row.
 #### Asking about the member
 
 `occasion.target` stands in for a member name where a member is expected (dsl 0.27.0 §3): as a
-fact query's argument, `holds(logged(occasion.target))`, and as a `per:` family's index,
+fact query's argument, `holds('logged', [occasion.target])`, and as a `per:` family's index,
 `run.caught[occasion.target]`. The checker instantiates the condition for every member of the kind,
 and the engine substitutes the member it raised:
 
 ```lute
-<beat id="rareAgain" on="caught" target="kind:bugRare" once="false" priority="5" when="holds(logged(occasion.target)) && run.caught[occasion.target] >= 2">
+<beat id="rareAgain" on="caught" target="kind:bugRare" once="false" priority="5" when="holds('logged', [occasion.target]) && run.caught[occasion.target] >= 2">
   @narrator: Another {{occasion.target}} for the book.
 </beat>
 ```
@@ -789,7 +789,7 @@ The same beat can write what it asks about. Where a member is expected in a writ
   lines, and a kind-typed param renders its label.
 
 ```lute
-<beat id="rareAgain" on="caught" target="kind:bugRare" once="false" when="!holds(logged(occasion.target))">
+<beat id="rareAgain" on="caught" target="kind:bugRare" once="false" when="!holds('logged', [occasion.target])">
   @narrator: A {{occasion.target}} for the book.
   ::assert{logged(occasion.target)}
   ::set{run.caught[occasion.target] += 1}
@@ -821,7 +821,7 @@ occasions:
 ```
 
 ```lute
-<beat id="birthday" on="morning" for="kind:person" once="false" when="holds(birthdayToday(occasion.target))">
+<beat id="birthday" on="morning" for="kind:person" once="false" when="holds('birthdayToday', [occasion.target])">
   @narrator: It is {{occasion.target}}'s birthday.
 </beat>
 ```
@@ -839,7 +839,7 @@ fact query and a `per:` family take it, and `{{occasion.target}}` renders the me
   until they are befriended:
 
   ```lute
-  <beat id="hello" on="morning" for="kind:person" spentBy="holds(befriended(occasion.target))">
+  <beat id="hello" on="morning" for="kind:person" spentBy="holds('befriended', [occasion.target])">
     @narrator: {{occasion.target}} nods at you, warily.
   </beat>
   ```
@@ -864,7 +864,7 @@ raised for the hero drawn, and says how many copies came with it:
 
 ```yaml
 occasions:
-  summon: { select: first, target: { prefix: hero, entity: hero }, payload: { copies: number } }
+  summon: { select: first, target: { prefix: hero, entity: hero }, payload: { copies: int } }
 ```
 
 A beat on `summon` reads each field as `occasion.payload.<field>`, typed as declared, in its `when`,
@@ -882,7 +882,7 @@ presented. Reading a field in a beat of an occasion that does not declare it is 
 and so is a read outside any beat. A [`lute play`](/tooling/play/) step gives the payload beside
 the occasion (`payload: { copies: 2 }`), and a field the occasion does not declare is a usage
 error. A step that leaves a declared field out is a usage error too, before anything plays:
-`` step 1: occasion `summon` declares payload field `copies`, which is missing from this raise — add `payload: { copies: <number> }` to the step ``.
+`` step 1: occasion `summon` declares payload field `copies`, which is missing from this raise — add `payload: { copies: <int> }` to the step ``
 `lute trace` and `lute test` mock it like any state, `state: { occasion.payload.copies: 2 }`, and
 halt incomplete on a line that reads a field the mock leaves out, instead of printing the
 placeholder. An occasion with a payload cannot be the clock's `raise:` (`E-CLOCK-DECL`): the
@@ -914,7 +914,7 @@ first. Each of these beats is `E-BEAT-UNREACHABLE` in a plain `lute check`:
 | `run.slot == 'morning' && run.slot == 'night'` | one path, two values |
 | `run.day > 5 && run.day < 3` | an empty range |
 | `run.flag && !run.flag` | a condition and its negation |
-| `holds(met(maud)) && !holds(met(maud))` | the same query, both ways |
+| `holds('met', ['maud']) && !holds('met', ['maud'])` | the same query, both ways |
 | `run.slot == 'afternon'` | a value outside the path's enum |
 
 A condition hidden behind a def is found the same way:
@@ -926,7 +926,7 @@ id: square.festival
 on: townVisit
 when: "@festivalNight && run.day == 2"
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 defs:
   festivalNight: { type: bool, cel: "run.day == 5" }
 ---
@@ -944,8 +944,8 @@ every later beat on its occasion (`W-BEAT-SHADOWED`).
 
 `unset` counts as a value. Reading an ordering or a bare boolean on an unset path is an error, not
 `false`, so a contradiction on a path with no `default` is decided only once the same conjunction
-proves the path set: `isSet(run.mood) && run.mood > 5 && run.mood < 3` is false. (Without the
-`isSet`, a `when` reading that path is `E-MAYBE-UNSET` anyway.) The reasoning stays within `&&` and
+proves the path set: `has(run.mood) && run.mood > 5 && run.mood < 3` is false. (Without the
+`has` guard, a `when` reading that path is `E-MAYBE-UNSET` anyway.) The reasoning stays within `&&` and
 `||`. It does not look inside a Datalog rule's `cel(…)` guard, so a `when` that contradicts the
 scalar premise of a derived fact is not caught.
 

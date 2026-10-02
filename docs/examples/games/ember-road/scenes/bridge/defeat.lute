@@ -14,6 +14,6 @@ after: 'visited("bridge.arrival")'
 ::music{action="change" mood="sad" volume="normal"}
 @narrator: The Duskbound do not chase you far. They do not need to. {{occasion.payload.wagonsLost:plural(A wagon burns|#Word wagons burn)}} on the near arch, and the mules scatter into the dark with the Company's cargo on their backs.
 ::set{run.wagons -= occasion.payload.wagonsLost}
-@narrator{when="holds(fell(maelis))"}: Maelis fell on the chain, and it made no difference at all. Her people held the bridge without her.
-@corvin{when="holds(inParty(corvin))"}: I would like it noted that I had a plan that did not involve this.
-@isolde{when="holds(inParty(isolde))"}: Get the wounded on the last wagon. Warden. Warden. Look at me. We are leaving.
+@narrator{when="holds('fell', ['maelis'])"}: Maelis fell on the chain, and it made no difference at all. Her people held the bridge without her.
+@corvin{when="holds('inParty', ['corvin'])"}: I would like it noted that I had a plan that did not involve this.
+@isolde{when="holds('inParty', ['isolde'])"}: Get the wounded on the last wagon. Warden. Warden. Look at me. We are leaving.

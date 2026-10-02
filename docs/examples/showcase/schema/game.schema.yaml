@@ -4,7 +4,7 @@
 # low -> high: base < this. The episode imports THIS child via `uses:`.
 extends: base.schema.yaml
 state:
-  user.level:  { type: number, default: 2 }
-  run.chapter: { type: number, default: 1 }
+  user.level:  { type: int, default: 2 }
+  run.chapter: { type: int, default: 1 }
 defs:
   veteran: { type: bool, cel: "user.level >= 2" }

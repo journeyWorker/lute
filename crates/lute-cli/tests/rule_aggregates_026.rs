@@ -99,11 +99,11 @@ fn project(tag: &str, extra_rules: &str) -> PathBuf {
     write(
         &dir,
         "scenes/door.lute",
-        "---\nkind: scene\nid: door\non: gate\nwhen: \"holds(open(earth))\"\n---\n\n## Door\n\n\
+        "---\nkind: scene\nid: door\non: gate\nwhen: \"holds('open', ['earth'])\"\n---\n\n## Door\n\n\
          @narrator: The earth door opens.\n\
          <branch id=\"who\" prompt=\"Who?\">\n  \
-         <choice id=\"ann\" label=\"Ann\" when=\"holds(traveled(ann))\">\n    @narrator: Ann.\n  </choice>\n  \
-         <choice id=\"bob\" label=\"Bob\" when=\"holds(traveled(bob))\">\n    @narrator: Bob.\n  </choice>\n  \
+         <choice id=\"ann\" label=\"Ann\" when=\"holds('traveled', ['ann'])\">\n    @narrator: Ann.\n  </choice>\n  \
+         <choice id=\"bob\" label=\"Bob\" when=\"holds('traveled', ['bob'])\">\n    @narrator: Bob.\n  </choice>\n  \
          <choice id=\"nobody\" label=\"Nobody\">\n    @narrator: Nobody.\n  </choice>\n\
          </branch>\n",
     );
@@ -112,7 +112,7 @@ fn project(tag: &str, extra_rules: &str) -> PathBuf {
         "quests/road.lute",
         "---\nkind: quest\nid: road.quests\n---\n\n\
          <quest id=\"road\" title=\"Road\" start=\"true\" tier=\"run\">\n  \
-         <objective id=\"door\" title=\"Open the door\" done=\"holds(open(earth))\"/>\n</quest>\n",
+         <objective id=\"door\" title=\"Open the door\" done=\"holds('open', ['earth'])\"/>\n</quest>\n",
     );
     dir
 }
@@ -191,7 +191,7 @@ fn play_derives_five_of_eight_badges_and_distinct_towns() {
     let t = text(&bob);
     assert_eq!(bob.status.code(), Some(1), "{t}");
     assert!(
-        t.contains("E-TRACE-CHOICE") && t.contains("holds(traveled(bob))"),
+        t.contains("E-TRACE-CHOICE") && t.contains("holds('traveled', ['bob'])"),
         "{t}"
     );
 }

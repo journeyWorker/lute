@@ -1,0 +1,6 @@
+bridgeCapabilities:
+  - service: demo
+    operation: run
+    replay: recorded
+    result:
+      - { name: score, type: int }

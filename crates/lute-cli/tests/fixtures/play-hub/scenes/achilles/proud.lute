@@ -4,7 +4,7 @@ id: achilles.proud
 uses: ../../world.schema.yaml
 on: talk
 target: npc.achilles
-when: "isSet(quest.firstEscape.state) && quest.firstEscape.state == 'complete'"
+when: "has(quest.firstEscape.state) && quest.firstEscape.state == 'complete'"
 priority: 100
 ---
 

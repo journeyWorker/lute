@@ -17,7 +17,7 @@ character: x
 season: 1
 episode: 1
 state:
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 entities:
   person: { members: [isolde, corvin, oda] }
   companion: { subsetOf: person, members: [isolde, corvin] }
@@ -36,13 +36,13 @@ rules:
 ## Shot 1.
 ::set{run.approval.isolde += 3}
 <branch id="who">
-<choice id="isolde" label="Isolde" when="holds(loyal(isolde))">
+<choice id="isolde" label="Isolde" when="holds('loyal', ['isolde'])">
 @narrator: isolde
 </choice>
-<choice id="corvin" label="Corvin" when="holds(loyal(corvin))">
+<choice id="corvin" label="Corvin" when="holds('loyal', ['corvin'])">
 @narrator: corvin
 </choice>
-<choice id="party" label="Party" when="holds(inParty(corvin))">
+<choice id="party" label="Party" when="holds('inParty', ['corvin'])">
 @narrator: party
 </choice>
 <choice id="leave" label="Leave">
@@ -126,8 +126,8 @@ fn the_compiled_rules_derive_with_the_ir_kinds() {
     let program = Program::from_ir(json.get("rules")).with_kinds(ir_kinds(json.get("entities")));
     let schema = lute_check::StateSchema::default();
     let state = BTreeMap::from([
-        ("run.approval.isolde".to_string(), Value::Num(3.0)),
-        ("run.approval.corvin".to_string(), Value::Num(1.0)),
+        ("run.approval.isolde".to_string(), Value::Int(3)),
+        ("run.approval.corvin".to_string(), Value::Int(1)),
     ]);
     let eff = EffectiveState::new(&schema, state);
     let base: BTreeSet<Fact> = ["isolde", "corvin", "oda"]

@@ -16,7 +16,7 @@ title: Elin of the Quiet Ward (SR)
   @elin{emotion="shy"}: Have you had water today? Real water, not potion. Sorry. Sorry! I just worry.
 </beat>
 
-<beat id="elinBirthday" on="dailyReset" once="day" when="holds(celebrate(elin))">
+<beat id="elinBirthday" on="dailyReset" once="day" when="holds('celebrate', ['elin'])">
   @elin{emotion="happy"}: A party? For me? I'll just... I'll bandage the cake knife first. For safety.
 </beat>
 

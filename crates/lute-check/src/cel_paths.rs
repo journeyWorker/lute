@@ -11,8 +11,7 @@
 //!
 //! A **guard** is a presence test that *tolerates* an unset path:
 //! - `has(p)` — the CEL macro expands to a test-only `Select` (`select.test`).
-//! - `isSet(p)` — a DSL global call whose sole argument is a static path.
-//!
+//! - `isSet(p)` was the 0.31 DSL global; it was removed in 0.32.
 //! Per the cel-parser 0.10.1 carry-forward (T3.1/T4.3), per-node byte offsets are
 //! unavailable on a successfully parsed AST, so the caller assigns spans from the
 //! enclosing slot; this walk yields only the reconstructed path strings + roles.
@@ -74,7 +73,7 @@ pub fn text_state_path(text: &str) -> Option<String> {
 pub(crate) enum PathRole {
     /// An ordinary value read (subject to definite-assignment, dsl §9.4).
     Read,
-    /// A presence test (`has(p)`/`isSet(p)`) in a **dominating** position (top
+    /// A presence test (`has(p)`) in a **dominating** position (top
     /// level or a conjunct of `&&`): it proves the path for the guarded body.
     Guard,
     /// A presence test in a **non-dominating** position (under `||`/`!`/`?:`):
@@ -90,8 +89,8 @@ pub(crate) struct PathUse {
     pub path: String,
     pub role: PathRole,
     /// dsl 0.24.0 (T1-7b): the paths an enclosing short-circuit proves present
-    /// at THIS read — `isSet(p) && …p…`, `isSet(p) ? …p… : …`,
-    /// `!isSet(p) || …p…`, `!isSet(p) ? … : …p…`, at any depth. Local to the
+    /// at THIS read — `has(p) && …p…`, `has(p) ? …p… : …`,
+    /// `!has(p) || …p…`, `!has(p) ? … : …p…`, at any depth. Local to the
     /// subexpression it sits in: it never proves the guarded body (that is
     /// [`PathRole::Guard`]'s job). Empty when no guard encloses the read.
     pub local: Vec<String>,
@@ -328,13 +327,12 @@ pub(crate) fn is_reserved_quest_activated_at(path: &str) -> bool {
     )
 }
 
-/// `true` specifically for `quest.<id>.state` (3 segments, segment 2 ==
-/// `state`, non-empty id) — the sub-case of [`is_reserved_quest_path`] that is
-/// the quest LIFECYCLE ENUM. 0.21.1 T1-1: it is always assigned
+/// `quest.<id>.state` (3 segments, segment 2 == `state`, non-empty id) — the
+/// quest LIFECYCLE ENUM. 0.21.1 T1-1: it is always assigned
 /// (`unset | active | complete | failed` — the engine writes `unset` for every
 /// known quest before activation), so it is never maybe-unset, `'unset'` is a
-/// member rather than a misspelled sentinel, and `isSet()` on it is always
-/// true. Every checker site that reasons about unset-ness asks this predicate.
+/// member rather than a misspelled sentinel. Every checker site that reasons
+/// about unset-ness asks this predicate.
 pub(crate) fn is_reserved_quest_state(path: &str) -> bool {
     matches!(
         path.split('.').collect::<Vec<&str>>().as_slice(),
@@ -471,7 +469,7 @@ impl Walk {
                 }
             }
             Expr::Call(call) => {
-                // `isSet(p)` — a DSL presence guard whose single arg is a static path.
+                // Legacy 0.31 `isSet(p)` presence guard; 0.32 uses `has(p)`.
                 if let Some(path) = is_set_arg(call) {
                     let role = if dominating {
                         PathRole::Guard
@@ -552,7 +550,7 @@ impl Walk {
     }
 }
 
-/// The static state path of an `isSet(p)` call, or `None`.
+/// The static state path of a legacy 0.31 `isSet(p)` call, or `None`.
 fn is_set_arg(call: &CallExpr) -> Option<String> {
     if call.target.is_some()
         || !call.func_name.eq_ignore_ascii_case("isSet")
@@ -562,12 +560,10 @@ fn is_set_arg(call: &CallExpr) -> Option<String> {
     }
     select_path(&call.args[0].expr).filter(|p| is_state_path(p))
 }
-
 /// The state paths provably set whenever `expr` evaluates to `outcome`:
-/// `isSet(p)`/`has(p)` proves `p` when true, `!e` flips the outcome, a true
-/// `a && b` (a false `a || b`) proves what either side does, and a false
-/// `a && b` (a true `a || b`) only what both sides do. Anything else proves
-/// nothing.
+/// `has(p)` proves `p` when true, `!e` flips the outcome, a true `a && b`
+/// (a false `a || b`) proves what either side does, and a false `a && b`
+/// (a true `a || b`) only what both sides do. Anything else proves nothing.
 pub(crate) fn proved_if(expr: &Expr, outcome: bool) -> Vec<String> {
     match expr {
         Expr::Select(sel) if sel.test => match select_path(expr) {

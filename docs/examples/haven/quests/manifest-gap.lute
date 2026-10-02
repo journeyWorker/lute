@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 uses: ../world.schema.yaml
 title: The Manifest Gap
 ---
@@ -19,8 +19,8 @@ title: The Manifest Gap
   proxy, marked `optional` because the proxy is also satisfied by routes that
   never list him. See T9.5.
 */
-<quest id="manifestGap" tier="run" title="The Manifest Gap" start="holds(found(ottavio))" follows="visited('haven.s01ep06') && completed('whoWakes')">
-<objective id="hearHisArithmetic" title="Hear what being unlisted costs a man" done="holds(knows(ottavio, manifest))"/>
+<quest id="manifestGap" tier="run" title="The Manifest Gap" start="holds('found', ['ottavio'])" follows="visited('haven.s01ep06') && completed('whoWakes')">
+<objective id="hearHisArithmetic" title="Hear what being unlisted costs a man" done="holds('knows', ['ottavio', 'manifest'])"/>
 <objective id="readItYourself" title="Read the listed crew and count the bunks" done="@vesnaHasPaper"/>
 <objective id="listHim" title="Let the ship count him" done="run.shedPressure >= 3" visibleWhen="quest.manifestGap.objectives.readItYourself.done" optional/>
 <on event="questComplete">

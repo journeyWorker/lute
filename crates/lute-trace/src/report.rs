@@ -156,8 +156,13 @@ pub enum Step {
     /// the `when` text is not surfaced here.
     Grant {
         quest: String,
+        /// Save-wide quest activation number for this grant.
+        instance: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
         objective: Option<String>,
+        /// Zero-based position in the objective or quest owner's declared
+        /// rewards, including rewards filtered out by `when`/`outcome`.
+        index: usize,
         reward: GrantReward,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         on_failed: bool,
@@ -573,10 +578,11 @@ pub struct NotRaised {
 /// them).
 pub(crate) fn value_text(v: &Value) -> Option<String> {
     match v {
-        Value::Unknown => None,
+        Value::Unknown | Value::Error(_) => None,
         Value::Bool(b) => Some(b.to_string()),
+        Value::Int(n) => Some(n.to_string()),
+        Value::Double(n) => Some(format_num(*n)),
         Value::Str(s) => Some(s.clone()),
-        Value::Num(n) => Some(format_num(*n)),
     }
 }
 
@@ -979,7 +985,9 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
         Step::HubReturn { hub } => out.push_str(&format!("    -- return (hub {hub}) --\n")),
         Step::Grant {
             quest,
+            instance,
             objective,
+            index,
             reward,
             on_failed,
             credited,
@@ -1008,7 +1016,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
                 .map(|c| format!(" (credits {} = {})", c.path, c.value))
                 .unwrap_or_default();
             out.push_str(&format!(
-                "    grant {owner}  {} {}{}{}{}\n",
+                "    grant[#{instance} i{index}] {owner}  {} {}{}{}{}\n",
                 reward.kind, amount, target, annot, credit
             ));
         }

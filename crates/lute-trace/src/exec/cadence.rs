@@ -153,7 +153,7 @@ impl CadencePlan {
         let rearms = quests
             .iter()
             .filter_map(|(rel, c)| {
-                let raw = c.get("rearm")?.get("raw")?.as_str()?;
+                let raw = c.get("rearm")?.get("cel")?.as_str()?;
                 Some(RearmPlan {
                     quest: id_of(c)?,
                     document: (*rel).clone(),
@@ -484,10 +484,14 @@ pub fn spend_season(p: &ExecProject, w: &mut World, id: &str, member: Option<&st
 }
 
 /// Return quest `id` to `unset`: its status and reserved reads, objectives
-/// undone, failure reasons and missed deadlines forgotten. The status it
-/// left, when it was not already `unset`.
+/// undone, failure reasons and missed deadlines forgotten. The save-wide
+/// instance counter is incremented when a live quest is re-instantiated and
+/// is never reset.
 pub fn reset_quest(w: &mut World, id: &str, objectives: &[String]) -> Option<String> {
     let was = w.quests.insert(id.to_string(), "unset".to_string());
+    if was.as_deref().is_some_and(|s| s != "unset") {
+        *w.quest_instances.entry(id.to_string()).or_insert(1) += 1;
+    }
     w.state
         .insert(format!("quest.{id}.state"), Value::Str("unset".to_string()));
     w.state.remove(&format!("quest.{id}.activatedAt"));

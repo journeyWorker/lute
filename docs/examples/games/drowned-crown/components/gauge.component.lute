@@ -3,7 +3,7 @@ component: gauge
 # The gauge always shows where the last dive's needle stuck; a host that
 # means some other depth can still pass `fathoms=`.
 params:
-  fathoms: { type: number, default: "@lastFathoms" }
+  fathoms: { type: int, default: "@lastFathoms" }
   mood: { enum: [calm, grim] }
 ---
 

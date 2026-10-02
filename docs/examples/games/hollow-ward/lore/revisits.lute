@@ -7,7 +7,7 @@ title: Coming back to a room
 <beat id="lobby" on="enter" target="room.lobby" once="false">
   @narrator: The lobby. The wheelchair is facing the room now.
   @narrator{when="run.power"}: Under the new light the map of the ward is legible: YOU ARE HERE, and a red dot scratched out.
-  @narrator{when="holds(canEnter(surgery))"}: Down the east corridor, the surgery doors are lit.
+  @narrator{when="holds('canEnter', ['surgery'])"}: Down the east corridor, the surgery doors are lit.
 </beat>
 
 <beat id="reception" on="enter" target="room.reception" once="false">
@@ -32,8 +32,8 @@ title: Coming back to a room
 
 <beat id="hydro" on="enter" target="room.hydro" once="false">
   /* a fact cannot be a <match> subject: an if/else on one is two guarded lines */
-  @narrator{when="holds(solved(hydroValves))"}: Hydrotherapy. The empty tub drips. The canvas lids are all buckled shut again.
-  @narrator{when="!holds(solved(hydroValves))"}: Hydrotherapy. The black water, the brass key, the patient valves.
+  @narrator{when="holds('solved', ['hydroValves'])"}: Hydrotherapy. The empty tub drips. The canvas lids are all buckled shut again.
+  @narrator{when="!holds('solved', ['hydroValves'])"}: Hydrotherapy. The black water, the brass key, the patient valves.
 </beat>
 
 <beat id="pharmacy" on="enter" target="room.pharmacy" once="false">

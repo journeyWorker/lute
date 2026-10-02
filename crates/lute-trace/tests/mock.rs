@@ -91,7 +91,7 @@ fn appendix_a_state_typo_is_undeclared() {
     assert_eq!(codes(&diags), vec![E_TRACE_MOCK_UNDECLARED], "{diags:?}");
 }
 
-/// `--state run.tip=warm` against `run.tip: { type: number }` ->
+/// `--state run.tip=warm` against `run.tip: { type: int }` ->
 /// `E-TRACE-MOCK-TYPE`.
 #[test]
 fn appendix_a_state_wrong_type_is_type_error() {

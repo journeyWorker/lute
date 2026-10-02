@@ -14,31 +14,31 @@ title: Victory Road
 
 <beat use="trainerBattle" id="victoryRoadCooltrainerNaomi" who="victoryRoadCooltrainerNaomi" intro="Eight badges gets you in. It doesn't get you out. Show me what got you here!" win="That got you here. Fair enough." lose="Not enough to get you out!" prize="3400"/>
 
-<entry id="northNaomiAfter" on="talk" target="npc.victoryRoadCooltrainerNaomi" category="bark" when="holds(defeated(victoryRoadCooltrainerNaomi))">
+<entry id="northNaomiAfter" on="talk" target="npc.victoryRoadCooltrainerNaomi" category="bark" when="holds('defeated', ['victoryRoadCooltrainerNaomi'])">
   @victoryRoadCooltrainerNaomi: Tarrok of the Elite Four trained here as a boy. He says he moved half these boulders himself. I believe him.
 </entry>
 
 <beat use="trainerBattle" id="victoryRoadCooltrainerElias" who="victoryRoadCooltrainerElias" intro="I've been in this cave for three weeks. I'm not lost. I'm training. Mostly training." win="Okay, a little lost." lose="See? Training works!" prize="3400"/>
 
-<entry id="northEliasAfter" on="talk" target="npc.victoryRoadCooltrainerElias" category="bark" when="holds(defeated(victoryRoadCooltrainerElias))">
+<entry id="northEliasAfter" on="talk" target="npc.victoryRoadCooltrainerElias" category="bark" when="holds('defeated', ['victoryRoadCooltrainerElias'])">
   @victoryRoadCooltrainerElias: The exit's past the crater. You'll know the crater when your boots start smoking.
 </entry>
 
 <beat use="trainerBattle" id="victoryRoadBlackBeltGrum" who="victoryRoadBlackBeltGrum" intro="Hoo-ah! I split boulders with my bare hands! You're softer than a boulder!" win="Harder than a boulder. Noted." lose="Split!" prize="3000"/>
 
-<entry id="northGrumAfter" on="talk" target="npc.victoryRoadBlackBeltGrum" category="bark" when="holds(defeated(victoryRoadBlackBeltGrum))">
+<entry id="northGrumAfter" on="talk" target="npc.victoryRoadBlackBeltGrum" category="bark" when="holds('defeated', ['victoryRoadBlackBeltGrum'])">
   @victoryRoadBlackBeltGrum: My hands hurt. Don't tell Master Hollis.
 </entry>
 
 <beat use="trainerBattle" id="victoryRoadTamerOsric" who="victoryRoadTamerOsric" intro="My monsters are wild at heart. I only keep them calm. Most of the time. Let's see what happens today!" win="Calm. Very calm. Too calm." lose="Wild at heart!" prize="3200"/>
 
-<entry id="northOsricAfter" on="talk" target="npc.victoryRoadTamerOsric" category="bark" when="holds(defeated(victoryRoadTamerOsric))">
+<entry id="northOsricAfter" on="talk" target="npc.victoryRoadTamerOsric" category="bark" when="holds('defeated', ['victoryRoadTamerOsric'])">
   @victoryRoadTamerOsric: The crater near the top? Don't go there without something that can swim in lava. Or at least something that can't burn.
 </entry>
 
 // ── the crater: blazewing ───────────────────────────────────────────────────
 
-<beat id="blazewing" on="enterPlace" target="place.victoryRoadCrater" title="The fire bird" once="false" when="!holds(caught(blazewing))">
+<beat id="blazewing" on="enterPlace" target="place.victoryRoadCrater" title="The fire bird" once="false" when="!holds('caught', ['blazewing'])">
   ::bg{location="victory-road-crater" time="night"}
   ::music{action="change" mood="eerie" volume="down"}
   @narrator: The tunnel opens into a crater lit from below by a lake of slow orange rock. On a spur of black stone in the middle, a bird of flame lifts its head.
@@ -46,6 +46,6 @@ title: Victory Road
   ::encounter{species="blazewing" level="50"}
 </beat>
 
-<entry id="northCraterEmpty" on="enterPlace" target="place.victoryRoadCrater" category="bark" when="holds(caught(blazewing))">
+<entry id="northCraterEmpty" on="enterPlace" target="place.victoryRoadCrater" category="bark" when="holds('caught', ['blazewing'])">
   @narrator: The spur in the middle of the crater is empty. The lava below it has a crust on it, for the first time in a hundred years.
 </entry>

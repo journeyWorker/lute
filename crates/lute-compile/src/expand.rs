@@ -471,7 +471,14 @@ pub fn inline_ref_placeholders(
             } = ph
             {
                 match lute_check::inline_interp_ref(reference, defs) {
-                    Ok(body) => *expr = Some(CelPair::from_raw(&body)),
+                    Ok(body) => {
+                        let slot = lute_syntax::ast::CelSlot::raw(
+                            lute_syntax::ast::CelKind::AttrValue,
+                            body,
+                            at,
+                        );
+                        *expr = Some(CelPair::from_slot(&slot));
+                    }
                     Err(reason) => diags.push(lute_check::interp_def_diag(reference, &reason, at)),
                 }
             }
@@ -562,7 +569,7 @@ mod tests {
             .map(|(k, ps)| {
                 (
                     k.to_string(),
-                    ps.iter().map(|n| (n.to_string(), Type::Number)).collect(),
+                    ps.iter().map(|n| (n.to_string(), Type::Int)).collect(),
                 )
             })
             .collect();

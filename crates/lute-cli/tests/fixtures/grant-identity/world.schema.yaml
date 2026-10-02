@@ -1,0 +1,8 @@
+state:
+  run.ready: { type: bool, default: false, owner: engine }
+  run.finished: { type: bool, default: false, owner: engine }
+  run.rearm: { type: bool, default: false, owner: engine }
+  run.filter: { type: bool, default: false, owner: engine }
+  run.day: { type: int, default: 1, owner: engine }
+seasons:
+  harvest: { live: "run.day == 2 || run.day >= 4" }

@@ -9,7 +9,7 @@ beat:
   on: examine
   target: "fixture.@bed"
   priority: 10
-  spentBy: "holds(calmed(@who))"
+  spentBy: "holds('calmed', [@who])"
 ---
 
 ## Soothe

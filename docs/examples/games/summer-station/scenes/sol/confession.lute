@@ -5,7 +5,7 @@ title: Saturday, on the roof
 on: visit
 target: place.roof
 priority: 50
-when: "run.day == 6 && holds(at(sol, roof)) && holds(ready(sol))"
+when: "run.day == 6 && holds('at', ['sol', 'roof']) && holds('ready', ['sol'])"
 ---
 
 ## Saturday night

@@ -1,0 +1,12 @@
+directives:
+  - name: demo
+    layer: bridge
+    attrs:
+      - { name: id, required: true, type: { providerRef: demoId } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.demo } } }
+      - { name: sync, type: bool, default: false }
+    semantics: ["writes.sceneState", "bridgeCall"]
+    state:
+      declares:
+        - { scope: scene, path: [demo, { fromAttr: { name: resultKey, slotType: localId } }], shape: demoResult }
+    bridge: { service: demo, operation: run }

@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.30.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.32.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -109,6 +109,25 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `end-reason` | the **`::end` walk terminator** (dsl 0.8.0) — the forced arm's `end` record stops the walk with its `reason` surfaced; the shared converge one record later is never reached, and the run is still `complete` |
 | `lore-entry` | a **lore entry, first read** (dsl 0.19.0, lore-entries.md) — `entry.txt` names `scientistLog1`, so the run presents that one `entry` record: the `entry` event carries `firstRead: true` and `eligible`, the body segment runs to the next `entry` record (its `match` picks arm 1 from the seeded `run.labBurned: true`), the first-read `assert`/`set` apply, and the engine then sets `entry.scientistLog1.read` — the sibling `scientistLog2` is never presented and its `read` path stays `false` |
 | `lore-entry-reread` | the same entry **re-read** — the mock seeds `entry.scientistLog1.read: true`, so the text presents (the `otherwise` arm) and the `assert`/`set` records are recorded as `skipped` events (`effect` + the record's `path`/`fact`/`pattern`) without changing state or facts |
+
+| `command-staging` | staging/timeline command records: `background` (`::bg`), `music`, `sfx`, `vfx`, `sprite` (`::auto`), `camera`, `cut`, `video`, plus the timeline `barrier`; all are compiled and replayed in one linear scene |
+| `command-lifecycle` | lore beat presentation (`beat`), quest acceptance (`accept`), and fact retraction (`retract`) in a beat selected by `beat.txt` |
+| `command-plugin` | a local capability plugin's mock bridge (`plugin`) with an unanswered bridge result; the runner records the external call without host invocation |
+| `cel-numbers` | typed `int`/`double` CEL literals and arithmetic, including truncating division, modulo, conversions, and numeric rendering |
+| `cel-facts` | list-form `holds`, `count`, `countDistinct`, `validAt`, `now`, and `visited`, including wildcards and `occasion.target` |
+| `cel-presence` | `has()` and quoted-key `in` presence checks plus indexed state reads |
+| `cel-errors` | condition-error-as-not-satisfied and `::set` evaluation errors that halt without a partial write |
+| `grant-instance` | a single-walk `lute run` fixture pinning `instance` and `index` field presence on objective and quest rewards; multi-run identity is pinned by `crates/lute-cli/tests/grant_identity.rs` |
+| `grant-replay` | a single-walk `lute run` fixture pinning stable grant identity fields and objective/index coordinates; replay and multi-run identity are pinned by `crates/lute-cli/tests/grant_identity.rs` |
+| `invalid/owned-write` | hand-built IR rejection of an engine-owned state write with `E-RUN-OWNED-WRITE` (invalid fixture class) |
+
+The command inventory is intentionally explicit: every currently supported runtime
+command kind is covered by at least one fixture above or by the pre-existing
+fixtures. `command-staging` covers `background`, `music`, `sfx`, `vfx`, `sprite`,
+`camera`, `cut`, `video`, and `barrier`; `command-lifecycle` covers `accept`,
+`beat`, and `retract`; `command-plugin` covers `plugin`. No requested kind is
+unsupported by the reference runner. The staging fixture uses a live
+`luteVersion: "0.32.0"` header, as do the lifecycle and plugin sources.
 
 ## Boundaries — what the reference runner deliberately does NOT implement
 

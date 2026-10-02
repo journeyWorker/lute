@@ -3,11 +3,11 @@
 # entry, one lore/bonds/<hero>.lute.
 state:
   # bond points, earned in battle and by gifts (engine)
-  user.bond: { type: number, default: 0, per: hero, owner: engine }
+  user.bond: { type: int, default: 0, per: hero, owner: engine }
   # birthday: the day of the 28-day moon (1..28) the hero was born on.
   # Content-owned constants; nothing writes them.
   user.birthday:
-    type: number
+    type: int
     per: hero
     default: { aria: 3, bram: 6, cyra: 10, dax: 13, elin: 17, fen: 20, gale: 24, vesper: 27, nyx: 16 }
 

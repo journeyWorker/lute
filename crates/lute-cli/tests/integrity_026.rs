@@ -92,7 +92,7 @@ fn one_path_declared_with_two_types_is_e_state_decl_conflict_naming_both() {
         "scenes/a.lute",
         &scene(
             "a",
-            "on: go\nstate:\n  run.wins: { type: number, default: 0 }\n",
+            "on: go\nstate:\n  run.wins: { type: int, default: 0 }\n",
             "::set{run.wins += 1}\n",
         ),
     );
@@ -113,7 +113,7 @@ fn one_path_declared_with_two_types_is_e_state_decl_conflict_naming_both() {
         "names both declarations by file and line: {s}"
     );
     assert!(
-        lines[0].contains("bool") && lines[0].contains("number"),
+        lines[0].contains("bool") && lines[0].contains("int"),
         "{s}"
     );
 
@@ -160,13 +160,13 @@ fn declarations_must_also_agree_on_default_and_a_schema_counts() {
 #[test]
 fn agreeing_declarations_and_scene_locals_do_not_conflict() {
     let dir = project("st-agree", &[], "");
-    let fm = "state:\n  run.wins: { type: number, default: 0 }\n";
+    let fm = "state:\n  run.wins: { type: int, default: 0 }\n";
     write(
         &dir,
         "scenes/a.lute",
         &scene(
             "a",
-            &format!("{fm}  scene.mood: {{ type: number, default: 0 }}\n"),
+            &format!("{fm}  scene.mood: {{ type: int, default: 0 }}\n"),
             "",
         ),
     );
@@ -234,12 +234,12 @@ fn schema_errors_are_reported_once_at_the_schema_line() {
     write(
         &dir,
         "a.schema.yaml",
-        "state:\n  run.score: { type: number, default: 0 }\n",
+        "state:\n  run.score: { type: int, default: 0 }\n",
     );
     write(
         &dir,
         "b.schema.yaml",
-        "state:\n  run.score: { type: number, default: 0 }\n",
+        "state:\n  run.score: { type: int, default: 0 }\n",
     );
     for id in ["a", "b", "c"] {
         write(&dir, &format!("scenes/{id}.lute"), &scene(id, "", ""));
@@ -451,8 +451,8 @@ fn defaults_quest_tier_applies_to_quests_without_one() {
 #[test]
 fn a_quest_reading_only_run_state_without_a_tier_is_w_quest_tier_implicit() {
     const QUESTS: &str = "---\nkind: quest\nid: q.doc\nstate:\n  \
-        run.clues: { type: number, default: 0 }\n  run.accused: { type: bool, default: false }\n  \
-        user.runs: { type: number, default: 0 }\n\
+        run.clues: { type: int, default: 0 }\n  run.accused: { type: bool, default: false }\n  \
+        user.runs: { type: int, default: 0 }\n\
         defs:\n  enough: { type: bool, cel: \"run.clues >= 2\" }\n---\n\n\
         <quest id=\"caseRun\" title=\"C\" start=\"true\" fail=\"run.accused\">\n  \
         <objective id=\"o\" title=\"O\" done=\"@enough\"/>\n</quest>\n\n\
@@ -772,7 +772,7 @@ fn an_extends_refinement_is_not_a_conflict() {
         "scenes/c.lute",
         &scene(
             "c",
-            "state:\n  run.blessed: { type: number, default: 0 }\n",
+            "state:\n  run.blessed: { type: int, default: 0 }\n",
             "",
         ),
     );
@@ -806,7 +806,7 @@ fn spine(tag: &str, ribbon_tide: bool) -> PathBuf {
          @narrator: A badge.\n::assert{hasBadge(@badge)}\n",
     );
     let ribbon = if ribbon_tide {
-        "  <objective id=\"r\" title=\"R\" done=\"holds(ribbon(tide))\"/>\n"
+        "  <objective id=\"r\" title=\"R\" done=\"holds('ribbon', ['tide'])\"/>\n"
     } else {
         ""
     };
@@ -818,7 +818,7 @@ fn spine(tag: &str, ribbon_tide: bool) -> PathBuf {
              <quest id=\"league\" title=\"League\" start=\"true\" tier=\"run\">\n  \
              <objective id=\"badges\" title=\"Badges\" quest=\"badgeRoad\"/>\n</quest>\n\n\
              <quest id=\"badgeRoad\" title=\"Badges\" tier=\"run\">\n  \
-             <objective id=\"stone\" title=\"Stone\" done=\"holds(hasBadge(stone))\"/>\n\
+             <objective id=\"stone\" title=\"Stone\" done=\"holds('hasBadge', ['stone'])\"/>\n\
              {ribbon}</quest>\n"
         ),
     );
@@ -827,7 +827,7 @@ fn spine(tag: &str, ribbon_tide: bool) -> PathBuf {
         "scenes/broadcast.lute",
         &scene(
             "broadcast",
-            "on: go\nwhen: \"holds(hasBadge(tide))\"\n",
+            "on: go\nwhen: \"holds('hasBadge', ['tide'])\"\n",
             "::assert{ribbon(stone)}\n",
         ),
     );
@@ -882,7 +882,7 @@ fn wip_keeps_a_ground_producer_that_never_matches_an_error() {
     assert!(
         unsat
             .iter()
-            .any(|l| l.contains("error [") && l.contains("`ribbon(tide)`")),
+            .any(|l| l.contains("error [") && l.contains("`holds('ribbon', ['tide'])`")),
         "{s}"
     );
     assert!(
@@ -894,7 +894,7 @@ fn wip_keeps_a_ground_producer_that_never_matches_an_error() {
     assert!(
         top_lines(&s, "W-WIP")
             .iter()
-            .any(|l| l.contains("`hasBadge(stone)`")
+            .any(|l| l.contains("`holds('hasBadge', ['stone'])`")
                 && l.contains("`E-OBJECTIVE-UNSATISFIABLE` without `--wip`")),
         "{s}"
     );
@@ -940,7 +940,7 @@ fn gift_project(tag: &str) -> PathBuf {
         &[
             (
                 "world.schema.yaml",
-                "state:\n  run.fish: { type: number, default: 0 }\nentities:\n  bagItem: { members: [potion, nugget] }\n",
+                "state:\n  run.fish: { type: int, default: 0 }\nentities:\n  bagItem: { members: [potion, nugget] }\n",
             ),
             (
                 "components/gift.component.lute",
@@ -1020,7 +1020,7 @@ fn ineligible_scene_failure_names_the_false_premise() {
     let dir = demo(
         "n3",
         &[
-            ("world.schema.yaml", "state:\n  run.fish: { type: number, default: 0 }\n"),
+            ("world.schema.yaml", "state:\n  run.fish: { type: int, default: 0 }\n"),
             ("a.lute", "---\nkind: scene\nid: a\n---\n## A\n\n@narrator: A.\n"),
             (
                 "b.lute",
@@ -1059,7 +1059,7 @@ fn eligible_true_miss_names_the_false_premise() {
     let dir = demo(
         "t3-12",
         &[
-            ("world.schema.yaml", "state:\n  run.fish: { type: number, default: 0 }\n"),
+            ("world.schema.yaml", "state:\n  run.fish: { type: int, default: 0 }\n"),
             ("a.lute", "---\nkind: scene\nid: a\n---\n## A\n\n@narrator: A.\n"),
             (
                 "talk.lute",
@@ -1106,8 +1106,8 @@ fn eligible_true_miss_names_the_false_conjunct_first() {
         &[
             (
                 "world.schema.yaml",
-                "state:\n  run.fish: { type: number, default: 0 }\n  \
-                 run.day: { type: number, default: 1 }\n\
+                "state:\n  run.fish: { type: int, default: 0 }\n  \
+                 run.day: { type: int, default: 1 }\n\
                  entities:\n  person: { members: [ada, bo] }\n\
                  relations:\n  locked: { args: [person], tier: run }\n",
             ),
@@ -1116,7 +1116,7 @@ fn eligible_true_miss_names_the_false_conjunct_first() {
                 "---\nkind: lore\nid: talk\n---\n\n\
                  <entry id=\"note\" when=\"run.day <= 5 && run.fish >= 7\">\n  \
                  ::set{run.fish = 9}\n  @narrator: A note.\n</entry>\n\n\
-                 <entry id=\"gate\" when=\"run.day <= 5 && !holds(locked(ada))\">\n  \
+                 <entry id=\"gate\" when=\"run.day <= 5 && !holds('locked', ['ada'])\">\n  \
                  @narrator: A gate.\n</entry>\n",
             ),
             (
@@ -1149,7 +1149,7 @@ fn eligible_true_miss_names_the_false_conjunct_first() {
     assert!(
         s.contains(
             "eligible gate: expected true, got false — its `when` is false because \
-             `!holds(locked(ada))` is false (`locked(ada)` holds, seeded by `facts:`)"
+             `!holds('locked', ['ada'])` is false (`locked(ada)` holds, seeded by `facts:`)"
         ),
         "{s}"
     );
@@ -1171,7 +1171,7 @@ fn duplicate_add_member_is_anchored_at_both_member_lines() {
         &[
             (
                 "world.schema.yaml",
-                "state:\n  run.fish: { type: number, default: 0 }\n",
+                "state:\n  run.fish: { type: int, default: 0 }\n",
             ),
             (
                 "schema/a.schema.yaml",
@@ -1218,7 +1218,7 @@ fn imported_def_decl_is_folded_at_the_schema_and_visited_is_bool() {
         .collect();
     files.push((
         "world.schema.yaml",
-        "state:\n  run.fish: { type: number, default: 0 }\ndefs:\n  metA: \"visited('a')\"\n  metB: \"run.fish + run.gone\"\n",
+        "state:\n  run.fish: { type: int, default: 0 }\ndefs:\n  metA: \"visited('a')\"\n  metB: \"run.fish + run.gone\"\n",
     ));
     let dir = demo("n5", &files, "world.schema.yaml");
     let s = text(&run(&dir, &["check-project", "."]));
@@ -1245,7 +1245,7 @@ fn shared_name_cast_entries_are_not_display_name_dups() {
         &[
             (
                 "world.schema.yaml",
-                "state:\n  run.fish: { type: number, default: 0 }\ncast:\n  g1: { name: Eclipse Grunt, sharedName: true }\n  g2: { name: Eclipse Grunt, sharedName: true }\n  gus: { name: Hiker Gus }\n  gus2: { name: Hiker Gus }\n",
+                "state:\n  run.fish: { type: int, default: 0 }\ncast:\n  g1: { name: Eclipse Grunt, sharedName: true }\n  g2: { name: Eclipse Grunt, sharedName: true }\n  gus: { name: Hiker Gus }\n  gus2: { name: Hiker Gus }\n",
             ),
             ("one.lute", "---\nkind: scene\nid: one\n---\n## S\n\n@g1: a.\n@g2: b.\n@gus: c.\n@gus2: d.\n"),
         ],
@@ -1266,7 +1266,7 @@ fn defaults_uses_glob_over_a_missing_directory_is_no_error() {
         &[
             (
                 "world.schema.yaml",
-                "state:\n  run.fish: { type: number, default: 0 }\n",
+                "state:\n  run.fish: { type: int, default: 0 }\n",
             ),
             (
                 "one.lute",

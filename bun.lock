@@ -7,7 +7,7 @@
     },
     "packages/cli": {
       "name": "@lute-lang/lute",
-      "version": "0.31.0",
+      "version": "0.32.0",
       "bin": {
         "lute": "./bin.js",
         "lute-lsp": "./lsp-bin.js",
@@ -17,22 +17,22 @@
         "typescript": "^5.0.0",
       },
       "optionalDependencies": {
-        "@lute-lang/lute-core-darwin-arm64": "0.31.0",
-        "@lute-lang/lute-core-linux-x64": "0.31.0",
-        "@lute-lang/lute-core-win32-x64": "0.31.0",
+        "@lute-lang/lute-core-darwin-arm64": "0.32.0",
+        "@lute-lang/lute-core-linux-x64": "0.32.0",
+        "@lute-lang/lute-core-win32-x64": "0.32.0",
       },
     },
     "packages/core-darwin-arm64": {
       "name": "@lute-lang/lute-core-darwin-arm64",
-      "version": "0.31.0",
+      "version": "0.32.0",
     },
     "packages/core-linux-x64": {
       "name": "@lute-lang/lute-core-linux-x64",
-      "version": "0.31.0",
+      "version": "0.32.0",
     },
     "packages/core-win32-x64": {
       "name": "@lute-lang/lute-core-win32-x64",
-      "version": "0.31.0",
+      "version": "0.32.0",
     },
     "packages/website": {
       "name": "@lute/website",
@@ -932,6 +932,11 @@
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
 
     "@astrojs/sitemap/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+
+    "@lute-lang/lute/@lute-lang/lute-core-darwin-arm64": ["@lute-lang/lute-core-darwin-arm64@0.32.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-vMbjEKrf2AKd8DYYD9M03Q9ywROoUiF1oFroLePDmPKfzWdkrCX8Kaxm6DmcqYakkkhUWyHkv6fYE5Ek9aVclA=="],
+
+    "@lute-lang/lute/@lute-lang/lute-core-linux-x64": ["@lute-lang/lute-core-linux-x64@0.32.0", "", { "os": "linux", "cpu": "x64" }, "sha512-uZR9drIum+lyQu+lPAcrOvRxxTUurw3YbE8flerkEjugACcyRV6MpRAzo3exOTDqUEt5YIENEybGmtKEKL8wPA=="],
+    "@lute-lang/lute/@lute-lang/lute-core-win32-x64": ["@lute-lang/lute-core-win32-x64@0.32.0", "", { "os": "win32", "cpu": "x64" }, "sha512-cp3S+RHdMURwKAWpg6kDwh0MbADxTh4wS0wPjcUcYGY5A+L5z07k5UJvj+bZPRjPE6Wz570fZIejZ3MwfNE+gw=="],
 
     "@rollup/pluginutils/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 

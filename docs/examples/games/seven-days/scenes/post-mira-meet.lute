@@ -4,7 +4,7 @@ id: post.mira.meet
 title: The post office on Quay Lane
 on: placeVisit
 target: place.post
-when: 'holds(present(mira, post))'
+when: 'holds("present", ["mira", "post"])'
 priority: 30
 ---
 

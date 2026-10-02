@@ -105,7 +105,7 @@ fn investigation_template_is_current_and_checks_tests_and_plays_clean() {
         "a negated rule body"
     );
     assert!(read("lore/evidence.lute").contains("::assert{"));
-    assert!(read("scenes/accusation.lute").contains("when=\"holds(culprit("));
+    assert!(read("scenes/accusation.lute").contains("when=\"holds('culprit',"));
     for rel in [
         "scenes/case/arrival.lute",
         "scenes/accusation.lute",

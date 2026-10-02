@@ -28,20 +28,20 @@ when: "run.lair.cornerHideout != 'cleared'"
 ::bg{location="game-corner-basement" time="night"}
 ::music{action="change" mood="tense" volume="normal"}
 @narrator: Behind the poster, a switch. Behind the switch, a staircase down into the cold.
-::use{component="trainerBattle" who="cornerGruntDoor" intro="Hey! That poster was supposed to be a secret! Who told you? Was it Hesketh? It was Hesketh." win="Okay, okay! The Admin's downstairs. Don't tell him I let you by." lose="Upstairs. Go play the slots like everybody else." prize="640" when="!holds(defeated(cornerGruntDoor))"}
-::next{to="pushedBack" when="!holds(defeated(cornerGruntDoor))"}
+::use{component="trainerBattle" who="cornerGruntDoor" intro="Hey! That poster was supposed to be a secret! Who told you? Was it Hesketh? It was Hesketh." win="Okay, okay! The Admin's downstairs. Don't tell him I let you by." lose="Upstairs. Go play the slots like everybody else." prize="640" when="!holds('defeated', ['cornerGruntDoor'])"}
+::next{to="pushedBack" when="!holds('defeated', ['cornerGruntDoor'])"}
 
 ## The vault corridor
 
 @narrator: A corridor of steel doors. Crates stamped HELIX CORP. PROPERTY OF THE DIRECTOR are stacked to the ceiling.
-::use{component="trainerBattle" who="cornerGruntVault" intro="These crates don't count themselves, and you're not on the list!" win="I lost count. Of my monsters. And the crates." lose="Seven hundred and twelve crates. And one kid, going back up." prize="680" when="!holds(defeated(cornerGruntVault))"}
-::next{to="pushedBack" when="!holds(defeated(cornerGruntVault))"}
+::use{component="trainerBattle" who="cornerGruntVault" intro="These crates don't count themselves, and you're not on the list!" win="I lost count. Of my monsters. And the crates." lose="Seven hundred and twelve crates. And one kid, going back up." prize="680" when="!holds('defeated', ['cornerGruntVault'])"}
+::next{to="pushedBack" when="!holds('defeated', ['cornerGruntVault'])"}
 
 ## The lab
 
 @narrator: A cramped lab. On the bench, under a lamp: a lens in a brass frame, and a monster that should not be visible flickering in it.
-::use{component="trainerBattle" who="cornerScientistLoy" intro="Don't touch the lens! It took us a year to make ghosts sit still for it." win="My calibrations! Weeks of calibrations!" lose="Fascinating. You are exactly as weak as I predicted." prize="880" when="!holds(defeated(cornerScientistLoy))"}
-::next{to="pushedBack" when="!holds(defeated(cornerScientistLoy))"}
+::use{component="trainerBattle" who="cornerScientistLoy" intro="Don't touch the lens! It took us a year to make ghosts sit still for it." win="My calibrations! Weeks of calibrations!" lose="Fascinating. You are exactly as weak as I predicted." prize="880" when="!holds('defeated', ['cornerScientistLoy'])"}
+::next{to="pushedBack" when="!holds('defeated', ['cornerScientistLoy'])"}
 
 ## Admin Corvo
 

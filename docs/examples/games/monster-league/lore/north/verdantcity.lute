@@ -24,8 +24,8 @@ title: Verdant City
 </beat>
 
 <entry id="northVerdantMorning" on="enterTown" target="town.verdantcity" category="bark" once="day" when="@isMorning">
-  @narrator{when="!holds(defeated(vex))"}: The sprinklers hiss across the lawns. Somebody in black is watching the gardeners work.
-  @narrator{when="holds(defeated(vex))"}: The sprinklers hiss across the lawns. The gardeners are singing.
+  @narrator{when="!holds('defeated', ['vex'])"}: The sprinklers hiss across the lawns. Somebody in black is watching the gardeners work.
+  @narrator{when="holds('defeated', ['vex'])"}: The sprinklers hiss across the lawns. The gardeners are singing.
 </entry>
 
 <entry id="northVerdantDay" on="enterTown" target="town.verdantcity" category="bark" once="day" when="run.slot == 'day'">
@@ -33,8 +33,8 @@ title: Verdant City
 </entry>
 
 <entry id="northVerdantNight" on="enterTown" target="town.verdantcity" category="bark" once="day" when="@isNight">
-  @narrator{when="!holds(defeated(vex))"}: At night the fountains are lit from below, and a single light burns high up in the windowless gym.
-  @narrator{when="holds(defeated(vex))"}: At night the fountains are lit from below. The gym is dark now, and the doors stand open.
+  @narrator{when="!holds('defeated', ['vex'])"}: At night the fountains are lit from below, and a single light burns high up in the windowless gym.
+  @narrator{when="holds('defeated', ['vex'])"}: At night the fountains are lit from below. The gym is dark now, and the doors stand open.
 </entry>
 
 // ── services ────────────────────────────────────────────────────────────────
@@ -85,21 +85,21 @@ title: Verdant City
 </entry>
 
 <entry id="northMossNight" on="talk" target="npc.verdantGardener" category="bark" priority="5" when="@isNight">
-  @verdantGardener{when="!holds(defeated(vex))"}: I stay out late to keep an eye on the beds. The Eclipse lot stamp through them after dark.
-  @verdantGardener{when="holds(defeated(vex))"}: Nobody stamps on my beds any more. I just stay out late because the fountains are pretty.
+  @verdantGardener{when="!holds('defeated', ['vex'])"}: I stay out late to keep an eye on the beds. The Eclipse lot stamp through them after dark.
+  @verdantGardener{when="holds('defeated', ['vex'])"}: Nobody stamps on my beds any more. I just stay out late because the fountains are pretty.
 </entry>
 
 // ── Officer Dale ────────────────────────────────────────────────────────────
 
-<entry id="northDaleBark" on="talk" target="npc.verdantGuard" category="bark" when="!holds(defeated(vex))">
+<entry id="northDaleBark" on="talk" target="npc.verdantGuard" category="bark" when="!holds('defeated', ['vex'])">
   @verdantGuard{emotion="worried"}: The gym leader's permits are all in order. That's what worries me. Nobody gets their permits in order that fast.
 </entry>
 
-<entry id="northDaleAfter" on="talk" target="npc.verdantGuard" category="bark" when="holds(defeated(vex))">
+<entry id="northDaleAfter" on="talk" target="npc.verdantGuard" category="bark" when="holds('defeated', ['vex'])">
   @verdantGuard: The Director cleared out his office and walked out of town. No forwarding address. My paperwork is going to be enormous.
 </entry>
 
-<entry id="northDaleNight" on="talk" target="npc.verdantGuard" category="bark" priority="5" when="@isNight && !holds(defeated(vex))">
+<entry id="northDaleNight" on="talk" target="npc.verdantGuard" category="bark" priority="5" when="@isNight && !holds('defeated', ['vex'])">
   @verdantGuard: Night shift. Those two by the gym door never go home either. I'm starting to think they don't have homes.
 </entry>
 

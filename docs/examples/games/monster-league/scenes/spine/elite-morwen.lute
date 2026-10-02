@@ -5,7 +5,7 @@ title: The Elite Four — Morwen
 on: challenge
 target: arena.shadeChamber
 once: false
-when: "@badgeCount >= 8 && holds(defeated(tarrok)) && !holds(defeated(morwen))"
+when: "@badgeCount >= 8 && holds('defeated', ['tarrok']) && !holds('defeated', ['morwen'])"
 ---
 
 ## The chamber

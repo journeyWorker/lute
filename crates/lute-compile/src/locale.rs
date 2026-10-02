@@ -1,13 +1,13 @@
 //! Locale bundle (dsl 0.8.0 §7) — the canonical `lineId -> locale -> text`
 //! table `lute loc import` produces and `lute compile --locales` merges into an
-//! already-addressed [`Artifact`].
+//! already-addressed [`ExecutionIr`].
 //!
 //! ## Why the merge lives downstream of addressing
 //! `lineId` is assigned by [`crate::address::assign_addresses`], the LAST pass
-//! [`crate::compile_with_check`] runs before it builds the [`Artifact`]. A
+//! [`crate::compile_with_check`] runs before it builds the [`ExecutionIr`]. A
 //! bundle is keyed on that identity (never on `addr`, which is a REGENERATED
 //! position — spec §4.2/§12), so the merge can only run once the artifact
-//! exists. [`merge_locales`] therefore takes a finished [`Artifact`] rather
+//! exists. [`merge_locales`] therefore takes a finished [`ExecutionIr`] rather
 //! than threading a bundle through the pipeline: the compile signature, and
 //! every byte a bundle-less compile emits, stay exactly as they were.
 //!
@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use serde::Serialize;
 
-use crate::ir::{Artifact, Command};
+use crate::ir::{ExecutionIr, Command};
 
 /// A translatable record carries no text for a locale the bundle declares
 /// (dsl 0.8.0 §7). Warning-grade: an untranslated build is still a valid
@@ -169,14 +169,14 @@ impl LocaleBundle {
 /// Merge `bundle` into `artifact`, returning one [`W_L10N_MISSING`] warning per
 /// `(lineId, locale)` pair the document needs and the bundle does not carry.
 ///
-/// Runs over the FINISHED artifact, i.e. strictly downstream of
+/// Runs over the FINISHED execution IR, i.e. strictly downstream of
 /// [`crate::address::assign_addresses`] — every `lineId` is final. Iteration is
 /// command order (= `addr` order) then declared-locale order, so the diagnostic
 /// stream is deterministic.
 ///
 /// The record's own `text`/`label` is left untouched; only the additive
 /// `texts`/`labels` maps are written. Never panics.
-pub fn merge_locales(artifact: &mut Artifact, bundle: &LocaleBundle) -> Vec<Diagnostic> {
+pub fn merge_locales(artifact: &mut ExecutionIr, bundle: &LocaleBundle) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for cmd in &mut artifact.commands {
         match cmd {

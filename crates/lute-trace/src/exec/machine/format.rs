@@ -68,7 +68,7 @@ impl<D: Driver> Machine<D> {
                     }
                 }
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("ref") => {
-                    let raw = ph.pointer("/expr/raw").and_then(Json::as_str).unwrap_or("");
+                    let raw = ph.pointer("/expr/cel").and_then(Json::as_str).unwrap_or("");
                     match self.eval_raw(raw) {
                         Value::Unknown => marker.to_string(),
                         v => formatted(ph, &v)
@@ -115,7 +115,7 @@ impl<D: Driver> Machine<D> {
             .any(|ph| match ph.get("kind").and_then(Json::as_str) {
                 Some("occasionTarget") => true,
                 Some("ref") => ph
-                    .pointer("/expr/raw")
+                    .pointer("/expr/cel")
                     .and_then(Json::as_str)
                     .is_some_and(lute_check::occasion_bind::mentions_target),
                 _ => false,
@@ -157,15 +157,10 @@ impl<D: Driver> Machine<D> {
 pub fn value_to_json(v: &Value) -> Json {
     match v {
         Value::Bool(b) => json!(b),
-        Value::Num(n) => {
-            if n.fract() == 0.0 && n.is_finite() && n.abs() < 9.007e15 {
-                json!(*n as i64)
-            } else {
-                json!(n)
-            }
-        }
+        Value::Int(n) => json!(n),
+        Value::Double(n) => json!(n),
         Value::Str(s) => json!(s),
-        Value::Unknown => Json::Null,
+        Value::Unknown | Value::Error(_) => Json::Null,
     }
 }
 
@@ -179,11 +174,15 @@ pub fn value_to_json(v: &Value) -> Json {
 /// unchanged.
 fn formatted(ph: &Json, v: &Value) -> Option<String> {
     match (ph.get("format").and_then(Json::as_str), v) {
-        (Some(format), Value::Num(n)) => {
+        (Some(format), Value::Int(n)) => {
             let forms: Option<Vec<String>> = ph.get("forms").and_then(Json::as_array).map(|a| {
-                a.iter()
-                    .filter_map(|f| f.as_str().map(str::to_string))
-                    .collect()
+                a.iter().filter_map(|f| f.as_str().map(str::to_string)).collect()
+            });
+            lute_syntax::ast::format_number(format, forms.as_deref(), *n as f64, &value_to_string(v))
+        }
+        (Some(format), Value::Double(n)) => {
+            let forms: Option<Vec<String>> = ph.get("forms").and_then(Json::as_array).map(|a| {
+                a.iter().filter_map(|f| f.as_str().map(str::to_string)).collect()
             });
             lute_syntax::ast::format_number(format, forms.as_deref(), *n, &value_to_string(v))
         }
@@ -211,14 +210,9 @@ fn texted(ph: &Json, text: String, forms: Option<&LabelForms>) -> String {
 pub fn value_to_string(v: &Value) -> String {
     match v {
         Value::Bool(b) => b.to_string(),
-        Value::Num(n) => {
-            if n.fract() == 0.0 && n.is_finite() && n.abs() < 9.007e15 {
-                (*n as i64).to_string()
-            } else {
-                n.to_string()
-            }
-        }
+        Value::Int(n) => n.to_string(),
+        Value::Double(n) => n.to_string(),
         Value::Str(s) => s.clone(),
-        Value::Unknown => "unset".to_string(),
+        Value::Unknown | Value::Error(_) => "unset".to_string(),
     }
 }

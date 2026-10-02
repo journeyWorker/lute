@@ -8,9 +8,15 @@
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Bool(bool),
-    Num(f64),
+    Int(i64),
+    Double(f64),
     Str(String),
     Unknown,
+    /// A CEL evaluation error (overflow, division by zero, or type mismatch).
+    /// Trace keeps [`Unknown`] for unresolved state/time; run/play distinguish
+    /// this variant so an erroneous condition is simply false and an erroneous
+    /// set can halt the walk.
+    Error(String),
 }
 
 /// `decide()`'s decided-constant fragment (dsl §5.1) is a strict SUBSET of
@@ -20,7 +26,7 @@ impl From<lute_check::Decided> for Value {
     fn from(d: lute_check::Decided) -> Self {
         match d {
             lute_check::Decided::Bool(b) => Value::Bool(b),
-            lute_check::Decided::Num(n) => Value::Num(n),
+            lute_check::Decided::Num(n) => Value::Double(n),
             lute_check::Decided::Str(s) => Value::Str(s),
         }
     }
@@ -60,7 +66,7 @@ mod tests {
             Value::from(lute_check::Decided::Bool(true)),
             Value::Bool(true)
         );
-        assert_eq!(Value::from(lute_check::Decided::Num(3.5)), Value::Num(3.5));
+        assert_eq!(Value::from(lute_check::Decided::Num(3.5)), Value::Double(3.5));
         assert_eq!(
             Value::from(lute_check::Decided::Str("x".to_string())),
             Value::Str("x".to_string())
@@ -74,7 +80,7 @@ mod tests {
         let v = Value::Unknown;
         assert_eq!(v, Value::Unknown);
         assert_ne!(v, Value::Bool(false));
-        assert_ne!(v, Value::Num(0.0));
+        assert_ne!(v, Value::Int(0));
     }
 
     #[test]

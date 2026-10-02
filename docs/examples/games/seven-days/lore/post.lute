@@ -9,7 +9,7 @@ components: [../components/postcard.component.lute]
    is fixed (`spentBy`, 0.27). Then one postcard a day (`once: day` + one
    `share` key across the three template uses). */
 
-<beat id="machine" on="placeVisit" target="place.post" title="The franking machine" priority="20" after="visited('post.mira.meet')" when="holds(present(mira, post))" spentBy="run.machineFixed">
+<beat id="machine" on="placeVisit" target="place.post" title="The franking machine" priority="20" after="visited('post.mira.meet')" when="holds('present', ['mira', 'post'])" spentBy="run.machineFixed">
   ::auto{character="mira" anchor="left" action="fadeInUp"}
   ::set{run.seen.mira = run.day}
   @mira{emotion="tired"}: It's eaten another one. I can hear it chewing.
@@ -42,14 +42,14 @@ components: [../components/postcard.component.lute]
   @narrator: On the board behind the counter, in Mira's felt-tip: POSTCARD OF THE WEEK — SOL (THREE!!).
 </beat>
 
-<entry id="miraBark" on="placeVisit" target="place.post" category="bark" when="holds(present(mira, post))" once="day">
+<entry id="miraBark" on="placeVisit" target="place.post" category="bark" when="holds('present', ['mira', 'post'])" once="day">
   @mira: Morning, afternoon, whichever it is. The van's at four.
 </entry>
 
-<entry id="miraBusy" on="placeVisit" target="place.post" category="bark" priority="-1" when="holds(present(mira, post))">
+<entry id="miraBusy" on="placeVisit" target="place.post" category="bark" priority="-1" when="holds('present', ['mira', 'post'])">
   @mira: Queue's out the door, love. Well. Queue's you.
 </entry>
 
-<entry id="postShut" on="placeVisit" target="place.post" category="bark" when="!holds(present(mira, post))">
+<entry id="postShut" on="placeVisit" target="place.post" category="bark" when="!holds('present', ['mira', 'post'])">
   @narrator: CLOSED. The letter box by the door says LAST COLLECTION 4PM SATURDAY in letters older than you.
 </entry>

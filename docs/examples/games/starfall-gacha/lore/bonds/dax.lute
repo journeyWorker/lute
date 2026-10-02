@@ -9,7 +9,7 @@ title: Dax, Seven-Fingers (SR)
   @dax: Dax. Seven fingers, zero regrets. Point me at something locked.
 </beat>
 
-<beat id="daxDupe" on="summon" target="hero.dax" once="false" priority="3" when="holds(owned(dax)) && occasion.payload.copies <= 6">
+<beat id="daxDupe" on="summon" target="hero.dax" once="false" priority="3" when="holds('owned', ['dax']) && occasion.payload.copies <= 6">
   @dax{emotion="surprised"}: There's two of me now? Great. Now I've got an alibi.
 </beat>
 
@@ -17,7 +17,7 @@ title: Dax, Seven-Fingers (SR)
   @dax{emotion="smug"}: Looking for your snacks? Weird. No idea. Try under my coat. No, don't.
 </beat>
 
-<beat id="daxBirthday" on="dailyReset" once="day" when="holds(celebrate(dax))">
+<beat id="daxBirthday" on="dailyReset" once="day" when="holds('celebrate', ['dax'])">
   @dax{emotion="surprised"}: You got me a present? You didn't steal it? That's... new.
 </beat>
 

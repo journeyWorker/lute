@@ -383,7 +383,7 @@ impl<'de> serde::de::Visitor<'de> for YamlKey<'_> {
 pub fn type_placeholder(ty: Option<&Type>) -> String {
     match ty {
         Some(Type::Bool) => "<bool>".to_string(),
-        Some(Type::Number) => "<number>".to_string(),
+        Some(Type::Int | Type::Double) => "<number>".to_string(),
         Some(Type::Str) => "<string>".to_string(),
         Some(Type::Enum(members)) => format!("<one of: {}>", members.join("|")),
         _ => "<value>".to_string(),
@@ -1181,7 +1181,8 @@ pub(crate) fn coerce_state_literal(ty: &Type, raw: &str) -> Option<Literal> {
             "false" => Some(Literal::Bool(false)),
             _ => None,
         },
-        Type::Number => raw.parse::<f64>().ok().map(Literal::Num),
+        Type::Int => raw.parse::<i64>().ok().map(Literal::Int),
+        Type::Double => raw.parse::<f64>().ok().map(Literal::Double),
         _ => Some(Literal::Str(raw.to_string())),
     }
 }

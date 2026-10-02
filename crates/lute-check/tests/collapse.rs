@@ -157,7 +157,7 @@ fn distinct_undeclared_set_targets_do_not_collapse() {
 #[test]
 fn maybe_unset_is_exempt() {
     let t = format!(
-        "{HDR}state:\n  run.x: {{ type: number }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  run.x: {{ type: int }}\n---\n## Shot 1.\n\
          @marina: you have {{{{run.x}}}}\n\
          @marina: still {{{{run.x}}}}\n"
     );

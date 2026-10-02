@@ -34,12 +34,13 @@ fn count(out: &[String], code: &str) -> usize {
     out.iter().filter(|c| c.as_str() == code).count()
 }
 
-// `run.n` (number, defaulted — never unset), `run.unbound` (number, NO
+// `run.n` (double, defaulted — never unset), `run.unbound` (int, NO
 // default — maybe unset), `run.rank` (enum), `run.flag` (bool), `run.name`
 // (string).
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-    run.n: { type: number, default: 0 }\n  \
-    run.unbound: { type: number }\n  \
+    run.n: { type: double, default: 0.0 }\n  \
+    run.i: { type: int, default: 0 }\n  \
+    run.unbound: { type: int }\n  \
     run.rank: { type: { enum: [fail, bronze, silver, gold] }, default: fail }\n  \
     run.flag: { type: bool, default: false }\n  \
     run.name: { type: string, default: x }\n---\n## Shot 1.\n";
@@ -121,6 +122,28 @@ fn point_literals_alone_stay_nonexhaustive() {
     let out = codes(&match_src("run.n", &["1", "2"], false));
     assert_eq!(count(&out, "E-NONEXHAUSTIVE"), 1, "{out:?}");
     assert_eq!(count(&out, "E-WHEN-LITERAL-DOMAIN"), 0, "{out:?}");
+}
+
+#[test]
+fn fractional_int_point_and_range_are_rejected_before_lowering() {
+    for literal in ["1.5", "1.5..2.5"] {
+        let out = diags(&match_src("run.i", &[literal], true));
+        assert!(
+            out.iter().any(|d| d.code == "E-WHEN-LITERAL-DOMAIN"),
+            "{literal}: {out:?}"
+        );
+    }
+}
+
+#[test]
+fn open_int_ranges_are_not_fractional() {
+    for literal in ["..2", "2.."] {
+        let out = diags(&match_src("run.i", &[literal], true));
+        assert!(
+            !out.iter().any(|d| d.code == "E-WHEN-LITERAL-DOMAIN"),
+            "{literal}: {out:?}"
+        );
+    }
 }
 
 // §4 W-OVERLAP-ARMS: a range NEVER warns — partial overlap is the

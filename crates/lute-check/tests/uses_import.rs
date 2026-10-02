@@ -364,12 +364,12 @@ fn extends_state_default_override_ok() {
     write_lute(
         &dir,
         "base.lute",
-        "---\nstate:\n  run.gold: { type: number, default: 0 }\n---\n",
+        "---\nstate:\n  run.gold: { type: int, default: 0 }\n---\n",
     );
     write_lute(
         &dir,
         "child.lute",
-        "---\nextends: base.lute\nstate:\n  run.gold: { type: number, default: 5 }\n---\n",
+        "---\nextends: base.lute\nstate:\n  run.gold: { type: int, default: 5 }\n---\n",
     );
     let res = resolve_imports(&dir, &["child.lute".to_string()], &[], zero_span());
     let codes = resolve_codes(&res);
@@ -380,7 +380,7 @@ fn extends_state_default_override_ok() {
     let decl = res.state.decls.get("run.gold").expect("run.gold missing");
     assert_eq!(
         decl.default,
-        Some(Literal::Num(5.0)),
+        Some(Literal::Int(5)),
         "child default must override base default"
     );
 }
@@ -391,7 +391,7 @@ fn extends_state_type_change_errors() {
     write_lute(
         &dir,
         "base.lute",
-        "---\nstate:\n  run.gold: { type: number }\n---\n",
+        "---\nstate:\n  run.gold: { type: int }\n---\n",
     );
     write_lute(
         &dir,
@@ -458,12 +458,12 @@ fn extends_dup_detection_is_order_independent() {
         write_lute(
             &dir,
             "x.lute",
-            "---\ndefs:\n  foo: 1\nstate:\n  run.gold: { type: number }\n---\n",
+            "---\ndefs:\n  foo: 1\nstate:\n  run.gold: { type: int }\n---\n",
         );
         write_lute(
             &dir,
             "c.lute",
-            "---\ndefs:\n  foo: 2\nstate:\n  run.gold: { type: number }\n---\n",
+            "---\ndefs:\n  foo: 2\nstate:\n  run.gold: { type: int }\n---\n",
         );
         write_lute(&dir, "a.lute", "---\nextends: x.lute\n---\n");
         write_lute(&dir, "b.lute", "---\nuses: x.lute\n---\n");
@@ -495,17 +495,17 @@ fn base_base_dup_not_hidden_by_override() {
     write_lute(
         &dir,
         "A.lute",
-        "---\nstate:\n  run.gold: { type: number }\ndefs:\n  bar: 1\n---\n",
+        "---\nstate:\n  run.gold: { type: int }\ndefs:\n  bar: 1\n---\n",
     );
     write_lute(
         &dir,
         "B.lute",
-        "---\nstate:\n  run.gold: { type: number }\ndefs:\n  bar: 2\n---\n",
+        "---\nstate:\n  run.gold: { type: int }\ndefs:\n  bar: 2\n---\n",
     );
     write_lute(
         &dir,
         "child.lute",
-        "---\nextends: [A.lute, B.lute]\nstate:\n  run.gold: { type: number }\ndefs:\n  bar: 0\n---\n",
+        "---\nextends: [A.lute, B.lute]\nstate:\n  run.gold: { type: int }\ndefs:\n  bar: 0\n---\n",
     );
     let res = resolve_imports(&dir, &["child.lute".to_string()], &[], zero_span());
     let codes = resolve_codes(&res);
@@ -519,7 +519,7 @@ fn base_base_dup_not_hidden_by_override() {
     );
     // The child override still wins the resolved value (min-depth winner).
     let decl = res.state.decls.get("run.gold").expect("run.gold missing");
-    assert_eq!(decl.ty, Type::Number, "child override must win");
+    assert_eq!(decl.ty, Type::Int, "child override must win");
 }
 
 #[test]
@@ -530,7 +530,7 @@ fn scene_inline_refines_extends_base_default() {
     write_lute(
         &dir,
         "base.lute",
-        "---\nstate:\n  run.gold: { type: number, default: 0 }\n---\n",
+        "---\nstate:\n  run.gold: { type: int, default: 0 }\n---\n",
     );
     let imports = resolve_imports(&dir, &[], &["base.lute".to_string()], zero_span());
     assert!(
@@ -540,7 +540,7 @@ fn scene_inline_refines_extends_base_default() {
     );
 
     // Same-type refine (default 0 -> 5): accepted, no redeclare, no type error.
-    let refine = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.gold: { type: number, default: 5 }\n---\n## Shot 1.\n@x: hi\n";
+    let refine = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.gold: { type: int, default: 5 }\n---\n## Shot 1.\n@x: hi\n";
     let codes = check_codes(refine, imports.clone());
     assert!(
         !codes.contains(&"E-STATE-REDECLARE".to_string()),
@@ -571,7 +571,7 @@ fn scene_inline_refines_extends_base_default() {
     write_lute(
         &dir2,
         "base.lute",
-        "---\nstate:\n  run.gold: { type: number }\n---\n",
+        "---\nstate:\n  run.gold: { type: int }\n---\n",
     );
     let imports2 = resolve_imports(&dir2, &[], &["base.lute".to_string()], zero_span());
     let reads = |state: &str| -> Vec<String> {
@@ -584,7 +584,7 @@ fn scene_inline_refines_extends_base_default() {
         reads("").contains(&"E-MAYBE-UNSET".to_string()),
         "sanity: reading a no-default imported path must be maybe-unset"
     );
-    let refined = reads("state:\n  run.gold: { type: number, default: 5 }\n");
+    let refined = reads("state:\n  run.gold: { type: int, default: 5 }\n");
     assert!(
         !refined.contains(&"E-MAYBE-UNSET".to_string()),
         "the inline default must win over the extends base; got {refined:?}"

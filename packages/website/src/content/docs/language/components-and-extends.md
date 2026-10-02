@@ -35,7 +35,7 @@ A parameter is referenced as `@<param>` in ref and attribute positions, and insi
 `{{@param}}` interpolation. `@who` binds to the invocation argument at expansion time — it is legal
 in the `character` position because that attribute is `string`-typed.
 
-A `{{…}}` interpolation in a component line renders a **number, bool, or enum** param (§7.6) and,
+An `{{…}}` interpolation in a component line renders an **`int`, `double`, bool, or enum** param (§7.6) and,
 since dsl 0.23.0, a **`string`** param whose argument is a literal. So `who: string` above could
 also appear as `{{@who}}` in a line. See [Sentences in string params](#sentences-in-string-params).
 
@@ -78,11 +78,12 @@ is checked where it lands:
 - for an enum param, every value the def body can produce must be a member, else `E-COMPONENT-ARG`
   (`@mood` = `"run.n > 2 ? 'warm' : 'hot'"` against `{ enum: [cold, warm] }` fails on `hot`);
 - in a `<match on="@tier">`, it dispatches at run time like any subject;
-- in content text, `{{@n}}` stays a placeholder naming the caller's def, and the engine evaluates
-  it (a number, bool, or enum param; a `string` param that a line interpolates takes only a
+- in content text, `{{@n}}` stays a placeholder naming the caller's def, and the engine evaluates it (an
+  `int`, `double`, bool, or enum param; a `string` param that a line interpolates takes only a
   literal, [below](#sentences-in-string-params));
 - in a directive attribute, it must fold to a constant, and a state-dependent def is
   `E-ATTR-DEF-DYNAMIC`.
+
 
 ### Sentences in string params
 
@@ -123,9 +124,9 @@ Each expansion's lines carry their own text under their own [component-scoped](#
 
 A translator or a voice actor therefore gets `To absent friends!` as a line of its own, not a
 template with a hole in it. The argument has to be a literal. A string `@def` of the caller is only
-known when the engine evaluates it, and a `{{…}}` interpolation renders only number, bool, and enum
-values at run time, so `::use{component="cheers" to=@place}` is `E-REF-TYPE` at the argument. The
-check follows the param through nested components, so a component that passes its own `@to` on to
+known when the engine evaluates it, and a `{{…}}` interpolation renders only `int`, `double`, bool, and enum
+values at run time, so `::use{component="cheers" to=@place}` is `E-REF-TYPE` at the argument. The `check`
+follows the param through nested components, so a component that passes its own `@to` on to
 `cheers` needs a literal from its caller too.
 
 A literal argument may itself hold `{{…}}` interpolations (dsl 0.26.0 §3.1). They keep their
@@ -190,9 +191,9 @@ component: nod
 effects: true
 params:
   who: speaker
-  delta: number
+  delta: int
 state:
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 entities:
   companion: { members: [isolde, corvin] }
 ---
@@ -240,7 +241,7 @@ in a `::retract`. Each `::use` binds the params to its arguments, and the host c
 there, like any atom it wrote itself. With `item: string` and an `item` kind of `[locket, map]`,
 `::use{component="gift" who="isolde" item="locket"}` compiles to an `assert` of
 `gifted(isolde, locket)`, and `item="lockt"` is `E-FACT-DOMAIN` at the `::use`. `check-project`'s
-fact analyses see the bound atom too, so a later `holds(gifted(isolde, locket))` is a guaranteed
+fact analyses see the bound atom too, so a later `holds('gifted', ['isolde', 'locket'])` is a guaranteed
 guard, and a query no `::use` can produce is dead (`E-ARM-DEAD`). A fact's arguments are ground, so
 the argument must be a constant: an entity or enum member id, `true` or `false`. A def argument,
 `item=@best`, is `E-COMPONENT-ARG`, and the message names the atom. Outside a component body a
@@ -286,7 +287,7 @@ component: greeter
 params:
   who: speaker
   line: string
-  times: { type: number, default: 1 }
+  times: { type: int, default: 1 }
 ---
 
 ## Greeter
@@ -344,7 +345,7 @@ params:
   intro: string
   win: string
   lose: string
-  prize: { type: number, default: 100 }
+  prize: { type: int, default: 100 }
 ---
 
 ## Trainer battle
@@ -384,7 +385,7 @@ alike. The use's argument reads are judged under its guard. A dungeon floor skip
 already beaten in one line:
 
 ```lute
-::use{component="trainerBattle" who="lassMina" intro="You look strong, {{userName}}." win="Oh no!" lose="Hehe." prize="200" when="!holds(defeated(lassMina))"}
+::use{component="trainerBattle" who="lassMina" intro="You look strong, {{userName}}." win="Oh no!" lose="Hehe." prize="200" when="!holds('defeated', ['lassMina'])"}
 ```
 
 `lute play` prints a skipped use with its arguments, `skip ::use{component="trainerBattle"

@@ -38,7 +38,10 @@ impl Decl<'_> {
         let mut s = type_str(self.ty);
         if let Some(d) = self.default {
             let shown = match d {
-                Literal::Num(n) if n.fract() == 0.0 && n.abs() < 1e15 => format!("{}", *n as i64),
+                Literal::Int(n) => n.to_string(),
+                Literal::Double(n) if n.fract() == 0.0 && n.abs() < 1e15 => {
+                    format!("{}", *n as i64)
+                }
                 other => serde_json::to_string(other).unwrap_or_default(),
             };
             s.push_str(&format!(", default {shown}"));

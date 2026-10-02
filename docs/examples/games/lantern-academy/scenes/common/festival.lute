@@ -20,16 +20,16 @@ after: 'visited("common.eve")'
 @nana{emotion="teasing"}: So. Island tradition. Who's holding the other side of your lantern?
 
 <branch id="lantern" prompt="Whose hand is on the other side of your lantern?">
-  <choice id="ren" label="Ren, who came down to the jetty without his register" when="holds(routeOpen(ren))" into="run.route" value="ren">
+  <choice id="ren" label="Ren, who came down to the jetty without his register" when="holds('routeOpen', ['ren'])" into="run.route" value="ren">
     @ren{emotion="flustered"}: I am here in an official capacity. Mostly. Hold it level, please.
   </choice>
-  <choice id="mika" label="Mika, still in his relay shirt" when="holds(routeOpen(mika))" into="run.route" value="mika">
+  <choice id="mika" label="Mika, still in his relay shirt" when="holds('routeOpen', ['mika'])" into="run.route" value="mika">
     @mika{emotion="laughing"}: Me? Really? Okay — okay! I'm not crying, the lake's just really bright.
   </choice>
-  <choice id="soren" label="Soren, at the edge of the crowd with a book under his arm" when="holds(routeOpen(soren))" into="run.route" value="soren">
+  <choice id="soren" label="Soren, at the edge of the crowd with a book under his arm" when="holds('routeOpen', ['soren'])" into="run.route" value="soren">
     @soren{emotion="shy"}: I wrote something on ours. You can read it. Later. Much later.
   </choice>
-  <choice id="kai" label="Kai, who says he only came for the noise" when="holds(routeOpen(kai))" into="run.route" value="kai">
+  <choice id="kai" label="Kai, who says he only came for the noise" when="holds('routeOpen', ['kai'])" into="run.route" value="kai">
     @kai{emotion="smirk"}: Fine. But I'm writing the wish. Yours would be embarrassing.
   </choice>
   <choice id="hotaru" label="The girl on the far jetty, who has no lantern of her own" when="quest.fourLanterns.state == 'complete'" into="run.route" value="hotaru">

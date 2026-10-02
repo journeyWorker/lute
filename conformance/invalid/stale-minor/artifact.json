@@ -1,0 +1,9 @@
+{
+  "kind": "scene",
+  "lute": "0.32.0",
+  "irVersion": "0.31.0",
+  "state": [],
+  "commands": [],
+  "outsideRun": [],
+  "celEnv": {"variables": [], "functions": []}
+}

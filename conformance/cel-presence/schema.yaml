@@ -1,0 +1,3 @@
+state:
+  run.tip: { type: string }
+  run.visits: { type: bool }

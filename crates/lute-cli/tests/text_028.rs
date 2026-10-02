@@ -64,7 +64,7 @@ fn project(tag: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.wagons: { type: number, default: 11 }\n  \
+        "state:\n  run.wagons: { type: int, default: 11 }\n  \
          run.here: { type: { entity: spot }, default: cut }\n\
          entities:\n  spot:\n    members: [cut, ash]\n    labels:\n      \
          cut: { text: \"the smugglers' cut\", start: \"The smugglers' cut\", indefinite: \"a smugglers' cut\" }\n      \
@@ -212,7 +212,7 @@ fn a_misspelt_label_form_is_reported() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.wagons: { type: number, default: 11 }\n  \
+        "state:\n  run.wagons: { type: int, default: 11 }\n  \
          run.here: { type: { entity: spot }, default: cut }\n\
          entities:\n  spot:\n    members: [cut, ash]\n    labels:\n      \
          cut: { text: the cut, indefinte: a cut }\n",

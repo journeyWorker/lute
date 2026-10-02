@@ -45,7 +45,7 @@ const DERIVED_MATCH: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode:
      state:\n  run.met: { type: bool, default: true }\n\
      facts:\n  - \"friend(ana, bo)\"\n\
      rules:\n  - \"allied(A, B) :- friend(A, B)\"\n---\n\n## One\n\n@narrator: before.\n\
-     <match on=\"run.met\">\n<when is=\"true\" test=\"holds(allied(ana, bo))\">\n\
+     <match on=\"run.met\">\n<when is=\"true\" test=\"holds('allied', ['ana', 'bo'])\">\n\
      @narrator: allied.\n</when>\n\
      <otherwise>\n@narrator: apart.\n</otherwise>\n</match>\n@narrator: after.\n";
 
@@ -187,7 +187,7 @@ fn a_lore_test_without_an_entry_judges_facts_on_the_seeded_world() {
          relations:\n  friend: { args: [npc, npc], tier: run }\n  allied: { args: [npc, npc], derive: true }\n\
          facts:\n  - \"friend(ana, bo)\"\n\
          rules:\n  - \"allied(A, B) :- friend(A, B)\"\n---\n\n\
-         <entry id=\"page\" title=\"Page\" when=\"holds(allied(ana, bo))\">\n\
+         <entry id=\"page\" title=\"Page\" when=\"holds('allied', ['ana', 'bo'])\">\n\
          @narrator: a page.\n</entry>\n",
     );
     write_at(
@@ -327,7 +327,7 @@ fn expect_state_compares_the_effective_value_default_and_seed_included() {
         &dir,
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-         user.score: { type: number, default: 0 }\n  run.mood: { type: string, default: calm }\n\
+         user.score: { type: int, default: 0 }\n  run.mood: { type: string, default: calm }\n\
          ---\n\n## One\n\n@narrator: a.\n",
     );
     write_at(
@@ -359,7 +359,7 @@ fn expect_state_compares_the_effective_value_default_and_seed_included() {
 
 /// A beat scene (dsl 0.21.0 §3.1) that answers `arrive` only on day 3.
 const BEAT_DAY3: &str = "---\nkind: scene\nid: town.wed\non: arrive\nwhen: 'run.day == 3'\n\
-     state:\n  run.day: { type: number, default: 1 }\n---\n\n## Gate\n\n@guard: Wednesday.\n";
+     state:\n  run.day: { type: int, default: 1 }\n---\n\n## Gate\n\n@guard: Wednesday.\n";
 
 /// T1-13: trace ignored the frontmatter `when` of a beat scene, so a
 /// Wednesday scene traced (and tested) under Thursday's state read as a plain
@@ -417,7 +417,7 @@ fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
          relations:\n  friend: { args: [npc, npc], tier: run }\n  allied: { args: [npc, npc], derive: true }\n\
          facts:\n  - \"friend(ana, bo)\"\n\
          rules:\n  - \"allied(A, B) :- friend(A, B)\"\n---\n\n## One\n\n\
-         <branch id=\"ask\">\n<choice id=\"trust\" label=\"Trust\" when=\"holds(allied(ana, bo))\">\n\
+         <branch id=\"ask\">\n<choice id=\"trust\" label=\"Trust\" when=\"holds('allied', ['ana', 'bo'])\">\n\
          @narrator: trusted.\n</choice>\n<choice id=\"leave\" label=\"Leave\">\n\
          @narrator: left.\n</choice>\n</branch>\n",
     );
@@ -543,7 +543,7 @@ fn envelope_possible_lists_only_what_is_not_guaranteed() {
         &dir,
         "a.lute",
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n\
-         state:\n  run.a: { type: number }\n---\n## Shot 1.\n::set{run.a = 1}\n",
+         state:\n  run.a: { type: int }\n---\n## Shot 1.\n::set{run.a = 1}\n",
     );
     write_at(
         &dir,

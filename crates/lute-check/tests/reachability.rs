@@ -31,8 +31,8 @@ fn codes(text: &str) -> Vec<String> {
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
     run.rank: { type: { enum: [fail, bronze, silver, gold] }, default: fail }\n  \
     run.flag: { type: bool, default: false }\n  \
-    run.n: { type: number, default: 0 }\n  \
-    run.unbound: { type: number }\n  \
+    run.n: { type: int, default: 0 }\n  \
+    run.unbound: { type: int }\n  \
     run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n";
 
 // (Appendix A) A foreign enum member — a typo (`platnum` against
@@ -713,7 +713,7 @@ fn holds_guards_stay_undecided() {
     let vocab =
         "entities:\n  c: { members: [ana] }\nrelations:\n  inParty: { args: [c], tier: run }\n";
     let text = format!(
-        "---\nkind: quest\n{vocab}---\n<quest id=\"q\" start=\"holds(inParty(ana))\">\n\
+        "---\nkind: quest\n{vocab}---\n<quest id=\"q\" start=\"holds('inParty', ['ana'])\">\n\
          <objective id=\"o\" done=\"true\"/>\n</quest>\n"
     );
     let out = codes(&text);
@@ -1130,8 +1130,8 @@ fn on_when_sentinel_flags_unset_literal() {
 // --- dsl 0.10.0 §5.2 (D-G, D-O): E-OBJECTIVE-CONTRADICTION ------------------
 
 const QHDR: &str = "---\nkind: quest\nstate:\n  \
-    run.n: { type: number, default: 0 }\n  \
-    run.m: { type: number, default: 0 }\n  \
+    run.n: { type: int, default: 0 }\n  \
+    run.m: { type: int, default: 0 }\n  \
     run.pick: { type: { enum: [a, b, c] }, default: a }\n  \
     run.note: { type: string, default: \"\" }\n---\n";
 

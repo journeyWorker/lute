@@ -186,8 +186,8 @@ mod lute_version_tests {
     /// `0.31.0` is a language AND IR release: declared beat/entry advancement
     /// and the two clock-window diagnostics move all axes to the same number.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_31_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.31.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.31.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_32_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.32.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.32.0");
     }
 }

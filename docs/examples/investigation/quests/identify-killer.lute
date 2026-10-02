@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---
@@ -8,7 +8,7 @@ title: Identify the Killer
 <quest id="identifyKiller" tier="run" title="Identify the Killer" start="true">
   <objective id="gatherEvidence" title="Log at least two clues" done="run.cluesLogged >= 2"/>
   <objective id="nameSuspect" title="Name a suspect at the confrontation" done="run.accused != 'none'"/>
-  <objective id="followClues" title="Let the clues point at a suspect" done="holds(points(blake))" optional/>
+  <objective id="followClues" title="Let the clues point at a suspect" done="holds('points', ['blake'])" optional/>
 
   <on event="questComplete">
     ::set{ user.solved += 1 }

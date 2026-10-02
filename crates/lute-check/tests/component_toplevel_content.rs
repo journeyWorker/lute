@@ -53,7 +53,7 @@ fn unique_dir() -> PathBuf {
 /// leg of the parity tests below cannot be confounded by an `E-UNDECLARED` the
 /// component legs never produce (a component env has an empty state schema).
 const SCENE_HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-                         run.gold: { type: number, default: 0 }\n---\n";
+                         run.gold: { type: int, default: 0 }\n---\n";
 
 /// The importing scene: nothing but a `::use` of the paramless component, so
 /// the ONLY diagnostics it can contribute are the component body's own.

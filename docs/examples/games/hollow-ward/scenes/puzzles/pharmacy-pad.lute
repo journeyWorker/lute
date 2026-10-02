@@ -5,7 +5,7 @@ title: The pharmacy keypad
 on: examine
 target: fixture.pharmacyPad
 priority: 10
-spentBy: "holds(solved(pharmacyPad))"
+spentBy: "holds('solved', ['pharmacyPad'])"
 ---
 
 ## Keypad

@@ -40,7 +40,7 @@ fn text(o: &Output) -> String {
 /// declares the two exclusive. `truthful`/`liar` are derived from base facts
 /// with no such guard, so only the runtime can catch both holding; `calm` /
 /// `panicked` are base relations.
-const SCHEMA: &str = "state:\n  run.day: { type: number, default: 0 }\n\
+const SCHEMA: &str = "state:\n  run.day: { type: int, default: 0 }\n\
 entities:\n  character: { members: [elias, maren, ada] }\n  place: { members: [gallery, landing] }\n\
 relations:\n  at: { args: [character, place], tier: run }\n  damaged: { args: [place], tier: run }\n  \
 seen: { args: [character], tier: run }\n  \
@@ -107,10 +107,10 @@ fn check_project_reads_exclusive_relations() {
         &scene(
             "gallery",
             "visit",
-            "@narrator{when=\"holds(seenAfter(elias)) && holds(fell(elias))\"}: Both at once.\n\
-             @narrator{when=\"holds(seenAfter(maren)) && !holds(fell(maren))\"}: Maren walks on.\n\n\
-             <branch id=\"look\">\n<choice id=\"saw\" label=\"Saw\" when=\"holds(seenAfter(elias))\">\n\
-             @narrator{when=\"!holds(fell(elias))\"}: He did not fall.\n</choice>\n\
+            "@narrator{when=\"holds('seenAfter', ['elias']) && holds('fell', ['elias'])\"}: Both at once.\n\
+             @narrator{when=\"holds('seenAfter', ['maren']) && !holds('fell', ['maren'])\"}: Maren walks on.\n\n\
+             <branch id=\"look\">\n<choice id=\"saw\" label=\"Saw\" when=\"holds('seenAfter', ['elias'])\">\n\
+             @narrator{when=\"!holds('fell', ['elias'])\"}: He did not fall.\n</choice>\n\
              <choice id=\"go\" label=\"Go\">\n@narrator: On.\n</choice>\n</branch>\n\n\
              ::assert{panicked(ada)}\n::assert{calm(ada)}\n",
         ),
@@ -122,20 +122,20 @@ fn check_project_reads_exclusive_relations() {
     let dead = diag_line(
         &t,
         "E-ARM-DEAD",
-        "holds(seenAfter(elias)) && holds(fell(elias))",
+        "holds('seenAfter', ['elias']) && holds('fell', ['elias'])",
     )
     .unwrap_or_else(|| panic!("dead guard: {t}"));
     assert!(dead.contains("can never hold together"), "{dead}");
-    // `!holds(fell(x))` follows from `holds(seenAfter(x))` — in the same
+    // `!holds('fell', [x])` follows from `holds('seenAfter', [x])` — in the same
     // guard and under an enclosing one.
     let same = diag_line(
         &t,
         "W-FACT-GUARANTEED",
-        "holds(seenAfter(maren)) && !holds(fell(maren))",
+        "holds('seenAfter', ['maren']) && !holds('fell', ['maren'])",
     )
     .unwrap_or_else(|| panic!("same-guard redundancy: {t}"));
     assert!(same.contains("`seenAfter` excludes `fell`"), "{same}");
-    let nested = diag_line(&t, "W-FACT-GUARANTEED", "`!holds(fell(elias))`")
+    let nested = diag_line(&t, "W-FACT-GUARANTEED", "`!holds('fell', ['elias'])`")
         .unwrap_or_else(|| panic!("enclosing-guard redundancy: {t}"));
     assert!(nested.contains("the enclosing guard"), "{nested}");
     // An assert of one while the other holds on every route.
@@ -399,14 +399,14 @@ fn a_reserved_fact_a_guard_requires_excludes_its_partner() {
         "---\nkind: scene\nid: a\nentities:\n  foe: { members: [regent] }\n\
          relations:\n  dead: { args: [foe], tier: run, reserved: true }\n  \
          alive: { args: [foe], tier: run, excludes: [dead] }\n---\n\n## A\n\n\
-         <branch id=\"b\">\n<choice id=\"c\" label=\"C\" when=\"holds(dead(regent))\">\n\
-         @n{when=\"!holds(alive(regent))\"}: Gone.\n::assert{alive(regent)}\n</choice>\n\
+         <branch id=\"b\">\n<choice id=\"c\" label=\"C\" when=\"holds('dead', ['regent'])\">\n\
+         @n{when=\"!holds('alive', ['regent'])\"}: Gone.\n::assert{alive(regent)}\n</choice>\n\
          <choice id=\"d\" label=\"D\">\n@n: On.\n</choice>\n</branch>\n",
     );
     let out = run(&["check-project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert!(
-        diag_line(&t, "W-FACT-GUARANTEED", "`!holds(alive(regent))`").is_some(),
+        diag_line(&t, "W-FACT-GUARANTEED", "`!holds('alive', ['regent'])`").is_some(),
         "{t}"
     );
     let e = diag_line(&t, "E-FACT-EXCLUSIVE", "alive(regent)").unwrap_or_else(|| panic!("{t}"));
@@ -429,7 +429,7 @@ fn a_rule_deriving_from_its_exclusive_partner_is_an_error() {
          relations:\n  lit: { args: [item], tier: run }\n  dark: { args: [item], derive: true, excludes: [lit] }\n  \
          hid: { args: [c], tier: run }\n  seen: { args: [c], derive: true, excludes: [hid] }\n\
          rules:\n  - \"dark(X) :- lit(X)\"\n  - \"seen(X) :- c(X), not hid(X)\"\n---\n\n## A\n\n\
-         @n{when=\"holds(dark(lamp)) || holds(seen(x))\"}: Hm.\n::assert{lit(lamp)}\n::assert{hid(x)}\n",
+         @n{when=\"holds('dark', ['lamp']) || holds('seen', ['x'])\"}: Hm.\n::assert{lit(lamp)}\n::assert{hid(x)}\n",
     );
     let out = run(&["check-project", dir.to_str().unwrap()]);
     let t = text(&out);

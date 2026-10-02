@@ -19,14 +19,14 @@ title: The Wishing Well (generic pull lines)
 /* SSR fallback: kind:ssr outranks kind:hero at equal priority. */
 <beat id="goldLight" on="summon" target="kind:ssr" once="false">
   @narrator: The well turns gold. {{occasion.target}} steps out of the light.
-  @lumi{when="!holds(owned(occasion.target))"}: A new star for the roster! Say hello, {{occasion.target}}.
+  @lumi{when="!holds('owned', [occasion.target])"}: A new star for the roster! Say hello, {{occasion.target}}.
   @lumi{emotion="surprised" when="occasion.payload.streak >= 60"}: After {{occasion.payload.streak}} pulls! I was starting to think the well was broken.
   @lumi{emotion="happy" when="occasion.payload.streak < 10"}: That fast? Don't tell the others. They'll get ideas.
 </beat>
 
 <beat id="blueLight" on="summon" target="kind:sr" once="false">
   @narrator: The well glows blue. {{occasion.target}} climbs out, dusting off.
-  @lumi{when="holds(owned(occasion.target))"}: A duplicate! It'll strengthen {{occasion.target}}'s constellation.
+  @lumi{when="holds('owned', [occasion.target])"}: A duplicate! It'll strengthen {{occasion.target}}'s constellation.
 </beat>
 
 /* Limited heroes without a duplicate line of their own */

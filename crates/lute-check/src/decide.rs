@@ -340,10 +340,7 @@ pub(crate) fn held_ground(e: &Expr) -> Option<GroundFact> {
     if c.func_name != "holds" || !crate::cel_resolve::is_profile_fact_query(c) {
         return None;
     }
-    let Expr::Call(p) = &c.args.first()?.expr else {
-        return None;
-    };
-    QueryPattern::from_call(p)?.ground()
+    QueryPattern::from_call(c)?.ground()
 }
 
 /// dsl 0.25.0 §1: every pair of `facts` that can never hold together — the
@@ -433,6 +430,17 @@ pub(crate) fn literal_truth(
     positive: bool,
     ctx: &DecideCtx<'_>,
 ) -> Option<(String, PathDomain, Truth)> {
+    if let Expr::Select(sel) = expr {
+        if sel.test {
+            let path = crate::cel_paths::select_path(expr)?;
+            let dom = path_domain(&path, ctx.schema);
+            let truth = Truth {
+                set: (!positive).then(|| SolutionSet::Values(Default::default())),
+                unset: !positive,
+            };
+            return Some((path, dom, truth));
+        }
+    }
     if let Expr::Call(c) = expr {
         if c.target.is_none() {
             match (c.func_name.as_str(), c.args.as_slice()) {
@@ -643,10 +651,10 @@ fn nested_truth(
 }
 
 /// A §9 subject: the `$` bound to a domain, a bound component param, a
-/// relational call (`holds(P)` / `visited(id)` — a never-unset `bool`;
-/// `count(P)` — a never-unset number), or a dotted state path. The key is
-/// the subject's text; one guard evaluation reads each at one instant, so
-/// equal text is an equal value.
+/// list-form relational call (`holds('rel', [args])` / `visited('id')` — a
+/// never-unset `bool`; `count('rel', [args])` — a never-unset numeric value),
+/// or a dotted state path. The key is the subject's text; one guard
+/// evaluation reads each at one instant, so equal text is an equal value.
 fn subject(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<(String, PathDomain)> {
     match expr {
         Expr::Ident(name) if name == "_" => match &ctx.dollar {
@@ -709,7 +717,7 @@ fn path_domain(path: &str, schema: &StateSchema) -> PathDomain {
         Some(Type::Enum(members)) => {
             Kind::Finite(members.iter().cloned().map(DomainValue::Str).collect())
         }
-        Some(Type::Number) => Kind::Number,
+        Some(Type::Int | Type::Double) => Kind::Number,
         _ => Kind::Open,
     };
     PathDomain {
@@ -718,9 +726,19 @@ fn path_domain(path: &str, schema: &StateSchema) -> PathDomain {
     }
 }
 
-/// The canonical text of a ground relational call. Inside a `<match>` arm
-/// `$` and the `_` wildcard parse alike, so an `_` there declines.
+/// The canonical text of a relational query in the list form. The query
+/// pattern is shared with the fact envelope, so equivalent bare/quoted
+/// spellings use one key throughout decidability.
 fn ground_text(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<String> {
+    if let Expr::Call(c) = expr {
+        if matches!(
+            c.func_name.as_str(),
+            "holds" | "count" | "countDistinct"
+        ) && crate::cel_resolve::is_profile_fact_query(c)
+        {
+            return QueryPattern::from_call(c).map(|q| q.to_string());
+        }
+    }
     match expr {
         Expr::Ident(name) if name == "_" && ctx.dollar.is_some() => None,
         Expr::Ident(name) => Some(name.clone()),
@@ -743,7 +761,7 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
 
     // R5: an unexpanded `@ref(args)` marker (a bodiless def — a component
     // param — or any other expansion failure `decide_slot` left intact,
-    // D3), `isSet()`, and `visited()` (dsl 0.21.0 §7a.1 — presentation
+    // D3), legacy `isSet()`, and `visited()` (dsl 0.21.0 §7a.1 — presentation
     // history is never known per file) are always undecided — `decide()`
     // never reads runtime state or resolves an unrecognized macro.
     if name.starts_with(lute_cel::REF_MARKER)
@@ -845,11 +863,9 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
 /// part of the envelope).
 fn decide_fact_query(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
     let scope = ctx.facts?;
-    let Expr::Call(pattern) = &c.args.first()?.expr else {
-        return None;
-    };
+    let pattern = QueryPattern::from_call(c)?;
     match c.func_name.as_str() {
-        "holds" => match scope.holds(&QueryPattern::from_call(pattern)?) {
+        "holds" => match scope.holds(&pattern) {
             HoldsVerdict::Impossible | HoldsVerdict::Excluded(_) => Some(Decided::Bool(false)),
             HoldsVerdict::Guaranteed(_) => Some(Decided::Bool(true)),
             HoldsVerdict::Possible => None,
@@ -1216,7 +1232,7 @@ fn type_mismatch_operand(subject: &Expr, other: &Expr, ctx: &DecideCtx<'_>) -> b
     let is_bool = matches!(lit, Val::Boolean(_));
     let is_num = matches!(lit, Val::Int(_) | Val::UInt(_) | Val::Double(_));
     match &dom.domain {
-        Domain::Number | Domain::IntRange { .. } => is_str || is_bool,
+        Domain::Number | Domain::IntNumber | Domain::IntRange { .. } => is_str || is_bool,
         Domain::Finite(vals) if vals.is_empty() => false,
         Domain::Finite(vals) if vals.iter().all(|v| matches!(v, DomainValue::Bool(_))) => {
             is_str || is_num

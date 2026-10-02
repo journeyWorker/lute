@@ -170,7 +170,28 @@ fn queried(raw: &str) -> BTreeSet<Read> {
                     } else {
                         Vec::new()
                     };
-                    if let Some(Expr::Call(pattern)) = c.args.first().map(|a| &a.expr) {
+                    if let (
+                        Some(Expr::Literal(Val::String(rel))),
+                        Some(Expr::List(list)),
+                    ) = (
+                        c.args.first().map(|a| &a.expr),
+                        c.args.get(1).map(|a| &a.expr),
+                    ) {
+                        let args = list
+                            .elements
+                            .iter()
+                            .map(|a| match &a.expr {
+                                Expr::Literal(Val::String(s)) => Some(s.to_string()),
+                                Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
+                                Expr::Ident(s) if s != "_" => Some(s.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        out.insert(Read {
+                            pattern: Pattern { rel: rel.clone(), args },
+                            negated: negated && name == "holds",
+                        });
+                    } else if let Some(Expr::Call(pattern)) = c.args.first().map(|a| &a.expr) {
                         let args = pattern
                             .args
                             .iter()

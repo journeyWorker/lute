@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
-state:\n  scene.flag: { type: bool, default: false }\n  scene.n: { type: number, default: 0 }\n";
+state:\n  scene.flag: { type: bool, default: false }\n  scene.n: { type: int, default: 0 }\n";
 
 fn input(text: &str, imports: SchemaImports) -> CheckInput {
     CheckInput {
@@ -92,10 +92,10 @@ fn shorthand_bool_def_is_clean_and_has_a_body() {
     assert_eq!(folded.env.def_params.get("ready"), Some(&Vec::new()));
 }
 
-/// The inferred type is load-bearing: a shorthand producing a number used in
-/// a bool guard is `E-REF-TYPE`, exactly as the long form `type: number` is.
+/// The inferred type is load-bearing: a shorthand producing an int used in
+/// a bool guard is `E-REF-TYPE`, exactly as the long form `type: int` is.
 #[test]
-fn shorthand_number_def_is_typed_by_inference() {
+fn shorthand_int_def_is_typed_by_inference() {
     let ds = diags(&scene("n1: \"scene.n + 1\"", "n1"));
     assert!(codes(&ds).contains(&"E-REF-TYPE"), "{ds:#?}");
     assert!(!codes(&ds).contains(&"E-DEF-DECL"), "{ds:#?}");
@@ -111,13 +111,13 @@ fn long_form_type_is_optional_and_inferred() {
 /// Round-5 T3-14 (SG-F4): a def whose body only CALLS another def takes the
 /// callee's declared type — through a parameterised call, a bare reference,
 /// and a chain declared before its callee. The type is load-bearing: a
-/// number-typed callee makes the caller `E-REF-TYPE` in a bool guard. A
+/// int-typed callee makes the caller `E-REF-TYPE` in a bool guard. A
 /// reference cycle still cannot be inferred.
 #[test]
 fn a_def_calling_a_typed_def_takes_its_type() {
     let defs = "late: \"@harvest\"\n  \
                 harvest: \"@onDays(8, 14)\"\n  \
-                onDays: { type: bool, params: { first: number, last: number }, \
+                onDays: { type: bool, params: { first: int, last: int }, \
                 cel: \"scene.n >= first && scene.n <= last\" }";
     let text = scene(defs, "late");
     let ds = diags(&text);
@@ -128,7 +128,7 @@ fn a_def_calling_a_typed_def_takes_its_type() {
     assert_eq!(folded.env.def_types.get("late"), Some(&Type::Bool));
 
     let ds = diags(&scene(
-        "m: \"@count1\"\n  count1: { type: number, cel: \"scene.n\" }",
+        "m: \"@count1\"\n  count1: { type: int, cel: \"scene.n\" }",
         "m",
     ));
     assert!(codes(&ds).contains(&"E-REF-TYPE"), "{ds:#?}");
@@ -157,7 +157,7 @@ fn an_undecidable_shorthand_asks_for_the_long_form() {
 fn an_explicit_type_must_agree_with_the_body() {
     let d = def_decl("x: { type: bool, cel: \"scene.n + 1\" }");
     assert!(
-        d.message.contains("declares `type:` a bool") && d.message.contains("produces a number"),
+        d.message.contains("declares `type:` a bool") && d.message.contains("produces an int"),
         "{}",
         d.message
     );
@@ -209,7 +209,7 @@ fn an_unknown_key_is_rejected_by_name() {
 
 #[test]
 fn params_require_an_explicit_type() {
-    let d = def_decl("x: { params: { n: number }, cel: \"scene.n >= n\" }");
+    let d = def_decl("x: { params: { n: int }, cel: \"scene.n >= n\" }");
     assert!(
         d.message.contains("must declare its `type:`"),
         "{}",
@@ -217,7 +217,7 @@ fn params_require_an_explicit_type() {
     );
     // With the type, the same def is legal.
     let ds = diags(&scene(
-        "x: { type: bool, params: { n: number }, cel: \"scene.n >= n\" }",
+        "x: { type: bool, params: { n: int }, cel: \"scene.n >= n\" }",
         "x(1)",
     ));
     assert!(ds.is_empty(), "{ds:#?}");
@@ -230,7 +230,7 @@ fn an_imported_shorthand_def_has_a_body_and_an_inferred_type() {
     let dir = unique_dir();
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.x: { type: number, default: 0 }\n\
+        "state:\n  run.x: { type: int, default: 0 }\n\
          defs:\n  ready: \"run.x >= 2\"\n  level: \"run.x\"\n",
     )
     .unwrap();
@@ -246,8 +246,8 @@ fn an_imported_shorthand_def_has_a_body_and_an_inferred_type() {
         Some("run.x >= 2")
     );
     assert_eq!(folded.env.def_types.get("ready"), Some(&Type::Bool));
-    assert_eq!(folded.env.def_types.get("level"), Some(&Type::Number));
-    // And the inferred number type is enforced in the importer.
+    assert_eq!(folded.env.def_types.get("level"), Some(&Type::Int));
+    // And the inferred int type is enforced in the importer.
     let res = check(&input(&scene("local: \"scene.flag\"", "level"), imports));
     assert!(
         res.diagnostics.iter().any(|d| d.code == "E-REF-TYPE"),
@@ -289,7 +289,7 @@ fn an_undecidable_imported_shorthand_is_named_in_the_importer() {
     let dir = unique_dir();
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.x: { type: number, default: 0 }\n\
+        "state:\n  run.x: { type: int, default: 0 }\n\
          defs:\n  odd: \"run.x > 0 ? 1 : 'none'\"\n",
     )
     .unwrap();
@@ -317,11 +317,11 @@ fn an_undecidable_imported_shorthand_is_named_in_the_importer() {
 #[test]
 fn def_body_gets_the_cel_profile_gate() {
     let t = format!(
-        "{HDR}defs:\n  wd: {{ type: number, cel: \"scene.n % 7\" }}\n  \
-         sz: {{ type: number, cel: \"size(scene.n)\" }}\n  \
+        "{HDR}defs:\n  wd: {{ type: int, cel: \"scene.n % 7\" }}\n  \
+         sz: {{ type: int, cel: \"size(scene.n)\" }}\n  \
          broken: {{ type: bool, cel: \"scene.n ==\" }}\n  \
-         half: {{ type: number, cel: \"scene.n % 2.5\" }}\n  \
-         ok: {{ type: bool, params: {{ k: number }}, cel: \"scene.n >= k\" }}\n---\n\
+         half: {{ type: int, cel: \"scene.n % 2.5\" }}\n  \
+         ok: {{ type: bool, params: {{ k: int }}, cel: \"scene.n >= k\" }}\n---\n\
          ## Shot 1.\n@x{{when=\"@wd == 3\"}}: a\n@x{{when=\"@sz == 3\"}}: b\n\
          @x{{when=\"@broken\"}}: c\n@x{{when=\"@ok(2)\"}}: d\n@x{{when=\"@half == 1\"}}: e\n"
     );
@@ -346,10 +346,10 @@ fn def_body_gets_the_cel_profile_gate() {
     );
 }
 
-/// dsl 0.24.0 §1: `%` produces a number, so a shorthand `wd: "run.day % 7"`
+/// dsl 0.24.0 §1: `%` produces an int, so a shorthand `wd: "run.day % 7"`
 /// (T2-1's weekday def) is typed by inference and clean.
 #[test]
-fn shorthand_integer_modulo_def_is_a_clean_number() {
+fn shorthand_integer_modulo_def_is_a_clean_int() {
     let ds = diags(&format!(
         "{HDR}defs:\n  wd: \"scene.n % 7\"\n---\n## Shot 1.\n@x{{when=\"@wd == 0\"}}: a\n"
     ));
@@ -358,7 +358,7 @@ fn shorthand_integer_modulo_def_is_a_clean_number() {
 
 /// 0.21.1 T1-6: the undecidable-type hint used to guess `type: bool`; it
 /// names the choice as a placeholder instead. (Its old example, `% 7`, types
-/// as a number since dsl 0.24.0 §1, so a mixed-type ternary stands in.)
+/// as an int since dsl 0.24.0 §1, so a mixed-type ternary stands in.)
 #[test]
 fn undecidable_def_type_hint_does_not_guess_bool() {
     let t = format!("{HDR}defs:\n  wd: \"scene.n > 0 ? 1 : 'none'\"\n---\n## Shot 1.\n@x: a\n");

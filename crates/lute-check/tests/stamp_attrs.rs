@@ -39,7 +39,7 @@ fn snap() -> CapabilitySnapshot {
             },
         },
     );
-    for (name, ty) in [("bonusId", Type::Str), ("bonusScore", Type::Number)] {
+    for (name, ty) in [("bonusId", Type::Str), ("bonusScore", Type::Int)] {
         snap.stamp_attrs.insert(
             name.to_string(),
             AttrDecl {
@@ -184,15 +184,15 @@ fn mistyped_stamp_attr_is_an_ordinary_attr_type_error() {
 #[test]
 fn a_directives_own_attr_wins_over_a_same_named_stamp_attr() {
     // `label` is `::p`'s OWN attr (string) AND — here — also a declared stamp
-    // attr typed `number`. The directive's own decl must win, so a string value
-    // is clean rather than E-ATTR-TYPE against the number stamp decl.
+    // attr typed `int`. The directive's own decl must win, so a string value
+    // is clean rather than E-ATTR-TYPE against the int stamp decl.
     let mut s = snap();
     s.stamp_attrs.insert(
         "label".to_string(),
         AttrDecl {
             name: "label".to_string(),
             required: false,
-            ty: Type::Number,
+            ty: Type::Int,
             default: None,
         },
     );

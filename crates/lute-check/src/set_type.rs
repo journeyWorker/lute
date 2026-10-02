@@ -108,7 +108,7 @@ pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) 
     // type and draws no `E-SET-TYPE`, whatever `E` produces.
     if !matches!(
         declared,
-        Type::Bool | Type::Number | Type::Str | Type::Enum(_)
+        Type::Bool | Type::Int | Type::Double | Type::Str | Type::Enum(_)
     ) {
         return Vec::new();
     }
@@ -118,7 +118,9 @@ pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) 
     // line. With that suppression applied the table's two rows collapse: a
     // compound op survives only on a `number` target, whose required type is
     // `number` = `T`, and `=` requires `T`. The required type is ALWAYS `T`.
-    if matches!(set.op.as_str(), "+=" | "-=" | "*=") && declared != &Type::Number {
+    if matches!(set.op.as_str(), "+=" | "-=" | "*=")
+        && !matches!(declared, Type::Int | Type::Double)
+    {
         return Vec::new();
     }
     // A slot that did not parse is already `E-CEL-PARSE`'d once; never cascade.
@@ -185,7 +187,9 @@ pub(crate) fn decide(expr: &Expr, schema: &StateSchema, defs: &DefTypes) -> Deci
         // Rule 1: a literal.
         Expr::Literal(v) => match v {
             Val::Boolean(_) => Decision::Ty(Type::Bool),
-            Val::Int(_) | Val::UInt(_) | Val::Double(_) => Decision::Ty(Type::Number),
+            Val::Int(_) => Decision::Ty(Type::Int),
+            Val::Double(_) => Decision::Ty(Type::Double),
+            Val::UInt(_) => Decision::Undecidable,
             Val::String(_) => Decision::Ty(Type::Str),
             // CEL `null` is the DSL's `unset` sentinel (0.1 §11.2), not a
             // scalar; `Bytes` never appears in the closed Lute-CEL profile.
@@ -257,32 +261,34 @@ fn decide_call(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision 
         | op::LOGICAL_AND
         | op::LOGICAL_OR
         | op::LOGICAL_NOT => Decision::Ty(Type::Bool),
-        // Rule 4: the fact-query / narrative-time profile calls. Matched by
-        // EXACT name, as `cel_resolve::is_profile_fact_query` matches them.
-        // `narrativeTime` is not an author-declarable state type, so a `now()`
-        // right-hand side is `E-SET-TYPE` against every legal target — that is
-        // how §3.2's `narrativeTime` clause is DERIVED from this closed rule
-        // set rather than asserted beside it.
-        // Prerelease N5: `visited('<scene>')` (dsl 0.21.0 §7a.1) and
-        // `validAt(…)` are presentation-history / fact queries producing
-        // `bool`, like `holds`.
+        // Rule 4: fact-query and narrative-time profile calls.
         "holds" | "validAt" | crate::cel_resolve::VISITED_FN => Decision::Ty(Type::Bool),
-        "count" | "countDistinct" => Decision::Ty(Type::Number),
+        "count" | "countDistinct" => Decision::Ty(Type::Int),
         "now" => Decision::Ty(Type::NarrativeTime),
+        "int" => Decision::Ty(Type::Int),
+        "double" => Decision::Ty(Type::Double),
         // Rule 5: `-` (binary and unary), `*` and `/` produce `number`, and
         // ANY operand whose type is decidable and is not `number` makes the
         // whole expression ill-typed, naming that operand.
         op::SUBSTRACT | op::MULTIPLY | op::DIVIDE | op::NEGATE => {
+            let mut numeric: Option<Type> = None;
             for a in &c.args {
                 match decide(&a.expr, schema, defs) {
                     Decision::Ill(w) => return Decision::Ill(w),
-                    Decision::Ty(t) if arith_rejects(&t) => {
-                        return Decision::Ill(operand_desc(&a.expr, &t))
+                    Decision::Ty(t) if matches!(t, Type::Int | Type::Double) => {
+                        if let Some(prev) = &numeric {
+                            if prev != &t {
+                                return Decision::Ill("integer and double arithmetic cannot be mixed".to_string());
+                            }
+                        } else {
+                            numeric = Some(t);
+                        }
                     }
-                    _ => {}
+                    Decision::Ty(t) => return Decision::Ill(operand_desc(&a.expr, &t)),
+                    Decision::Undecidable => return Decision::Undecidable,
                 }
             }
-            Decision::Ty(Type::Number)
+            numeric.map_or(Decision::Undecidable, Decision::Ty)
         }
         // dsl 0.24.0 §1: integer `%` produces `number`. An operand that is not
         // an integer is `E-CEL-TYPE` — [`modulo_operand_fault`], reported by
@@ -298,7 +304,7 @@ fn decide_call(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision 
                     return Decision::Undecidable;
                 }
             }
-            Decision::Ty(Type::Number)
+            Decision::Ty(Type::Int)
         }
         // Rule 6.
         op::ADD => decide_add(c, schema, defs),
@@ -363,8 +369,8 @@ fn decide_add(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision {
         (Decision::Ty(a), Decision::Ty(b)) => {
             if is_id_family(&a) || is_id_family(&b) {
                 Decision::Undecidable
-            } else if a == Type::Number && b == Type::Number {
-                Decision::Ty(Type::Number)
+            } else if a == b && matches!(a, Type::Int | Type::Double) {
+                Decision::Ty(a)
             } else if is_string_family(&a) && is_string_family(&b) {
                 Decision::Ty(Type::Str)
             } else {
@@ -379,13 +385,6 @@ fn decide_add(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision {
     }
 }
 
-/// Rule 5's operand test. `number` passes. The namespaced id family is treated
-/// as UNDECIDABLE rather than ill-typed, mirroring `cel_resolve::compatible`'s
-/// own `is_id_type` leniency so the checker's two type judgements can never
-/// disagree. Everything else decidable and not a `number` is rejected.
-fn arith_rejects(t: &Type) -> bool {
-    !matches!(t, Type::Number) && !is_id_family(t)
-}
 
 /// The namespaced id types — value-level strings whose membership validity is
 /// a separate concern (`cel_resolve.rs:748-753`).
@@ -455,7 +454,7 @@ fn integer_fault(expr: &Expr, decided: &Decision) -> Option<String> {
     let Decision::Ty(t) = decided else {
         return None;
     };
-    if !arith_rejects(t) {
+    if matches!(t, Type::Int) {
         return None;
     }
     let what = match expr {
@@ -510,7 +509,8 @@ fn nearest_member<'m>(got: &str, members: &'m [String]) -> Option<&'m str> {
 fn scalar_name(t: &Type) -> &'static str {
     match t {
         Type::Bool => "bool",
-        Type::Number => "number",
+        Type::Int => "int",
+        Type::Double => "double",
         Type::Str => "string",
         Type::Enum(_) | Type::EnumFromOption(_) => "enum",
         Type::NarrativeTime => "narrativeTime",

@@ -45,7 +45,7 @@ fn interp_undeclared_path() {
 #[test]
 fn interp_maybe_unset_path() {
     let t = format!(
-        "{HDR}state:\n  run.x: {{ type: number }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  run.x: {{ type: int }}\n---\n## Shot 1.\n\
          @marina: you have {{{{run.x}}}}\n"
     );
     let c = codes(&t);
@@ -125,7 +125,7 @@ fn interp_ref_nonrenderable_type() {
 #[test]
 fn interp_ref_renderable_ok() {
     let t = format!(
-        "{HDR}defs:\n  coins: {{ type: number, cel: \"1\" }}\n---\n## Shot 1.\n\
+        "{HDR}defs:\n  coins: {{ type: int, cel: \"1\" }}\n---\n## Shot 1.\n\
          @marina: you have {{{{@coins}}}} coins\n"
     );
     let c = codes(&t);
@@ -149,7 +149,7 @@ fn interp_ref_renderable_ok() {
 #[test]
 fn interp_dollar_in_match_arm_rejected() {
     let t = format!(
-        "{HDR}state:\n  scene.n: {{ type: number, default: 0 }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  scene.n: {{ type: int, default: 0 }}\n---\n## Shot 1.\n\
          <match on=\"scene.n\">\n\
          <when test=\"scene.n > 0\">\n@marina: value {{{{$}}}}\n</when>\n\
          <otherwise>\n@marina: none\n</otherwise>\n\
@@ -170,7 +170,7 @@ fn interp_dollar_in_match_arm_rejected() {
 #[test]
 fn interp_arbitrary_cel_rejected() {
     let t = format!(
-        "{HDR}state:\n  run.coins: {{ type: number, default: 0 }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  run.coins: {{ type: int, default: 0 }}\n---\n## Shot 1.\n\
          @marina: you have {{{{run.coins + 1}}}} coins\n"
     );
     let c = codes(&t);
@@ -185,10 +185,10 @@ fn interp_arbitrary_cel_rejected() {
 #[test]
 fn interp_legal_forms_no_grammar_error() {
     let t = format!(
-        "{HDR}state:\n  run.coins: {{ type: number, default: 0 }}\n  \
-         scene.affect.marina: {{ type: number, default: 0 }}\n\
-         defs:\n  fond: {{ type: bool, cel: \"scene.affect.marina >= 1\" }}\n  \
-         atLeast: {{ type: bool, params: {{ n: number }}, cel: \"run.coins >= 1\" }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  run.coins: {{ type: int, default: 0 }}  \
+         scene.affect.marina: {{ type: int, default: 0 }}\n\
+         defs:\n  fond: {{ type: bool, cel: \"scene.affect.marina >= 1\" }}  \
+         atLeast: {{ type: bool, params: {{ n: int }}, cel: \"run.coins >= 1\" }}\n---\n## Shot 1.\n\
          @marina: {{{{run.coins}}}} {{{{@fond}}}} {{{{@atLeast(1)}}}} {{{{userName}}}}\n"
     );
     let c = codes(&t);
@@ -239,7 +239,7 @@ fn choice_label_interp_hub_undeclared_ref() {
 #[test]
 fn choice_label_interp_branch_maybe_unset() {
     let t = format!(
-        "{HDR}state:\n  run.x: {{ type: number }}\n---\n## Shot 1.\n\
+        "{HDR}state:\n  run.x: {{ type: int }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
          <choice id=\"c\" label=\"{{{{run.x}}}}\">\n@marina: hi\n</choice>\n\
          </branch>\n"
@@ -277,12 +277,12 @@ fn choice_label_interp_username_clean() {
 
 // --- dsl 0.24.0 §4: the `:ordinal` format hint ---
 
-const ORDINAL_STATE: &str = "state:\n  user.deaths: { type: number, default: 0 }\n  \
+const ORDINAL_STATE: &str = "state:\n  user.deaths: { type: int, default: 0 }\n  \
      run.name: { type: string, default: x }\n  \
      run.mood: { type: { enum: [calm, tense] }, default: calm }\n\
-     defs:\n  next: { type: number, cel: \"user.deaths + 1\" }\n  \
-     alive: { type: bool, cel: \"user.deaths == 0\" }\n  \
-     title: { type: string, cel: \"'x'\" }\n";
+defs:\n  next: { type: int, cel: \"user.deaths + 1\" }\n  \
+  alive: { type: bool, cel: \"user.deaths == 0\" }\n  \
+  title: { type: string, cel: \"'x'\" }\n";
 
 fn ordinal_codes(text: &str) -> Vec<String> {
     codes(&format!(

@@ -48,5 +48,5 @@ after: 'visited("common.exam")'
   </otherwise>
 </match>
 
-@hotaru{emotion="fond" when="quest.fourLanterns.state == 'complete' && !holds(cgSeen(cgKeeperEnd))"}: Four lanterns, four people. You've given this lake everyone but me. Tomorrow... float one for me?
+@hotaru{emotion="fond" when="quest.fourLanterns.state == 'complete' && !holds('cgSeen', ['cgKeeperEnd'])"}: Four lanterns, four people. You've given this lake everyone but me. Tomorrow... float one for me?
 ::auto{character="hotaru" action="fadeOut"}

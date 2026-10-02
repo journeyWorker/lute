@@ -214,9 +214,9 @@ Its world schema gives the engine the floor and the run counter, the player a pu
 
 ```yaml
 state:
-  run.floor:   { type: number, default: 0, owner: engine }
-  user.runs:   { type: number, default: 0, owner: engine }
-  user.embers: { type: number, default: 0 }
+  run.floor:   { type: int, default: 0, owner: engine }
+  user.runs:   { type: int, default: 0, owner: engine }
+  user.embers: { type: int, default: 0 }
 entities:
   person: { members: [maud, oskar] }
   foe:    { members: [warden, hound] }
@@ -230,7 +230,7 @@ rules:
   - "threat(F) :- boss(F), not slew(F)"
 ```
 
-The beats: `town.idle` answers `townVisit` every time (`once: false`); `town.victory` (priority 10, `when: "!holds(threat(warden))"`, also `once: false`) outranks it as soon as the warden is no longer a threat; `maud.talk` answers `talk` for `npc.maud`; Oskar's two [bundle beats](#bundle-beats), `oskar.hunt` and the side remark `oskar.rumor`, answer `talk` for `npc.oskar`; `start.gear` (priority 10, `once: false`) and `start.recap` (`once: false`, `when: "isSet(prev.run.floor)"`, the [previous run's](#run-boundaries) floor) answer `runStart`; and three entries answer `board` — `notice` (`once="user"`), `memo` (`once="run"`), and `old` (`when="entry.notice.everRead"`). One quest document holds three quests, all `start="true"`:
+The beats: `town.idle` answers `townVisit` every time (`once: false`); `town.victory` (priority 10, `when: "!holds('threat', ['warden'])"`, also `once: false`) outranks it as soon as the warden is no longer a threat; `maud.talk` answers `talk` for `npc.maud`; Oskar's two [bundle beats](#bundle-beats), `oskar.hunt` and the side remark `oskar.rumor`, answer `talk` for `npc.oskar`; `start.gear` (priority 10, `once: false`) and `start.recap` (`once: false`, `when: "has(prev.run.floor)"`, the [previous run's](#run-boundaries) floor) answer `runStart`; and three entries answer `board` — `notice` (`once="user"`), `memo` (`once="run"`), and `old` (`when="entry.notice.everRead"`). One quest document holds three quests, all `start="true"`:
 
 ```lute
 <quest id="climb" title="Reach the fifth floor" start="true" tier="run">
@@ -254,8 +254,8 @@ A second, `quests/hound.lute`, holds the quest `oskar.hunt` accepts. Its collar 
 ```lute
 <quest id="houndHunt" title="The hound's collar">
   <reward kind="EMBERS" amount="50"/>
-  <objective id="collar" title="Take the collar before floor four" done="holds(slew(hound))" by="run.floor >= 4"/>
-  <objective id="report" title="Bring it to Oskar" on="talk" target="npc.oskar" done="holds(slew(hound))"/>
+  <objective id="collar" title="Take the collar before floor four" done="holds('slew', ['hound'])" by="run.floor >= 4"/>
+  <objective id="report" title="Bring it to Oskar" on="talk" target="npc.oskar" done="holds('slew', ['hound'])"/>
   <on event="questFailed">
     @oskar: Floor four already? Then it's gone to ground.
   </on>
@@ -307,7 +307,7 @@ Its transcript is the example in [The transcript](#the-transcript).
 
 `state:`, `facts:`, `choose:`, and `bridges:` use exactly the grammar of a [`lute trace --mock`](/tooling/tracing/) file.
 
-- A `state:` seed names a declared path — never `scene.*` — and its value must fit the declared type (a number for a `number`, a member for an enum); anything else is a usage error (exit 2). A `quest.<id>.state` seed (`state: { quest.lostCup.state: active }`) is that quest's lifecycle status from the start, exactly as a `quests:` entry, and a `quest.<id>.objectives.<oid>.done: true` seed is an objective the save has already done — see [Starting from a save](#starting-from-a-save). A `prev.run.<path>` seed (dsl 0.23.0) is the value `run.<path>` had when the previous run ended, typed like its run path — see [Run boundaries](#run-boundaries).
+- A `state:` seed names a declared path — never `scene.*` — and its value must fit the declared type (an `int` or `double` for a numeric path, a member for an enum); anything else is a usage error (exit 2). A `quest.<id>.state` seed (`state: { quest.lostCup.state: active }`) is that quest's lifecycle status from the start, exactly as a `quests:` entry, and a `quest.<id>.objectives.<oid>.done: true` seed is an objective the save has already done — see [Starting from a save](#starting-from-a-save). A `prev.run.<path>` seed (dsl 0.23.0) is the value `run.<path>` had when the previous run ended, and follows that run path's type — see [Run boundaries](#run-boundaries).
 - A `facts:` entry is a ground atom of a declared, non-derived relation at its arity, with members of its closed argument domains. A **reserved** relation is allowed — the engine is exactly who asserts one.
 - A single `choose:` decision answers every presentation of its branch or hub. A list for a **hub** is one visit sequence, replayed at each presentation. A list of two or more for a **branch** is consumed one entry per presentation, in order, across the whole playthrough — so a scene that plays on three nights can decide differently each night. When the list runs out, the walk halts incomplete (exit 3) and says so.
 - A decision the menu does not offer at that moment halts the walk with an error (exit 1): a choice whose guard is false, or a `once` hub option already taken (`E-TRACE-CHOICE`, as in `lute trace`).
@@ -319,7 +319,7 @@ Its transcript is the example in [The transcript](#the-transcript).
 - `target` — required on an occasion declared with a target, refused on one without. With a target domain, the target must be `<prefix>.<member>` of it; outside it is a usage error with a did-you-mean (`` target `npc.mawd` is outside occasion `talk`'s domain `npc.<person>` (`npc.maud`, `npc.oskar`) — did you mean `npc.maud`? ``). A member that no beat answers is legal: the occasion passes. The target also decides which [targeted objectives](#deadlines-and-targeted-objectives) the step judges.
 - `payload` — the raise's typed values, on an occasion that declares `payload:` (dsl 0.27.0 §3): `payload: { copies: 2 }`. The beats of this raise read them as `occasion.payload.copies`; the next raise starts without them. A field the occasion does not declare, a value its type refuses, or a payload on an occasion that declares none is a usage error (`` step 1: `payload.copy` — occasion `summon` declares no payload field `copy` (declared: `copies`) ``). See [Occasion payloads](/language/beats/#occasion-payloads).
 - `engine` — the engine's writes of the same moment (dsl 0.27.0 §4), the same `{ state?, facts?, retract?, accept? }` as an [engine step](#engine-steps): they land first, as their own `· engine` record of the step, the quests settle, and then the occasion is raised, so its beats and its gate see them. `- occasion: enter` with `target: room.office` and `engine: { facts: [canEnter(office)] }` opens the door and walks in, in one step.
-- An occasion that declares a [`raisedWhen:` gate](/plugins/manifests/) is raised only while the gate holds (dsl 0.27.0 §4). A step raising it while the gate is false halts the play, exit 1: `` step 1: E-OCCASION-GATE: the engine raises `enter` for `room.office` only when `holds(canEnter(occasion.target))` (its `raisedWhen`), which is false here since `canEnter(office)` does not hold — make it hold first (an `engine:` write, an earlier step), or drop the step ``. The halt is located at the step as written (`plays/locked.play.yaml:2:5: step 1: …`), and names the reads the gate is false over — a derived fact with the rule premise it misses. `lute test` judges a beat of a gated occasion by the same seam: `eligible: true` on it misses naming the gate and its false reads, or the holding `terminal:` (`--json`: the expectation carries `notRaised: { occasion, reason: "gate" | "terminal", condition, falseReads }`). After the game is over (the schema's [`terminal:`](#the-game-is-over) holds) every `occasion:` step is refused the same way.
+- An occasion that declares a [`raisedWhen:` gate](/plugins/manifests/) is raised only while the gate holds (dsl 0.27.0 §4). A step raising it while the gate is false halts the play, exit 1: `` step 1: E-OCCASION-GATE: the engine raises `enter` for `room.office` only when `holds('canEnter', [occasion.target])` (its `raisedWhen`), which is false here since `canEnter(office)` does not hold — make it hold first (an `engine:` write, an earlier step), or drop the step ``. The halt is located at the step as written (`plays/locked.play.yaml:2:5: step 1: …`), and names the reads the gate is false over — a derived fact with the rule premise it misses. `lute test` judges a beat of a gated occasion by the same seam: `eligible: true` on it misses naming the gate and its false reads, or the holding `terminal:` (`--json`: the expectation carries `notRaised: { occasion, reason: "gate" | "terminal", condition, falseReads }`). After the game is over (the schema's [`terminal:`](#the-game-is-over) holds) every `occasion:` step is refused the same way.
 - `pick` — refused on `select: first` and `select: sequence` (`` step 1: `pick: start.gear` applies only to a `select: all` occasion; `runStart` is `select: sequence` ``): the id of a beat answering the occasion (a pick that is not eligible at that moment is an error, exit 1), or `pick: none`. A `select: all` step needs one whenever its list is not empty — without it the walk halts there with an error (exit 1) naming what was offered (`` step 1: occasion `board` is `select: all` and offers [notice, memo] — name the beat the player takes with `pick:` (or `pick: none` to close the list) ``). With nothing eligible there is nothing to pick: the step passes as `pick: none`, its header reading `(select: all, pick: none (nothing offered))` (dsl 0.24.0). `none` closes the list — the player walks past the board: nothing is presented and nothing is spent, but the occasion's `<objective on>` objectives are still judged:
 
 ```yaml
@@ -351,7 +351,7 @@ steps:
 
 `{ engine: { state?, facts?, retract?, accept? } }` writes what the engine owns, as the engine would between occasions:
 
-- `state:` — declared path → literal, or `{ add: <number> }` to add to a `number` path's current value. A path is refused when it is undeclared, `scene.*`, or a `quest.*` path: quest status belongs to the quest lifecycle, whose transitions fire handlers and grants — seed a save's quest status with top-level `quests:` instead.
+- `state:` — declared path → literal, or `{ add: <int> }` to add to an `int` path's current value. A path is refused when it is undeclared, `scene.*`, or a `quest.*` path: quest status belongs to the quest lifecycle, whose transitions fire handlers and grants — seed a save's quest status with top-level `quests:` instead.
 - `facts:` / `retract:` — ground atoms of declared base relations, **reserved ones included**; the same checks as top-level `facts:`. Retracting an atom that does not hold is recorded, not refused.
 - `accept:` (dsl 0.26.0) — quest ids the engine accepts at this moment, as it does when the player takes a notice off a board: each must be an accept-driven quest (no `start`; typically `accept="external"`), and it activates in the settle right after the step. The transcript prints `quest <id> accepted (engine)`, and `--json` records `{ "kind": "accept", "quest": "<id>", "by": "engine" }` among the step's writes. A quest that is already active, complete or failed is not accepted again: the transcript prints `note: quest <id> is already active — engine accept ignored` (with its status), `--json` records `{ "kind": "acceptIgnored", "quest": "<id>", "status": "<status>" }`, and nothing changes. A quest with a `start`, or an id no quest declares, is a usage error (exit 2): `` step 1: `engine.accept` names `auto`, which is no accept-driven quest of this project (a quest with no `start`, e.g. `accept="external"`) ``. Before 0.26.0 a script could only seed such a quest with top-level `quests:`, active from step 1.
 
@@ -575,7 +575,7 @@ The examples here use a small day-clock project rather than the tower. The engin
 
 ```yaml
 state:
-  run.day:  { type: number, default: 1, owner: engine }
+  run.day:  { type: int, default: 1, owner: engine }
   run.slot: { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }
 clock:
   day: run.day
@@ -669,7 +669,7 @@ An advance that passed positions without its `slot` raise adds `"passed": { "occ
 
 ```yaml
 state:
-  run.day:  { type: number, default: 1, owner: engine }
+  run.day:  { type: int, default: 1, owner: engine }
   run.slot: { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }
 clock:
   day: run.day
@@ -786,8 +786,8 @@ In `--json` each midnight stop is one entry of the advance's `days`, in order: `
 
 ```yaml
 state:
-  run.day: { type: number, default: 1, owner: engine }
-  run.leg: { type: number, default: 0, owner: engine }
+  run.day: { type: int, default: 1, owner: engine }
+  run.leg: { type: int, default: 0, owner: engine }
 clock:
   day: run.day
   raise: { slot: morning, dayEnd: dusk }
@@ -1091,7 +1091,7 @@ steps:
 
 `slew` is a run-tier relation, so the kill does not survive the new run and `town.victory` is closed again; `climb` (`tier="run"`) starts over, while `veteran` keeps counting.
 
-[`prev.run.<path>`](/state/state-model/#the-previous-run) is read-only and `unset` until a run has ended, so content must guard it (`isSet(prev.run.floor)`); the tower's `start.recap` does, and [Composing occasions](#composing-occasions) shows it after a `newRun`. A script that starts mid-save seeds it like any path — `state: { prev.run.floor: 5 }` — and the first `runStart` then plays the recap with `Floor 5 last time.`
+[`prev.run.<path>`](/state/state-model/#the-previous-run) is read-only and `unset` until a run has ended, so content must guard it (`has(prev.run.floor)`); the tower's `start.recap` does, and [Composing occasions](#composing-occasions) shows it after a `newRun`. A script that starts mid-save seeds it like any path — `state: { prev.run.floor: 5 }` — and the first `runStart` then plays the recap with `Floor 5 last time.`
 
 Entry `once` across a run boundary, from the `board` entries:
 
@@ -1673,8 +1673,8 @@ $ lute play tower --script tower/plays/night.play.yaml --no-derive
   quest notices -> active
 ── step 1 · townVisit ──────────────
   ✓ town.idle [scene, priority 0]
-  ? town.victory [scene, priority 10] — when: unknown (`!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined)
-── halted: step 1: the `when` of scene `town.victory` (scenes/town-victory.lute) decides the townVisit outcome but `!holds(threat(warden))` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
+  ? town.victory [scene, priority 10] — when: unknown (`!holds('threat', ['warden'])` evaluates unknown: fact `threat(warden)` is undetermined)
+── halted: step 1: the `when` of scene `town.victory` (scenes/town-victory.lute) decides the townVisit outcome but `!holds('threat', ['warden'])` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
 ```
 
 `--explain <atom>` (repeatable) prints, after the play, why a ground atom holds at the end or why it does not. When it holds: the rule used, and each premise's own support — a `seed fact`, `asserted` during the play (naming who asserted it, below), or derived in turn, indented beneath it — with a negated premise shown `(absent)`. When it does not: every rule that could conclude it, with its premises marked — `✗ <atom>  (absent)` for a missing base fact, `✗ <atom>  (not derived)` for a missing derived one (explained in turn), `✗ not <atom>  (but it holds: …)` for a negated premise that is present, `✗ <test>  (false)` / `? <test>  (undecided)` for a comparison or guard, and `· <premise>  (not reached)` for premises after the first failure. With `plays/night.play.yaml` a single `townVisit` step:
@@ -1756,7 +1756,7 @@ The script is rejected before anything plays — a **usage error, exit 2**, nami
 - an `end` step is anything but `end: true`, or carries `repeat` or `expect`;
 - an occasion step names an occasion no resolved plugin declares (when some plugin declares occasions) or, in a shape-only project, one that neither a beat answers nor an `<objective on>` judges; raises a targeted occasion without `target`, or an untargeted one with it; names a target outside the occasion's domain; carries `pick` on a `select: first` or `select: sequence` occasion; or picks a beat that does not answer that occasion;
 - an `event:` names no declared world event, or a quest lifecycle event;
-- an `engine:` or `newRun` write names an undeclared or `scene.*` / `quest.*` path, a value that does not fit the declared type, `{ add: … }` on a path that is not a `number`, or a fact that is not ground, names an undeclared or derived relation, has the wrong arity, or names a non-member of a closed domain; an `engine: { accept }` names a quest that is not accept-driven; or it writes nothing;
+- an `engine:` or `newRun` write names an undeclared or `scene.*` / `quest.*` path, a value that does not fit the declared type, `{ add: … }` on a path that is not an `int`, or a fact that is not ground, names an undeclared or derived relation, has the wrong arity, or names a non-member of a closed domain; an `engine: { accept }` names a quest that is not accept-driven; or it writes nothing;
 - a `state:` / `facts:` seed fails the same checks, or a save seed names an unknown id or quest status;
 - an `expect:` has an unknown key or a malformed value.
 
@@ -2066,8 +2066,8 @@ The shared state, `world.schema.yaml`. The day is the engine's: content reads `r
 
 ```yaml
 state:
-  run.day:        { type: number, default: 1, owner: engine }
-  user.bond.mara: { type: number, default: 0 }
+  run.day:        { type: int, default: 1, owner: engine }
+  user.bond.mara: { type: int, default: 0 }
 
 entities:
   npc:  { members: [mara, tomas] }
@@ -2112,7 +2112,7 @@ The quest it accepts, `quests/lamp.lute`, finishes only when the engine closes t
 
 ```lute
 <quest id="lampOut" title="The lamp by the door">
-  <objective id="ask" title="Ask Tomas about the oil" done="holds(knows(lamp))"/>
+  <objective id="ask" title="Ask Tomas about the oil" done="holds('knows', ['lamp'])"/>
   <objective id="wait" title="Wait for the day to end" on="dayEnd" done="run.day >= 2"/>
   <on event="questComplete">
     @narrator: By morning the lamp by the door is burning again.

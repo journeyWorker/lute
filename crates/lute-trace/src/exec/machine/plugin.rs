@@ -96,7 +96,7 @@ impl BridgeReads {
                 };
                 let ty = match f.ty {
                     Type::Bool => "bool",
-                    Type::Number => "number",
+                    Type::Int | Type::Double => "number",
                     _ => "string",
                 };
                 self.result_types
@@ -271,10 +271,18 @@ impl<D: Driver> Machine<D> {
                     .map(|(_, v)| v.clone())
                     .unwrap_or(Value::Unknown)
             } else if let Some(op) = from.get("op").and_then(Json::as_str) {
-                let by = from
-                    .get("by")
-                    .and_then(Json::as_f64)
-                    .map_or(Value::Unknown, Value::Num);
+                let by = match (
+                    self.store.types.get(path).map(String::as_str),
+                    from.get("by").and_then(Json::as_str),
+                    from.get("by").and_then(Json::as_f64),
+                ) {
+                    (Some("int"), Some(raw), _) => raw.parse::<i64>().map(Value::Int)
+                        .unwrap_or_else(|_| Value::Error(format!("bridge increment `{raw}` is not an int"))),
+                    (Some("int"), None, Some(n)) if n.fract() == 0.0 => Value::Int(n as i64),
+                    (Some("int"), None, Some(n)) => Value::Error(format!("bridge increment `{n}` is not an int")),
+                    (Some("double"), _, Some(n)) | (_, _, Some(n)) => Value::Double(n),
+                    _ => Value::Unknown,
+                };
                 let cur = match self.store.read(path) {
                     Read::Value(v) => v,
                     Read::Unset => Value::Unknown,
@@ -429,7 +437,8 @@ impl<D: Driver> Machine<D> {
                     "false" => Some(Value::Bool(false)),
                     _ => None,
                 },
-                "number" => lit.parse::<f64>().ok().map(Value::Num),
+                "int" => lit.parse::<i64>().ok().map(Value::Int),
+                "double" | "number" => lit.parse::<f64>().ok().map(Value::Double),
                 _ => Some(Value::Str(lit.clone())),
             };
             let Some(v) = v else {

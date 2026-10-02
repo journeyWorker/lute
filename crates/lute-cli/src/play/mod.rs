@@ -65,13 +65,17 @@
 //! `validAt(...)`, and an unresolved plugin `bridgeResult` all halt the walk
 //! incomplete (exit 3), naming what could not be decided.
 
+use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
+use std::rc::Rc;
 
 use lute_trace::exec::session::{
-    domain_members, entry_flag, is_candidate, kind_label, resolve_fact, resolve_state,
-    value_to_json, ExecProject, PlayHalt, Played, Presented, Session, StepBody, Verdict, World,
+    domain_members, entry_flag, is_candidate, json_to_value, kind_label, resolve_fact,
+    resolve_state, value_to_json, ExecProject, PlayHalt, Played, Presented, Session,
+    SessionEvalObserver, StepBody, Verdict, World,
 };
 use serde_json::{json, Value as Json};
 
@@ -138,6 +142,97 @@ fn load_script(script_path: &Path) -> Result<PlayScript, (ExitCode, String)> {
     parse_script(&text, script_path).map_err(usage)
 }
 
+fn install_condition_dump(
+    project: &ExecProject,
+    world: &mut World,
+    path: &Path,
+) -> Result<(), String> {
+    let file = std::fs::File::create(path)
+        .map_err(|e| format!("cannot create condition dump {}: {e}", path.display()))?;
+    let file = Rc::new(RefCell::new(file));
+    let mut env = project
+        .eval_json
+        .get("celEnv")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let roots: BTreeSet<String> = project
+        .state_table
+        .keys()
+        .filter_map(|path| path.split('.').next())
+        .map(str::to_string)
+        .chain(["prev", "occasion", "clock", "entry"].into_iter().map(str::to_string))
+        .collect();
+    if let Json::Object(map) = &mut env {
+        let variables = map.entry("variables").or_insert_with(|| json!([]));
+        if let Json::Array(variables) = variables {
+            for root in roots {
+                if !variables.iter().any(|v| v.get("name").and_then(Json::as_str) == Some(&root)) {
+                    variables.push(json!({"name": root, "type": "map(string, dyn)"}));
+                }
+            }
+        }
+    }
+    if let Ok(mut f) = file.try_borrow_mut() {
+        serde_json::to_writer(&mut *f, &json!({"kind": "env", "env": env}))
+            .map_err(|e| format!("cannot write condition dump header: {e}"))?;
+        use std::io::Write;
+        writeln!(f).map_err(|e| format!("cannot write condition dump header: {e}"))?;
+    }
+    let defaults: std::collections::BTreeMap<String, lute_trace::Value> = project
+        .state_table
+        .iter()
+        .filter_map(|(path, entry)| {
+            entry.get("default").and_then(json_to_value).map(|v| (path.clone(), v))
+        })
+        .collect();
+    let artifacts: Vec<Json> = project.artifacts.values().cloned().collect();
+    let observer: SessionEvalObserver = Rc::new(move |raw, value, _atoms, snapshot| {
+        let expr = artifacts
+            .iter()
+            .find_map(|artifact| crate::runner::find_expr(artifact, raw))
+            .unwrap_or(Json::Null);
+        let (_roots, relations, needs_visited) = crate::runner::condition_scope(&expr);
+        let paths: BTreeSet<String> = snapshot.reads.iter().map(|(p, _)| p.clone()).collect();
+        let mut dump_state = snapshot.state.clone();
+        for (path, read) in snapshot.reads {
+            if let lute_trace::Read::Value(value) = read {
+                dump_state.insert(path.clone(), value.clone());
+            }
+        }
+        for (id, status) in snapshot.quest_status {
+            dump_state.insert(
+                format!("quest.{id}.state"),
+                lute_trace::Value::Str(status.clone()),
+            );
+        }
+        if let Some(target) = snapshot.occasion_target {
+            dump_state.insert(
+                "occasion.target".to_string(),
+                lute_trace::Value::Str(target.to_string()),
+            );
+        }
+        for (path, default) in &defaults {
+            dump_state.entry(path.clone()).or_insert_with(|| default.clone());
+        }
+        let mut line = json!({
+            "cel": raw,
+            "expr": expr,
+            "activation": crate::runner::activation_json_paths(&dump_state, snapshot.state_types, &paths),
+            "facts": crate::runner::condition_facts(&snapshot.facts, &relations),
+            "result": crate::runner::typed_value(value),
+        });
+        if needs_visited {
+            line["visited"] = snapshot.visited.iter().cloned().collect::<Vec<_>>().into();
+        }
+        if let Ok(mut f) = file.try_borrow_mut() {
+            let _ = serde_json::to_writer(&mut *f, &line);
+            let _ = writeln!(f);
+        }
+    });
+    world.eval_observer = Some(observer);
+    Ok(())
+}
+
 /// See [`crate::Command::Play`].
 pub fn run_play(
     dir: &Path,
@@ -147,12 +242,13 @@ pub fn run_play(
     explain: &[String],
     ir: bool,
     quiet: bool,
+    dump_conditions: Option<&Path>,
 ) -> ExitCode {
     let Loaded {
         script,
         project,
         plan,
-        world,
+        mut world,
     } = match load(dir, script_path, no_derive) {
         Ok(l) => l,
         Err((code, msg)) => {
@@ -163,6 +259,12 @@ pub fn run_play(
             return code;
         }
     };
+    if let Some(path) = dump_conditions {
+        if let Err(msg) = install_condition_dump(&project, &mut world, path) {
+            eprintln!("lute play: {msg}");
+            return ExitCode::from(2);
+        }
+    }
     let initial_facts = if explain.is_empty() {
         BTreeSet::new()
     } else {

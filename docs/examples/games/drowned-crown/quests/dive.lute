@@ -8,7 +8,7 @@ title: This dive
 
 <quest id="regentHunt" title="Take the throne" start="true" tier="run">
   <reward kind="PEARLS" amount="20"/>
-  <objective id="slay" title="Slay the Tide Regent" done="holds(slew(regent))" by="run.outcome != 'diving'"/>
+  <objective id="slay" title="Slay the Tide Regent" done="holds('slew', ['regent'])" by="run.outcome != 'diving'"/>
   <on event="questComplete">
     @quill{os when="entry.quillFirst.everRead"}: I saw that. I'll tell them. They'll never believe me, but I'll tell them.
   </on>
@@ -23,7 +23,7 @@ title: This dive
    or it lapses when he drowns. */
 <quest id="eelBounty" title="Tavi's bounty" tier="run">
   <reward kind="PEARLS" amount="5..10"/>
-  <objective id="eel" title="Kill the Long Eel, then come home" on="runEnd" done="holds(slew(eel)) && @surfaced" until="@died"/>
+  <objective id="eel" title="Kill the Long Eel, then come home" on="runEnd" done="holds('slew', ['eel']) && @surfaced" until="@died"/>
   <on event="questComplete">
     @tavi{emotion="delighted"}: Eel steaks! Tonight we eat like kings. Kings who live on a boat.
   </on>

@@ -569,7 +569,7 @@ fn quest_occasion_project(tag: &str) -> PathBuf {
         ),
         (
             "world.schema.yaml",
-            "state:\n  run.pressure: { type: number, default: 0 }\n",
+            "state:\n  run.pressure: { type: int, default: 0 }\n",
         ),
         (
             "scenes/shed.lute",
@@ -812,7 +812,7 @@ fn integer_modulo_checks_and_evaluates_in_trace_and_test() {
     let scene = |test: &str| {
         format!(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
-             state:\n  run.day: {{ type: number, default: 1 }}\n---\n\n## S\n\n\
+             state:\n  run.day: {{ type: int, default: 1 }}\n---\n\n## S\n\n\
              <match on=\"run.day\">\n<when test=\"{test}\">\n@narrator: Sunday.\n</when>\n\
              <otherwise>\n@narrator: Weekday.\n</otherwise>\n</match>\n"
         )
@@ -877,9 +877,9 @@ fn trace_prints_authored_def_refs_and_expands_on_request() {
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.day: { type: number, default: 1 }\n\
+        "state:\n  run.day: { type: int, default: 1 }\n\
          defs:\n  weekday: \"run.day == 1 ? 'mon' : 'tue'\"\n  \
-         atLeast: { type: bool, cel: \"run.day >= n\", params: { n: number } }\n",
+         atLeast: { type: bool, cel: \"run.day >= n\", params: { n: int } }\n",
     )
     .unwrap();
     let scene = dir.join("scenes/m.lute");

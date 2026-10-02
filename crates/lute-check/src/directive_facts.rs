@@ -254,26 +254,74 @@ pub fn check_call_writes(dir: &Directive, decl: &DirectiveDecl, ctx: &Ctx<'_>) -
         return Vec::new();
     };
     let writer = format!("`::{}` (its declared `effects.writes`)", dir.tag);
-    effects
-        .writes
-        .iter()
-        .filter_map(|w| crate::permissions::resolve_path(&w.scope, &w.path, &dir.attrs))
-        .filter_map(|path| crate::set_op::write_fault(&path, &ctx.env.state, &writer))
+    let mut out = Vec::new();
+    for w in &effects.writes {
+        let Some(path) = crate::permissions::resolve_path(&w.scope, &w.path, &dir.attrs) else {
+            continue;
+        };
+        if let Some(message) = effect_literal_fault(w, &path, ctx) {
+            out.push(Diagnostic {
+                code: crate::set_type::E_SET_TYPE.to_string(),
+                severity: lute_core_span::Severity::Error,
+                message,
+                span: dir.span,
+                layer: lute_core_span::Layer::Staging,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+        }
+        if let Some((code, message)) = crate::set_op::write_fault(
+            &path,
+            &ctx.env.state,
+            &writer,
+        )
         .filter(|(code, _)| {
             *code != crate::set_op::E_ENGINE_OWNED_WRITE && *code != "E-APP-READONLY"
-        })
-        .map(|(code, message)| Diagnostic {
-            code: code.to_string(),
-            severity: lute_core_span::Severity::Error,
-            message,
-            span: dir.span,
-            layer: lute_core_span::Layer::Staging,
-            fixits: Vec::new(),
-            provenance: None,
-            covered: Vec::new(),
-            related: Vec::new(),
-        })
-        .collect()
+        }) {
+            out.push(Diagnostic {
+                code: code.to_string(),
+                severity: lute_core_span::Severity::Error,
+                message,
+                span: dir.span,
+                layer: lute_core_span::Layer::Staging,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+        }
+    }
+    out
+}
+
+fn effect_literal_fault(
+    write: &lute_manifest::schema::WriteDecl,
+    path: &str,
+    ctx: &Ctx<'_>,
+) -> Option<String> {
+    use lute_manifest::schema::{OpBy, WriteValue};
+    use lute_manifest::types::{Literal, Type};
+    let ty = &ctx.env.state.decls.get(path)?.ty;
+    let lit = match &write.value {
+        WriteValue::Op { by: OpBy::Num(n), .. } => Literal::Double(*n),
+        WriteValue::Literal(lit) => lit.clone(),
+        _ => return None,
+    };
+    let bad = match (ty, &lit) {
+        (Type::Int, Literal::Double(n)) => !n.is_finite() || n.fract() != 0.0,
+        (Type::Double, Literal::Int(_)) => false,
+        (Type::Int, Literal::Int(_)) | (Type::Double, Literal::Double(_)) => false,
+        _ => false,
+    };
+    bad.then(|| {
+        format!(
+            "plugin effect writes `{path}` with {}, which is not a `{}`",
+            lute_manifest::types::lit_str(&lit),
+            lute_manifest::types::type_str(ty)
+        )
+    })
 }
 
 /// dsl 0.27.0 §4: a directive a lore `<entry>` body admits — a plugin

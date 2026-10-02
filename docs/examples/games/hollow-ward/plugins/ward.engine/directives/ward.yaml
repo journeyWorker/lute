@@ -51,7 +51,7 @@ directives:
   # could only move a path by a literal)
   - name: fright
     attrs:
-      - { name: amount, type: number, default: 1 }
+      - { name: amount, type: int, default: 1 }
     effects:
       writes:
         - { scope: run, path: [sanity], value: { op: decrement, by: { fromAttr: amount } } }

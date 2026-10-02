@@ -50,14 +50,14 @@ fn at<'d>(got: &'d [(usize, usize, String)], line: usize) -> &'d str {
 #[test]
 fn state_row_unknown_keys_are_refused_at_the_key() {
     let text = scene(
-        "state:\n  run.n: { type: number, defualt: 3 }\n  run.m:\n    type: bool\n    ownr: engine\n  \
-         run.k: { type: bool, reserved: true }\n  run.t: { type: number, tier: user }\n",
+        "state:\n  run.n: { type: int, defualt: 3 }\n  run.m:\n    type: bool\n    ownr: engine\n  \
+         run.k: { type: bool, reserved: true }\n  run.t: { type: int, tier: user }\n",
         "",
     );
     let got = located(&diags(&text), "E-STATE-DECL");
     assert_eq!(got.len(), 4, "{got:#?}");
     // Each on the key's own line and column, not the frontmatter's 1:1.
-    assert_eq!((got[0].0, got[0].1), (5, 26), "{got:#?}");
+    assert_eq!((got[0].0, got[0].1), (5, 23), "{got:#?}");
     assert!(at(&got, 5).contains("did you mean `default`?"), "{got:#?}");
     assert!(at(&got, 8).contains("did you mean `owner`?"), "{got:#?}");
     assert!(at(&got, 9).contains("`owner: engine`"), "{got:#?}");
@@ -84,10 +84,10 @@ fn engine_namespaces_cannot_be_declared() {
     let text = scene(
         "state:\n  scene.choices.door: { type: string, default: \"\" }\n  \
          scene.visited.lamp: { type: bool, default: false }\n  \
-         occasion.payload.seconds: { type: number, default: 0 }\n  \
-         quest.notes: { type: number, default: 0 }\n  \
+         occasion.payload.seconds: { type: int, default: 0 }\n  \
+         quest.notes: { type: int, default: 0 }\n  \
          season.summer: { type: bool, default: false }\n  \
-         quest.q.count: { type: number, default: 0 }\n",
+         quest.q.count: { type: int, default: 0 }\n",
         "",
     );
     let got = located(&diags(&text), "E-STATE-NAMESPACE");

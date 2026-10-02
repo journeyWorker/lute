@@ -837,7 +837,7 @@ mod tests {
         // must be ABSENT from `guaranteed(G)`. `possible_writes` walks every
         // arm regardless of dominance, so `run.a` MUST still be present —
         // proving `P` captures may-only writes `G` deliberately discards.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.a: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\">\n::set{run.a = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n@narrator: skip\n</choice>\n</branch>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.a: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\">\n::set{run.a = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n@narrator: skip\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) =
             check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
@@ -869,7 +869,7 @@ mod tests {
         // guard-proofs into `G`, while `possible_writes` (writes only) never
         // saw them -> `G ⊄ P`. `run.x` must now be ABSENT from `G` (two of
         // three arms never wrote it), and `P` must remain a superset.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) =
             check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
@@ -896,7 +896,7 @@ mod tests {
         // per-arm record of `run.x` must join `G`, exactly like an exhaustive
         // `::set`, and `P` (which already counted record sugar) must stay a
         // superset. `into=` alone drives the record now.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) =
             check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
@@ -922,7 +922,7 @@ mod tests {
         // NOT survive that same intersect. The unconditional `questComplete`
         // `<on>` body's `run.flag` write is a SEPARATE body — union, not
         // intersect, brings it into the result alongside `run.done`.
-        let src = "---\nkind: quest\nstate:\n  run.done: { type: number }\n  run.b: { type: number }\n  run.flag: { type: number }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.done\">\n<branch id=\"br\">\n<choice id=\"c1\" label=\"L1\">\n::set{run.done = 1}\n::set{run.b = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n::set{run.done = 1}\n</choice>\n</branch>\n</objective>\n<on event=\"questComplete\">\n::set{run.flag = 1}\n</on>\n</quest>\n";
+        let src = "---\nkind: quest\nstate:\n  run.done: { type: int }\n  run.b: { type: int }\n  run.flag: { type: int }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.done\">\n<branch id=\"br\">\n<choice id=\"c1\" label=\"L1\">\n::set{run.done = 1}\n::set{run.b = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n::set{run.done = 1}\n</choice>\n</branch>\n</objective>\n<on event=\"questComplete\">\n::set{run.flag = 1}\n</on>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
         assert!(
@@ -944,7 +944,7 @@ mod tests {
         // `o2` is OPTIONAL — its unconditional `run.opt` write must be
         // excluded from the union entirely; `o1` is required and still
         // contributes `run.req`.
-        let src = "---\nkind: quest\nstate:\n  run.req: { type: number }\n  run.opt: { type: number }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.req\">\n::set{run.req = 1}\n</objective>\n<objective id=\"o2\" done=\"run.opt\" optional>\n::set{run.opt = 1}\n</objective>\n</quest>\n";
+        let src = "---\nkind: quest\nstate:\n  run.req: { type: int }\n  run.opt: { type: int }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.req\">\n::set{run.req = 1}\n</objective>\n<objective id=\"o2\" done=\"run.opt\" optional>\n::set{run.opt = 1}\n</objective>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
         assert!(
@@ -962,7 +962,7 @@ mod tests {
         // `quest.q.scratch` (required objective body) and `scene.bar`
         // (questComplete body) are both unconditional writes, but neither
         // tier is in envelope scope (dsl §4.3) — only `run.keep` may survive.
-        let src = "---\nkind: quest\nstate:\n  run.keep: { type: number }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.keep\">\n::set{run.keep = 1}\n::set{quest.q.scratch = 1}\n</objective>\n<on event=\"questComplete\">\n::set{scene.bar = 1}\n</on>\n</quest>\n";
+        let src = "---\nkind: quest\nstate:\n  run.keep: { type: int }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.keep\">\n::set{run.keep = 1}\n::set{quest.q.scratch = 1}\n</objective>\n<on event=\"questComplete\">\n::set{scene.bar = 1}\n</on>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
         assert_eq!(w, BTreeSet::from(["run.keep".to_string()]));
@@ -974,7 +974,7 @@ mod tests {
         // firing unconditionally-once on completion (dsl §4.3 spec line
         // 428) — the `when` gates the wider ECA dispatch grammar, not this
         // analysis's dominance assumption, so `run.g` IS guaranteed.
-        let src = "---\nkind: quest\nstate:\n  run.flag: { type: number }\n  run.g: { type: number }\n---\n<quest id=\"q\">\n<on event=\"questComplete\" when=\"run.flag\">\n::set{run.g = 1}\n</on>\n</quest>\n";
+        let src = "---\nkind: quest\nstate:\n  run.flag: { type: int }\n  run.g: { type: int }\n---\n<quest id=\"q\">\n<on event=\"questComplete\" when=\"run.flag\">\n::set{run.g = 1}\n</on>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
         assert!(
@@ -987,7 +987,7 @@ mod tests {
     fn writes_on_complete_includes_unconditional_quest_complete_handler() {
         // No `when` at all — the handler always fires on `questComplete`, so
         // its write IS guaranteed.
-        let src = "---\nkind: quest\nstate:\n  run.g: { type: number }\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n::set{run.g = 1}\n</on>\n</quest>\n";
+        let src = "---\nkind: quest\nstate:\n  run.g: { type: int }\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n::set{run.g = 1}\n</on>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
         assert!(

@@ -124,11 +124,11 @@ fn unknown_arg_is_component_arg() {
 #[test]
 fn mistyped_arg_is_component_arg() {
     let dir = unique_dir();
-    // A number-typed param, supplied a non-numeric string.
+    // An int-typed param, supplied a non-numeric string.
     write_lute(
         &dir,
         "badge.lute",
-        "---\ncomponent: badge\nparams:\n  count: number\n---\n## B.\n@narrator: badge.\n",
+        "---\ncomponent: badge\nparams:\n  count: int\n---\n## B.\n@narrator: badge.\n",
     );
     let s = scene(
         "badge.lute",
@@ -142,18 +142,18 @@ fn mistyped_arg_is_component_arg() {
 }
 
 #[test]
-fn numeric_arg_of_number_param_is_clean() {
+fn numeric_arg_of_int_param_is_clean() {
     let dir = unique_dir();
     write_lute(
         &dir,
         "badge.lute",
-        "---\ncomponent: badge\nparams:\n  count: number\n---\n## B.\n@narrator: badge.\n",
+        "---\ncomponent: badge\nparams:\n  count: int\n---\n## B.\n@narrator: badge.\n",
     );
     let s = scene("badge.lute", "::use{component=\"badge\" count=\"3\"}");
     let cs = codes(&dir, &s);
     assert!(
         !cs.contains(&"E-COMPONENT-ARG".to_string()),
-        "a numeric string for a number param must NOT flag E-COMPONENT-ARG; got {cs:?}"
+        "a numeric string for an int param must NOT flag E-COMPONENT-ARG; got {cs:?}"
     );
 }
 
@@ -163,10 +163,10 @@ fn use_ref_arg_type_mismatch_flags() {
     write_lute(
         &dir,
         "c.lute",
-        "---\ncomponent: c\nparams:\n  count: number\n---\n## C.\n@narrator: badge.\n",
+        "---\ncomponent: c\nparams:\n  count: int\n---\n## C.\n@narrator: badge.\n",
     );
-    // The scene declares a string-typed def `label`; passing it to a `number`
-    // param is a DEFINITE type mismatch (str != number) resolvable in scene scope.
+    // The scene declares a string-typed def `label`; passing it to an `int`
+    // param is a DEFINITE type mismatch (str != int) resolvable in scene scope.
     let s = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  label: { type: string, cel: \"'x'\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@label}\n";
     let cs = codes(&dir, s);
     assert!(
@@ -181,14 +181,14 @@ fn use_ref_arg_compatible_ok() {
     write_lute(
         &dir,
         "c.lute",
-        "---\ncomponent: c\nparams:\n  count: number\n---\n## C.\n@narrator: badge.\n",
+        "---\ncomponent: c\nparams:\n  count: int\n---\n## C.\n@narrator: badge.\n",
     );
-    // A number-typed def for a number param is compatible — no E-COMPONENT-ARG.
-    let s = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  num: { type: number, cel: \"3\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@num}\n";
+    // An int-typed def for an int param is compatible — no E-COMPONENT-ARG.
+    let s = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  num: { type: int, cel: \"3\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@num}\n";
     let cs = codes(&dir, s);
     assert!(
         !cs.contains(&"E-COMPONENT-ARG".to_string()),
-        "a compatible @ref arg (number def for a number param) must NOT flag E-COMPONENT-ARG; got {cs:?}"
+        "a compatible @ref arg (int def for an int param) must NOT flag E-COMPONENT-ARG; got {cs:?}"
     );
 }
 
@@ -280,7 +280,7 @@ fn interp_ref_in_body_is_resolved() {
     write_lute(
         &dir,
         "greet.lute",
-        "---\ncomponent: greet\nparams:\n  n: number\n---\n\
+        "---\ncomponent: greet\nparams:\n  n: int\n---\n\
 ## G.\n@narrator: you have {{@n}} and {{@missing}}\n",
     );
     let s = scene("greet.lute", "::use{component=\"greet\" n=\"1\"}");

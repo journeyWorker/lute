@@ -1,0 +1,13 @@
+---
+kind: quest
+id: grantReplay
+luteVersion: "0.32.0"
+title: Grant Replay
+uses: ./schema.yaml
+---
+<quest id="grantReplay" title="Replay" tier="run" start="run.ready == true">
+  <reward kind="XP" amount="10"/>
+  <objective id="finish" title="Finish" done="run.finished == true">
+    <reward kind="GOLD" amount="1"/>
+  </objective>
+</quest>

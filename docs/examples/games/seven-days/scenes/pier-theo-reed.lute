@@ -5,7 +5,7 @@ title: Green reed, not brown
 on: placeVisit
 target: place.pier
 after: 'visited("pier.theo.meet")'
-when: 'holds(present(theo, pier)) && !run.lantern.frame'
+when: 'holds("present", ["theo", "pier"]) && !run.lantern.frame'
 priority: 15
 ---
 

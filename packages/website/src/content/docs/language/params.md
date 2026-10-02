@@ -16,13 +16,13 @@ schema. Each entry has a `type`, an optional `params` block, and a `cel` body:
 ```yaml
 defs:
   warm:    { type: bool,   cel: "scene.affect.elena >= 2" }
-  closeUp: { type: number, cel: "1.35" }
+  closeUp: { type: int, cel: "1.35" }
   fond:    { type: bool,   cel: "scene.affect.marina >= 1" }
 ```
 
 A def is referenced with `@name`. Because `@` is a **compile-time macro**, the reference is expanded
 to its inline CEL before evaluation — a def is not a runtime function call, just a named piece of
-CEL. A bool def reads as a guard; a number def reads as a staging value:
+CEL. A bool def reads as a guard; an `int`/`double` def reads as a staging value:
 
 ```lute
 <when test="@fond">
@@ -35,7 +35,7 @@ A `@ref` must appear in a position whose required type matches the def's declare
 name must be declared in `defs`. Def names and param names are identifiers (a letter or `_`, then letters, digits or `_`): a condition reads them bare, like a JavaScript variable, so `lamp-lit` is `E-PATH-IDENT` naming `lampLit`.
 
 In a directive attribute the ref is **bare** — `zoom=@closeUp`. A quoted `zoom="@closeUp"` is the
-literal string `@closeUp`, which a number attribute rejects as `E-ATTR-TYPE`. An attribute value is
+literal string `@closeUp`, which a numeric attribute rejects as `E-ATTR-TYPE`. An attribute value is
 a constant, not an expression, so the compiler writes the literal the def folds to (`zoom: 1.35`) and
 checks it like an authored one (`E-BAD-ENUM`, `E-ATTR-TYPE`). A def that reads state does not fold,
 and using it there is `E-ATTR-DEF-DYNAMIC`. Branch instead, with a literal in each arm:
@@ -70,7 +70,7 @@ A def may declare typed **`params`**, turning it into a parameterized macro invo
 
 ```yaml
 defs:
-  atLeast: { type: bool, params: { n: number }, cel: "user.level >= n" }
+  atLeast: { type: bool, params: { n: int }, cel: "user.level >= n" }
   chose:   { type: bool, params: { q: choiceRef, opt: choiceId }, cel: "scene.choices[q] == opt" }
 ```
 
@@ -89,8 +89,8 @@ defs:
 
 *(Call site from [`docs/examples/showcase/episode01.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/episode01.lute); a minimal parameterized def is in [`docs/examples/param-def.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/param-def.lute).)*
 
-An argument is spliced into the body as a unit. An atomic argument — a path, a number, a plain
-string literal, or an already parenthesized group — goes in bare, so `@atLeast(3)` expands to
+An argument is spliced into the body as a unit. An atomic argument — a path, an integer or fractional
+literal, a plain string literal, or an already parenthesized group — goes in bare, so `@atLeast(3)` expands to
 `(user.level >= 3)`. Anything else keeps parentheses, so `@atLeast(user.level + 1)` expands to
 `(user.level >= (user.level + 1))` and the argument can never regroup with the body's operators.
 (Before 0.24.0 every argument was parenthesized; the compiled expression is the same, only the IR's
@@ -144,7 +144,7 @@ kind: scene
 id: shed.lamp
 title: The lamp
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 defs:
   firstDay: { type: bool, cel: "run.day == 1" }
 entities:
@@ -157,7 +157,7 @@ rules:
 
 ## Lamp
 
-@narrator{when="holds(lit(lamp))"}: The lamp is lit.
+@narrator{when="holds('lit', ['lamp'])"}: The lamp is lit.
 ```
 
 Before 0.24.0 such a rule passed `check` and then silently derived nothing, because the guard was
@@ -185,21 +185,21 @@ kind: scene
 id: dock.recap
 title: Last time
 state:
-  run.depth: { type: number, default: 0 }
+  run.depth: { type: int, default: 0 }
 defs:
-  lastF: { type: number, cel: "prev.run.depth * 10" }
-  deepLast: { type: bool, cel: "isSet(prev.run.depth) && prev.run.depth > 3" }
+  lastF: { type: int, cel: "prev.run.depth * 10" }
+  deepLast: { type: bool, cel: "has(prev.run.depth) && prev.run.depth > 3" }
 ---
 
 ## Recap
 
-@narrator{when="isSet(prev.run.depth)"}: Last run you reached {{@lastF}} feet.
+@narrator{when="has(prev.run.depth)"}: Last run you reached {{@lastF}} feet.
 @narrator{when="@deepLast"}: Deeper than most.
 @narrator: That was {{@lastF}} feet.
 ```
 
 The first two lines are clean: the line's guard proves `prev.run.depth`, and `@deepLast` carries its
-own `isSet`. The third reads `prev.run.depth` through `@lastF` with nothing proving it set:
+own `has` guard. The third reads `prev.run.depth` through `@lastF` with nothing proving it set:
 
 <!-- lute-diagnostics -->
 ```

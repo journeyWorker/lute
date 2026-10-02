@@ -65,27 +65,27 @@ fn project(tag: &str) -> PathBuf {
         &dir,
         "plugins/g.x/occasions/o.yaml",
         "occasions:\n  dailyReset: { select: sequence }\n  \
-         summon: { target: { prefix: hero, entity: hero }, payload: { copies: number } }\n",
+         summon: { target: { prefix: hero, entity: hero }, payload: { copies: int } }\n",
     );
     write(
         &dir,
         "world.schema.yaml",
         "entities:\n  hero: { members: [aria, bram, cyra] }\n\
          relations:\n  owned: { args: [hero], tier: run, reserved: true }\n  birthday: { args: [hero], tier: run, reserved: true }\n\
-         state:\n  user.bond: { type: number, default: 0, per: hero, owner: engine }\n  \
-         run.total: { type: number, default: 0 }\n",
+         state:\n  user.bond: { type: int, default: 0, per: hero, owner: engine }\n  \
+         run.total: { type: int, default: 0 }\n",
     );
     write(
         &dir,
         "lore/g.lute",
         "---\nkind: lore\nid: g\nuses: ../world.schema.yaml\n---\n\n\
-         <beat id=\"bday\" on=\"dailyReset\" for=\"kind:hero\" once=\"run\" when=\"holds(birthday(occasion.target))\">\n\
+         <beat id=\"bday\" on=\"dailyReset\" for=\"kind:hero\" once=\"run\" when=\"holds('birthday', [occasion.target])\">\n\
          \x20 @narrator: Happy birthday, {{occasion.target}}!\n</beat>\n\n\
          <beat id=\"pull\" on=\"summon\" target=\"kind:hero\" once=\"false\" when=\"occasion.payload.copies >= 1\">\n\
          \x20 @narrator: {{occasion.payload.copies}} copies of {{occasion.target}}.\n\
          \x20 ::set{run.total += occasion.payload.copies}\n</beat>\n\n\
          <beat id=\"dupe\" on=\"summon\" target=\"kind:hero\" once=\"false\" priority=\"5\" \
-         when=\"holds(owned(occasion.target)) && user.bond[occasion.target] >= 2\">\n\
+         when=\"holds('owned', [occasion.target]) && user.bond[occasion.target] >= 2\">\n\
          \x20 @narrator: {{occasion.target}} again, and close.\n</beat>\n",
     );
     let out = run(&dir, &["check-project", "."]);
@@ -370,8 +370,8 @@ fn a_union_kind_orders_its_members_as_the_schema_declares_them() {
         "entities:\n  hero: { members: [] }\n  ssr: { subsetOf: hero, members: [aria, cyra] }\n  \
          sr: { subsetOf: hero, members: [bram] }\n  limited: { subsetOf: ssr, members: [cyra] }\n\
          relations:\n  owned: { args: [hero], tier: run, reserved: true }\n  birthday: { args: [hero], tier: run, reserved: true }\n\
-         state:\n  user.bond: { type: number, default: 0, per: hero, owner: engine }\n  \
-         run.total: { type: number, default: 0 }\n",
+         state:\n  user.bond: { type: int, default: 0, per: hero, owner: engine }\n  \
+         run.total: { type: int, default: 0 }\n",
     );
     let (code, v, t) = play(
         &dir,

@@ -1,8 +1,8 @@
 {
   "kind": "scene",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "id": "hero.s01ep01",
     "character": "hero",
@@ -78,9 +78,11 @@
       "addr": "001-0400",
       "path": "run.dir",
       "op": "=",
-      "value": "'left'",
-      "expr": {
-        "lit": "left"
+      "value": {
+        "cel": "'left'",
+        "expr": {
+          "string": "left"
+        }
       }
     },
     {
@@ -102,9 +104,11 @@
       "addr": "001-0700",
       "path": "run.dir",
       "op": "=",
-      "value": "'right'",
-      "expr": {
-        "lit": "right"
+      "value": {
+        "cel": "'right'",
+        "expr": {
+          "string": "right"
+        }
       }
     },
     {
@@ -126,5 +130,10 @@
       "shot": 1,
       "heading": "The Fork"
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
 }

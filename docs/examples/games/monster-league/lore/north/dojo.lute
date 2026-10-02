@@ -24,7 +24,7 @@ title: The Verdant Dojo
   ::accept{quest="northDojo"}
 </beat>
 
-<entry id="northHollisWaiting" on="talk" target="npc.verdantDojoMaster" category="bark" priority="10" when="quest.northDojo.state == 'active' && !holds(defeated(verdantDojoKarateKoji))">
+<entry id="northHollisWaiting" on="talk" target="npc.verdantDojoMaster" category="bark" priority="10" when="quest.northDojo.state == 'active' && !holds('defeated', ['verdantDojoKarateKoji'])">
   @verdantDojoMaster: Koji is waiting on the mats. He has been stretching for an hour. It is very annoying.
 </entry>
 
@@ -34,6 +34,6 @@ title: The Verdant Dojo
 
 <beat use="trainerBattle" id="verdantDojoKarateKoji" who="verdantDojoKarateKoji" intro="Hup! The master sent you? Then no holding back. Hyaaah!" win="I... have much to learn." lose="Again! Again tomorrow!" prize="3200"/>
 
-<entry id="northKojiAfter" on="talk" target="npc.verdantDojoKarateKoji" category="bark" when="holds(defeated(verdantDojoKarateKoji))">
+<entry id="northKojiAfter" on="talk" target="npc.verdantDojoKarateKoji" category="bark" when="holds('defeated', ['verdantDojoKarateKoji'])">
   @verdantDojoKarateKoji: I lost to a traveller. The master will make me hit the post a thousand times. Worth it.
 </entry>
