@@ -1,6 +1,6 @@
 ---
 title: Runtime contract
-description: What a game engine must implement to run a compiled Lute artifact — the envelope, version negotiation and the IR 0.10.0 provenance-field rename, the addr width invariant, and the dispatcher loop over the twenty-two scene and quest command kinds.
+description: What a game engine must implement to run a compiled Lute artifact — the envelope, exact-minor IR and semantic negotiation, engine capability matrix, refusal-before-playback rule, and dispatcher loop over the scene and quest command kinds.
 ---
 
 Lute is a total, side-effect-free compiler. `lute compile <file>` checks a
@@ -8,9 +8,11 @@ Lute is a total, side-effect-free compiler. `lute compile <file>` checks a
 **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every
 behavior lives on the far side of the artifact, in the **engine**. This page is
 the condensed runtime contract; the full, source-grounded specification is in
-[`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)
-and the machine-checkable shape is
-[`schemas/lute-ir-0.32.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.32.schema.json)
+[`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime).
+The `lute.engine.yaml` matrix format is specified in
+[`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
+The machine-checkable shape is
+[`schemas/lute-ir-0.33.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.33.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -61,19 +63,23 @@ Every artifact opens with a fixed envelope (the `ExecutionIr` struct in
 | ----- | ------- |
 | `kind` | `"scene"` \| `"quest"` — read first; selects `meta`'s shape. |
 | `lute` | language-version pin (informational for the runtime). |
-| `irVersion` | the IR schema version you **gate on**. |
+| `irVersion` | the IR schema version you **gate on first**. |
 | `capabilityVersion` | a plugin-snapshot hash; refuse a mismatch. |
-| `meta` | scene meta (`character`/`season`/`episode`/`episodeId`) or quest meta. |
+| `requiredSemantics` | compiler-derived, sorted semantic ids used by the artifact; authors cannot edit this list. |
+| `meta` | scene meta or quest meta. |
 | `state` | the folded init/type table. |
 | `entities` / `enums` / `relations` / `seedFacts` / `rules` | the declared vocabulary (omitted when empty). |
 | `commands` | the flat, ordered, addressed command stream. |
-| `prereqEdges` | advisory raw graph edges, `{node, after}` (scene, bundle beat) or `{node, follows}` (quest; graph metadata only) (omitted when empty). |
-| `shots` | authored `## ` shot headings, `{shot, heading}` (omitted when empty). |
-| `seasons` | the project's declared seasons, `{name, live: {cel, expr, authored?}}`, name-sorted (omitted without seasons; dsl 0.27.0). |
-| `gates` | every occasion's `raisedWhen` gate, `{occasion, raisedWhen: {cel, expr, authored?}}`, occasion-sorted (omitted when none; dsl 0.27.0). |
-| `terminal` | the project's `terminal:` condition, `{cel, expr, authored?}` (omitted without one; dsl 0.27.0). |
-| `terminalPersists` | `true` when every `terminal:` declaration says `persists: true`: the ending outlives runs (omitted when false; dsl 0.29.0). |
+| `prereqEdges` | advisory raw graph edges (omitted when empty). |
+| `shots` | authored shot headings (omitted when empty). |
+| `seasons` / `gates` / `terminal` / `terminalPersists` | optional clock and occasion controls. |
 
+`requiredSemantics` is the sorted union of the lowered features in one
+artifact. The project index carries the same field as the sorted union of its
+document artifacts, allowing `check-project`, `play`, and an engine to
+negotiate before opening every document. The complete registry and trigger
+mapping live in [the 0.33.0 proposal §2–§3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry);
+this page intentionally does not duplicate that registry.
 ## Activation and evaluation
 
 An engine evaluates each CEL slot against nested maps built from live state:
@@ -115,18 +121,52 @@ compiler semantics (`action`'s
 `exits:`, `anchor`'s `default:`) are resolved away at compile time and never
 serialized: an engine needs no member semantics at runtime.
 
-## Version negotiation
+## Version negotiation and engine integration
 
-Gate on `irVersion` by **MAJOR only** (since `0.13.0`):
+Every host negotiates in this order, before opening a playback session:
 
-- **Accept** any artifact whose `irVersion` major you implement.
-- **Refuse** one from a newer major — minor and PATCH versions are compatible by
-  default within that major and never gate.
-- **Ignore unknown object fields** — optional fields are added append-only
-  within a major line, so a newer minor or PATCH artifact still loads on an
-  older engine.
-- **Treat an unknown command `kind` as an error** — a new command kind is a
-  real capability you cannot fake.
+1. **Exact-minor IR gate.** Before 1.0, a `0.33` engine accepts only
+   `0.33.*` artifacts. It refuses `0.32.*` and `0.34.*`; patch handling is
+   the engine's policy. From 1.0 onward, the released major's policy applies.
+2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
+   and compare every artifact `requiredSemantics` id with `supportedIds`.
+   `engine`, `irVersion`, and unique `supportedIds` are required; `version`
+   and `description` are descriptive. The full registry is in the
+   [0.33.0 proposal §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry).
+
+The matrix example is:
+
+```yaml
+engine: chat-text-engine
+irVersion: "0.33.0"
+supportedIds:
+  - lute.core/1
+  - lute.quest.lifecycle/1
+  - lute.quest.rewards/1
+  - lute.knowledge.facts/1
+  - lute.knowledge.rules/1
+  - lute.knowledge.temporal/1
+version: "1.4.0"
+description: "Text-only chat client: no staging, timeline, or clock"
+```
+
+`lute run --engine <file>` and `lute play --engine <file>` perform both gates.
+If an id is missing, they refuse with exit code **2** and
+`E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
+bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an unsupported
+exact-minor line uses `E-ENGINE-IR-VERSION`. Unknown artifact or registry ids
+use `E-SEMANTICS-UNKNOWN`.
+
+`lute check --engine <file>` and `lute check-project --engine <file>` perform
+author-time negotiation without playback. Missing capabilities are reported as
+`E-CHECK-ENGINE-SEMANTICS` with the lowered construct's source span, semantic
+id, and engine name. The project form checks the project-index union and lists
+each contributing document/span. Plugin compatibility remains the exact
+`capabilityVersion` check and is not folded into this matrix.
+
+The reference executor's built-in matrix is named `reference` and supports
+every current semantic id.
+
 ### Match-arm shorthand semantics (dsl 0.32.0 §7)
 
 Each match arm has `test` and `target`; an arm authored with `<when is="…">`

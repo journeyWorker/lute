@@ -319,6 +319,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.28.0 §4"],
     },
     Code {
+        code: "E-CHECK-ENGINE-SEMANTICS",
+        summary: "A construct requires a semantic capability the selected engine does not support.",
+        spec: &["dsl 0.33.0 §4"],
+    },
+    Code {
         code: "E-CHOICE-DUP",
         summary: "A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub.",
         spec: &["dsl §11.1"],
@@ -564,9 +569,24 @@ pub(crate) const CODES: &[Code] = &[
         spec: &[],
     },
     Code {
+        code: "E-ENGINE-IR-VERSION",
+        summary: "The engine matrix and execution artifact are outside the accepted IR version line.",
+        spec: &["dsl 0.33.0 §4", "dsl 0.33.0 §5"],
+    },
+    Code {
+        code: "E-ENGINE-MATRIX",
+        summary: "The engine capability matrix is unreadable or malformed.",
+        spec: &["dsl 0.33.0 §4"],
+    },
+    Code {
         code: "E-ENGINE-OWNED-WRITE",
         summary: "An `::set` writes a state path declared `owner: engine`, though the engine writes such a path and content may only read it.",
         spec: &["dsl 0.22.0 §1.2"],
+    },
+    Code {
+        code: "E-ENGINE-SEMANTICS",
+        summary: "The selected engine does not support a semantic capability required by the artifact.",
+        spec: &["dsl 0.33.0 §4"],
     },
     Code {
         code: "E-ENTITY-KIND-CLASH",
@@ -1177,6 +1197,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-SEASON-DECL",
         summary: r#"A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead."#,
         spec: &["dsl 0.27.0 §5"],
+    },
+    Code {
+        code: "E-SEMANTICS-UNKNOWN",
+        summary: "An execution artifact or engine matrix names an unknown semantic id.",
+        spec: &["dsl 0.33.0 §4"],
     },
     Code {
         code: "E-SET-OP-TYPE",

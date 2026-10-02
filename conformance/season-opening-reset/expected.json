@@ -1,0 +1,15 @@
+{
+  "commands": [],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.33",
+  "kind": "quest",
+  "quests": {
+    "seasonQ": "unset"
+  },
+  "state": {
+    "quest.seasonQ.objectives.done.done": false,
+    "run.atGoal": true,
+    "run.rearm": false
+  }
+}

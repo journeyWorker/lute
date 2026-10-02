@@ -321,6 +321,96 @@ fn caller_resolved_common(
         })
         .collect()
 }
+/// Author-time negotiation uses the compiler's structural provenance, then
+/// resolves envelope-only triggers through the same frontmatter/import origins
+/// as the checker.
+pub(crate) fn engine_semantic_diags(
+    input: &CheckInput,
+    artifact: &lute_compile::ExecutionIr,
+    source_map: &lute_compile::SourceMap,
+    matrix: &crate::EngineMatrix,
+) -> Vec<Diagnostic> {
+    let collected = lute_compile::semantics::collect(artifact);
+    let supported: std::collections::BTreeSet<&str> =
+        matrix.supported_ids.iter().map(String::as_str).collect();
+    let (doc, _) = lute_syntax::parse(&input.text);
+    let own: serde_yaml::Mapping = serde_yaml::from_str(&doc.meta.raw_yaml).unwrap_or_default();
+    let mut diags = Vec::new();
+    for id in collected.ids.iter().copied().filter(|id| !supported.contains(id)) {
+        let mut sites = std::collections::BTreeSet::new();
+        let mut add = |span: Span, origin: Option<&lute_check::rel_schema::DeclOrigin>| {
+            let site = origin.map_or((None, span.byte_start, span.byte_end), |o| {
+                (Some(o.file.clone()), o.span.byte_start, o.span.byte_end)
+            });
+            if !sites.insert(site) {
+                return;
+            }
+            let diagnostic = Diagnostic {
+                code: "E-CHECK-ENGINE-SEMANTICS".into(),
+                severity: Severity::Error,
+                message: format!("engine `{}` does not support semantic id `{id}`", matrix.engine),
+                span,
+                layer: lute_core_span::Layer::Content,
+                fixits: Vec::new(), provenance: None, covered: Vec::new(), related: Vec::new(),
+            };
+            let mut diagnostic = lute_check::rel_schema::at_origin(diagnostic, origin);
+            diagnostic.span = span;
+            diags.push(diagnostic);
+        };
+        for provenance in &collected.provenance[id] {
+            if let Some(source) = provenance.addr.as_deref().and_then(|addr| source_map.by_addr.get(addr)) {
+                add(crate::project::normalize_span_from_text(&input.text, source.span), None);
+                continue;
+            }
+            let keys: &[&str] = match (id, provenance.what.as_str()) {
+                (_, "scene beat condition") => &["when"],
+                (_, "scene beat spentBy") => &["spentBy"],
+                (_, "terminal condition") => &["terminal"],
+                (_, "Datalog guard") => &["rules"],
+                ("lute.knowledge.facts/1", _) => &["relations", "entities", "facts"],
+                ("lute.knowledge.rules/1", "derived relation") => &["relations"],
+                ("lute.knowledge.rules/1", _) => &["rules"],
+                ("lute.time.clock/1", _) => &["clock"],
+                ("lute.time.seasons/1", _) => &["seasons"],
+                ("lute.occasions.gates/1", _) => &["terminal", "outsideRun"],
+                ("lute.occasions.selection/1", _) => &["on", "after"],
+                ("lute.time.cadence/1", _) => &["once", "share", "spentBy", "on"],
+                _ => &[],
+            };
+            let mut found = false;
+            if let Some(key) = keys
+                .iter()
+                .copied()
+                .find(|key| own.contains_key(serde_yaml::Value::String((*key).into())))
+            {
+                let span = lute_check::meta::meta_key_span(&doc.meta, key);
+                add(crate::project::normalize_span_from_text(&input.text, span), None);
+                found = true;
+            }
+            let meta_span = crate::project::normalize_span_from_text(&input.text, doc.meta.span);
+            let origins = &input.imports.rel.origins;
+            let imported: Vec<lute_check::rel_schema::DeclOrigin> = match id {
+                "lute.knowledge.facts/1" => origins.relations.values()
+                    .chain(origins.kinds.values())
+                    .chain(origins.facts.values())
+                    .cloned()
+                    .collect(),
+                "lute.knowledge.rules/1" => origins.rules.values().cloned().collect(),
+                _ => Vec::new(),
+            };
+            for origin in &imported {
+                add(meta_span, Some(origin));
+                found = true;
+            }
+            if !found {
+                add(meta_span, None);
+            }
+        }
+    }
+    diags.sort_by(|a, b| (a.span.byte_start, &a.code, &a.message).cmp(&(b.span.byte_start, &b.code, &b.message)));
+    diags
+}
+
 
 /// Check a `.yaml`/`.yml` state-schema declaration file as a SCHEMA: no
 /// `kind:`, no frontmatter envelope, no body. The whole file IS the
@@ -441,6 +531,7 @@ pub(crate) fn run_check(
     providers: Option<&Path>,
     project: Option<&Path>,
     permission_profile: Option<&str>,
+    _engine: Option<&Path>,
     policy: &DenyPolicy,
 ) -> ExitCode {
     // #21 / T3.9: `lute check world.schema.yaml` is the obvious next command
@@ -471,6 +562,7 @@ pub(crate) fn run_check(
     let BuiltInput {
         input,
         resolve_error,
+        identity,
         ..
     } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
@@ -494,6 +586,18 @@ pub(crate) fn run_check(
     // errors already printed.
     if result.ok {
         merge_gate_diags(&mut result, compile_gate_diags(&input));
+    }
+    let matrix = match crate::EngineMatrix::load(_engine) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("lute check: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    if _engine.is_some() && result.ok {
+        if let Ok((artifact, source_map)) = lute_compile::compile_mapped(&input, check(&input), &identity) {
+            merge_gate_diags(&mut result, engine_semantic_diags(&input, &artifact, &source_map, &matrix));
+        }
     }
 
     // dsl 0.10.0 §9 rule 4 (**D-W**): a standalone component check either

@@ -1,0 +1,42 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "One clue on the table."
+    },
+    {
+      "addr": "001-0200",
+      "fact": "sawClue(map)",
+      "kind": "assert"
+    },
+    {
+      "addr": "001-0300",
+      "kind": "match",
+      "result": "arm 1"
+    },
+    {
+      "addr": "001-0400",
+      "kind": "line",
+      "speaker": "detective",
+      "text": "The map points at Mira."
+    },
+    {
+      "addr": "001-0700",
+      "kind": "match",
+      "result": "otherwise"
+    }
+  ],
+  "exit": "complete",
+  "facts": [
+    "links(map, mira)",
+    "sawClue(map)",
+    "seen(jon, key)",
+    "suspected(mira)"
+  ],
+  "irVersion": "0.33",
+  "kind": "scene",
+  "quests": {},
+  "state": {}
+}

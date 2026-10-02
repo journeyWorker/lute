@@ -1,0 +1,164 @@
+{
+  "kind": "scene",
+  "lute": "0.33.0",
+  "irVersion": "0.33.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.staging/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Command staging"
+  },
+  "state": [],
+  "enums": [
+    {
+      "name": "action",
+      "members": [
+        "fadeInUp",
+        "fadeOut"
+      ]
+    },
+    {
+      "name": "anchor",
+      "members": [
+        "left",
+        "center",
+        "right"
+      ]
+    },
+    {
+      "name": "mood",
+      "members": [
+        "calm"
+      ]
+    },
+    {
+      "name": "musicAction",
+      "members": [
+        "start",
+        "stop"
+      ]
+    },
+    {
+      "name": "vfxType",
+      "members": [
+        "whiteOut"
+      ]
+    },
+    {
+      "name": "volume",
+      "members": [
+        "normal"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "kind": "background",
+      "addr": "001-0100",
+      "location": "harbor",
+      "time": "night",
+      "assetId": "BG.harbor.night",
+      "wait": true
+    },
+    {
+      "kind": "music",
+      "addr": "001-0200",
+      "action": "start",
+      "mood": "calm",
+      "volume": "normal",
+      "assetId": "BGM.harbor"
+    },
+    {
+      "kind": "sfx",
+      "addr": "001-0300",
+      "sound": "bell",
+      "assetId": "SFX.bell"
+    },
+    {
+      "kind": "vfx",
+      "addr": "001-0400",
+      "vfxType": "whiteOut",
+      "transition": "flash"
+    },
+    {
+      "kind": "sprite",
+      "addr": "001-0500",
+      "character": "hero",
+      "anchor": "center",
+      "action": "fadeInUp"
+    },
+    {
+      "kind": "camera",
+      "addr": "001-0600",
+      "focus": "hero",
+      "zoom": 1.1,
+      "wait": false,
+      "duration": 0.5
+    },
+    {
+      "kind": "cut",
+      "addr": "001-0700",
+      "assetId": "CUT.harbor",
+      "action": "show",
+      "wait": false
+    },
+    {
+      "kind": "video",
+      "addr": "001-0800",
+      "assetId": "VID.harbor",
+      "action": "show",
+      "wait": true
+    },
+    {
+      "kind": "line",
+      "addr": "001-0900",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The harbor waits.",
+      "lineId": "hero.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "camera",
+      "addr": "001-1000",
+      "reset": true,
+      "wait": false
+    },
+    {
+      "kind": "cut",
+      "addr": "001-1100",
+      "assetId": "CUT.harbor",
+      "action": "hide",
+      "wait": false
+    },
+    {
+      "kind": "video",
+      "addr": "001-1200",
+      "assetId": "VID.harbor",
+      "action": "hide",
+      "wait": true
+    },
+    {
+      "kind": "music",
+      "addr": "001-1300",
+      "action": "stop"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "Staging"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

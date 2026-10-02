@@ -1,0 +1,36 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "eligible": true,
+      "id": "lifecycle.signal",
+      "kind": "beat"
+    },
+    {
+      "addr": "001-0200",
+      "kind": "accept",
+      "quest": "signalQuest"
+    },
+    {
+      "addr": "001-0300",
+      "kind": "retract",
+      "pattern": "seen(mira, map)"
+    },
+    {
+      "addr": "001-0400",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "The signal is received."
+    }
+  ],
+  "exit": "complete",
+  "facts": [
+    "seen(jon, key)"
+  ],
+  "irVersion": "0.33",
+  "kind": "lore",
+  "quests": {},
+  "state": {
+    "run.ended": false
+  }
+}

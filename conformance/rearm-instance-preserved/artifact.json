@@ -1,0 +1,104 @@
+{
+  "kind": "quest",
+  "lute": "0.33.0",
+  "irVersion": "0.33.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.quest.lifecycle/1",
+    "lute.time.seasons/1"
+  ],
+  "meta": {
+    "title": "Rearm instance"
+  },
+  "state": [
+    {
+      "path": "quest.rearmQ.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:rearmQ"
+    },
+    {
+      "path": "quest.rearmQ.objectives.done.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:rearmQ"
+    },
+    {
+      "path": "quest.rearmQ.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:rearmQ"
+    },
+    {
+      "path": "run.atGoal",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.rearm",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "rearmQ",
+      "title": "Rearm quest",
+      "titleLineId": "rearmQ.title",
+      "objectives": [
+        {
+          "id": "done",
+          "done": {
+            "cel": "run.atGoal == true",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "run.atGoal"
+              },
+              "r": {
+                "bool": true
+              }
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ],
+      "tier": "season:ashfall",
+      "rearm": {
+        "cel": "run.rearm",
+        "expr": {
+          "path": "run.rearm"
+        }
+      }
+    }
+  ],
+  "seasons": [
+    {
+      "name": "ashfall",
+      "live": {
+        "cel": "run.atGoal",
+        "expr": {
+          "path": "run.atGoal"
+        }
+      }
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

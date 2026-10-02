@@ -117,9 +117,14 @@ struct Loaded {
 /// Load a play. `Err((code, message))`: exit 2 with the usage error, or the
 /// compile gate's exit code (its diagnostics already printed, `message`
 /// empty).
-fn load(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Loaded, (ExitCode, String)> {
+fn load(
+    dir: &Path,
+    script_path: &Path,
+    no_derive: bool,
+    matrix: &crate::EngineMatrix,
+) -> Result<Loaded, (ExitCode, String)> {
     let script = load_script(script_path)?;
-    let project = compile_play_project(dir, project::PLAY)?;
+    let project = compile_play_project(dir, project::PLAY, matrix)?;
     let (plan, world) = plan_script(&project, &script, script_path, no_derive)?;
     Ok(Loaded {
         script,
@@ -237,6 +242,7 @@ fn install_condition_dump(
 pub fn run_play(
     dir: &Path,
     script_path: &Path,
+    engine: Option<&Path>,
     json: bool,
     no_derive: bool,
     explain: &[String],
@@ -244,15 +250,18 @@ pub fn run_play(
     quiet: bool,
     dump_conditions: Option<&Path>,
 ) -> ExitCode {
+    let matrix = match crate::EngineMatrix::load(engine) {
+        Ok(m) => m,
+        Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); }
+    };
     let Loaded {
         script,
         project,
         plan,
         mut world,
-    } = match load(dir, script_path, no_derive) {
+    } = match load(dir, script_path, no_derive, &matrix) {
         Ok(l) => l,
         Err((code, msg)) => {
-            // Every usage error of the script, one per line.
             for line in msg.lines() {
                 eprintln!("lute play: {}", lute_core_span::plain_message(line));
             }
@@ -385,7 +394,7 @@ impl PlayProject {
     /// Compile the project at `dir` for play ([`compile_project`]).
     pub(crate) fn compile(dir: &Path) -> Self {
         PlayProject(
-            compile_play_project(dir, project::TEST).map_err(|(_, msg)| {
+            compile_play_project(dir, project::TEST, &crate::EngineMatrix::reference()).map_err(|(_, msg)| {
                 if msg.is_empty() {
                     "the project does not compile (diagnostics above)".to_string()
                 } else {
@@ -519,7 +528,7 @@ pub(crate) fn presentations_for_diff(
     if script.steps.is_empty() {
         return Ok(Vec::new());
     }
-    let project = compile_play_project(dir, project::PLAY).map_err(|(_, msg)| msg)?;
+    let project = compile_play_project(dir, project::PLAY, &crate::EngineMatrix::reference()).map_err(|(_, msg)| msg)?;
     let (plan, world) =
         plan_script(&project, &script, script_path, false).map_err(|(_, msg)| msg)?;
     let play = execute(&script, &plan, Session::resume(&project, world));

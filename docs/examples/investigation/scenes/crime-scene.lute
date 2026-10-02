@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.32.0"
+luteVersion: "0.33.0"
 id: detective.s01ep01
 title: The Study
 # No `after:`, so this scene is where the case starts.

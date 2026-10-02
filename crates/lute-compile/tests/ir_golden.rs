@@ -431,6 +431,7 @@ fn envelope_serializes_with_state_entries() {
         lute: "0.3.0".into(),
         ir_version: "0.3.0".into(),
         capability_version: "cap-sha".into(),
+        required_semantics: vec![],
         meta: ArtifactMeta::Scene(SceneMeta {
             id: "marina.s01ep02".into(),
             character: Some("marina".into()),
@@ -471,7 +472,7 @@ fn envelope_serializes_with_state_entries() {
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
-        r#"{"kind":"scene","lute":"0.3.0","irVersion":"0.3.0","capabilityVersion":"cap-sha","meta":{"id":"marina.s01ep02","character":"marina","season":1,"episode":2,"episodeId":"s01ep02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[],"outsideRun":[],"celEnv":{"variables":[],"functions":[]}}"#
+        r#"{"kind":"scene","lute":"0.3.0","irVersion":"0.3.0","capabilityVersion":"cap-sha","requiredSemantics":[],"meta":{"id":"marina.s01ep02","character":"marina","season":1,"episode":2,"episodeId":"s01ep02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[],"outsideRun":[],"celEnv":{"variables":[],"functions":[]}}"#
     );
 }
 

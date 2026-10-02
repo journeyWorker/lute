@@ -1,0 +1,5 @@
+state:
+  run.atGoal: { type: bool, default: false }
+  run.rearm: { type: bool, default: false }
+seasons:
+  ashfall: { live: "run.atGoal" }

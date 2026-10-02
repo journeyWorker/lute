@@ -99,8 +99,15 @@ fn run_gates_on_pre_one_exact_minor() {
     let mut v: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&art).unwrap()).unwrap();
 
+    // The gate is relative to the toolchain's own IR line, so derive the
+    // drifted versions from the freshly compiled artifact.
+    let current = v["irVersion"].as_str().unwrap().to_string();
+    let mut parts = current.split('.').map(|p| p.parse::<u64>().unwrap());
+    let (major, minor) = (parts.next().unwrap(), parts.next().unwrap());
+    assert_eq!(major, 0, "this test covers the pre-1.0 exact-minor gate");
+
     // Same minor with a different patch -> accepted.
-    v["irVersion"] = serde_json::json!("0.32.7");
+    v["irVersion"] = serde_json::json!(format!("0.{minor}.7"));
     std::fs::write(&art, serde_json::to_string(&v).unwrap()).unwrap();
     let ok = Command::new(BIN)
         .args(["run", art.to_str().unwrap()])
@@ -109,7 +116,7 @@ fn run_gates_on_pre_one_exact_minor() {
     assert!(ok.status.success(), "patch drift must run: {}", String::from_utf8_lossy(&ok.stderr));
 
     // A different pre-1.0 minor -> refused with the exact-minor rule.
-    v["irVersion"] = serde_json::json!("0.31.0");
+    v["irVersion"] = serde_json::json!(format!("0.{}.0", minor - 1));
     std::fs::write(&art, serde_json::to_string(&v).unwrap()).unwrap();
     let minor = Command::new(BIN)
         .args(["run", art.to_str().unwrap()])
@@ -117,7 +124,7 @@ fn run_gates_on_pre_one_exact_minor() {
         .unwrap();
     assert_eq!(minor.status.code(), Some(2));
     let minor_err = String::from_utf8_lossy(&minor.stderr);
-    assert!(minor_err.contains("exact major.minor"), "{minor_err}");
+    assert!(minor_err.contains("E-ENGINE-IR-VERSION"), "{minor_err}");
 
     // Different major -> refused, exit 2.
     v["irVersion"] = serde_json::json!("1.0.0");
@@ -128,7 +135,7 @@ fn run_gates_on_pre_one_exact_minor() {
         .unwrap();
     assert_eq!(no.status.code(), Some(2));
     let err = String::from_utf8_lossy(&no.stderr);
-    assert!(err.contains("unsupported irVersion") && err.contains("exact major.minor"), "{err}");
+    assert!(err.contains("E-ENGINE-IR-VERSION"), "{err}");
 
 }
 

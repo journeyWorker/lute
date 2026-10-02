@@ -1,0 +1,10 @@
+---
+kind: lore
+luteVersion: "0.33.0"
+id: clockAdvance
+uses: ./schema.yaml
+---
+
+<beat id="advance" on="talk" target="npc.hero" advances="day" title="Advance the clock">
+  @narrator: A day passes.
+</beat>

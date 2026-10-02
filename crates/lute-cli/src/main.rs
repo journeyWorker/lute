@@ -59,6 +59,7 @@ macro_rules! outln {
 mod beats_cmd;
 mod cli;
 mod cmd_catalog;
+mod engine_matrix;
 mod cmd_check;
 mod cmd_check_project;
 mod cmd_compile;
@@ -89,6 +90,7 @@ mod plugin_origins;
 mod project;
 mod refs;
 mod rewrite;
+pub(crate) use engine_matrix::EngineMatrix;
 mod runner;
 mod scaffold;
 mod scenario_fmt;
@@ -151,6 +153,7 @@ fn main() -> ExitCode {
             providers,
             project,
             permission_profile,
+            engine,
             deny,
             deny_warnings,
         } => run_check(
@@ -159,12 +162,14 @@ fn main() -> ExitCode {
             providers.as_deref(),
             project.as_deref(),
             permission_profile.as_deref(),
+            engine.as_deref(),
             &DenyPolicy::new(&deny, deny_warnings),
         ),
         Command::CheckProject {
             dir,
             json,
             providers,
+            engine,
             deny,
             deny_warnings,
             wip,
@@ -174,6 +179,7 @@ fn main() -> ExitCode {
             providers.as_deref(),
             &DenyPolicy::new(&deny, deny_warnings),
             wip,
+            engine.as_deref(),
         ),
         Command::Lint {
             path,
@@ -330,6 +336,7 @@ fn main() -> ExitCode {
         Command::Doctor { dir, json, strict } => doctor::run_doctor(&dir, json, strict),
         Command::Run {
             artifact,
+            engine,
             mock,
             occasion,
             json,
@@ -338,6 +345,7 @@ fn main() -> ExitCode {
             dump_conditions,
         } => runner::run_artifact(
             &artifact,
+            engine.as_deref(),
             mock.as_deref(),
             occasion,
             json,
@@ -348,6 +356,7 @@ fn main() -> ExitCode {
         Command::Play {
             dir,
             script,
+            engine,
             json,
             no_derive,
             explain,
@@ -357,6 +366,7 @@ fn main() -> ExitCode {
         } => play::run_play(
             &dir,
             &script,
+            engine.as_deref(),
             json,
             no_derive,
             &explain,

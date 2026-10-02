@@ -274,8 +274,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.32.0");
-    assert_eq!(artifact.ir_version, "0.32.0");
+    assert_eq!(artifact.lute, "0.33.0");
+    assert_eq!(artifact.ir_version, "0.33.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
@@ -1803,6 +1803,9 @@ title: Legacy
     expected_meta.remove("id");
     // `celEnv` is a deliberate additive 0.32 field, so the legacy comparison ignores it.
     expected.as_object_mut().unwrap().remove("celEnv");
+    // `requiredSemantics` is the 0.33 compiler-derived envelope addition and
+    // is excluded from this historical 0.14 shape comparison.
+    expected.as_object_mut().unwrap().remove("requiredSemantics");
 
     // Reconstruct the pinned 0.14 shape from the ground up (not from the
     // 0.15 output) to prove `expected` isn't tautologically = actual.
@@ -1839,8 +1842,8 @@ title: Legacy
     assert_eq!(actual["meta"]["episodeId"], pinned_014["meta"]["episodeId"]);
     assert_eq!(actual["meta"]["title"], pinned_014["meta"]["title"]);
     assert_eq!(actual["meta"]["id"], serde_json::json!("marina.s01ep02"));
-    assert_eq!(actual["lute"], serde_json::json!("0.32.0"));
-    assert_eq!(actual["irVersion"], serde_json::json!("0.32.0"));
+    assert_eq!(actual["lute"], serde_json::json!("0.33.0"));
+    assert_eq!(actual["irVersion"], serde_json::json!("0.33.0"));
 }
 
 /// dsl 0.15.0 §3: the authored `extra:` block lands under `meta.extra`

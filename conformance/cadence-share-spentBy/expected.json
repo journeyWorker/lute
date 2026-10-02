@@ -1,0 +1,24 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "eligible": true,
+      "id": "cadence.daily",
+      "kind": "beat"
+    },
+    {
+      "addr": "001-0200",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "Once each day."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.33",
+  "kind": "lore",
+  "quests": {},
+  "state": {
+    "run.atGoal": true
+  }
+}

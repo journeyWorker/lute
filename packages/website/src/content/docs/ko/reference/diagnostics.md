@@ -172,6 +172,13 @@ CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허
 프로젝트의 `chapters:`가 잘못되었습니다. `{ on, scenes }` 체인의 목록이 아니거나, 둘 중 어느 것도 아닌 키가 있거나(체인은 occasion을 `occasion:`이 아니라 `on:`으로 씁니다), 장면 id가 아닌 항목이 있거나, 장면이 두 번 나열되었거나, 한 occasion에 체인이 둘 있거나, 매니페스트가 아직 폐지된 `sequence:` 키를 씁니다. 또는 체인이 어떤 플러그인도 선언하지 않은 occasion을 가리키거나(shape-only에서는 다른 비트가 응답하는 occasion의 오타), 어떤 장면도 선언하지 않은 id를 나열하거나(번들 비트·lore 항목·문서면 그렇다고 말합니다), 나열된 장면의 `on:`이 다른 occasion에 응답하거나, target과 함께 올리는 occasion에서 `target:`이 없는 장면을 나열합니다(모든 target에서 재생됩니다). 잘못된 체인은 적용되지 않고, 나머지 체인은 적용됩니다. 매니페스트 줄에서 보고되며(빠진 `target:`은 장면의 `id:`에서), 문서들은 그대로 검사됩니다.
 
 명세: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+### E-CHECK-ENGINE-SEMANTICS
+
+선택한 엔진이 지원하지 않는 의미 기능을 구성 요소가 요구합니다.
+
+명세: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
+
+
 
 ### E-CHOICE-DUP
 
@@ -445,12 +452,29 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 텍스트가 다른 두 음성 줄이 동일한 `voiceKey`로 컴파일되어, 하나의 녹음이 둘 다를 대신 말하게 됩니다 — 보통 `voiceKey` 템플릿에 `{prefix}`가 없어 문서 간에 충돌하기 때문입니다.
 
+### E-ENGINE-IR-VERSION
+
+엔진 매트릭스와 실행 아티팩트가 허용된 IR 버전 계열 밖에 있습니다.
+
+명세: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md), [dsl 0.33.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
+
+### E-ENGINE-MATRIX
+
+엔진 기능 매트릭스를 읽을 수 없거나 형식이 잘못되었습니다.
+
+명세: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
+
 ### E-ENGINE-OWNED-WRITE
 
 `::set`이 `owner: engine`으로 선언된 상태 경로에 썼지만, 그 경로는 엔진이 쓰고 콘텐츠는 읽을 수만 있습니다.
 
 명세: [dsl 0.22.0 §1.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
 
+### E-ENGINE-SEMANTICS
+
+선택한 엔진이 아티팩트에 필요한 의미 기능을 지원하지 않습니다.
+
+명세: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
 ### E-ENTITY-KIND-CLASH
 
 어떤 id가 서로 다른 두 엔티티 종류의 `members:`에 함께 나열되었지만, 한 종류가 다른 종류의 `subsetOf:`로 선언되지 않는 한 id는 정확히 하나의 종류에만 속해야 합니다.
@@ -1116,6 +1140,11 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 ### E-SEASON-DECL
 
 명세: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+### E-SEMANTICS-UNKNOWN
+
+실행 아티팩트 또는 엔진 매트릭스가 알 수 없는 의미 ID를 지정합니다.
+
+명세: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
 
 ### E-SET-OP-TYPE
 

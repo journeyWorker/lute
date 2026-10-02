@@ -35,6 +35,9 @@ pub(crate) enum Command {
         /// Emit the full `CheckResult` as JSON instead of human-readable lines.
         #[arg(long)]
         json: bool,
+        /// Engine capability matrix YAML (defaults to the built-in reference matrix).
+        #[arg(long, value_name = "FILE")]
+        engine: Option<PathBuf>,
         /// Directory of pinned provider snapshots to resolve ids against.
         #[arg(long, value_name = "DIR")]
         providers: Option<PathBuf>,
@@ -80,6 +83,9 @@ pub(crate) enum Command {
         /// 2). Errors are never demotable.
         #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
         deny: Vec<String>,
+        /// Engine capability matrix YAML (defaults to the built-in reference matrix).
+        #[arg(long, value_name = "FILE")]
+        engine: Option<PathBuf>,
         /// Promote EVERY warning to an error for the verdict and exit code.
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
@@ -426,6 +432,9 @@ pub(crate) enum Command {
         /// Path to the compiled execution IR JSON.
         #[arg(value_name = "EXECUTION-IR")]
         artifact: PathBuf,
+        /// Engine capability matrix YAML (defaults to the built-in reference matrix).
+        #[arg(long, value_name = "FILE")]
+        engine: Option<PathBuf>,
         /// A YAML mock playthrough (same surfaces as `lute trace --mock`).
         #[arg(long, value_name = "FILE")]
         mock: Option<PathBuf>,
@@ -478,6 +487,9 @@ pub(crate) enum Command {
         /// decisions in the trace-mock grammar.
         #[arg(long, value_name = "FILE")]
         script: PathBuf,
+        /// Engine capability matrix YAML (defaults to the built-in reference matrix).
+        #[arg(long, value_name = "FILE")]
+        engine: Option<PathBuf>,
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,

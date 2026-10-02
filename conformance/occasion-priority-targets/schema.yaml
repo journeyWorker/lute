@@ -1,0 +1,7 @@
+entities:
+  who: { members: [mira, jon] }
+  item: { members: [map, key] }
+relations:
+  seen: { args: [who, item], tier: run }
+facts:
+  - "seen(jon, key)"

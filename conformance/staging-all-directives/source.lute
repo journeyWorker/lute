@@ -1,0 +1,27 @@
+---
+kind: scene
+luteVersion: "0.33.0"
+character: hero
+season: 1
+episode: 1
+title: Command staging
+uses: ./schema.yaml
+---
+
+## Staging
+
+::bg{location="harbor" time="night" assetId="BG.harbor.night"}
+::music{action="start" mood="calm" volume="normal" assetId="BGM.harbor"}
+::sfx{sound="bell" assetId="SFX.bell"}
+::vfx{type="whiteOut" transition="flash"}
+::auto{character="hero" anchor="center" action="fadeInUp"}
+::camera{focus="hero" zoom="1.1" duration="0.5"}
+::cut{assetId="CUT.harbor" action="show"}
+::video{assetId="VID.harbor" action="show" wait="false"}
+
+@narrator: The harbor waits.
+
+::camera{reset="true"}
+::cut{assetId="CUT.harbor" action="hide"}
+::video{assetId="VID.harbor" action="hide"}
+::music{action="stop"}
