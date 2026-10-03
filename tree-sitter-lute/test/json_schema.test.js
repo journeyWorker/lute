@@ -141,7 +141,7 @@ plugins:
   showcase.pack: { resultScope: run }
 state:
   scene.affect.marina:
-    type: number
+    type: int
     default: 0
   run.gold:
     type: { enum: [bronze, silver, gold] }
@@ -150,9 +150,9 @@ defs:
     type: bool
     cel: "true"
   bonus:
-    type: number
+    type: double
     params:
-      mult: number
+      mult: double
     cel: "mult * 2"
 enums:
   action: [wave, bow]
@@ -174,9 +174,17 @@ entities:
   test("broken declaration: state entry `type` is a bare number, not a Type form", () => {
     const { ajv, declSchema } = loadAjv();
     // `type: 42` cannot deserialize into the manifest `Type` enum (neither a
-    // bare bool/number/string tag nor a single-key tagged map) — a real Rust
+    // bare bool/int/double/string tag nor a single-key tagged map) — a real Rust
     // `E-STATE-DECL` deserialize failure.
     const doc = Bun.YAML.parse("state:\n  scene.affect.marina:\n    type: 42\n");
+    const { ok } = validateAgainst(ajv, declSchema.$id, doc);
+    expect(ok).toBe(false);
+  });
+
+  test("broken declaration: `number` is not a type since 0.32 (int/double replace it)", () => {
+    const { ajv, declSchema } = loadAjv();
+    // dsl 0.32.0 §1.2: the Rust `Type` enum has no `number` tag (E-STATE-DECL).
+    const doc = Bun.YAML.parse("state:\n  scene.affect.marina:\n    type: number\n");
     const { ok } = validateAgainst(ajv, declSchema.$id, doc);
     expect(ok).toBe(false);
   });
@@ -184,10 +192,10 @@ entities:
   test("broken declaration: a Type tagged-map with two keys is ambiguous", () => {
     const { ajv, declSchema } = loadAjv();
     // `serde_yaml::with::singleton_map_recursive` requires EXACTLY one key to
-    // resolve the `Type` tag (types.rs) — `{ enum: [...], list: number }` has
+    // resolve the `Type` tag (types.rs) — `{ enum: [...], list: int }` has
     // two, so real Rust deserialization fails too.
     const doc = Bun.YAML.parse(
-      "defs:\n  bad:\n    type: { enum: [a, b], list: number }\n    cel: \"true\"\n",
+      "defs:\n  bad:\n    type: { enum: [a, b], list: int }\n    cel: \"true\"\n",
     );
     const { ok } = validateAgainst(ajv, declSchema.$id, doc);
     expect(ok).toBe(false);
@@ -207,7 +215,7 @@ entities:
     for (const def of [
       "{ type: bool }",
       '{ type: bool, cel: "true", body: "x" }',
-      '{ params: { n: number }, cel: "n > 1" }',
+      '{ params: { n: int }, cel: "n > 1" }',
       "5",
     ]) {
       const doc = Bun.YAML.parse(`defs:\n  bad: ${def}\n`);
@@ -496,7 +504,7 @@ options:
   test("good StampAttrsFile (plugin §14.1 `stampAttrs` export) validates", () => {
     const { ajv, pluginSchema } = loadAjv();
     const doc = Bun.YAML.parse(
-      "stampAttrs:\n  - { name: bonusId, type: string }\n  - { name: bonusScore, type: number }\n",
+      "stampAttrs:\n  - { name: bonusId, type: string }\n  - { name: bonusScore, type: double }\n",
     );
     const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, doc);
     expect(ok, JSON.stringify(errors)).toBe(true);
