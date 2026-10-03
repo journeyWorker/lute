@@ -933,11 +933,6 @@
 
     "@astrojs/sitemap/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
 
-    "@lute-lang/lute/@lute-lang/lute-core-darwin-arm64": ["@lute-lang/lute-core-darwin-arm64@0.33.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-vMbjEKrf2AKd8DYYD9M03Q9ywROoUiF1oFroLePDmPKfzWdkrCX8Kaxm6DmcqYakkkhUWyHkv6fYE5Ek9aVclA=="],
-
-    "@lute-lang/lute/@lute-lang/lute-core-linux-x64": ["@lute-lang/lute-core-linux-x64@0.33.0", "", { "os": "linux", "cpu": "x64" }, "sha512-uZR9drIum+lyQu+lPAcrOvRxxTUurw3YbE8flerkEjugACcyRV6MpRAzo3exOTDqUEt5YIENEybGmtKEKL8wPA=="],
-    "@lute-lang/lute/@lute-lang/lute-core-win32-x64": ["@lute-lang/lute-core-win32-x64@0.33.0", "", { "os": "win32", "cpu": "x64" }, "sha512-cp3S+RHdMURwKAWpg6kDwh0MbADxTh4wS0wPjcUcYGY5A+L5z07k5UJvj+bZPRjPE6Wz570fZIejZ3MwfNE+gw=="],
-
     "@rollup/pluginutils/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 
     "@types/sax/@types/node": ["@types/node@24.13.3", "", { "dependencies": { "undici-types": "~7.18.0" } }, "sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q=="],
