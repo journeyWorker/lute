@@ -2,7 +2,7 @@
 # Days are server days since launch (day 1 = launch Monday). A rerun is one
 # more window on the same def; nothing else in the project changes.
 defs:
-  onDays: { type: bool, params: { first: number, last: number }, cel: "user.day >= first && user.day <= last" }
+  onDays: { type: bool, params: { first: int, last: int }, cel: "user.day >= first && user.day <= last" }
 
   # Harvest Moon Festival (limited SSR: Cyra). Ran week 2; rerun week 6.
   harvestOriginal: "@onDays(8, 14)"

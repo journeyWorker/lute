@@ -6,7 +6,7 @@ pov: ilo
 # Plays after the routine once a dive has ended: what the last dive left him with.
 on: runStart
 once: false
-when: "isSet(prev.run.outcome)"
+when: "has(prev.run.outcome)"
 ---
 
 ## Memory

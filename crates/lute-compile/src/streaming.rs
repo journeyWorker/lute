@@ -14,7 +14,7 @@ use lute_syntax::incremental::{ContinuationUnit, IncrementalContinuationParser};
 
 pub use lute_syntax::incremental::NeedMoreInput;
 
-use crate::{compile_with_check, Artifact, Command, DocKind};
+use crate::{compile_with_check, ExecutionIr, Command, DocKind};
 
 pub const E_STREAM_TEMPLATE: &str = "E-STREAM-TEMPLATE";
 pub const E_STREAM_BODY: &str = "E-STREAM-BODY";
@@ -27,7 +27,7 @@ pub struct CompilationUpdate {
     pub sequence: u64,
     /// Command count in the preceding accepted snapshot.
     pub append_from: usize,
-    pub artifact: Artifact,
+    pub artifact: ExecutionIr,
 }
 
 /// Result of one [`ContinuationCompiler::push`] or
@@ -46,7 +46,7 @@ pub struct ContinuationCompiler {
     input: CheckInput,
     identity: IdentityTemplates,
     parser: Option<IncrementalContinuationParser>,
-    artifact: Artifact,
+    artifact: ExecutionIr,
     sequence: u64,
     terminal: bool,
 }
@@ -79,7 +79,7 @@ impl ContinuationCompiler {
     }
 
     /// Latest accepted ordinary artifact.
-    pub fn artifact(&self) -> &Artifact {
+    pub fn artifact(&self) -> &ExecutionIr {
         &self.artifact
     }
 
@@ -224,7 +224,7 @@ impl ContinuationCompiler {
     /// Compile current cumulative source through the ordinary checker/compiler.
     /// On success the returned diagnostics are the checker's complete warning
     /// stream; on failure existing checker/compile diagnostics are preserved.
-    fn compile_current(&self) -> Result<(Artifact, Vec<Diagnostic>), Vec<Diagnostic>> {
+    fn compile_current(&self) -> Result<(ExecutionIr, Vec<Diagnostic>), Vec<Diagnostic>> {
         let checked = check(&self.input);
         let checker_diagnostics = checked.diagnostics.clone();
         match compile_with_check(&self.input, checked, &self.identity) {
@@ -276,7 +276,7 @@ fn forbidden_body_scaffolding(source: &str) -> bool {
 
 /// Compare immutable commands after normalizing only typed address slots and
 /// control targets. Arbitrary strings in command payloads are never touched.
-fn preserves_emitted_prefix(old: &Artifact, new: &Artifact) -> bool {
+fn preserves_emitted_prefix(old: &ExecutionIr, new: &ExecutionIr) -> bool {
     if new.commands.len() < old.commands.len() {
         return false;
     }

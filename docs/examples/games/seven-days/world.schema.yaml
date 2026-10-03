@@ -10,12 +10,12 @@ enums:
     labels: { morning: Morning, afternoon: Afternoon, night: Night }
 
 state:
-  run.day:  { type: number, default: 1, owner: engine }
+  run.day:  { type: int, default: 1, owner: engine }
   run.slot: { type: { domain: slot }, default: morning, owner: engine }
 
   # affection routes
-  run.aff.ines: { type: number, default: 0 }
-  run.aff.theo: { type: number, default: 0 }
+  run.aff.ines: { type: int, default: 0 }
+  run.aff.theo: { type: int, default: 0 }
 
   # the festival lantern
   run.lantern.frame: { type: bool, default: false }
@@ -26,16 +26,16 @@ state:
   run.festivalWith: { type: { enum: [ines, theo, pell] } }
 
   # Sol's diary: the day each person was last seen (0 = not yet)
-  run.seen: { type: number, default: 0, per: person }
+  run.seen: { type: int, default: 0, per: person }
 
   # the post office (0.27 chapter): postcards home, and Mira's franking machine
-  run.postcards: { type: number, default: 0 }
+  run.postcards: { type: int, default: 0 }
   run.machineFixed: { type: bool, default: false }
 
   # the bus has gone: the game is over
   run.departed: { type: bool, default: false }
 
-  user.endings: { type: number, default: 0 }
+  user.endings: { type: int, default: 0 }
 
 clock:
   day: run.day
@@ -94,7 +94,7 @@ defs:
   today:   "clock.weekdayLabel"
   festivalNight: "run.day == 5 && @night"
   # "on day D in slot S" — the schedule cell, as a parameterised def
-  at: { type: bool, params: { d: number, s: string }, cel: "run.day == d && run.slot == s" }
+  at: { type: bool, params: { d: int, s: string }, cel: "run.day == d && run.slot == s" }
   # Deadlines are clock positions: clock.index = (day - 1) * 3 + slot, with
   # morning 0, afternoon 1, night 2. "Wednesday afternoon is over" is index > 7.
   wedAfternoonOver: "clock.index > 7"

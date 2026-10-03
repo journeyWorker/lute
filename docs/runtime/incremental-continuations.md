@@ -98,7 +98,7 @@ use lute_compile::streaming::{
 // `input: lute_check::CheckInput` and
 // `identity: lute_manifest::project::IdentityTemplates` are resolved once.
 let mut compiler = ContinuationCompiler::new(input, identity)?;
-let initial: &lute_compile::Artifact = compiler.artifact();
+let initial: &lute_compile::ExecutionIr = compiler.artifact();
 
 let batch: ContinuationCompilation =
     compiler.push("@guide: A complete physical line.\n");
@@ -171,7 +171,7 @@ returned diagnostics.
 pub struct CompilationUpdate {
     pub sequence: u64,
     pub append_from: usize,
-    pub artifact: Artifact,
+    pub artifact: ExecutionIr,
 }
 ```
 

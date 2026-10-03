@@ -1,0 +1,418 @@
+{
+  "kind": "scene",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "meta": {
+    "id": "celNumbers",
+    "title": "CEL Numbers"
+  },
+  "state": [
+    {
+      "path": "run.d",
+      "type": "double",
+      "default": 3.5
+    },
+    {
+      "path": "run.i",
+      "type": "int",
+      "default": 3
+    }
+  ],
+  "commands": [
+    {
+      "kind": "match",
+      "addr": "001-0100",
+      "subject": {
+        "cel": "run.i + 2 == 5 && run.d * 2.0 >= 7.0",
+        "expr": {
+          "op": "&&",
+          "l": {
+            "op": "==",
+            "l": {
+              "op": "+",
+              "l": {
+                "path": "run.i"
+              },
+              "r": {
+                "int": 2
+              }
+            },
+            "r": {
+              "int": 5
+            }
+          },
+          "r": {
+            "op": ">=",
+            "l": {
+              "op": "*",
+              "l": {
+                "path": "run.d"
+              },
+              "r": {
+                "double": 2.0
+              }
+            },
+            "r": {
+              "double": 7.0
+            }
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(run.i + 2 == 5 && run.d * 2.0 >= 7.0)",
+            "expr": {
+              "op": "&&",
+              "l": {
+                "op": "==",
+                "l": {
+                  "op": "+",
+                  "l": {
+                    "path": "run.i"
+                  },
+                  "r": {
+                    "int": 2
+                  }
+                },
+                "r": {
+                  "int": 5
+                }
+              },
+              "r": {
+                "op": ">=",
+                "l": {
+                  "op": "*",
+                  "l": {
+                    "path": "run.d"
+                  },
+                  "r": {
+                    "double": 2.0
+                  }
+                },
+                "r": {
+                  "double": 7.0
+                }
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-0200"
+        }
+      ],
+      "otherwise": "001-0400",
+      "converge": "001-0500"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "arithmetic",
+      "lineId": "celNumbers.narrator_0010"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0300",
+      "target": "001-0500"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0400",
+      "target": "001-0500"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0500",
+      "subject": {
+        "cel": "run.i / 2 == 1 && run.i % 2 == 1",
+        "expr": {
+          "op": "&&",
+          "l": {
+            "op": "==",
+            "l": {
+              "op": "/",
+              "l": {
+                "path": "run.i"
+              },
+              "r": {
+                "int": 2
+              }
+            },
+            "r": {
+              "int": 1
+            }
+          },
+          "r": {
+            "op": "==",
+            "l": {
+              "op": "%",
+              "l": {
+                "path": "run.i"
+              },
+              "r": {
+                "int": 2
+              }
+            },
+            "r": {
+              "int": 1
+            }
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(run.i / 2 == 1 && run.i % 2 == 1)",
+            "expr": {
+              "op": "&&",
+              "l": {
+                "op": "==",
+                "l": {
+                  "op": "/",
+                  "l": {
+                    "path": "run.i"
+                  },
+                  "r": {
+                    "int": 2
+                  }
+                },
+                "r": {
+                  "int": 1
+                }
+              },
+              "r": {
+                "op": "==",
+                "l": {
+                  "op": "%",
+                  "l": {
+                    "path": "run.i"
+                  },
+                  "r": {
+                    "int": 2
+                  }
+                },
+                "r": {
+                  "int": 1
+                }
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-0600"
+        }
+      ],
+      "otherwise": "001-0800",
+      "converge": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0600",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "integer division",
+      "lineId": "celNumbers.narrator_0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0700",
+      "target": "001-0900"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0800",
+      "target": "001-0900"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0900",
+      "subject": {
+        "cel": "run.i < 4 ? true : false",
+        "expr": {
+          "cond": {
+            "op": "<",
+            "l": {
+              "path": "run.i"
+            },
+            "r": {
+              "int": 4
+            }
+          },
+          "then": {
+            "bool": true
+          },
+          "else": {
+            "bool": false
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(run.i < 4 ? true : false)",
+            "expr": {
+              "cond": {
+                "op": "<",
+                "l": {
+                  "path": "run.i"
+                },
+                "r": {
+                  "int": 4
+                }
+              },
+              "then": {
+                "bool": true
+              },
+              "else": {
+                "bool": false
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-1000"
+        }
+      ],
+      "otherwise": "001-1200",
+      "converge": "001-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "001-1000",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "ternary",
+      "lineId": "celNumbers.narrator_0030"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1100",
+      "target": "001-1300"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1200",
+      "target": "001-1300"
+    },
+    {
+      "kind": "match",
+      "addr": "001-1300",
+      "subject": {
+        "cel": "-run.i < 0 && run.i in [1, 2, 3]",
+        "expr": {
+          "op": "&&",
+          "l": {
+            "op": "<",
+            "l": {
+              "op": "-",
+              "l": {
+                "path": "run.i"
+              }
+            },
+            "r": {
+              "int": 0
+            }
+          },
+          "r": {
+            "op": "in",
+            "l": {
+              "path": "run.i"
+            },
+            "r": {
+              "list": [
+                {
+                  "int": 1
+                },
+                {
+                  "int": 2
+                },
+                {
+                  "int": 3
+                }
+              ]
+            }
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(-run.i < 0 && run.i in [1, 2, 3])",
+            "expr": {
+              "op": "&&",
+              "l": {
+                "op": "<",
+                "l": {
+                  "op": "-",
+                  "l": {
+                    "path": "run.i"
+                  }
+                },
+                "r": {
+                  "int": 0
+                }
+              },
+              "r": {
+                "op": "in",
+                "l": {
+                  "path": "run.i"
+                },
+                "r": {
+                  "list": [
+                    {
+                      "int": 1
+                    },
+                    {
+                      "int": 2
+                    },
+                    {
+                      "int": 3
+                    }
+                  ]
+                }
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-1400"
+        }
+      ],
+      "otherwise": "001-1600",
+      "converge": "001-1700"
+    },
+    {
+      "kind": "line",
+      "addr": "001-1400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "unary and list",
+      "lineId": "celNumbers.narrator_0040"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1500",
+      "target": "001-1700"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1600",
+      "target": "001-1700"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "Numbers"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

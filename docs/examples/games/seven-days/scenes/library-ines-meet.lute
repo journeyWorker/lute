@@ -4,7 +4,7 @@ id: library.ines.meet
 title: The girl who shushes the sea
 on: placeVisit
 target: place.library
-when: 'holds(present(ines, library))'
+when: 'holds("present", ["ines", "library"])'
 priority: 20
 ---
 

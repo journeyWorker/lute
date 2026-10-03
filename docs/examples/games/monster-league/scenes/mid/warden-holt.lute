@@ -4,7 +4,7 @@ id: mid.wardenHolt
 title: Warden Holt's teeth
 on: talk
 target: npc.wardenHolt
-when: "holds(hasItem(goldTooth))"
+when: "holds('hasItem', ['goldTooth'])"
 ---
 
 // CONTRACT BEAT (owned by mid): trades the goldTooth for hmStrength (north's

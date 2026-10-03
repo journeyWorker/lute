@@ -5,7 +5,7 @@ title: The goat pen
 on: visit
 target: place.village
 priority: 20
-when: "holds(at(wren, village))"
+when: "holds('at', ['wren', 'village'])"
 ---
 
 ## Below the switchbacks

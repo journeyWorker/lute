@@ -15,11 +15,11 @@ components: [../components/wire.component.lute]
   @inspector{code="0010" mono}: Twenty minutes, and a wire that can reach anywhere before Ossery. One wire.
 </beat>
 
-<beat id="rollCall" on="hourStrikes" for="kind:suspect" title="Crane counts heads" when="run.hour == 'h05' && holds(opportunity(occasion.target))">
+<beat id="rollCall" on="hourStrikes" for="kind:suspect" title="Crane counts heads" when="run.hour == 'h05' && holds('opportunity', [occasion.target])">
   @crane{code="0010"}: {{occasion.target}}, present. Nobody can say where, in the tunnel.
 </beat>
 
-<beat id="rollBerth" on="hourStrikes" for="kind:suspect" title="An empty berth" when="run.hour == 'h05' && holds(outOfBerth(occasion.target, tunnel))">
+<beat id="rollBerth" on="hourStrikes" for="kind:suspect" title="An empty berth" when="run.hour == 'h05' && holds('outOfBerth', [occasion.target, 'tunnel'])">
   @inspector{code="0010" mono}: {{occasion.target}}'s own bed was made and empty in the Orla. A sleeper who was not asleep.
 </beat>
 

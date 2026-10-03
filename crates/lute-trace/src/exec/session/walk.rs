@@ -129,6 +129,7 @@ pub fn absorb(w: &mut World, outcome: &Walked) {
     }
     w.facts = carry.base_facts.clone();
     w.quests = carry.quest_status.clone();
+    w.quest_instances = carry.quest_instances.clone();
     for id in &carry.accepted {
         if !w.accepts.contains(id) {
             w.accepts.push(id.clone());
@@ -329,14 +330,15 @@ pub fn play_machine(
     carry: Carry,
     choose: &BTreeMap<String, Vec<String>>,
 ) -> Machine<PlayDriver> {
-    Machine::resume(
+    let machine = Machine::resume(
         &play_artifact_json(doc_json, p),
         seed,
         carry,
         PlayDriver::new(choose, w),
     )
     .with_visited(&w.visited)
-    .with_bridge_reads(p.bridge_reads.clone())
+    .with_bridge_reads(p.bridge_reads.clone());
+    w.observe_machine(machine)
 }
 
 /// The bridge answers a walk consumed: per tag, the head of `before`'s step

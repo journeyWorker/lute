@@ -1,0 +1,54 @@
+{
+  "commands": [
+    {
+      "kind": "quest",
+      "quest": "grantReplay",
+      "state": "active"
+    },
+    {
+      "done": true,
+      "kind": "objective",
+      "objective": "finish",
+      "quest": "grantReplay"
+    },
+    {
+      "index": 0,
+      "instance": 1,
+      "kind": "grant",
+      "objective": "finish",
+      "quest": "grantReplay",
+      "reward": {
+        "amount": 1,
+        "kind": "GOLD"
+      }
+    },
+    {
+      "kind": "quest",
+      "quest": "grantReplay",
+      "state": "complete"
+    },
+    {
+      "index": 0,
+      "instance": 1,
+      "kind": "grant",
+      "quest": "grantReplay",
+      "reward": {
+        "amount": 10,
+        "kind": "XP"
+      }
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.32",
+  "kind": "quest",
+  "quests": {
+    "grantReplay": "complete"
+  },
+  "state": {
+    "quest.grantReplay.objectives.finish.done": true,
+    "quest.grantReplay.state": "complete",
+    "run.finished": true,
+    "run.ready": true
+  }
+}

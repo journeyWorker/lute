@@ -4,9 +4,15 @@
   "cel": "run.coins - 2",
   "expr": {
     "op": "-",
-    "l": { "path": "run.coins" },
-    "r": { "lit": 2.0 }
+    "l": {
+      "path": "run.coins"
+    },
+    "r": {
+      "int": 2
+    }
   },
-  "state": { "run.coins": 5 },
+  "state": {
+    "run.coins": 5
+  },
   "expected": 3.0
 }

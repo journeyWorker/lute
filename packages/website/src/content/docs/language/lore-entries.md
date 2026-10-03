@@ -158,7 +158,7 @@ already declares — the checker applies the usual arity, domain, and tier rules
 react with `holds(…)`:
 
 ```lute
-@eris{when="holds(knows(vesna, project_lumen))"}: ...So you read the log.
+@eris{when="holds('knows', ['vesna', 'project_lumen'])"}: ...So you read the log.
 ```
 
 ## Reading twice
@@ -250,13 +250,13 @@ first document on this page as `lore/ship-records.lute` and give `scientistLog2`
 ```lute
 <entry id="scientistLog2" target="item.torn_note_2" category="note" series="scientistLog" order="2" when="entry.scientistLog1.read">
   @scientist: Day nine. We stopped writing her name in the logs.
-  @scientist{when="holds(knows(vesna, project_lumen))"}: You know what Lumen was. Now you know who.
+  @scientist{when="holds('knows', ['vesna', 'project_lumen'])"}: You know what Lumen was. Now you know who.
 </entry>
 ```
 
 <!-- lute-diagnostics -->
 ```
-./lore/ship-records.lute:20:20: warning [W-FACT-GUARANTEED] guard `holds(knows(vesna, project_lumen))` is redundant: `knows(vesna, project_lumen)` is asserted on every route to here (./lore/ship-records.lute:15)
+./lore/ship-records.lute:20:20: warning [W-FACT-GUARANTEED] guard `holds('knows', ['vesna', 'project_lumen'])` is redundant: `knows(vesna, project_lumen)` is asserted on every route to here (./lore/ship-records.lute:15)
 ```
 
 The entry's `when` already guarantees the log was read this run, so the line's guard is always

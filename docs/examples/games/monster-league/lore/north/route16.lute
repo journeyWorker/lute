@@ -26,31 +26,31 @@ title: Route 16 — the League Road
 
 <beat use="trainerBattle" id="r16CooltrainerAnya" who="r16CooltrainerAnya" intro="You're heading for the League? So am I. Only one of us is ready." win="You're ready. I need another month." lose="Come back when your team is balanced." prize="2800"/>
 
-<entry id="northR16CooltrainerAnyaAfter" on="talk" target="npc.r16CooltrainerAnya" category="bark" when="holds(defeated(r16CooltrainerAnya))">
+<entry id="northR16CooltrainerAnyaAfter" on="talk" target="npc.r16CooltrainerAnya" category="bark" when="holds('defeated', ['r16CooltrainerAnya'])">
   @r16CooltrainerAnya: Frostine of the Elite Four uses ice. Pack something that burns.
 </entry>
 
 <beat use="trainerBattle" id="r16CooltrainerBram" who="r16CooltrainerBram" intro="I've failed Victory Road three times. Beating you will make it four... wait, that's not how that works." win="Four. It's four." lose="Maybe this is my year!" prize="2800"/>
 
-<entry id="northR16CooltrainerBramAfter" on="talk" target="npc.r16CooltrainerBram" category="bark" when="holds(defeated(r16CooltrainerBram))">
+<entry id="northR16CooltrainerBramAfter" on="talk" target="npc.r16CooltrainerBram" category="bark" when="holds('defeated', ['r16CooltrainerBram'])">
   @r16CooltrainerBram: The boulders in Victory Road need Strength. The first time I went in I just pushed. With my hands.
 </entry>
 
 <beat use="trainerBattle" id="r16HikerGus" who="r16HikerGus" intro="Hahaha! I've climbed every mountain in Verdane! Now I climb over challengers!" win="Hahaha! Tumbled right down!" lose="Hahaha! To the top!" prize="2000"/>
 
-<entry id="northR16HikerGusAfter" on="talk" target="npc.r16HikerGus" category="bark" when="holds(defeated(r16HikerGus))">
+<entry id="northR16HikerGusAfter" on="talk" target="npc.r16HikerGus" category="bark" when="holds('defeated', ['r16HikerGus'])">
   @r16HikerGus: There's a crater near the top of Victory Road that's always hot. I cooked an egg on the floor once. Hahaha!
 </entry>
 
 <beat use="trainerBattle" id="r16BlackBeltKen" who="r16BlackBeltKen" intro="Hwaa! I trained at the Verdant Dojo! Face my fists!" win="Hwaa... my fists are tired." lose="The Dojo's way is the strong way!" prize="2200"/>
 
-<entry id="northR16BlackBeltKenAfter" on="talk" target="npc.r16BlackBeltKen" category="bark" when="holds(defeated(r16BlackBeltKen))">
+<entry id="northR16BlackBeltKenAfter" on="talk" target="npc.r16BlackBeltKen" category="bark" when="holds('defeated', ['r16BlackBeltKen'])">
   @r16BlackBeltKen: Master Hollis takes one challenger a day. Go early. He naps after lunch.
 </entry>
 
 <beat use="trainerBattle" id="r16BeautyLis" who="r16BeautyLis" intro="I'm only here to watch the Champion hopefuls. And to crush them, a little." win="You'd look good on a banner." lose="Next hopeful, please!" prize="2400"/>
 
-<entry id="northR16BeautyLisAfter" on="talk" target="npc.r16BeautyLis" category="bark" when="holds(defeated(r16BeautyLis))">
+<entry id="northR16BeautyLisAfter" on="talk" target="npc.r16BeautyLis" category="bark" when="holds('defeated', ['r16BeautyLis'])">
   @r16BeautyLis: A boy in a red jacket ran past an hour ago shouting that he'd be Champion by dinner. Friend of yours?
 </entry>
 

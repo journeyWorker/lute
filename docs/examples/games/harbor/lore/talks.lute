@@ -37,7 +37,7 @@ components: [../components/villager-chat.component.lute]
   @narrator: The tide turns at dawn.
 </entry>
 
-<beat id="launchGull" on="launch" target="boat.gull" once="run" spentBy="holds(caught(marlin))">
+<beat id="launchGull" on="launch" target="boat.gull" once="run" spentBy="holds('caught', ['marlin'])">
   @harbormaster: The Gull is yours for the day. Bring back a marlin.
 </beat>
 
@@ -49,5 +49,5 @@ components: [../components/villager-chat.component.lute]
 
 <beat id="lanternWatch" on="lanternNight" title="Just watch" once="false">
   @narrator: The sky fills with small lights.
-  @mara{when="holds(wishedOn(mara))"}: I saw your lantern. Thank you.
+  @mara{when="holds('wishedOn', ['mara'])"}: I saw your lantern. Thank you.
 </beat>

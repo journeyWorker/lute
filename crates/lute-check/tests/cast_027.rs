@@ -12,14 +12,14 @@ const ABSENT: &str = "W-CAST-ABSENT";
 /// The hollow-ward shape: Tobias is present while he follows.
 const VOCAB: &str = "entities:\n  person: { members: [tobias] }\n\
     relations:\n  following: { args: [person], tier: run }\n\
-    state:\n  run.fate: { type: string, default: \"\" }\n  run.night: { type: number, default: 0 }\n\
-    defs:\n  withToby: { type: bool, cel: \"holds(following(tobias))\" }\n  \
+    state:\n  run.fate: { type: string, default: \"\" }\n  run.night: { type: int, default: 0 }\n\
+    defs:\n  withToby: { type: bool, cel: \"holds('following', ['tobias'])\" }\n  \
     out: { type: bool, cel: \"run.fate == 'escaped'\" }\n  \
     dead: { type: bool, cel: \"run.fate == 'lost'\" }\n";
 
 fn snapshot() -> CapabilitySnapshot {
     let mut snap = lute_manifest::core::load_core_snapshot();
-    for (id, present) in [("tobias", Some("holds(following(tobias))")), ("nell", None)] {
+    for (id, present) in [("tobias", Some("holds('following', ['tobias'])")), ("nell", None)] {
         snap.cast.insert(
             id.into(),
             CastMember {

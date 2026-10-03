@@ -90,8 +90,8 @@ needs **no manifest lookup and no per-plugin knowledge** to apply them.
 | shape | meaning |
 | ----- | ------- |
 | `{ "bridgeResult": "<key>" }` | read the named key off the bridge's returned result object and write it to `Effect.path`. |
-| `{ "op": "<op>", "by": <number>}` | a state mutation op (e.g. `"increment"`) applied to `Effect.path` — no bridge value read. |
-| `<literal>` (bare bool / number / string) | write this literal value to `Effect.path`. |
+| `{ "op": "<op>", "by": <int|double>}` | a state mutation op (e.g. `"increment"`) applied to `Effect.path` — no bridge value read. |
+| `<literal>` (bare bool / int / double / string) | write this literal value to `Effect.path`. |
 
 `Effect.path` is a fully-resolved dotted state path (scope + segments), so it
 lands in one of the state tiers described in
@@ -142,9 +142,9 @@ Authoring tools stand in for the service with **bridge answers**:
 `bridges: { <tag>: [ {<field>: value}, … ] }`, where `<tag>` is the `plugin`
 record's `tag`, each list item answers ONE call of that tag in call order, and
 its fields are `bridgeResult` keys that call's effects read. Each value must
-fit the declared type (`bool`/`number`/`string`/enum member) of the result
-slot it lands on; an unknown tag, a field no effect reads, or a misfit value
-is a usage error.
+fit the declared type (`bool`/`int`/`double`/`string`/enum member) of the
+result slot it lands on; an unknown tag, a field no effect reads, or a misfit
+value is a usage error.
 
 A field **content reads** — its result slot is read by a condition, a `::set`
 value, a `<match>` or a `{{…}}` at some call of the tag — MUST be given in
@@ -174,5 +174,5 @@ result slot stays unresolved. Every hint lists only the fields content reads.
   the offending key's line:column in the mock). An unanswered call leaves its
   result slots UNKNOWN — never the state-shape default — so a guard reading
   one halts the trace incomplete (exit 3), hinting the whole missing answer
-  with typed placeholders: `bridges: { check: [ { passed: <bool>, margin:
-  <number> } ] }` (`lute play`'s halt spells it the same way).
+typed placeholders: `bridges: { check: [ { passed: <bool>, margin:
+  <int|double> } ] }` (`lute play`'s halt spells it the same way).

@@ -193,7 +193,7 @@ fn fact_query_and_now_flag() {
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
 <match on=\"@tier\">\n\
-<when test=\"holds(inParty(x))\">\n@marina: hi\n</when>\n\
+<when test=\"holds('inParty', ['x'])\">\n@marina: hi\n</when>\n\
 <when test=\"now() < run.t\">\n@marina: yo\n</when>\n\
 <otherwise>\n@marina: bye\n</otherwise>\n\
 </match>\n",
@@ -450,14 +450,14 @@ fn missing_member_is_nonexhaustive() {
 
 #[test]
 fn number_param_requires_otherwise() {
-    // `number`/`string` params have an INFINITE domain (§6.3's table):
+    // `int`/`string` params have an INFINITE domain (§6.3's table):
     // `is`-arms alone can never prove coverage, so `<otherwise>` is
     // REQUIRED even though every listed `is` value is itself in-range.
     let dir = unique_dir();
     write_lute(
         &dir,
         "gauge.lute",
-        "---\ncomponent: gauge\nparams:\n  budget: number\n---\n\
+        "---\ncomponent: gauge\nparams:\n  budget: int\n---\n\
 ## Scene 1.\n\
 <match on=\"@budget\">\n\
 <when is=\"1\">\n@narrator: one\n</when>\n\
@@ -468,7 +468,7 @@ fn number_param_requires_otherwise() {
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-NONEXHAUSTIVE".to_string()),
-        "a number param `<match>` with only `is` arms and no `<otherwise>` must flag \
+        "an int param `<match>` with only `is` arms and no `<otherwise>` must flag \
          E-NONEXHAUSTIVE; got {cs:?}"
     );
 }
@@ -600,7 +600,7 @@ fn param_guard_test_decides() {
     // `E-ARM-DEAD` even inside a component body.
     let gauge = |test: &str| {
         format!(
-            "---\ncomponent: gauge\nparams:\n  budget: number\n---\n\
+            "---\ncomponent: gauge\nparams:\n  budget: int\n---\n\
 ## Scene 1.\n\
 <match on=\"@budget\">\n\
 <when test=\"{test}\">\n@narrator: high\n</when>\n\

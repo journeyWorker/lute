@@ -128,7 +128,7 @@ pub fn move_clock(
     if to.day != from.day {
         moved
             .state
-            .push((clock.day.clone(), Write::Set(Value::Num(to.day as f64))));
+            .push((clock.day.clone(), Write::Set(Value::Int(to.day))));
     }
     if let (Some(path), Some(name), true) =
         (&clock.slot, clock.slot_name(to.slot), to.slot != from.slot)

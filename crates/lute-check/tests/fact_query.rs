@@ -23,7 +23,7 @@ fn codes(text: &str) -> Vec<String> {
         .collect()
 }
 
-const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  loc: { members: [grove] }\nrelations:\n  inParty: { args: [c], tier: run }\n  atLoc: { args: [c, loc], tier: run, key: [0] }\n  buddy: { args: [c, c], derive: true }\n  gated: { args: [c], derive: true }\nstate:\n  run.act: { type: number, default: 1 }\nrules:\n  - \"buddy(A, B) :- inParty(A), inParty(B), A != B\"\n  - \"gated(X) :- inParty(X), cel(\\\"run.act == 1\\\")\"\n";
+const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  loc: { members: [grove] }\nrelations:\n  inParty: { args: [c], tier: run }\n  atLoc: { args: [c, loc], tier: run, key: [0] }\n  buddy: { args: [c, c], derive: true }\n  gated: { args: [c], derive: true }\nstate:\n  run.act: { type: int, default: 1 }\nrules:\n  - \"buddy(A, B) :- inParty(A), inParty(B), A != B\"\n  - \"gated(X) :- inParty(X), cel(\\\"run.act == 1\\\")\"\n";
 
 fn scene_when(cond: &str) -> String {
     // A second, unguarded `<choice>` keeps the branch out of the unrelated
@@ -39,13 +39,13 @@ fn scene_when(cond: &str) -> String {
 #[test]
 fn holds_count_validat_now_are_in_profile() {
     for cond in [
-        "holds(inParty(ana))",
-        "holds(atLoc(ana, _))",
-        "holds(atLoc(_, _))",
-        "count(buddy(ana, _)) + 1 <= 3",
-        "count(inParty(_)) > 0 && run.act == 1",
-        "validAt(inParty(ana), now())",
-        "validAt(buddy(ana, _), now())",
+        "holds('inParty', ['ana'])",
+        "holds('atLoc', ['ana', '_'])",
+        "holds('atLoc', ['_', '_'])",
+        "count('buddy', ['ana', '_']) + 1 <= 3",
+        "count('inParty', ['_']) > 0 && run.act == 1",
+        "validAt('inParty', ['ana'], now())",
+        "validAt('buddy', ['ana', '_'], now())",
     ] {
         let c = codes(&scene_when(cond));
         assert!(!c.iter().any(|k| k.starts_with("E-")), "{cond}: {c:?}");
@@ -62,32 +62,33 @@ fn bare_relation_reference_stays_out_of_profile() {
 }
 
 #[test]
-fn malformed_query_shapes_are_cel_profile() {
+fn malformed_query_shapes_are_fact_query_errors() {
     for cond in [
-        "holds()",
-        "holds(run.act)",
-        "holds(inParty(ana), 2)",
-        "now(1) == now(1)",
+        "holds('inParty', ['ana'], 2)",
+        "holds('inParty', ['run.act'], 2)",
+        "holds('inParty', ['ana'], 2)",
     ] {
         let c = codes(&scene_when(cond));
-        assert!(c.contains(&"E-CEL-PROFILE".to_string()), "{cond}: {c:?}");
+        assert!(c.contains(&"E-FACT-QUERY".to_string()), "{cond}: {c:?}");
     }
+    let c = codes(&scene_when("now(1) == now(1)"));
+    assert!(c.contains(&"E-CEL-PROFILE".to_string()), "now(1): {c:?}");
 }
 
 #[test]
 fn query_pattern_closure_checks() {
-    let c = codes(&scene_when("holds(ghost(ana))"));
+    let c = codes(&scene_when("holds('ghost', ['ana'])"));
     assert!(c.contains(&"E-RELATION-UNKNOWN".to_string()), "{c:?}");
-    let c = codes(&scene_when("holds(inParty(ana, bo))"));
+    let c = codes(&scene_when("holds('inParty', ['ana', 'bo'])"));
     assert!(c.contains(&"E-RELATION-ARITY".to_string()), "{c:?}");
-    let c = codes(&scene_when("holds(inParty(grove))"));
+    let c = codes(&scene_when("holds('inParty', ['grove'])"));
     assert!(c.contains(&"E-FACT-DOMAIN".to_string()), "{c:?}");
-    let c = codes(&scene_when("holds(inParty(run.act))"));
+    let c = codes(&scene_when("holds('inParty', [run.act])"));
     assert!(
-        c.contains(&"E-CEL-PROFILE".to_string()),
+        c.contains(&"E-FACT-QUERY".to_string()),
         "non-ground pattern arg: {c:?}"
     );
-    let c = codes(&scene_when("holds(c(ana))"));
+    let c = codes(&scene_when("holds('c', ['ana'])"));
     assert!(
         c.contains(&"E-RELATION-UNKNOWN".to_string()),
         "kind is not queryable: {c:?}"
@@ -96,9 +97,9 @@ fn query_pattern_closure_checks() {
 
 #[test]
 fn validat_over_guarded_derived_is_flagged() {
-    let c = codes(&scene_when("validAt(gated(ana), now())"));
+    let c = codes(&scene_when("validAt('gated', ['ana'], now())"));
     assert!(c.contains(&"E-VALIDAT-DERIVED".to_string()), "{c:?}");
-    let c = codes(&scene_when("holds(gated(ana))"));
+    let c = codes(&scene_when("holds('gated', ['ana'])"));
     assert!(
         !c.contains(&"E-VALIDAT-DERIVED".to_string()),
         "holds is fine on guarded (§6): {c:?}"
@@ -108,7 +109,7 @@ fn validat_over_guarded_derived_is_flagged() {
 #[test]
 fn match_subject_may_not_be_a_relation_query() {
     let doc = format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<match on=\"holds(inParty(ana))\">\n<when test=\"$\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<match on=\"holds('inParty', ['ana'])\">\n<when test=\"$\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
     );
     let c = codes(&doc);
     assert!(c.contains(&"E-MATCH-RELATION-SUBJECT".to_string()), "{c:?}");
@@ -121,14 +122,14 @@ fn match_subject_may_not_be_a_relation_query() {
 fn match_subject_def_expanding_to_a_relation_query_is_flagged() {
     let doc = |on: &str| {
         format!(
-            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}defs:\n  withAna: \"holds(inParty(ana))\"\n  viaDef: \"@withAna\"\n  crowd: \"count(inParty(_)) > 1\"\n  act: \"run.act\"\n---\n## Shot 1.\n<match on=\"{on}\">\n<when is=\"true\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}defs:\n  withAna: \"holds('inParty', ['ana'])\"\n  viaDef: \"@withAna\"\n  crowd: \"count('inParty', ['_']) > 1\"\n  act: \"run.act\"\n---\n## Shot 1.\n<match on=\"{on}\">\n<when is=\"true\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
         )
     };
     for on in [
         "@withAna",
         "@viaDef",
         "@crowd",
-        "holds(inParty(ana)) && @crowd",
+        "holds('inParty', ['ana']) && @crowd",
     ] {
         let c = codes(&doc(on));
         let n = c
@@ -208,7 +209,7 @@ fn an_is_arm_in_a_match_with_no_on_is_refused_and_a_test_arm_is_not() {
 #[test]
 fn quest_lifecycle_guards_admit_fact_queries() {
     let quest = format!(
-        "---\nkind: quest\n{VOCAB}---\n<quest id=\"q\" title=\"t\" start=\"holds(inParty(ana))\" fail=\"holds(atLoc(ana, grove))\">\n<objective id=\"o\" title=\"t\" done=\"count(buddy(ana, _)) >= 1\"/>\n</quest>\n"
+        "---\nkind: quest\n{VOCAB}---\n<quest id=\"q\" title=\"t\" start=\"holds('inParty', ['ana'])\" fail=\"holds('atLoc', ['ana', 'grove'])\">\n<objective id=\"o\" title=\"t\" done=\"count('buddy', ['ana', '_']) >= 1\"/>\n</quest>\n"
     );
     let c = codes(&quest);
     assert!(!c.iter().any(|k| k.starts_with("E-")), "§11: {c:?}");
@@ -241,19 +242,19 @@ fn scene_when_domain(cond: &str) -> String {
 fn query_pattern_domain_typed_arg_is_membership_checked() {
     // Non-member of the `emotion` domain in a query pattern must be caught —
     // exactly like a bad member already is for facts:/::assert/::retract.
-    let c = codes(&scene_when_domain("holds(felt(zzz))"));
+    let c = codes(&scene_when_domain("holds('felt', ['zzz'])"));
     assert!(
         c.contains(&"E-FACT-DOMAIN".to_string()),
         "domain-typed relation arg in a query pattern must be membership-checked \
          against the merged domains map (0.3.0 T11 gap): {c:?}"
     );
-    let c = codes(&scene_when_domain("count(felt(zzz)) > 0"));
+    let c = codes(&scene_when_domain("count('felt', ['zzz']) > 0"));
     assert!(c.contains(&"E-FACT-DOMAIN".to_string()), "count(): {c:?}");
-    let c = codes(&scene_when_domain("validAt(felt(zzz), now())"));
+    let c = codes(&scene_when_domain("validAt('felt', ['zzz'], now())"));
     assert!(c.contains(&"E-FACT-DOMAIN".to_string()), "validAt(): {c:?}");
 
     // A genuine domain member checks clean.
-    let c = codes(&scene_when_domain("holds(felt(neutral))"));
+    let c = codes(&scene_when_domain("holds('felt', ['neutral'])"));
     assert!(
         !c.iter().any(|k| k.starts_with("E-")),
         "valid domain member must check clean: {c:?}"

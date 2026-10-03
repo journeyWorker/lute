@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.31.0**.
+**0.32.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -291,9 +291,9 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "id": "mira.s01ep01",
     "title": "A Quiet Table"
@@ -584,12 +584,12 @@ file you give it:
 ```
 $ lute context episodes/diner.lute
 lute: note: using project episodes (nearest lute.project.yaml); pass --project to choose another
-capabilityVersion: ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319
+capabilityVersion: f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225
 permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (12):
   auto: character: string, anchor: domain:anchor, action: domain:action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location: string, time: string, assetId: string   [mutatesScene]
-  camera: focus: string, zoom: number, moveX: number, moveY: number, shake: number, reset: bool, duration: number, easing: string, delay: number, wait: bool
+  camera: focus: string, zoom: double, moveX: double, moveY: double, shake: double, reset: bool, duration: double, easing: string, delay: double, wait: bool
   clear:    [reads.onStage mayExitCharacter]
   cut: assetId: string, action: enum[show, hide], full: bool
   end: reason: string   [terminatesWalk]
@@ -628,8 +628,8 @@ builtinDirectives (10):
   ::clear{[when="<condition>"]} — take every character on stage off it; takes no attributes
 directiveAttrs (5; beyond each directive's own):
   when: condition — every directive
-  duration: number — every directive but ::clear
-  delay: number — every directive but ::clear
+  duration: double — every directive but ::clear
+  delay: double — every directive but ::clear
   wait: bool — every directive but ::clear
   at: time — a directive inside a <track> clip only
 beatKeys (11; scene frontmatter `key: value`; <entry> / <beat> attributes `key="value"`):

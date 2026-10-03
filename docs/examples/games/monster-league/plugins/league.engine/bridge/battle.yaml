@@ -6,6 +6,6 @@ bridgeCapabilities:
     replay: recorded
     result:
       - { name: won,     type: bool }     # the only field content reads (via @wonFight)
-      - { name: prize,   type: number }   # prize money the engine computed
-      - { name: turns,   type: number }
-      - { name: fainted, type: number }   # player monsters that fainted
+      - { name: prize,   type: int }      # prize money the engine computed
+      - { name: turns,   type: int }
+      - { name: fainted, type: int }      # player monsters that fainted

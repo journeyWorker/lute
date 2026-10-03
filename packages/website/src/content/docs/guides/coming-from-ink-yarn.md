@@ -28,7 +28,7 @@ a scene, which is what lets it prove that none of them dead-ends.
 | `* [choice]`, once only | `-> option <<once>>` | a hub `<choice … once>`; a `<branch>` asks only once anyway |
 | `+ [choice]`, sticky | `-> option` | a plain `<choice>` in a `<hub>` |
 | `- gather` | the lines after the options | the lines after `</branch>`, which run whichever choice was taken |
-| `VAR oil = 1` | `<<declare $oil = 1>>` | `run.oil: { type: number, default: 1 }` under `state:`, in a schema or the frontmatter |
+| `VAR oil = 1` | `<<declare $oil = 1>>` | `run.oil: { type: int, default: 1 }` under `state:`, in a schema or the frontmatter |
 | `CONST MAX = 5` | — | a def under `defs:`, read as `@MAX` |
 | `LIST mood = calm, stormy` | — | a path typed by an enum: `run.mood: { type: { enum: [calm, stormy] }, default: calm }` |
 | `~ oil = oil + 2` | `<<set $oil to $oil + 2>>` | `::set{run.oil += 2}` |
@@ -37,7 +37,7 @@ a scene, which is what lets it prove that none of them dead-ends.
 | `{x: a \| b}` | `<<if>> … <<else>>` | two guarded lines, or a `<match>` with an `<otherwise>` arm |
 | `{a \| b \| c}`, `{&a \| b}`, `{!a \| b}` | `<<once>> … <<else>>` | a `scene.*` counter and a `<match>` on it ([below](#text-that-changes)) |
 | `{~a \| b}` | line groups (`=>`), `dice()`, `random()` | no random choice in Lute ([below](#text-that-changes)) |
-| visit count `{knot}`, `{knot > 2}` | `visited_count("Node")` | a number path you `::set{… += 1}`; `visited('<id>')` is only true or false |
+| visit count `{knot}`, `{knot > 2}` | `visited_count("Node")` | an `int` path you `::set{… += 1}`; `visited('<id>')` is only true or false |
 | `-> DONE` | `<<stop>>` | `::end`, or simply the end of the scene |
 | `-> END` | the end of the story | a schema `terminal:` condition that a `::set` makes true ([below](#ending-the-story)) |
 | a tunnel, `-> knot ->` | — | a component: `::use{component="…"}` |
@@ -87,8 +87,8 @@ kind: scene
 id: lamp
 title: The Lamp Room
 state:
-  run.oil:           { type: number, default: 1 }
-  scene.ledgerReads: { type: number, default: 0 }
+  run.oil:           { type: int, default: 1 }
+  scene.ledgerReads: { type: int, default: 0 }
 ---
 
 ## The Lamp Room
@@ -195,9 +195,9 @@ kind: scene
 id: harbor
 title: The Harbor
 state:
-  scene.looks: { type: number, default: 0 }
+  scene.looks: { type: int, default: 0 }
 defs:
-  weather: { type: number, cel: "scene.looks % 3" }
+  weather: { type: int, cel: "scene.looks % 3" }
 ---
 
 ## The Harbor
@@ -307,7 +307,7 @@ of Ink lines:
 $ lute check ink.lute
 ink.lute:10:1: error [E-UNCLASSIFIED] unrecognized line: `=== lamp_room ===` is an Ink knot; a Lute scene is its own `.lute` file (`kind: scene` and `id: lamp_room` in its frontmatter), and a section inside a scene is a `## lamp_room` heading
 ink.lute:11:1: error [E-UNCLASSIFIED] unrecognized line: `= stitch` is an Ink stitch; a section inside a scene is a `## stitch` heading
-ink.lute:12:1: error [E-UNCLASSIFIED] unrecognized line: `VAR` declares an Ink global; Lute declares state under `state:` in the frontmatter (`run.oil: { type: number, default: 1 }`) and writes it with `::set{…}`
+ink.lute:12:1: error [E-UNCLASSIFIED] unrecognized line: `VAR` declares an Ink global; Lute declares state under `state:` in the frontmatter (`run.oil: { type: int, default: 1 }`) and writes it with `::set{…}`
 ink.lute:13:1: error [E-UNCLASSIFIED] unrecognized line: `~ run.oil = run.oil + 2` is Ink logic; Lute writes state with `::set{run.oil = run.oil + 2}`, and the path is declared under `state:` in the frontmatter
 ink.lute:14:1: error [E-UNCLASSIFIED] unrecognized line: a content line needs a speaker: narration is `@narrator: …`, dialogue `@<speaker>: …`
 ink.lute:15:1: error [E-UNCLASSIFIED] unrecognized line: `* [Read the ledger]` is an Ink choice; Lute choices are `<choice id="…" label="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice); Ink's once-only `*` in a loop is a `<hub>` choice with the `once` flag
@@ -323,7 +323,7 @@ The same for Yarn:
 <!-- lute-diagnostics unverified="byte-exact lute check output; each E-UNCLASSIFIED hint is composed from per-shape parts, several of which contain a literal … that the matcher reads as an elision" -->
 ```
 $ lute check yarn.lute
-yarn.lute:10:1: error [E-UNCLASSIFIED] unrecognized line: `<<declare $oil = 1>>` is a Yarn declaration; Lute declares state under `state:` in the frontmatter (`run.oil: { type: number, default: 1 }`) and writes it with `::set{…}`
+yarn.lute:10:1: error [E-UNCLASSIFIED] unrecognized line: `<<declare $oil = 1>>` is a Yarn declaration; Lute declares state under `state:` in the frontmatter (`run.oil: { type: int, default: 1 }`) and writes it with `::set{…}`
 yarn.lute:11:1: error [E-UNCLASSIFIED] unrecognized line: `<<set $oil to 3>>` is a Yarn command; Lute writes state with `::set{run.oil = 3}`, and the path is declared under `state:` in the frontmatter
 yarn.lute:12:1: error [E-UNCLASSIFIED] unrecognized line: `<<if $oil > 2>>` is a Yarn conditional; Lute chooses between lines with `<match on="…">` and its `<when is="…">`/`<when test="…">` arms, or guards one line: `@narrator{when="run.oil > 2"}: …`
 yarn.lute:13:1: error [E-UNCLASSIFIED] unrecognized line: `<<jump Lamp_Room>>` is a Yarn jump; Lute has no diverts: `::next{to="Lamp_Room"}` jumps forward to a `::mark{id="Lamp_Room"}` later in this document, a `<hub>` repeats its choices until an `exit` choice, and another scene is reached through the occasion it answers (`on:` in its frontmatter)
@@ -359,9 +359,9 @@ flow.lute:18:12: error [E-NEXT-UNDEFINED] `::next` targets `Gallery`, which no `
 failed: flow.lute (3 error(s), 0 warning(s))
 $ lute check cond.lute
 cond.lute:5:7: error [E-CEL-PROFILE] `once` is not a condition: how often a beat plays is its own key, `once` — `once: run` (once per run, the default), `once: user` (once ever) or `once: false` (every time); on a `<beat>` or `<entry>` it is `once="run"` — drop this `when`
-cond.lute:12:17: error [E-CEL-TYPE] `visited('gallery') > 2`: `>` compares numbers, and `visited('gallery')` is a bool — `visited('gallery')` is a bool, whether the scene was ever presented, not how often; count visits in a `number` path you `::set` (for example `::set{run.visits += 1}`)
+cond.lute:12:17: error [E-CEL-TYPE] `visited('gallery') > 2`: `>` compares numbers, and `visited('gallery')` is a bool — `visited('gallery')` is a bool, whether the scene was ever presented, not how often; count visits in an `int` path you `::set` (for example `::set{run.visits += 1}`)
 cond.lute:13:17: error [E-CEL-PROFILE] `$oil`: a state path takes no `$` (`$` alone is the `<match>` subject) — write the path with its tier — did you mean `run.oil`?
-cond.lute:14:17: error [E-CEL-TYPE] `run.oil == true` compares a number with a bool, so it is never true
+cond.lute:14:17: error [E-CEL-TYPE] `run.oil == true` compares an int with a bool, so it is never true
 failed: cond.lute (4 error(s), 0 warning(s))
 ```
 

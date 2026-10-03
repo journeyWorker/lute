@@ -29,7 +29,7 @@ title: The last two nights
   ::music{action="fadeOut"}
 </beat>
 
-<beat id="ines" on="slotStart" title="Sunday — The almanac" priority="30" when="run.day == 7 && @night && isSet(run.festivalWith) && run.festivalWith == 'ines' && run.aff.ines >= 4">
+<beat id="ines" on="slotStart" title="Sunday — The almanac" priority="30" when="run.day == 7 && @night && has(run.festivalWith) && run.festivalWith == 'ines' && run.aff.ines >= 4">
   ::bg{location="marrow_bay_bus_shelter" time="night"}
   ::music{action="start" mood="tender" volume="down"}
   ::auto{character="ines" anchor="center" action="fadeInUp"}
@@ -43,7 +43,7 @@ title: The last two nights
   ::end{reason="ending.ines"}
 </beat>
 
-<beat id="theo" on="slotStart" title="Sunday — Green reed" priority="30" when="run.day == 7 && @night && isSet(run.festivalWith) && run.festivalWith == 'theo' && run.aff.theo >= 4">
+<beat id="theo" on="slotStart" title="Sunday — Green reed" priority="30" when="run.day == 7 && @night && has(run.festivalWith) && run.festivalWith == 'theo' && run.aff.theo >= 4">
   ::bg{location="marrow_bay_bus_shelter" time="night"}
   ::music{action="start" mood="tender" volume="down"}
   ::auto{character="theo" anchor="center" action="fadeInUp"}
@@ -51,7 +51,7 @@ title: The last two nights
   @narrator: He holds out a bundle of green reed tied with fishing line.
   @theo{emotion="shy"}: For next year's. Soak it the night before. Don't bend it dry. You know. You've got qualified hands.
   @sol: Theo.
-  @theo{emotion="shy" when="holds(confided(theo))"}: Dad would've liked you. He liked anyone who shut up and watched.
+  @theo{emotion="shy" when="holds('confided', ['theo'])"}: Dad would've liked you. He liked anyone who shut up and watched.
   @theo{emotion="happy"}: The sea blushes in August too. Just so you know. Just — for planning purposes.
   ::auto{character="theo" action="fadeOut"}
   ::set{user.endings += 1}

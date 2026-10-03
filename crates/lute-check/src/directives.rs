@@ -171,13 +171,13 @@ pub fn check_directive(
         }
 
         // dsl 0.10.0 §10.1: the two cross-cutting TIME attrs carry a resolution
-        // limit their `Type::Number` typing does not express. Checked here,
+        // limit that their `Type::Double` typing does not express. Checked here,
         // before the decl lookup, so a directive that DECLARES `duration`
         // (core camera/video) and one that relies on `universal_timing_decl`
         // are held to the same limit. Plugins are FORBIDDEN from declaring
         // these names (assembly-time E-PLUGIN-RESERVED-NAME, plugin §10), so
-        // `duration` and `delay` are always time magnitudes here and never a
-        // plugin's own unrelated attribute.
+        // `duration` and `delay` are always time magnitudes here and never
+        // a plugin's own unrelated attribute.
         //
         // Additive: `check_attr_value` still runs below and still reports
         // `E-ATTR-TYPE` for a non-number, so a value that is neither loses
@@ -316,11 +316,11 @@ pub fn check_directive(
 }
 
 /// dsl §7.5: the cross-cutting timing keys every directive but `::clear`
-/// takes without declaring them — `duration`/`delay` are `number`, `wait`
+/// takes without declaring them — `duration`/`delay` are `double`, `wait`
 /// is `bool` (dsl §11.3). Plugins may not declare them.
 pub const UNIVERSAL_TIMING_ATTRS: &[(&str, Type)] = &[
-    ("duration", Type::Number),
-    ("delay", Type::Number),
+    ("duration", Type::Double),
+    ("delay", Type::Double),
     ("wait", Type::Bool),
 ];
 
@@ -862,12 +862,13 @@ fn resolve_option_domain(snapshot: &CapabilitySnapshot, opt: &str) -> Option<Vec
 
 /// Map a literal `AttrValue` to a `Literal` in the declared type's domain so
 /// `type_accepts` can judge it. Numeric attrs arrive as strings from the parser,
-/// so a `Number` target parses the string; a `Bool` target accepts the bare
-/// `true` ident or the strings `true`/`false`. Returns `None` when the value
-/// cannot be coerced into the target's shape (a hard type error).
+/// so an `int` or `double` target parses the string; a `Bool` target accepts
+/// the bare `true` ident or the strings `true`/`false`. Returns `None` when the
+/// value cannot be coerced into the target's shape (a hard type error).
 fn literal_of(ty: &Type, value: &AttrValue) -> Option<Literal> {
     match (ty, value) {
-        (Type::Number, AttrValue::Str(s)) => s.parse::<f64>().ok().map(Literal::Num),
+        (Type::Int, AttrValue::Str(s)) => s.parse::<i64>().ok().map(Literal::Int),
+        (Type::Double, AttrValue::Str(s)) => s.parse::<f64>().ok().map(Literal::Double),
         (Type::Bool, AttrValue::BoolTrue) => Some(Literal::Bool(true)),
         (Type::Bool, AttrValue::Str(s)) => match s.as_str() {
             "true" => Some(Literal::Bool(true)),
@@ -885,7 +886,8 @@ fn literal_of(ty: &Type, value: &AttrValue) -> Option<Literal> {
 fn describe(ty: &Type) -> &'static str {
     match ty {
         Type::Bool => "a boolean",
-        Type::Number => "a number",
+        Type::Int => "an integer",
+        Type::Double => "a double",
         Type::Str => "a string",
         Type::List(_) => "a list",
         Type::Record(_) => "a record",

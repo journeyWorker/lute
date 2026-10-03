@@ -54,7 +54,7 @@ fn project(tag: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.sanity: { type: number, default: 10, owner: engine }\n\
+        "state:\n  run.sanity: { type: int, default: 10, owner: engine }\n\
          entities:\n  item: { members: [brassKey, lantern] }\n  room: { members: [lobby, office] }\n\
          relations:\n  holding: { args: [item], tier: run }\n  canEnter: { args: [room], derive: true }\n\
          rules:\n  - \"canEnter(office) :- holding(brassKey)\"\n",
@@ -75,7 +75,7 @@ fn project(tag: &str) -> PathBuf {
         "plugins/ward/directives/d.yaml",
         "directives:\n  - name: give\n    attrs:\n      - { name: item, required: true, type: { entity: item } }\n    \
          effects:\n      asserts: [\"holding(@item)\"]\n  - name: fright\n    attrs:\n      \
-         - { name: amount, type: number, default: 1 }\n    effects:\n      writes:\n        \
+         - { name: amount, type: int, default: 1 }\n    effects:\n      writes:\n        \
          - { scope: run, path: [sanity], value: { op: decrement, by: { fromAttr: amount } } }\n",
     );
     write(
@@ -87,7 +87,7 @@ fn project(tag: &str) -> PathBuf {
     write(
         &dir,
         "scenes/office.lute",
-        "---\nkind: scene\nid: office\non: door\nwhen: \"holds(canEnter(office))\"\n---\n\n## Office\n\n\
+        "---\nkind: scene\nid: office\non: door\nwhen: \"holds('canEnter', ['office'])\"\n---\n\n## Office\n\n\
          @narrator: The office door gives.\n",
     );
     write(
@@ -128,7 +128,7 @@ fn an_entry_directive_without_effects_is_refused_with_the_reason() {
         &dir,
         "plugins/ward/directives/d.yaml",
         "directives:\n  - name: fright\n    attrs:\n      \
-         - { name: amount, type: number, default: 1 }\n    effects:\n      writes:\n        \
+         - { name: amount, type: int, default: 1 }\n    effects:\n      writes:\n        \
          - { scope: run, path: [sanity], value: { op: decrement, by: { fromAttr: amount } } }\n  \
          - name: lure\n    attrs:\n      - { name: room, type: { entity: room } }\n",
     );
@@ -234,7 +234,7 @@ fn scenario_facts_draws_the_directive_through_an_occasion_gate() {
         &dir,
         "plugins/ward/occasions/enter.yaml",
         "occasions:\n  enter: { select: first, target: { prefix: room, entity: room }, \
-         raisedWhen: \"holds(canEnter(occasion.target))\" }\n",
+         raisedWhen: \"holds('canEnter', [occasion.target])\" }\n",
     );
     write(
         &dir,

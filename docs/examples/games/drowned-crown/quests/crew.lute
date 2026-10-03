@@ -8,9 +8,9 @@ title: The crew of the Gull's Mercy
 
 <quest id="sefaChart" title="A chart of the drowned palace">
   <reward kind="PEARLS" amount="30"/>
-  <objective id="hall" title="Tell Sefa about the long hall's keeper" on="talk" target="npc.sefa" done="holds(heard(sefa, eel))"/>
+  <objective id="hall" title="Tell Sefa about the long hall's keeper" on="talk" target="npc.sefa" done="holds('heard', ['sefa', 'eel'])"/>
   <objective id="deep" title="Reach the fifth chamber" done="user.deepest >= 5"/>
-  <objective id="trust" title="Earn Sefa's trust" done="holds(trusts(sefa))"/>
+  <objective id="trust" title="Earn Sefa's trust" done="holds('trusts', ['sefa'])"/>
   <on event="questComplete">
     @sefa{emotion="delighted"}: It's done. Look at it. Every hall, every door. You drew this, you know. I only held the pen.
   </on>
@@ -19,7 +19,7 @@ title: The crew of the Gull's Mercy
 <quest id="brannOath" title="The captain's terms">
   <reward kind="KEEPSAKE" amount="1"/>
   <objective id="surface" title="Come up on your own" done="user.surfaces >= 1"/>
-  <objective id="tell" title="Tell Brann the Regent is dead" on="talk" target="npc.brann" done="holds(told(brann, regent))"/>
+  <objective id="tell" title="Tell Brann the Regent is dead" on="talk" target="npc.brann" done="holds('told', ['brann', 'regent'])"/>
   <on event="runEnd" when="@surfaced">
     @brann{os}: Line coming up light! He's swimming! Haul, you dogs, haul!
   </on>

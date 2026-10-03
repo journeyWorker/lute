@@ -52,6 +52,12 @@ fn base_missing(attempts: &[crate::datalog::Attempt], out: &mut Vec<String>) {
     }
 }
 
+fn option_when(option: &Json) -> Option<&str> {
+    option
+        .get("when")
+        .and_then(|v| super::cel_raw(Some(v)))
+}
+
 impl<D: Driver> Machine<D> {
     /// A walk-time `E-TRACE-CHOICE`: the script forced an option that is not
     /// offered at this presentation point. Halts like a fatal error, flagged
@@ -101,7 +107,7 @@ impl<D: Driver> Machine<D> {
                 crate::eval::GuardAtom::Path(p) => Some(self.path_read(p)),
                 crate::eval::GuardAtom::Indexed(family) => Some(self.indexed_read(&family)),
                 crate::eval::GuardAtom::Fact(f) => {
-                    if self.store.eval(&format!("holds({f})")).0 != Value::Bool(false) {
+                    if self.fact_value(&f) != Value::Bool(false) {
                         return None;
                     }
                     Some(self.fact_read(&f))
@@ -122,6 +128,9 @@ impl<D: Driver> Machine<D> {
         let mut out = Vec::new();
         if self.store.eval(raw).0 == Value::Bool(false) {
             self.push_false_conjuncts(raw, &mut out);
+            if out.is_empty() {
+                out.push((raw.to_string(), self.conjunct_reads(raw)));
+            }
         }
         out
     }
@@ -158,7 +167,7 @@ impl<D: Driver> Machine<D> {
                 crate::eval::GuardAtom::Path(p) => Some(self.path_read(p)),
                 crate::eval::GuardAtom::Indexed(family) => Some(self.indexed_read(&family)),
                 crate::eval::GuardAtom::Fact(f) => {
-                    match self.store.eval(&format!("holds({f})")).0 {
+                    match self.fact_value(&f) {
                         Value::Bool(true) => {
                             let (rel, args) = self.fact_args(&f);
                             Some(GuardRead::Holds(format!("{rel}({})", args.join(", "))))
@@ -221,6 +230,23 @@ impl<D: Driver> Machine<D> {
         (rel, args)
     }
 
+    fn fact_value(&mut self, pattern: &str) -> Value {
+        let (rel, args) = self.fact_args(pattern);
+        let relation = serde_json::to_string(rel).expect("relation string");
+        let rendered_args = args
+            .iter()
+            .map(|arg| {
+                if arg.contains('.') {
+                    arg.clone()
+                } else {
+                    serde_json::to_string(arg).expect("fact argument string")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.store.eval(&format!("holds({relation}, [{rendered_args}])")).0
+    }
+
     /// A fact pattern `rel(a, b)` that does not hold, its path arguments
     /// read ([`Machine::fact_args`]); a ground fact of a derived relation
     /// carries why no rule concludes it.
@@ -264,7 +290,7 @@ impl<D: Driver> Machine<D> {
             let Some(oid) = o.get("id").and_then(Json::as_str) else {
                 continue;
             };
-            let verdict = match o.get("when").and_then(Json::as_str) {
+            let verdict = match option_when(o) {
                 Some(when) => self.option_verdict(when),
                 None => Verdict::Open,
             };
@@ -412,13 +438,13 @@ impl<D: Driver> Machine<D> {
         // no mock surface (`now()`/`validAt(...)`, a bridgeResult), and
         // refusing on that would refuse a legal replay.
         if !auto {
-            if let Some(when) = opt.get("when").and_then(Json::as_str) {
+            if let Some(when) = option_when(&opt) {
                 let verdict = self.picked_verdict(when);
                 if verdict != Verdict::Open {
                     match self.driver.forced(&menu, &forced, &verdict) {
                         Forced::Take => {}
                         Forced::Refuse => {
-                            self.refuse(self.refusal("branch", &branch, &forced, when, &verdict));
+                            self.refuse(self.refusal("branch", &branch, &forced, &when, &verdict));
                             return Step::Halt;
                         }
                         Forced::Skip => {
@@ -514,7 +540,7 @@ impl<D: Driver> Machine<D> {
                 let verdict = if once && self.hub_visited(&id, oid) {
                     Verdict::Spent
                 } else {
-                    match o.get("when").and_then(Json::as_str) {
+                    match option_when(o) {
                         Some(w) => self.option_verdict(w),
                         None => Verdict::Open,
                     }
@@ -653,14 +679,14 @@ impl<D: Driver> Machine<D> {
                 // presented repeatedly, so this is evaluated per visit
                 // against live state — a guard false on the first pass may
                 // be true on the third, which is precisely what a hub is for.
-                if let Some(when) = opt.get("when").and_then(Json::as_str) {
+                if let Some(when) = option_when(&opt) {
                     let verdict = self.picked_verdict(when);
                     if verdict != Verdict::Open {
                         match self.driver.forced(&menu, &choice_id, &verdict) {
                             Forced::Take => {}
                             Forced::Skip => continue,
                             Forced::Refuse => {
-                                self.refuse(self.refusal("hub", &id, &choice_id, when, &verdict));
+                                self.refuse(self.refusal("hub", &id, &choice_id, &when, &verdict));
                                 return Step::Halt;
                             }
                         }
@@ -733,22 +759,24 @@ impl<D: Driver> Machine<D> {
             .cloned()
             .unwrap_or_default();
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
-        let subject = cmd.get("subject").and_then(Json::as_str).unwrap_or("");
-        let subject_unset = crate::exec::store::parse(subject)
+        let subject = cmd
+            .get("subject")
+            .and_then(|v| v.get("cel").and_then(Json::as_str))
+            .unwrap_or("");
+        let subject_path = crate::exec::store::parse(subject)
             .and_then(|e| crate::eval::expr_path(&e))
-            .filter(|p| p != lute_check::beats::OCCASION_TARGET)
-            .is_some_and(|p| self.store.read(&p) == Read::Unset);
+            .filter(|p| p != lute_check::beats::OCCASION_TARGET);
+        let subject_unset = subject_path
+            .as_deref()
+            .is_some_and(|p| self.store.read(p) == Read::Unset);
         for (i, arm) in arms.iter().enumerate() {
-            let test = arm.get("test").and_then(Json::as_str).unwrap_or("");
-            let is_arm = test.trim().is_empty();
-            let raw = if is_arm {
-                arm.get("expr").and_then(expr_to_cel).unwrap_or_default()
-            } else {
-                test.to_string()
-            };
+            let test_slot = arm.get("test");
+            let raw = super::cel_raw(test_slot).unwrap_or_default();
+            // `is` is semantic IR data; `test.authored` remains diagnostic only.
+            let is_arm = arm.get("is").and_then(Json::as_str);
             let (v, atoms) = self.eval_atoms(&raw);
-            if self.probe_arms && is_arm {
-                if let Some(expr) = arm.get("expr") {
+            if self.probe_arms {
+                if let Some(expr) = test_slot.and_then(|t| t.get("expr")) {
                     let mut paths = BTreeSet::new();
                     expr_paths(expr, &mut paths);
                     let reads: serde_json::Map<String, Json> = paths
@@ -774,7 +802,14 @@ impl<D: Driver> Machine<D> {
             }
             let matched = match v {
                 Value::Bool(b) => b,
-                _ if is_arm && subject_unset => false,
+                _ if subject_unset && is_arm.is_some_and(|s| s != "unset") => false,
+                _ if subject_unset
+                    && !self.driver.is_preview()
+                    && subject_path.as_deref().is_some_and(|path| {
+                        atoms.iter().any(|a| {
+                            matches!(a, UnresolvedAtom::Path(p) if p == path)
+                        })
+                    }) => false,
                 _ => {
                     let target_unbound = atoms.iter().any(|a| {
                         matches!(a, UnresolvedAtom::Path(p) if p == lute_check::beats::OCCASION_TARGET)
@@ -844,7 +879,7 @@ fn expr_paths(node: &Json, out: &mut BTreeSet<String>) {
                     ("path" | "isSet" | "has", Json::String(p)) => {
                         out.insert(p.clone());
                     }
-                    ("lit", _) => {}
+                    ("lit" | "int" | "double" | "bool" | "string", _) => {}
                     _ => expr_paths(v, out),
                 }
             }
@@ -866,6 +901,18 @@ pub fn expr_to_cel(node: &Json) -> Option<String> {
             },
             _ => return None,
         });
+    }
+    if let Some(i) = node.get("int").and_then(Json::as_i64) {
+        return Some(i.to_string());
+    }
+    if let Some(d) = node.get("double").and_then(Json::as_f64) {
+        return Some(d.to_string());
+    }
+    if let Some(b) = node.get("bool").and_then(Json::as_bool) {
+        return Some(b.to_string());
+    }
+    if let Some(s) = node.get("string").and_then(Json::as_str) {
+        return Some(format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'")));
     }
     if let Some(path) = node.get("path").and_then(Json::as_str) {
         return Some(lute_cel::path::bracket_spelling_of(path));
@@ -899,5 +946,17 @@ pub fn expr_to_cel(node: &Json) -> Option<String> {
     match node.get("r") {
         Some(r) => Some(format!("({l}) {op} ({})", expr_to_cel(r)?)),
         None => Some(format!("{op}({l})")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::option_when;
+    use serde_json::json;
+
+    #[test]
+    fn menu_guards_read_compiled_cel_pairs() {
+        let option = json!({"when": {"cel": "run.money >= 500"}});
+        assert_eq!(option_when(&option).as_deref(), Some("run.money >= 500"));
     }
 }

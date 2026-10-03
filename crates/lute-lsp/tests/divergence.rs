@@ -399,14 +399,14 @@ fn divergence_holds_under_plugin_project() {
 
 /// Plugin-def golden (dsl §8, Task P1.2): the divergence invariant must hold when
 /// a scene uses a PLUGIN-EXPORTED def. A temp project's one plugin `demo.defs`
-/// exports a bool def `warm` and a number def `tally` (`defs/defs.yaml`), modeled
+/// exports a bool def `warm` and an int def `tally` (`defs/defs.yaml`), modeled
 /// on the committed `docs/examples/plugindef-project` fixture. Each def flows
 /// load_project -> resolve_document_snapshot -> snapshot.defs -> check() through
 /// the SAME resolver the CLI (Task 7.3) and the LSP backend (`snapshot_for`) call,
 /// so a plugin-exported `@ref` is a declared def on BOTH surfaces. Two cases,
 /// mirroring `divergence_holds_under_uses_import`: (a) `@warm` whole-slot in a
 /// `<when test>` bool guard is declared + bool-compatible -> error-clean; (b)
-/// NON-VACUOUS: `@tally` (number) in the same bool guard flags `E-REF-TYPE`, whose
+/// NON-VACUOUS: `@tally` (int) in the same bool guard flags `E-REF-TYPE`, whose
 /// headless projection and LSP-converted projection must agree byte-for-byte — the
 /// real proof that a plugin-def-derived diagnostic reprojects identically.
 #[test]
@@ -414,7 +414,7 @@ fn divergence_holds_under_plugin_defs() {
     use lute_manifest::project::{load_project, project_providers, resolve_document_snapshot};
 
     // A temp project modeled on docs/examples/plugindef-project (committed P1.1):
-    // one plugin `demo.defs` exporting a bool def `warm` and a number def `tally`,
+    // one plugin `demo.defs` exporting a bool def `warm` and an int def `tally`,
     // activated by the default profile — the same on-disk layout + defs the
     // disk-path integration test (`lute-check/tests/plugin_defs_disk.rs`) builds.
     let root = std::env::temp_dir().join(format!(
@@ -439,7 +439,7 @@ fn divergence_holds_under_plugin_defs() {
     .unwrap();
     std::fs::write(
         plugin.join("defs/defs.yaml"),
-        "defs:\n  - { name: warm, type: bool, cel: \"true\" }\n  - { name: tally, type: number, cel: \"1\" }\n",
+        "defs:\n  - { name: warm, type: bool, cel: \"true\" }\n  - { name: tally, type: int, cel: \"1\" }\n",
     )
     .unwrap();
 
@@ -515,14 +515,14 @@ fn divergence_holds_under_plugin_defs() {
         "headless and LSP surfaces diverged for the clean plugin-def scene"
     );
 
-    // (b) non-vacuous: `@tally` (number def) in the SAME bool guard flags
+    // (b) non-vacuous: `@tally` (int def) in the SAME bool guard flags
     // `E-REF-TYPE`; its headless and LSP projections must agree byte-for-byte —
     // the plugin-def-derived diagnostic reprojects identically on both surfaces.
     let text_b = scene("@tally");
     let res_b = run(&text_b);
     assert!(
         res_b.diagnostics.iter().any(|d| d.code == "E-REF-TYPE"),
-        "`@tally` (number def) in a bool guard must flag E-REF-TYPE; got {:?}",
+        "`@tally` (int def) in a bool guard must flag E-REF-TYPE; got {:?}",
         res_b
             .diagnostics
             .iter()

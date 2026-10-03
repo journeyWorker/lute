@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "quest",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "title": "Act 1 — Emerald Grove"
   },
@@ -63,7 +63,7 @@ expression: json
     },
     {
       "path": "run.act",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
@@ -93,17 +93,17 @@ expression: json
     },
     {
       "path": "run.scouts.found",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
       "path": "user.reputation.grove",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
       "path": "user.xp",
-      "type": "number",
+      "type": "int",
       "default": 0
     }
   ],
@@ -115,19 +115,19 @@ expression: json
       "title": "Rescue the First Druid",
       "titleLineId": "rescueHalsinGrove.title",
       "start": {
-        "raw": "run.act == 1",
+        "cel": "run.act == 1",
         "expr": {
           "op": "==",
           "l": {
             "path": "run.act"
           },
           "r": {
-            "lit": 1.0
+            "int": 1
           }
         }
       },
       "fail": {
-        "raw": "run.npc.halsin.dead",
+        "cel": "run.npc.halsin.dead",
         "expr": {
           "path": "run.npc.halsin.dead"
         }
@@ -138,14 +138,14 @@ expression: json
           "title": "Reach the Emerald Grove",
           "titleLineId": "rescueHalsinGrove.reachGrove",
           "done": {
-            "raw": "run.region == 'grove'",
+            "cel": "run.region == 'grove'",
             "expr": {
               "op": "==",
               "l": {
                 "path": "run.region"
               },
               "r": {
-                "lit": "grove"
+                "string": "grove"
               }
             }
           },
@@ -157,7 +157,7 @@ expression: json
           "title": "Free Halsin from the cage",
           "titleLineId": "rescueHalsinGrove.freeHalsin",
           "done": {
-            "raw": "run.npc.halsin.freed",
+            "cel": "run.npc.halsin.freed",
             "expr": {
               "path": "run.npc.halsin.freed"
             }
@@ -197,9 +197,11 @@ expression: json
       "addr": "001-0300",
       "path": "user.xp",
       "op": "+=",
-      "value": "300",
-      "expr": {
-        "lit": 300.0
+      "value": {
+        "cel": "300",
+        "expr": {
+          "int": 300
+        }
       }
     },
     {
@@ -207,9 +209,11 @@ expression: json
       "addr": "001-0400",
       "path": "run.metHalsin",
       "op": "=",
-      "value": "true",
-      "expr": {
-        "lit": true
+      "value": {
+        "cel": "true",
+        "expr": {
+          "bool": true
+        }
       }
     },
     {
@@ -231,9 +235,11 @@ expression: json
       "addr": "001-0700",
       "path": "run.groveOutcome",
       "op": "=",
-      "value": "\"halsinDead\"",
-      "expr": {
-        "lit": "halsinDead"
+      "value": {
+        "cel": "\"halsinDead\"",
+        "expr": {
+          "string": "halsinDead"
+        }
       }
     },
     {
@@ -251,7 +257,7 @@ expression: json
       "title": "The Missing Scouts",
       "titleLineId": "findMissingScouts.title",
       "start": {
-        "raw": "run.metHalsin",
+        "cel": "run.metHalsin",
         "expr": {
           "path": "run.metHalsin"
         }
@@ -262,14 +268,14 @@ expression: json
           "title": "Find the missing scouts",
           "titleLineId": "findMissingScouts.findScouts",
           "done": {
-            "raw": "run.scouts.found >= 3",
+            "cel": "run.scouts.found >= 3",
             "expr": {
               "op": ">=",
               "l": {
                 "path": "run.scouts.found"
               },
               "r": {
-                "lit": 3.0
+                "int": 3
               }
             }
           },
@@ -290,10 +296,22 @@ expression: json
       "addr": "002-0300",
       "path": "user.reputation.grove",
       "op": "+=",
-      "value": "1",
-      "expr": {
-        "lit": 1.0
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
       }
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
 }

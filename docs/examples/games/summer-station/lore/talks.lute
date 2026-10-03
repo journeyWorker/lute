@@ -7,7 +7,7 @@ title: Everyday moments around the station
 // Repeatable conversations: whoever is in the room when you walk in.
 // The bigger scenes (scenes/sol, scenes/wren) outrank these by priority.
 
-<beat id="solRadio" on="visit" target="place.radio" title="Sol at the set" priority="10" once="false" after="visited('sol.first')" when="holds(at(sol, radio))">
+<beat id="solRadio" on="visit" target="place.radio" title="Sol at the set" priority="10" once="false" after="visited('sol.first')" when="holds('at', ['sol', 'radio'])">
   ::bg{location="radio_room" time="morning"}
   ::use{component="enter" who="sol" side="right"}
   @sol{emotion="tired"}: Morning. The night was a trawler, two ham operators in Tromsø, and a man who thinks the moon is a transmitter.
@@ -16,7 +16,7 @@ title: Everyday moments around the station
       @narrator: Static, then a voice reading shipping weather in a language you don't speak, calm as a lullaby.
       @sol{emotion="fond"}: Nice, right? Nobody's listening but us.
     </choice>
-    <choice id="wire" label="Ask for some wire for Wren's lantern" once when="quest.lantern.state == 'active' && !holds(carrying(wire))">
+    <choice id="wire" label="Ask for some wire for Wren's lantern" once when="quest.lantern.state == 'active' && !holds('carrying', ['wire'])">
       ::gather{part="wire"}
       @sol{emotion="surprised"}: The goat girl? Take the copper, the good stuff. Tell her it's on loan from the sky.
     </choice>
@@ -26,7 +26,7 @@ title: Everyday moments around the station
   </hub>
 </beat>
 
-<beat id="solRoofIdle" on="visit" target="place.roof" title="Sol on the roof" priority="0" once="false" after="visited('sol.first')" when="holds(at(sol, roof))">
+<beat id="solRoofIdle" on="visit" target="place.roof" title="Sol on the roof" priority="0" once="false" after="visited('sol.first')" when="holds('at', ['sol', 'roof'])">
   ::bg{location="roof" time="night"}
   ::use{component="enter" who="sol"}
   @sol{emotion="happy"}: Vega, Deneb, Altair. The Summer Triangle. Every year it comes back like it forgot something.
@@ -34,7 +34,7 @@ title: Everyday moments around the station
 
 // Sol warms once a day, wherever the player finds him: the radio room in the
 // morning or the roof at night. One beat over every place, read per member.
-<beat id="solWarm" on="visit" target="kind:place" title="Sol saves you something" also once="day" after="visited('sol.first')" when="holds(at(sol, occasion.target))">
+<beat id="solWarm" on="visit" target="kind:place" title="Sol saves you something" also once="day" after="visited('sol.first')" when="holds('at', ['sol', occasion.target])">
   <match on="occasion.target">
     <when is="radio">
       @narrator: Sol slides the good headphones over without looking up.
@@ -65,7 +65,7 @@ title: Everyday moments around the station
 <beat use="inesAt" id="inesSupper" title="Ines at supper" priority="10" where="kitchen" bg="kitchen" time="night">
   @ines{emotion="tired"}: There's more lentils. There is always more lentils.
   <branch id="supper" prompt="She's darning a sock with the concentration of a surgeon.">
-    <choice id="candle" label="Ask whether the station has a slow candle" when="quest.lantern.state == 'active' && !holds(carrying(candle))">
+    <choice id="candle" label="Ask whether the station has a slow candle" when="quest.lantern.state == 'active' && !holds('carrying', ['candle'])">
       ::gather{part="candle"}
       @ines{emotion="fond"}: Storm candles. Third drawer. They burn nine hours; I timed one in 1998 during the long blackout.
       @ines: Tell Wren's mother I said hello. She'll know what it means.
@@ -76,12 +76,12 @@ title: Everyday moments around the station
   </branch>
 </beat>
 
-<beat id="pellPost" on="visit" target="place.kitchen" title="Pell with the post" priority="20" once="false" when="holds(at(pell, kitchen))">
+<beat id="pellPost" on="visit" target="place.kitchen" title="Pell with the post" priority="20" once="false" when="holds('at', ['pell', 'kitchen'])">
   ::bg{location="kitchen" time="morning"}
   ::use{component="enter" who="pell" side="right"}
   @pell{emotion="happy"}: Post! Two letters for Ines, a catalogue for Sol, and nothing for you, because nobody knows you're up here yet.
   <branch id="post" prompt="Pell is already eyeing the teapot.">
-    <choice id="paper" label="Ask if he has any strong paper" when="quest.lantern.state == 'active' && !holds(carrying(paper))">
+    <choice id="paper" label="Ask if he has any strong paper" when="quest.lantern.state == 'active' && !holds('carrying', ['paper'])">
       ::gather{part="paper"}
       @pell{emotion="laughing"}: For Wren's lantern? Everyone's asking. Here — waxed parcel paper. Won't tear in a gale.
     </choice>
@@ -91,11 +91,11 @@ title: Everyday moments around the station
   </branch>
 </beat>
 
-<beat id="wrenLantern" on="visit" target="place.village" title="Working on the lantern" priority="10" once="false" after="visited('wren.first')" when="holds(at(wren, village))">
+<beat id="wrenLantern" on="visit" target="place.village" title="Working on the lantern" priority="10" once="false" after="visited('wren.first')" when="holds('at', ['wren', 'village'])">
   ::bg{location="village_pen" time="afternoon"}
   ::use{component="enter" who="wren" side="left"}
   <match on="quest.lantern.state">
-    <when is="active" test="count(carrying(_)) >= 3">
+    <when is="active" test="count('carrying', ['_']) >= 3">
       @wren{emotion="laughing"}: That's everything! Oh, it's going to fly. Well. Float. Hover with conviction.
     </when>
     <when is="active">
@@ -113,7 +113,7 @@ title: Everyday moments around the station
 
 // The first time each day the player comes down to the pen, Wren warms a
 // little — once a day, not once a visit. Rides along with whatever plays there.
-<beat id="wrenWarm" on="visit" target="place.village" title="Wren saves you the sunny end" also once="day" after="visited('wren.first')" when="holds(at(wren, village))">
+<beat id="wrenWarm" on="visit" target="place.village" title="Wren saves you the sunny end" also once="day" after="visited('wren.first')" when="holds('at', ['wren', 'village'])">
   @narrator: Wren shifts along the fence to give you the sunny end.
   ::set{run.aff.wren += 1}
 </beat>

@@ -20,7 +20,7 @@ after: 'visited("cafe.arrival")'
 priority: 10
 when: "run.tips == 0"
 state:
-  run.tips: { type: number, default: 0 }
+  run.tips: { type: int, default: 0 }
   run.mood: { type: { enum: [calm, tense] }, default: calm }
 ---
 
@@ -164,15 +164,15 @@ and then gets `E-DUP-VOICEKEY` wherever lines with different text land on one ke
 `world.schema.yaml` is plain YAML with no `---` fence. Scenes reach it with `uses:`:
 
 ```yaml
-state:                                   # scalar only: number | bool | string | enum
-  run.pressure: { type: number, default: 0 }
-  run.day:      { type: number, default: 1, owner: engine }   # content reads it; ::set is E-ENGINE-OWNED-WRITE
+state:                                   # scalar only: int | double | bool | string | enum
+  run.pressure: { type: int, default: 0 }
+  run.day:      { type: int, default: 1, owner: engine }   # content reads it; ::set is E-ENGINE-OWNED-WRITE
   run.slot:     { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }
   run.mood:     { type: { enum: [calm, tense] }, default: calm }
   run.rival:    { type: { enum: [kai, lee] } }       # no default: maybe-unset until set
-  run.trust:    { type: number, default: { _: 0, vesna: 2 }, per: crew }   # 0.24.0: run.trust.vesna (2), run.trust.toma (0)
+  run.trust:    { type: int, default: { _: 0, vesna: 2 }, per: crew }   # 0.24.0: run.trust.vesna (2), run.trust.toma (0)
   run.today:    { type: { domain: weekday }, default: mon }     # {{run.today}} renders "Monday"
-  user.runs:    { type: number, default: 0 }
+  user.runs:    { type: int, default: 0 }
   app.rating:   { type: { enum: [teen, adult] }, default: teen }
 enums:                                   # content vocabulary: you declare every member
   emotion: [neutral, happy, worried]
@@ -198,10 +198,10 @@ rules:
 defs:
   calm: "run.pressure < 2"                    # shorthand: the body alone, type inferred (bool)
   veteran: "user.runs >= 10"
-  vesnaKnows: "holds(knows(vesna, manifest))"
-  zoom: "run.pressure > 2 ? 1.3 : 1.1"        # inferred number
+  vesnaKnows: "holds('knows', ['vesna', 'manifest'])"
+  zoom: "run.pressure > 2 ? 1.3 : 1.1"        # inferred double
   closeUp: "1.3"                              # a constant: the only kind of def an attribute takes
-  atLeast: { type: bool, params: { n: number }, cel: "user.runs >= n" }   # params need type:
+  atLeast: { type: bool, params: { n: int }, cel: "user.runs >= n" }   # params need type:
 clock:                                   # optional (0.24.0), one per project: see Clock below
   day: run.day                           # owner: engine
   slot: run.slot                         # optional, with slots: (owner: engine); omit both for a clock of whole days
@@ -211,15 +211,16 @@ clock:                                   # optional (0.24.0), one per project: s
   week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }   # optional
   last: { day: 1, slot: night }          # optional (0.27.0): where the clock ends; or days: 1
 cast:                                    # optional (0.23.0): once declared, any other speaker is E-CAST-UNKNOWN
-  vesna: { name: Vesna, present: "holds(awake(vesna))", emotions: [neutral, worried] }   # 0.24.0 keys
+  vesna: { name: Vesna, present: "holds('awake', ['vesna'])", emotions: [neutral, worried] }   # 0.24.0 keys
   toma:  { name: Toma }
   mira:  { name: Mira }
   guard1: { name: Night Guard, sharedName: true }   # 0.26.0: a role name several speakers share
   guard2: { name: Night Guard, sharedName: true }
 ```
 
-Def type inference: comparisons, `&&` `||` `!`, `holds`, `has`, `isSet` give `bool`; `count`,
-arithmetic, and number literals give `number`; a bare path read gives that path's type. A body the
+Def type inference: comparisons, `&&` `||` `!`, `holds`, and `has` give `bool`; `count`
+and arithmetic give `int` or `double` according to their operands, and integer/fractional
+literals give `int`/`double`; a bare path read gives that path's type. A body the
 checker cannot type (for example `"@other"`) needs the long form `{ type: …, cel: … }`. Otherwise it
 is `E-DEF-DECL`.
 
@@ -237,7 +238,7 @@ any speaker id is accepted. A scene's frontmatter cannot declare `cast:` (`E-MET
 `emotion=` outside the speaker's `emotions:` is `E-BAD-ENUM`. A `{vo}` line is exempt (the speaker
 may be outside the scene's time); an `{os}` line is checked, since `{os}` means in the scene but off
 screen. With `assume: true` on the entry, a negated `holds` of an engine-`reserved:` relation in
-`present:` reads as true: `present: "holds(inParty(isolde)) && !holds(fell(isolde))"` then needs
+`present:` reads as true: `present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"` then needs
 only the `inParty` guard. Since 0.25.0, when that relation declares `changedOn: [battleEnd]`,
 `assume` stops covering it in a unit presented on `battleEnd` and in every unit after one in the
 scenario graph (`after:` / `after=` / `[start]` edges): those lines warn again until guarded.
@@ -298,7 +299,7 @@ enums:
   musicAction: [start, fadeOut]
   vfxType: [whiteOut]
 state:
-  run.affection: { type: number, default: 0 }
+  run.affection: { type: int, default: 0 }
 ---
 
 ## Counter
@@ -327,7 +328,7 @@ state:
 | `@speaker{attrs}: text` | `@narrator` is narration; any other speaker is dialogue (the `pov:` speaker included — `pov` is descriptive only). Text after `: ` is literal to end of line. With a declared `cast:`, the speaker must be in it (`E-CAST-UNKNOWN`); a cast `present:` the line's guards do not imply is `W-CAST-ABSENT`, and `emotion=` outside the speaker's `emotions:` is `E-BAD-ENUM` (0.24.0). |
 | line attrs | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as` (label override), `when` (guard), `id` (a jump target, like `::mark{id}`). A quoted value decodes `&quot;` `&apos;` `&amp;` `&lt;` `&gt;` `&#NN;` `&#xHH;` (0.24.0); any other `&` stays literal, and `\"` still works. |
 | delivery flags | `{mono}` thought, `{os}` off-screen, `{vo}` voiceover. At most one per line, and never on `@narrator`. A flag combines with attributes: `{mono when="…"}`. |
-| `{{…}}` | `{{userName}}`, a declared state path, or `{{@def}}` (the artifact carries the def's body, and `lute run` / `lute play` evaluate it). Reading a maybe-unset path is `E-MAYBE-UNSET`. A line whose whole text is `@name` ships that literal text (`W-TEXT-LOOKS-LIKE-REF`); write `{{@name}}`. 0.24.0: `{{run.visits:ordinal}}` renders `1st`, `2nd`, … (a number only), and a path typed against an enum with `labels:` renders the label. 0.25.0: `{{run.day:ordinalWord}}` renders `first` … `twentieth` (the engine localizes it; `lute play` falls back to `21st` digits above twenty). 0.27.0: `{{run.lamps:plural(lamp\|lamps)}}` renders the first form for 1 and the second otherwise (`#` in a form is the number: `plural(# lamp\|# lamps)`), and a value of an entity kind with `labels:` (`{{occasion.target}}`, a `{ domain: <kind> }` path) renders its label; a cast `name:` wins. 0.28.0: `:cardinalWord` spells `one` … `twenty`; in a plural form `#word` / `#Word` is the number as a word (`plural(One wagon\|#Word wagons)` → `Eleven wagons`); plural forms are bare text split on `\|` (quoted or `,` forms are `E-PLURAL-FORM`); `:capitalize`, `:start` and `:indefinite` format text, and a kind label may declare `{ text, start, indefinite }` forms for them (absent: capitalized text, `a`/`an` + text). Any other hint is `E-CEL-PROFILE`. |
+| `{{…}}` | `{{userName}}`, a declared state path, or `{{@def}}` (the artifact carries the def's body, and `lute run` / `lute play` evaluate it). Reading a maybe-unset path is `E-MAYBE-UNSET`. A line whose whole text is `@name` ships that literal text (`W-TEXT-LOOKS-LIKE-REF`); write `{{@name}}`. 0.24.0: `{{run.visits:ordinal}}` renders `1st`, `2nd`, … (an `int` or `double` only), and a path typed against an enum with `labels:` renders the label. 0.25.0: `{{run.day:ordinalWord}}` renders `first` … `twentieth` (the engine localizes it; `lute play` falls back to `21st` digits above twenty). 0.27.0: `{{run.lamps:plural(lamp\|lamps)}}` renders the first form for 1 and the second otherwise (`#` in a form is the number: `plural(# lamp\|# lamps)`), and a value of an entity kind with `labels:` (`{{occasion.target}}`, a `{ domain: <kind> }` path) renders its label; a cast `name:` wins. 0.28.0: `:cardinalWord` spells `one` … `twenty`; in a plural form `#word` / `#Word` is the number as a word (`plural(One wagon\|#Word wagons)` → `Eleven wagons`); plural forms are bare text split on `\|` (quoted or `,` forms are `E-PLURAL-FORM`); `:capitalize`, `:start` and `:indefinite` format text, and a kind label may declare `{ text, start, indefinite }` forms for them (absent: capitalized text, `a`/`an` + text). Any other hint is `E-CEL-PROFILE`. |
 | shots | All content sits under a `## Heading`. A lone `# Title` does not open a shot. |
 | directives | `::bg` `::music` `::sfx` `::auto` (entrance, pose, exit) `::camera` `::cut` `::vfx` `::video` `::end`, and `::clear` (0.24.0: everyone on stage exits; background and music stay). Timing keys: `duration`, `delay`, `wait="true"` (blocks). With a cast declared, `::auto{character}` and `::camera{focus}` must be in it (`E-CAST-UNKNOWN`). |
 | comments | `// …` to the end of the line, on a line of its own or after a directive (`::set{run.n += 1} // why`), and `/* … */`. After a `<tag>` it is `E-TAG-INLINE-BODY`, and inside a content line's text `//` is literal. |
@@ -341,9 +342,9 @@ state:
 kind: scene
 id: cafe.counter
 state:
-  scene.warmth: { type: number, default: 0 }
+  scene.warmth: { type: int, default: 0 }
   run.metMira:  { type: bool, default: false }
-  run.tip:      { type: number, default: 0 }
+  run.tip:      { type: int, default: 0 }
 defs:
   warm: "scene.warmth >= 2"
 ---
@@ -386,7 +387,7 @@ defs:
 | Construct | Rule |
 |---|---|
 | `<branch id>` | A menu. The pick is recorded in `scene.choices.<id>`, which clears when the scene ends. At least one choice must be unguarded (`E-BRANCH-ALL-GUARDED`). Optional `prompt=` and `timeout="N"`. |
-| `<choice id label>` | `when=` guard. `into="run.x"` writes `true`, or `value=` for number and enum paths, so later scenes can read it. |
+| `<choice id label>` | `when=` guard. `into="run.x"` writes `true`, or `value=` for numeric (`int`/`double`) and enum paths, so later scenes can read it. |
 | `<hub id>` | Re-presents eligible choices until an `exit`. `once` removes a choice after one take. It needs an unguarded `exit`, or every choice `once` (`E-HUB-NO-EXIT`). Each pick sets `scene.visited.<hub>.<choice>`. Optional `prompt=` (0.23.0) is the question shown with the options; an empty one is `E-BRANCH-PROMPT`. |
 | `::next{to when}` | A forward-only jump to `::mark{id}` or a line's `id=`. A backward jump is `E-NEXT-BACKWARD`. Without `when`, the content after it is dead (`W-CODE-AFTER-NEXT`). Since 0.26.0 `lute trace` and `lute test` follow a taken jump to its mark (the transcript shows `<next -> outro>`), as `lute play` does. |
 | `::end{reason}` | Ends the scene. In `lute play` it ends only the presentation (or quest handler) it runs in; the playthrough goes on. Content after it in the same body is `W-CODE-AFTER-END`. |
@@ -401,7 +402,7 @@ defs:
 kind: scene
 id: cafe.moods
 state:
-  run.tips:  { type: number, default: 0 }
+  run.tips:  { type: int, default: 0 }
   run.mood:  { type: { enum: [calm, tense, joyful] }, default: calm }
   run.rival: { type: { enum: [kai, lee] } }
 ---
@@ -476,7 +477,7 @@ state:
 kind: scene
 id: ship.archive
 state:
-  run.trust: { type: number, default: 0 }
+  run.trust: { type: int, default: 0 }
   run.seen:  { type: bool }
 entities:
   crew:  { members: [vesna, toma] }
@@ -489,11 +490,11 @@ relations:
 
 ::set{run.seen = true}     /* the first write of a no-default path must be `=` */
 ::set{run.trust += 1}      /* also -= and *= */
-@vesna{when="isSet(prev.run.trust) && prev.run.trust >= 3"}: You trusted me last time.
+@vesna{when="has(prev.run.trust) && prev.run.trust >= 3"}: You trusted me last time.
 @vesna{when="run.seen"}: You found the archive.
 ::assert{knows(vesna, manifest)}
-@vesna{when="holds(knows(vesna, manifest))"}: I read the manifest.
-@vesna{when="count(knows(_, manifest)) >= 2"}: So we both know.
+@vesna{when="holds('knows', ['vesna', 'manifest'])"}: I read the manifest.
+@vesna{when="count('knows', ['_', 'manifest']) >= 2"}: So we both know.
 ::retract{knows(vesna, _)}
 ```
 
@@ -505,7 +506,7 @@ old fact.
 
 `prev.run.<path>` (0.23.0) reads the value `run.<path>` had when the previous run ended, for every
 declared `run.*` path, with the same type. It is read-only (`E-QUEST-RESERVED-WRITE`) and unset until
-a first run ends, so every read needs `isSet(prev.run.x)` or an `unset` arm (`E-MAYBE-UNSET`).
+a first run ends, so every read needs `has(prev.run.x)` or an `unset` arm (`E-MAYBE-UNSET`).
 Declaring a `prev.*` path yourself is `E-STATE-NAMESPACE`. `lute play` snapshots it at `newRun`; a
 play script's `state:` or a mock's `state:` may seed it.
 
@@ -516,8 +517,8 @@ Parties (0.24.0): sub-kinds, entity-indexed state, and richer rules.
 kind: scene
 id: camp.fire
 state:
-  run.day:      { type: number, default: 1 }
-  run.approval: { type: number, default: 0, per: companion }   # run.approval.isolde, run.approval.corvin
+  run.day:      { type: int, default: 1 }
+  run.approval: { type: int, default: 0, per: companion }   # run.approval.isolde, run.approval.corvin
 entities:
   person:    { members: [isolde, corvin, hollis] }
   companion: { subsetOf: person, members: [isolde, corvin] }   # every member is a person
@@ -541,10 +542,10 @@ rules:
 ::assert{inParty(isolde)}
 ::set{run.approval.isolde += 2}
 ::set{run.approval.corvin += 1 when="run.day > 3"}
-@isolde{when="holds(loyal(isolde))"}: I'm with you.
-@hollis{when="countDistinct(sawAt(W, _), W) >= 2"}: Two of us saw it.
-@hollis{when="holds(witness(hollis))"}: I was there.
-@hollis{when="holds(unseen(corvin))"}: Nobody saw Corvin.
+@isolde{when="holds('loyal', ['isolde'])"}: I'm with you.
+@hollis{when="countDistinct('sawAt', ['_', '_'], 0) >= 2"}: Two of us saw it.
+@hollis{when="holds('witness', ['hollis'])"}: I was there.
+@hollis{when="holds('unseen', ['corvin'])"}: Nobody saw Corvin.
 ```
 
 - `per: companion` declares `run.approval.<member>` for each member. Content names a member.
@@ -557,7 +558,7 @@ rules:
 - `not r(…)` in a rule body holds when no such fact does (`unseen(P)`: no `sawAt(P, _)` at all).
   Negation binds nothing: each of its variables must be bound by a positive atom of the same body,
   else `E-DATALOG-UNSAFE`.
-- `countDistinct(sawAt(W, _), W)` counts distinct values of one position, where `count(…)`
+- `countDistinct('sawAt', ['_', '_'], 0)` counts distinct values of one position, where `count(…)`
   counts tuples. Like `count`, it is not allowed in a rule guard.
 - A rule guard may call `@def`s; an undefined def, a wrong argument count, or `$` is
   `E-RULE-GUARD-DEF`. A kind atom in a rule body (`companion(P)`) tests membership.
@@ -569,7 +570,7 @@ rules:
   that lower to a built-in record (every core staging directive such as `::bg`, `::sfx`, `::auto`,
   `::clear`, and `::end`, `::mark`, a plugin `lower:` record) refuse it (`E-UNKNOWN-ATTR`: put them in
   a `<match>`), as does a `<track>` clip (`E-TIMELINE-CONTENT`). A relation named like a CEL
-  call (`has`, `holds`, `count`, `isSet`, `now`, …) is `E-RESERVED-NAME` (every reserved name: [Reserved names](/reference/reserved-names/)).
+  call (`has`, `holds`, `count`, `now`, …) is `E-RESERVED-NAME` (every reserved name: [Reserved names](/reference/reserved-names/)).
 
 Exclusive relations (0.25.0): `excludes:` names the relations one can never hold together with on the
 same arguments.
@@ -591,13 +592,13 @@ rules:
 ## Gallery
 
 ::assert{seen(elias)}
-@maren{when="holds(seenAfter(elias))"}: He was on the stairs after the storm.
+@maren{when="holds('seenAfter', ['elias'])"}: He was on the stairs after the storm.
 ```
 
 - Partners must be declared relations with the same argument kinds, and not the relation itself
   (`E-RELATION-DECL`). The IR's `RelationEntry.excludes` carries the symmetric closure.
-- `check-project`: `holds(seenAfter(x)) && holds(fell(x))` is dead (`E-ARM-DEAD` /
-  `E-BEAT-UNREACHABLE`), `!holds(fell(x))` under `holds(seenAfter(x))` is `W-FACT-GUARANTEED`,
+- `check-project`: `holds('seenAfter', ['x']) && holds('fell', ['x'])` is dead (`E-ARM-DEAD` /
+  `E-BEAT-UNREACHABLE`), `!holds('fell', ['x'])` under `holds('seenAfter', ['x'])` is `W-FACT-GUARANTEED`,
   `::assert{fell(elias)}` here would be `E-FACT-EXCLUSIVE` (the other holds on every route), and a
   rule like `fell(P) :- seenAfter(P)` that can only break the pair is `E-RULE-EXCLUSIVE`.
 - Where both are only possible, `lute play` halts at the write with `✗ exclusive: fell(elias) and
@@ -631,14 +632,14 @@ rules:
 
 | Operators | Functions & references |
 |---|---|
-| `== != < <= > >=` · `&& \|\| !` · `+ - * /` · `%` (0.24.0: integers only) · `c ? a : b` · `x in ['a', 'b']` · string and number literals | `has(p)` / `isSet(p)` (assigned?) · `holds(rel(a, _))` · `count(rel(_)) >= n` · `countDistinct(rel(W, _), W)` (0.24.0) · `validAt(rel(a), quest.q.activatedAt)` · `visited('scene.id')` · `@def` / `@def(args)` · `$` (inside `<match>` only) |
+| `== != < <= > >=` · `&& \|\| !` · `+ - * /` · `%` (0.24.0: integers only) · `c ? a : b` · `x in ['a', 'b']` · integer/fractional literals | `has(p)` / `'k' in a.b` (assigned?) · `holds('rel', ['a', '_'])` · `count('rel', ['_']) >= n` · `countDistinct('rel', ['_', '_'], 0)` (0.24.0) · `validAt('rel', ['a'], quest.q.activatedAt)` · `visited('scene.id')` · `@def` / `@def(args)` · `$` (inside `<match>` only) |
 
 Not available: `size`, `matches`, `map`/`filter`/`exists`/`all` (`E-CEL-PROFILE`), in a guard or
-in a def body. `%` takes two integers: a non-number operand or a fractional literal is `E-CEL-TYPE`.
+in a def body. `%` takes two `int` operands: a non-`int` operand or a fractional literal is `E-CEL-TYPE`.
 An unset value is not the string `'unset'` (`E-UNSET-LITERAL`); test it with
-`!isSet(p)` or `is="unset"`. The exception is `quest.<id>.state`, where `unset` is a real member:
-write `quest.q.state == 'unset'`, because `isSet(quest.q.state)` is always true
-(`W-QUEST-STATE-ISSET`). Since 0.26.0 a string a guard compares with an enum path, `occasion.target`
+`!has(p)` or `is="unset"`. The exception is `quest.<id>.state`, where `unset` is a real member:
+write `quest.q.state == 'unset'`, because `has(quest.q.state)` is always true
+(`W-QUEST-STATE-HAS`). Since 0.26.0 a string a guard compares with an enum path, `occasion.target`
 or a quest's `state` / `failedBy` (`==`, `!=`, or an `in [...]` element) must be one of its members:
 `run.rank == 'silvr'` is `E-WHEN-LITERAL-DOMAIN`, with a did-you-mean, as `is="silvr"` is.
 
@@ -653,7 +654,7 @@ then letters, digits or `_`); `lamp-lit` there is an error naming `lampLit`.
 
 A name that is an identifier may be written bare in a condition; any name may be written quoted,
 the way JavaScript reaches a key: `quest["zero-coke-001"].state`, `run.visits["lab-b2"]`,
-`holds(at("lab-b2"))`. The two spellings are the same name. `quest.zero-coke-001.state` reads as a
+`holds('at', ["lab-b2"])`. The two spellings are the same name. `quest.zero-coke-001.state` reads as a
 subtraction, so it is `E-PATH-IDENT`, naming the bracket spelling.
 
 Where CEL goes: `<match on>`, `<when test>`, `when=` on a line or choice, `::set` right-hand sides
@@ -680,7 +681,7 @@ priority: 50
 once: user
 after: 'visited("cafe.counter")'
 state:
-  user.runs:       { type: number, default: 0 }
+  user.runs:       { type: int, default: 0 }
   run.giftRefused: { type: bool, default: false }
 ---
 
@@ -694,7 +695,7 @@ state:
 kind: lore
 id: vesna.barks
 state:
-  user.runs: { type: number, default: 0 }
+  user.runs: { type: int, default: 0 }
 ---
 
 <entry id="vesnaBark" on="talk" target="npc.vesna" category="bark">
@@ -717,7 +718,7 @@ A lore document can also hold `<beat>` blocks (0.23.0), bundle beats, beside its
 kind: lore
 id: cafe.talks
 state:
-  run.tips: { type: number, default: 0 }
+  run.tips: { type: int, default: 0 }
 ---
 
 <beat id="miraOrder" on="talk" target="npc.mira" title="Order" priority="10" when="run.tips >= 3">
@@ -763,7 +764,7 @@ but draws no edge, so `lute scenario` lists that beat as unanchored with the `af
 | `once` | Scenes: `run` (the default), `user` (once ever), or `false` (repeatable). Entries: `once="run"` (until a new run resets `entry.<id>.read`) or `once="user"` (spent once `entry.<id>.everRead` is set); without it, or with `once="false"`, an entry repeats. With a declared clock (0.24.0), `once: day` / `once: slot` (entries `once="day"` / `"slot"`) spends it until the day or slot changes; without a clock that is `E-BEAT-ATTR`. 0.27.0: `week` (with the clock's `week:`) and `season:<name>`. An entry's writes apply on its first read in a run only (per member with `for=`), so an entry that can be read again in a run and writes — a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for` — is `W-ENTRY-WRITE-REREAD` (`::assert` is exempt): put a write meant to repeat in a `<beat once="false">`, whose `once` defaults to `run`, not to repeatable. |
 | `also` | 0.23.0, scenes (`also: true`) and bundle beats (`also`) on a `select: first` occasion: presented after the winner, or alone when no main beat is eligible, and never replaces it. On an entry, or on a `select: all` / `sequence` occasion, it is `E-BEAT-ATTR`. `W-BEAT-SHADOWED` and `W-BEAT-PRIORITY-TIE` ignore `also` beats. |
 | `share` | 0.25.0, scenes (`share:`), entries and bundle beats (`share=`): a project-wide key for one event told in several places. Presenting (an entry: reading) any beat of the key spends every beat of it for the `once` period (`lute play`: `` once: user — `share: miraThanks` already spent … by cafe.talks.thanksCounter ``). It needs a written `once` other than `false`, and every beat of a key declares the same `once`; otherwise `E-BEAT-ATTR`. `lute beats` shows `user, share miraThanks`. |
-| `spentBy` | 0.27.0, scenes (`spentBy:`), entries and bundle beats (`spentBy=`): a condition that spends the beat instead of a presentation (`spentBy: "holds(solved(valves))"`). 0.28.0: it latches — once it has held the beat stays spent for its `once` period (`run` unless written; `once: week` for a weekly reset), even if it turns false again; `lute play` reports ``spentBy: `run.solved` held — spent this run``. `once: false` or `share` beside it is `E-BEAT-ATTR`; one that holds at the start is `W-BEAT-SPENT-AT-START`; with no `once` written, one that can turn false again (a retracted fact, season state, a rearmed quest) is `W-SPENT-BY-REVERSIBLE`, naming `once: false` + `when: "!(…)"`, `once: season:<name>`, or `once: run` to keep the latch. |
+| `spentBy` | 0.27.0, scenes (`spentBy:`), entries and bundle beats (`spentBy=`): a condition that spends the beat instead of a presentation (`spentBy: "holds('solved', ['valves'])"`). 0.28.0: it latches — once it has held the beat stays spent for its `once` period (`run` unless written; `once: week` for a weekly reset), even if it turns false again; `lute play` reports ``spentBy: `run.solved` held — spent this run``. `once: false` or `share` beside it is `E-BEAT-ATTR`; one that holds at the start is `W-BEAT-SPENT-AT-START`; with no `once` written, one that can turn false again (a retracted fact, season state, a rearmed quest) is `W-SPENT-BY-REVERSIBLE`, naming `once: false` + `when: "!(…)"`, `once: season:<name>`, or `once: run` to keep the latch. |
 | `use` | 0.27.0, bundle beats (`use="bondStory"`): a beat template — a component whose `beat:` header supplies every key the `<beat>` does not write (`@param`s replaced by the arguments; an empty value is left out; a bare-id `after` is `visited("<id>")`). Its body runs first (a top-level `::body` places the beat's own body instead); the other attributes are its params (`E-COMPONENT-ARG`). `<beat use="trainer" id="r3Joey" who="joey"/>` is a one-line beat. Misuse is `E-TEMPLATE`. |
 | `for` | 0.27.0, scenes (`for: "kind:crew"`), entries and bundle beats (`for="kind:crew"`) on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, in member order, reading the member as `occasion.target` (`lute play`: `✓ cafe.birthday for toma`). 0.28.0: `once` (and `spentBy`) is spent per member. Beside `target`, or on a targeted or non-sequence occasion, it is `E-BEAT-ATTR`. |
 
@@ -784,7 +785,7 @@ A kind target (0.26.0) answers every member of a kind with one beat. The raised 
 `occasion.target`, typed by the kind, in its `when`, guards and text; a beat that names the member
 outranks it at equal priority (no tie), and reading `occasion.target` in a beat without a kind
 target (or `for`) is `E-UNDECLARED`. Since 0.27.0 it is also a fact argument and a `per:` index,
-checked for every member: `holds(regular(occasion.target))`, `user.bond[occasion.target] >= 2`.
+checked for every member: `holds('regular', [occasion.target])`, `user.bond[occasion.target] >= 2`.
 `lute play` renders `{{occasion.target}}` as the kind's label for the member, else its cast
 `name:`, else the id, and a test
 sets the member with `state: { occasion.target: toma }`:
@@ -824,7 +825,7 @@ occasions:
   runEnd:    { select: first, judge: before }   # 0.24.0: judge on="runEnd" objectives before the beats
   evening:   { select: sequence }        # every eligible beat, in selection order (0.23.0)
   inbox:     { select: all, description: Letters waiting at the fountain }
-  gift:      { select: first, target: { prefix: npc, entity: crew }, payload: { hearts: number } }   # 0.27.0: beats read occasion.payload.hearts; a play step gives payload: { hearts: 2 }
+  gift:      { select: first, target: { prefix: npc, entity: crew }, payload: { hearts: int } }   # 0.27.0: beats read occasion.payload.hearts; a play step gives payload: { hearts: 2 }
 ```
 
 ```yaml
@@ -878,7 +879,7 @@ when: "clock.weekday < 5"
 @mira: {{clock.weekdayLabel}} again. That's slot {{clock.index}} of the story.
 ```
 
-- `day` (a number) must be an `owner: engine` path. `slot` (an enum, also `owner: engine`) and
+- `day` (an `int`) must be an `owner: engine` path. `slot` (an enum, also `owner: engine`) and
   `slots` (its members in order) are optional, but only together; without them the clock counts
   whole days. A malformed or second clock, a content-owned path, `slots` without `slot`, an
   unknown `raise` occasion (checked once a plugin of the project declares occasions), or a `raise`
@@ -915,7 +916,7 @@ when: "clock.weekday < 5"
   nor `dayStart` there; `raiseAtStart: true` says the engine does, and the checker and calendar
   count it raised there. Without it, a beat only that position takes is `W-BEAT-UNRAISED`, which
   names the key.
-- 0.27.0: an occasion may declare `raisedWhen: "holds(canEnter(occasion.target))"` (plugin
+- 0.27.0: an occasion may declare `raisedWhen: "holds('canEnter', [occasion.target])"` (plugin
   `occasions/*.yaml`): its beats are judged under the gate (`E-BEAT-UNREACHABLE` names it), `lute
   beats` marks a target whose gate never holds, `lute play` refuses a step raising it while the
   gate is false (`E-OCCASION-GATE`, exit 1), and a clock raise it gates is skipped with a note. A
@@ -936,9 +937,9 @@ the `:ordinal` hint.
 kind: scene
 id: diner.payday
 state:
-  run.day:    { type: number, default: 1 }
-  run.visits: { type: number, default: 1 }
-  run.tab:    { type: number, default: 0 }
+  run.day:    { type: int, default: 1 }
+  run.visits: { type: int, default: 1 }
+  run.tab:    { type: int, default: 0 }
   run.today:  { type: { domain: weekday }, default: fri }
 enums:
   weekday: { members: [mon, fri], labels: { mon: Monday, fri: Friday } }
@@ -962,11 +963,11 @@ enums:
 kind: quest
 id: cafe.quests
 state:
-  run.tips:  { type: number, default: 0 }
+  run.tips:  { type: int, default: 0 }
   run.fired: { type: bool, default: false }
   run.found: { type: bool, default: false }
-  run.day:   { type: number, default: 1 }
-  user.xp:   { type: number, default: 0 }
+  run.day:   { type: int, default: 1 }
+  user.xp:   { type: int, default: 0 }
 ---
 
 <quest id="regular" title="Become a regular" start="true" fail="run.fired" follows="visited('cafe.counter')">
@@ -1028,8 +1029,8 @@ Quest structure (0.24.0): alternatives, subquests taken up in dialogue, and the 
 kind: quest
 id: keep.quests
 state:
-  run.day:   { type: number, default: 1 }
-  run.gold:  { type: number, default: 0 }
+  run.day:   { type: int, default: 1 }
+  run.gold:  { type: int, default: 0 }
   run.freed: { type: bool, default: false }
   run.lamp:  { type: bool, default: false }
 ---
@@ -1161,8 +1162,8 @@ params:
 ```
 
 A component file is `name.component.lute`. Its body holds lines, staging, `@param` refs, and a
-`<match>` on a param, with no state reads or writes of its own. A `{{@param}}` renders a number,
-bool, or enum param, and since 0.23.0 a `string` one: a literal `::use` argument is substituted at
+`<match>` on a param, with no state reads or writes of its own. A `{{@param}}` renders an `int`,
+`double`, bool, or enum param, and since 0.23.0 a `string` one: a literal `::use` argument is substituted at
 expansion, so each call site ships its own sentence under its own `lineId`. Binding an interpolated
 `string` param to a `@def` is `E-REF-TYPE`. The importing scene lists it in `components:` and expands
 it with `::use`. An argument may be the caller's `@def` (`tier=@mood`): an enum param requires every
@@ -1205,11 +1206,11 @@ component: praise
 effects: true
 params:
   who: speaker
-  delta: number
+  delta: int
 entities:                                  # declared here only so this file checks alone:
   companion: { members: [isolde, corvin] } # at `::use` the host's schema decides
 state:
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 ---
 
 ## Praise
@@ -1309,7 +1310,7 @@ timed pause.
 | `lute scenario <dir> [reach <node> \| envelope <node> \| knowledge [--for <node>]] [--facts] [--format text\|json\|dot]` | The `after:` graph, reachability, and guaranteed state and facts. A node is a scene id, `quest:<id>`, or a bundle beat's canonical id (bare or `beat:<doc>.<beat>`; drawn as an edgeless entry node). `knowledge` (0.23.0) traces every fact-guarded beat, entry, and objective to the relations it queries and each relation to its producers through the rules: asserting documents, seed facts, the engine (`reserved`), or no producer, and names what can defeat a negated premise. Its `--for` also takes an entry id or `<quest>.<objective>`. Since 0.24.0 it covers every guard slot, reads a kind atom as membership (``suitor(sol) — entity kind `suitor`; sol is a member``), and names what a rule's `cel()` premise reads; since 0.26.0 it traces a rule's `count(…)` premise to the producers of the facts it counts. `--facts` (0.26.0) also draws fact-producer edges (`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`; `--format json`: `factEdges`, `dot`: dotted). `reach --endings[=<occasion>]` (0.27.0) lists every ending — the beats answering the occasion, or bare, every beat whose content can run `::end` — with its `after:` verdict, its `when` verdict (never holds / never wins), what a satisfiable `when` reads and who writes it (`nothing writes it` when nothing does), and `N ending(s): A reachable, B unreachable, C unknown`. |
 | `lute beats <dir> [--occasion o] [--target t] [--json] [--expand]` | 0.23.0. Each occasion's (and target's) beat ladder in selection order, with priority, `once` (including bundle beats' `day` / `slot`), `also`, `after:`, `when` (a `@def` as written; `--expand` expands it), title, and the `check-project` verdicts (unreachable, shadowed, tied, once-run-user). The project need not check clean. Since 0.26.0 a fallback that an earlier, never-spent beat whose `when` it implies always beats shows `covered by <id>` (`--json`: `coveredBy`), a kind-target beat gets a `kind:<kind>` ladder, and `--target` takes any member. |
 | `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. Every value of a directive attribute (`give.item`) or every reward target of a kind, with the documents and lines using it; a value passed through a component is listed at its `::use` (`via component <name>`), a reward without a target as `(no target)`. Who gives what, before a merge. |
-| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds(awake(toma))=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>[@<axis>[=<value>],…]] [--target <T>] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name; `--target mon.inchlet` names one instead (the `@` of `--occasion` takes axes, not targets). 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion dusk@clock.day` (or `@run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--facts at` prints who is where per cell. 0.27.0: `--axis run.aff.*=6,7` sets every member of a `per:` family, `--axis 'run.aff[run.route]=6,7'` only the member the `run.route` axis names in each cell (the others keep their seed or default); a bare `--axis run.aff` is a usage error naming both forms. |
+| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds('awake', ['toma'])=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>[@<axis>[=<value>],…]] [--target <T>] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name; `--target mon.inchlet` names one instead (the `@` of `--occasion` takes axes, not targets). 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion dusk@clock.day` (or `@run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--facts at` prints who is where per cell. 0.27.0: `--axis run.aff.*=6,7` sets every member of a `per:` family, `--axis 'run.aff[run.route]=6,7'` only the member the `run.route` axis names in each cell (the others keep their seed or default); a bare `--axis run.aff` is a usage error naming both forms. |
 | `lute lore <dir>` | Entries and beats by target and series, and which facts they reveal. |
 | `lute context <file> [--project <dir>]` | Everything legal to write here: directives (built-ins included), vocabulary, state (marking `owner: engine`), defs, relations with their tier and `reserved`, occasions with target domains, the cast, component signatures, and every scene, quest, and entry id. Without `--project`, of the nearest `lute.project.yaml` above the file (0.27.0). |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | Advisory editorial lints (`L-*`), configured per project. The linear-VN metrics skip beats, components, quests, and lore. Since 0.26.0 it also reports `W-DISPLAY-NAME-DUP` (`--deny W-DISPLAY-NAME-DUP` accepts the code). |
@@ -1400,7 +1401,7 @@ Since 0.27.0 the other misses name their premise too. An asserted `eligible: { e
 misses reads ``eligible ember: expected true, got false — its `after="visited('ren.confession')"` is
 false — mock `visited: [ren.confession]` ``. A `--choose` (or a test's `choose:`) that lands on an
 option whose guard is false names the guard, each read it is false over, and the mock that changes
-it: ``its guard `holds(found(receipt))` decided false: `found(receipt)` does not hold (mock `--fact
+it: ``its guard `holds('found', ['receipt'])` decided false: `found(receipt)` does not hold (mock `--fact
 "found(receipt)"`)`` — spelled `facts: ["found(receipt)"]` in a test, and as the YAML key in a play.
 
 `plays/first.play.yaml`. Its top-level keys are `state`, `facts`, `choose`, `derive`, `bridges`
@@ -1532,12 +1533,12 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-CONTENT-OUTSIDE-SHOT` | Content comes before the first `## Heading`. |
 | `E-DOMAIN-UNKNOWN` | `emotion=`, `action=`, `anchor`, `mood`, … is used but its slot has no declared members. |
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | The state path, or the `@def`, is not declared, or its schema is not imported. |
-| `E-MAYBE-UNSET` | A path is read that has no default and no dominating `::set` or `isSet` guard. Every `prev.run.*` read needs one. |
+| `E-MAYBE-UNSET` | A path is read that has no default and no dominating `::set` or `has` guard. Every `prev.run.*` read needs one. |
 | `E-CAST-UNKNOWN` | A cast is declared (a schema's `cast:` or a plugin `cast` export) and this speaker is not in it, or (0.24.0) an `::auto{character}`, a `::camera{focus}`, or a `speaker` component argument names someone outside it. The message suggests the nearest id. |
-| `W-CAST-ABSENT` | 0.24.0. The speaker's cast entry declares `present:` and the guards around the line do not imply it (a `{vo}` line is exempt). Guard the line (`@corvin{when="holds(inParty(corvin))"}`) or move it under one; only a write that can falsify a guard cancels it. A single-file `check` cannot see facts asserted on every route; `check-project` can. |
+| `W-CAST-ABSENT` | 0.24.0. The speaker's cast entry declares `present:` and the guards around the line do not imply it (a `{vo}` line is exempt). Guard the line (`@corvin{when="holds('inParty', ['corvin'])"}`) or move it under one; only a write that can falsify a guard cancels it. A single-file `check` cannot see facts asserted on every route; `check-project` can. |
 | `E-BAD-ENUM` | A value outside its enum; since 0.24.0 also an `emotion=` outside the speaker's cast `emotions:` (`happy` is not one of `isolde`'s emotions), and since 0.26.0 a value outside the kind of an attribute typed `{ entity: K }` (with a did-you-mean, also through a component param). |
 | `E-ENGINE-OWNED-WRITE` | A `::set` writes a path declared `owner: engine`. Content only reads it; `lute play` writes it with an `engine:` step, and trace and test with a mock's `state:`. |
-| `W-QUEST-STATE-ISSET` | `isSet(quest.<id>.state)` is always true. Compare with `'unset'` instead. |
+| `W-QUEST-STATE-HAS` | `has(quest.<id>.state)` is always true. Compare with `'unset'` instead. |
 | `W-TEXT-LOOKS-LIKE-REF` | A line's whole text is `@name` for a def or param; it ships as that literal. Write `{{@name}}`. |
 | `E-UNSET-UNCOVERED` / `E-NONEXHAUSTIVE` | A `<match>` misses `unset`, an enum member, or a numeric gap (the message names what is uncovered). Add arms or `<otherwise>`. Since 0.24.0 a beat's `when:` narrows the domain first, so an arm it rules out need not be written. |
 | `E-WHEN-LITERAL-DOMAIN` | A `<when is>` literal, or since 0.26.0 a string a guard compares with `==` / `!=` / `in [...]`, is not a member of the subject's domain (an enum, the kind `occasion.target` is typed by, a quest's `state` / `failedBy`). The message lists the members and names the nearest one. |
@@ -1639,7 +1640,7 @@ path is an error. `lute play` writes it with an `engine:` step, and trace and te
 kind: scene
 id: clock.cheat
 state:
-  run.day: { type: number, default: 1, owner: engine }
+  run.day: { type: int, default: 1, owner: engine }
 ---
 
 ## Night
@@ -1743,7 +1744,7 @@ in `lute test` that fails the test unless it declares `expect: { end: incomplete
 an unmocked derived atom is unknown.
 
 **Directive attributes take bare refs to constant defs.** Write `::camera{zoom=@closeUp}`. The
-quoted `zoom="@closeUp"` is the literal string `@closeUp` (`E-ATTR-TYPE` on a number attribute). A
+quoted `zoom="@closeUp"` is the literal string `@closeUp` (`E-ATTR-TYPE` on a numeric attribute). A
 def that reads state is `E-ATTR-DEF-DYNAMIC`.
 
 **Attribute values use double quotes.** `label='"Hi."'` is `E-ATTR-QUOTE`. Write
@@ -1759,7 +1760,7 @@ def that reads state is `E-ATTR-DEF-DYNAMIC`.
 report `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, or
 `W-BEAT-PRIORITY-TIE`. The contradiction is real: fix the condition. `unset` counts as a value, so
 on a path with no default `run.m > 5 && run.m < 3` stays undecided, while
-`isSet(run.m) && run.m > 5 && run.m < 3` is false.
+`has(run.m) && run.m > 5 && run.m < 3` is false.
 
 ```lute expect="E-BEAT-UNREACHABLE"
 ---
@@ -1768,7 +1769,7 @@ id: late.shift
 on: townVisit
 when: "run.day > 5 && run.day < 3"
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 ---
 
 ## Late
@@ -1807,8 +1808,8 @@ a path with no default is still maybe-unset:
 kind: scene
 id: tab.open
 state:
-  run.day: { type: number, default: 1 }
-  run.tab: { type: number }
+  run.day: { type: int, default: 1 }
+  run.tab: { type: int }
 ---
 
 ## Tab
@@ -1817,7 +1818,7 @@ state:
 @mira: Your tab is {{run.tab}}.
 ```
 
-**`%` needs integers.** Both operands must be integers: a fractional literal or a non-number
+**`%` needs integers.** Both operands must be integers: a fractional literal or a non-`int`
 operand is `E-CEL-TYPE`. At run time a fractional value or a zero divisor reads unknown.
 
 ```lute expect="E-CEL-TYPE"
@@ -1825,7 +1826,7 @@ operand is `E-CEL-TYPE`. At run time a fractional value or a zero divisor reads 
 kind: scene
 id: week.end
 state:
-  run.hours: { type: number, default: 0 }
+  run.hours: { type: int, default: 0 }
 ---
 
 ## Payday
@@ -1851,7 +1852,7 @@ rules:
 
 ## Ledger
 
-@narrator{when="holds(debtor(ada, hollis))"}: Ada owes.
+@narrator{when="holds('debtor', ['ada', 'hollis'])"}: Ada owes.
 ```
 
 **`transcriptContains` sees only lines that played.** Since 0.24.0, `lute play` and `lute test`
@@ -1866,7 +1867,7 @@ domain. A scene's or bundle beat's `target` there is still `E-BEAT-ATTR`.
 **An unanswered bridge halts; nothing is defaulted.** A plugin call whose result a later guard
 reads needs a `bridges:` answer. Without one, `lute play` halts at the call (exit 3) before any
 default arm, and `lute trace` / `lute test` read the result as unknown and stop incomplete, with a
-hint that is a valid answer: `bridges: { check: [ { passed: <bool>, margin: <number> } ] }`. It
+hint that is a valid answer: `bridges: { check: [ { passed: <bool>, margin: <int> } ] }`. It
 used to read the state-shape default. A 0.23.1 test or mock that seeded the result slot
 (`state: { scene.check.guards.passed: true }`) no longer decides the guard: replace the seed with
 `bridges: { check: [ { passed: true, margin: 3 } ] }`.

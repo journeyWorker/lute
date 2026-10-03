@@ -6,7 +6,7 @@ on: examine
 target: fixture.gatePad
 priority: 10
 once: false
-when: "holds(holding(keycard))"
+when: "holds('holding', ['keycard'])"
 ---
 
 ## Gatepost

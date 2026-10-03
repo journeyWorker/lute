@@ -6,23 +6,23 @@ title: Tide Gym — trainers, guide, and Marin after the battle
 
 <beat use="trainerBattle" id="tideGymSwimmerLuis" who="tideGymSwimmerLuis" intro="Splash! You're on the walkway, I'm in the pool, and the pool is winning!" win="The pool has lost. Unbelievable." lose="The pool always wins!" prize="300"/>
 
-<entry id="southTideGymSwimmerLuisAfter" on="talk" target="npc.tideGymSwimmerLuis" category="bark" when="holds(defeated(tideGymSwimmerLuis))">
+<entry id="southTideGymSwimmerLuisAfter" on="talk" target="npc.tideGymSwimmerLuis" category="bark" when="holds('defeated', ['tideGymSwimmerLuis'])">
   @tideGymSwimmerLuis: Marin's Maelwolf can swim the length of the pool before you finish saying "Maelwolf". Try it. MAEL — see? Already there.
 </entry>
 
 <beat use="trainerBattle" id="tideGymPicnickerDiana" who="tideGymPicnickerDiana" intro="I brought my lunch to the gym! It's a picnic by the pool! Battle me before the sandwiches get wet!" win="The sandwiches got wet." lose="Dry sandwiches for the winner!" prize="280"/>
 
-<entry id="southTideGymPicnickerDianaAfter" on="talk" target="npc.tideGymPicnickerDiana" category="bark" when="holds(defeated(tideGymPicnickerDiana))">
+<entry id="southTideGymPicnickerDianaAfter" on="talk" target="npc.tideGymPicnickerDiana" category="bark" when="holds('defeated', ['tideGymPicnickerDiana'])">
   @tideGymPicnickerDiana: Electric types, grass types. Marin hates both. She won't say so. She just goes very quiet and swims more lengths.
 </entry>
 
 <beat use="trainerBattle" id="tideGymSwimmerCora" who="tideGymSwimmerCora" intro="I'm Marin's training partner! If you can't beat me, you can't even get wet with her!" win="You can get wet with her. Go on." lose="Stay dry, then!" prize="320"/>
 
-<entry id="southTideGymSwimmerCoraAfter" on="talk" target="npc.tideGymSwimmerCora" category="bark" when="holds(defeated(tideGymSwimmerCora))">
+<entry id="southTideGymSwimmerCoraAfter" on="talk" target="npc.tideGymSwimmerCora" category="bark" when="holds('defeated', ['tideGymSwimmerCora'])">
   @tideGymSwimmerCora: She swims under the Tidewell bridge before dawn. Every day. She says it's to think. I think she's racing somebody.
 </entry>
 
-<entry id="southTideGuideAfter" on="talk" target="npc.tideGymGuide" category="bark" priority="5" when="holds(hasBadge(tide))">
+<entry id="southTideGuideAfter" on="talk" target="npc.tideGymGuide" category="bark" priority="5" when="holds('hasBadge', ['tide'])">
   @tideGymGuide: Two badges! You're officially the talk of Southshore. The ferry's the next step, champ. The whole world's across that water.
 </entry>
 
@@ -30,10 +30,10 @@ title: Tide Gym — trainers, guide, and Marin after the battle
   @tideGymGuide: Yo! Marin's monsters are all water. Grass drinks water, electric boils it. Keep your feet dry on the walkways!
 </entry>
 
-<entry id="southMarinNight" on="talk" target="npc.marin" category="bark" priority="10" when="holds(defeated(marin)) && @isNight">
+<entry id="southMarinNight" on="talk" target="npc.marin" category="bark" priority="10" when="holds('defeated', ['marin']) && @isNight">
   @marin: Night swim! Want to come? No? Nobody ever comes. The sea's warmer than it looks. It's not. But you'd get used to it.
 </entry>
 
-<entry id="southMarinAfter" on="talk" target="npc.marin" category="bark" when="holds(defeated(marin))">
+<entry id="southMarinAfter" on="talk" target="npc.marin" category="bark" when="holds('defeated', ['marin'])">
   @marin{emotion="happy"}: Portvolt's leader is a soldier who thinks lightning is a personality. Tell him Marin says hi. He'll hate that.
 </entry>

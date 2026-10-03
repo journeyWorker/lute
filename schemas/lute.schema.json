@@ -108,7 +108,7 @@
       "properties": {
         "day": {
           "type": "string",
-          "description": "the day path — a `number` state path declared `owner: engine`."
+          "description": "the day path — an `int` state path declared `owner: engine`."
         },
         "slot": {
           "type": "string",
@@ -424,7 +424,7 @@
       }
     },
     "literal": {
-      "description": "types.rs::Literal — untagged: bool | number | string | list | map (string keys).",
+      "description": "types.rs::Literal — untagged: bool | int | double | string | list | map (string keys).",
       "oneOf": [
         {
           "type": "boolean"
@@ -450,13 +450,16 @@
       ]
     },
     "type": {
-      "description": "types.rs::TypeDef — the plugin §7 Type wire form. Bare unit tags (`bool`/`number`/`string`) or a SINGLE-key tagged map (`serde_yaml::with::singleton_map_recursive` requires EXACTLY one key to resolve the variant, hence `additionalProperties: false` + `required` per branch below).",
+      "description": "types.rs::TypeDef — the plugin §7 Type wire form. Bare unit tags (`bool`/`int`/`double`/`string`) or a SINGLE-key tagged map (`serde_yaml::with::singleton_map_recursive` requires EXACTLY one key to resolve the variant, hence `additionalProperties: false` + `required` per branch below).",
       "oneOf": [
         {
           "const": "bool"
         },
         {
-          "const": "number"
+          "const": "int"
+        },
+        {
+          "const": "double"
         },
         {
           "const": "string"

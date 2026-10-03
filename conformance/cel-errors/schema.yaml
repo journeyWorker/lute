@@ -1,0 +1,4 @@
+state:
+  run.i: { type: int, default: 3 }
+  run.zero: { type: int, default: 0 }
+  run.missing: { type: string }

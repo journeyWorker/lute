@@ -106,9 +106,9 @@ fn context_and_calendar_spell_quoted_members() {
     let out = lute(&["context", scene.to_str().unwrap(), "--project", &dir()]);
     let t = text(&out);
     assert!(out.status.success(), "{t}");
-    assert!(t.contains("run.visits[\"lab-b2\"]: number"), "{t}");
-    assert!(t.contains("run.visits[\"001\"]: number"), "{t}");
-    assert!(t.contains("run.visits.hall: number"), "{t}");
+    assert!(t.contains("run.visits[\"lab-b2\"]: int"), "{t}");
+    assert!(t.contains("run.visits[\"001\"]: int"), "{t}");
+    assert!(t.contains("run.visits.hall: int"), "{t}");
 
     let out = lute(&[
         "calendar",

@@ -1,7 +1,7 @@
 # Skerry Rock. Progress is what the inspector KNOWS: testimony and physical
 # evidence are base facts; everything the inspector concludes is derived.
 state:
-  run.day:     { type: number, default: 1, owner: engine }
+  run.day:     { type: int, default: 1, owner: engine }
   run.weather: { type: { enum: [gale, fog, clear] }, default: gale, owner: engine }
   # The reconstruction the inspector files. Written by the report scene.
   run.verdictFate:   { type: { enum: [undecided, murdered, drowned, fell] }, default: undecided }
@@ -10,7 +10,7 @@ state:
   # 0.27 chapter "The Torn Page": was the loss preventable?
   run.verdictCause:  { type: { enum: [undecided, misadventure, neglect] }, default: undecided }
   run.fileClosed:    { type: bool, default: false }
-  user.casesClosed:  { type: number, default: 0 }
+  user.casesClosed:  { type: int, default: 0 }
 
 # A day-granular clock (dsl 0.24.0 §1, no slots). `advance: day` in a play closes
 # the day with `nightfall` (the lamp is lit whether or not the player asked),
@@ -116,7 +116,7 @@ defs:
   glassTonight: { type: { enum: [steady, guttering] }, cel: "run.weather == 'gale' ? 'guttering' : 'steady'" }
   filed:   "run.verdictFate != 'undecided' && run.verdictOnRock != 'undecided'"
   # how many islanders have given a statement
-  statements: "countDistinct(sawAt(W, _, _, _), W)"
+  statements: "countDistinct('sawAt', ['_', '_', '_', '_'], 0)"
 
 # `present:` (dsl 0.24.0 §4): an islander who is not on the engine's schedule
 # today cannot speak (W-CAST-ABSENT). Hollis ferries the inspector, so his
@@ -125,8 +125,8 @@ defs:
 cast:
   inspector: { name: The Inspector }
   elias:     { name: Elias Voss }
-  ada:       { name: Ada Pell, present: "holds(present(ada, _))", emotions: [sad] }
-  maren:     { name: Maren Hale, present: "holds(present(maren, _))", emotions: [angry, sad] }
-  tobias:    { name: Tobias Crane, present: "holds(present(tobias, _))" }
+  ada:       { name: Ada Pell, present: "holds('present', ['ada', '_'])", emotions: [sad] }
+  maren:     { name: Maren Hale, present: "holds('present', ['maren', '_'])", emotions: [angry, sad] }
+  tobias:    { name: Tobias Crane, present: "holds('present', ['tobias', '_'])" }
   hollis:    { name: Hollis, emotions: [sad] }
   chair:     { name: The Chairman }

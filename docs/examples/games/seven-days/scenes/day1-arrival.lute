@@ -17,7 +17,7 @@ priority: 100
 ::set{run.seen.pell = run.day}
 @pell{emotion="happy"}: There you are! You've grown a whole head. Give me that bag before the gulls do.
 @sol: Hi, Aunt Pell.
-@pell{emotion="teasing" when="isSet(prev.run.lantern.paper) && !prev.run.lantern.paper"}: And this summer we find the paper first. I've written it on my hand. Look. PAPER.
+@pell{emotion="teasing" when="has(prev.run.lantern.paper) && !prev.run.lantern.paper"}: And this summer we find the paper first. I've written it on my hand. Look. PAPER.
 
 ## The lantern shop
 

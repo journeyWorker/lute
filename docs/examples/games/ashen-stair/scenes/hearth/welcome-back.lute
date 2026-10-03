@@ -5,7 +5,7 @@ title: The Hearth, any other morning
 components: [../../components/hearth-fire.component.lute]
 on: hubVisit
 priority: 10
-when: 'isSet(prev.run.outcome)'
+when: 'has(prev.run.outcome)'
 ---
 
 ## Back again
@@ -15,7 +15,7 @@ when: 'isSet(prev.run.outcome)'
 <match on="prev.run.outcome">
   <when is="fell">
     @maud{code="0010"}: Floor {{prev.run.floor}} this time. Sit. Drink. Complain if you like.
-    @maud{code="0040" when="isSet(prev.run.fellTo)"}: Was it {{prev.run.fellTo}} again? Don't answer. I can smell it on you.
+    @maud{code="0040" when="has(prev.run.fellTo)"}: Was it {{prev.run.fellTo}} again? Don't answer. I can smell it on you.
   </when>
   <when is="escaped">
     @maud{code="0020" emotion="fond"}: Out and back again. You smell of rain. I'd forgotten rain.

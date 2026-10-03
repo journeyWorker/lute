@@ -144,6 +144,13 @@ After compilation, the engine owns every actual effect. The host must still:
 - implement reward settlement, if the product uses declarative reward data; and
 - reject artifacts and plugins from untrusted origins.
 
+## Runtime owned-write refusal
+
+Compilation guarantees that checked commands do not write `owner: "engine"`
+state paths or `reserved: true` relations. A hand-built or tampered execution
+IR is refused by `lute run` before any command executes, with
+`E-RUN-OWNED-WRITE`.
+
 Capability permissions do not make plugin code safe—Lute plugins are manifests,
 but the runtime bridge implementations they name are ordinary host code. They
 do not contain a compromised engine or replace OS process/application

@@ -41,7 +41,7 @@ fn snap_with_stamp_attrs() -> CapabilitySnapshot {
             },
         },
     );
-    for (name, ty) in [("bonusId", Type::Str), ("bonusScore", Type::Number)] {
+    for (name, ty) in [("bonusId", Type::Str), ("bonusScore", Type::Double)] {
         snap.stamp_attrs.insert(
             name.to_string(),
             AttrDecl {

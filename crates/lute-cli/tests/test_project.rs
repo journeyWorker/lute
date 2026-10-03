@@ -265,7 +265,7 @@ fn run_quest_test(tag: &str, test_yaml: &str, extra: &[&str]) -> (Option<i32>, S
     write_at(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.pressure: { type: number, default: 0 }\n",
+        "state:\n  run.pressure: { type: int, default: 0 }\n",
     );
     write_at(
         &dir,
@@ -496,13 +496,13 @@ fn component_param_bound_to_a_longer_def_renders_in_trace_and_test() {
     write_at(
         &dir,
         "world.schema.yaml",
-        "state:\n  user.bond: { type: number, default: 2 }\n\
+        "state:\n  user.bond: { type: int, default: 2 }\n\
          defs:\n  bondTimesTen: \"user.bond * 10\"\n  b: \"user.bond\"\n",
     );
     write_at(
         &dir,
         "components/gauge.component.lute",
-        "---\ncomponent: gauge\nparams:\n  fathoms: number\n  marks: number\n---\n\n## Gauge\n\n\
+        "---\ncomponent: gauge\nparams:\n  fathoms: int\n  marks: int\n---\n\n## Gauge\n\n\
          @narrator: The gauge shows {{@fathoms}} fathoms, {{@marks}} marks, done.\n",
     );
     write_at(

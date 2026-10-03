@@ -2,16 +2,16 @@
 //!
 //! The runtime compares values of different types as unequal (`run.oil ==
 //! true` never holds, `run.day == 'monday'` never holds) and orders only
-//! numbers (`run.hour >= 'h03'` and `visited('gallery') > 2` evaluate
+//! numeric values (`run.hour >= 'h03'` and `visited('gallery') > 2` evaluate
 //! unknown and halt play). This pass types each operand with the closed
 //! procedure `::set` right-hand sides and def result types use
 //! ([`crate::set_type`]) and reports, at the slot:
 //!
-//! - an `==` / `!=` / `in` whose two sides are of different types (a bool, a
-//!   number, a string or enum member);
-//! - an ordering (`<` `<=` `>` `>=`) with an operand that is not a number;
-//! - an `&&` / `||` / `!` / `?:` operand, or a whole condition, that is a
-//!   number or a string rather than a bool;
+//! - an `==` / `!=` / `in` whose two sides are of different types (a bool, an
+//!   `int` or `double`, a string or enum member);
+//! - an ordering (`<` `<=` `>` `>=`) with an operand that is not numeric;
+//! - an `&&` / `||` / `!` / `?:` operand, or a whole condition, that is
+//!   numeric or a string rather than a bool;
 //! - arithmetic that cannot be computed (`run.flag + 1`).
 //!
 //! An operand the procedure cannot type is accepted, exactly as `E-SET-TYPE`
@@ -78,7 +78,7 @@ enum Family {
 fn family(t: &Type) -> Option<Family> {
     match t {
         Type::Bool => Some(Family::Bool),
-        Type::Number => Some(Family::Number),
+        Type::Int | Type::Double => Some(Family::Number),
         Type::Str | Type::Enum(_) | Type::EnumFromOption(_) | Type::Domain(_) | Type::Entity(_) => {
             Some(Family::Text)
         }
@@ -91,7 +91,9 @@ fn family(t: &Type) -> Option<Family> {
 fn describe(t: &Type) -> String {
     match t {
         Type::Bool => "a bool".to_string(),
-        Type::Number => "a number".to_string(),
+        Type::Int => "an int".to_string(),
+        Type::Double => "a double".to_string(),
+        Type::Str => "a string".to_string(),
         Type::Enum(_) | Type::EnumFromOption(_) => "an enum member".to_string(),
         Type::Domain(d) | Type::Entity(d) => format!("a `{d}` member"),
         Type::NarrativeTime => "a narrative time".to_string(),
@@ -182,6 +184,16 @@ fn check_call(whole: &Expr, c: &CallExpr, span: Span, t: &Typing<'_>, diags: &mu
             let (Some(fa), Some(fb)) = (family(&ta), family(&tb)) else {
                 return;
             };
+            if fa == Family::Number && fb == Family::Number && ta != tb {
+                diags.push(diag(
+                    format!(
+                        "`{}` compares {} with {}, but int and double cannot be mixed (dsl 0.28.0 §1)",
+                        show(whole), describe(&ta), describe(&tb)
+                    ),
+                    span,
+                ));
+                return;
+            }
             if fa == fb || fa == Family::Time || fb == Family::Time {
                 return;
             }
@@ -204,6 +216,21 @@ fn check_call(whole: &Expr, c: &CallExpr, span: Span, t: &Typing<'_>, diags: &mu
             ));
         }
         (op::LESS | op::LESS_EQUALS | op::GREATER | op::GREATER_EQUALS, [a, b]) => {
+            if let (Some(ta), Some(tb)) = (t.ty(&a.expr), t.ty(&b.expr)) {
+                if family(&ta) == Some(Family::Number)
+                    && family(&tb) == Some(Family::Number)
+                    && ta != tb
+                {
+                    diags.push(diag(
+                        format!(
+                            "`{}` compares int with double, which cannot be mixed (dsl 0.28.0 §1)",
+                            show(whole)
+                        ),
+                        span,
+                    ));
+                    return;
+                }
+            }
             let sides = [(&a.expr, &b.expr), (&b.expr, &a.expr)];
             let Some((bad, other, ty)) = sides.into_iter().find_map(|(x, y)| {
                 let ty = t.ty(x)?;
@@ -215,7 +242,7 @@ fn check_call(whole: &Expr, c: &CallExpr, span: Span, t: &Typing<'_>, diags: &mu
             let first_is_bad = std::ptr::eq(bad, &a.expr);
             diags.push(diag(
                 format!(
-                    "`{}`: `{sym}` compares numbers, and `{}` is {}{} (dsl 0.28.0 §1)",
+                    "`{}`: `{sym}` compares numbers (int/double), and `{}` is {}{} (dsl 0.28.0 §1)",
                     show(whole),
                     show(bad),
                     describe(&ty),
@@ -237,7 +264,10 @@ fn check_call(whole: &Expr, c: &CallExpr, span: Span, t: &Typing<'_>, diags: &mu
             let Some((el, te)) = items.elements.iter().find_map(|el| {
                 let te = t.ty(&el.expr)?;
                 let fe = family(&te)?;
-                (fe != fn_ && fe != Family::Time && fn_ != Family::Time).then_some((el, te))
+                ((fe != fn_ || (fn_ == Family::Number && te != tn))
+                    && fe != Family::Time
+                    && fn_ != Family::Time)
+                    .then_some((el, te))
             }) else {
                 return;
             };
@@ -250,7 +280,7 @@ fn check_call(whole: &Expr, c: &CallExpr, span: Span, t: &Typing<'_>, diags: &mu
                     show(&needle.expr),
                     match describe(&te).as_str() {
                         "a bool" => "bools".to_string(),
-                        "a number" => "numbers".to_string(),
+                        "a number" => "numeric values".to_string(),
                         _ => format!("{} like `{}`", describe(&te), show(&el.expr)),
                     }
                 ),
@@ -319,7 +349,7 @@ fn check_call(whole: &Expr, c: &CallExpr, span: Span, t: &Typing<'_>, diags: &mu
 /// condition.
 fn compare_example(shown: &str, ty: &Type) -> String {
     match ty {
-        Type::Number => format!("for example `{shown} > 0`"),
+        Type::Int | Type::Double => format!("for example `{shown} > 0`"),
         Type::Enum(members) if !members.is_empty() => {
             format!("for example `{shown} == '{}'`", members[0])
         }
@@ -340,7 +370,7 @@ fn equality_hint(x: &Expr, tx: &Type, y: &Expr, name: &str, t: &Typing<'_>) -> O
     };
     let path = select_path(x);
     match (tx, lit) {
-        (Type::Number, Some(s)) => {
+        (Type::Int | Type::Double, Some(s)) => {
             if let Some(clock) = t.clock {
                 let labels = clock.week.as_ref().map(|w| w.labels.as_slice());
                 // The label the literal names — as declared (`'monday'` is

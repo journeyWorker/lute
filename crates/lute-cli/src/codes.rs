@@ -644,6 +644,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.25.0 §1"],
     },
     Code {
+        code: "E-FACT-QUERY",
+        summary: "A fact-query call (`holds`, `count`, `countDistinct`, or `validAt`) does not use the required 0.32 list form `name('relation', ['arg', …])`.",
+        spec: &["dsl 0.32.0 §2"],
+    },
+    Code {
         code: "E-FACT-TIER-WRITE",
         summary: "Content asserts or retracts an `app`-tier base relation, though it is engine-owned/read-only to content, exactly like `app.*` scalar state.",
         spec: &["dsl 0.3.0 §5", "dsl 0.3.0 §9.5"],
@@ -1164,6 +1169,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &[],
     },
     Code {
+        code: "E-RUN-OWNED-WRITE",
+        summary: "`lute run` received an execution IR whose commands write an engine-owned state path or assert/retract a reserved relation.",
+        spec: &["dsl 0.32.0 §5"],
+    },
+    Code {
         code: "E-SEASON-DECL",
         summary: r#"A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead."#,
         spec: &["dsl 0.27.0 §5"],
@@ -1669,8 +1679,8 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.5.1 §1.4"],
     },
     Code {
-        code: "W-QUEST-STATE-ISSET",
-        summary: "An `isSet(quest.<id>.state)` guard is always true, since a quest's state is always assigned — `unset` until activation, then a real state — so the check tests nothing.",
+        code: "W-QUEST-STATE-HAS",
+        summary: "A `has(quest.<id>.state)` guard is always true, since a quest's state is always assigned — `unset` until activation, then a real state — so the check tests nothing.",
         spec: &[],
     },
     Code {

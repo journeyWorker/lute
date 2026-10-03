@@ -72,8 +72,7 @@ pub fn lower_set(set: &Set) -> Command {
         addr: String::new(),
         path: set.path.clone(),
         op: set.op.clone(),
-        value: set.expr.raw.clone(),
-        expr: crate::expr::lower_expr(&set.expr.raw),
+        value: crate::ir::CelPair::from_slot(&set.expr),
         stamp: Stamp::default(),
     })
 }
@@ -357,7 +356,7 @@ pub fn lower_directive(
                 .map(|(d, eff)| {
                     eff.writes
                         .iter()
-                        .filter_map(|w| resolve_effect(w, dir, d))
+                        .filter_map(|w| resolve_effect(w, dir, d, snapshot))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -700,16 +699,20 @@ fn attr_json(attr: &Attr, decl: Option<&DirectiveDecl>) -> serde_json::Value {
     attr_json_typed(attr, ty)
 }
 
-/// An attr value as JSON in the shape its declared type asks for: `number`
-/// parses, `bool` maps the two literals, everything else stays a string. An
-/// undeclared type (`None`) or an unparseable value falls back to the raw
-/// string rather than dropping the value.
+/// An attr value as JSON in the shape its declared type asks for: `int` or
+/// `double` parses numerically, `bool` maps the two literals, everything else
+/// stays a string.
 fn attr_json_typed(attr: &Attr, ty: Option<&Type>) -> serde_json::Value {
     match &attr.value {
         AttrValue::BoolTrue => serde_json::Value::Bool(true),
         AttrValue::Ref(slot) => serde_json::Value::String(slot.raw.clone()),
         AttrValue::Str(s) => match ty {
-            Some(Type::Number) => s
+            Some(Type::Int) => s
+                .parse::<i64>()
+                .ok()
+                .map(serde_json::Value::from)
+                .unwrap_or_else(|| serde_json::Value::String(s.clone())),
+            Some(Type::Double) => s
                 .parse::<f64>()
                 .ok()
                 .map(serde_json::Value::from)
@@ -741,19 +744,34 @@ pub fn effect_path(w: &WriteDecl, dir: &Directive) -> String {
 }
 
 /// Resolve one manifest `WriteDecl` into an artifact-local [`Effect`] (IR A12)
-/// at [`effect_path`]. The source is the bridge-result key, the `op`/`by`
-/// increment (integral `by`), or a literal — all integral-collapsed via
-/// `literal_json` (no duplication). A `fromAttr` value or `by` (dsl 0.27.0
-/// §2) reads the call's attr, typed by its declaration, or the declared
-/// `default:` when the call omits it; with neither the call writes nothing
-/// (`None`).
-pub fn resolve_effect(w: &WriteDecl, dir: &Directive, decl: &DirectiveDecl) -> Option<Effect> {
+/// at [`effect_path`]. Numeric effect values use the declared destination field
+/// type, rather than the YAML number's incidental integral/fractional spelling.
+pub fn resolve_effect(
+    w: &WriteDecl,
+    dir: &Directive,
+    decl: &DirectiveDecl,
+    snapshot: &CapabilitySnapshot,
+) -> Option<Effect> {
     let attr_value = |name: &str| -> Option<serde_json::Value> {
         let ty = decl.attrs.iter().find(|a| a.name == name);
         match dir.attrs.iter().find(|a| a.key == name) {
             Some(a) => Some(attr_json_typed(a, ty.map(|t| &t.ty))),
             None => ty.and_then(|t| t.default.as_ref()).map(crate::literal_json),
         }
+    };
+    let target_ty = effect_target_type(w, dir, decl, snapshot);
+    let numeric = |n: f64| match target_ty {
+        Some(Type::Int) if n.is_finite() && n.fract() == 0.0 => {
+            Some(crate::literal_json(&Literal::Int(n as i64)))
+        }
+        Some(Type::Double) if n.is_finite() => {
+            Some(crate::literal_json(&Literal::Double(n)))
+        }
+        _ if n.is_finite() && n.fract() == 0.0 => {
+            Some(crate::literal_json(&Literal::Int(n as i64)))
+        }
+        _ if n.is_finite() => Some(crate::literal_json(&Literal::Double(n))),
+        _ => None,
     };
     let from = match &w.value {
         WriteValue::FromBridgeResult { from_bridge_result } => EffectSource::BridgeResult {
@@ -762,20 +780,73 @@ pub fn resolve_effect(w: &WriteDecl, dir: &Directive, decl: &DirectiveDecl) -> O
         WriteValue::Op { op, by } => EffectSource::Op {
             op: op.clone(),
             by: match by {
-                OpBy::Num(n) => crate::literal_json(&Literal::Num(*n)),
-                OpBy::FromAttr { from_attr } => {
-                    let n = attr_value(from_attr)?.as_f64()?;
-                    crate::literal_json(&Literal::Num(n))
-                }
+                OpBy::Num(n) => numeric(*n)?,
+                OpBy::FromAttr { from_attr } => attr_value(from_attr)?,
             },
         },
         WriteValue::FromAttr { from_attr } => EffectSource::Literal(attr_value(from_attr)?),
-        WriteValue::Literal(lit) => EffectSource::Literal(crate::literal_json(lit)),
+        WriteValue::Literal(lit) => EffectSource::Literal(match (target_ty, lit) {
+            (Some(Type::Int), Literal::Double(n))
+                if n.is_finite() && n.fract() == 0.0 =>
+            {
+                crate::literal_json(&Literal::Int(*n as i64))
+            }
+            (Some(Type::Double), Literal::Int(n)) => {
+                crate::literal_json(&Literal::Double(*n as f64))
+            }
+            _ => crate::literal_json(lit),
+        }),
     };
     Some(Effect {
         path: effect_path(w, dir),
         from,
     })
+}
+
+/// Find the scalar type of an effect's destination field in its declared
+/// result shape. The checker has already expanded the same declaration into
+/// concrete state paths; this keeps compile-time JSON typing on that contract.
+fn effect_target_type<'a>(
+    w: &WriteDecl,
+    dir: &Directive,
+    decl: &'a DirectiveDecl,
+    snapshot: &'a CapabilitySnapshot,
+) -> Option<&'a Type> {
+    let path = effect_path(w, dir);
+    let mut best: Option<(String, &str)> = None;
+    for slot in decl.state.as_ref()?.declares.iter() {
+        let mut base = slot.scope.clone();
+        for seg in &slot.path {
+            match seg {
+                PathSegment::Literal(s) => {
+                    base.push('.');
+                    base.push_str(s);
+                }
+                PathSegment::FromAttr { from_attr } => {
+                    base.push('.');
+                    base.push_str(attr_string(&dir.attrs, &from_attr.name).unwrap_or_default().as_str());
+                }
+            }
+        }
+        if path.starts_with(&base)
+            && path.as_bytes().get(base.len()) == Some(&b'.')
+            && best.as_ref().is_none_or(|(old, _)| base.len() > old.len())
+        {
+            best = Some((base, slot.shape.as_str()));
+        }
+    }
+    let (base, shape) = best?;
+    let mut rest = path[base.len() + 1..].split('.');
+    let mut shape = snapshot.state_shapes.get(shape)?;
+    loop {
+        let name = rest.next()?;
+        let field = shape.fields.iter().find(|f| f.name == name)?;
+        if let Some(next) = &field.shape {
+            shape = snapshot.state_shapes.get(next)?;
+        } else {
+            return Some(&field.ty);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -948,7 +1019,8 @@ mod tests {
             assert_eq!(v["kind"], "set");
             assert_eq!(v["path"], "scene.affect.marina");
             assert_eq!(v["op"], *op);
-            assert_eq!(v["value"], "1");
+            assert_eq!(v["value"]["cel"], "1");
+            assert_eq!(v["value"]["expr"], serde_json::json!({"int": 1}));
         }
     }
 
@@ -1130,7 +1202,7 @@ mod tests {
     fn record_lowering_typed_fields_serialize_as_json_scalars() {
         let snapshot = snap_with(
             "lens",
-            &[("z", Type::Number), ("snap", Type::Bool)],
+            &[("z", Type::Double), ("snap", Type::Bool)],
             record_lowering(
                 "camera",
                 "{ zoom: { fromAttr: z }, reset: { fromAttr: snap } }",
@@ -1172,7 +1244,7 @@ mod tests {
                         *n,
                         match k {
                             LowerFieldKind::Str => Type::Str,
-                            LowerFieldKind::Num => Type::Number,
+                            LowerFieldKind::Num => Type::Double,
                             LowerFieldKind::Bool => Type::Bool,
                         },
                     )

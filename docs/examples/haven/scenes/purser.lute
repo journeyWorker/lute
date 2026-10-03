@@ -35,7 +35,7 @@ after: 'visited("haven.s01ep07") || visited("haven.s01ep08")'
   Ilsabet the cryobank woke.
 */
 <match on="true">
-<when test="count(awake(_)) >= 3">
+<when test="count('awake', ['_']) >= 3">
 @vesna{code="0110" emotion="level"}: Three of us awake, and one of us not written down anywhere. It'll have to do.
 </when>
 <otherwise>
@@ -44,11 +44,11 @@ after: 'visited("haven.s01ep07") || visited("haven.s01ep08")'
 </match>
 
 <match on="true">
-<when test="holds(awake(toma))">
+<when test="holds('awake', ['toma'])">
 ::auto{character="toma" action="brace"}
 @toma{code="0130" emotion="clipped"}: It's a cabinet. Cabinets have a maintenance mode, and maintenance mode has a key, and I've had the key for twelve years.
 </when>
-<when test="holds(awake(ilsabet))">
+<when test="holds('awake', ['ilsabet'])">
 ::auto{character="ilsabet" action="brace"}
 @ilsabet{code="0140" emotion="clipped"}: It's a navigation problem. I am the navigator, and it has been flying my ship to a plan I did not file.
 </when>
@@ -58,18 +58,18 @@ after: 'visited("haven.s01ep07") || visited("haven.s01ep08")'
 </match>
 
 @ottavio{code="0160" emotion="level"}: And it's an arithmetic problem, and I'm the arithmetic. That's not nothing either.
-@vesna{code="0170" emotion="hollowed" when="!holds(can_halt(toma)) && !holds(can_halt(vesna)) && !holds(awake(ilsabet))"}: We came up here with a stowaway and a grievance. Let's find out what that buys.
+@vesna{code="0170" emotion="hollowed" when="!holds('can_halt', ['toma']) && !holds('can_halt', ['vesna']) && !holds('awake', ['ilsabet'])"}: We came up here with a stowaway and a grievance. Let's find out what that buys.
 
 <branch id="theCorrection">
-<choice id="haltTheSequence" label="Halt the sequence" when="holds(can_halt(toma)) || holds(can_halt(vesna))">
+<choice id="haltTheSequence" label="Halt the sequence" when="holds('can_halt', ['toma']) || holds('can_halt', ['vesna'])">
 ::set{run.vesnaTrust += 1}
-@vesna{code="0180" emotion="clipped" when="holds(can_halt(vesna))"}: Halt condition, subsection four. This is your own page. I am reading you your own page.
-@toma{code="0190" emotion="level" when="holds(can_halt(toma))"}: Maintenance hold. Two hands, both of them steady, and you have to mean it.
+@vesna{code="0180" emotion="clipped" when="holds('can_halt', ['vesna'])"}: Halt condition, subsection four. This is your own page. I am reading you your own page.
+@toma{code="0190" emotion="level" when="holds('can_halt', ['toma'])"}: Maintenance hold. Two hands, both of them steady, and you have to mean it.
 @purser{code="0200" emotion="level" os}: Hold acknowledged. Release is suspended pending allocation.
 @purser{code="0210" emotion="level" os}: Pending is not cancelled. Allocation remains short by one module.
 @vesna{code="0220" emotion="hollowed"}: It'll wait. That isn't the same as stopping. But it'll wait, and waiting is a thing we can stand in.
 </choice>
-<choice id="invalidateTheVoyage" label="Tell it the voyage is already over" when="holds(awake(ilsabet)) && holds(knows(ilsabet, true_heading))">
+<choice id="invalidateTheVoyage" label="Tell it the voyage is already over" when="holds('awake', ['ilsabet']) && holds('knows', ['ilsabet', 'true_heading'])">
 ::set{run.vesnaTrust += 1}
 @ilsabet{code="0230" emotion="clipped"}: Filed voyage. Eleven years, four months, destination as filed. Read me the date.
 @purser{code="0240" emotion="level" os}: Filed arrival is four months from the yard. Elapsed is eleven years, four months.

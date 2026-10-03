@@ -424,11 +424,7 @@ fn walk_branch(
             id: c.id.clone(),
             label: c.label.clone(),
             line_id: String::new(),
-            when: c.when.as_ref().map(|w| w.raw.clone()),
-            expr: c
-                .when
-                .as_ref()
-                .and_then(|w| crate::expr::lower_expr(&w.raw)),
+            when: c.when.as_ref().map(CelPair::from_slot),
             target: l.sym(),
             placeholders: lute_syntax::scan_label_interps(&c.label, c.span)
                 .iter()
@@ -504,11 +500,7 @@ fn walk_hub(
             line_id: String::new(),
             once: attr_bool(&c.attrs, "once").unwrap_or(false),
             exit: attr_bool(&c.attrs, "exit").unwrap_or(false),
-            when: c.when.as_ref().map(|w| w.raw.clone()),
-            expr: c
-                .when
-                .as_ref()
-                .and_then(|w| crate::expr::lower_expr(&w.raw)),
+            when: c.when.as_ref().map(CelPair::from_slot),
             target: l.sym(),
             placeholders: lute_syntax::scan_label_interps(&c.label, c.span)
                 .iter()
@@ -609,8 +601,7 @@ fn walk_match(
                 let is_raw = is.as_ref().map(|p| p.raw.as_str());
                 // An `is` literal compares against the subject; with none there
                 // is nothing to compare, and an engine would read the arm as
-                // unknown. The checker refuses this first; lowering never
-                // emits it.
+                // unknown. The checker refuses this first.
                 if let (Some(p), true) = (is, m.subject.raw.trim().is_empty()) {
                     diags.push(arm_diag(
                         "E-MATCH-NO-SUBJECT",
@@ -621,20 +612,45 @@ fn walk_match(
                         ),
                         p.span,
                     ));
-                    arms.push(MatchArm {
-                        test: test.raw.clone(),
-                        target: l.sym(),
-                        expr: None,
-                    });
                     continue;
                 }
-                let expr = match crate::expr::synth_arm_expr(is_raw, &test.raw, &m.subject.raw) {
-                    crate::expr::ArmExpr::Lowered(expr) => expr,
+
+                let subject_is_double = cx
+                    .env
+                    .state
+                    .decls
+                    .get(m.subject.raw.trim())
+                    .is_some_and(|decl| matches!(decl.ty, lute_manifest::types::Type::Double));
+                let pair = match crate::expr::synth_arm_expr_typed(
+                    is_raw,
+                    &test.raw,
+                    &m.subject.raw,
+                    subject_is_double,
+                ) {
+                    crate::expr::ArmExpr::Lowered(Some(expr)) if is_raw.is_some() => {
+                        let authored = is_raw.map(|raw| {
+                            if test.raw.trim().is_empty() {
+                                format!("is={raw}")
+                            } else {
+                                format!("is={raw} test={}", test.raw.trim())
+                            }
+                        });
+                        CelPair::from_expr(expr, authored)
+                    }
+                    crate::expr::ArmExpr::Lowered(Some(_)) => CelPair::from_slot(test),
+                    crate::expr::ArmExpr::Lowered(None) => {
+                        diags.push(arm_diag(
+                            "E-COMPILE-INTERNAL",
+                            format!(
+                                "checked <match on=\"{}\"> arm condition did not lower to \
+                                 portable CEL",
+                                m.subject.raw.trim()
+                            ),
+                            *span,
+                        ));
+                        continue;
+                    }
                     crate::expr::ArmExpr::UnsetOnCompoundSubject => {
-                        // A13 rule 5: `<when is="unset">` lowers to `!isSet(path)`,
-                        // which needs a bare-path subject. A compound subject cannot
-                        // be lowered — surface a compile error rather than silently
-                        // dropping the arm.
                         diags.push(arm_diag(
                             "E-WHEN-UNSET-SUBJECT",
                             "`<when is=\"unset\">` on a non-path <match> subject \
@@ -643,40 +659,13 @@ fn walk_match(
                                 .to_string(),
                             *span,
                         ));
-                        arms.push(MatchArm {
-                            test: test.raw.clone(),
-                            target: l.sym(),
-                            expr: None,
-                        });
                         continue;
                     }
                 };
-                // dsl 0.27.0 T1-5(b): an arm always carries an executable guard.
-                // With no `expr`, an `is` arm's `test` is its whole raw CEL
-                // condition (the subject compared, the `test` guard conjoined) —
-                // never an empty `test` an engine reads as unknown.
-                let test = match (&expr, is_raw) {
-                    (None, Some(is_raw)) => {
-                        crate::expr::raw_arm_test(is_raw, &test.raw, &m.subject.raw)
-                            .unwrap_or_default()
-                    }
-                    _ => test.raw.clone(),
-                };
-                if expr.is_none() && test.trim().is_empty() {
-                    diags.push(arm_diag(
-                        "E-COMPILE-INTERNAL",
-                        format!(
-                            "internal compiler error: a <match on=\"{}\"> arm lowers to \
-                             neither an `expr` nor a `test`, so no engine could take it",
-                            m.subject.raw.trim()
-                        ),
-                        *span,
-                    ));
-                }
                 arms.push(MatchArm {
-                    test,
+                    is: is_raw.map(|raw| raw.trim().to_string()),
+                    test: pair,
                     target: l.sym(),
-                    expr,
                 });
             }
             Arm::Otherwise { .. } => otherwise = Some(l.sym()),
@@ -695,7 +684,7 @@ fn walk_match(
         .any(|a| a.key == crate::normalize::TARGET_USE_ATTR);
     let mut cmd = Command::Match(MatchCmd {
         addr: String::new(),
-        subject: m.subject.raw.clone(),
+        subject: (!m.subject.raw.trim().is_empty()).then(|| CelPair::from_slot(&m.subject)),
         arms,
         otherwise,
         converge: conv.sym(),
@@ -870,8 +859,8 @@ pub fn walk_quest(
                 id: o.id.clone(),
                 title: o.title.clone(),
                 title_line_id: o.title.as_ref().map(|_| format!("{}.{}", quest.id, o.id)),
-                done: CelPair::from_raw(&o.done.raw),
-                visible_when: o.visible_when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+                done: CelPair::from_slot(&o.done),
+                visible_when: o.visible_when.as_ref().map(CelPair::from_slot),
                 optional: o.optional,
                 body: label.map(Label::sym),
                 // Subquest reference (2026-08-31 subquest design §3): the
@@ -900,10 +889,10 @@ pub fn walk_quest(
                 on: o.on.as_ref().map(|(on, _)| on.clone()),
                 // dsl 0.23.0 §2: the deadline condition (expanded like
                 // `done`) and the occasion target; both omitted when absent.
-                by: o.by.as_ref().map(|b| CelPair::from_raw(&b.raw)),
+                by: o.by.as_ref().map(CelPair::from_slot),
                 target: o.target.as_ref().map(|(t, _)| t.clone()),
                 // dsl 0.24.0 §2.1: the place-bound deadline, omitted when absent.
-                until: o.until.as_ref().map(|u| CelPair::from_raw(&u.raw)),
+                until: o.until.as_ref().map(CelPair::from_slot),
             });
             obj_labels.push(label);
         }
@@ -913,8 +902,8 @@ pub fn walk_quest(
         id: quest.id.clone(),
         title: quest.title.clone(),
         title_line_id: quest.title.as_ref().map(|_| format!("{}.title", quest.id)),
-        start: quest.start.as_ref().map(|s| CelPair::from_raw(&s.raw)),
-        fail: quest.fail.as_ref().map(|s| CelPair::from_raw(&s.raw)),
+        start: quest.start.as_ref().map(CelPair::from_slot),
+        fail: quest.fail.as_ref().map(CelPair::from_slot),
         objectives,
         // dsl 0.16.0 §2/§3: quest-level `<reward/>` entries in declaration
         // order. `outcome="failed"` is preserved here (only ever legal on a
@@ -949,7 +938,7 @@ pub fn walk_quest(
             .accepted_externally()
             .then_some(crate::ir::QuestAccept::External),
         // dsl 0.27.0 §5: back to `unset` when the condition goes false→true.
-        rearm: quest.rearm.as_ref().map(|s| CelPair::from_raw(&s.raw)),
+        rearm: quest.rearm.as_ref().map(CelPair::from_slot),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -989,7 +978,7 @@ pub fn walk_quest(
                 let mut on_cmd = Command::On(OnCmd {
                     addr: String::new(),
                     event: on.event.clone(),
-                    when: on.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+                    when: on.when.as_ref().map(CelPair::from_slot),
                     body: label.sym(),
                     target: on.target.as_ref().map(|(t, _)| t.clone()),
                     stamp: Stamp::default(),
@@ -1084,7 +1073,7 @@ pub fn walk_entry(
         title_line_id: entry.title.as_ref().map(|_| format!("{}.title", entry.id)),
         series: series.series.map(str::to_string),
         order: series.order,
-        when: entry.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+        when: entry.when.as_ref().map(CelPair::from_slot),
         body: label.sym(),
         // dsl 0.21.0 §3.2: an entry beat's occasion + priority, verbatim /
         // parsed (`E-BEAT-ATTR` already gated a non-integer priority).
@@ -1123,7 +1112,7 @@ pub fn walk_entry(
             )
         }),
         // dsl 0.27.0 §5: already `@def`-expanded, like `when`.
-        spent_by: entry.spent_by.as_ref().map(|s| CelPair::from_raw(&s.raw)),
+        spent_by: entry.spent_by.as_ref().map(CelPair::from_slot),
         advances,
         stamp: Stamp::default(),
     });
@@ -1163,7 +1152,7 @@ pub fn walk_bundle_beat(
         target: beat.target.as_ref().map(|(t, _)| t.clone()),
         title_line_id: title.as_ref().map(|_| format!("{key}.title")),
         title,
-        when: beat.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+        when: beat.when.as_ref().map(CelPair::from_slot),
         priority: lute_check::bundle_beat_priority(beat),
         once: lute_check::bundle_beat_once(beat).into(),
         also: lute_check::bundle_beat_also(beat),
@@ -1186,7 +1175,7 @@ pub fn walk_bundle_beat(
                 &cx.env.rel_vocab.kinds,
             )
         }),
-        spent_by: beat.spent_by.as_ref().map(|s| CelPair::from_raw(&s.raw)),
+        spent_by: beat.spent_by.as_ref().map(CelPair::from_slot),
         advances,
         body: label.sym(),
         stamp: Stamp::default(),

@@ -11,7 +11,7 @@ series: codex
 
 <entry id="codexCompany" target="codex.company" category="codex" title="The Ashen Company">
   @narrator: Mercenaries turned merchants turned landlords. The Company escorts its own cargo, collects its own tolls, and writes its own histories.
-  @narrator{when="holds(knows(ledger))"}: One of those histories is in your pack now, and it lists farms by name.
+  @narrator{when="holds('knows', ['ledger'])"}: One of those histories is in your pack now, and it lists farms by name.
 </entry>
 
 <entry id="codexDusk" target="codex.dusk" category="codex" title="The Duskbound" when="visited('road.ford')">
@@ -36,5 +36,5 @@ series: codex
 
 <entry id="codexColdwater" target="codex.coldwater" category="codex" title="Coldwater" when="visited('coldwater.ruins')">
   @narrator: A village of the hill country, burned by the Ashen Company twelve years ago to clear the line of the Ember Road. The Company map shows empty hill.
-  @narrator{when="holds(knows(roll))"}: Its parish roll is in your pack: two hundred and six names, and one of them is Maelis's mother.
+  @narrator{when="holds('knows', ['roll'])"}: Its parish roll is in your pack: two hundred and six names, and one of them is Maelis's mother.
 </entry>

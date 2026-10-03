@@ -19,4 +19,4 @@ priority: 20
 @bloomfieldGymGuide: Yo, challenger! Fern's gym is the greenhouse on the hill. Fire burns grass, birds peck it, bugs chew it. Choose accordingly!
 @bloomfieldGymGuide: A kid with spiky hair came through this morning and beat her. Then he fell asleep on the bench outside. He's gone now. He snores, if you were wondering.
 ::auto{character="bloomfieldGymGuide" action="exit"}
-@narrator{when="holds(defeated(volta))"}: Your Spark Badge catches the sun. Somebody's grandmother waves at it.
+@narrator{when="holds('defeated', ['volta'])"}: Your Spark Badge catches the sun. Somebody's grandmother waves at it.

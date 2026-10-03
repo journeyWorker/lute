@@ -3,11 +3,11 @@ kind: lore
 id: summon
 ---
 
-<beat id="anyNew" on="summon" target="kind:hero" once="false" when="!holds(owned(occasion.target))">
+<beat id="anyNew" on="summon" target="kind:hero" once="false" when="!holds('owned', [occasion.target])">
   @narrator: {{occasion.target}} steps out of the light.
 </beat>
 
-<beat id="anyDupe" on="summon" target="kind:hero" once="false" when="holds(owned(occasion.target))">
+<beat id="anyDupe" on="summon" target="kind:hero" once="false" when="holds('owned', [occasion.target])">
   @narrator: {{occasion.target}} again. The star shard hums.
 </beat>
 
@@ -15,7 +15,7 @@ id: summon
   @narrator: Gold light! {{occasion.target}}!
 </beat>
 
-<beat id="bondAny" on="bondUp" target="kind:hero" once="false" when="holds(bond2(occasion.target))">
+<beat id="bondAny" on="bondUp" target="kind:hero" once="false" when="holds('bond2', [occasion.target])">
   @narrator: {{occasion.target}} trusts you now.
 </beat>
 

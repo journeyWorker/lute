@@ -896,7 +896,7 @@ mod tests {
             },
             crate::schema::OptionDecl {
                 name: "rounds".into(),
-                ty: Type::Number,
+                ty: Type::Int,
                 default: None,
             },
         ];
@@ -936,7 +936,7 @@ mod tests {
 
     #[test]
     fn wrong_typed_option_value_is_rejected() {
-        // `resultScope` is enum(scene|run); `rounds` is number.
+        // `resultScope` is enum(scene|run); `rounds` is int.
         let errs = resolve_and_validate(opts(&[
             ("resultScope", Literal::Str("galaxy".into())),
             ("rounds", Literal::Str("three".into())),
@@ -953,7 +953,7 @@ mod tests {
                 ),
                 (
                     "E-PLUGIN-OPTION-TYPE",
-                    "option `arcia.minigame.rounds` expects number, got \"three\"".to_string()
+                    "option `arcia.minigame.rounds` expects int, got \"three\"".to_string()
                 ),
             ]
         );
@@ -963,7 +963,7 @@ mod tests {
     fn valid_options_still_resolve_clean() {
         let errs = resolve_and_validate(opts(&[
             ("resultScope", Literal::Str("run".into())),
-            ("rounds", Literal::Num(3.0)),
+            ("rounds", Literal::Int(3)),
         ]));
         assert!(errs.is_empty(), "{errs:?}");
     }

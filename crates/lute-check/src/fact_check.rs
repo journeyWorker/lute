@@ -89,21 +89,17 @@ pub fn check_fact_guards(
     // raised, before the scene runs; the must set there is the scene's entry
     // set (`crate::fact_must`).
     if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
-        let members = members_at(when.span);
+        let members = members_at(when.span).or_else(|| {
+            folded
+                .typed
+                .beat
+                .as_ref()
+                .and_then(|b| b.for_kind.as_ref())
+                .and_then(|(_, span)| members_at(*span))
+        });
         if let Some(v) = g.eval(when, None) {
             let per_member = g.members_never(when, members);
-            if v.newly_false() {
-                out.push(v.grade(diag(
-                    crate::beats::E_BEAT_UNREACHABLE,
-                    Severity::Error,
-                    crate::beats::beat_unreachable_message(
-                        &crate::beats::scene_beat_name(folded),
-                        when.raw.trim(),
-                        Some(&v.dead_reasons()),
-                    ),
-                    when.span,
-                )));
-            } else if let Some((why, graded)) = per_member.unreachable() {
+            if let Some((why, graded)) = per_member.unreachable() {
                 out.push(graded.grade(diag(
                     crate::beats::E_BEAT_UNREACHABLE,
                     Severity::Error,
@@ -114,8 +110,21 @@ pub fn check_fact_guards(
                     ),
                     when.span,
                 )));
+            } else if v.newly_false() {
+                out.push(v.grade(diag(
+                    crate::beats::E_BEAT_UNREACHABLE,
+                    Severity::Error,
+                    crate::beats::beat_unreachable_message(
+                        &crate::beats::scene_beat_name(folded),
+                        when.raw.trim(),
+                        Some(&v.dead_reasons()),
+                    ),
+                    when.span,
+                )));
             } else {
-                g.push_guaranteed(&v, "`when` guard", when, &mut out);
+                if members.is_none() {
+                    g.push_guaranteed(&v, "`when` guard", when, &mut out);
+                }
                 for shot in &doc.shots {
                     member_arms.extend(g.member_arms(doc, &shot.body, when, &per_member));
                 }
@@ -166,13 +175,8 @@ pub fn check_fact_guards(
         let g = g.over(&folded.env_at(beat.span).state);
         if let Some(when) = &beat.when {
             if let Some(v) = g.eval(when, None) {
-                let per_member = g.members_never(when, members_at(beat.span));
-                let dead = if v.newly_false() {
-                    Some((v.dead_reasons(), &v))
-                } else {
-                    per_member.unreachable()
-                };
-                if let Some((why, graded)) = dead {
+            let per_member = g.members_never(when, members_at(beat.span));
+                if let Some((why, graded)) = per_member.unreachable() {
                     out.push(graded.grade(diag(
                         crate::beats::E_BEAT_UNREACHABLE,
                         Severity::Error,
@@ -183,8 +187,21 @@ pub fn check_fact_guards(
                         ),
                         when.span,
                     )));
+                } else if v.newly_false() {
+                    out.push(v.grade(diag(
+                        crate::beats::E_BEAT_UNREACHABLE,
+                        Severity::Error,
+                        crate::beats::beat_unreachable_message(
+                            &crate::bundles::bundle_beat_key(doc_id, &beat.id),
+                            when.raw.trim(),
+                            Some(&v.dead_reasons()),
+                        ),
+                        when.span,
+                    )));
                 } else {
-                    g.push_guaranteed(&v, "`when` guard", when, &mut out);
+                    if members_at(beat.span).is_none() {
+                        g.push_guaranteed(&v, "`when` guard", when, &mut out);
+                    }
                     member_arms.extend(g.member_arms(doc, &beat.body, when, &per_member));
                 }
             }
@@ -675,11 +692,11 @@ impl SlotVerdict {
                     value: true,
                 } if interval.lo > 0 => Some(match column {
                     None => format!(
-                        "at least {} fact(s) matching `{pattern}` hold on every route to here",
-                        interval.lo
+                        "at least {} fact(s) matching `holds{pattern}` hold on every route to here",
+                        interval.lo,
                     ),
                     Some(i) => format!(
-                        "at least {} distinct value(s) at argument {} of `{pattern}` hold on \
+                        "at least {} distinct value(s) at argument {} of `holds{pattern}` hold on \
                          every route to here",
                         interval.lo,
                         i + 1
@@ -710,7 +727,7 @@ pub fn wip_warning(mut d: Diagnostic, why: &str) -> Diagnostic {
 
 fn impossible_reason(pattern: &QueryPattern) -> String {
     format!(
-        "no seed, assert, rule, or engine relation produces `{pattern}` under your declared routes"
+        "no seed, assert, rule, or engine relation produces `holds{pattern}` under your declared routes"
     )
 }
 
@@ -728,7 +745,7 @@ fn starved_reason(pattern: &QueryPattern, starved: &[(&str, String)]) -> Option<
         .collect();
     let premises: Vec<String> = starved.iter().map(|(_, p)| format!("`{p}`")).collect();
     Some(format!(
-        "`{pattern}` can only come from {}, and no seed, assert, rule, or engine relation \
+        "`holds{pattern}` can only come from {}, and no seed, assert, rule, or engine relation \
          produces {} under your declared routes",
         rules.join(" or "),
         premises.join(" or ")
@@ -738,20 +755,22 @@ fn starved_reason(pattern: &QueryPattern, starved: &[(&str, String)]) -> Option<
 /// Why a guaranteed fact holds at the slot, naming where it is established.
 fn guaranteed_reason(m: &MustFact) -> String {
     let fact = &m.fact;
+    let query = QueryPattern {
+        relation: fact.relation.clone(),
+        args: fact.args.iter().cloned().map(Some).collect(),
+    };
+    let shown = format!("holds{query}");
     match &m.provenance {
         Provenance::Assert { .. } => {
-            format!(
-                "`{fact}` is asserted on every route to here ({})",
-                m.provenance
-            )
+            format!("`{shown}` is asserted on every route to here ({})", m.provenance)
         }
         Provenance::Guard { .. } => format!(
-            "`{fact}` already holds here: the enclosing guard at {} requires it",
+            "`{shown}` already holds here: the enclosing guard at {} requires it",
             m.provenance
         ),
-        Provenance::Seed => format!("`{fact}` is a `facts:` seed that nothing retracts"),
+        Provenance::Seed => format!("`{shown}` is a `facts:` seed that nothing retracts"),
         Provenance::Derived(inner) => format!(
-            "`{fact}` follows by rule from facts that hold on every route to here ({inner})"
+            "`{shown}` follows by rule from facts that hold on every route to here ({inner})"
         ),
     }
 }
@@ -759,7 +778,8 @@ fn guaranteed_reason(m: &MustFact) -> String {
 /// dsl 0.25.0 §1: why `pattern` cannot hold where the must fact `m` does.
 fn excluded_reason(pattern: &QueryPattern, m: &MustFact) -> String {
     format!(
-        "`{pattern}` cannot hold here: {}, and `{}` excludes `{}` (dsl 0.25.0 §1)",
+        "`holds{pattern}` cannot hold here: {}, and relation `{}` excludes relation `{}` \
+         (dsl 0.25.0 §1)",
         guaranteed_reason(m),
         m.fact.relation,
         pattern.relation
@@ -774,7 +794,7 @@ fn count_reason(pattern: &QueryPattern, column: Option<usize>, iv: &CountInterva
         None => format!("at least {}", iv.lo),
     };
     match column {
-        None => format!("`count({pattern})` is {range} under your declared routes"),
+        None => format!("`count{pattern}` is {range} under your declared routes"),
         Some(i) => format!(
             "the number of distinct values at argument {} of `{pattern}` is {range} under your \
              declared routes",
@@ -928,7 +948,7 @@ impl<'a> Guards<'a> {
                     !exclusive_pairs(&[(*p).clone(), n.clone()], self.vocab).is_empty()
                 })?;
                 Some(format!(
-                    "`!holds({n})` follows from this guard's `holds({p})`: `{}` excludes `{}` \
+                    "`!holds{n}` follows from this guard's `holds{p}`: `{}` excludes `{}` \
                      (dsl 0.25.0 §1)",
                     p.relation, n.relation
                 ))
@@ -1336,9 +1356,9 @@ fn dead_arm(span: Span, kind: &str, slot: &CelSlot, v: &SlotVerdict) -> Diagnost
     )
 }
 
-/// Collect every relational query of a guard, in source order: each
-/// well-shaped `holds(P)` with its verdict, and each `count(P) ⋈ n`
-/// comparison the interval decides. Recurses like
+/// Collect every relational query of a guard, in source order: each well-shaped
+/// list-form `holds('rel', [args])` with its verdict, and each
+/// `count('rel', [args]) ⋈ n` comparison the interval decides. Recurses like
 /// `cel_resolve::check_fact_queries` (operator args, list elements, select
 /// operands, `validAt`'s time argument).
 fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, negated: bool, out: &mut Vec<Atom>) {
@@ -1346,8 +1366,8 @@ fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, negated: bool, out: &mut Vec<
         Expr::Call(c) => {
             if crate::cel_resolve::is_profile_fact_query(c) {
                 if c.func_name == "holds" {
-                    if let (Some(scope), Expr::Call(p)) = (&ctx.facts, &c.args[0].expr) {
-                        if let Some(pattern) = QueryPattern::from_call(p) {
+                    if let Some(scope) = &ctx.facts {
+                        if let Some(pattern) = QueryPattern::from_call(c) {
                             let verdict = match scope.holds(&pattern) {
                                 HoldsVerdict::Impossible => HoldsOutcome::Impossible(
                                     scope
@@ -1380,7 +1400,7 @@ fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, negated: bool, out: &mut Vec<
                         }
                     }
                 } else if c.func_name == "validAt" {
-                    if let Some(t) = c.args.get(1) {
+                    if let Some(t) = c.args.get(2) {
                         collect_atoms(&t.expr, ctx, negated, out);
                     }
                 }

@@ -14,10 +14,10 @@ after: 'visited("rock.arrival")'
 @inspector{mono}: Three questions. Answer them from what I can prove, not what the island wants.
 
 <branch id="fate" prompt="What became of Elias Voss?">
-  <choice id="fell" label="He fell from the gallery while clearing the glass" into="run.verdictFate" value="fell" when="holds(fell(elias))">
+  <choice id="fell" label="He fell from the gallery while clearing the glass" into="run.verdictFate" value="fell" when="holds('fell', ['elias'])">
     @inspector{mono}: His own log puts him on the gallery. The rail is gone. And nobody honest saw him after.
   </choice>
-  <choice id="murdered" label="He was killed" into="run.verdictFate" value="murdered" when="count(suspect(_)) >= 1">
+  <choice id="murdered" label="He was killed" into="run.verdictFate" value="murdered" when="count('suspect', ['_']) >= 1">
     @inspector{mono}: Someone was out here who should not have been. That is enough for the Board to hang a name on.
   </choice>
   <choice id="drowned" label="He was washed off the landing" into="run.verdictFate" value="drowned">
@@ -26,10 +26,10 @@ after: 'visited("rock.arrival")'
 </branch>
 
 <branch id="onRock" prompt="Who else was on the rock that night?">
-  <choice id="ada" label="Ada Pell" into="run.verdictOnRock" value="ada" when="holds(onRock(ada, midnight))">
+  <choice id="ada" label="Ada Pell" into="run.verdictOnRock" value="ada" when="holds('onRock', ['ada', 'midnight'])">
     @inspector{mono}: Her hand in the log at two in the morning. Her coat on the landing at dawn.
   </choice>
-  <choice id="tobias" label="Tobias Crane" into="run.verdictOnRock" value="tobias" when="holds(suspect(tobias))">
+  <choice id="tobias" label="Tobias Crane" into="run.verdictOnRock" value="tobias" when="holds('suspect', ['tobias'])">
     @inspector{mono}: His boat is on the rocks. Where else would he have been?
   </choice>
   <choice id="nobody" label="Nobody" into="run.verdictOnRock" value="nobody">
@@ -38,10 +38,10 @@ after: 'visited("rock.arrival")'
 </branch>
 
 <branch id="liar" prompt="Whose statement will not stand?">
-  <choice id="maren" label="Maren Hale's" into="run.verdictLiar" value="maren" when="holds(liar(maren))">
+  <choice id="maren" label="Maren Hale's" into="run.verdictLiar" value="maren" when="holds('liar', ['maren'])">
     @inspector{mono}: She swore Ada was in her house at midnight. The log says otherwise.
   </choice>
-  <choice id="tobias" label="Tobias Crane's" into="run.verdictLiar" value="tobias" when="holds(sawAt(tobias, elias, landing, dawn))">
+  <choice id="tobias" label="Tobias Crane's" into="run.verdictLiar" value="tobias" when="holds('sawAt', ['tobias', 'elias', 'landing', 'dawn'])">
     @inspector{mono}: A dead man waving from the landing at dawn. Either he is lying or he saw a ghost.
   </choice>
   <choice id="nobody" label="Nobody lied" into="run.verdictLiar" value="nobody">
@@ -50,7 +50,7 @@ after: 'visited("rock.arrival")'
 </branch>
 
 <branch id="cause" prompt="Could it have been prevented?">
-  <choice id="neglect" label="The rail was reported rotten and never mended" into="run.verdictCause" value="neglect" when="holds(preventable(gallery_rail))">
+  <choice id="neglect" label="The rail was reported rotten and never mended" into="run.verdictCause" value="neglect" when="holds('preventable', ['gallery_rail'])">
     @inspector{mono}: His own hand in August, and the Board's refusal in September. The rail did what he said it would.
   </choice>
   <choice id="misadventure" label="Nobody could have prevented it" into="run.verdictCause" value="misadventure">

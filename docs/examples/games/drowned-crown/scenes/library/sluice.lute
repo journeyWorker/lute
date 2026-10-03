@@ -7,7 +7,7 @@ pov: ilo
 # order. Once it is solved it stays solved (solved is user-tier).
 on: sluice
 priority: 20
-spentBy: "holds(solved(sluice))"
+spentBy: "holds('solved', ['sluice'])"
 ---
 
 ## Sluice

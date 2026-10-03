@@ -762,10 +762,9 @@ pub fn persistent_reads(
                 let kept = match c.func_name.as_str() {
                     "visited" => lit().is_some(),
                     "completed" | "active" => lit().is_some_and(|q| quest_kept(&q) == Some(true)),
-                    "holds" | "count" | "countDistinct" => match c.args.first().map(|a| &a.expr) {
-                        Some(Expr::Call(atom)) => relation_kept(&atom.func_name) == Some(true),
-                        _ => false,
-                    },
+                    "holds" | "count" | "countDistinct" => crate::fact_env::QueryPattern::from_call(c)
+                        .and_then(|q| (relation_kept(&q.relation) == Some(true)).then_some(true))
+                        .unwrap_or(false),
                     _ => {
                         for a in &c.args {
                             walk(&a.expr, quest_kept, relation_kept, out);

@@ -302,11 +302,12 @@ pub(crate) fn check_match_with_domain(
             (missing.is_empty(), not_covered(&shown))
         }
         Domain::Number => (covered_num.covers_all(), covered_num.first_gap()),
+        Domain::IntNumber => (covered_num.covers_all(), covered_num.first_gap()),
         Domain::Infinite => (false, None),
     };
     if !fully_covered {
         let message = match (gap, &info.domain) {
-            (Some(gap), Domain::Number | Domain::IntRange { .. }) => format!(
+            (Some(gap), Domain::Number | Domain::IntNumber | Domain::IntRange { .. }) => format!(
                 "non-exhaustive `<match>`: {gap} and there is no `<otherwise>` (dsl 0.18.0 §4)"
             ),
             (Some(gap), _) => {
@@ -411,6 +412,7 @@ pub(crate) fn is_exhaustive_resolved(
     let domain_covered = match &info.domain {
         Domain::Finite(vals) => vals.iter().all(|v| covered.contains(v)),
         Domain::Number => covered_num.covers_all(),
+        Domain::IntNumber => covered_num.covers_all(),
         Domain::IntRange { lo, hi } => covered_num.uncovered_ints(*lo, *hi).is_empty(),
         Domain::Infinite => false,
     };

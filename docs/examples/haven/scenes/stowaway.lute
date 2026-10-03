@@ -26,7 +26,7 @@ after: 'visited("haven.s01ep04") || visited("haven.s01ep05")'
 @ottavio{code="0070" emotion="stricken" when="run.shedPressure >= 2"}: Only the schedule's running at twice the rate I planned for, and I've been doing arithmetic I don't enjoy.
 @ottavio{code="0080" emotion="hollowed"}: When it takes this module it won't subtract me from the total. It'll just take me.
 
-@ilsabet{code="0090" emotion="clipped" os when="holds(awake(ilsabet))"}: He's lying about one thing. Ask him who altered the heading.
-@ottavio{code="0100" emotion="frayed" when="holds(awake(ilsabet))"}: One thing. She says that as though it were a small number.
+@ilsabet{code="0090" emotion="clipped" os when="holds('awake', ['ilsabet'])"}: He's lying about one thing. Ask him who altered the heading.
+@ottavio{code="0100" emotion="frayed" when="holds('awake', ['ilsabet'])"}: One thing. She says that as though it were a small number.
 
 @ottavio{code="0110" emotion="level"}: So. You're the first person aboard who knows I'm here. Do something useful with that.

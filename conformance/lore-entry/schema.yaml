@@ -10,4 +10,4 @@ relations:
 
 state:
   run.labBurned: { type: bool, default: false }
-  run.logsRead:  { type: number, default: 0 }
+  run.logsRead:  { type: int, default: 0 }

@@ -8,7 +8,7 @@ title: Notes under the door
 // float a lantern with leaves a note. `for="kind:suitor"` presents the beat
 // once for each suitor whose `when` holds, in member order, with that suitor
 // as occasion.target (slotStart is an untargeted select: sequence occasion).
-<beat id="note" on="slotStart" for="kind:suitor" title="A note under the door" when="run.day == 8 && run.slot == 'evening' && run.route != occasion.target && run.aff[occasion.target] >= 3 && !holds(locked(occasion.target))">
+<beat id="note" on="slotStart" for="kind:suitor" title="A note under the door" when="run.day == 8 && run.slot == 'evening' && run.route != occasion.target && run.aff[occasion.target] >= 3 && !holds('locked', [occasion.target])">
   @narrator: A folded note under the door, in {{occasion.target}}'s handwriting.
   <match on="occasion.target">
     <when is="ren">

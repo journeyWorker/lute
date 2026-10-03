@@ -76,8 +76,8 @@ fn lines(artifact: &serde_json::Value) -> Vec<&serde_json::Value> {
 /// position), `converge`/`target`/`otherwise` (symbolic jump targets
 /// resolved to positions) — the ONLY fields two structurally-isomorphic
 /// documents may legitimately differ on. Everything else — including
-/// `MatchCmd.subject`, `arms[].test`, `arms[].expr`, and the nested
-/// `LineCmd` (identity fields included) — stays, and must compare equal.
+/// `MatchCmd.subject`, `arms[].test`, and the nested `LineCmd` (identity
+/// fields included) stay equal.
 fn strip_addressing(v: &mut serde_json::Value) {
     if let serde_json::Value::Object(map) = v {
         for key in ["addr", "converge", "target", "otherwise"] {
@@ -318,7 +318,7 @@ fn component_gated_line_when_binds_param_before_fold() {
 fn set_scene(body: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: elena\nseason: 1\nepisode: 1\nstate:\n  \
-         run.n: {{ type: number, default: 0 }}\n  run.k: {{ type: number, default: 0 }}\n  \
+         run.n: {{ type: int, default: 0 }}\n  run.k: {{ type: int, default: 0 }}\n  \
          run.b: {{ type: bool, default: false }}\n---\n## Shot 1.\n{body}\n@elena: after.\n"
     )
 }
@@ -365,7 +365,7 @@ fn guarded_set_rhs_dollar_is_the_enclosing_subject() {
     ));
     let s = sets(&a);
     assert_eq!(s.len(), 1);
-    let value = s[0]["value"].as_str().expect("set value");
+    let value = s[0]["value"]["cel"].as_str().expect("set value");
     assert!(
         value.contains("run.k") && !value.contains("run.b"),
         "{value}"
@@ -373,7 +373,7 @@ fn guarded_set_rhs_dollar_is_the_enclosing_subject() {
     let subjects: Vec<&str> = commands(&a)
         .iter()
         .filter(|c| c["kind"] == "match")
-        .filter_map(|c| c["subject"].as_str())
+        .filter_map(|c| c["subject"]["cel"].as_str())
         .collect();
     assert!(subjects.iter().any(|s| s.contains("run.b")), "{subjects:?}");
 }

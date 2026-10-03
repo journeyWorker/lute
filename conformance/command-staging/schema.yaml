@@ -1,0 +1,11 @@
+enums:
+  mood: [calm]
+  volume: [normal]
+  musicAction: [start, stop]
+  vfxType: [whiteOut]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fadeInUp, fadeOut]
+    exits: [fadeOut]

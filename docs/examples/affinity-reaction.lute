@@ -14,7 +14,7 @@ episode: 1
 uses: base.schema.yaml
 components: [components/reaction.component.lute]
 state:
-  scene.affect.marina: { type: number, default: 0 }
+  scene.affect.marina: { type: int, default: 0 }
   scene.tier:           { type: { enum: [cold, warm, fond] }, default: cold }
 defs:
   # A caller-side def whose CEL reads the caller's OWN declared state (dsl

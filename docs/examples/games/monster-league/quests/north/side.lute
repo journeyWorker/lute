@@ -10,7 +10,7 @@ title: Highlands & Isles side quests
 // Accepted from Old Maud (lore/north/frostharbor.lute maudAsk). Done when a
 // fire monster has lit the lamp (maudRelight, which needs caughtType(fire)).
 <quest id="northLighthouse" title="The dark lighthouse">
-  <objective id="fire" title="Catch a fire monster" done="holds(caughtType(fire))"/>
+  <objective id="fire" title="Catch a fire monster" done="holds('caughtType', ['fire'])"/>
   <objective id="light" title="Light the Frostharbor lamp with Old Maud" done="visited('north.frostharbor.maudRelight')"/>
   <reward kind="MONEY" amount="3000"/>
   <on event="questComplete">
@@ -22,8 +22,8 @@ title: Highlands & Isles side quests
 // Accepted from the Monster Center board by the engine. Shellnessie surfaces
 // in the Frostharbor caverns on Fridays only (lore/north/frost-caverns.lute).
 <quest id="northFridaySwimmer" title="Board: the Friday swimmer" accept="external">
-  <objective id="see" title="See the swimmer in the Frostharbor caverns" done="holds(seen(shellnessie))"/>
-  <objective id="catch" title="Catch it" done="holds(caught(shellnessie))"/>
+  <objective id="see" title="See the swimmer in the Frostharbor caverns" done="holds('seen', ['shellnessie'])"/>
+  <objective id="catch" title="Catch it" done="holds('caught', ['shellnessie'])"/>
   <reward kind="MONEY" amount="6000"/>
   <on event="questComplete">
     @frostharborCaveGuide{vo}: The board says you caught the Friday swimmer. The tour script's ruined. Come by, I'll buy you a chowder.
@@ -44,18 +44,18 @@ title: Highlands & Isles side quests
 </quest>
 
 <quest id="northFrostwing" title="The ice bird" activate="accept">
-  <objective id="catch" title="Catch the bird in the ice below the Frostharbor caverns" done="holds(caught(frostwing))"/>
+  <objective id="catch" title="Catch the bird in the ice below the Frostharbor caverns" done="holds('caught', ['frostwing'])"/>
 </quest>
 
 <quest id="northBlazewing" title="The fire bird" activate="accept">
-  <objective id="catch" title="Catch the bird in the Victory Road crater" done="holds(caught(blazewing))"/>
+  <objective id="catch" title="Catch the bird in the Victory Road crater" done="holds('caught', ['blazewing'])"/>
 </quest>
 
 // ── Verdant Dojo ────────────────────────────────────────────────────────────
 // Accepted from Master Hollis. Beat his top student, then report back.
 <quest id="northDojo" title="The Verdant Dojo">
-  <objective id="koji" title="Defeat Koji, the dojo's top student" done="holds(defeated(verdantDojoKarateKoji))"/>
-  <objective id="report" title="Report to Master Hollis" on="talk" target="npc.verdantDojoMaster" done="holds(defeated(verdantDojoKarateKoji))"/>
+  <objective id="koji" title="Defeat Koji, the dojo's top student" done="holds('defeated', ['verdantDojoKarateKoji'])"/>
+  <objective id="report" title="Report to Master Hollis" on="talk" target="npc.verdantDojoMaster" done="holds('defeated', ['verdantDojoKarateKoji'])"/>
   <reward kind="TM" amount="1" target="brickBreak"/>
   <on event="questComplete">
     @verdantDojoMaster{emotion="laughing"}: Hah! Koji will be sulking for a week. Take this. A dojo pays its debts.

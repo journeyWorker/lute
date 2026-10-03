@@ -48,7 +48,7 @@ without loading every artifact.
 ## Eligibility
 
 An entry is **eligible** while its `when` is absent or evaluates true against
-live state and facts (`evalSlot(when.raw, when.expr, …)`, `execution-model.md`).
+live state and facts (`evalSlot(when.cel, when.expr, …)`, `execution-model.md`).
 The engine decides when to present an eligible entry — on inspect, on pickup,
 when the player enters a place, when a codex page opens, on a bark trigger —
 keyed by `target` and `category`.

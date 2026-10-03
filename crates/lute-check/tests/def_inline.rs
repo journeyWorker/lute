@@ -36,10 +36,10 @@ fn codes_in(dir: Option<&Path>, scene: &str) -> Vec<String> {
 fn scene(extra_meta: &str, body: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\n\
-         state:\n  run.n: {{ type: number, default: 3 }}\n\
+         state:\n  run.n: {{ type: int, default: 3 }}\n\
          defs:\n  closeUp: \"1.3\"\n  zoomDyn: \"run.n > 2 ? 1.3 : 1.1\"\n  \
-         twice: \"run.n * 2\"\n  blink: \"'blink'\"\n  loopA: {{ type: number, cel: \"@loopB + 1\" }}\n  \
-         loopB: {{ type: number, cel: \"@loopA + 1\" }}\n{extra_meta}---\n\n## One\n\n{body}"
+         twice: \"run.n * 2\"\n  blink: \"'blink'\"\n  loopA: {{ type: int, cel: \"@loopB + 1\" }}\n  \
+         loopB: {{ type: int, cel: \"@loopA + 1\" }}\n{extra_meta}---\n\n## One\n\n{body}"
     )
 }
 
@@ -93,7 +93,7 @@ fn component_dir(body: &str) -> PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("shot.component.lute"),
-        format!("---\ncomponent: shot\nparams:\n  z: number\n---\n\n## Shot\n\n{body}"),
+        format!("---\ncomponent: shot\nparams:\n  z: int\n---\n\n## Shot\n\n{body}"),
     )
     .unwrap();
     dir

@@ -199,7 +199,7 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
         // for, read where the body reads the param.
         AttrValue::Str(s) if s == crate::beats::OCCASION_TARGET => s.clone(),
         AttrValue::Str(s) => match ty {
-            Some(Type::Number) | Some(Type::Bool) => s.clone(),
+            Some(Type::Int) | Some(Type::Double) | Some(Type::Bool) => s.clone(),
             _ => cel_string_literal(s),
         },
     }

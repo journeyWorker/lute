@@ -41,7 +41,7 @@ title: Route 2 — the Hushwood and the gatehouse
   @aide: {{@dexCaught}} kinds so far. Ten is the magic number. Well, it's the professor's number. He's not magic. Mostly.
 </entry>
 
-<entry id="southAideAfter" on="talk" target="npc.aide" category="bark" priority="5" when="holds(hasItem(hmFlash))">
+<entry id="southAideAfter" on="talk" target="npc.aide" category="bark" priority="5" when="holds('hasItem', ['hmFlash'])">
   <match>
     <when test="@badgeCount >= 1">
       @aide: Flash will work outside battle now that you've got a badge. The tunnel east of Portvolt is darker than the inside of a Duskbat.
@@ -56,30 +56,30 @@ title: Route 2 — the Hushwood and the gatehouse
 
 <beat use="trainerBattle" id="r2BugCatcherSid" when="!@isNight" who="r2BugCatcherSid" intro="Hey! You have monsters! Bugs are the best monsters. That's not an opinion, that's a fact." win="That was a fact until just now." lose="Facts are facts!" prize="60"/>
 
-<entry id="southR2BugCatcherSidAfter" on="talk" target="npc.r2BugCatcherSid" category="bark" when="holds(defeated(r2BugCatcherSid))">
+<entry id="southR2BugCatcherSidAfter" on="talk" target="npc.r2BugCatcherSid" category="bark" when="holds('defeated', ['r2BugCatcherSid'])">
   @r2BugCatcherSid: Stingles only sting when they're scared. They're scared of everything. So.
 </entry>
 
 <beat use="trainerBattle" id="r2BugCatcherAnnie" when="!@isNight" who="r2BugCatcherAnnie" intro="I've been in the Hushwood since breakfast! My net is ready. My monsters are ready. Are you?" win="My net was ready. I wasn't." lose="Swish! Caught you!" prize="72"/>
 
-<entry id="southR2BugCatcherAnnieAfter" on="talk" target="npc.r2BugCatcherAnnie" category="bark" when="holds(defeated(r2BugCatcherAnnie))">
+<entry id="southR2BugCatcherAnnieAfter" on="talk" target="npc.r2BugCatcherAnnie" category="bark" when="holds('defeated', ['r2BugCatcherAnnie'])">
   @r2BugCatcherAnnie: If a Cocoonix looks at you, it's about to hatch. If it doesn't look at you, it's also about to hatch. Everything's about to hatch.
 </entry>
 
 <beat use="trainerBattle" id="r2LassFaye" who="r2LassFaye" intro="I'm lost. I'm not lost. I'm exploring. Battle me while I explore." win="Could you point me at Pebbleton? Casually?" lose="Winners don't get lost. Probably." prize="112"/>
 
-<entry id="southR2LassFayeAfter" on="talk" target="npc.r2LassFaye" category="bark" when="holds(defeated(r2LassFaye))">
+<entry id="southR2LassFayeAfter" on="talk" target="npc.r2LassFaye" category="bark" when="holds('defeated', ['r2LassFaye'])">
   @r2LassFaye: The moss grows on the north side of the trees. Or the sea side. I forget which, and they're the same side here.
 </entry>
 
 <beat use="trainerBattle" id="r2PicnickerHana" when="!@isNight" who="r2PicnickerHana" intro="You're walking right through my picnic! Now you have to battle for a sandwich." win="Fine, have the sandwich. It's cucumber." lose="The sandwich stays with me." prize="112"/>
 
-<entry id="southR2PicnickerHanaAfter" on="talk" target="npc.r2PicnickerHana" category="bark" when="holds(defeated(r2PicnickerHana))">
+<entry id="southR2PicnickerHanaAfter" on="talk" target="npc.r2PicnickerHana" category="bark" when="holds('defeated', ['r2PicnickerHana'])">
   @r2PicnickerHana: My Puffsong sings when it's full. It's been singing all afternoon. It ate my cake.
 </entry>
 
 <beat use="trainerBattle" id="r2HexManiacOona" when="@isNight" who="r2HexManiacOona" intro="The lantern in the trees? That's mine. You followed it. They always follow it." win="Hm. You follow things and win. That's rare." lose="Follow the lantern home, little one." prize="240"/>
 
-<entry id="southR2HexManiacOonaAfter" on="talk" target="npc.r2HexManiacOona" category="bark" when="holds(defeated(r2HexManiacOona)) && @isNight">
+<entry id="southR2HexManiacOonaAfter" on="talk" target="npc.r2HexManiacOona" category="bark" when="holds('defeated', ['r2HexManiacOona']) && @isNight">
   @r2HexManiacOona: There's a tower in Ashgrove where the ghosts don't like being looked at. You'll go there. I can tell. Take a lens.
 </entry>

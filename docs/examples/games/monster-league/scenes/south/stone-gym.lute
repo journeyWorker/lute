@@ -5,7 +5,7 @@ title: Stone Gym
 on: challenge
 target: arena.stoneGym
 once: false
-when: "!holds(defeated(petra))"
+when: "!holds('defeated', ['petra'])"
 ---
 
 // CONTRACT BEAT (seeded by the lead; owned by south). Must keep: id, occasion

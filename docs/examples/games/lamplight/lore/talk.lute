@@ -48,7 +48,7 @@ title: Interviews
   ::assert{seen(solt, corridor, tunnel)}
 </entry>
 
-<entry id="mirelaCufflink" on="talk" target="npc.mirela" category="testimony" once="run" title="The cufflink" when="holds(found(cufflink))">
+<entry id="mirelaCufflink" on="talk" target="npc.mirela" category="testimony" once="run" title="The cufflink" when="holds('found', ['cufflink'])">
   @mirela{code="0010"}: Those were my father's. Martin Dace. My uncle took the pair as interest the winter Father died owing him.
   @mirela{code="0020"}: He wore them to make a point, Inspector. At the funeral he wore them. I have not touched them in three years, and I would not dirty my hands on them now.
 </entry>
@@ -66,7 +66,7 @@ title: Interviews
   ::assert{claims(solt, cab5, tunnel)}
 </entry>
 
-<beat id="liseDoor" on="talk" target="npc.lise" title="A quarter past one" when="holds(placed(lise))">
+<beat id="liseDoor" on="talk" target="npc.lise" title="A quarter past one" when="holds('placed', ['lise'])">
   ::bg{location="dining_car" time="night"}
   ::auto{character="lise" anchor="center" action="fadeInUp"}
   @inspector{code="0010"}: The porter saw you at compartment 7 at a quarter past one. The watch on the dead man's wrist stopped at a quarter past one.
@@ -89,7 +89,7 @@ title: Interviews
   ::auto{character="lise" action="fadeOut"}
 </beat>
 
-<beat id="soltConfront" on="talk" target="npc.solt" title="The empty berth" when="holds(lied(solt))" priority="10">
+<beat id="soltConfront" on="talk" target="npc.solt" title="The empty berth" when="holds('lied', ['solt'])" priority="10">
   ::bg{location="compartment_5" time="night"}
   ::auto{character="solt" anchor="center" action="fadeInUp"}
   @inspector{code="0010"}: You told me you slept in this berth from midnight until the conductor fetched you.

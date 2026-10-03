@@ -127,7 +127,7 @@ fn match_flattens_with_otherwise_and_omits_it_when_absent() {
     let Command::Match(mc) = &recs[0].cmd else {
         panic!()
     };
-    assert_eq!(mc.subject, "scene.flags.saw_beam");
+    assert_eq!(mc.subject.as_ref().unwrap().raw, "scene.flags.saw_beam");
     assert_eq!(mc.arms.len(), 1);
     assert_eq!(mc.arms[0].target, recs[1].labels[0].sym());
     assert_eq!(

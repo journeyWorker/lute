@@ -6,7 +6,7 @@ directives:
     layer: bridge
     attrs:
       - { name: skill,     required: true, type: { enum: [persuasion, intimidation, stealth, insight] } }
-      - { name: dc,        required: true, type: number }
+      - { name: dc,        required: true, type: int }
       - { name: resultKey, required: true, type: { slotId: { namespace: scene.check } } }
       - { name: sync,      type: bool, default: true }
     semantics: [ "writes.sceneState", "bridgeCall" ]

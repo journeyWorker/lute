@@ -34,8 +34,8 @@ fn check_project(tag: &str, docs: &[(&str, &str)]) -> (Output, String) {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
-         run.floors: { type: number, default: 0, owner: engine }\n\
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
+         run.floors: { type: int, default: 0, owner: engine }\n\
          clock:\n  day: run.day\n  week: { length: 7, first: 0 }\n\
          defs:\n  always: \"1 == 1\"\n",
     );

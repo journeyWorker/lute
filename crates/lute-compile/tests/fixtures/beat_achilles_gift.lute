@@ -8,7 +8,7 @@ when: 'user.runs >= 10 && @knowsName'
 priority: 50
 once: user
 state:
-  user.runs: { type: number, default: 0 }
+  user.runs: { type: int, default: 0 }
   user.patroclusNamed: { type: bool, default: false }
   run.giftTaken: { type: bool, default: false }
 defs:

@@ -1,0 +1,24 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "external": true,
+      "kind": "plugin",
+      "note": "external bridge call — not invoked; bridgeResult effects unresolved",
+      "tag": "demo",
+      "unresolvedEffects": []
+    },
+    {
+      "addr": "001-0200",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "The bridge is recorded."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.32",
+  "kind": "scene",
+  "quests": {},
+  "state": {}
+}

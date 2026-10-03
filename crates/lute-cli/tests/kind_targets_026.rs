@@ -65,7 +65,7 @@ fn project(tag: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.score: { type: number, default: 0 }\nentities:\n  species: { members: [ant, bee, cat] }\n  \
+        "state:\n  run.score: { type: int, default: 0 }\nentities:\n  species: { members: [ant, bee, cat] }\n  \
          bug: { subsetOf: species, members: [ant, bee] }\n",
     );
     write(
@@ -403,7 +403,7 @@ fn lute_beats_marks_the_members_a_kind_beat_never_plays_for() {
         "<beat id=\"notBram\" on=\"summon\" target=\"kind:hero\" once=\"false\" \
          when=\"occasion.target != 'bram'\">\n  @narrator: Not Bram.\n</beat>\n\n\
          <beat id=\"fan\" on=\"summon\" target=\"kind:hero\" once=\"false\" priority=\"-1\" \
-         when=\"holds(fan(occasion.target))\">\n  @narrator: A fan.\n</beat>\n\n\
+         when=\"holds('fan', [occasion.target])\">\n  @narrator: A fan.\n</beat>\n\n\
          <beat id=\"bramA\" on=\"summon\" target=\"hero.bram\" once=\"false\" priority=\"-2\">\n  \
          @narrator: Bram.\n</beat>\n",
     );

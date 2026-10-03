@@ -1,0 +1,2 @@
+state:
+  run.day: { type: int, default: 1, owner: engine }

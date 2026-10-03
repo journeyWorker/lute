@@ -63,7 +63,7 @@ fn non_ascii_in_a_condition_is_a_diagnostic_not_a_crash() {
         &serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
     );
     let text = "---\nkind: scene\nid: ge\nstate:\n  \
-                run.clues: { type: number, default: 0 }\n  \
+                run.clues: { type: int, default: 0 }\n  \
                 run.who: { type: string, default: \"\" }\n---\n## A\n\
                 @narrator{when=\"run.clues ≥ 2\"}: A line.\n\
                 ::set{ run.who = “ruben” }\n";

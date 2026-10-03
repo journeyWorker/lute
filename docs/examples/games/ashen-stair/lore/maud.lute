@@ -51,11 +51,11 @@ title: Maud, at the kettle
   @maud{code="0010" emotion="fond"}: Tell me about the sky again. Slowly. I want to hear the colours.
 </entry>
 
-<entry id="maudBarkHounds" on="talk" target="npc.maud" category="bark" priority="20" when="isSet(prev.run.fellTo) && prev.run.fellTo == 'cinderhound'">
+<entry id="maudBarkHounds" on="talk" target="npc.maud" category="bark" priority="20" when="has(prev.run.fellTo) && prev.run.fellTo == 'cinderhound'">
   @maud{code="0010"}: Ankles, love. I keep telling you. Hounds go for the ankles.
 </entry>
 
-<entry id="maudBarkWraith" on="talk" target="npc.maud" category="bark" priority="20" when="isSet(prev.run.fellTo) && prev.run.fellTo == 'ashwraith'">
+<entry id="maudBarkWraith" on="talk" target="npc.maud" category="bark" priority="20" when="has(prev.run.fellTo) && prev.run.fellTo == 'ashwraith'">
   @maud{code="0010" emotion="guarded"}: Wraith again? Don't look at them. Look at where they're going to be.
 </entry>
 

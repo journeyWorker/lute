@@ -29,4 +29,4 @@ after: 'visited("east.ferryRival")'
 @rival{emotion="angry"}: This tree is in my way. Trees shouldn't be allowed to be in people's way.
 @rival{emotion="smug"}: Doesn't matter. I heard the Bloom Gym leader is a pushover. I'll take the tunnel north and come back for the Lieutenant with two badges. You'll still be staring at this tree.
 ::auto{character="rival" action="exit"}
-@narrator{when="holds(canPass(portvoltTree))"}: You could cut it right now. Kai didn't wait to find that out.
+@narrator{when="holds('canPass', ['portvoltTree'])"}: You could cut it right now. Kai didn't wait to find that out.

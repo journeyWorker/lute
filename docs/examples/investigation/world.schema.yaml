@@ -4,12 +4,12 @@
 # --- Scalar state -----------------------------------------------------------
 # Every path has a `default:`, so every read has a value from the start.
 state:
-  run.cluesLogged:  { type: number, default: 0 }
-  run.leadStrength: { type: number, default: 0 }
+  run.cluesLogged:  { type: int, default: 0 }
+  run.leadStrength: { type: int, default: 0 }
   run.suspectFocus: { type: { enum: [blake, cass, dana] }, default: blake }
   run.accused:      { type: { enum: [none, blake, cass, dana] }, default: none }
   run.trueKiller:   { type: { enum: [blake, cass, dana] }, default: blake }
-  user.solved:      { type: number, default: 0 }
+  user.solved:      { type: int, default: 0 }
 
 # --- Relational facts -------------------------------------------------------
 entities:

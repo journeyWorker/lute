@@ -27,38 +27,38 @@ title: Route 13 — the Strait
 
 <beat use="trainerBattle" id="r13SwimmerLena" who="r13SwimmerLena" intro="You're riding your monster? That's cheating! Real swimmers use their arms!" win="Fine, fine. Your arms are rested and mine aren't." lose="Stroke, stroke, breathe! That's how it's done!" prize="1400"/>
 
-<entry id="northR13SwimmerLenaAfter" on="talk" target="npc.r13SwimmerLena" category="bark" when="holds(defeated(r13SwimmerLena))">
+<entry id="northR13SwimmerLenaAfter" on="talk" target="npc.r13SwimmerLena" category="bark" when="holds('defeated', ['r13SwimmerLena'])">
   @r13SwimmerLena: I swim to Frostharbor and back every day. The cold keeps you honest.
 </entry>
 
 <beat use="trainerBattle" id="r13SwimmerTod" who="r13SwimmerTod" intro="Hey! I've been treading water for an hour waiting for someone to battle!" win="Worth the wait, honestly." lose="An hour well spent!" prize="1400"/>
 
-<entry id="northR13SwimmerTodAfter" on="talk" target="npc.r13SwimmerTod" category="bark" when="holds(defeated(r13SwimmerTod))">
+<entry id="northR13SwimmerTodAfter" on="talk" target="npc.r13SwimmerTod" category="bark" when="holds('defeated', ['r13SwimmerTod'])">
   @r13SwimmerTod: My toes went numb at minute forty. Don't tell anyone.
 </entry>
 
 <beat use="trainerBattle" id="r13FishermanWade" who="r13FishermanWade" intro="You scared off my bite! You owe me a battle, at least." win="Nothing's biting today. Not even my monsters." lose="Reeled you in!" prize="1600"/>
 
-<entry id="northR13FishermanWadeAfter" on="talk" target="npc.r13FishermanWade" category="bark" when="holds(defeated(r13FishermanWade))">
+<entry id="northR13FishermanWadeAfter" on="talk" target="npc.r13FishermanWade" category="bark" when="holds('defeated', ['r13FishermanWade'])">
   @r13FishermanWade: The big ones come up the Strait on Fridays. Everyone in Frostharbor knows it, nobody knows why.
 </entry>
 
 <beat use="trainerBattle" id="r13SailorBrig" who="r13SailorBrig" intro="Ahoy! Stand to and fight, landlubber!" win="Blow me down. Properly down." lose="Ha! Back to port with you!" prize="1800"/>
 
-<entry id="northR13SailorBrigAfter" on="talk" target="npc.r13SailorBrig" category="bark" when="holds(defeated(r13SailorBrig))">
+<entry id="northR13SailorBrigAfter" on="talk" target="npc.r13SailorBrig" category="bark" when="holds('defeated', ['r13SailorBrig'])">
   @r13SailorBrig: The Meridian won't sail this far north. Too much ice in winter. We work the fishing boats instead.
 </entry>
 
 <beat use="trainerBattle" id="r13BirdKeeperIsla" who="r13BirdKeeperIsla" intro="My birds fly the Strait faster than you can swim it. Let me show you!" win="Grounded. Ugh." lose="Nothing beats a tailwind!" prize="1500"/>
 
-<entry id="northR13BirdKeeperIslaAfter" on="talk" target="npc.r13BirdKeeperIsla" category="bark" when="holds(defeated(r13BirdKeeperIsla))">
+<entry id="northR13BirdKeeperIslaAfter" on="talk" target="npc.r13BirdKeeperIsla" category="bark" when="holds('defeated', ['r13BirdKeeperIsla'])">
   @r13BirdKeeperIsla: Seabirds won't fly near the caverns east of Frostharbor. They say something cold nests in there.
 </entry>
 
 // The night swimmer: out only after dark.
 <beat use="trainerBattle" id="r13SwimmerNoor" when="@isNight" who="r13SwimmerNoor" intro="You found me by my lamp. Most people just see a light and paddle the other way." win="You're good in the dark. Better than me." lose="Night water is my water." prize="2000"/>
 
-<entry id="northR13SwimmerNoorAfter" on="talk" target="npc.r13SwimmerNoor" category="bark" when="holds(defeated(r13SwimmerNoor))">
+<entry id="northR13SwimmerNoorAfter" on="talk" target="npc.r13SwimmerNoor" category="bark" when="holds('defeated', ['r13SwimmerNoor'])">
   @r13SwimmerNoor: The jellyfish glow at night. If you follow them you never lose the shore.
 </entry>
 

@@ -5,7 +5,7 @@ params:
   isle: { domain: island }  # the island whose beacon this keeper tends
   keeper: speaker           # the keeper (a cast member)
   thanks: string            # the keeper's line when the lens comes home
-  lit: { type: number, default: "@islesLit" }  # beacons burning (the host's def)
+  lit: { type: int, default: "@islesLit" }  # beacons burning (the host's def)
 # A beat template (0.27): `<beat use="beaconKeeper" id="<keeper>Relight"
 # isle="<island>" keeper="<keeper>" thanks="…"/>` is the whole relighting.
 # It answers talk@npc.<keeper> once the lens is back and the beacon is dark.
@@ -14,7 +14,7 @@ beat:
   target: npc.@keeper
   title: "The beacon"
   priority: 20
-  when: "holds(islesLensBack(@isle)) && !holds(islesRelit(@isle))"
+  when: "holds('islesLensBack', [@isle]) && !holds('islesRelit', [@isle])"
 ---
 
 ## Beacon keeper

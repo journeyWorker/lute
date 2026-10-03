@@ -44,7 +44,7 @@ fn run(args: &[&str]) -> std::process::Output {
 fn scene_reading_run_z(character: &str, after_expr: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n{after_expr}\
-         state:\n  run.z: {{ type: number }}\n  run.out: {{ type: number }}\n---\n\
+         state:\n  run.z: {{ type: int }}\n  run.out: {{ type: int }}\n---\n\
          ## Shot 1.\n::set{{run.out = run.z}}\n"
     )
 }
@@ -53,7 +53,7 @@ fn scene_reading_run_z(character: &str, after_expr: &str) -> String {
 fn scene_setting_run_z(character: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n\
-         state:\n  run.z: {{ type: number }}\n---\n## Shot 1.\n::set{{run.z = 1}}\n"
+         state:\n  run.z: {{ type: int }}\n---\n## Shot 1.\n::set{{run.z = 1}}\n"
     )
 }
 
@@ -81,7 +81,7 @@ fn scene_after_only(character: &str, after_key: &str) -> String {
 fn scene_passthrough_after(character: &str, after_key: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n\
-         after: 'visited(\"{after_key}\")'\nstate:\n  run.z: {{ type: number }}\n---\n\
+         after: 'visited(\"{after_key}\")'\nstate:\n  run.z: {{ type: int }}\n---\n\
          ## Shot 1.\n@narrator: hi\n"
     )
 }

@@ -1,6 +1,6 @@
 state:
-  run.vesnaTrust:    { type: number, default: 0 }
-  run.shedPressure:  { type: number, default: 0 }
+  run.vesnaTrust:    { type: int, default: 0 }
+  run.shedPressure:  { type: int, default: 0 }
 entities:
   crew:  { members: [vesna, toma, ilsabet, ottavio] }
   topic: { members: [shed_sequence, true_heading, manifest] }
@@ -21,4 +21,4 @@ rules:
 # so the condition is named once here and read as `@vesnaHasPaper`. The shorthand
 # is the body alone; its type (bool) is inferred from `holds(...)` (dsl 0.21.0 §7b).
 defs:
-  vesnaHasPaper: "holds(knows(vesna, manifest))"
+  vesnaHasPaper: "holds('knows', ['vesna', 'manifest'])"

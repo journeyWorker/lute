@@ -30,7 +30,7 @@ title: The station and the village, when nobody is there
   </match>
 </entry>
 
-<entry id="villageShut" on="visit" target="place.village" category="bark" priority="100" when="holds(pathShut(village))">
+<entry id="villageShut" on="visit" target="place.village" category="bark" priority="100" when="holds('pathShut', ['village'])">
   @narrator: The first switchback is a brown river carrying half the mountain down to the valley. You go back inside.
 </entry>
 

@@ -236,7 +236,7 @@ fn corpus_no_false_positive_episode_dup_across_or_within_project_roots() {
 #[test]
 fn corpus_halsin_relational_objective_not_dead() {
     // `E-OBJECTIVE-UNSATISFIABLE` (§4.2/T7): quest-rescue-halsin's
-    // `<objective done="holds(canReach(player, grove))">` must stay live --
+    // `<objective done="holds('canReach', [player, grove])">` must stay live --
     // `canReach` is `derive: true` (act1.schema.yaml), recursively derived
     // from `atLocation`/`connected`, BOTH unconditionally `facts:`-seeded,
     // so it is producible from load regardless of any episode's own

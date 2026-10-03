@@ -43,7 +43,7 @@ fn errors(text: &str) -> Vec<(String, String)> {
 const VOCAB: &str = "entities:\n  species: { members: [hornbeetle, bladebug, slumbear] }\n  \
                      bugMon: { subsetOf: species, members: [hornbeetle, bladebug] }\n  \
                      item: { members: [ball] }\n\
-                     state:\n  run.best: { type: number, default: 0 }\n";
+                     state:\n  run.best: { type: int, default: 0 }\n";
 
 fn lore(body: &str) -> String {
     format!("---\nkind: lore\nid: lore.contest\ntitle: Contest\n{VOCAB}---\n{body}")

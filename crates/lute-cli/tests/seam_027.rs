@@ -54,7 +54,7 @@ fn ward(tag: &str, relation: &str) -> PathBuf {
         &dir,
         "plugins/ward/occasions/o.yaml",
         "occasions:\n  \
-         enter: { select: first, target: { prefix: room, entity: room }, raisedWhen: \"holds(canEnter(occasion.target))\" }\n  \
+         enter: { select: first, target: { prefix: room, entity: room }, raisedWhen: \"holds('canEnter', [occasion.target])\" }\n  \
          hourStrikes: { select: first, raisedWhen: \"run.hp > 1\" }\n  \
          knock: { select: first }\n",
     );
@@ -62,9 +62,9 @@ fn ward(tag: &str, relation: &str) -> PathBuf {
         &dir,
         "world.schema.yaml",
         &format!(
-            "state:\n  run.night: {{ type: number, default: 1, owner: engine }}\n  \
+            "state:\n  run.night: {{ type: int, default: 1, owner: engine }}\n  \
              run.hour: {{ type: {{ enum: [h23, h00, h01] }}, default: h23, owner: engine }}\n  \
-             run.hp: {{ type: number, default: 3, owner: engine }}\n  \
+             run.hp: {{ type: int, default: 3, owner: engine }}\n  \
              run.fate: {{ type: {{ enum: [alive, taken] }}, default: alive }}\n\
              clock:\n  day: run.night\n  slot: run.hour\n  slots: [h23, h00, h01]\n  raise: {{ slot: hourStrikes }}\n\
              entities:\n  room: {{ members: [lobby, office] }}\n\
@@ -137,7 +137,7 @@ fn an_occasion_step_while_its_gate_is_false_is_refused() {
     assert!(
         t.contains(
             "step 1: E-OCCASION-GATE: the engine raises `enter` for `room.office` only when \
-             `holds(canEnter(occasion.target))` (its `raisedWhen`), which is false here"
+             `holds('canEnter', [occasion.target])` (its `raisedWhen`), which is false here"
         ),
         "{t}"
     );
@@ -217,7 +217,7 @@ fn a_test_judges_the_gate_and_terminal_like_play() {
     assert!(
         t.contains(
             "eligible: expected true, got false — the engine does not raise `enter`: its \
-             `raisedWhen: holds(canEnter(occasion.target))` is false since `canEnter(office)` \
+             `raisedWhen: holds('canEnter', [occasion.target])` is false since `canEnter(office)` \
              does not hold"
         ),
         "{t}"
@@ -246,7 +246,7 @@ fn a_test_judges_the_gate_and_terminal_like_play() {
         serde_json::json!({
             "occasion": "enter",
             "reason": "gate",
-            "condition": "holds(canEnter(occasion.target))",
+            "condition": "holds('canEnter', [occasion.target])",
             "falseReads": ["`canEnter(office)` does not hold"],
         }),
         "{v}"
@@ -288,7 +288,7 @@ fn a_trace_names_the_gate_or_terminal_a_beat_is_not_raised_by() {
     assert!(
         t.contains(
             "<beat notes.door>   (not eligible: the engine does not raise `enter`: its \
-             `raisedWhen: holds(canEnter(occasion.target))` is false since `canEnter(office)` \
+             `raisedWhen: holds('canEnter', [occasion.target])` is false since `canEnter(office)` \
              does not hold)"
         ),
         "{t}"
@@ -644,7 +644,7 @@ fn lute_beats_marks_a_target_whose_gate_never_holds() {
     assert!(
         t.contains(
             "enter @ room.office — select: first · raisedWhen: \
-             holds(canEnter(occasion.target)) · gate never holds"
+             holds('canEnter', [occasion.target]) · gate never holds"
         ),
         "{t}"
     );
@@ -675,7 +675,7 @@ fn lute_beats_marks_a_target_whose_gate_never_holds() {
     assert_eq!(ladder("room.office")["gateNeverHolds"], true, "{ladders:?}");
     assert_eq!(
         ladder("room.lobby")["raisedWhen"],
-        "holds(canEnter(occasion.target))",
+        "holds('canEnter', [occasion.target])",
         "{ladders:?}"
     );
     assert!(
@@ -700,7 +700,7 @@ fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
         &dir,
         "plugins/ward/occasions/locked.yaml",
         "occasions:\n  lockedDoor: { select: first, target: { prefix: room, entity: room }, \
-         raisedWhen: \"!holds(canEnter(occasion.target))\" }\n",
+         raisedWhen: \"!holds('canEnter', [occasion.target])\" }\n",
     );
     for room in ["lobby", "office"] {
         write(
@@ -721,7 +721,7 @@ fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
     assert!(
         t.contains("door-lobby.lute:")
             && t.contains("[E-BEAT-UNREACHABLE] beat `door.lobby` is never eligible")
-            && t.contains("`canEnter(lobby)`"),
+            && t.contains("`holds('canEnter', ['lobby'])`"),
         "{t}"
     );
     assert!(!t.contains("door-office.lute:"), "{t}");
@@ -729,7 +729,7 @@ fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
     assert!(
         t.contains(
             "lockedDoor @ room.lobby — select: first · raisedWhen: \
-             !holds(canEnter(occasion.target)) · gate never holds"
+             !holds('canEnter', [occasion.target]) · gate never holds"
         ),
         "{t}"
     );
@@ -972,7 +972,7 @@ fn villagers(tag: &str, talk: &str, schema_extra: &str) -> PathBuf {
         &dir,
         "w.schema.yaml",
         &format!(
-            "state:\n  user.bond: {{ type: number, default: 0, per: villager }}\n\
+            "state:\n  user.bond: {{ type: int, default: 0, per: villager }}\n\
              entities:\n  villager: {{ members: [mara, ines] }}\n{schema_extra}"
         ),
     );
@@ -1014,7 +1014,7 @@ fn a_gate_over_a_member_family_names_the_member_path_and_is_not_raised() {
 fn a_payload_gate_refusal_points_at_the_steps_payload() {
     let dir = villagers(
         "gate-payload",
-        "payload: { weight: number }, raisedWhen: \"occasion.payload.weight > 0\"",
+        "payload: { weight: int }, raisedWhen: \"occasion.payload.weight > 0\"",
         "",
     );
     let t = text(&play(
@@ -1040,7 +1040,7 @@ fn a_def_gate_over_a_negated_fact_is_quoted_as_written_and_names_the_fact() {
     let dir = villagers(
         "gate-def",
         "raisedWhen: \"@standing\"",
-        "relations:\n  fell: { args: [villager], tier: run }\ndefs:\n  standing: \"!holds(fell(occasion.target))\"\n",
+        "relations:\n  fell: { args: [villager], tier: run }\ndefs:\n  standing: \"!holds('fell', [occasion.target])\"\n",
     );
     let t = text(&play(
         &dir,
@@ -1064,10 +1064,10 @@ fn a_def_gate_over_a_negated_fact_is_quoted_as_written_and_names_the_fact() {
     let gate = &v["gates"][0]["raisedWhen"];
     assert_eq!(gate["authored"], "@standing", "{v}");
     assert!(
-        gate["raw"]
+        gate["cel"]
             .as_str()
-            .unwrap()
-            .contains("holds(fell(occasion.target))"),
+            .is_some_and(|s| s.contains("holds('fell', [occasion.target])")),
         "{v}"
     );
+    assert!(gate["expr"].is_object(), "{v}");
 }

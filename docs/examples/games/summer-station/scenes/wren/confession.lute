@@ -5,7 +5,7 @@ title: A lantern on the deck
 on: visit
 target: place.deck
 priority: 50
-when: "run.day == 6 && run.slot == 'night' && holds(ready(wren))"
+when: "run.day == 6 && run.slot == 'night' && holds('ready', ['wren'])"
 ---
 
 ## Saturday night

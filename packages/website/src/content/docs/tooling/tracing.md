@@ -80,13 +80,13 @@ $ lute trace quests/hound.lute --project . --accept houndHunt --fact "slew(hound
 trace: quests/hound.lute  (seeds: 0 paths, 1 facts; 0 selections)
 note: objective `houndHunt.report` is judged at occasion `talk` for `npc.oskar`, which this walk never raised (supply `--occasion talk@npc.oskar` or `occasions: [talk@npc.oskar]`)
   <quest houndHunt>   -> active (forced)
-  <objective collar>   -> done (holds(slew(hound)))
+  <objective collar>   -> done (holds('slew', ['hound']))
 trace complete: 2 decisions
 $ lute trace quests/hound.lute --project . --accept houndHunt --fact "slew(hound)" --occasion talk@npc.oskar
 trace: quests/hound.lute  (seeds: 0 paths, 1 facts; 0 selections)
   <quest houndHunt>   -> active (forced)
-  <objective collar>   -> done (holds(slew(hound)))
-  <objective report>   -> done (holds(slew(hound)))
+  <objective collar>   -> done (holds('slew', ['hound']))
+  <objective report>   -> done (holds('slew', ['hound']))
   <quest houndHunt>   -> complete
     grant houndHunt  EMBERS 50 (credits user.embers = 50)
 trace complete: 4 decisions
@@ -98,7 +98,7 @@ trace complete: 4 decisions
 $ lute trace quests/hound.lute --project . --accept houndHunt --state run.floor=4
 trace: quests/hound.lute  (seeds: 1 paths, 0 facts; 0 selections)
   <quest houndHunt>   -> active (forced)
-  <objective collar>   -> pending (holds(slew(hound)))
+  <objective collar>   -> pending (holds('slew', ['hound']))
   <objective collar>   -> failed (run.floor >= 4)
   <quest houndHunt>   -> failed (run.floor >= 4)
   <on questFailed>   -> fires
@@ -112,9 +112,9 @@ trace complete: 5 decisions
 $ lute trace scenes/start-recap.lute --project . --state prev.run.floor=3
 trace: scenes/start-recap.lute  (seeds: 1 paths, 0 facts; 0 selections)
   ## The foot of the stair
-  <match isSet(prev.run.floor)>   -> arm 1 ((isSet(prev.run.floor)))
+  <match has(prev.run.floor)>   -> arm 1 ((has(prev.run.floor)))
     @maud  Floor 3 last time. Beat it.
-trace complete: 1 decision; arms 1/2 (isSet(prev.run.floor) @11:1)
+trace complete: 1 decision; arms 1/2 (has(prev.run.floor) @11:1)
 ```
 
 ## Rewards and objective bodies
@@ -269,10 +269,10 @@ trace: scenes/gate/guards.lute  (seeds: 0 paths, 0 facts; 0 selections)
     <check>
       (bridge unanswered: no `bridges.check` answer — its results read unknown)
 trace incomplete: 1 unresolved atom (exit 3)
-  unresolved: match `is="true"` (scene.check.guards.passed match) — supply bridges: { check: [ { passed: <bool>, margin: <number> } ] } (plugin `check` call unanswered; `scene.check.guards.passed` reads its `passed` result) as a mock; arms 0/2 (scene.check.guards.passed @12:1)
+  unresolved: match `is="true"` (scene.check.guards.passed match) — supply bridges: { check: [ { passed: <bool>, margin: <int> } ] } (plugin `check` call unanswered; `scene.check.guards.passed` reads its `passed` result) as a mock; arms 0/2 (scene.check.guards.passed @12:1)
 ```
 
-The hint is an answer the loader accepts once its placeholders are filled: it lists every field of the call's result that content reads, each with its type — `<bool>`, `<number>`, `<string>`, `<one of: a|b>` for an enum, `<value>` otherwise. A mock's (or a `*.test.yaml`'s) `bridges:` answers the calls in order, one answer per call of the tag, each giving the result fields content reads:
+The hint is an answer the loader accepts once its placeholders are filled: it lists every field of the call's result that content reads, each with its type — `<bool>`, `<int>`, `<double>`, `<string>`, `<one of: a|b>` for an enum, `<value>` otherwise. A mock's (or a `*.test.yaml`'s) `bridges:` answers the calls in order, one answer per call of the tag, each giving the result fields content reads:
 
 ```yaml
 # mocks/gate.yaml
@@ -306,7 +306,7 @@ A tag no plugin call of the document reads a bridge result through, or a field n
 <!-- lute-diagnostics -->
 ```console
 $ lute trace scenes/gate/guards.lute --project . --mock lack.yaml
-lack.yaml:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }`
+lack.yaml:4:7: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <int> }`
 trace refused: scenes/gate/guards.lute — invalid mock input
 ```
 
@@ -359,7 +359,7 @@ rules:
 </branch>
 
 <branch id="verdict">
-  <choice id="ann" label="Name Ann" when="holds(culprit(ann))">
+  <choice id="ann" label="Name Ann" when="holds('culprit', ['ann'])">
     @inspector: It was Ann. No one can place her anywhere else.
   </choice>
   <choice id="wait" label="Keep looking">
@@ -377,7 +377,7 @@ trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
     @inspector  Everyone stays in this room.
   <branch ask>   eligible: maid, skip   -> skip
     @inspector  No more questions.
-  <branch verdict>   eligible: ann, wait   -> ann (holds(culprit(ann)))
+  <branch verdict>   eligible: ann, wait   -> ann (holds('culprit', ['ann']))
     @inspector  It was Ann. No one can place her anywhere else.
 trace complete: 2 decisions; choices 1/2 (ask), choices 1/2 (verdict)
 ```
@@ -397,7 +397,7 @@ trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
 trace complete: 2 decisions; choices 1/2 (ask), choices 1/2 (verdict)
 ```
 
-The refusal names the premise that is false (round-5 T3-12): the guard as authored, every read it is false over, and the mock that would change it — ``its guard `holds(found(receipt))` decided false: `found(receipt)` does not hold (mock `--fact "found(receipt)"`)``, or ``… `run.x` is 2 (mock `--state run.x=<value>`)``. A `visited(…)` or quest-state read is named with its `--mock` file key (`visited: [a]`, `quests: { q: <state> }`) and the note that a single-file trace does not know what earlier scenes did. A spent hub option says ``it is `once` and already taken in this visit of hub `h` ``. In a `*.test.yaml` the hints are spelled as test keys (`facts: ["found(receipt)"]`, `state: { run.x: <value> }`), and `lute play` appends the same premise to its own `E-TRACE-CHOICE`.
+The refusal names the premise that is false (round-5 T3-12): the guard as authored, every read it is false over, and the mock that would change it — ``its guard `holds('found', ['receipt'])` decided false: `found(receipt)` does not hold (mock `--fact "found(receipt)"`)``, or ``… `run.x` is 2 (mock `--state run.x=<value>`)``. A `visited(…)` or quest-state read is named with its `--mock` file key (`visited: [a]`, `quests: { q: <state> }`) and the note that a single-file trace does not know what earlier scenes did. A spent hub option says ``it is `once` and already taken in this visit of hub `h` ``. In a `*.test.yaml` the hints are spelled as test keys (`facts: ["found(receipt)"]`, `state: { run.x: <value> }`), and `lute play` appends the same premise to its own `E-TRACE-CHOICE`.
 
 A mocked derived atom is still accepted: it is a seed like any other, so `--fact "culprit(ann)"` holds whatever the rules conclude. [`lute test`](/tooling/cli/#test) walks the same way, and a test whose walk halts fails unless it declares `expect: { end: incomplete }`. A test asserts what the rules conclude with `expect.facts` and `expect.notFacts` — atoms that must hold, or must not, after derivation when the walk ends:
 
@@ -418,7 +418,7 @@ A miss names both sides — `notFacts culprit(ann): expected does not hold, got 
 kind: scene
 id: case.arrest
 state:
-  run.day: { type: number }
+  run.day: { type: int }
 entities:
   person: { members: [ann] }
 relations:
@@ -433,7 +433,7 @@ rules:
 ## The station
 
 <branch id="arrest">
-  <choice id="now" label="Arrest Ann" when="holds(warrant(ann))">
+  <choice id="now" label="Arrest Ann" when="holds('warrant', ['ann'])">
     @inspector: The warrant came through. Bring her in.
   </choice>
   <choice id="later" label="Wait for the warrant">
@@ -446,10 +446,10 @@ rules:
 $ lute trace arrest.lute --choose arrest=now
 trace: arrest.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The station
-  <branch arrest>   eligible: later   -> now (holds(warrant(ann))) (forced)
+  <branch arrest>   eligible: later   -> now (holds('warrant', ['ann'])) (forced)
     @inspector  The warrant came through. Bring her in.
 trace complete: 1 decision; 1 unresolved (forced past an unknown guard — the walk continued, exit unchanged); choices 1/2 (arrest)
-  unresolved (forced): branch `arrest -> now` choice guard `holds(warrant(ann))` was unknown — supply --state run.day=<value> as a mock to decide it
+  unresolved (forced): branch `arrest -> now` choice guard `holds('warrant', ['ann'])` was unknown — supply --state run.day=<value> as a mock to decide it
 ```
 
 With `--state run.day=3` the rule concludes `warrant(ann)` and `now` is eligible outright.
@@ -465,10 +465,10 @@ note: derived relation `culprit` read under `derive: false`: its rules were not 
     @inspector  Everyone stays in this room.
   <branch ask>   eligible: maid, skip   -> skip
     @inspector  No more questions.
-  <branch verdict>   eligible: wait   -> ann (holds(culprit(ann))) (forced)
+  <branch verdict>   eligible: wait   -> ann (holds('culprit', ['ann'])) (forced)
     @inspector  It was Ann. No one can place her anywhere else.
 trace complete: 2 decisions; 1 unresolved (forced past an unknown guard — the walk continued, exit unchanged); choices 1/2 (ask), choices 1/2 (verdict)
-  unresolved (forced): branch `verdict -> ann` choice guard `holds(culprit(ann))` was unknown — supply --fact "culprit(ann)" as a mock to decide it
+  unresolved (forced): branch `verdict -> ann` choice guard `holds('culprit', ['ann'])` was unknown — supply --fact "culprit(ann)" as a mock to decide it
 ```
 
 **Migrating from 0.21.** A test that relied on an unmocked derived atom being unknown (exit 3), or on a seeded relation reading empty, now sees the derived or seeded answer and may change verdict. Pin `derive: false` in that test or mock to keep the old one — or, better, assert what the rules conclude with `expect.facts` / `expect.notFacts`. To walk everything the old way at once, run `lute test --no-derive`, which overrides every test's and play script's own `derive:`.
@@ -484,10 +484,10 @@ trace: scenes/dawn.lute  (seeds: 0 paths, 1 facts; 1 selection)
   ## Shot 1.
   <branch look>   eligible: saw, nothing   -> nothing
     @narrator  Nobody answers.
-  <match holds(seenAfter(elias)) && !holds(fell(elias))>   -> otherwise
+  <match holds('seenAfter', ['elias']) && !holds('fell', ['elias'])>   -> otherwise
     ::assert  calm(maren)
     ✗ exclusive: calm(maren) and panicked(maren) both hold
-trace stopped at the `✗ exclusive` line above (exit 1); choices 1/2 (look), arms 1/2 (holds(seenAfter(elias)) && !holds(fell(elias)) @21:1)
+trace stopped at the `✗ exclusive` line above (exit 1); choices 1/2 (look), arms 1/2 (holds('seenAfter', ['elias']) && !holds('fell', ['elias']) @21:1)
 scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] this write makes exclusive relations hold together: calm(maren) and panicked(maren) both hold
 trace refused: scenes/dawn.lute — exclusive relations hold together
 ```

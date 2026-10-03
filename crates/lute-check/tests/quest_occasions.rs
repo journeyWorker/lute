@@ -174,7 +174,7 @@ fn malformed_visited_is_out_of_profile_and_the_message_lists_it() {
     let ds = diags(&src);
     let d = only(&ds, "E-CEL-PROFILE");
     assert!(
-        d.message.contains("`visited('<scene id>')`"),
+        d.message.contains("`visited(string)`"),
         "{}",
         d.message
     );

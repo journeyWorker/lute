@@ -10,7 +10,7 @@ behavior lives on the far side of the artifact, in the **engine**. This page is
 the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)
 and the machine-checkable shape is
-[`schemas/lute-ir-0.31.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.31.schema.json)
+[`schemas/lute-ir-0.32.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.32.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -28,7 +28,7 @@ real effect. See the
 | ------------------- | ---------------- |
 | Statically check the document; refuse to emit on any error. | Trust the artifact — it compiled clean. |
 | Fold the state schema into an init/type table. | Initialize state from that table; own the tier lifetimes. |
-| Lower every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST; leave the rest as raw CEL. | **Evaluate** guards against live state. |
+| Lower every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST; leave the rest as CEL text in `cel`. | **Evaluate** guards against live state. |
 | Emit facts, `assert`/`retract` deltas, and Datalog rules as **data**; prove the rules are stratified and safe. | **Compute the minimal model** (least fixpoint) over the fact store. |
 | Emit quests, objectives, and `<on>` handlers as **declarations**. | **Derive** the quest lifecycle from `start`/`fail`/objective completion. |
 | Resolve plugin bridge calls and their state-write bindings. | **Make the call** and apply the effects. |
@@ -36,14 +36,14 @@ real effect. See the
 
 `holds()` and `count()` are inside the §8.4 CEL profile that authors may write
 and are deliberately **absent** from the `expr` AST, so a guard that queries
-facts reaches the engine as its raw CEL text alone (`option.when`, `arm.test`,
+facts reaches the engine as its `cel` text alone (`option.when`, `arm.test`,
 `set.value`) with no `expr` sibling — and an engine MUST therefore have a CEL
 evaluator, not merely an AST walker. `lute run`'s module doc says the same:
-it resolves every slot from the raw CEL "including the `holds`/`count`
+it resolves every slot from the `cel` text "including the `holds`/`count`
 fact-query functions the structured `expr` AST deliberately omits".
 The same holds for `visited('<scene id>')` (dsl 0.21.0): legal in every condition slot, true once
 that scene has been presented in this save — the visited set the engine already keeps for
-`after:` — and carried as raw CEL alone.
+`after:` — and carried as `cel` text alone.
 
 The through-line: Lute proves *shape and structure*; the engine supplies
 *evaluation and effect*. Lute's static analyses are also honest about their
@@ -54,7 +54,7 @@ proof of all paths.
 
 ## The envelope
 
-Every artifact opens with a fixed envelope (the `Artifact` struct in
+Every artifact opens with a fixed envelope (the `ExecutionIr` struct in
 `crates/lute-compile/src/ir.rs`):
 
 | field | meaning |
@@ -69,10 +69,29 @@ Every artifact opens with a fixed envelope (the `Artifact` struct in
 | `commands` | the flat, ordered, addressed command stream. |
 | `prereqEdges` | advisory raw graph edges, `{node, after}` (scene, bundle beat) or `{node, follows}` (quest; graph metadata only) (omitted when empty). |
 | `shots` | authored `## ` shot headings, `{shot, heading}` (omitted when empty). |
-| `seasons` | the project's declared seasons, `{name, live: {raw, expr}}`, name-sorted (omitted without seasons; dsl 0.27.0). |
-| `gates` | every occasion's `raisedWhen` gate, `{occasion, raisedWhen: {raw, expr}}`, occasion-sorted (omitted when none; dsl 0.27.0). |
-| `terminal` | the project's `terminal:` condition, `{raw, expr}` (omitted without one; dsl 0.27.0). |
+| `seasons` | the project's declared seasons, `{name, live: {cel, expr, authored?}}`, name-sorted (omitted without seasons; dsl 0.27.0). |
+| `gates` | every occasion's `raisedWhen` gate, `{occasion, raisedWhen: {cel, expr, authored?}}`, occasion-sorted (omitted when none; dsl 0.27.0). |
+| `terminal` | the project's `terminal:` condition, `{cel, expr, authored?}` (omitted without one; dsl 0.27.0). |
 | `terminalPersists` | `true` when every `terminal:` declaration says `persists: true`: the ending outlives runs (omitted when false; dsl 0.29.0). |
+
+## Activation and evaluation
+
+An engine evaluates each CEL slot against nested maps built from live state:
+
+- every declared root and intermediate map on the path to a declared slot is
+  present;
+- a non-reserved slot is present only with an effective value (write, seed, or
+  default), and values retain their declared CEL types;
+- reserved engine paths are always present with reserved defaults: for every
+  quest the IR declares, `quest.<id>.state` and
+  `quest.<id>.failedBy` are `"unset"`; each objective's
+  `quest.<id>.objectives.<oid>.done` and `.failed` are `false`; and every lore
+  entry's `entry.<id>.read` and `.everRead` are `false`.
+
+Use `has(path)` for presence. A `<match>` arm with `is` is satisfied for a
+bare path with no effective value only when its value is exactly `"unset"`;
+other `is` values are definitely false. Other arms evaluate normally, and an
+evaluation error means the arm is not satisfied.
 
 One artifact is produced per document. A project's engine **unions** the
 `relations` / `rules` / `seedFacts` / `entities` / `enums` / `prereqEdges`
@@ -108,6 +127,17 @@ Gate on `irVersion` by **MAJOR only** (since `0.13.0`):
   older engine.
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
+### Match-arm shorthand semantics (dsl 0.32.0 §7)
+
+Each match arm has `test` and `target`; an arm authored with `<when is="…">`
+also has semantic IR field `is` containing the shorthand text. A `test=` arm
+omits `is`. The slot's `authored` field is diagnostic-only and MUST NOT be used
+to infer whether an arm came from shorthand.
+
+When the match subject is a bare state path with no effective value, an arm
+with `is` other than `"unset"` is definitely not satisfied; `is: "unset"` is
+satisfied. Other arms are evaluated normally, and an evaluation error means
+not satisfied.
 
 ### What IR 0.30.0 changed
 
@@ -126,7 +156,7 @@ that loads 0.29 artifacts loads 0.30 ones, provided it reads paths and condition
   `run.visits['lab-b2'] >= 2`. That is ordinary CEL over nested maps — `m["k"]` and `m.k` read the
   same entry — so an engine evaluating `raw` over its state maps needs nothing new. The portable
   `expr` of such a condition carries the canonical path (`{"path": "run.visits.lab-b2"}`).
-- **Fact arguments are names.** `holds(at("lab-b2"))` in `raw` asks about the fact an
+- **Fact arguments are names.** `holds('at', ["lab-b2"])` in `raw` asks about the fact an
   `assert` command writes as `{"relation": "at", "args": ["lab-b2"]}`; the quotes are the
   condition's spelling, never part of the name. Seed facts and the structured terms of rule heads
   and bodies carry the bare name the same way.
@@ -187,8 +217,9 @@ New behaviour and optional fields, each omitted when unauthored:
   number as a (capitalized) cardinal word.
 - **Relation `tier: "season:<name>"`**: the relation's facts go back to the seed facts each time
   that season opens.
-- **`authored`** beside `raw` on a seam condition (`gates[].raisedWhen`, `terminal`,
-  `seasons[].live`) when `@def` expansion changed it: for messages only; evaluate `raw`.
+ - **`authored`** beside `cel` on a seam condition (`gates[].raisedWhen`, `terminal`,
+  `seasons[].live`) when `@def` expansion changed it: for messages only; evaluate
+  `cel`.
 - **`spentBy` latches**: the `once` of a `spentBy` beat is now its period (`run` unless written),
   not `"none"` — never spend such a beat on presentation (see `spentBy` below).
 - **A `forKind` beat spends `once` per member**: each member's presentation counts separately, and
@@ -211,7 +242,7 @@ artifacts loads 0.27 ones. Cadence (dsl 0.27.0 §5):
   `clock.weekday` returns to `week.first`. Only emitted when the clock declares a `week:`.
 - **`once: "season:<name>"`** on the same records: spent from its presentation until the season
   `<name>` opens again.
-- **`spentBy: {raw, expr}`** on `BeatIr`, `BeatCmd` and `EntryCmd` (its `raw` alone on the index
+- **`spentBy: {cel, expr, authored?}`** on `BeatIr`, `BeatCmd` and `EntryCmd` (its `raw` alone on the index
   beat row): the beat is spent by this condition instead of by being presented. Observe it at
   every quest settle (per member of a kind or `for` beat, `occasion.target` bound) and when the
   beat is judged: once it has held, the beat is spent for its `once` period — `run` when `once`
@@ -219,13 +250,13 @@ artifacts loads 0.27 ones. Cadence (dsl 0.27.0 §5):
   clock stays in the period it was first seen holding in, `season:<name>` until that season
   opens again — even if the condition turns false. A presentation of a `spentBy` beat spends
   nothing. Omitted when unauthored.
-- **`QuestCmd.rearm: {raw, expr}`**: observe it at every quest settle of a playthrough, the first
+- **`QuestCmd.rearm: {cel, expr, authored?}`**: observe it at every quest settle of a playthrough, the first
   observation being the baseline. Each time it goes false→true, return the quest to `unset`
   (objectives not done, `failedBy` cleared, deadlines forgotten); a `start` that holds activates it
   in the same settle. Omitted when unauthored.
 - **`QuestCmd.tier: "season:<name>"`**: return the quest to `unset` when the season opens again,
   as a `"run"` quest at a new run.
-- **`seasons: [{ name, live: {raw, expr} }]`** on the artifact (after `clock`, `gates`,
+- **`seasons: [{ name, live: {cel, expr, authored?} }]`** on the artifact (after `clock`, `gates`,
   `terminal`) and on `project.index.json`, with `live` after `@def` expansion. When a season's
   `live` goes false→true, copy every `season.<name>.*` value into `prev.season.<name>.*`, reset
   `season.<name>.*` to its declared defaults, clear the presentation record of its
@@ -255,13 +286,13 @@ The finite clock (dsl 0.27.0 §4):
 
 The engine seam (dsl 0.27.0 §4):
 
-- **`gates: [{ occasion, raisedWhen: { raw, expr } }]`** (top level, occasion-sorted, `@def`s
+- **`gates: [{ occasion, raisedWhen: { cel, expr, authored? } }]`** (top level, occasion-sorted, `@def`s
   expanded): raise `occasion` only while its gate holds, reading `occasion.target` as the member
   it is raised for (`room.office` → `office`). A raise your clock makes (`raise.slot`, `dayStart`,
   `dayEnd`) whose gate is false is simply not made; the clock still moves. The checker has judged
   every beat of the occasion under its gate, so a beat you would never present is reported to the
   author. Omitted when no occasion declares a gate.
-- **`terminal: { raw, expr }`** (top level): the game is over once it holds — raise no occasion
+- **`terminal: { cel, expr, authored? }`** (top level): the game is over once it holds — raise no occasion
   and advance no clock until a new run. Several schemas' declarations arrive joined by `||`.
   Omitted without one.
 - **Directive fact effects**: a `kind: "plugin"` record may carry **`retracts`** and
@@ -275,7 +306,7 @@ Members bound by occasions (dsl 0.27.0 §3):
 
 - **`occasion.target` as a pattern argument and a family index**: in a kind beat's (and a
   `forKind` beat's) CEL, a fact-query pattern may take `occasion.target` as an argument
-  (`holds(owned(occasion.target))`) and a `per:` family may be indexed by it
+  (`holds('owned', [occasion.target])`) and a `per:` family may be indexed by it
   (`user.bond[occasion.target]`). Substitute the bound member: the pattern argument becomes that
   member id, and `F[occasion.target]` reads `F.<member>`. The checker has proved every member's
   instance well-typed.

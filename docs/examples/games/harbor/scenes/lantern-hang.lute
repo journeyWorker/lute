@@ -12,4 +12,4 @@ priority: 20
 
 @mara: Here, hang this one on the mast.
 ::hangLantern{n=2}
-@narrator{when="isSet(prev.season.lanterns.hung)"}: Last festival the harbor hung {{prev.season.lanterns.hung}} lanterns.
+@narrator{when="has(prev.season.lanterns.hung)"}: Last festival the harbor hung {{prev.season.lanterns.hung}} lanterns.

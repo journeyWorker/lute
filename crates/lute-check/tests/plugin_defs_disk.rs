@@ -43,7 +43,7 @@ fn codes_for_scene(scene: &str) -> Vec<String> {
     );
     write(
         &root.join("plugins/demo.defs/defs/defs.yaml"),
-        "defs:\n  - { name: warm, type: bool, cel: \"true\" }\n  - { name: tally, type: number, cel: \"1\" }\n",
+        "defs:\n  - { name: warm, type: bool, cel: \"true\" }\n  - { name: tally, type: int, cel: \"1\" }\n",
     );
     let scene_path = root.join("scene.lute");
     write(&scene_path, scene);

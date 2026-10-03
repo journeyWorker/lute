@@ -1,0 +1,9 @@
+{
+  "kind": "scene",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "state": [{"path":"run.day","type":"int","default":1,"owner":"engine"}],
+  "commands": [{"kind":"set","addr":"001-0100","path":"run.day","value":2}],
+  "outsideRun": [],
+  "celEnv": {"variables":[],"functions":[]}
+}

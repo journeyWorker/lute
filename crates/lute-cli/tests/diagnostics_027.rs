@@ -90,7 +90,7 @@ fn a_fact_query_match_subject_shows_the_subjectless_form() {
         &dir,
         "world.schema.yaml",
         "entities:\n  badge: { members: [stone, tide] }\nrelations:\n  hasBadge: { args: [badge], tier: run }\n\
-         defs:\n  badgeCount: \"count(hasBadge(_))\"\n",
+         defs:\n  badgeCount: \"count('hasBadge', ['_'])\"\n",
     );
     write(
         &dir,
@@ -204,7 +204,7 @@ fn an_implicit_quest_tree_is_flagged_together() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.fish: { type: number, default: 0 }\n",
+        "state:\n  run.fish: { type: int, default: 0 }\n",
     );
     write(
         &dir,
@@ -237,7 +237,7 @@ fn a_quest_reading_nothing_does_not_hide_its_run_looking_tree() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.fish: { type: number, default: 0 }\n",
+        "state:\n  run.fish: { type: int, default: 0 }\n",
     );
     write(
         &dir,
@@ -285,7 +285,7 @@ fn columns_count_characters_after_multibyte_text() {
         &dir,
         "world.schema.yaml",
         "state:\n  run.route: { type: { domain: route }, default: none }\n  \
-         run.aff: { type: number, default: 0 }\nenums:\n  route: [none, ren, mika]\n",
+         run.aff: { type: int, default: 0 }\nenums:\n  route: [none, ren, mika]\n",
     );
     write(
         &dir,

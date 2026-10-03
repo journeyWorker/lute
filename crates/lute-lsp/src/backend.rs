@@ -1956,7 +1956,7 @@ mod tests {
         // `run.nope` is never declared under `state:` — a bad/undeclared path.
         fs::write(
             &decl_path,
-            "state:\n  run.trust: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.nope\" }\n",
+            "state:\n  run.trust: { type: int, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.nope\" }\n",
         )
         .unwrap();
         let uri_str = format!("file://{}", decl_path.display());
@@ -2027,7 +2027,7 @@ mod tests {
         let decl_path = root.join("schema/state.yaml");
         fs::write(
             &decl_path,
-            "state:\n  run.trust: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.trust > 0\" }\n",
+            "state:\n  run.trust: { type: int, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.trust > 0\" }\n",
         )
         .unwrap();
         let uri_str = format!("file://{}", decl_path.display());
@@ -2085,7 +2085,7 @@ mod tests {
             ("plays/p.play.yaml", "steps:\n  - occasion: visit\n", None),
             (
                 "world.schema.yaml",
-                "state:\n  run.trust: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.nope\" }\n",
+                "state:\n  run.trust: { type: int, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.nope\" }\n",
                 Some("E-UNDECLARED"),
             ),
         ];

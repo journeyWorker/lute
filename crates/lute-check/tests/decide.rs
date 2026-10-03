@@ -13,8 +13,8 @@ use lute_check::{decide_slot, DecideCtx, Decided, DefTable, DollarBinding, Domai
 use lute_manifest::types::{Literal, Type};
 
 /// `run.rank: enum [fail, bronze, silver, gold]`, `run.flag: bool` (default
-/// `false`), `run.n: number` (default `0`) — mirrors the plan's Step 1 schema
-/// — plus `run.m: number` with no default (maybe unset).
+/// `false`), `run.n: int` (default `0`) — mirrors the plan's Step 1 schema
+/// — plus `run.m: int` with no default (maybe unset).
 fn schema() -> StateSchema {
     let mut decls = BTreeMap::new();
     decls.insert(
@@ -43,8 +43,8 @@ fn schema() -> StateSchema {
     decls.insert(
         "run.n".to_string(),
         StateDecl {
-            ty: Type::Number,
-            default: Some(Literal::Num(0.0)),
+            ty: Type::Int,
+            default: Some(Literal::Int(0)),
             namespace: Namespace::Run,
             owner: None,
         },
@@ -52,7 +52,7 @@ fn schema() -> StateSchema {
     decls.insert(
         "run.m".to_string(),
         StateDecl {
-            ty: Type::Number,
+            ty: Type::Int,
             default: None,
             namespace: Namespace::Run,
             owner: None,
@@ -318,10 +318,10 @@ fn r2_unset_domain_membership() {
 fn r5_undecided() {
     for e in [
         "run.n > 1",
-        "isSet(run.flag)",
+        "has(run.flag)",
         "has(run.rank)",
-        "holds(inParty(x))",
-        "count(r(_)) > 0",
+        "holds('inParty', ['x'])",
+        "count('r', ['_']) > 0",
         "now() < run.t",
     ] {
         assert_eq!(d(e), None, "{e}");
@@ -414,18 +414,17 @@ fn satisfiable_conjunction_is_undecided() {
 /// `unset` is a value too. On `unset` an ordering or a bare boolean read
 /// errs — neither true nor false — so a conjunction of them over a
 /// maybe-unset path is not provably FALSE (its value there is an error);
-/// an equality is false on `unset`, and `isSet` rules `unset` out.
 #[test]
 fn maybe_unset_paths_count_unset_as_a_value() {
     assert_eq!(d("run.m > 5 && run.m < 3"), None);
-    assert_eq!(d("isSet(run.m) && run.m > 5 && run.m < 3"), f());
+    assert_eq!(d("has(run.m) && run.m > 5 && run.m < 3"), f());
     assert_eq!(d("run.m == 1 && run.m == 2"), f());
     // `run.rank` has no default: every `!=` holds on `unset`.
     assert_eq!(
         d("run.rank != 'fail' && run.rank != 'bronze' && run.rank != 'silver' && run.rank != 'gold'"),
         None
     );
-    assert_eq!(d("!isSet(run.rank) && run.rank == 'gold'"), f());
+    assert_eq!(d("!has(run.rank) && run.rank == 'gold'"), f());
 }
 
 /// An undeclared path may hold a value of any kind: equalities still
@@ -506,10 +505,10 @@ fn numeric_disjunction_is_a_union_of_intervals() {
 /// its negation exclude each other with no fact envelope in scope.
 #[test]
 fn relational_queries_are_paths() {
-    assert_eq!(d("holds(inParty(x)) && !holds(inParty(x))"), f());
+    assert_eq!(d("holds('inParty', ['x']) && !holds('inParty', ['x'])"), f());
     assert_eq!(d("visited('a') || !visited('a')"), t());
-    assert_eq!(d("count(r(_)) > 2 && count(r(_)) < 1"), f());
-    assert_eq!(d("holds(inParty(x)) && !holds(inParty(y))"), None);
+    assert_eq!(d("count('r', ['_']) > 2 && count('r', ['_']) < 1"), f());
+    assert_eq!(d("holds('inParty', ['x']) && !holds('inParty', ['y'])"), None);
 }
 
 /// The `$` subject and component params are paths too.

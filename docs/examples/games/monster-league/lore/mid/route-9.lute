@@ -34,36 +34,36 @@ title: Route 9, the Orchard Road (Bloomfield to Silvercrest)
 
 <beat use="trainerBattle" id="r9HikerDorran" who="r9HikerDorran" intro="I walked here from Pebbleton! My legs are tired but my monsters aren't!" win="My legs AND my monsters are tired now." lose="Onward! To Silvercrest! After a sit-down." prize="480"/>
 
-<entry id="midR9HikerDorranAfter" on="talk" target="npc.r9HikerDorran" category="bark" when="holds(defeated(r9HikerDorran))">
+<entry id="midR9HikerDorranAfter" on="talk" target="npc.r9HikerDorran" category="bark" when="holds('defeated', ['r9HikerDorran'])">
   @r9HikerDorran: They say the Game Corner in Silvercrest has a basement. I say every building has a basement. It's called the ground floor, if you're a hiker.
 </entry>
 
 <beat use="trainerBattle" id="r9PicnickerLissy" who="r9PicnickerLissy" intro="You stepped on my blanket! That's a battle where I come from!" win="Fine. You can have a sandwich. Just one." lose="And stay off the blanket!" prize="320"/>
 
-<entry id="midR9PicnickerLissyAfter" on="talk" target="npc.r9PicnickerLissy" category="bark" when="holds(defeated(r9PicnickerLissy))">
+<entry id="midR9PicnickerLissyAfter" on="talk" target="npc.r9PicnickerLissy" category="bark" when="holds('defeated', ['r9PicnickerLissy'])">
   @r9PicnickerLissy: The cucumber ones are mine. The ones with apple are for my Sproutle. Don't tell her there's cucumber in hers too.
 </entry>
 
 <beat use="trainerBattle" id="r9CamperTobias" who="r9CamperTobias" intro="I've been camping here three days waiting for a real challenge!" win="Three days for that? I'm going home." lose="Day four, then." prize="360"/>
 
-<entry id="midR9CamperTobiasAfter" on="talk" target="npc.r9CamperTobias" category="bark" when="holds(defeated(r9CamperTobias))">
+<entry id="midR9CamperTobiasAfter" on="talk" target="npc.r9CamperTobias" category="bark" when="holds('defeated', ['r9CamperTobias'])">
   @r9CamperTobias: I'm not really camping. My house is right there. But the tent makes it feel official.
 </entry>
 
 <beat use="trainerBattle" id="r9BugCatcherNils" who="r9BugCatcherNils" intro="I'm training for the Wildmoor contest! You're my practice bug!" win="I'm not a very good practice bug catcher." lose="Caught you! Well, beat you. Same thing." prize="240"/>
 
-<entry id="midR9BugCatcherNilsAfter" on="talk" target="npc.r9BugCatcherNils" category="bark" when="holds(defeated(r9BugCatcherNils))">
+<entry id="midR9BugCatcherNilsAfter" on="talk" target="npc.r9BugCatcherNils" category="bark" when="holds('defeated', ['r9BugCatcherNils'])">
   @r9BugCatcherNils: The contest is Tuesdays, Thursdays and Saturdays at the Wildmoor Preserve. Last time I caught a Cocoonix. It didn't do anything. Neither did the judges.
 </entry>
 
 <beat use="trainerBattle" id="r9LassPernille" who="r9LassPernille" intro="My monsters are cute AND strong. Pick a side and lose!" win="Just cute, then. That's still something." lose="Cute and strong. Told you." prize="400"/>
 
-<entry id="midR9LassPernilleAfter" on="talk" target="npc.r9LassPernille" category="bark" when="holds(defeated(r9LassPernille))">
+<entry id="midR9LassPernilleAfter" on="talk" target="npc.r9LassPernille" category="bark" when="holds('defeated', ['r9LassPernille'])">
   @r9LassPernille: The department store in Silvercrest has a sale every weekend. I buy a ribbon for every monster. I have a lot of ribbons.
 </entry>
 
 <beat use="trainerBattle" id="r9BirdKeeperOsric" when="@isMorning" who="r9BirdKeeperOsric" intro="My birds fly at sunrise and fight right after. You're just in time!" win="Back to the roost, everybody. You too, Galewing." lose="They're warmed up now, that's all." prize="440"/>
 
-<entry id="midR9BirdKeeperOsricAfter" on="talk" target="npc.r9BirdKeeperOsric" category="bark" when="holds(defeated(r9BirdKeeperOsric)) && @isMorning">
+<entry id="midR9BirdKeeperOsricAfter" on="talk" target="npc.r9BirdKeeperOsric" category="bark" when="holds('defeated', ['r9BirdKeeperOsric']) && @isMorning">
   @r9BirdKeeperOsric: Come back in the morning if you want to see them all go up at once. By noon they're asleep in the apple trees and won't come down for anybody.
 </entry>

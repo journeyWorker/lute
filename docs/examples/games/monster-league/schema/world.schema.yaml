@@ -8,21 +8,21 @@
 
 state:
   # ── the clock (engine-owned; Gold/Silver style morning / day / night) ──
-  run.day:  { type: number, default: 1, owner: engine }
+  run.day:  { type: int, default: 1, owner: engine }
   run.slot: { type: { enum: [morning, day, night] }, default: morning, owner: engine }
 
   # ── the purse: prizes from content, MONEY rewards, shops and blackouts
   #    from the engine ──
-  run.money: { type: number, default: 3000 }
+  run.money: { type: int, default: 3000 }
 
   # ── rival standing: +1 for every rival battle won, -1 for every loss ──
-  run.rivalStanding: { type: number, default: 0 }
+  run.rivalStanding: { type: int, default: 0 }
 
   # ── Team Eclipse: one state per lair (hidden -> found -> cleared) ──
   run.lair: { type: { domain: lairState }, default: hidden, per: lair }
 
   # ── across saves ──
-  user.hallOfFame: { type: number, default: 0 }
+  user.hallOfFame: { type: int, default: 0 }
 
 enums:
   lairState:
@@ -166,10 +166,10 @@ rules:
   - "canPass(victoryRoadBoulders) :- canUse(strength)"
 
 defs:
-  badgeCount:   "count(hasBadge(_))"
-  dexCaught:    "count(caught(_))"
-  dexSeen:      "count(seen(_))"
-  typesCaught:  "countDistinct(caughtType(T), T)"
+  badgeCount:   "count('hasBadge', ['_'])"
+  dexCaught:    "count('caught', ['_'])"
+  dexSeen:      "count('seen', ['_'])"
+  typesCaught:  "countDistinct('caughtType', ['_'], 0)"
   isMorning:    "run.slot == 'morning'"
   isNight:      "run.slot == 'night'"
   # the Wildmoor bug-catching contest: Tuesday, Thursday, Saturday (weekday 0 = Monday)
@@ -177,4 +177,4 @@ defs:
   weekend:      "clock.weekday >= 5"
   # the outcome of the last ::battle{resultKey="fight"} in this scene
   wonFight:     { type: bool, cel: "scene.battle.fight.won" }
-  champion:     "holds(rivalBeaten(champion))"
+  champion:     "holds('rivalBeaten', ['champion'])"

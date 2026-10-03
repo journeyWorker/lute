@@ -54,14 +54,17 @@ impl<D: Driver> Machine<D> {
             addr_index,
             addr_order,
             display_names: BTreeMap::new(),
+            occasion_target: None,
             store,
             seed,
             quest_status: BTreeMap::new(),
+            quest_instances: BTreeMap::new(),
             incomplete: false,
             terminated: false,
             fatal: None,
             refused: false,
             unresolved: Vec::new(),
+            eval_observer: None,
             quest_resume: false,
             entry: None,
             bundle_beat: None,
@@ -99,11 +102,13 @@ impl<D: Driver> Machine<D> {
     /// only accepts its result. `play.rs` never puts `state`/`facts` seeds
     /// in `seed` (it seeds the playthrough once, up front), so
     /// [`Machine::apply_seeds`] layers nothing over the carryover. Only the
-    /// carry's `state`, `base_facts` and `quest_status` are read.
+    /// carry's `state`, `base_facts`, `quest_status` and quest instance
+    /// counters are read.
     pub fn resume(art: &Json, seed: Seed, carry: Carry, driver: D) -> Self {
         let mut m = Self::blank(art, seed, driver);
         m.store.restore(carry.state, carry.base_facts);
         m.quest_status = carry.quest_status;
+        m.quest_instances = carry.quest_instances;
         m.apply_seeds();
         m.store.derive();
         m
@@ -146,11 +151,11 @@ impl<D: Driver> Machine<D> {
     /// for, readable as `occasion.target` (cleared with `None`).
     pub fn bind_occasion_target(&mut self, member: Option<&str>) {
         let path = lute_check::beats::OCCASION_TARGET;
+        self.occasion_target = member.map(str::to_string);
         match member {
             Some(m) => self.store.put(path.to_string(), Value::Str(m.to_string())),
             None => self.store.remove(path),
         }
-        self.store.derive();
     }
 
     /// `lute play` (dsl 0.21.0 §7a.1): the playthrough's presented scenes,
@@ -226,11 +231,13 @@ impl<D: Driver> Machine<D> {
     /// meaningful post-`run`; a pre-run carry would just echo the seeds back.
     pub fn into_carry(self) -> (Carry, D) {
         let quest_status = self.quest_status;
+        let quest_instances = self.quest_instances;
         let (state, base_facts) = self.store.into_parts();
         let carry = Carry {
             state,
             base_facts,
             quest_status,
+            quest_instances,
             incomplete: self.incomplete,
             unresolved: self.unresolved,
             accepted: self.accepted,

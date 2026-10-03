@@ -7,7 +7,7 @@ on: talk
 target: npc.sefa
 once: user
 priority: 45
-when: "holds(trusts(sefa))"
+when: "holds('trusts', ['sefa'])"
 ---
 
 ## Chart table

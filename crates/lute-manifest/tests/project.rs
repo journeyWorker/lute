@@ -505,7 +505,7 @@ fn defaults_paths_canonicalise_against_the_manifest() {
     );
     std::fs::write(
         dir.join("world.schema.yaml"),
-        "state:\n  run.k: { type: number, default: 0 }\n",
+        "state:\n  run.k: { type: int, default: 0 }\n",
     )
     .unwrap();
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();

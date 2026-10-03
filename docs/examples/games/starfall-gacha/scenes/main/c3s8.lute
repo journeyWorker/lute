@@ -10,8 +10,8 @@ once: user
 
 @hollow{emotion="angry"}: You. The Wishkeeper. Do you know what it is to be hungry for a thousand years?
 @hollow: Every star I swallowed, I stayed hungry. Every one. Nothing fills the dark.
-@narrator{when="count(bondRank(_, r3)) >= 1"}: Someone who is sworn to you steps up at your shoulder, without being asked.
-@narrator{when="count(bondRank(_, r3)) == 0"}: Your heroes hang back. They've come this far for the stars. Maybe not yet for you.
+@narrator{when="count('bondRank', ['_', 'r3']) >= 1"}: Someone who is sworn to you steps up at your shoulder, without being asked.
+@narrator{when="count('bondRank', ['_', 'r3']) == 0"}: Your heroes hang back. They've come this far for the stars. Maybe not yet for you.
 <branch id="c3s8Choice" prompt="The Hollow King is between you and the lanterns.">
   <choice id="strike" label="Strike him down.">
     @hollow{emotion="angry"}: Then I'll be hungry in the ground instead.

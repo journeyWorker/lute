@@ -4,7 +4,7 @@ id: square.market
 title: Saturday market
 on: placeVisit
 target: place.square
-when: 'holds(present(ines, square)) && holds(present(theo, square))'
+when: 'holds("present", ["ines", "square"]) && holds("present", ["theo", "square"])'
 priority: 20
 ---
 

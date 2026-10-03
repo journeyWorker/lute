@@ -915,7 +915,7 @@ luteVersion: "0.16.0"
 title: Reward grant ordering
 state:
   run.atGoal: { type: bool, default: true }
-  run.done: { type: number, default: 0 }
+  run.done: { type: int, default: 0 }
 ---
 
 <quest id="reachGoal" title="Reach the Goal" start="true">
@@ -967,6 +967,24 @@ state:
         "quest grant must precede questComplete handler body: quest={quest_grant} line={handler_line}"
     );
 
+    // Grants carry the first save instance and owner-relative declaration
+    // indexes (objective and quest owners each start at zero).
+    for step in all {
+        match step {
+            Step::Grant {
+                quest,
+                instance,
+                index,
+                ..
+            } => {
+                assert_eq!(*quest, "reachGoal");
+                assert_eq!(*instance, 1);
+                assert_eq!(*index, 0);
+            }
+            _ => unreachable!(),
+        }
+    }
+
     // Objective grant fires exactly once (monotone `done`, at-most-once
     // per instance).
     let obj_count = report
@@ -1015,16 +1033,18 @@ state:
         .filter_map(|s| match s {
             Step::Grant {
                 objective: None,
+                instance,
+                index,
                 reward,
                 ..
-            } => Some(reward.kind.as_str()),
+            } => Some((reward.kind.as_str(), *instance, *index)),
             _ => None,
         })
         .collect();
     assert_eq!(
         quest_grants,
-        vec!["GOLD"],
-        "only the unguarded reward may fire; when=false must skip: {:?}",
+        vec![("GOLD", 1, 1)],
+        "only the unguarded reward may fire; when=false must skip while preserving declaration index: {:?}",
         report.steps
     );
 }
@@ -1604,7 +1624,7 @@ fn a_fresh_done_walks_the_objective_body_once() {
 fn a_grant_credits_its_kinds_path_as_play_does() {
     // lamplight N4 / ashen N4: `rewardKinds.CASE.credits: user.cases`.
     let text = "---\nkind: quest\ntitle: Credit\nstate:\n  \
-                user.cases: { type: number, default: 2 }\n---\n\n\
+                user.cases: { type: int, default: 2 }\n---\n\n\
                 <quest id=\"q\" title=\"Q\" start=\"true\">\n\
                 <objective id=\"o\" title=\"O\" done=\"true\"/>\n\
                 <reward kind=\"CASE\" amount=\"3\"/>\n\

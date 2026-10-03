@@ -5,7 +5,7 @@ title: The Coralreach sea cave
 on: enterPlace
 target: place.coralCave
 once: false
-when: "@islesLowTide && !holds(islesLensBack(coralreach))"
+when: "@islesLowTide && !holds('islesLensBack', ['coralreach'])"
 ---
 
 // AREA isles: the sea cave is walkable only at low tide (mornings). High tide

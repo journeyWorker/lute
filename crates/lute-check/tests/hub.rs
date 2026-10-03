@@ -197,7 +197,7 @@ fn hub_passes_clean_check_end_to_end() {
 #[test]
 fn hub_choice_when_guard_is_checked_by_defassign() {
     let out = codes(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number }\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: int }\n---\n## Shot 1.\n\
          <hub id=\"h\">\n<choice id=\"a\" label=\"A\" when=\"scene.n > 0\">\n@narrator: hi.\n</choice>\n\
          <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye.\n</choice>\n</hub>\n",
     );
@@ -254,7 +254,7 @@ fn hub_unknown_attr_still_rejected_beside_prompt() {
 /// dsl 0.28.0 §5: a hub's revisit text.
 fn lamp(back: &str) -> String {
     format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: {{ type: number }}\n---\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: {{ type: int }}\n---\n\
          ## Shot 1.\n<hub id=\"lamp\">\n{back}\
          <choice id=\"ledger\" label=\"Read the ledger\">\n@narrator: smudged.\n</choice>\n\
          <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye.\n</choice>\n</hub>\n"

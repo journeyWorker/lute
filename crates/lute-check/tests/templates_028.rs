@@ -26,7 +26,7 @@ fn unique_dir() -> PathBuf {
 }
 
 const LORE_HEAD: &str = "---\nkind: lore\nid: bonds\ncomponents: [t.lute]\n\
-state:\n  user.bond: { type: number, default: 0 }\n---\n\n";
+state:\n  user.bond: { type: int, default: 0 }\n---\n\n";
 
 /// `lore` checked against the template `component` (written to `t.lute`).
 fn run(component: &str, lore: &str) -> (CheckInput, Vec<Diagnostic>) {
@@ -111,7 +111,7 @@ fn a_component_param_named_when_or_component_is_refused_and_title_is_not() {
     assert!(!refused.iter().any(|m| m.contains("param `title`")));
 }
 
-const GIFT: &str = "---\ncomponent: gift\nparams:\n  who: string\n  need: number\n\
+const GIFT: &str = "---\ncomponent: gift\nparams:\n  who: string\n  need: int\n\
 beat:\n  on: talk\n  once: user\n  when: \"user.bond >= @need && @who != ''\"\n---\n\n## Gift\n\n@narrator: Here.\n";
 
 #[test]
@@ -153,15 +153,15 @@ fn a_use_when_that_replaces_the_template_when_warns() {
 #[test]
 fn a_bracketed_param_index_in_a_header_reads_the_member_and_the_dot_form_hints() {
     let bracket =
-        "---\ncomponent: chat\nparams:\n  who: string\n  need: { type: number, default: 0 }\n\
+        "---\ncomponent: chat\nparams:\n  who: string\n  need: { type: int, default: 0 }\n\
 beat:\n  on: talk\n  when: \"user.bond[@who] >= @need\"\n---\n\n## Chat\n\n@narrator: Oh.\n";
     let lore = format!("{LORE_HEAD}<beat use=\"chat\" id=\"maraOne\" who=\"mara\"/>\n");
     let (input, _) = run(bracket, &lore);
     let doc = desugared(&input);
     assert_eq!(
         doc.beats[0].when.as_ref().unwrap().raw,
-        "user.bond.mara >= 0",
-        "`[@who]` reads the member the argument names"
+        "user.bond['mara'] >= 0",
+        "`[@who]` preserves the list-index spelling while substituting the member"
     );
 
     let dot = bracket.replace("user.bond[@who]", "user.bond.@who");
@@ -204,7 +204,7 @@ fn one_bad_argument_is_one_report() {
         .collect();
     assert_eq!(errors.len(), 1, "{errors:#?}");
     assert_eq!(errors[0].code, "E-COMPONENT-ARG");
-    assert!(errors[0].message.contains("does not fit `number`"));
+    assert!(errors[0].message.contains("does not fit `int`"));
 }
 
 #[test]
@@ -382,7 +382,7 @@ fn a_speaker_param_passes_through_a_nested_component() {
     )
     .unwrap();
     let outer = "---\ncomponent: outer\neffects: true\ncomponents: [inner.lute]\nparams:\n  who: speaker\n\
-state:\n  run.aff: { type: number, default: 0, per: suitor }\nentities:\n  suitor: { members: [ren, kai] }\n\
+state:\n  run.aff: { type: int, default: 0, per: suitor }\nentities:\n  suitor: { members: [ren, kai] }\n\
 ---\n\n## Outer\n\n@@who: Hello.\n::use{component=\"inner\" who=@who}\n";
     std::fs::write(dir.join("outer.lute"), outer).unwrap();
     // The outer component's own check: `who=@who` forwards its speaker.
@@ -395,7 +395,7 @@ state:\n  run.aff: { type: number, default: 0, per: suitor }\nentities:\n  suito
     let host = |who: &str| {
         format!(
             "---\nkind: lore\nid: talk\ncomponents: [outer.lute, inner.lute]\n\
-state:\n  run.aff: {{ type: number, default: 0, per: suitor }}\nentities:\n  suitor: {{ members: [ren, kai] }}\n\
+state:\n  run.aff: {{ type: int, default: 0, per: suitor }}\nentities:\n  suitor: {{ members: [ren, kai] }}\n\
 ---\n\n\
 <beat id=\"hi\" on=\"talk\">\n  ::use{{component=\"outer\" who=\"{who}\"}}\n</beat>\n"
         )
@@ -415,7 +415,7 @@ state:\n  run.aff: {{ type: number, default: 0, per: suitor }}\nentities:\n  sui
 #[test]
 fn a_component_body_reading_a_def_is_one_report_naming_the_param() {
     let dir = unique_dir();
-    let comp = "---\ncomponent: lit\nstate:\n  run.hour: { type: number, default: 8 }\n\
+    let comp = "---\ncomponent: lit\nstate:\n  run.hour: { type: int, default: 8 }\n\
 defs:\n  late: \"run.hour >= 20\"\n---\n\n## Lit\n\n@narrator{when=\"@late\"}: It is late.\n";
     std::fs::write(dir.join("lit.lute"), comp).unwrap();
     let advice = "declare the param `late: { type: bool, default: \"@late\" }` under `params:`";
@@ -432,7 +432,7 @@ defs:\n  late: \"run.hour >= 20\"\n---\n\n## Lit\n\n@narrator{when=\"@late\"}: I
     // A host reports the same diagnostic (at its `::use`, the component's
     // copy related) — identical, so `check-project` keeps only one.
     let host = "---\nkind: scene\nid: s\ntitle: S\ncomponents: [lit.lute]\n\
-state:\n  run.hour: { type: number, default: 8 }\ndefs:\n  late: \"run.hour >= 20\"\n---\n\n\
+state:\n  run.hour: { type: int, default: 8 }\ndefs:\n  late: \"run.hour >= 20\"\n---\n\
 ## S\n\n::use{component=\"lit\"}\n";
     let diags = check_in(&dir, "s.lute", host);
     let errs = errors(&diags);

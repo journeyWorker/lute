@@ -12,7 +12,7 @@ beat:
   target: "place.@where"
   once: "false"
   priority: 5
-  when: "holds(at(ines, @where))"
+  when: "holds('at', ['ines', @where])"
 ---
 
 ## Ines

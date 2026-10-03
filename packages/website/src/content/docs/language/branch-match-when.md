@@ -87,7 +87,7 @@ A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or bot
 
 ### Numeric ranges
 
-On a `number` subject, `is` takes ranges. Both bounds are inclusive; either may be left open.
+On an `int` or `double` subject, `is` takes ranges. Both bounds are inclusive; either may be left open.
 The descending-threshold cascade reads top to bottom, first match wins:
 
 ```lute
@@ -115,8 +115,8 @@ A `<match>` must be exhaustive. Exhaustiveness is computed from the union of `is
 any `unset` arm): for a **finite domain** — an enum, a bool, or a branch's choice ids — full `is`
 coverage is exhaustive with **no `<otherwise>`** needed. The four-member enum above needs no
 `<otherwise>`; a bool covered by `is="true"`/`is="false"` needs none either. When coverage falls
-short, `E-NONEXHAUSTIVE` names the members left out (`` `tue`, `wed` are not covered ``). A **`number`**
-subject is exhaustive when its ranges and points cover the whole real line: `is="..0"` +
+short, `E-NONEXHAUSTIVE` names the members left out (`` `tue`, `wed` are not covered ``). An **`int` or
+`double`** subject is exhaustive when its ranges and points cover the whole real line: `is="..0"` +
 `is="0.."` is; `is="..0"` + `is="1.."` is not, because `0.5` falls between them — the error names
 the gap.
 
@@ -140,7 +140,7 @@ id: town.square
 title: The square
 state:
   run.wd: { type: { enum: [mon, tue, wed] }, default: mon }
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 defs:
   today: "run.wd"
   shift: { type: { enum: [early, late] }, cel: "run.day <= 3 ? 'early' : 'late'" }
@@ -173,8 +173,8 @@ both were `E-NONEXHAUSTIVE`. An arm outside the domain, such as a typo `is="lat"
 enum-typed subject, such as `test="$ == 'lat'"` on a match over a path.
 
 A def whose body queries facts — `count(…)`, `holds(…)`, directly or through another def — is no
-subject at all: `<match on="@badgeCount">` over `badgeCount: "count(hasBadge(_))"` is
-`E-MATCH-RELATION-SUBJECT`, although a count is a number. Test the query in the arms of a `<match>`
+subject at all: `<match on="@badgeCount">` over `badgeCount: "count('hasBadge', ['_'])"` is
+`E-MATCH-RELATION-SUBJECT`, although a count is an `int`. Test the query in the arms of a `<match>`
 with no `on` instead (below).
 
 ### Matching on facts: `<match>` with no `on`
@@ -187,7 +187,7 @@ It is the form for a fact query, which may only ever be a guard:
   <when test="@badgeCount >= 8">
     @profAlder: Eight badges. The League is waiting for you.
   </when>
-  <when test="holds(hasBadge(stone))">
+  <when test="holds('hasBadge', ['stone'])">
     @profAlder: The Stone Badge — a start.
   </when>
   <otherwise>
@@ -241,7 +241,7 @@ A guard proves things about the state it has checked, and the checker uses that 
 guard holds.
 
 **A beat's guard holds through its body.** A scene beat's `when:`, a bundle `<beat when>`, and an
-entry's `when=` are true whenever their body runs. An `isSet(…)` in the guard proves the body's
+entry's `when=` are true whenever their body runs. An `has(…)` in the guard proves the body's
 reads of that path and its `<match>` subjects, so they are neither `E-MAYBE-UNSET` nor
 `E-UNSET-UNCOVERED`. The guard also narrows the domain a `<match>` must cover: below, `died` is
 ruled out, so two arms are exhaustive with no `<otherwise>`:
@@ -252,7 +252,7 @@ kind: scene
 id: dock.return
 title: Back at the dock
 on: dockReturn
-when: "isSet(run.outcome) && run.outcome != 'died'"
+when: "has(run.outcome) && run.outcome != 'died'"
 state:
   run.outcome: { type: { enum: [surfaced, diving, died] } }
 ---
@@ -276,7 +276,7 @@ An arm whose every value the guard excludes can never fire, and is `E-ARM-DEAD`.
 
 <!-- lute-diagnostics -->
 ```
-dock.lute:22:3: error [E-ARM-DEAD] arm can never fire: its pattern `died` is ruled out by the body's `when` guard `isSet(run.outcome) && run.outcome != 'died'`, which holds whenever this body runs
+dock.lute:22:3: error [E-ARM-DEAD] arm can never fire: its pattern `died` is ruled out by the body's `when` guard `has(run.outcome) && run.outcome != 'died'`, which holds whenever this body runs
 ```
 
 An `<otherwise>` after the two arms is `W-OTHERWISE-DEAD` for the same reason; the warning names
@@ -285,7 +285,7 @@ An `<otherwise>` after the two arms is `W-OTHERWISE-DEAD` for the same reason; t
 `<otherwise>` again.
 
 **A presence guard proves what its short-circuit protects.** Inside one expression, the part that
-only runs once `isSet(p)` is true may read `p`:
+only runs once `has(p)` is true may read `p`:
 
 ```lute check
 ---
@@ -293,18 +293,18 @@ kind: scene
 id: dock.board
 title: The board
 state:
-  run.a: { type: number, default: 0 }
+  run.a: { type: int, default: 0 }
   run.o: { type: { enum: [won, lost] } }
 ---
 
 ## Board
 
-@narrator{when="run.a == 1 || (isSet(run.o) && run.o == 'won')"}: A clean week.
-@narrator{when="isSet(run.o) ? run.o == 'won' : false"}: You won.
-@narrator{when="!isSet(run.o) || run.o == 'won'"}: Nothing lost yet.
+@narrator{when="run.a == 1 || (has(run.o) && run.o == 'won')"}: A clean week.
+@narrator{when="has(run.o) ? run.o == 'won' : false"}: You won.
+@narrator{when="!has(run.o) || run.o == 'won'"}: Nothing lost yet.
 ```
 
-All three are clean. The proof stays inside the expression: `isSet(run.o) || run.a == 1` does not
+All three are clean. The proof stays inside the expression: `has(run.o) || run.a == 1` does not
 prove `run.o` for the line it guards, because the line also runs when only `run.a == 1` holds.
 
 **`prev.run.*` is one snapshot.** A `newRun` copies the whole ended run at once, so once any
@@ -317,13 +317,13 @@ kind: scene
 id: dock.recap
 title: Last time
 state:
-  run.depth: { type: number, default: 0 }
-  run.gold: { type: number, default: 0 }
+  run.depth: { type: int, default: 0 }
+  run.gold: { type: int, default: 0 }
 ---
 
 ## Recap
 
-@narrator{when="isSet(prev.run.depth)"}: Last run you reached {{prev.run.depth}} fathoms with {{prev.run.gold}} gold.
+@narrator{when="has(prev.run.depth)"}: Last run you reached {{prev.run.depth}} fathoms with {{prev.run.gold}} gold.
 ```
 
 A `run.<q>` with no default may have been unset when the run ended, so its `prev.run.<q>` still
@@ -355,8 +355,8 @@ line of its own, because there is no inline `<when>…</when>` form:
 
 *(That file keeps both forms, one shot each, so they stay visibly interchangeable.)*
 
-A **fact query** is the exception. `@elena{when="holds(awake(toma))"}: …` checks clean on a
-content line; the same guard as a subject — `<match on="holds(awake(toma))">` — is
+A **fact query** is the exception. `@elena{when="holds('awake', ['toma'])"}: …` checks clean on a
+content line; the same guard as a subject — `<match on="holds('awake', ['toma'])">` — is
 `E-MATCH-RELATION-SUBJECT`: a fact query is only ever a guard, and the message shows the fix, a
 `<match>` with no `on` whose arms test the query (see
 [Matching on facts](#matching-on-facts-match-with-no-on)). The one-arm twin above works for the

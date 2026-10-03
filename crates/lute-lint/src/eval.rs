@@ -28,7 +28,8 @@ use cel_parser::reference::Val;
 pub enum Value {
     Null,
     Bool(bool),
-    Num(f64),
+    Int(i64),
+    Double(f64),
     Str(String),
     List(Vec<Value>),
     Map(BTreeMap<String, Value>),
@@ -43,7 +44,8 @@ impl Value {
     }
     pub fn as_num(&self) -> Option<f64> {
         match self {
-            Value::Num(n) => Some(*n),
+            Value::Int(n) => Some(*n as f64),
+            Value::Double(n) => Some(*n),
             _ => None,
         }
     }
@@ -57,7 +59,8 @@ impl Value {
         match self {
             Value::Null => "null",
             Value::Bool(_) => "bool",
-            Value::Num(_) => "num",
+            Value::Int(_) => "int",
+            Value::Double(_) => "double",
             Value::Str(_) => "string",
             Value::List(_) => "list",
             Value::Map(_) => "map",
@@ -137,9 +140,9 @@ fn literal_value(v: &Val) -> Result<Value, EvalError> {
     Ok(match v {
         Val::Null => Value::Null,
         Val::Boolean(b) => Value::Bool(*b),
-        Val::Int(i) => Value::Num(*i as f64),
-        Val::UInt(u) => Value::Num(*u as f64),
-        Val::Double(d) => Value::Num(*d),
+        Val::Int(i) => Value::Int(*i),
+        Val::UInt(u) => Value::Int(*u as i64),
+        Val::Double(d) => Value::Double(*d),
         Val::String(s) => Value::Str(s.clone()),
         Val::Bytes(_) => {
             return Err(EvalError::new(
@@ -223,13 +226,10 @@ fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
         ("size", [x]) => {
             let v = eval(&x.expr, env)?;
             match v {
-                Value::Str(s) => Ok(Value::Num(s.chars().count() as f64)),
-                Value::List(l) => Ok(Value::Num(l.len() as f64)),
-                Value::Map(m) => Ok(Value::Num(m.len() as f64)),
-                other => Err(EvalError::new(format!(
-                    "size() on {} value",
-                    other.type_name()
-                ))),
+                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+                Value::List(l) => Ok(Value::Int(l.len() as i64)),
+                Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+                other => Err(EvalError::new(format!("size() on {} value", other.type_name()))),
             }
         }
         // Scalar arithmetic/comparison/equality via apply_op.
@@ -269,38 +269,44 @@ fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
 /// bool/num/string bail out with a type mismatch — an authored `speaker.axis
 /// > 3` (map compared to a number) is a fragment error, not a silent pass.
 fn apply_scalar(name: &str, args: &[Value]) -> Result<Value, EvalError> {
-    let decided: Result<Vec<lute_check::Decided>, EvalError> = args
-        .iter()
-        .map(|v| match v {
-            Value::Bool(b) => Ok(lute_check::Decided::Bool(*b)),
-            Value::Num(n) => {
-                if n.is_finite() {
-                    Ok(lute_check::Decided::Num(*n))
-                } else {
-                    Err(EvalError::new("non-finite number in scalar op"))
-                }
-            }
-            Value::Str(s) => Ok(lute_check::Decided::Str(s.clone())),
-            other => Err(EvalError::new(format!(
-                "scalar op `{name}` on {} value",
-                other.type_name()
-            ))),
-        })
-        .collect();
-    let decided = decided?;
-    let out = lute_check::apply_op(name, &decided).ok_or_else(|| {
-        EvalError::new(format!("scalar op `{name}` failed (arity/type/overflow)"))
-    })?;
-    Ok(decided_to_value(out))
-}
-
-fn decided_to_value(d: lute_check::Decided) -> Value {
-    match d {
-        lute_check::Decided::Bool(b) => Value::Bool(b),
-        lute_check::Decided::Num(n) => Value::Num(n),
-        lute_check::Decided::Str(s) => Value::Str(s),
+    let bad = || EvalError::new(format!("scalar op `{name}` failed (type/overflow)"));
+    match (name, args) {
+        (op::NEGATE, [Value::Int(a)]) => a.checked_neg().map(Value::Int).ok_or_else(bad),
+        (op::NEGATE, [Value::Double(a)]) => Ok(Value::Double(-a)),
+        (op::EQUALS | op::NOT_EQUALS, [a, b]) => {
+            let eq = match (a, b) {
+                (Value::Bool(x), Value::Bool(y)) => x == y,
+                (Value::Str(x), Value::Str(y)) => x == y,
+                (Value::Int(x), Value::Int(y)) => x == y,
+                (Value::Double(x), Value::Double(y)) => x == y,
+                _ => return Err(bad()),
+            };
+            Ok(Value::Bool(if name == op::EQUALS { eq } else { !eq }))
+        }
+        (op::ADD | op::SUBSTRACT | op::MULTIPLY, [Value::Int(a), Value::Int(b)]) => {
+            let r = match name { op::ADD => a.checked_add(*b), op::SUBSTRACT => a.checked_sub(*b), _ => a.checked_mul(*b) };
+            r.map(Value::Int).ok_or_else(bad)
+        }
+        (op::ADD | op::SUBSTRACT | op::MULTIPLY, [Value::Double(a), Value::Double(b)]) => {
+            let r = match name { op::ADD => a + b, op::SUBSTRACT => a - b, _ => a * b };
+            Ok(Value::Double(r))
+        }
+        (op::DIVIDE, [Value::Int(a), Value::Int(b)]) if *b != 0 => a.checked_div(*b).map(Value::Int).ok_or_else(bad),
+        (op::DIVIDE, [Value::Double(a), Value::Double(b)]) if *b != 0.0 => Ok(Value::Double(a / b)),
+        (op::MODULO, [Value::Int(a), Value::Int(b)]) if *b != 0 => a.checked_rem(*b).map(Value::Int).ok_or_else(bad),
+        (op::GREATER | op::GREATER_EQUALS | op::LESS | op::LESS_EQUALS, [a, b]) => {
+            let ord = match (a, b) {
+                (Value::Int(a), Value::Int(b)) => a.partial_cmp(b),
+                (Value::Double(a), Value::Double(b)) => a.partial_cmp(b),
+                (Value::Str(a), Value::Str(b)) => a.partial_cmp(b),
+                _ => None,
+            }.ok_or_else(bad)?;
+            Ok(Value::Bool(match name { op::GREATER => ord.is_gt(), op::GREATER_EQUALS => !ord.is_lt(), op::LESS => ord.is_lt(), _ => !ord.is_gt() }))
+        }
+        _ => Err(bad()),
     }
 }
+
 
 fn index_value(base: &Value, key: &Value) -> Result<Value, EvalError> {
     match (base, key) {
@@ -308,15 +314,19 @@ fn index_value(base: &Value, key: &Value) -> Result<Value, EvalError> {
             .get(k)
             .cloned()
             .ok_or_else(|| EvalError::new(format!("missing key `{k}`"))),
-        (Value::List(l), Value::Num(n)) => {
+        (Value::List(l), Value::Int(n)) => {
             let i = *n as isize;
             if i < 0 || (i as usize) >= l.len() {
-                return Err(EvalError::new(format!(
-                    "list index {i} out of bounds (size {})",
-                    l.len()
-                )));
+                return Err(EvalError::new(format!("list index {i} out of bounds (size {})", l.len())));
             }
             Ok(l[i as usize].clone())
+        }
+        (Value::List(l), Value::Double(n)) if n.fract() == 0.0 && *n >= 0.0 => {
+            let i = *n as usize;
+            if i >= l.len() {
+                return Err(EvalError::new(format!("list index {i} out of bounds (size {})", l.len())));
+            }
+            Ok(l[i].clone())
         }
         _ => Err(EvalError::new(format!(
             "index {}[{}] type mismatch",
@@ -402,7 +412,8 @@ fn render_path(path: &str, format: Option<&str>, env: &Env) -> String {
     }
     match format {
         Some("%") => match cur {
-            Value::Num(n) => format!("{}%", (n * 100.0).round() as i64),
+            Value::Int(n) => format!("{}%", (n as f64 * 100.0).round() as i64),
+            Value::Double(n) => format!("{}%", (n * 100.0).round() as i64),
             _ => "?".into(),
         },
         _ => render_scalar(&cur),
@@ -413,7 +424,8 @@ fn render_scalar(v: &Value) -> String {
     match v {
         Value::Null => "".into(),
         Value::Bool(b) => b.to_string(),
-        Value::Num(n) => trim_number(*n),
+        Value::Int(n) => n.to_string(),
+        Value::Double(n) => trim_number(*n),
         Value::Str(s) => s.clone(),
         Value::List(l) => l.iter().map(render_scalar).collect::<Vec<_>>().join(", "),
         Value::Map(m) => m.keys().cloned().collect::<Vec<_>>().join(", "),
@@ -451,14 +463,14 @@ mod tests {
     fn scenario_env() -> Env {
         let mut e = Env::new();
         let mut line = BTreeMap::new();
-        line.insert("words".to_string(), Value::Num(41.0));
+        line.insert("words".to_string(), Value::Int(41));
         line.insert("speaker".to_string(), Value::Str("alice".into()));
         let mut attrs = BTreeMap::new();
         attrs.insert("emotion".to_string(), Value::Str("fond".into()));
         line.insert("attrs".to_string(), Value::Map(attrs));
         e.bind("line", Value::Map(line));
         let mut opts = BTreeMap::new();
-        opts.insert("maxWords".to_string(), Value::Num(40.0));
+        opts.insert("maxWords".to_string(), Value::Int(40));
         e.bind("options", Value::Map(opts));
         e
     }
@@ -474,7 +486,7 @@ mod tests {
         let mut e = scenario_env();
         let mut axis = BTreeMap::new();
         let mut emotion = BTreeMap::new();
-        emotion.insert("run".to_string(), Value::Num(5.0));
+        emotion.insert("run".to_string(), Value::Int(5));
         axis.insert("emotion".to_string(), Value::Map(emotion));
         e.bind(
             "speaker",
@@ -488,7 +500,7 @@ mod tests {
         assert_eq!(eval(&ex.expr, &e), Ok(Value::Bool(true)));
 
         let ex2 = parse_when(r#"size(line.attrs)"#);
-        assert_eq!(eval(&ex2.expr, &e), Ok(Value::Num(1.0)));
+        assert_eq!(eval(&ex2.expr, &e), Ok(Value::Int(1)));
     }
 
     #[test]
@@ -523,8 +535,8 @@ mod tests {
             "s",
             Value::Map({
                 let mut m = BTreeMap::new();
-                m.insert("share".into(), Value::Num(0.72));
-                m.insert("run".into(), Value::Num(5.0));
+                m.insert("share".into(), Value::Double(0.72));
+                m.insert("run".into(), Value::Int(5));
                 m
             }),
         );
@@ -539,9 +551,9 @@ mod tests {
             "p",
             Value::Map({
                 let mut m = BTreeMap::new();
-                m.insert("ratio".into(), Value::Num(10.0 / 3.0));
-                m.insert("half".into(), Value::Num(1.5));
-                m.insert("tiny".into(), Value::Num(-0.001));
+                m.insert("ratio".into(), Value::Double(10.0 / 3.0));
+                m.insert("half".into(), Value::Double(1.5));
+                m.insert("tiny".into(), Value::Double(-0.001));
                 m
             }),
         );

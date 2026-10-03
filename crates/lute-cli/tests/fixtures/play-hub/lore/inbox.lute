@@ -10,6 +10,6 @@ uses: ../world.schema.yaml
   ::assert{heardOf(meg)}
 </entry>
 
-<entry id="dusaNote" on="inbox" category="letter" title="From Dusa" when="holds(befriended(achilles))">
+<entry id="dusaNote" on="inbox" category="letter" title="From Dusa" when="holds('befriended', ['achilles'])">
   @dusa: Achilles says you are kind. Is it true?
 </entry>

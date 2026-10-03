@@ -17,7 +17,7 @@ fn input(text: &str) -> CheckInput {
                 entity: "hero".into(),
                 members: None,
             },
-            payload: [("copies".to_string(), Type::Number)].into_iter().collect(),
+            payload: [("copies".to_string(), Type::Int)].into_iter().collect(),
             ..Default::default()
         },
     );
@@ -61,8 +61,8 @@ const VOCAB: &str = "entities:\n  hero: { members: [aria, bram, cyra] }\n  \
                      relations:\n  owned: { args: [hero], tier: run, reserved: true }\n  \
                      birthday: { args: [hero], tier: run }\n  \
                      visitedRoom: { args: [room], tier: run }\n\
-                     state:\n  user.bond: { type: number, default: 0, per: hero, owner: engine }\n  \
-                     user.heat: { type: number, default: 0, per: room, owner: engine }\n";
+                     state:\n  user.bond: { type: int, default: 0, per: hero, owner: engine }\n  \
+                     user.heat: { type: int, default: 0, per: room, owner: engine }\n";
 
 fn lore(body: &str) -> String {
     format!("---\nkind: lore\nid: lore.gacha\ntitle: Gacha\n{VOCAB}---\n{body}")
@@ -71,8 +71,8 @@ fn lore(body: &str) -> String {
 #[test]
 fn a_kind_beat_queries_facts_and_families_by_its_member() {
     let errs = errors(&lore(
-        "<beat id=\"dupe\" on=\"summon\" target=\"kind:hero\" once=\"false\" when=\"holds(owned(occasion.target)) && user.bond[occasion.target] >= 2\">\n  \
-         @narrator{when=\"!holds(owned(occasion.target))\"}: New!\n  \
+        "<beat id=\"dupe\" on=\"summon\" target=\"kind:hero\" once=\"false\" when=\"holds('owned', [occasion.target]) && user.bond[occasion.target] >= 2\">\n  \
+         @narrator{when=\"!holds('owned', [occasion.target])\"}: New!\n  \
          @narrator: {{occasion.target}} again.\n</beat>\n",
     ));
     assert!(errs.is_empty(), "{errs:?}");
@@ -83,7 +83,7 @@ fn a_member_outside_the_relation_domain_is_named() {
     // `visitedRoom` takes a room: every hero member is outside its domain,
     // so the finding is reported once and lists the members it covers.
     let errs = errors(&lore(
-        "<beat id=\"x\" on=\"summon\" target=\"kind:hero\" once=\"false\" when=\"holds(visitedRoom(occasion.target))\">\n  @narrator: hi\n</beat>\n",
+        "<beat id=\"x\" on=\"summon\" target=\"kind:hero\" once=\"false\" when=\"holds('visitedRoom', [occasion.target])\">\n  @narrator: hi\n</beat>\n",
     ));
     let dom: Vec<_> = errs.iter().filter(|(c, _)| c == "E-FACT-DOMAIN").collect();
     assert_eq!(dom.len(), 1, "one report for every member: {errs:?}");
@@ -109,7 +109,7 @@ fn a_family_of_another_kind_is_undeclared_per_member() {
 #[test]
 fn a_ground_read_outside_a_kind_beat_is_undeclared() {
     let errs = errors(&lore(
-        "<beat id=\"x\" on=\"morning\" once=\"false\" when=\"holds(owned(occasion.target))\">\n  @narrator: hi\n</beat>\n",
+        "<beat id=\"x\" on=\"morning\" once=\"false\" when=\"holds('owned', [occasion.target])\">\n  @narrator: hi\n</beat>\n",
     ));
     assert!(
         errs.iter()
@@ -128,7 +128,7 @@ fn a_def_reading_the_target_outside_a_kind_beat_is_undeclared() {
     let with_defs = |body: &str| {
         lore(body).replace(
             "---\n<",
-            "defs:\n  bondNow: { type: number, cel: \"user.bond[occasion.target]\" }\n  \
+            "defs:\n  bondNow: { type: int, cel: \"user.bond[occasion.target]\" }\n  \
              bondHigh: { type: bool, cel: \"@bondNow > 2\" }\n---\n<",
         )
     };
@@ -161,7 +161,7 @@ fn a_def_reading_the_target_outside_a_kind_beat_is_undeclared() {
 #[test]
 fn a_for_beat_binds_each_member_on_a_sequence_occasion() {
     let errs = errors(&lore(
-        "<beat id=\"bday\" on=\"dailyReset\" for=\"kind:hero\" once=\"false\" when=\"holds(birthday(occasion.target)) && holds(owned(occasion.target))\">\n  \
+        "<beat id=\"bday\" on=\"dailyReset\" for=\"kind:hero\" once=\"false\" when=\"holds('birthday', [occasion.target]) && holds('owned', [occasion.target])\">\n  \
          @narrator: Happy birthday, {{occasion.target}}!\n</beat>\n",
     ));
     assert!(errs.is_empty(), "{errs:?}");
@@ -177,7 +177,7 @@ fn non_ascii_outside_a_literal_is_a_parse_error_not_a_crash() {
         "occasion.target == ‘aria’",
         "occasion.target == 아리아",
         "user.bond[occasion.target] ＝＝ 2",
-        "holds(owned(occasion.target)) — true",
+        "holds('owned', [occasion.target]) — true",
     ];
     for cel in bad {
         let errs = errors(&lore(&format!(
@@ -235,7 +235,7 @@ fn a_scene_for_key_binds_each_member_like_the_attribute() {
         format!("---\nkind: scene\nid: bday\ntitle: Birthday\n{keys}\n{VOCAB}---\n\n# Birthday\n\n## Shot 1.\n\n{body}\n")
     };
     let ok = errors(&scene(
-        "on: dailyReset\nfor: \"kind:hero\"\nonce: false\nwhen: \"holds(birthday(occasion.target))\"",
+        "on: dailyReset\nfor: \"kind:hero\"\nonce: false\nwhen: \"holds('birthday', [occasion.target])\"",
         "@narrator: Happy birthday, {{occasion.target}}!",
     ));
     assert!(ok.is_empty(), "{ok:?}");
@@ -277,10 +277,10 @@ fn a_rule_variable_compared_with_a_domain_path_is_instantiated() {
                   facts:\n  - \"adjacent(lobby, chapel)\"\n\
                   rules:\n  - \"close(R) :- adjacent(R, S), cel(\\\"run.stalker == S\\\")\"\n\
                   state:\n  run.stalker: { type: { domain: room }, default: morgue, owner: engine }\n  \
-                  run.hp: { type: number, default: 3 }\n";
+                  run.hp: { type: int, default: 3 }\n";
     let doc = |rule: &str| {
         format!(
-            "---\nkind: lore\nid: lore.ward\ntitle: Ward\n{}---\n<beat id=\"b\" on=\"morning\" once=\"false\" when=\"holds(close(lobby))\">\n  @narrator: close\n</beat>\n",
+            "---\nkind: lore\nid: lore.ward\ntitle: Ward\n{}---\n<beat id=\"b\" on=\"morning\" once=\"false\" when=\"holds('close', ['lobby'])\">\n  @narrator: close\n</beat>\n",
             schema.replace("cel(\\\"run.stalker == S\\\")", rule)
         )
     };
@@ -316,7 +316,7 @@ fn a_rule_variable_compared_with_an_enum_sharing_members_is_accepted() {
              relations:\n  here: {{ args: [room], derive: true }}\n\
              rules:\n  - \"here(S) :- room(S), cel(\\\"run.route == S\\\")\"\n\
              state:\n  run.route: {{ type: {{ domain: route }}, default: none }}\n---\n\
-             <beat id=\"b\" on=\"morning\" once=\"false\" when=\"holds(here(chapel))\">\n  @narrator: here\n</beat>\n"
+             <beat id=\"b\" on=\"morning\" once=\"false\" when=\"holds('here', ['chapel'])\">\n  @narrator: here\n</beat>\n"
         )
     };
     let shared = errors(&doc("none, chapel"));

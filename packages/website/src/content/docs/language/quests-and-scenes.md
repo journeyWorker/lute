@@ -96,8 +96,8 @@ tracks the whole save:
 kind: quest
 title: The climb
 state:
-  run.floor: { type: number, default: 0 }
-  user.bestFloor: { type: number, default: 0 }
+  run.floor: { type: int, default: 0 }
+  user.bestFloor: { type: int, default: 0 }
 ---
 
 <quest id="climb" title="Reach the tenth floor" start="true" tier="run">
@@ -211,7 +211,7 @@ from Friday to Monday rearms the quest on the Saturday it crosses. The first tim
 condition is only the baseline, so a condition already true when play begins does not rearm.
 `lute play` prints the reset with the status it ended,
 `quest harvestMissions -> unset (rearmed; was complete)`; a season-tier quest's reset reads
-`quest missions -> unset (season:harvest opened; was complete)`. The condition compiles to `rearm: {raw, expr}` on the quest's `QuestCmd`.
+`quest missions -> unset (season:harvest opened; was complete)`. The condition compiles to `rearm: {cel, expr, authored?}` on the quest's `QuestCmd`.
 
 A rearm undoes the objectives, not the state they read. `run.weekBarley` is a counter the engine
 sets back to 0 when the week turns. Had the objective read a run-long total,
@@ -468,7 +468,7 @@ bell. An objective's **`by`** (dsl 0.23.0) closes the window. It is a condition 
 kind: quest
 title: The letter
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
   run.answered: { type: bool, default: false }
   run.apologized: { type: bool, default: false }
 ---
@@ -774,7 +774,7 @@ quests/road.lute:25:14: warning [W-QUEST-HANDLER-DEAD] `<on event="combatEnd">` 
 
 Content elsewhere can also gate on quest lifecycle by reading the reserved `quest.<id>.state` path.
 It is **always assigned**: `unset` until the quest activates, then `active`, `complete`, or `failed`.
-So a read needs no `isSet` guard (`isSet(quest.<id>.state)` is always true, `W-QUEST-STATE-ISSET`),
+So a read needs no `has` guard (`has(quest.<id>.state)` is always true, `W-QUEST-STATE-HAS`),
 `when="quest.rescueHalsin.state == 'complete'"` is a complete guard, and "not taken up yet" is
 `quest.rescueHalsin.state == 'unset'` or a `<when is="unset">` arm:
 
@@ -792,7 +792,7 @@ So a read needs no `isSet` guard (`isSet(quest.<id>.state)` is always true, `W-Q
 </match>
 ```
 
-Quests can gate on relational facts too — `start="holds(inParty(shadowheart))"` — see
+Quests can gate on relational facts too — `start="holds('inParty', ['shadowheart'])"` — see
 [Facts & Datalog](/state/facts-and-datalog/) for the fact surface, worked in full by
 [`docs/examples/quest-rescue-halsin.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-rescue-halsin.lute).
 
@@ -855,7 +855,7 @@ the `narrativeTime` instant the engine stamps at the `unset` → `active` transi
 it, which is the whole point: it is the time anchor `validAt(rel, t)` never had.
 
 ```lute
-<objective id="visitedSinceAccept" title="Go back to the station" done="holds(arrivedSpace(station_front)) && !validAt(arrivedSpace(station_front), quest.theCoffeeDebt.activatedAt)"/>
+<objective id="visitedSinceAccept" title="Go back to the station" done="holds('arrivedSpace', ['station_front']) && !validAt('arrivedSpace', ['station_front'], quest.theCoffeeDebt.activatedAt)"/>
 ```
 
 A tag and all of its attributes must sit on **one physical line**, so do not wrap a long
@@ -868,6 +868,6 @@ arithmetic on one. See [Facts & Datalog](/state/facts-and-datalog/) for the inte
 
 `activatedAt` is also exempt from `E-MAYBE-UNSET`, because a maybe-unset verdict on it would be
 undischargeable: no literal inhabits `narrativeTime`, so the slot can carry no `default:`, and both
-guard forms — `isSet(p)` and `has(p)` — are themselves `E-TEMPORAL-ARG` on a narrative-time operand.
+guard forms — `has(p)` and `has(p)` — are themselves `E-TEMPORAL-ARG` on a narrative-time operand.
 (`quest.<id>.state` is exempt for a different reason: it is always assigned.) The engine guarantees
 the stamp exists for any activated instance, and a read is only meaningful inside one.

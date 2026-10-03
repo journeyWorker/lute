@@ -23,11 +23,11 @@ title: Quill, at the figurehead
   @quill: I held a rope. Someone was on the other end of it. The water was very cold and I was very tired.
 </entry>
 
-<entry id="quillHeir" on="talk" target="npc.quill" category="bark" title="Who Quill served" priority="25" once="user" when="holds(felled(regent))">
+<entry id="quillHeir" on="talk" target="npc.quill" category="bark" title="Who Quill served" priority="25" once="user" when="holds('felled', ['regent'])">
   @quill{emotion="grim"}: The man on the other end of the rope wore the crown. He had your eyes.
 </entry>
 
-<entry id="quillWitness" on="talk" target="npc.quill" category="bark" title="Quill saw it" priority="15" once="run" when="holds(heard(quill, regent))">
+<entry id="quillWitness" on="talk" target="npc.quill" category="bark" title="Quill saw it" priority="15" once="run" when="holds('heard', ['quill', 'regent'])">
   @quill{emotion="delighted"}: I saw you do it, you know. I was right there. It's the best thing I've seen in three hundred years.
 </entry>
 

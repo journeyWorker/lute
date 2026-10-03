@@ -8,7 +8,7 @@ priority: 10
 # 0.28: spentBy latches, and the Orderly retracts solved(freezer) when he takes
 # Tobias back, so the drawers must open again: a repeatable scene gated by when:.
 once: false
-when: "!holds(solved(freezer))"
+when: "!holds('solved', ['freezer'])"
 ---
 
 ## Drawers

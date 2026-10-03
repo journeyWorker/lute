@@ -8,7 +8,7 @@ title: What you find when nobody is there
   @narrator: A card in the door, in careful capitals: CLOSED SUNDAYS. BOOKS MAY BE RETURNED THROUGH THE SLOT. PLEASE DO NOT RETURN FISH.
 </entry>
 
-<entry id="libraryShut" on="placeVisit" target="place.library" category="bark" when="!@sunday && !holds(present(ines, library))">
+<entry id="libraryShut" on="placeVisit" target="place.library" category="bark" when="!@sunday && !holds('present', ['ines', 'library'])">
   <match on="run.slot">
     <when is="morning">
       @narrator: The library doesn't open until one. Through the glass you can see a returns trolley and a sleeping cat.
@@ -19,7 +19,7 @@ title: What you find when nobody is there
   </match>
 </entry>
 
-<entry id="pierEmpty" on="placeVisit" target="place.pier" category="bark" when="!holds(present(theo, pier))">
+<entry id="pierEmpty" on="placeVisit" target="place.pier" category="bark" when="!holds('present', ['theo', 'pier'])">
   <match on="run.slot">
     <when is="night">
       @narrator: The pier at night is all creak and slap. Theo's nets are folded under a tarpaulin, weighed down with a brick.
@@ -30,7 +30,7 @@ title: What you find when nobody is there
   </match>
 </entry>
 
-<entry id="lighthouseShut" on="placeVisit" target="place.lighthouse" category="bark" when="!holds(present(theo, lighthouse))">
+<entry id="lighthouseShut" on="placeVisit" target="place.lighthouse" category="bark" when="!holds('present', ['theo', 'lighthouse'])">
   @narrator: The lighthouse door is padlocked. A tide table is taped to the inside of the glass, one date circled in biro.
 </entry>
 
@@ -38,11 +38,11 @@ title: What you find when nobody is there
   @narrator: Gulls, a bench, a war memorial with fresh flowers. The square is waiting for something.
 </entry>
 
-<entry id="shopBark" on="placeVisit" target="place.shop" category="bark" when="holds(present(pell, shop))">
+<entry id="shopBark" on="placeVisit" target="place.shop" category="bark" when="holds('present', ['pell', 'shop'])">
   @pell: Back already? The glue's where it always is.
 </entry>
 
-<beat id="theoBark" on="placeVisit" target="place.pier" when="holds(present(theo, pier))" once="false">
+<beat id="theoBark" on="placeVisit" target="place.pier" when="holds('present', ['theo', 'pier'])" once="false">
   ::set{run.seen.theo = run.day}
   <match on="run.aff.theo">
     <when is="3..">
@@ -57,7 +57,7 @@ title: What you find when nobody is there
   </match>
 </beat>
 
-<beat id="inesBark" on="placeVisit" target="place.library" when="holds(present(ines, library))" once="false">
+<beat id="inesBark" on="placeVisit" target="place.library" when="holds('present', ['ines', 'library'])" once="false">
   ::set{run.aff.ines += 1 when="run.seen.ines < run.day"}
   ::set{run.seen.ines = run.day}
   <match on="run.aff.ines">
@@ -70,10 +70,10 @@ title: What you find when nobody is there
   </match>
 </beat>
 
-<entry id="lighthouseUninvited" on="placeVisit" target="place.lighthouse" category="bark" when="holds(present(theo, lighthouse))">
+<entry id="lighthouseUninvited" on="placeVisit" target="place.lighthouse" category="bark" when="holds('present', ['theo', 'lighthouse'])">
   @narrator: The lighthouse door is open a crack. Up on the gallery someone is sitting with his legs through the railings, watching the water. You don't go up. It isn't your night.
 </entry>
 
-<entry id="shopDark" on="placeVisit" target="place.shop" category="bark" when="!holds(present(pell, shop))">
+<entry id="shopDark" on="placeVisit" target="place.shop" category="bark" when="!holds('present', ['pell', 'shop'])">
   @narrator: The shop is dark. A card in the window: GONE TO THE WALK. BACK WHEN THE TIDE IS.
 </entry>

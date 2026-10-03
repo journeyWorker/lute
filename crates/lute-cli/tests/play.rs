@@ -570,7 +570,7 @@ fn the_human_transcript_names_each_step_its_verdicts_and_the_winner() {
         "  → hub.firstEver",
         "── step 4 · talk → npc.achilles ──────────────",
         "▷ choice gift: [accept] decline        ← chosen: accept",
-        "  grant firstEscape darkness 10",
+        "  grant[#1 i0] firstEscape darkness 10",
         "── step 5 · inbox (select: all, pick: megNote) ──────────────",
         "  entry megNote (first read)",
         "── step 9 · new run ──────────────",
@@ -623,7 +623,7 @@ fn quest_occasion_project(tag: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.pressure: { type: number, default: 0 }\n",
+        "state:\n  run.pressure: { type: int, default: 0 }\n",
     );
     write(
         &dir,
@@ -1079,7 +1079,7 @@ fn boss_project(tag: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.hits: { type: number, default: 0 }\nentities:\n  foe: { members: [warden, hound] }\n",
+        "state:\n  run.hits: { type: int, default: 0 }\nentities:\n  foe: { members: [warden, hound] }\n",
     );
     write(
         &dir,
@@ -1317,9 +1317,9 @@ fn harness_project(tag: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.floor: { type: number, default: 0 }\n  \
+        "state:\n  run.floor: { type: int, default: 0 }\n  \
          run.outcome: { type: { enum: [climbing, fell, escaped] }, default: climbing }\n  \
-         user.runs: { type: number, default: 0 }\n  user.brave: { type: bool, default: false }\n\
+         user.runs: { type: int, default: 0 }\n  user.brave: { type: bool, default: false }\n\
          entities:\n  person: { members: [maud, oskar] }\n  foe: { members: [warden, hound] }\n\
          relations:\n  slew: { args: [foe], tier: run, reserved: true }\n  \
          heard: { args: [person], tier: user }\n  feared: { args: [foe], derive: true }\n\
@@ -1335,7 +1335,7 @@ fn harness_project(tag: &str) -> PathBuf {
         &dir,
         "scenes/victory.lute",
         "---\nkind: scene\nid: hub.victory\nuses: ../world.schema.yaml\non: hubVisit\n\
-         when: \"holds(slew(warden))\"\npriority: 10\nonce: false\n---\n\n## Victory\n\n\
+         when: \"holds('slew', ['warden'])\"\npriority: 10\nonce: false\n---\n\n## Victory\n\n\
          @maud: The warden is dead.\n",
     );
     write(
@@ -1471,7 +1471,7 @@ fn engine_writes_are_validated_before_anything_plays() {
         ),
         (
             "steps:\n  - engine: { state: { user.brave: { add: 1 } } }\n",
-            "is not a `number` path, so it takes no `{ add: … }`",
+            "is not an `int` or `double` path, so it takes no `{ add: … }`",
         ),
         (
             "steps:\n  - engine: { state: { quest.climb.state: complete } }\n",
@@ -1974,7 +1974,7 @@ fn compose_project(tag: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1 }\n  \
+        "state:\n  run.day: { type: int, default: 1 }\n  \
          run.answered: { type: bool, default: false }\n  \
          run.sealed: { type: bool, default: false }\n\
          entities:\n  person: { members: [maud, oskar] }\n",
@@ -2275,7 +2275,7 @@ fn a_guarded_set_writes_only_while_its_guard_holds() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.lamp: { type: bool, default: false }\n  run.coins: { type: number, default: 0 }\n",
+        "state:\n  run.lamp: { type: bool, default: false }\n  run.coins: { type: int, default: 0 }\n",
     );
     write(
         &dir,
@@ -2337,14 +2337,14 @@ fn hall_project(tag: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  user.deaths: { type: number, default: 0 }\n",
+        "state:\n  user.deaths: { type: int, default: 0 }\n",
     );
     write(
         &dir,
         "scenes/hall.lute",
         "---\nkind: scene\nid: hall\nuses: ../world.schema.yaml\non: visit\nonce: false\n\
          enums:\n  anchor: { members: [left, right], default: left }\n\
-         defs:\n  half: { type: number, cel: \"user.deaths / 2\" }\n---\n\n\
+         defs:\n  half: { type: double, cel: \"double(user.deaths) / 2.0\" }\n---\n\
          ## Hall\n\n::auto{character=\"maud\" anchor=\"left\"}\n\
          ::auto{character=\"oskar\" anchor=\"right\"}\n\
          @maud: Your {{user.deaths:ordinal}} death, {{user.deaths}} in all; half is {{@half:ordinal}}.\n\
@@ -2883,9 +2883,9 @@ fn a_refused_pick_names_the_producer_of_its_missing_fact() {
         "scenes/accusation.lute",
         "---\nkind: scene\nid: accusation\ntitle: The accusation\non: chapter\npriority: 10\n\
          after: 'visited(\"counter\")'\n---\n\n## The parlour\n\n<branch id=\"askTilly\">\n  \
-         <choice id=\"receipt\" label=\"Show the receipt\" when=\"holds(found(receipt))\">\n    \
+         <choice id=\"receipt\" label=\"Show the receipt\" when=\"holds('found', ['receipt'])\">\n    \
          @narrator: Tilly goes pale.\n  </choice>\n  \
-         <choice id=\"glove\" label=\"Show the glove\" when=\"holds(seen(glove))\">\n    \
+         <choice id=\"glove\" label=\"Show the glove\" when=\"holds('seen', ['glove'])\">\n    \
          @narrator: A glove.\n  </choice>\n  \
          <choice id=\"bluff\" label=\"Bluff\">\n    @narrator: She laughs.\n  </choice>\n\
          </branch>\n",
@@ -2929,7 +2929,7 @@ fn declared_advance_cascade_has_a_runtime_bound() {
         &dir,
         "world.schema.yaml",
         "entities:\n  token: { members: [marker] }\n\
-         state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+         state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
          run.slot: { type: { enum: [morning, evening] }, default: morning, owner: engine }\n\
          relations:\n  looping: { args: [token], tier: run }\n\
          facts: [\"looping(marker)\"]\n\
@@ -2938,7 +2938,7 @@ fn declared_advance_cascade_has_a_runtime_bound() {
     write(
         &dir,
         "scenes/loop.lute",
-        "---\nkind: scene\nid: loop\non: tick\nonce: false\nwhen: \"holds(looping(marker))\"\n\
+        "---\nkind: scene\nid: loop\non: tick\nonce: false\nwhen: \"holds('looping', ['marker'])\"\n\
          advances: slot\n---\n## Loop\n@narrator: Loop.\n",
     );
     let out = play_in(

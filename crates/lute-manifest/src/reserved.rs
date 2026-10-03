@@ -123,8 +123,8 @@ pub const CEL_KEYWORDS: &[&str] = &[
     "while",
 ];
 
-/// The Lute-CEL profile's calls and CEL's macros: inside a fact query each
-/// parses as the call, never as a relation.
+/// CEL host functions and macros, and the Datalog aggregates: a relation of
+/// the same name would read as the call in a rule body (`count(<name>(…))`).
 pub const CEL_CALLS: &[&str] = &[
     "all",
     "count",
@@ -134,7 +134,6 @@ pub const CEL_CALLS: &[&str] = &[
     "filter",
     "has",
     "holds",
-    "isSet",
     "map",
     "now",
     "validAt",
@@ -217,11 +216,11 @@ pub const GROUPS: &[Group] = &[
     Group {
         names: &["_"],
         slots: &[Slot::EntityMember, Slot::EnumMember],
-        is: "the wildcard of fact patterns (`holds(knows(_))`) and the fallback key of `per:` \
-             defaults",
+        is: "the wildcard of fact patterns (`holds('knows', ['_'])` in a condition, \
+             `knows(_)` in a rule) and the fallback key of `per:` defaults",
         says: |_, _| {
-            "the wildcard of fact patterns (`holds(knows(_))`) and the fallback key of `per:` \
-             defaults"
+            "the wildcard of fact patterns (`holds('knows', ['_'])` in a condition, \
+             `knows(_)` in a rule) and the fallback key of `per:` defaults"
                 .into()
         },
     },
@@ -237,16 +236,15 @@ pub const GROUPS: &[Group] = &[
         names: STATE_ROOTS,
         slots: &[Slot::EntityMember, Slot::Def],
         is: "a state root: in a condition a bare root name starts a state path, so \
-             `holds(found(clock))` and `@clock` read state instead",
+             `@clock` and a bare `clock` read state instead",
         says: |name, slot| match slot {
             Slot::Def => format!(
                 "a state root: `@{name}` reads as a bare `{name}`, which starts a state path, \
                  never the def"
             ),
             _ => format!(
-                "a state root: in a condition a bare `{name}` starts a state path, so a fact \
-                 query naming this member (`holds(<relation>({name}))`) reads `{name}` state \
-                 instead"
+                "a state root: in a condition a bare `{name}` starts a state path, so the \
+                 member could not be written unquoted where a name is expected"
             ),
         },
     },
@@ -295,9 +293,13 @@ pub const GROUPS: &[Group] = &[
     Group {
         names: CEL_CALLS,
         slots: &[Slot::Relation],
-        is: "a Lute-CEL call or CEL macro, so `holds(<name>(…))` parses as the call",
+        is: "a CEL host function or macro, or a Datalog aggregate, so a relation of that name \
+             would read as the call in a rule body (`count(<name>(…))`)",
         says: |name, _| {
-            format!("a Lute-CEL call or CEL macro: `holds({name}(…))` parses as the call")
+            format!(
+                "a CEL host function or macro, or a Datalog aggregate: a rule body's \
+                 `{name}(…)` would read as the call"
+            )
         },
     },
     Group {

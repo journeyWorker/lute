@@ -1,10 +1,10 @@
 ---
 kind: quest
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 uses: act1.schema.yaml
 title: Act 1 — Emerald Grove
 state:
-  user.xp: { type: number, default: 0 }
+  user.xp: { type: int, default: 0 }
 ---
 
 /*
@@ -27,9 +27,9 @@ state:
   for "captive Halsin" (spec section 3.1's one-id-one-kind rule).
 */
 
-<quest id="rescueHalsin" tier="run" title="Rescue the First Druid" start="holds(inParty(shadowheart))" fail="holds(captive(halsin)) && holds(atLocation(halsin, moonrise))">
-  <objective id="reach" title="Reach the grove" done="holds(canReach(player, grove))"/>
-  <objective id="learn" title="Learn where Halsin is held" done="holds(believesLocation(player, halsin, grove))"/>
+<quest id="rescueHalsin" tier="run" title="Rescue the First Druid" start="holds('inParty', ['shadowheart'])" fail="holds('captive', ['halsin']) && holds('atLocation', ['halsin', 'moonrise'])">
+  <objective id="reach" title="Reach the grove" done="holds('canReach', ['player', 'grove'])"/>
+  <objective id="learn" title="Learn where Halsin is held" done="holds('believesLocation', ['player', 'halsin', 'grove'])"/>
 
   <on event="questActive">
     ::assert{ heardLocation(player, halsin, grove) }

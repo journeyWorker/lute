@@ -171,7 +171,7 @@ fn only<'a>(ds: &'a [Diagnostic], code: &str) -> &'a Diagnostic {
 #[test]
 fn line_guard_over_never_asserted_fact_is_arm_dead() {
     let body = "::assert{knows(toma, manifest)}\n\
-                @vesna{when=\"holds(knows(toma, heading))\"}: So you read the log.";
+                @vesna{when=\"holds('knows', ['toma', 'heading'])\"}: So you read the log.";
     let text = scene(1, body);
     let r = root(&[("a.lute", &text)]);
     let ds = r.guards("a.lute");
@@ -179,7 +179,7 @@ fn line_guard_over_never_asserted_fact_is_arm_dead() {
     assert_eq!(d.severity, Severity::Error);
     assert!(
         d.message
-            .contains("no seed, assert, rule, or engine relation produces `knows(toma, heading)`"),
+            .contains("no seed, assert, rule, or engine relation produces `holds('knows', ['toma', 'heading'])`"),
         "{}",
         d.message
     );
@@ -190,7 +190,7 @@ fn line_guard_over_never_asserted_fact_is_arm_dead() {
     );
     assert_eq!(
         &text[d.span.byte_start..d.span.byte_end],
-        "holds(knows(toma, heading))"
+        "holds('knows', ['toma', 'heading'])"
     );
 }
 
@@ -198,7 +198,7 @@ fn line_guard_over_never_asserted_fact_is_arm_dead() {
 fn line_guard_over_relation_asserted_nowhere_is_arm_dead() {
     let r = root(&[(
         "a.lute",
-        &scene(1, "@vesna{when=\"holds(found(toma))\"}: You found him."),
+        &scene(1, "@vesna{when=\"holds('found', ['toma'])\"}: You found him."),
     )]);
     assert_eq!(codes(&r.guards("a.lute")), ["E-ARM-DEAD"]);
 }
@@ -207,8 +207,8 @@ fn line_guard_over_relation_asserted_nowhere_is_arm_dead() {
 fn single_file_check_stays_undecided_for_relational_guards() {
     let text = scene(
         1,
-        "@vesna{when=\"holds(knows(toma, heading))\"}: a.\n\
-         @vesna{when=\"count(knows(_, _)) >= 5\"}: b.",
+        "@vesna{when=\"holds('knows', ['toma', 'heading'])\"}: a.\n\
+         @vesna{when=\"count('knows', ['_', '_']) >= 5\"}: b.",
     );
     let ds = check(&input_for(&text)).diagnostics;
     assert!(
@@ -230,7 +230,7 @@ fn fact_asserted_in_a_sibling_scene_is_silent() {
             "b.lute",
             &scene(
                 2,
-                "@vesna{when=\"holds(knows(vesna, manifest))\"}: Two pods.",
+                "@vesna{when=\"holds('knows', ['vesna', 'manifest'])\"}: Two pods.",
             ),
         ),
     ]);
@@ -247,7 +247,7 @@ fn lore_entry_asserts_are_producers() {
         ),
         (
             "a.lute",
-            &scene(1, "@vesna{when=\"holds(knows(toma, heading))\"}: So you read the log."),
+            &scene(1, "@vesna{when=\"holds('knows', ['toma', 'heading'])\"}: So you read the log."),
         ),
     ]);
     assert_vocab_clean(&r);
@@ -256,14 +256,14 @@ fn lore_entry_asserts_are_producers() {
 
 #[test]
 fn unretracted_seed_is_guaranteed_and_a_retracted_one_is_possible() {
-    let guard = scene(1, "@vesna{when=\"holds(awake(vesna))\"}: Awake.");
+    let guard = scene(1, "@vesna{when=\"holds('awake', ['vesna'])\"}: Awake.");
     let r = root(&[("a.lute", &guard)]);
     assert_vocab_clean(&r);
     let ds = r.guards("a.lute");
     let w = only(&ds, "W-FACT-GUARANTEED");
     assert!(
         w.message
-            .contains("`awake(vesna)` is a `facts:` seed that nothing retracts"),
+            .contains("`holds('awake', ['vesna'])` is a `facts:` seed that nothing retracts"),
         "{}",
         w.message
     );
@@ -283,8 +283,8 @@ fn reserved_relation_queries_stay_silent() {
         "a.lute",
         &scene(
             1,
-            "@vesna{when=\"holds(sealed(toma))\"}: a.\n\
-             @vesna{when=\"count(sealed(_)) >= 40\"}: b.",
+            "@vesna{when=\"holds('sealed', ['toma'])\"}: a.\n\
+             @vesna{when=\"count('sealed', ['_']) >= 40\"}: b.",
         ),
     )]);
     assert_vocab_clean(&r);
@@ -305,7 +305,7 @@ fn derived_relation_through_rule_over_asserted_facts_is_silent() {
             "b.lute",
             &scene(
                 2,
-                "@vesna{when=\"holds(can_halt(toma))\"}: Toma can halt it.",
+                "@vesna{when=\"holds('can_halt', ['toma'])\"}: Toma can halt it.",
             ),
         ),
     ]);
@@ -329,15 +329,15 @@ fn derived_relation_over_never_asserted_facts_is_dead() {
             "b.lute",
             &scene(
                 2,
-                "@vesna{when=\"holds(can_halt(toma))\"}: a.\n\
-                 @vesna{when=\"holds(can_halt(ilsabet))\"}: b.",
+                "@vesna{when=\"holds('can_halt', ['toma'])\"}: a.\n\
+                 @vesna{when=\"holds('can_halt', ['ilsabet'])\"}: b.",
             ),
         ),
     ]);
     let ds = r.guards("b.lute");
     assert_eq!(codes(&ds), ["E-ARM-DEAD", "E-ARM-DEAD"], "{ds:?}");
     assert!(
-        ds[0].message.contains("`can_halt(toma)`"),
+        ds[0].message.contains("`holds('can_halt', ['toma'])`"),
         "{}",
         ds[0].message
     );
@@ -360,7 +360,7 @@ fn assert_in_a_provably_unreachable_scene_is_not_a_producer() {
                  ::assert{{found(toma)}}\n@vesna: found.\n"
             ),
         ),
-        ("c.lute", &scene(3, "@vesna{when=\"holds(found(toma))\"}: hi.")),
+        ("c.lute", &scene(3, "@vesna{when=\"holds('found', ['toma'])\"}: hi.")),
     ]);
     assert_eq!(codes(&r.guards("c.lute")), ["E-ARM-DEAD"]);
 }
@@ -373,7 +373,7 @@ fn negated_impossible_fact_decides_true_not_dead() {
         "a.lute",
         &scene(
             1,
-            "@vesna{when=\"!holds(knows(toma, heading))\"}: You don't know yet.",
+            "@vesna{when=\"!holds('knows', ['toma', 'heading'])\"}: You don't know yet.",
         ),
     )]);
     assert_vocab_clean(&r);
@@ -394,16 +394,16 @@ fn count_above_the_may_upper_bound_is_dead() {
             "b.lute",
             &scene(
                 2,
-                "@vesna{when=\"count(knows(_, _)) >= 5\"}: dead.\n\
-                 @vesna{when=\"count(knows(_, _)) >= 2\"}: possible.\n\
-                 @vesna{when=\"3 <= count(knows(_, _))\"}: dead, flipped.",
+                "@vesna{when=\"count('knows', ['_', '_']) >= 5\"}: dead.\n\
+                 @vesna{when=\"count('knows', ['_', '_']) >= 2\"}: possible.\n\
+                 @vesna{when=\"3 <= count('knows', ['_', '_'])\"}: dead, flipped.",
             ),
         ),
     ]);
     let ds = r.guards("b.lute");
     assert_eq!(codes(&ds), ["E-ARM-DEAD", "E-ARM-DEAD"], "{ds:?}");
     assert!(
-        ds[0].message.contains("`count(knows(_, _))` is at most 2"),
+        ds[0].message.contains("`count('knows', ['_', '_'])` is at most 2"),
         "{}",
         ds[0].message
     );
@@ -426,8 +426,8 @@ fn count_distinct_is_bounded_by_distinct_values_not_tuples() {
             "b.lute",
             &scene(
                 2,
-                "@vesna{when=\"countDistinct(knows(W, _), W) >= 2\"}: dead.\n\
-                 @vesna{when=\"count(knows(_, _)) >= 2\"}: possible.",
+                "@vesna{when=\"countDistinct('knows', ['_', '_'], 0) >= 2\"}: dead.\n\
+                 @vesna{when=\"count('knows', ['_', '_']) >= 2\"}: possible.",
             ),
         ),
     ]);
@@ -451,8 +451,8 @@ fn or_with_one_possible_arm_is_not_dead() {
             "b.lute",
             &scene(
                 2,
-                "@vesna{when=\"holds(found(toma)) || holds(knows(vesna, manifest))\"}: a.\n\
-                 @vesna{when=\"holds(found(toma)) && holds(knows(vesna, manifest))\"}: b.",
+                "@vesna{when=\"holds('found', ['toma']) || holds('knows', ['vesna', 'manifest'])\"}: a.\n\
+                 @vesna{when=\"holds('found', ['toma']) && holds('knows', ['vesna', 'manifest'])\"}: b.",
             ),
         ),
     ]);
@@ -465,7 +465,7 @@ fn or_with_one_possible_arm_is_not_dead() {
 fn choice_when_over_impossible_fact_is_arm_dead() {
     let text = scene(
         1,
-        "<branch id=\"b\">\n<choice id=\"ask\" label=\"Ask\" when=\"holds(knows(toma, heading))\">\n\
+        "<branch id=\"b\">\n<choice id=\"ask\" label=\"Ask\" when=\"holds('knows', ['toma', 'heading'])\">\n\
          @toma: fine.\n</choice>\n<choice id=\"go\" label=\"Go\">\n@toma: bye.\n</choice>\n</branch>",
     );
     let r = root(&[("a.lute", &text)]);
@@ -482,12 +482,12 @@ fn choice_when_over_impossible_fact_is_arm_dead() {
 fn when_test_arm_over_impossible_fact_is_arm_dead() {
     let text = scene(
         1,
-        "<match on=\"run.mood\">\n<when test=\"holds(found(toma))\">\n@toma: here.\n</when>\n\
+        "<match on=\"run.mood\">\n<when test=\"holds('found', ['toma'])\">\n@toma: here.\n</when>\n\
          <otherwise>\n@toma: gone.\n</otherwise>\n</match>",
     )
     .replace(
         "---\n## Shot",
-        "state:\n  run.mood: { type: number, default: 0 }\n---\n## Shot",
+        "state:\n  run.mood: { type: int, default: 0 }\n---\n## Shot",
     );
     let r = root(&[("a.lute", &text)]);
     assert_eq!(
@@ -501,13 +501,13 @@ fn when_test_arm_over_impossible_fact_is_arm_dead() {
 #[test]
 fn objective_done_over_impossible_fact_is_unsatisfiable_once() {
     let text = quest(
-        "<quest id=\"q\" start=\"true\">\n<objective id=\"o\" done=\"holds(knows(toma, heading))\"/>\n</quest>",
+        "<quest id=\"q\" start=\"true\">\n<objective id=\"o\" done=\"holds('knows', ['toma', 'heading'])\"/>\n</quest>",
     );
     let r = root(&[("q.lute", &text)]);
     let ds = r.guards("q.lute");
     let d = only(&ds, "E-OBJECTIVE-UNSATISFIABLE");
     assert!(
-        d.message.contains("`knows(toma, heading)`"),
+        d.message.contains("`holds('knows', ['toma', 'heading'])`"),
         "{}",
         d.message
     );
@@ -534,7 +534,7 @@ fn objective_done_over_impossible_fact_is_unsatisfiable_once() {
 fn scalar_dead_objective_is_left_to_the_per_file_pass() {
     let r = root(&[(
         "q.lute",
-        &quest("<quest id=\"q\" start=\"true\">\n<objective id=\"o\" done=\"false && holds(found(toma))\"/>\n</quest>"),
+        &quest("<quest id=\"q\" start=\"true\">\n<objective id=\"o\" done=\"false && holds('found', ['toma'])\"/>\n</quest>"),
     )]);
     assert!(r.guards("q.lute").is_empty(), "{:?}", r.guards("q.lute"));
     assert!(r.per_file[0]
@@ -546,7 +546,7 @@ fn scalar_dead_objective_is_left_to_the_per_file_pass() {
 fn quest_start_over_impossible_fact_is_unreachable() {
     let r = root(&[(
         "q.lute",
-        &quest("<quest id=\"q\" start=\"holds(found(toma))\">\n<objective id=\"o\" done=\"true\"/>\n</quest>"),
+        &quest("<quest id=\"q\" start=\"holds('found', ['toma'])\">\n<objective id=\"o\" done=\"true\"/>\n</quest>"),
     )]);
     let ds = r.guards("q.lute");
     let d = only(&ds, "E-QUEST-UNREACHABLE");
@@ -567,7 +567,7 @@ fn quest_fail_over_impossible_fact_is_silent() {
     // defect (dsl 0.10.0 D-N).
     let r = root(&[(
         "q.lute",
-        &quest("<quest id=\"q\" start=\"true\" fail=\"holds(found(toma))\">\n<objective id=\"o\" done=\"true\"/>\n</quest>"),
+        &quest("<quest id=\"q\" start=\"true\" fail=\"holds('found', ['toma'])\">\n<objective id=\"o\" done=\"true\"/>\n</quest>"),
     )]);
     assert!(r.guards("q.lute").is_empty(), "{:?}", r.guards("q.lute"));
 }
@@ -576,7 +576,7 @@ fn quest_fail_over_impossible_fact_is_silent() {
 fn entry_when_over_impossible_fact_is_entry_unreachable() {
     let r = root(&[(
         "notes.lute",
-        &lore("<entry id=\"bark\" when=\"holds(found(toma))\">\n  @vesna: Found him.\n</entry>"),
+        &lore("<entry id=\"bark\" when=\"holds('found', ['toma'])\">\n  @vesna: Found him.\n</entry>"),
     )]);
     let ds = r.guards("notes.lute");
     let d = only(&ds, "E-ENTRY-UNREACHABLE");
@@ -598,7 +598,7 @@ fn query_outside_the_documents_vocabulary_is_never_decided() {
         (
             "b.lute",
             "---\nkind: scene\ncharacter: haven\nseason: 1\nepisode: 2\n---\n## Shot 1.\n\
-             @vesna{when=\"holds(found(toma))\"}: hi.\n",
+             @vesna{when=\"holds('found', ['toma'])\"}: hi.\n",
         ),
     ]);
     assert!(r.guards("b.lute").is_empty(), "{:?}", r.guards("b.lute"));
@@ -608,7 +608,7 @@ fn query_outside_the_documents_vocabulary_is_never_decided() {
 fn non_member_argument_is_left_to_fact_domain() {
     let r = root(&[(
         "a.lute",
-        &scene(1, "@vesna{when=\"holds(knows(toma, heding))\"}: typo."),
+        &scene(1, "@vesna{when=\"holds('knows', ['toma', 'heding'])\"}: typo."),
     )]);
     assert!(r.per_file[0].iter().any(|d| d.code == "E-FACT-DOMAIN"));
     assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
@@ -633,8 +633,8 @@ fn line_when(doc: &Document, n: usize) -> lute_core_span::Span {
 fn guaranteed_fact_in_a_line_guard_is_fact_guaranteed() {
     let text = scene(
         2,
-        "@vesna{when=\"holds(knows(vesna, manifest))\"}: redundant.\n\
-         @vesna{when=\"!holds(knows(vesna, manifest))\"}: dead.",
+        "@vesna{when=\"holds('knows', ['vesna', 'manifest'])\"}: redundant.\n\
+         @vesna{when=\"!holds('knows', ['vesna', 'manifest'])\"}: dead.",
     );
     let mut r = root(&[
         (
@@ -664,7 +664,7 @@ fn guaranteed_fact_in_a_line_guard_is_fact_guaranteed() {
     assert_eq!(w.severity, Severity::Warning);
     assert!(
         w.message.contains(
-            "`knows(vesna, manifest)` is asserted on every route to here (scenes/archive.lute:21)"
+            "`holds('knows', ['vesna', 'manifest'])` is asserted on every route to here (scenes/archive.lute:21)"
         ),
         "{}",
         w.message
@@ -684,8 +684,8 @@ fn guaranteed_count_lower_bound_decides_comparisons() {
         &scene(
             1,
             "::assert{knows(vesna, manifest)}\n\
-             @vesna{when=\"count(knows(_, _)) >= 1\"}: redundant.\n\
-             @vesna{when=\"count(knows(_, _)) == 0\"}: dead.",
+             @vesna{when=\"count('knows', ['_', '_']) >= 1\"}: redundant.\n\
+             @vesna{when=\"count('knows', ['_', '_']) == 0\"}: dead.",
         ),
     )]);
     let fact = MustFact {
@@ -709,9 +709,9 @@ fn guaranteed_count_lower_bound_decides_comparisons() {
 
 // --- the must set, computed (§4) ---------------------------------------------
 
-const KNOWS: &str = "@vesna{when=\"holds(knows(vesna, manifest))\"}: So you read it.";
+const KNOWS: &str = "@vesna{when=\"holds('knows', ['vesna', 'manifest'])\"}: So you read it.";
 const ASSERT_KNOWS: &str = "::assert{knows(vesna, manifest)}";
-const MOOD: &str = "state:\n  run.mood: { type: number, default: 0 }\n---\n## Shot";
+const MOOD: &str = "state:\n  run.mood: { type: int, default: 0 }\n---\n## Shot";
 
 fn with_mood(text: String) -> String {
     text.replace("---\n## Shot", MOOD)
@@ -734,14 +734,14 @@ fn assert_then_guard_in_the_same_scene_is_fact_guaranteed() {
     let line = line_of(&text, ASSERT_KNOWS);
     assert!(
         ds[0].message.contains(&format!(
-            "`knows(vesna, manifest)` is asserted on every route to here (a.lute:{line})"
+            "`holds('knows', ['vesna', 'manifest'])` is asserted on every route to here (a.lute:{line})"
         )),
         "{}",
         ds[0].message
     );
     assert_eq!(
         &text[ds[0].span.byte_start..ds[0].span.byte_end],
-        "holds(knows(vesna, manifest))"
+        "holds('knows', ['vesna', 'manifest'])"
     );
 }
 
@@ -782,15 +782,15 @@ fn keyed_assert_displaces_the_previous_value() {
     let text = scene(
         1,
         "::assert{at(vesna, bridge)}\n::assert{at(vesna, hold)}\n\
-         @vesna{when=\"holds(at(vesna, bridge))\"}: still on the bridge?\n\
-         @vesna{when=\"holds(at(vesna, hold))\"}: in the hold.",
+         @vesna{when=\"holds('at', ['vesna', 'bridge'])\"}: still on the bridge?\n\
+         @vesna{when=\"holds('at', ['vesna', 'hold'])\"}: in the hold.",
     );
     let r = root(&[("a.lute", &text)]);
     assert_vocab_clean(&r);
     let ds = r.guards("a.lute");
     assert_eq!(codes(&ds), ["W-FACT-GUARANTEED"], "{ds:?}");
     assert!(
-        ds[0].message.contains("`at(vesna, hold)`"),
+        ds[0].message.contains("`holds('at', ['vesna', 'hold'])`"),
         "{}",
         ds[0].message
     );
@@ -819,14 +819,14 @@ fn a_guard_is_an_assumption_inside_its_region() {
     let in_when = with_mood(scene(
         1,
         &format!(
-            "<match on=\"run.mood\">\n<when test=\"holds(knows(vesna, manifest))\">\n{KNOWS}\n</when>\n\
+            "<match on=\"run.mood\">\n<when test=\"holds('knows', ['vesna', 'manifest'])\">\n{KNOWS}\n</when>\n\
              <otherwise>\n@vesna: no.\n</otherwise>\n</match>"
         ),
     ));
     let in_choice = scene(
         1,
         &format!(
-            "<branch id=\"b\">\n<choice id=\"ask\" label=\"Ask\" when=\"holds(knows(vesna, manifest)) && true\">\n\
+            "<branch id=\"b\">\n<choice id=\"ask\" label=\"Ask\" when=\"holds('knows', ['vesna', 'manifest']) && true\">\n\
              {KNOWS}\n</choice>\n<choice id=\"go\" label=\"Go\">\n@vesna: bye.\n</choice>\n</branch>"
         ),
     );
@@ -920,7 +920,7 @@ fn a_hub_body_assert_is_not_guaranteed_after_the_hub() {
 
 #[test]
 fn scene_tier_facts_do_not_cross_a_document_boundary() {
-    let near = "@vesna{when=\"holds(near(toma))\"}: Toma is here.";
+    let near = "@vesna{when=\"holds('near', ['toma'])\"}: Toma is here.";
     let a = scene(1, &format!("::assert{{near(toma)}}\n{near}"));
     let b = scene_after(2, "visited(\"haven.s01ep01\")", near);
     let r = root(&[("a.lute", &a), ("b.lute", &b)]);
@@ -934,7 +934,7 @@ fn derived_relation_over_guaranteed_facts_is_guaranteed() {
     let text = scene(
         1,
         "::assert{awake(toma)}\n::assert{knows(toma, shed_sequence)}\n\
-         @vesna{when=\"holds(can_halt(toma))\"}: Toma can halt it.",
+         @vesna{when=\"holds('can_halt', ['toma'])\"}: Toma can halt it.",
     );
     let r = root(&[("a.lute", &text)]);
     assert_vocab_clean(&r);
@@ -943,7 +943,7 @@ fn derived_relation_over_guaranteed_facts_is_guaranteed() {
     let line = line_of(&text, "::assert{awake(toma)}");
     assert!(
         w.message.contains(&format!(
-            "`can_halt(toma)` follows by rule from facts that hold on every route to here (a.lute:{line})"
+            "`holds('can_halt', ['toma'])` follows by rule from facts that hold on every route to here (a.lute:{line})"
         )),
         "{}",
         w.message
@@ -1008,8 +1008,8 @@ fn alibi_lore(body: &str) -> String {
 #[test]
 fn negated_atom_over_a_stable_seed_never_holds() {
     let text = alibi_lore(
-        "<entry id=\"vesnaPage\" when=\"holds(suspect(vesna))\">\n  @vesna: Me?\n</entry>\n\
-         <entry id=\"tomaPage\" when=\"holds(suspect(toma))\">\n  @toma: Me?\n</entry>",
+        "<entry id=\"vesnaPage\" when=\"holds('suspect', ['vesna'])\">\n  @vesna: Me?\n</entry>\n\
+         <entry id=\"tomaPage\" when=\"holds('suspect', ['toma'])\">\n  @toma: Me?\n</entry>",
     );
     let r = root(&[("casebook.lute", &text)]);
     assert_vocab_clean(&r);
@@ -1022,7 +1022,7 @@ fn negated_atom_over_a_stable_seed_never_holds() {
 fn negated_atom_over_a_retracted_seed_stays_possible() {
     // Once anything can retract the alibi, `not alibi(vesna)` may hold.
     let text = alibi_lore(
-        "<entry id=\"vesnaPage\" when=\"holds(suspect(vesna))\">\n  @vesna: Me?\n</entry>\n\
+        "<entry id=\"vesnaPage\" when=\"holds('suspect', ['vesna'])\">\n  @vesna: Me?\n</entry>\n\
          <entry id=\"recant\">\n  @toma: She lied.\n  ::retract{alibi(vesna)}\n</entry>",
     );
     let r = root(&[("casebook.lute", &text)]);
@@ -1044,8 +1044,8 @@ fn negated_atom_over_a_stably_derived_fact_never_holds() {
                 away: { args: [place], tier: run }\n  alibi: { args: [crew], derive: true }\n  \
                 suspect: { args: [crew], derive: true }\nfacts:\n  - \"seen(vesna, deck)\"\n  - \"away(deck)\"\n\
                 rules:\n  - \"alibi(C) :- seen(C, P), away(P)\"\n  - \"suspect(C) :- crew(C), not alibi(C)\"\n---\n\
-                <entry id=\"vesnaPage\" when=\"holds(suspect(vesna))\">\n  @vesna: Me?\n</entry>\n\
-                <entry id=\"tomaPage\" when=\"holds(suspect(toma))\">\n  @toma: Me?\n</entry>\n";
+                <entry id=\"vesnaPage\" when=\"holds('suspect', ['vesna'])\">\n  @vesna: Me?\n</entry>\n\
+                <entry id=\"tomaPage\" when=\"holds('suspect', ['toma'])\">\n  @toma: Me?\n</entry>\n";
     let r = root(&[("casebook.lute", text)]);
     assert_vocab_clean(&r);
     let ds = r.guards("casebook.lute");
@@ -1073,7 +1073,7 @@ fn negated_atom_over_a_derived_fact_with_a_retractable_premise_stays_possible() 
                 away: { args: [place], tier: run }\n  alibi: { args: [crew], derive: true }\n  \
                 suspect: { args: [crew], derive: true }\nfacts:\n  - \"seen(vesna, deck)\"\n  - \"away(deck)\"\n\
                 rules:\n  - \"alibi(C) :- seen(C, P), away(P)\"\n  - \"suspect(C) :- crew(C), not alibi(C)\"\n---\n\
-                <entry id=\"vesnaPage\" when=\"holds(suspect(vesna))\">\n  @vesna: Me?\n</entry>\n\
+                <entry id=\"vesnaPage\" when=\"holds('suspect', ['vesna'])\">\n  @vesna: Me?\n</entry>\n\
                 <entry id=\"recant\">\n  @toma: She lied.\n  ::retract{seen(vesna, _)}\n</entry>\n";
     let r = root(&[("casebook.lute", text)]);
     assert_vocab_clean(&r);
@@ -1091,7 +1091,7 @@ fn negated_atom_over_a_derived_fact_with_a_retractable_premise_stays_possible() 
 fn a_root_with_an_unparseable_frontmatter_decides_no_fact_impossible() {
     let broken = "---\nkind: scene\nid: a\nwhen: 'x == 'y''\n---\n## Shot 1.\n::assert{found(toma)}\n@vesna: hi.\n";
     let guard =
-        lore("<entry id=\"found\" when=\"holds(found(toma))\">\n  @vesna: Found him.\n</entry>");
+        lore("<entry id=\"found\" when=\"holds('found', ['toma'])\">\n  @vesna: Found him.\n</entry>");
     let r = root(&[("a.lute", broken), ("notes.lute", &guard)]);
     assert!(
         r.guards("notes.lute").is_empty(),
@@ -1125,9 +1125,9 @@ fn wip_downgrades_only_a_guard_dead_for_want_of_any_producer() {
     // never match stay an error. So does `can_halt(toma)`: it needs
     // `awake(toma)`, which the seeded `awake` never holds.
     let text = lore(
-        "<entry id=\"found\" when=\"holds(found(toma))\">\n  @vesna: Found him.\n</entry>\n\
-         <entry id=\"heading\" when=\"holds(knows(toma, heading))\">\n  @vesna: The heading.\n</entry>\n\
-         <entry id=\"halt\" when=\"holds(can_halt(toma))\">\n  @vesna: Halt.\n</entry>\n\
+        "<entry id=\"found\" when=\"holds('found', ['toma'])\">\n  @vesna: Found him.\n</entry>\n\
+         <entry id=\"heading\" when=\"holds('knows', ['toma', 'heading'])\">\n  @vesna: The heading.\n</entry>\n\
+         <entry id=\"halt\" when=\"holds('can_halt', ['toma'])\">\n  @vesna: Halt.\n</entry>\n\
          <entry id=\"note\">\n  @vesna: Noted.\n  ::assert{knows(toma, manifest)}\n</entry>",
     );
     let plain = root(&[("notes.lute", &text)]).guards("notes.lute");
@@ -1179,7 +1179,7 @@ fn wip_follows_rules_to_the_missing_producer() {
     // `can_halt(vesna)` needs `knows(vesna, shed_sequence)`; with `knows`
     // produced nowhere, only the unwritten content makes the query dead.
     let text =
-        lore("<entry id=\"halt\" when=\"holds(can_halt(vesna))\">\n  @vesna: Halt.\n</entry>");
+        lore("<entry id=\"halt\" when=\"holds('can_halt', ['vesna'])\">\n  @vesna: Halt.\n</entry>");
     let plain = root(&[("notes.lute", &text)]).guards("notes.lute");
     assert_eq!(
         only(&plain, "E-ENTRY-UNREACHABLE").severity,
@@ -1207,9 +1207,9 @@ fn wip_downgrades_a_dead_choice_and_gated_line_too() {
     // produces yet is graded like a dead entry under `--wip`.
     let text = scene(
         1,
-        "<hub id=\"look\">\n<choice id=\"cab\" label=\"Cabin\" when=\"holds(found(toma))\">\n@vesna: Cabin.\n</choice>\n\
+        "<hub id=\"look\">\n<choice id=\"cab\" label=\"Cabin\" when=\"holds('found', ['toma'])\">\n@vesna: Cabin.\n</choice>\n\
          <choice id=\"leave\" label=\"Leave\" exit>\n@vesna: Go.\n</choice>\n</hub>\n\
-         @vesna{when=\"holds(found(toma))\"}: Found him.",
+         @vesna{when=\"holds('found', ['toma'])\"}: Found him.",
     );
     let plain = root(&[("a.lute", &text)]).guards("a.lute");
     let dead: Vec<&Diagnostic> = plain.iter().filter(|d| d.code == "E-ARM-DEAD").collect();
@@ -1276,7 +1276,7 @@ fn an_entry_read_guarantees_nothing_its_body_only_may_assert() {
     ));
     let lore = lore.replace(
         "---\n<entry",
-        "state:\n  run.mood: { type: number, default: 0 }\n---\n<entry",
+        "state:\n  run.mood: { type: int, default: 0 }\n---\n<entry",
     );
     let (_, text) = read_guarded("entry.log3.read");
     let r = root(&[("a.lute", &text), ("log.lute", &lore)]);
@@ -1324,11 +1324,11 @@ fn keyed_seed_stability_and_derivation_over_seeds_plus_route_facts() {
     };
     let a = doc(
         1,
-        "@vesna{when=\"holds(at(toma, hold))\"}: Toma holds.\n\
-         @vesna{when=\"holds(at(vesna, bridge))\"}: On the bridge.\n\
-         @vesna{when=\"holds(can_halt(vesna))\"}: Not yet.\n\
+        "@vesna{when=\"holds('at', ['toma', 'hold'])\"}: Toma holds.\n\
+         @vesna{when=\"holds('at', ['vesna', 'bridge'])\"}: On the bridge.\n\
+         @vesna{when=\"holds('can_halt', ['vesna'])\"}: Not yet.\n\
          ::assert{knows(vesna, shed_sequence)}\n\
-         @vesna{when=\"holds(can_halt(vesna))\"}: Now.",
+         @vesna{when=\"holds('can_halt', ['vesna'])\"}: Now.",
     );
     let b = doc(2, "::assert{at(vesna, hold)}\n@vesna: Moved.");
     let r = root(&[("a.lute", &a), ("b.lute", &b)]);

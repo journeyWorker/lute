@@ -2,7 +2,7 @@
 component: villagerChat
 params:
   who: speaker
-  need: { type: number, default: 0 }
+  need: { type: int, default: 0 }
   prev: { type: string, default: "" }
 beat:
   on: talk

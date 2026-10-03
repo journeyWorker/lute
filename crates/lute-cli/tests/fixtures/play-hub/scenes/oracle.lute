@@ -4,7 +4,7 @@ id: oracle.vision
 uses: ../world.schema.yaml
 on: talk
 target: npc.oracle
-when: 'validAt(heardOf(patroclus), now())'
+when: 'validAt("heardOf", ["patroclus"], now())'
 ---
 
 ## The Oracle

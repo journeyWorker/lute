@@ -5,7 +5,7 @@ title: Blaze Gym
 on: challenge
 target: arena.blazeGym
 once: false
-when: "!holds(defeated(ignatius))"
+when: "!holds('defeated', ['ignatius'])"
 ---
 
 // CONTRACT BEAT (seeded by the lead; owned by north): asserts hasBadge(blaze).
@@ -16,7 +16,7 @@ when: "!holds(defeated(ignatius))"
 ::bg{location="blaze-gym" time="day"}
 ::music{action="change" mood="tense" volume="normal"}
 @narrator: The last quiz machine buzzes, and the floor opens onto a stage ringed with gas jets. They light one after another, all the way round.
-@narrator{when="holds(defeated(blazeGymSuperNerdQuill)) && holds(defeated(blazeGymSuperNerdOona))"}: Somewhere behind the stage, two very clever people are sulking about their quiz scores.
+@narrator{when="holds('defeated', ['blazeGymSuperNerdQuill']) && holds('defeated', ['blazeGymSuperNerdOona'])"}: Somewhere behind the stage, two very clever people are sulking about their quiz scores.
 
 ## Ignatius
 

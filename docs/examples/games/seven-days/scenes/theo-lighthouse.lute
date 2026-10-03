@@ -4,7 +4,7 @@ id: theo.lighthouse
 title: Wednesday night, low tide
 on: placeVisit
 target: place.lighthouse
-when: "holds(present(theo, lighthouse)) && quest.theoLighthouse.state == 'active'"
+when: "holds('present', ['theo', 'lighthouse']) && quest.theoLighthouse.state == 'active'"
 priority: 50
 ---
 

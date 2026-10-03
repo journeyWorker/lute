@@ -20,7 +20,7 @@ title: Lines of inquiry
 
 <quest id="timeOfDeath" title="When did he die?" tier="run">
   <objective id="watch" title="Read the dead man's watch" done="visited('examine.watch')"/>
-  <objective id="heard" title="Find who last heard him alive" done="holds(alive(hask, _))"/>
+  <objective id="heard" title="Find who last heard him alive" done="holds('alive', ['hask', '_'])"/>
   <objective id="fixed" title="Fix the hour" done="@timeFixed">
     @inspector{code="0010" mono}: The Orla tunnel. Four minutes of dark, and a watch set to lie about it.
   </objective>
@@ -32,18 +32,18 @@ title: Lines of inquiry
 </quest>
 
 <quest id="whereWere" title="Where was everyone in the tunnel?" tier="run">
-  <objective id="crane" title="Hear Crane's account" done="holds(claims(crane, _, tunnel))"/>
-  <objective id="mirela" title="Hear Mirela Dace's account" done="holds(claims(mirela, _, tunnel))"/>
-  <objective id="lise" title="Hear Lise Varo's account" done="holds(claims(lise, _, tunnel))"/>
-  <objective id="solt" title="Hear Dr. Solt's account" done="holds(claims(solt, _, tunnel))"/>
+  <objective id="crane" title="Hear Crane's account" done="holds('claims', ['crane', '_', 'tunnel'])"/>
+  <objective id="mirela" title="Hear Mirela Dace's account" done="holds('claims', ['mirela', '_', 'tunnel'])"/>
+  <objective id="lise" title="Hear Lise Varo's account" done="holds('claims', ['lise', '_', 'tunnel'])"/>
+  <objective id="solt" title="Hear Dr. Solt's account" done="holds('claims', ['solt', '_', 'tunnel'])"/>
 </quest>
 
 <quest id="accusation" title="Name a name at Ossery" tier="run">
-  <objective id="named" title="Accuse the killer, and make it stick" done="@solved && holds(prime(solt))" on="accuse" until="run.accused != 'nobody'"/>
+  <objective id="named" title="Accuse the killer, and make it stick" done="@solved && holds('prime', ['solt'])" on="accuse" until="run.accused != 'nobody'"/>
 </quest>
 
 <quest id="lisesLetter" title="Lise's letter">
-  <objective id="find" title="Find her letter among Hask's things" done="holds(found(letter))"/>
+  <objective id="find" title="Find her letter among Hask's things" done="holds('found', ['letter'])"/>
   <on event="questComplete">
     @inspector{code="0010" mono}: Sixty crowns and a plea for time, in a good round hand. It has nothing to do with the tunnel. It goes back to her at Ossery.
   </on>

@@ -46,10 +46,10 @@ fn project() -> PathBuf {
     write_at(
         &proj,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  user.bond: { type: number, default: 0 }\n\
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n  user.bond: { type: int, default: 0 }\n\
          entities:\n  person: { members: [mara, tomas] }\n\
          relations:\n  met: { args: [person], tier: user }\n  slew: { args: [person], tier: run, reserved: true }\n\
-         defs:\n  trusted: \"user.bond >= 2\"\n  atLeast: { type: bool, params: { n: number }, cel: \"user.bond >= 1\" }\n",
+         defs:\n  trusted: \"user.bond >= 2\"\n  atLeast: { type: bool, params: { n: int }, cel: \"user.bond >= 1\" }\n",
     );
     write_at(
         &proj,
@@ -105,7 +105,7 @@ fn context_json_lists_defs_ownership_tiers_builtins_and_ids() {
     );
     assert_eq!(
         def("atLeast")["params"],
-        serde_json::json!([{ "name": "n", "type": "number" }])
+        serde_json::json!([{ "name": "n", "type": "int" }])
     );
 
     let state = |path: &str| {
@@ -221,11 +221,11 @@ fn context_outline_shows_the_new_sections() {
     let text = context(&proj, false);
     for expected in [
         "  talk (select: first, target: npc.<person>) — The player talks to someone",
-        "  run.day: number (owner: engine)",
+        "  run.day: int (owner: engine)",
         "  met/1(person) [user]",
         "  slew/1(person) [run, reserved]",
         "  nod(who: string, mood: enum[warm, cold])",
-        "  @atLeast(n: number): bool = user.bond >= 1",
+        "  @atLeast(n: int): bool = user.bond >= 1",
         "  @trusted: bool = user.bond >= 2",
         "  ::accept{quest=\"<questId>\" [at=\"nextRun\"] [when=\"<condition>\"]} — accept a quest that has no `start` condition; `at=\"nextRun\"` queues it until after the next new run",
         "  ::body — in a component with a `beat:` header, at the top level of its body: where a `<beat use=…>`'s own body goes",
@@ -256,7 +256,7 @@ fn context_shows_component_param_defaults_and_directive_guards() {
         "components/nod.component.lute",
         "---\ncomponent: nod\nparams:\n  who: { type: string, default: \"The inspector\" }\n  \
          mood: { type: { enum: [warm, cold] }, default: warm }\n  trust: { type: bool, default: \"@trusted\" }\n  \
-         depth: number\n---\n\n## Nod\n\n@narrator: A nod.\n",
+         depth: int\n---\n\n## Nod\n\n@narrator: A nod.\n",
     );
     let v: serde_json::Value = serde_json::from_str(&context(&proj, true)).unwrap();
     let nod = v["components"]
@@ -284,7 +284,7 @@ fn context_shows_component_param_defaults_and_directive_guards() {
 
     let text = context(&proj, false);
     for expected in [
-        "  nod(who: string = \"The inspector\", mood: enum[warm, cold] = warm, trust: bool = @trusted, depth: number)",
+        "  nod(who: string = \"The inspector\", mood: enum[warm, cold] = warm, trust: bool = @trusted, depth: int)",
         "  ::set{ <path> = <expr> [when=\"<condition>\"] }  (also += / -=) — write a declared state path; engine-owned paths are the engine's (E-ENGINE-OWNED-WRITE)",
         "  ::assert{ <relation>(<arg>, …) [when=\"<condition>\"] } — assert a ground fact of a declared, non-derived, non-reserved relation",
         "  ::retract{ <relation>(<arg | _>, …) [when=\"<condition>\"] } — retract the matching facts of a declared, non-derived, non-reserved relation",
@@ -341,13 +341,13 @@ fn context_shows_the_0_27_project_keys() {
         &proj,
         "plugins/demo.occasions/occasions/game.yaml",
         "occasions:\n  talk: { select: first, target: { prefix: npc, entity: person }, raisedWhen: \"run.day <= 3\" }\n  \
-         summon: { select: sequence, payload: { copies: number } }\n",
+         summon: { select: sequence, payload: { copies: int } }\n",
     );
     write_at(
         &proj,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  run.fate: { type: { enum: [alive, dead] }, default: alive }\n  \
-         season.harvest.tokens: { type: number, default: 0 }\n\
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n  run.fate: { type: { enum: [alive, dead] }, default: alive }\n  \
+         season.harvest.tokens: { type: int, default: 0 }\n\
          clock:\n  day: run.day\n  last: { day: 5 }\n\
          terminal: \"run.fate == 'dead'\"\n\
          seasons:\n  harvest: { live: \"run.day >= 2\" }\n\
@@ -363,7 +363,7 @@ fn context_shows_the_0_27_project_keys() {
     assert_eq!(v["occasions"]["talk"]["raisedWhen"], "run.day <= 3");
     assert_eq!(
         v["occasions"]["summon"]["payload"],
-        serde_json::json!({ "copies": "number" })
+        serde_json::json!({ "copies": "int" })
     );
     let person = v["entities"]
         .as_array()
@@ -411,14 +411,14 @@ fn context_shows_the_0_27_project_keys() {
     let text = context(&proj, false);
     for expected in [
         "  talk (select: first, target: npc.<person>, raisedWhen: run.day <= 3)",
-        "  summon (select: sequence, payload: { occasion.payload.copies: number })",
+        "  summon (select: sequence, payload: { occasion.payload.copies: int })",
         "  person: mara (\"Mara Voss\"), tomas",
         "  nod(who: entity:person)   [template: <beat use=\"nod\">]",
         "clock: day run.day, last day 5",
         "terminal: run.fate == 'dead' (no occasion is raised once it holds)",
         "  harvest — live: run.day >= 2",
         "  on talk: mara.first — each scene gets `on:`, `after: visited(\"<previous>\")` and a descending `priority:` unless it writes its own",
-        "  prev.season.harvest.tokens: number (owner: engine)",
+        "  prev.season.harvest.tokens: int (owner: engine)",
     ] {
         assert!(
             text.lines().any(|l| l == expected),
@@ -452,7 +452,7 @@ fn context_shows_directive_effects_judge_and_speaker_params() {
         &proj,
         "plugins/demo.occasions/occasions/game.yaml",
         "occasions:\n  talk: { select: first, target: { prefix: npc, entity: person } }\n  \
-         dusk: { select: first, judge: before, payload: { seconds: number } }\n",
+         dusk: { select: first, judge: before, payload: { seconds: int } }\n",
     );
     write_at(
         &proj,
@@ -497,7 +497,7 @@ fn context_shows_directive_effects_judge_and_speaker_params() {
         // Declared effects read as writes, not as raw IR JSON.
         "    effects: writes run.salvage += 1; writes run.loot.<what> = <what>",
         "permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)",
-        "  dusk (select: first, payload: { occasion.payload.seconds: number }, judge: before)",
+        "  dusk (select: first, payload: { occasion.payload.seconds: int }, judge: before)",
         "  nod(who: speaker)",
     ] {
         assert!(

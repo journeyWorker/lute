@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
-state:\n  scene.n: { type: number, default: 0 }\n\
+state:\n  scene.n: { type: int, default: 0 }\n\
 entities:\n  npc: { members: [mara, tomas] }\n  item: { members: [lamp] }\n";
 
 fn input(text: &str, imports: SchemaImports) -> CheckInput {
@@ -70,7 +70,7 @@ const LIT: &str = "relations:\n  lit: { args: [item], derive: true }\n";
 fn a_def_in_a_rule_guard_is_expanded_and_checks_clean() {
     let text = scene(
         &format!("{LIT}rules:\n  - \"lit(lamp) :- cel(\\\"@first\\\")\"\ndefs:\n  first: \"scene.n == 0\"\n"),
-        "holds(lit(lamp))",
+        "holds('lit', ['lamp'])",
     );
     let ds = diags(&text);
     assert!(ds.is_empty(), "{ds:#?}");
@@ -95,7 +95,7 @@ fn a_def_in_a_rule_guard_is_expanded_and_checks_clean() {
 fn an_undefined_def_in_a_rule_guard_is_rule_guard_def() {
     let text = scene(
         &format!("{LIT}rules:\n  - \"lit(lamp) :- cel(\\\"@nope\\\")\"\n"),
-        "holds(lit(lamp))",
+        "holds('lit', ['lamp'])",
     );
     let ds = diags(&text);
     assert!(codes(&ds).contains(&"E-RULE-GUARD-DEF"), "{ds:#?}");
@@ -106,9 +106,9 @@ fn an_undefined_def_in_a_rule_guard_is_rule_guard_def() {
 fn a_def_reading_facts_in_a_rule_guard_hits_the_firewall() {
     let text = scene(
         &format!(
-            "{LIT}rules:\n  - \"lit(lamp) :- cel(\\\"@seen\\\")\"\ndefs:\n  seen: \"holds(lit(lamp))\"\n"
+            "{LIT}rules:\n  - \"lit(lamp) :- cel(\\\"@seen\\\")\"\ndefs:\n  seen: \"holds('lit', ['lamp'])\"\n"
         ),
-        "holds(lit(lamp))",
+        "holds('lit', ['lamp'])",
     );
     let ds = diags(&text);
     assert!(codes(&ds).contains(&"E-DATALOG-GUARD-FACT"), "{ds:#?}");
@@ -120,7 +120,7 @@ fn a_def_reading_facts_in_a_rule_guard_hits_the_firewall() {
 fn a_relation_named_like_a_cel_macro_is_reserved_name() {
     let text = scene(
         "relations:\n  has: { args: [item], tier: run }\n",
-        "holds(has(lamp))",
+        "holds('has', ['lamp'])",
     );
     let ds = diags(&text);
     assert!(codes(&ds).contains(&"E-RESERVED-NAME"), "{ds:#?}");
@@ -143,20 +143,21 @@ fn anonymous_rule_variables_check_clean_positive_and_negated() {
         "relations:\n  seen: { args: [npc, item], tier: run }\n  testified: { args: [npc], derive: true }\n  \
          silent: { args: [npc], derive: true }\n\
          rules:\n  - \"testified(W) :- seen(W, _)\"\n  - \"silent(W) :- npc(W), not seen(W, _)\"\n",
-        "holds(testified(mara)) || holds(silent(tomas))",
+        "holds('testified', ['mara']) || holds('silent', ['tomas'])",
     );
     let ds = diags(&text);
     assert!(ds.is_empty(), "{ds:#?}");
 }
 
 #[test]
-fn count_distinct_is_in_profile_and_its_variable_is_not_a_member() {
+fn count_distinct_is_in_profile_and_its_column_is_an_index() {
     let rel = "relations:\n  seen: { args: [npc, item], tier: run }\n";
-    let ok = diags(&scene(rel, "countDistinct(seen(W, _), W) >= 2"));
+    let ok = diags(&scene(rel, "countDistinct('seen', ['_', '_'], 0) >= 2"));
     assert!(ok.is_empty(), "{ok:#?}");
-    // The counted variable must name exactly one pattern position.
-    let bad = diags(&scene(rel, "countDistinct(seen(W, _), V) >= 2"));
-    assert!(codes(&bad).contains(&"E-CEL-PROFILE"), "{bad:#?}");
+    // The counted column must be an in-range zero-based index whose pattern
+    // position is the wildcard.
+    let bad = diags(&scene(rel, "countDistinct('seen', ['_', '_'], 2) >= 2"));
+    assert!(codes(&bad).contains(&"E-FACT-QUERY"), "{bad:#?}");
 }
 
 // --- T3-6: schema-level diagnostics ---

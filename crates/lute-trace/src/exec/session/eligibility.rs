@@ -217,7 +217,17 @@ fn unmet_prereq(p: &ExecProject, f: &PrereqFormula, w: &World) -> Vec<lute_check
         .collect()
 }
 
-/// The beat's `when` raw CEL: a scene's `meta.beat.when`, an entry's own
+/// The compiled CEL pair's executable text. The `raw` source spelling is not
+/// part of the runtime contract: compiled artifacts carry the canonical CEL
+/// under `cel`.
+fn cel_text(pair: &Json) -> Option<String> {
+    pair.get("cel")
+        .and_then(Json::as_str)
+        .filter(|r| !r.trim().is_empty())
+        .map(str::to_string)
+}
+
+/// The beat's when CEL: a scene's `meta.beat.when`, an entry's own
 /// `when` on its `entry` record, a bundle beat's on its `beat` record.
 pub fn beat_when(p: &ExecProject, beat: &IndexBeat) -> Option<String> {
     let doc = p.artifacts.get(&beat.document)?;
@@ -233,10 +243,7 @@ pub fn beat_when(p: &ExecProject, beat: &IndexBeat) -> Option<String> {
             })?
             .get("when")?,
     };
-    pair.get("raw")
-        .and_then(Json::as_str)
-        .filter(|r| !r.trim().is_empty())
-        .map(str::to_string)
+    cel_text(pair)
 }
 
 /// dsl 0.23.0 §3: the beat's `also: true` — a scene's `meta.beat.also`, a
@@ -455,6 +462,9 @@ fn judge_with<D: Driver>(
     decided: Option<Option<crate::exec::seam::Closed>>,
 ) -> Candidate {
     let flag = |path: String| w.state.get(&path) == Some(&Value::Bool(true));
+    // dsl 0.26.0 §5: bind before every eligibility read so the evaluator
+    // snapshot and condition dump retain the engine's occasion root.
+    eval.bind_occasion_target(member);
     // dsl 0.27.0 §4 (HW27-04): a beat of an occasion the engine would not
     // raise now is not eligible — the same seam `lute play` refuses a raise
     // by, decided by this evaluator (or when the raise was made).
@@ -467,8 +477,6 @@ fn judge_with<D: Driver>(
             member.or(beat.target.as_deref()).or(raised),
         ),
     };
-    // dsl 0.26.0 §5: a kind beat's `when` reads the raised member.
-    eval.bind_occasion_target(member);
     // A scene's (or bundle beat's) `once` is spent by presenting it; an
     // entry's (dsl 0.22.0 §7) by its read flag; a clock period or a season
     // window (dsl 0.24.0 §1, 0.27.0 §5) until it moves on; a `share` key's
@@ -593,5 +601,18 @@ pub fn presented(select: OccasionSelect, cands: &[Candidate]) -> Vec<usize> {
         OccasionSelect::All | OccasionSelect::Sequence => {
             (0..cands.len()).filter(|&i| eligible(&cands[i])).collect()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cel_text;
+    use serde_json::json;
+
+    #[test]
+    fn compiled_cel_pair_uses_executable_slot_not_source_raw() {
+        let pair = json!({"raw": "legacy spelling", "cel": "run.ready == true"});
+        assert_eq!(cel_text(&pair).as_deref(), Some("run.ready == true"));
+        assert_eq!(cel_text(&json!({"raw": "legacy spelling"})), None);
     }
 }

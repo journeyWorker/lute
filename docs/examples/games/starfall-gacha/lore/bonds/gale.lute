@@ -9,7 +9,7 @@ title: Gale, Balladeer of Questionable Rhyme (SR)
   @gale: Gale, at your service. I sing, I fight, I rhyme "sword" with "sword." Bold choices.
 </beat>
 
-<beat id="galeDupe" on="summon" target="hero.gale" once="false" priority="3" when="holds(owned(gale)) && occasion.payload.copies <= 6">
+<beat id="galeDupe" on="summon" target="hero.gale" once="false" priority="3" when="holds('owned', ['gale']) && occasion.payload.copies <= 6">
   @gale{emotion="happy"}: A duet! Finally someone who can keep up with me. It's me.
 </beat>
 
@@ -18,7 +18,7 @@ title: Gale, Balladeer of Questionable Rhyme (SR)
   @gale{when="@harvestLive"}: Harvest Moon verse: "The moon is round, the moon is big." That's it. That's the verse.
 </beat>
 
-<beat id="galeBirthday" on="dailyReset" once="day" when="holds(celebrate(gale))">
+<beat id="galeBirthday" on="dailyReset" once="day" when="holds('celebrate', ['gale'])">
   @gale{emotion="happy"}: My birthday! I've written myself a ballad. Forty verses. Get comfortable.
 </beat>
 

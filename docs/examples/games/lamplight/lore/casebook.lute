@@ -5,15 +5,15 @@ title: Inspector Wren's casebook
 series: casebook
 ---
 
-<entry id="pageWatch" on="review" category="casebook" title="The watch" when="holds(found(watch))">
+<entry id="pageWatch" on="review" category="casebook" title="The watch" when="holds('found', ['watch'])">
   @inspector{code="0010"}: Hask's watch, stopped at 1:15, crystal cracked. Solt calls the time of death from it.
 </entry>
 
-<entry id="pageDoor" on="review" category="casebook" title="The singer at the door" when="holds(placed(lise))">
+<entry id="pageDoor" on="review" category="casebook" title="The singer at the door" when="holds('placed', ['lise'])">
   @inspector{code="0010"}: Lise Varo was at compartment 7 at 1:15 — the minute the watch stopped. She handed him an envelope. The porter swears to the time.
 </entry>
 
-<entry id="pageCufflink" on="review" category="casebook" title="M. D." when="holds(found(cufflink))">
+<entry id="pageCufflink" on="review" category="casebook" title="M. D." when="holds('found', ['cufflink'])">
   @inspector{code="0010"}: Gold cufflink under the berth, engraved M. D. Mirela Dace says she has not seen her uncle in three years.
   <match on="entry.mirelaCufflink.everRead">
     <when is="true">
@@ -29,28 +29,28 @@ series: casebook
   @inspector{code="0010"}: Alive at 1:55 — Crane brought his tea. Dead by 2:10 — no answer to the lamp knock. He died in the Orla tunnel, in the four minutes of dark.
 </entry>
 
-<entry id="pageWatchLies" on="review" category="casebook" title="The watch lies" when="holds(falseClue(watch))">
+<entry id="pageWatchLies" on="review" category="casebook" title="The watch lies" when="holds('falseClue', ['watch'])">
   @inspector{code="0010"}: The watch says 1:15 and the man was alive at 1:55. Somebody set it. Somebody wanted the hour to be 1:15.
 </entry>
 
-<entry id="pageAlibis" on="review" category="casebook" title="Who was where" when="count(alibi(_, tunnel)) >= 3">
+<entry id="pageAlibis" on="review" category="casebook" title="Who was where" when="count('alibi', ['_', 'tunnel']) >= 3">
   @inspector{code="0010"}: In the tunnel: Crane in the van with the porter. Dace and Varo in the dining car, each vouching for the other. Three of four.
 </entry>
 
-<entry id="pageCrane" on="review" category="casebook" title="The man with the passkey" when="holds(opportunity(crane))">
+<entry id="pageCrane" on="review" category="casebook" title="The man with the passkey" when="holds('opportunity', ['crane'])">
   @inspector{code="0010"}: Crane has keys to every door on the train and nobody has yet put him anywhere during the tunnel.
   @inspector{code="0020"}: Nobody can yet place {{@unaccounted:plural(one suspect|# suspects)}} away from compartment 7 in the tunnel.
 </entry>
 
-<entry id="pageOneLeft" on="review" category="casebook" title="One left" when="count(opportunity(_)) == 1">
+<entry id="pageOneLeft" on="review" category="casebook" title="One left" when="count('opportunity', ['_']) == 1">
   @inspector{code="0010"}: Of the four, only one cannot be put anywhere during the tunnel by somebody else's eyes.
 </entry>
 
-<entry id="pageShape" on="review" category="casebook" title="A shape in the corridor" when="holds(seen(solt, corridor, tunnel))">
+<entry id="pageShape" on="review" category="casebook" title="A shape in the corridor" when="holds('seen', ['solt', 'corridor', 'tunnel'])">
   @inspector{code="0010"}: In the dark of the Orla, by the light of one match, a tall man with spectacles passed the dining-car door, going toward the sleepers. Solt's berth was empty. Solt says he was asleep.
 </entry>
 
-<entry id="pageSoltLied" on="review" category="casebook" title="The empty berth" when="holds(lied(solt))">
+<entry id="pageSoltLied" on="review" category="casebook" title="The empty berth" when="holds('lied', ['solt'])">
   @inspector{code="0010"}: Solt says he slept in five through the tunnel. Crane found five empty at 2:10, bed made. The doctor was out of his berth in the dark and lied about it.
 </entry>
 
@@ -58,7 +58,7 @@ series: casebook
   @inspector{code="0010"}: Beds made and empty in the Orla: {{@emptyBerths:plural(one|#)}}.
 </entry>
 
-<entry id="pageSolt" on="review" category="casebook" title="Motive, means, the chance" when="holds(prime(solt))">
+<entry id="pageSolt" on="review" category="casebook" title="Motive, means, the chance" when="holds('prime', ['solt'])">
   @inspector{code="0010"}: Four hundred crowns or the Medical Board. A bottle of laudanum a third gone. No one on this train can put him anywhere in the tunnel but where he says he was, and where he says he was is empty.
   @inspector{code="0020"}: Emmerich Solt.
 </entry>

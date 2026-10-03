@@ -79,11 +79,11 @@ fn dollar_out_of_scope_even_in_match() {
 #[test]
 fn guard_proves_interp_reads() {
     // `run.tip` is declared but carries no default, so an unguarded read is
-    // E-MAYBE-UNSET (dsl §9.4) — but `when="isSet(run.tip)"` proves the SAME
+    // E-MAYBE-UNSET (dsl §9.4) — but `when="has(run.tip)"` proves the SAME
     // line's own `{{run.tip}}` interpolation (dsl §9.4's guard-proof rule).
-    let hdr = format!("{HDR}state:\n  run.tip: {{ type: number }}\n---\n## Shot 1.\n");
+    let hdr = format!("{HDR}state:\n  run.tip: {{ type: int }}\n---\n## Shot 1.\n");
 
-    let guarded = format!("{hdr}@x{{when=\"isSet(run.tip)\"}}: got {{{{run.tip}}}}.\n");
+    let guarded = format!("{hdr}@x{{when=\"has(run.tip)\"}}: got {{{{run.tip}}}}.\n");
     let cs = codes(&guarded);
     assert!(
         !cs.contains(&"E-MAYBE-UNSET".to_string()),

@@ -10,7 +10,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
     Bool,
-    Number,
+    Int,
+    Double,
     Str,
     Enum(Vec<String>),
     List(Box<Type>),
@@ -57,7 +58,8 @@ pub struct Field {
 #[serde(untagged)]
 pub enum Literal {
     Bool(bool),
-    Num(f64),
+    Int(i64),
+    Double(f64),
     Str(String),
     List(Vec<Literal>),
     /// A record/map literal (plugin §7): a YAML mapping. Deterministic order.
@@ -66,14 +68,14 @@ pub enum Literal {
 
 impl Literal {
     /// Convert a YAML value (e.g. a scene `plugins:` option) into a `Literal`.
-    /// Returns `None` for values with no literal representation (null, tagged,
-    /// non-string map keys). Numbers become `Num` (f64); sequences `List`;
-    /// mappings `Map` (string keys only).
     pub fn from_yaml(v: &serde_yaml::Value) -> Option<Literal> {
         use serde_yaml::Value;
         match v {
             Value::Bool(b) => Some(Literal::Bool(*b)),
-            Value::Number(n) => n.as_f64().map(Literal::Num),
+            Value::Number(n) => n
+                .as_i64()
+                .map(Literal::Int)
+                .or_else(|| n.as_f64().map(Literal::Double)),
             Value::String(s) => Some(Literal::Str(s.clone())),
             Value::Sequence(items) => items
                 .iter()
@@ -135,7 +137,8 @@ pub struct FromAttr {
 pub fn type_accepts(ty: &Type, lit: &Literal) -> bool {
     match (ty, lit) {
         (Type::Bool, Literal::Bool(_)) => true,
-        (Type::Number, Literal::Num(_)) => true,
+        (Type::Int, Literal::Int(_)) => true,
+        (Type::Double, Literal::Double(_)) => true,
         (Type::Str, Literal::Str(_)) => true,
         (Type::Enum(members), Literal::Str(s)) => members.iter().any(|m| m == s),
         (Type::List(inner), Literal::List(items)) => items.iter().all(|i| type_accepts(inner, i)),
@@ -191,20 +194,12 @@ fn key_accepts(key: &Type, k: &str) -> bool {
     }
 }
 
-/// Render a [`Type`] for a DIAGNOSTIC message (plugin §7 spellings). Base
-/// labels match the authoring surface (`bool`/`number`/`string`); compound
-/// types name their element(s) (`list<T>`, `map<K,V>`, `record{a,b}`) and
-/// reference-bearing types keep their target (`providerRef:<catalog>`,
-/// `assetKind:<kind>`, `slotId:<namespace>`, `enumFromOption:<option>`) so the
-/// reader knows WHAT a value resolves against.
-///
-/// Distinct from `lute-cli`'s `attr_type_str`, which serves the JSON authoring
-/// surface and returns the enum member domain as a SEPARATE field; a one-line
-/// diagnostic has nowhere to put that, so `enum` inlines its members here.
+/// Render a [`Type`] for a DIAGNOSTIC message (plugin §7 spellings).
 pub fn type_str(ty: &Type) -> String {
     match ty {
         Type::Bool => "bool".to_string(),
-        Type::Number => "number".to_string(),
+        Type::Int => "int".to_string(),
+        Type::Double => "double".to_string(),
         Type::Str => "string".to_string(),
         Type::Enum(members) => format!("enum({})", members.join("|")),
         Type::List(inner) => format!("list<{}>", type_str(inner)),
@@ -227,17 +222,12 @@ pub fn type_str(ty: &Type) -> String {
     }
 }
 
-/// Render a [`Literal`] for a DIAGNOSTIC message — the "got X" half of a
-/// type-mismatch. A string is quoted so an empty or space-bearing value is
-/// visible; an integral number collapses (`3`, not `3.0`) to match the
-/// authoring surface and the compiled envelope.
+/// Render a [`Literal`] for a DIAGNOSTIC message.
 pub fn lit_str(lit: &Literal) -> String {
     match lit {
         Literal::Bool(b) => b.to_string(),
-        Literal::Num(n) if n.fract() == 0.0 && n.is_finite() && n.abs() < 9.0e15 => {
-            format!("{}", *n as i64)
-        }
-        Literal::Num(n) => n.to_string(),
+        Literal::Int(n) => n.to_string(),
+        Literal::Double(n) => n.to_string(),
         Literal::Str(s) => format!("\"{s}\""),
         Literal::List(items) => format!(
             "[{}]",
@@ -264,7 +254,8 @@ pub fn lit_str(lit: &Literal) -> String {
 #[serde(rename_all = "camelCase")]
 enum TypeDef {
     Bool,
-    Number,
+    Int,
+    Double,
     #[serde(rename = "string")]
     Str,
     Enum(Vec<String>),
@@ -302,7 +293,8 @@ impl From<TypeDef> for Type {
     fn from(d: TypeDef) -> Self {
         match d {
             TypeDef::Bool => Type::Bool,
-            TypeDef::Number => Type::Number,
+            TypeDef::Int => Type::Int,
+            TypeDef::Double => Type::Double,
             TypeDef::Str => Type::Str,
             TypeDef::Enum(m) => Type::Enum(m),
             TypeDef::List(inner) => Type::List(Box::new((*inner).into())),
@@ -326,7 +318,8 @@ impl From<&Type> for TypeDef {
     fn from(t: &Type) -> Self {
         match t {
             Type::Bool => TypeDef::Bool,
-            Type::Number => TypeDef::Number,
+            Type::Int => TypeDef::Int,
+            Type::Double => TypeDef::Double,
             Type::Str => TypeDef::Str,
             Type::Enum(m) => TypeDef::Enum(m.clone()),
             Type::List(inner) => TypeDef::List(Box::new((&**inner).into())),
@@ -380,10 +373,18 @@ impl Serialize for Type {
 
 impl<'de> Deserialize<'de> for Type {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let def: TypeDef = serde_yaml::with::singleton_map_recursive::deserialize(deserializer)?;
+        let value = serde_yaml::Value::deserialize(deserializer)?;
+        if value.as_str() == Some("number") {
+            return Err(serde::de::Error::custom(NUMBER_TYPE_REMOVED));
+        }
+        let def: TypeDef = serde_yaml::with::singleton_map_recursive::deserialize(value)
+            .map_err(serde::de::Error::custom)?;
         Ok(def.into())
     }
 }
+
+pub const NUMBER_TYPE_REMOVED: &str =
+    "`type: number` is no longer a valid numeric type; use `type: int` for whole numbers or `type: double` for fractional values";
 
 #[cfg(test)]
 mod tests {
@@ -398,14 +399,14 @@ mod tests {
 
     #[test]
     fn list_type_accepts_homogeneous_only() {
-        let t = Type::List(Box::new(Type::Number));
+        let t = Type::List(Box::new(Type::Int));
         assert!(type_accepts(
             &t,
-            &Literal::List(vec![Literal::Num(1.0), Literal::Num(2.0)])
+            &Literal::List(vec![Literal::Int(1), Literal::Int(2)])
         ));
         assert!(!type_accepts(
             &t,
-            &Literal::List(vec![Literal::Num(1.0), Literal::Bool(true)])
+            &Literal::List(vec![Literal::Int(1), Literal::Bool(true)])
         ));
     }
 
@@ -437,7 +438,7 @@ mod tests {
             serde_yaml::to_string(&ty).unwrap().trim(),
             "entity: bagItem"
         );
-        assert!(!type_accepts(&ty, &Literal::Num(1.0)));
+        assert!(!type_accepts(&ty, &Literal::Int(1)));
     }
 
     #[test]
@@ -457,15 +458,16 @@ mod tests {
     fn type_wire_forms_roundtrip() {
         let cases = [
             "bool",
-            "number",
+            "int",
+            "double",
             "string",
             "enum:\n  - gold\n  - silver",
-            "list: number",
-            "map:\n  key: string\n  value: number",
+            "list: int",
+            "map:\n  key: string\n  value: double",
             "enumFromOption: allowedKinds",
             "providerRef: character",
             "slotId:\n  namespace: scene.minigame",
-            "record:\n  - name: hp\n    type: number",
+            "record:\n  - name: hp\n    type: int",
         ];
         for src in cases {
             let t: Type =
@@ -512,11 +514,11 @@ mod tests {
         use std::collections::BTreeMap;
         let ty = Type::Map {
             key: Box::new(Type::Str),
-            value: Box::new(Type::Number),
+            value: Box::new(Type::Double),
         };
         let mut m = BTreeMap::new();
-        m.insert("a".to_string(), Literal::Num(1.0));
-        m.insert("b".to_string(), Literal::Num(2.0));
+        m.insert("a".to_string(), Literal::Double(1.0));
+        m.insert("b".to_string(), Literal::Double(2.0));
         assert!(type_accepts(&ty, &Literal::Map(m)));
 
         let mut bad = BTreeMap::new();
@@ -526,23 +528,19 @@ mod tests {
 
     #[test]
     fn type_accepts_slotid() {
-        // A slotId attribute value is a bare local-identifier string
-        // (`resultKey="service01"`); a non-string literal is rejected.
         let ty = Type::SlotId {
             namespace: "scene.minigame".into(),
         };
         assert!(type_accepts(&ty, &Literal::Str("service01".into())));
-        assert!(!type_accepts(&ty, &Literal::Num(1.0)));
+        assert!(!type_accepts(&ty, &Literal::Int(1)));
         assert!(!type_accepts(&ty, &Literal::Bool(true)));
     }
 
     #[test]
     fn type_accepts_assetkind() {
-        // An assetKind attribute value is an authored asset-id string; a
-        // non-string literal is rejected (structural validation is the checker's job).
         let ty = Type::AssetKind("CH".into());
         assert!(type_accepts(&ty, &Literal::Str("waitress".into())));
-        assert!(!type_accepts(&ty, &Literal::Num(1.0)));
+        assert!(!type_accepts(&ty, &Literal::Int(1)));
         assert!(!type_accepts(&ty, &Literal::Bool(true)));
     }
 
@@ -560,14 +558,12 @@ mod tests {
 
     #[test]
     fn narrative_time_roundtrips_and_accepts_nothing() {
-        // dsl 0.3.0 §6, Task 12: opaque, ordering-only — no literal ever
-        // inhabits it (D11: never author-declarable, but the wire form still
-        // round-trips so an engine-declared anchor's `type:` deserializes).
         let ty: Type = serde_yaml::from_str("narrativeTime").unwrap();
         assert_eq!(ty, Type::NarrativeTime);
         assert_eq!(serde_yaml::to_string(&ty).unwrap().trim(), "narrativeTime");
         assert!(!type_accepts(&ty, &Literal::Str("x".into())));
-        assert!(!type_accepts(&ty, &Literal::Num(1.0)));
+        assert!(!type_accepts(&ty, &Literal::Int(1)));
+        assert!(!type_accepts(&ty, &Literal::Double(1.0)));
         assert!(!type_accepts(&ty, &Literal::Bool(true)));
     }
 
@@ -583,11 +579,11 @@ mod tests {
         );
         let y2: serde_yaml::Value = serde_yaml::from_str("scene").unwrap();
         assert_eq!(Literal::from_yaml(&y2), Some(Literal::Str("scene".into())));
-        let y3: serde_yaml::Value = serde_yaml::from_str("{ a: 1, b: two }").unwrap();
+        let y3: serde_yaml::Value = serde_yaml::from_str("{ a: 1, b: 2.0 }").unwrap();
         match Literal::from_yaml(&y3).unwrap() {
             Literal::Map(m) => {
-                assert_eq!(m.get("a"), Some(&Literal::Num(1.0)));
-                assert_eq!(m.get("b"), Some(&Literal::Str("two".into())));
+                assert_eq!(m.get("a"), Some(&Literal::Int(1)));
+                assert_eq!(m.get("b"), Some(&Literal::Double(2.0)));
             }
             other => panic!("expected Map, got {other:?}"),
         }

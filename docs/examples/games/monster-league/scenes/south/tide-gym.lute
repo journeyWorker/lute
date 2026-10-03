@@ -5,7 +5,7 @@ title: Tide Gym
 on: challenge
 target: arena.tideGym
 once: false
-when: "!holds(defeated(marin))"
+when: "!holds('defeated', ['marin'])"
 ---
 
 // CONTRACT BEAT (seeded by the lead; owned by south): asserts hasBadge(tide).

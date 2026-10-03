@@ -13,5 +13,5 @@ occasions:
   shower:
     select: first
     description: A meteor goes over; the count so far rides along
-    payload: { count: number }
-    raisedWhen: "run.slot == 'night' && run.weather == 'clear' && holds(at(sol, roof))"
+    payload: { count: int }
+    raisedWhen: "run.slot == 'night' && run.weather == 'clear' && holds('at', ['sol', 'roof'])"

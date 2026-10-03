@@ -13,7 +13,7 @@ use lute_check::connectivity::{
 };
 use lute_check::{
     check, check_fact_guards, check_project_beats, compute_must, fold_env, BeatOnce, CheckInput,
-    FactEnv, FoldedEnv, GroundFact, MaySet, Mode, RootVocab, SchemaImports,
+    FactEnv, FoldedEnv, MaySet, Mode, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
@@ -94,8 +94,8 @@ fn anchored<'s>(src: &'s str, d: &Diagnostic) -> &'s str {
 /// newline-terminated).
 fn scene(id: &str, fm: &str) -> String {
     format!(
-        "---\nkind: scene\nid: {id}\n{fm}state:\n  user.runs: {{ type: number, default: 0 }}\n  \
-         run.mood: {{ type: number }}\n  scene.local: {{ type: bool, default: false }}\n---\n\
+        "---\nkind: scene\nid: {id}\n{fm}state:\n  user.runs: {{ type: int, default: 0 }}\n  \
+         run.mood: {{ type: int }}\n  scene.local: {{ type: bool, default: false }}\n---\n\
          ## Shot 1.\n@narrator: Hello.\n"
     )
 }
@@ -387,7 +387,7 @@ fn when_joins_the_cel_slot_registry() {
     assert!(with_code(&diags(&undeclared), "E-UNDECLARED").len() == 1);
     let maybe_unset = scene("a.b", "on: talk\nwhen: 'run.mood > 1'\n");
     assert_eq!(with_code(&diags(&maybe_unset), "E-MAYBE-UNSET").len(), 1);
-    let guarded = scene("a.b", "on: talk\nwhen: 'isSet(run.mood) && run.mood > 1'\n");
+    let guarded = scene("a.b", "on: talk\nwhen: 'has(run.mood) && run.mood > 1'\n");
     assert!(with_code(&diags(&guarded), "E-MAYBE-UNSET").is_empty());
     let broken = scene("a.b", "on: talk\nwhen: 'user.runs >'\n");
     assert_eq!(
@@ -534,7 +534,7 @@ impl Project {
 
 #[test]
 fn when_over_an_impossible_fact_is_beat_unreachable_in_the_project() {
-    let src = fact_scene("haven.a", "on: talk\nwhen: 'holds(found(toma))'\n");
+    let src = fact_scene("haven.a", "on: talk\nwhen: 'holds(\"found\", [\"toma\"])'\n");
     let p = project(&[("a.lute", &src)], core());
     assert!(
         with_code(&p.per_file[0], "E-BEAT-UNREACHABLE").is_empty(),
@@ -543,7 +543,7 @@ fn when_over_an_impossible_fact_is_beat_unreachable_in_the_project() {
     );
     let ds = p.guards("a.lute");
     let d = only(&ds, "E-BEAT-UNREACHABLE");
-    assert_eq!(anchored(&src, d), "holds(found(toma))");
+    assert_eq!(anchored(&src, d), "holds(\"found\", [\"toma\"])");
     assert!(
         d.message
             .contains("no seed, assert, rule, or engine relation produces"),
@@ -554,12 +554,12 @@ fn when_over_an_impossible_fact_is_beat_unreachable_in_the_project() {
 
 #[test]
 fn when_over_a_guaranteed_fact_is_fact_guaranteed() {
-    let src = fact_scene("haven.a", "on: talk\nwhen: 'holds(awake(vesna))'\n");
+    let src = fact_scene("haven.a", "on: talk\nwhen: 'holds(\"awake\", [\"vesna\"])'\n");
     let p = project(&[("a.lute", &src)], core());
     let ds = p.guards("a.lute");
     let w = only(&ds, "W-FACT-GUARANTEED");
     assert!(
-        w.message.contains("`awake(vesna)` is a `facts:` seed"),
+        w.message.contains("`holds('awake', ['vesna'])` is a `facts:` seed"),
         "{}",
         w.message
     );
@@ -567,7 +567,7 @@ fn when_over_a_guaranteed_fact_is_fact_guaranteed() {
 
 #[test]
 fn a_scalar_dead_when_is_reported_once_per_file() {
-    let src = fact_scene("haven.a", "on: talk\nwhen: 'false && holds(found(toma))'\n");
+    let src = fact_scene("haven.a", "on: talk\nwhen: 'false && holds(\"found\", [\"toma\"])'\n");
     let p = project(&[("a.lute", &src)], core());
     only(&p.per_file[0], "E-BEAT-UNREACHABLE");
     assert!(p.guards("a.lute").is_empty(), "{:?}", p.guards("a.lute"));

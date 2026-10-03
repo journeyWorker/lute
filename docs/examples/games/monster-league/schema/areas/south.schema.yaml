@@ -13,7 +13,7 @@ defs:
   # the recruiter at the end of the Tidewell bridge has made his pitch
   southRecruiterMet: { type: bool, cel: "visited('south.route4.r4GruntRecruiter')" }
   # the three grunts who guard the dig are down: the pit is open
-  southDigOpen: "holds(defeated(moonstoneGruntSable)) && holds(defeated(moonstoneGruntFlint)) && holds(defeated(moonstoneGruntMarl))"
+  southDigOpen: "holds('defeated', ['moonstoneGruntSable']) && holds('defeated', ['moonstoneGruntFlint']) && holds('defeated', ['moonstoneGruntMarl'])"
 
 # the area's people, trainers and places (the kinds are the lead's, in
 # schema/roster.schema.yaml; a trainer is a person already)

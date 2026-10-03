@@ -5,7 +5,7 @@ title: The director's safe
 on: examine
 target: fixture.officeSafe
 priority: 10
-spentBy: "holds(solved(officeSafe))"
+spentBy: "holds('solved', ['officeSafe'])"
 ---
 
 ## Safe

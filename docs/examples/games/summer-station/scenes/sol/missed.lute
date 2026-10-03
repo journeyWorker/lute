@@ -5,7 +5,7 @@ title: After Thursday
 on: visit
 target: place.radio
 priority: 30
-when: "run.day >= 5 && holds(at(sol, radio)) && quest.meteor.state == 'failed'"
+when: "run.day >= 5 && holds('at', ['sol', 'radio']) && quest.meteor.state == 'failed'"
 ---
 
 ## The radio room, after

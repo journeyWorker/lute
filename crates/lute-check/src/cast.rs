@@ -924,9 +924,13 @@ fn unifiable(a: &[Option<String>], b: &[Option<String>]) -> bool {
             .all(|(x, y)| x.is_none() || y.is_none() || x == y)
 }
 
-/// One ground fact a unit of the root asserts ([`unit_facts`]).
+/// One ground fact a unit asserts ([`unit_facts`]).
 pub(crate) struct UnitFact {
-    /// `holds(rel(a, b))`.
+    /// Authored ground fact used in diagnostic explanations (`hasItem(key)`).
+    pub(crate) key: String,
+    /// Canonical list-form pattern shared with reachability's fact pseudo-path.
+    pub(crate) pattern: String,
+    /// List-form host query used when constructing a guard (`holds('rel', [...])`).
     pub(crate) query: String,
     /// `None` when the fact cannot hold before the unit is spent: no other
     /// unit can assert it (no unifiable site elsewhere, a `::use` site's
@@ -1001,8 +1005,15 @@ pub(crate) fn unit_facts(
             } else {
                 None
             };
+            let pattern = crate::fact_env::QueryPattern {
+                relation: rel.clone(),
+                args: ground.into_iter().map(Some).collect(),
+            }
+            .to_string();
             out.push(UnitFact {
-                query: format!("holds({fact})"),
+                key: fact,
+                query: format!("holds{pattern}"),
+                pattern,
                 persists,
             });
         }
@@ -1176,18 +1187,12 @@ const EXPAND_DEPTH: u8 = 4;
 /// A condition's disjunctive normal form past this many terms is not split.
 const DNF_CAP: usize = 256;
 
-/// An atom call's arguments: a constant identifier, string or bool, else
-/// `None` (the `_` wildcard, a param, anything computed).
-pub(crate) fn atom_args(atom: &CallExpr) -> Vec<Option<String>> {
-    atom.args
-        .iter()
-        .map(|a| match &a.expr {
-            Expr::Ident(n) if n != "_" && !n.starts_with(lute_cel::REF_MARKER) => Some(n.clone()),
-            Expr::Literal(Val::String(s)) => Some(s.to_string()),
-            Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
-            _ => None,
-        })
-        .collect()
+fn query_term_text(s: &str) -> String {
+    if s == "true" || s == "false" {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'"))
+    }
 }
 
 /// Every `holds`/`count`/`countDistinct` atom of `e`, with its polarity.
@@ -1200,19 +1205,17 @@ fn fact_atoms(e: &Expr, pol: Pol, out: &mut Vec<Atom>) {
                 fact_atoms(&a.expr, pol, out);
                 return fact_atoms(&b.expr, pol, out);
             }
-            ("holds" | "count" | "countDistinct", [first, ..]) => {
-                if let Expr::Call(atom) = &first.expr {
-                    if atom.target.is_none() {
-                        out.push(Atom {
-                            rel: atom.func_name.clone(),
-                            args: atom_args(atom),
-                            pol: if c.func_name == "holds" {
-                                pol
-                            } else {
-                                Pol::Both
-                            },
-                        });
-                    }
+            ("holds" | "count" | "countDistinct", _) if crate::cel_resolve::is_profile_fact_query(c) => {
+                if let Some(query) = crate::fact_env::QueryPattern::from_call(c) {
+                    out.push(Atom {
+                        rel: query.relation,
+                        args: query.args,
+                        pol: if c.func_name == "holds" {
+                            pol
+                        } else {
+                            Pol::Both
+                        },
+                    });
                 }
                 return;
             }
@@ -1488,16 +1491,16 @@ fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -> Option<De
                     }
                     if !ground {
                         def.exact = false;
-                        // `!holds(r(_))` would claim more than the rule does.
+                        // `!holds('r', [_])` would claim more than the rule does.
                         if neg {
                             continue;
                         }
                     }
                     conj.push(format!(
-                        "{}holds({}({}))",
+                        "{}holds(\"{}\", [{}])",
                         if neg { "!" } else { "" },
                         a.relation,
-                        texts.join(", ")
+                        texts.iter().map(|t| query_term_text(t)).collect::<Vec<_>>().join(", ")
                     ));
                 }
                 BodyLiteral::Guard { cel, .. } => {
@@ -1534,7 +1537,7 @@ fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -> Option<De
                     for t in &atom.terms {
                         texts.push(match (value(t), t) {
                             (Some(v), _) => v,
-                            (None, RuleTerm::Var(v)) if distinct.contains(v) => v.clone(),
+                            (None, RuleTerm::Var(v)) if distinct.contains(v) => "_".to_string(),
                             (None, RuleTerm::Var(v))
                                 if is_anonymous_var(v) || uses.get(v.as_str()) == Some(&1) =>
                             {
@@ -1550,13 +1553,24 @@ fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -> Option<De
                         def.exact = false;
                         continue;
                     }
+                    let list_text = texts
+                        .iter()
+                        .map(|t| query_term_text(t))
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     let call = match distinct.first() {
-                        Some(v) => format!(
-                            "countDistinct({}({}), {v})",
-                            atom.relation,
-                            texts.join(", ")
-                        ),
-                        None => format!("count({}({}))", atom.relation, texts.join(", ")),
+                        Some(v) => {
+                            let column = atom
+                                .terms
+                                .iter()
+                                .position(|t| matches!(t, RuleTerm::Var(name) if name == v))
+                                .unwrap_or(0);
+                            format!(
+                                "countDistinct(\"{}\", [{}], {column})",
+                                atom.relation, list_text
+                            )
+                        }
+                        None => format!("count(\"{}\", [{}])", atom.relation, list_text),
                     };
                     conj.push(format!("{call} {} {n}", op.as_str()));
                 }
@@ -1799,13 +1813,14 @@ impl Presence<'_> {
         self.parse(&text, None)
     }
 
-    /// `e` with each `holds(A)` of a derived relation reached through
-    /// `!`/`&&`/`||` read through its rules ([`definition`]): on the guard
-    /// side a positive `holds(A)` becomes `holds(A) && D` (what it implies)
-    /// and, when `D` is exact, a negative one `holds(A) || D`; on the
-    /// `present` side an exact `D` replaces it, and under `assume` a
-    /// negative `holds` of an engine-`reserved` relation reads `false` —
-    /// unless (dsl 0.25.0 §6) the relation is in [`Self::changed`].
+    /// `e` with each list-form `holds('rel', [args])` of a derived relation
+    /// reached through `!`/`&&`/`||` read through its rules
+    /// ([`definition`]): on the guard side a positive query becomes
+    /// `holds('rel', [args]) && D` (what it implies) and, when `D` is exact,
+    /// a negative one `holds('rel', [args]) || D`; on the `present` side an
+    /// exact `D` replaces it, and under `assume` a negative query of an
+    /// engine-`reserved` relation reads `false` — unless (dsl 0.25.0 §6) the
+    /// relation is in [`Self::changed`].
     /// The rule `cel()`s read are pushed onto `cels`.
     fn expand(&self, e: &Expr, pol: Pol, side: Side, depth: u8, cels: &mut Vec<String>) -> Expr {
         let Expr::Call(c) = e else { return e.clone() };
@@ -1823,28 +1838,23 @@ impl Presence<'_> {
                     self.expand(&b.expr, pol, side, depth, cels),
                 ],
             ),
-            ("holds", [a]) => {
-                let Expr::Call(atom) = &a.expr else {
+            ("holds", [_, _]) if crate::cel_resolve::is_profile_fact_query(c) => {
+                let Some(query) = crate::fact_env::QueryPattern::from_call(c) else {
                     return e.clone();
                 };
-                if atom.target.is_some() {
-                    return e.clone();
-                }
+                let relation = &query.relation;
                 let vocab = &self.folded.env.rel_vocab;
                 if side == (Side::Present { assume: true })
                     && pol == Pol::Neg
-                    && vocab
-                        .relations
-                        .get(&atom.func_name)
-                        .is_some_and(|d| d.reserved)
-                    && !self.changed.contains(&atom.func_name)
+                    && vocab.relations.get(relation).is_some_and(|d| d.reserved)
+                    && !self.changed.contains(relation)
                 {
                     return Expr::Literal(Val::Boolean(false));
                 }
                 if depth == 0 || pol == Pol::Both {
                     return e.clone();
                 }
-                let Some(def) = definition(vocab, &atom.func_name, &atom_args(atom)) else {
+                let Some(def) = definition(vocab, relation, &query.args) else {
                     return e.clone();
                 };
                 cels.extend(def.cels.iter().map(|c| self.expand_text(c, None)));
@@ -2001,11 +2011,12 @@ impl Presence<'_> {
     }
 
     /// dsl 0.25.0 §6: the `changedOn` relations `e` cannot hold without a
-    /// fact of — a positive `holds(R(…))`, a `count(R(…))` compared to be at
-    /// least one, or a derived relation every rule of which needs one, joined
-    /// through `&&` (either side) and `||` (both sides). Such a fact is the
-    /// engine's, written on one of R's occasions, so code guarded by `e` runs
-    /// after that occasion and `assume: true` no longer covers R there.
+    /// fact of — a positive list-form `holds('R', […])`, a `count('R', […])`
+    /// compared to be at least one, or a derived relation every rule of which
+    /// needs one, joined through `&&` (either side) and `||` (both sides).
+    /// Such a fact is the engine's, written on one of R's occasions, so code
+    /// guarded by `e` runs after that occasion and `assume: true` no longer
+    /// covers R there.
     fn required(&self, e: &Expr, depth: u8) -> BTreeSet<String> {
         let Expr::Call(c) = e else {
             return BTreeSet::new();
@@ -2016,15 +2027,10 @@ impl Presence<'_> {
         let atom_rel = |x: &Expr| match x {
             Expr::Call(f)
                 if f.target.is_none()
-                    && matches!(f.func_name.as_str(), "count" | "countDistinct") =>
+                    && matches!(f.func_name.as_str(), "count" | "countDistinct")
+                    && crate::cel_resolve::is_profile_fact_query(f) =>
             {
-                match f.args.as_slice() {
-                    [a] => match &a.expr {
-                        Expr::Call(atom) if atom.target.is_none() => Some(atom.func_name.clone()),
-                        _ => None,
-                    },
-                    _ => None,
-                }
+                crate::fact_env::QueryPattern::from_call(f).map(|q| q.relation)
             }
             _ => None,
         };
@@ -2046,12 +2052,11 @@ impl Presence<'_> {
                 let right = self.required(&b.expr, depth);
                 left.intersection(&right).cloned().collect()
             }
-            [a] if n == "holds" => match &a.expr {
-                Expr::Call(atom) if atom.target.is_none() => {
-                    self.required_rel(&atom.func_name, depth)
-                }
-                _ => BTreeSet::new(),
-            },
+            [_, _] if n == "holds" && crate::cel_resolve::is_profile_fact_query(c) => {
+                crate::fact_env::QueryPattern::from_call(c)
+                    .map(|q| self.required_rel(&q.relation, depth))
+                    .unwrap_or_default()
+            }
             [a, b] => {
                 // `count(R) >= k` (k ≥ 1), `> k` (k ≥ 0), `== k` (k ≥ 1), either way round.
                 let (rel, k, cmp) = match (

@@ -1,0 +1,266 @@
+{
+  "kind": "scene",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "meta": {
+    "id": "celErrors",
+    "title": "CEL Errors"
+  },
+  "state": [
+    {
+      "path": "run.i",
+      "type": "int",
+      "default": 3
+    },
+    {
+      "path": "run.missing",
+      "type": "string"
+    },
+    {
+      "path": "run.zero",
+      "type": "int",
+      "default": 0
+    }
+  ],
+  "commands": [
+    {
+      "kind": "match",
+      "addr": "001-0100",
+      "subject": {
+        "cel": "has(run.missing) && run.missing == 'ok'",
+        "expr": {
+          "op": "&&",
+          "l": {
+            "has": "run.missing"
+          },
+          "r": {
+            "op": "==",
+            "l": {
+              "path": "run.missing"
+            },
+            "r": {
+              "string": "ok"
+            }
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(has(run.missing) && run.missing == 'ok')",
+            "expr": {
+              "op": "&&",
+              "l": {
+                "has": "run.missing"
+              },
+              "r": {
+                "op": "==",
+                "l": {
+                  "path": "run.missing"
+                },
+                "r": {
+                  "string": "ok"
+                }
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-0200"
+        }
+      ],
+      "otherwise": "001-0400",
+      "converge": "001-0500"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "absent is false",
+      "lineId": "celErrors.narrator_0010"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0300",
+      "target": "001-0500"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0400",
+      "target": "001-0500"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0500",
+      "subject": {
+        "cel": "run.i != 0 && run.i / run.zero > 1",
+        "expr": {
+          "op": "&&",
+          "l": {
+            "op": "!=",
+            "l": {
+              "path": "run.i"
+            },
+            "r": {
+              "int": 0
+            }
+          },
+          "r": {
+            "op": ">",
+            "l": {
+              "op": "/",
+              "l": {
+                "path": "run.i"
+              },
+              "r": {
+                "path": "run.zero"
+              }
+            },
+            "r": {
+              "int": 1
+            }
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(run.i != 0 && run.i / run.zero > 1)",
+            "expr": {
+              "op": "&&",
+              "l": {
+                "op": "!=",
+                "l": {
+                  "path": "run.i"
+                },
+                "r": {
+                  "int": 0
+                }
+              },
+              "r": {
+                "op": ">",
+                "l": {
+                  "op": "/",
+                  "l": {
+                    "path": "run.i"
+                  },
+                  "r": {
+                    "path": "run.zero"
+                  }
+                },
+                "r": {
+                  "int": 1
+                }
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-0600"
+        }
+      ],
+      "otherwise": "001-0800",
+      "converge": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0600",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "divide error is false",
+      "lineId": "celErrors.narrator_0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0700",
+      "target": "001-0900"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0800",
+      "target": "001-0900"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0900",
+      "subject": {
+        "cel": "run.i == 3 || has(run.missing)",
+        "expr": {
+          "op": "||",
+          "l": {
+            "op": "==",
+            "l": {
+              "path": "run.i"
+            },
+            "r": {
+              "int": 3
+            }
+          },
+          "r": {
+            "has": "run.missing"
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(run.i == 3 || has(run.missing))",
+            "expr": {
+              "op": "||",
+              "l": {
+                "op": "==",
+                "l": {
+                  "path": "run.i"
+                },
+                "r": {
+                  "int": 3
+                }
+              },
+              "r": {
+                "has": "run.missing"
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-1000"
+        }
+      ],
+      "otherwise": "001-1200",
+      "converge": "001-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "001-1000",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "short circuit",
+      "lineId": "celErrors.narrator_0030"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1100",
+      "target": "001-1300"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1200",
+      "target": "001-1300"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "Errors"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

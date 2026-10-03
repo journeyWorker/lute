@@ -5,23 +5,23 @@
 # of that and writes only relationships and small per-run choices.
 state:
   # --- engine-owned counters (user tier: they survive every dive) ---
-  user.runs:       { type: number, default: 0, owner: engine }   # dives started
-  user.deaths:     { type: number, default: 0, owner: engine }
-  user.surfaces:   { type: number, default: 0, owner: engine }
-  user.deepest:    { type: number, default: 0, owner: engine }   # deepest chamber ever reached
+  user.runs:       { type: int, default: 0, owner: engine }   # dives started
+  user.deaths:     { type: int, default: 0, owner: engine }
+  user.surfaces:   { type: int, default: 0, owner: engine }
+  user.deepest:    { type: int, default: 0, owner: engine }   # deepest chamber ever reached
   # --- engine-owned dive state (run tier: reset at every new dive) ---
-  run.depth:       { type: number, default: 0, owner: engine }   # chamber reached, 0 = the rail
+  run.depth:       { type: int, default: 0, owner: engine }   # chamber reached, 0 = the rail
   run.outcome:     { type: { enum: [diving, died, surfaced] }, default: diving, owner: engine }
   run.killedBy:    { type: { enum: [eel, choir, archivist, regent, pressure] }, owner: engine }   # unset unless Ilo died
   # --- content-owned ---
-  user.pearls:     { type: number, default: 0 }   # the ship's currency; rewards credit it
-  user.bond:       { type: number, default: 0, per: bonded }   # user.bond.brann / .sefa / .quill
+  user.pearls:     { type: int, default: 0 }   # the ship's currency; rewards credit it
+  user.bond:       { type: int, default: 0, per: bonded }   # user.bond.brann / .sefa / .quill
   run.sharedMeal:  { type: bool, default: false }   # Tavi feeds you once per dive
   # --- the drowned library (chapter 5) ---
-  run.valves:      { type: number, default: 0 }       # sluice valves Ilo has turned this dive
+  run.valves:      { type: int, default: 0 }       # sluice valves Ilo has turned this dive
   user.crowned:    { type: bool, default: false }     # Ilo put the crown on: the game is over
   # --- the neap tide: two dives in every six the upper halls drain ---
-  season.neap.salvage: { type: number, default: 0 }   # things Ilo hauled up this neap
+  season.neap.salvage: { type: int, default: 0 }   # things Ilo hauled up this neap
 
 entities:
   # Everyone Ilo can talk to: Tavi, and everyone whose regard he can earn
@@ -72,9 +72,9 @@ defs:
   fathoms:    "run.depth * 10"
   lastFathoms: "prev.run.depth * 10"
   veteran:    "user.runs >= 6"
-  runsAtLeast: { type: bool, params: { n: number }, cel: "user.runs >= n" }
+  runsAtLeast: { type: bool, params: { n: int }, cel: "user.runs >= n" }
   neapLive:   "user.runs % 6 >= 4"   # dives 4-5, 10-11, …
-  readyForCrown: "holds(felled(regent)) && quest.libraryKey.state == 'complete' && quest.quillMemory.state == 'complete'"
+  readyForCrown: "holds('felled', ['regent']) && quest.libraryKey.state == 'complete' && quest.quillMemory.state == 'complete'"
 
 # Two dives in every six the tide runs low and the upper halls drain.
 seasons:

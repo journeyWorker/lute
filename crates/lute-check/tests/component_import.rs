@@ -44,6 +44,23 @@ fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
 }
 
+#[test]
+fn number_component_params_are_not_silently_dropped() {
+    for ty in ["number", "{ type: number }"] {
+        let dir = unique_dir();
+        write_lute(&dir, "depth.lute", &format!(
+            "---\ncomponent: depth\nparams:\n  depth: {ty}\n---\n## Depth\n@narrator: Down.\n"
+        ));
+        let result = resolve_components(&dir, &["depth.lute".into()], zero_span());
+        assert!(result.diags.iter().any(|d| {
+            d.message.contains("type: int") && d.message.contains("type: double")
+                || d.related.iter().any(|r| r.diagnostic.message.contains("type: int")
+                    && r.diagnostic.message.contains("type: double"))
+        }), "{:?}", result.diags);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
 fn codes(res: &ComponentSet) -> Vec<&str> {
     res.diags.iter().map(|d| d.code.as_str()).collect()
 }
@@ -89,7 +106,7 @@ fn duplicate_component_name_across_files_errors() {
     write_lute(
         &dir,
         "b.lute",
-        "---\ncomponent: greet\nparams:\n  who: number\n---\n## G.\n@x: yo\n",
+        "---\ncomponent: greet\nparams:\n  who: int\n---\n## G.\n@x: yo\n",
     );
     let res = resolve_components(
         &dir,

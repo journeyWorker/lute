@@ -4,7 +4,7 @@ id: permissionStream
 profile: authored
 state:
   # No default: the host may supply the value as read-only context.
-  scene.score: { type: number }
+  scene.score: { type: int }
 ---
 
 ## Live

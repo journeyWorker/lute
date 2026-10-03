@@ -5,7 +5,7 @@ title: A birthday song
 on: morning
 for: "kind:villager"
 once: false
-when: "holds(birthdayToday(occasion.target))"
+when: "holds('birthdayToday', [occasion.target])"
 ---
 
 ## Song

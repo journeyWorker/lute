@@ -79,7 +79,7 @@ pub fn parse_clock(
             None,
             vec![clock_diag(
                 format!(
-                    "`clock:` must be `{{ day: <number path>, slot: <enum path>, slots: [..], \
+                    "`clock:` must be `{{ day: <int path>, slot: <enum path>, slots: [..], \
                      raise: <occasion> | {{ slot, dayStart, dayEnd }}, raiseAtStart: <bool>, \
                      week: {{ length, first, labels }}, last: {{ day, slot }} | days: <n> }}` — \
                      `slot`/`slots` (together), `raise`, `raiseAtStart`, `week` and `last`/`days` \
@@ -369,8 +369,8 @@ pub fn clock_problems(
         None if partial => {}
         None => out.push(format!("`day: {}` is not a declared state path", clock.day)),
         Some(decl) => {
-            if decl.ty != Type::Number {
-                out.push(format!("`day: {}` must be a `number` path", clock.day));
+            if decl.ty != Type::Int {
+                out.push(format!("`day: {}` must be an `int` path", clock.day));
             }
             if decl.owner != Some(Owner::Engine) {
                 out.push(format!(
@@ -379,8 +379,8 @@ pub fn clock_problems(
                 ));
             }
             // dsl 0.28.0 (T3-44): the clock counts from day 1.
-            if let Some(Literal::Num(d)) = &decl.default {
-                if *d < 1.0 || d.fract() != 0.0 {
+            if let Some(Literal::Int(d)) = &decl.default {
+                if *d < 1 {
                     out.push(format!(
                         "`day: {}` starts at {d} (its default) — the clock counts whole days \
                          from day 1; give it `default: 1`",
@@ -460,8 +460,8 @@ pub fn clock_problems(
     if let Some(last) = clock.last_at() {
         let default = |path: &str| schema.decls.get(path).and_then(|d| d.default.as_ref());
         let start = match (default(&clock.day), clock.slot.as_deref().map(default)) {
-            (Some(Literal::Num(d)), None) => clock.at(*d, None),
-            (Some(Literal::Num(d)), Some(Some(Literal::Str(s)))) => clock.at(*d, Some(s)),
+            (Some(Literal::Int(d)), None) => clock.at(*d as f64, None),
+            (Some(Literal::Int(d)), Some(Some(Literal::Str(s)))) => clock.at(*d as f64, Some(s)),
             _ => None,
         };
         if let Some(start) = start.filter(|s| *s > last) {
@@ -492,8 +492,8 @@ pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, S
         .as_ref()
         .map(|s| schema.decls.get(s).and_then(|d| d.default.as_ref()));
     let at = match (day.and_then(|d| d.default.as_ref()), slot_default) {
-        (Some(Literal::Num(d)), None) => clock.at(*d, None),
-        (Some(Literal::Num(d)), Some(Some(Literal::Str(s)))) => clock.at(*d, Some(s)),
+        (Some(Literal::Int(d)), None) => clock.at(*d as f64, None),
+        (Some(Literal::Int(d)), Some(Some(Literal::Str(s)))) => clock.at(*d as f64, Some(s)),
         _ => None,
     };
     let values: BTreeMap<&str, lute_manifest::clock::ClockValue> = at
@@ -507,12 +507,12 @@ pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, S
             let default = match ty {
                 ClockPathType::Bool => Some(Literal::Bool(false)),
                 _ => values.get(path).map(|v| match v {
-                    lute_manifest::clock::ClockValue::Num(n) => Literal::Num(*n as f64),
+                    lute_manifest::clock::ClockValue::Int(n) => Literal::Int(*n),
                     lute_manifest::clock::ClockValue::Str(s) => Literal::Str(s.clone()),
                 }),
             };
             let ty = match ty {
-                ClockPathType::Number => Type::Number,
+                ClockPathType::Int => Type::Int,
                 ClockPathType::Bool => Type::Bool,
                 ClockPathType::Slot => Type::Enum(clock.slots.clone()),
                 ClockPathType::WeekdayLabel => Type::Enum(
@@ -550,7 +550,7 @@ pub fn clock_domains(clock: &ClockDecl) -> Vec<(String, Domain)> {
             let members = match ty {
                 ClockPathType::Slot => clock.slots.clone(),
                 ClockPathType::WeekdayLabel => clock.week.as_ref()?.labels.clone(),
-                ClockPathType::Number | ClockPathType::Bool => return None,
+                ClockPathType::Int | ClockPathType::Bool => return None,
             };
             (!members.is_empty()).then(|| {
                 (
@@ -634,7 +634,7 @@ fn finite_span(
 pub(crate) fn first_at(clock: &ClockDecl, schema: &StateSchema) -> lute_manifest::clock::ClockAt {
     let default = |path: &str| schema.decls.get(path).and_then(|d| d.default.as_ref());
     let first_day = match default(&clock.day) {
-        Some(Literal::Num(d)) if d.fract() == 0.0 => *d as i64,
+        Some(Literal::Int(d)) if *d >= 1 => *d,
         _ => 1,
     };
     let first_slot = match clock.slot.as_deref().map(default) {

@@ -12,18 +12,18 @@
 # THEN raises runEnd. Content only reads these (E-ENGINE-OWNED-WRITE).
 state:
   # --- ENGINE-OWNED ---------------------------------------------------------
-  user.runs:    { type: number, default: 0, owner: engine }   # climbs finished, ever
-  user.deaths:  { type: number, default: 0, owner: engine }   # climbs that ended in a fall
-  user.escapes: { type: number, default: 0, owner: engine }   # climbs that ended outside
-  run.floor:    { type: number, default: 0, owner: engine }   # highest floor reached this climb (1..9)
+  user.runs:    { type: int, default: 0, owner: engine }   # climbs finished, ever
+  user.deaths:  { type: int, default: 0, owner: engine }   # climbs that ended in a fall
+  user.escapes: { type: int, default: 0, owner: engine }   # climbs that ended outside
+  run.floor:    { type: int, default: 0, owner: engine }   # highest floor reached this climb (1..9)
   run.outcome:  { type: { enum: [climbing, fell, escaped] }, default: climbing, owner: engine }
   # What killed Wren this climb (unset: nothing did). A state path rather than
   # a fact: prev.run.* snapshots state only, and the Hearth needs it after the
   # reset. Typed by the foe kind, so {{prev.run.fellTo}} renders its label.
   run.fellTo:   { type: { domain: foe }, owner: engine }
   # --- CONTENT-WRITTEN ------------------------------------------------------
-  user.embers:     { type: number, default: 0 }    # credited by EMBERS rewards; spent at Oskar's forge
-  user.bond:       { type: number, default: 0, per: npc }   # user.bond.maud / .oskar / .sable
+  user.embers:     { type: int, default: 0 }    # credited by EMBERS rewards; spent at Oskar's forge
+  user.bond:       { type: int, default: 0, per: npc }   # user.bond.maud / .oskar / .sable
   user.knowsSableName: { type: bool, default: false }
   user.hammerReforged: { type: bool, default: false }
   run.carriesFeather:  { type: bool, default: false }
@@ -32,7 +32,7 @@ state:
   # comes back, season.ashfall.* starts over and prev.season.ashfall.* keeps
   # how the last one ended.
   user.ashfallOn:          { type: bool, default: false, owner: engine }
-  season.ashfall.lilies:   { type: number, default: 0 }   # ash-lilies brought down this Ashfall
+  season.ashfall.lilies:   { type: int, default: 0 }   # ash-lilies brought down this Ashfall
 
 entities:
   npc:   { members: [maud, oskar, sable] }
@@ -69,10 +69,10 @@ rules:
   - 'keepsakeFrom(N) :- gave(N, _)'
 
 defs:
-  cameBackFromFall: "isSet(prev.run.outcome) && prev.run.outcome == 'fell'"
-  cameBackFromEscape: "isSet(prev.run.outcome) && prev.run.outcome == 'escaped'"
+  cameBackFromFall: "has(prev.run.outcome) && prev.run.outcome == 'fell'"
+  cameBackFromEscape: "has(prev.run.outcome) && prev.run.outcome == 'escaped'"
   veteran: "user.runs >= 3"
-  fireFlare: "isSet(prev.run.outcome) && prev.run.outcome == 'escaped' ? 'high' : 'low'"
+  fireFlare: "has(prev.run.outcome) && prev.run.outcome == 'escaped' ? 'high' : 'low'"
   escapedThisClimb: "run.outcome == 'escaped'"
   fellThisClimb: "run.outcome == 'fell'"
 

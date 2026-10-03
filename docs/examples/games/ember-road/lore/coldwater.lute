@@ -20,13 +20,13 @@ components: [../components/reaction.component.lute]
       @narrator: Nobody at the bridge told you its name. The milestone at the lane end did: COLDWATER, and under it, painted later, a black sun.
     </otherwise>
   </match>
-  @isolde{when="holds(inParty(isolde))"}: I know this lane. I rode down it, once. Faster than this.
-  ::use{component="reaction" who="isolde" feel="approves" when="holds(inParty(isolde))"}
+  @isolde{when="holds('inParty', ['isolde'])"}: I know this lane. I rode down it, once. Faster than this.
+  ::use{component="reaction" who="isolde" feel="approves" when="holds('inParty', ['isolde'])"}
   @wren{when="@wrenWithUs"}: No river. That's why it burned so well.
-  @corvin{when="holds(inParty(corvin))"}: If there was anything worth taking, the Company took it. If there wasn't, they burned it. That's their whole ledger.
+  @corvin{when="holds('inParty', ['corvin'])"}: If there was anything worth taking, the Company took it. If there wasn't, they burned it. That's their whole ledger.
 </beat>
 
-<beat id="chapel" on="explore" target="place.coldwater" title="The chapel ash" priority="10" after="visited('coldwater.ruins')" spentBy="holds(knows(roll))">
+<beat id="chapel" on="explore" target="place.coldwater" title="The chapel ash" priority="10" after="visited('coldwater.ruins')" spentBy="holds('knows', ['roll'])">
   @narrator: The chapel floor is a crust of ash over flagstones. If Coldwater kept a parish roll, it kept it here.
   ::check{skill="insight" dc="11" resultKey="ash" sync="true"}
   <match on="scene.check.ash.passed">

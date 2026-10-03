@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "id": "demo.s01ep01",
     "character": "demo",
@@ -22,7 +22,7 @@ expression: json
     },
     {
       "path": "scene.affect.marina",
-      "type": "number",
+      "type": "int",
       "default": 0
     },
     {
@@ -122,33 +122,46 @@ expression: json
     {
       "kind": "match",
       "addr": "001-0100",
-      "subject": "scene.affect.marina",
+      "subject": {
+        "cel": "scene.affect.marina",
+        "expr": {
+          "path": "scene.affect.marina"
+        }
+      },
       "arms": [
         {
-          "test": "",
-          "target": "001-0200",
-          "expr": {
-            "op": ">=",
-            "l": {
-              "path": "scene.affect.marina"
+          "is": "3..",
+          "test": {
+            "cel": "(scene.affect.marina >= 3)",
+            "expr": {
+              "op": ">=",
+              "l": {
+                "path": "scene.affect.marina"
+              },
+              "r": {
+                "int": 3
+              }
             },
-            "r": {
-              "lit": 3.0
-            }
-          }
+            "authored": "is=3.."
+          },
+          "target": "001-0200"
         },
         {
-          "test": "",
-          "target": "001-0400",
-          "expr": {
-            "op": ">=",
-            "l": {
-              "path": "scene.affect.marina"
+          "is": "1..",
+          "test": {
+            "cel": "(scene.affect.marina >= 1)",
+            "expr": {
+              "op": ">=",
+              "l": {
+                "path": "scene.affect.marina"
+              },
+              "r": {
+                "int": 1
+              }
             },
-            "r": {
-              "lit": 1.0
-            }
-          }
+            "authored": "is=1.."
+          },
+          "target": "001-0400"
         }
       ],
       "otherwise": "001-0600",
@@ -211,46 +224,64 @@ expression: json
     {
       "kind": "match",
       "addr": "002-0100",
-      "subject": "(scene.tier)",
+      "subject": {
+        "cel": "(scene.tier)",
+        "expr": {
+          "path": "scene.tier"
+        },
+        "authored": "@currentTier"
+      },
       "arms": [
         {
-          "test": "",
-          "target": "002-0200",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "scene.tier"
+          "is": "fond",
+          "test": {
+            "cel": "(scene.tier == \"fond\")",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "scene.tier"
+              },
+              "r": {
+                "string": "fond"
+              }
             },
-            "r": {
-              "lit": "fond"
-            }
-          }
+            "authored": "is=fond"
+          },
+          "target": "002-0200"
         },
         {
-          "test": "",
-          "target": "002-0400",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "scene.tier"
+          "is": "warm",
+          "test": {
+            "cel": "(scene.tier == \"warm\")",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "scene.tier"
+              },
+              "r": {
+                "string": "warm"
+              }
             },
-            "r": {
-              "lit": "warm"
-            }
-          }
+            "authored": "is=warm"
+          },
+          "target": "002-0400"
         },
         {
-          "test": "",
-          "target": "002-0600",
-          "expr": {
-            "op": "==",
-            "l": {
-              "path": "scene.tier"
+          "is": "cold",
+          "test": {
+            "cel": "(scene.tier == \"cold\")",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "scene.tier"
+              },
+              "r": {
+                "string": "cold"
+              }
             },
-            "r": {
-              "lit": "cold"
-            }
-          }
+            "authored": "is=cold"
+          },
+          "target": "002-0600"
         }
       ],
       "converge": "002-0800",
@@ -322,5 +353,15 @@ expression: json
       "shot": 2,
       "heading": "Dynamic Tier Dispatch"
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "scene",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
 }

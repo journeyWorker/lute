@@ -23,7 +23,7 @@ id: night
 </quest>
 
 <quest id="quietWard" title="Let them sleep" start="entry.diary.read">
-  <objective id="burn" title="Burn the admissions ledger" done="holds(burned(ledger))"/>
+  <objective id="burn" title="Burn the admissions ledger" done="holds('burned', ['ledger'])"/>
   <objective id="bell" title="Ring the round down at three" done="run.bellRung"/>
   <on event="questActive">
     @nell{mono}: Burn the ledger. Ring the bell at three. A dead man's to-do list.

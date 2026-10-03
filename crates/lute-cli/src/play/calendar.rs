@@ -502,7 +502,7 @@ fn resolve_clock_axis(p: &ExecProject, days: &[String]) -> Result<Axis, String> 
                 .unwrap_or_default();
             values.push((
                 format!("{day}{label}{name}"),
-                Value::Num(clock.index(at) as f64),
+                Value::Int(clock.index(at) as i64),
             ));
         }
     }
@@ -518,7 +518,7 @@ fn clock_axis_at(
     clock: &lute_manifest::clock::ClockDecl,
     value: &Value,
 ) -> lute_manifest::clock::ClockAt {
-    let Value::Num(index) = value else {
+    let Value::Int(index) = value else {
         unreachable!("a clock axis value is its index")
     };
     let len = clock.slot_count() as i64;
@@ -615,7 +615,7 @@ fn apply_axis(
                 .as_ref()
                 .expect("a clock axis was resolved against a clock");
             let at = clock_axis_at(clock, value);
-            w.state.insert(clock.day.clone(), Value::Num(at.day as f64));
+            w.state.insert(clock.day.clone(), Value::Int(at.day));
             if let (Some(path), Some(name)) = (&clock.slot, clock.slot_name(at.slot)) {
                 w.state.insert(path.clone(), Value::Str(name.to_string()));
             }
@@ -1898,7 +1898,7 @@ fn pinned(pins: &[Pin], axes: &[Axis]) -> (Vec<String>, Vec<(String, String, Val
                     Some(d) => held.push((
                         "clock.day".to_string(),
                         d.to_string(),
-                        Value::Num(*d as f64),
+                        Value::Int(*d),
                     )),
                 }
                 match slot {

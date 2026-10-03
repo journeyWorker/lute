@@ -130,7 +130,7 @@ pub(crate) enum Command {
         #[arg(long = "config", value_name = "PATH")]
         config: Option<PathBuf>,
     },
-    /// Compile a checked `.lute` document to its JSON command-record artifact,
+    /// Compile a checked `.lute` document to its JSON command-record execution IR,
     /// or — with `--all` — every document in a project plus a
     /// `project.index.json` unioning their vocabularies.
     Compile {
@@ -138,7 +138,7 @@ pub(crate) enum Command {
         /// directory instead (the same as `--project <DIR>`).
         file: Option<PathBuf>,
         /// On a failed gate, print the diagnostics as JSON instead of
-        /// human-readable lines. (The artifact itself is always JSON.)
+        /// human-readable lines. (The execution IR itself is always JSON.)
         #[arg(long)]
         json: bool,
         /// Directory of pinned provider snapshots to resolve ids against.
@@ -155,7 +155,7 @@ pub(crate) enum Command {
         /// This never activates the profile's plugins or rewrites source.
         #[arg(long = "permission-profile", value_name = "NAME")]
         permission_profile: Option<String>,
-        /// Write the artifact here instead of stdout. Under `--all` this is a
+        /// Write the execution IR here instead of stdout. Under `--all` this is a
         /// required output DIRECTORY, not a file.
         #[arg(short = 'o', long = "out", value_name = "FILE")]
         out: Option<PathBuf>,
@@ -169,7 +169,7 @@ pub(crate) enum Command {
         /// `.lute` file is a usage error.
         #[arg(long)]
         all: bool,
-        /// Merge a locale bundle (`lute loc import`) into the artifact:
+        /// Merge a locale bundle (`lute loc import`) into the execution IR:
         /// `texts` on every line, `labels` on every choice/hub option, keyed by
         /// `lineId`. `text`/`label` stay the source language.
         /// A record missing a declared locale is `W-L10N-MISSING`.
@@ -185,7 +185,7 @@ pub(crate) enum Command {
         deny_warnings: bool,
     },
     /// Incrementally compile body text from stdin against a checked scene
-    /// prefix, flushing ordinary artifact snapshots as newline-delimited JSON.
+    /// prefix, flushing ordinary execution IR snapshots as newline-delimited JSON.
     CompileStream {
         /// Path to the immutable `.lute` scene prefix.
         file: PathBuf,
@@ -216,15 +216,15 @@ pub(crate) enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Apply the mechanical, meaning-preserving migrations in place —
-    /// `:line[speaker]{…}: text` → `@speaker{…}: text`, any other content
-    /// line's leading `:` sigil → `@`, `<choice>`/`<hub>` choice `as="…"` →
-    /// `into="…"`, and a literal-comparison `<when test="$ == …">` →
-    /// `<when is="…">`. Byte-exact and comment-preserving; writes back only when
-    /// something changed. Exit `0` on success, `2` on an I/O failure. A
-    /// directory migrates every `.lute` file under it (recursive, sorted).
+    /// Apply mechanical, meaning-preserving migrations in place —
+    /// legacy line/choice syntax, literal `<when>` comparisons, and 0.31 CEL
+    /// fact-query/presence calls (`holds`/`count`/`countDistinct`/`validAt`/
+    /// `isSet`) to their standard-CEL 0.32 forms. Byte-exact and
+    /// comment-preserving; writes back only when something changed. A
+    /// directory migrates `.lute` and project/schema YAML files recursively,
+    /// sorted. Exit `0` on success, `2` on an I/O failure.
     Fix {
-        /// The `.lute` file to migrate, or a directory to migrate recursively.
+        /// The `.lute`/YAML file to migrate, or a directory to migrate recursively.
         path: PathBuf,
     },
     /// Emit the project-resolved AUTHORING SURFACE for a `.lute` file — the
@@ -417,18 +417,19 @@ pub(crate) enum Command {
         #[arg(long)]
         strict: bool,
     },
-    /// Execute a COMPILED artifact (`lute compile` output) headlessly against
+    /// Execute a COMPILED execution IR (`lute compile` output) headlessly against
     /// a mock playthrough — the reference consumer of the runtime contract
     /// (docs/runtime/): command dispatch, CEL guards, facts + Datalog
     /// fixpoint, hubs, and quest lifecycle. Distinct from `lute trace`, which
-    /// previews SOURCE; `run` consumes the artifact an engine would.
+    /// previews SOURCE; `run` consumes the execution IR an engine would.
     Run {
-        /// Path to the compiled artifact JSON.
+        /// Path to the compiled execution IR JSON.
+        #[arg(value_name = "EXECUTION-IR")]
         artifact: PathBuf,
         /// A YAML mock playthrough (same surfaces as `lute trace --mock`).
         #[arg(long, value_name = "FILE")]
         mock: Option<PathBuf>,
-        /// Raise an occasion after a quest artifact's walk settles, after
+        /// Raise an occasion after a quest execution IR's walk settles, after
         /// the mock's own `occasions:`, in CLI order (repeatable): each raise
         /// judges the `on="<occasion>"` objectives of every active quest.
         #[arg(long = "occasion", value_name = "OCCASION")]
@@ -436,18 +437,21 @@ pub(crate) enum Command {
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,
-        /// Present ONE `entry` record of a lore artifact by id
-        /// (docs/runtime/lore-entries.md). A lore artifact needs exactly
+        /// Present ONE `entry` record of a lore execution IR by id
+        /// (docs/runtime/lore-entries.md). A lore execution IR needs exactly
         /// one of `--entry`/`--beat` (exit 2 otherwise); refused (exit 2) on
-        /// any other artifact kind.
+        /// any other execution IR kind.
         #[arg(long, value_name = "ID")]
         entry: Option<String>,
-        /// Present ONE bundle `beat` record of a lore artifact by canonical
+        /// Present ONE bundle `beat` record of a lore execution IR by canonical
         /// id `<document id>.<beat id>` (or the bare beat id
         /// when unambiguous): its body segment runs like a scene, every
-        /// effect applied. Refused (exit 2) on any other artifact kind.
+        /// effect applied. Refused (exit 2) on any other execution IR kind.
         #[arg(long, value_name = "ID", conflicts_with = "entry")]
         beat: Option<String>,
+        /// Append one JSONL record for every CEL condition evaluation.
+        #[arg(long, value_name = "FILE")]
+        dump_conditions: Option<PathBuf>,
     },
     /// Play a story through a whole project as a sequence of raised
     /// occasions. Compiles the WHOLE project in memory
@@ -498,6 +502,9 @@ pub(crate) enum Command {
         /// false` candidates at one raise fold into one count line.
         #[arg(long)]
         quiet: bool,
+        /// Append one JSONL record for every CEL condition evaluation.
+        #[arg(long, value_name = "FILE")]
+        dump_conditions: Option<PathBuf>,
     },
     /// Run the project's scenario tests: every `*.test.yaml` under `dir`
     /// traces its scene (or, with `entry:`/`entries:`, presents its lore
@@ -706,7 +713,7 @@ pub(crate) enum Command {
     /// Print the three independent version axes (docs/versioning.md): the
     /// TOOLCHAIN version (this CLI + workspace crates), the LANGUAGE version
     /// (the grammar/semantics the checker enforces), and the IR schema
-    /// version (stamped as `irVersion` in every compiled artifact). Distinct
+    /// version (stamped as `irVersion` in every compiled execution IR). Distinct
     /// from clap's built-in `--version`, which prints only the toolchain
     /// version. Human-readable lines by default; `--json` prints a single
     /// object `{"toolchain":…,"language":…,"ir":…}`.

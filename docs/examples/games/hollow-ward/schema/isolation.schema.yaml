@@ -3,9 +3,9 @@
 # still wait in their beds for the round that never came.
 
 state:
-  run.hush: { type: number, default: 0 }       # patients settled tonight
+  run.hush: { type: int, default: 0 }       # patients settled tonight
   run.sawCopper: { type: bool, default: false }
-  run.unrest: { type: number, default: 0, per: patient }   # dark spells each patient sat through
+  run.unrest: { type: int, default: 0, per: patient }   # dark spells each patient sat through
 
 entities:
   room:
@@ -33,7 +33,7 @@ rules:
   - "restless(P) :- patient(P), not calmed(P)"
 
 defs:
-  wingQuiet: "count(calmed(_)) >= 3"
+  wingQuiet: "count('calmed', ['_']) >= 3"
 
 cast:
   edith:  { name: Edith }

@@ -96,7 +96,7 @@ title: Ashgrove, the lantern town
   @elderRook{emotion="happy"}: Tea? No? Young people. Three days tied to a chair and all I wanted was tea.
 </entry>
 
-<entry id="eastRookFlute" on="talk" target="npc.elderRook" category="bark" priority="10" when="run.lair.towerSiege == 'cleared' && holds(caught(slumbear))">
+<entry id="eastRookFlute" on="talk" target="npc.elderRook" category="bark" priority="10" when="run.lair.towerSiege == 'cleared' && holds('caught', ['slumbear'])">
   @elderRook{emotion="happy"}: You woke it, and it came with you. Then it was waiting for you, all those years. I am glad I kept the flute.
 </entry>
 

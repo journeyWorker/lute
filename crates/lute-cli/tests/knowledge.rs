@@ -70,7 +70,7 @@ fn inquiry(tag: &str) -> PathBuf {
     write(
         &d,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1 }\n\
+        "state:\n  run.day: { type: int, default: 1 }\n\
          entities:\n  person: { members: [hollis, maren, tobias, ada] }\n\
          relations:\n  saw: { args: [person, person], tier: run }\n  lied: { args: [person], tier: run }\n\
          \x20 departed: { args: [person], tier: run }\n  present: { args: [person], tier: run, reserved: true }\n\
@@ -84,26 +84,26 @@ fn inquiry(tag: &str) -> PathBuf {
         "---\nkind: lore\nid: inquiry.evidence\n---\n\n\
          <entry id=\"hollisSaw\" on=\"look\" title=\"Hollis\">\n  @narrator: Hollis saw Tobias.\n  ::assert{saw(hollis, tobias)}\n</entry>\n\n\
          <entry id=\"marenSaw\" on=\"look\" title=\"Maren\">\n  @narrator: Maren saw Ada, and lied.\n  ::assert{saw(maren, ada)}\n  ::assert{lied(maren)}\n</entry>\n\n\
-         <entry id=\"nbTobias\" on=\"look\" title=\"Alibi\" when=\"holds(alibied(tobias))\">\n  @narrator: Tobias is clear.\n</entry>\n",
+        <entry id=\"nbTobias\" on=\"look\" title=\"Alibi\" when=\"holds('alibied', ['tobias'])\">\n  @narrator: Tobias is clear.\n</entry>\n",
     );
     write(
         &d,
         "scenes/report.lute",
         "---\nkind: scene\nid: inquiry.report\non: report\n---\n\n## Report\n\n\
          <branch id=\"fate\" prompt=\"Who?\">\n  \
-         <choice id=\"tobias\" label=\"Tobias\" when=\"holds(alibied(tobias))\">\n    @narrator: Tobias.\n  </choice>\n  \
-         <choice id=\"ada\" label=\"Ada\" when=\"holds(alibied(ada))\">\n    @narrator: Ada.\n  </choice>\n  \
+         <choice id=\"tobias\" label=\"Tobias\" when=\"holds('alibied', ['tobias'])\">\n    @narrator: Tobias.\n  </choice>\n  \
+         <choice id=\"ada\" label=\"Ada\" when=\"holds('alibied', ['ada'])\">\n    @narrator: Ada.\n  </choice>\n  \
          <choice id=\"nobody\" label=\"Nobody\">\n    @narrator: Nobody.\n  </choice>\n\
          </branch>\n\n\
-         @narrator{when=\"holds(alibied(tobias))\"}: Tobias walks free.\n\
-         @tobias{when=\"!holds(departed(tobias))\"}: I am still here.\n",
+         @narrator{when=\"holds('alibied', ['tobias'])\"}: Tobias walks free.\n\
+         @tobias{when=\"!holds('departed', ['tobias'])\"}: I am still here.\n",
     );
     write(
         &d,
         "quests/case.lute",
         "---\nkind: quest\nid: inquiry.case\n---\n\n\
-         <quest id=\"case\" start=\"holds(saw(hollis, tobias))\" fail=\"holds(departed(tobias))\">\n  \
-         <objective id=\"clear\" done=\"holds(alibied(tobias))\"/>\n</quest>\n",
+         <quest id=\"case\" start=\"holds('saw', ['hollis', 'tobias'])\" fail=\"holds('departed', ['tobias'])\">\n  \
+         <objective id=\"clear\" done=\"holds('alibied', ['tobias'])\"/>\n</quest>\n",
     );
     d
 }
@@ -119,7 +119,7 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
         s.contains("\n  scenes/report.lute\n    choice `fate.tobias` (line 10)\n"),
         "{s}"
     );
-    assert!(s.contains("      when: holds(alibied(tobias))\n"), "{s}");
+    assert!(s.contains("      when: holds('alibied', ['tobias'])\n"), "{s}");
     assert!(s.contains("    choice `fate.ada` (line 13)\n"), "{s}");
     assert!(s.contains("    line `@narrator` (line 21)\n"), "{s}");
     assert!(s.contains("    line `@tobias` (line 22)\n"), "{s}");
@@ -149,10 +149,10 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
         "{q}"
     );
     assert!(
-        q.contains("      start: holds(saw(hollis, tobias))\n"),
+        q.contains("      start: holds('saw', ['hollis', 'tobias'])\n"),
         "{q}"
     );
-    assert!(q.contains("      fail: holds(departed(tobias))\n"), "{q}");
+    assert!(q.contains("      fail: holds('departed', ['tobias'])\n"), "{q}");
     assert!(q.contains("    objective `case.clear`\n"), "{q}");
 
     let miss = lute(&[
@@ -310,7 +310,7 @@ fn lore_shows_entry_when_and_the_derived_conclusions() {
     let s = ok(&["lore", d]);
     assert!(
         s.contains(
-            "    nbTobias  \"Alibi\"  lore/evidence.lute\n      when: holds(alibied(tobias))\n"
+            "    nbTobias  \"Alibi\"  lore/evidence.lute\n      when: holds('alibied', ['tobias'])\n"
         ),
         "{s}"
     );
@@ -395,7 +395,7 @@ fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises()
     write(
         &d,
         "world.schema.yaml",
-        "state:\n  run.aff: { type: number, default: 0, per: suitor }\n  run.day: { type: number, default: 1 }\n\
+        "state:\n  run.aff: { type: int, default: 0, per: suitor }\n  run.day: { type: int, default: 1 }\n\
          entities:\n  person: { members: [ines, sol, wren] }\n  suitor: { subsetOf: person, members: [sol, wren] }\n\
          relations:\n  ready: { args: [suitor], derive: true }\n  plain: { args: [person], derive: true }\n\
          rules:\n  - \"ready(P) :- suitor(P), cel(\\\"run.aff[P] >= 3\\\")\"\n\
@@ -404,7 +404,7 @@ fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises()
     write(
         &d,
         "scenes/s.lute",
-        "---\nkind: scene\nid: s\non: tick\nwhen: \"holds(ready(sol)) || holds(plain(ines))\"\n---\n\n## S\n\n@narrator: Ready.\n",
+        "---\nkind: scene\nid: s\non: tick\nwhen: \"holds('ready', ['sol']) || holds('plain', ['ines'])\"\n---\n\n## S\n\n@narrator: Ready.\n",
     );
     let dir = d.to_str().unwrap();
     let s = ok(&["scenario", dir, "knowledge", "--for", "s"]);
@@ -493,7 +493,7 @@ fn a_kind_bound_negated_premise_names_its_defeater() {
         &d,
         "scenes/festival.lute",
         "---\nkind: scene\nid: festival\nafter: 'visited(\"clash\")'\n---\n\n## Festival\n\n\
-         @narrator{when=\"holds(routeOpen(ren))\"}: Ren's route is open.\n",
+         @narrator{when=\"holds('routeOpen', ['ren'])\"}: Ren's route is open.\n",
     );
     let dir = d.to_str().unwrap();
     let s = ok(&["scenario", dir, "knowledge", "--for", "festival"]);

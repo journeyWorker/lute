@@ -1442,11 +1442,12 @@ fn reads_seasons(
         }
         Expr::Call(c) => {
             if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct") {
-                if let Some(Expr::Call(atom)) = c.args.first().map(|a| &a.expr) {
-                    let tier = relations
-                        .get(&atom.func_name)
-                        .and_then(|r| r.tier.as_deref());
-                    if let Some(s) = tier.and_then(lute_manifest::season::season_ref) {
+                if let Some(query) = crate::fact_env::QueryPattern::from_call(c) {
+                    if let Some(s) = relations
+                        .get(&query.relation)
+                        .and_then(|r| r.tier.as_deref())
+                        .and_then(lute_manifest::season::season_ref)
+                    {
                         out.insert(s.to_string());
                     }
                 }
@@ -1777,7 +1778,7 @@ pub fn domain_reads_from_state(schema: &crate::meta::StateSchema) -> BTreeSet<St
 /// ER N10): a `per: <kind>` state family's index (its members declare the
 /// paths), a sub-kind's `subsetOf:` parent (the sub-kind's members are
 /// checked against it), and a kind atom a rule body or a condition queries
-/// (`trusts(P) :- confidant(P), …`, `holds(npc(x))`) — `texts` are the
+/// (`trusts(P) :- confidant(P), …`, `holds('npc', [x])`) — `texts` are the
 /// sources a condition may be written in. Each is as active a read as a
 /// relation's `args: [kind]`.
 pub fn domain_reads_from_kinds<'a>(

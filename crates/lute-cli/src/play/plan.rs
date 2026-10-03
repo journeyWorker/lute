@@ -112,8 +112,8 @@ fn resolve_writes(
                 let why = match ty {
                     _ if path.starts_with("scene.") => resolve_state(p, path, "").err(),
                     None if entry_flag(path).is_none() => resolve_state(p, path, "").err(),
-                    Some(Some("number")) => None,
-                    _ => Some("is not a `number` path, so it takes no `{ add: … }`".to_string()),
+                    Some(Some("int" | "double" | "number")) => None,
+                    _ => Some("is not an `int` or `double` path, so it takes no `{ add: … }`".to_string()),
                 };
                 why.map_or(Ok(Write::Add(*d)), Err)
             }

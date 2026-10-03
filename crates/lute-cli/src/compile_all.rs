@@ -32,7 +32,7 @@ use std::process::ExitCode;
 
 use lute_compile::index::{build_index, voice_key_collisions, IndexInput, E_DUP_VOICEKEY};
 use lute_compile::locale::LocaleBundle;
-use lute_compile::Artifact;
+use lute_compile::ExecutionIr;
 use lute_manifest::project::load_project;
 
 use rayon::prelude::*;
@@ -45,7 +45,6 @@ const INDEX_FILE: &str = "project.index.json";
 
 /// A component document is a FRAGMENT, not an addressable document: it is
 /// inlined into each importer by `normalize_document`, has no identity prefix of
-/// its own, and produces no artifact anyone could execute. `check-project` still
 /// checks it standalone (a broken component must be reported where it lives);
 /// `--all` skips it, because there is nothing to emit.
 ///
@@ -85,7 +84,7 @@ struct Compiled {
     out_path: PathBuf,
     /// Its path relative to the output directory (`documents[].artifact`).
     artifact_rel: String,
-    artifact: Artifact,
+    artifact: ExecutionIr,
 }
 
 /// Compile every document under `project` into `out_dir` and write the index.
@@ -153,7 +152,7 @@ pub fn run(
     let cache = InputCache::default();
     type Built = (
         crate::BuiltInput,
-        Option<Result<Artifact, Vec<lute_core_span::Diagnostic>>>,
+        Option<Result<ExecutionIr, Vec<lute_core_span::Diagnostic>>>,
     );
     let prepared: Vec<(&PathBuf, Option<String>, Result<Built, String>)> = reconciled
         .per_doc
@@ -308,7 +307,7 @@ pub fn run(
         let mut s = match serde_json::to_string_pretty(&c.artifact) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("lute: failed to serialize artifact for {}: {e}", c.rel);
+                eprintln!("lute: failed to serialize execution IR for {}: {e}", c.rel);
                 return ExitCode::from(2);
             }
         };

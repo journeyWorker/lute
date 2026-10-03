@@ -127,7 +127,7 @@ fn project(tag: &str) -> PathBuf {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1 }\n  \
+        "state:\n  run.day: { type: int, default: 1 }\n  \
          run.talked: { type: bool, default: false }\n  \
          run.paid: { type: bool, default: false }\n  \
          run.stormed: { type: bool, default: false }\n\

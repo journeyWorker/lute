@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "quest",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "title": "Act 1 — Emerald Grove"
   },
@@ -41,7 +41,7 @@ expression: json
     },
     {
       "path": "user.xp",
-      "type": "number",
+      "type": "int",
       "default": 0
     }
   ],
@@ -317,10 +317,61 @@ expression: json
       "title": "Rescue the First Druid",
       "titleLineId": "rescueHalsin.title",
       "start": {
-        "raw": "holds(inParty(shadowheart))"
+        "cel": "holds('inParty', ['shadowheart'])",
+        "expr": {
+          "call": "holds",
+          "args": [
+            {
+              "string": "inParty"
+            },
+            {
+              "list": [
+                {
+                  "string": "shadowheart"
+                }
+              ]
+            }
+          ]
+        }
       },
       "fail": {
-        "raw": "holds(captive(halsin)) && holds(atLocation(halsin, moonrise))"
+        "cel": "holds('captive', ['halsin']) && holds('atLocation', ['halsin', 'moonrise'])",
+        "expr": {
+          "op": "&&",
+          "l": {
+            "call": "holds",
+            "args": [
+              {
+                "string": "captive"
+              },
+              {
+                "list": [
+                  {
+                    "string": "halsin"
+                  }
+                ]
+              }
+            ]
+          },
+          "r": {
+            "call": "holds",
+            "args": [
+              {
+                "string": "atLocation"
+              },
+              {
+                "list": [
+                  {
+                    "string": "halsin"
+                  },
+                  {
+                    "string": "moonrise"
+                  }
+                ]
+              }
+            ]
+          }
+        }
       },
       "objectives": [
         {
@@ -328,7 +379,25 @@ expression: json
           "title": "Reach the grove",
           "titleLineId": "rescueHalsin.reach",
           "done": {
-            "raw": "holds(canReach(player, grove))"
+            "cel": "holds('canReach', ['player', 'grove'])",
+            "expr": {
+              "call": "holds",
+              "args": [
+                {
+                  "string": "canReach"
+                },
+                {
+                  "list": [
+                    {
+                      "string": "player"
+                    },
+                    {
+                      "string": "grove"
+                    }
+                  ]
+                }
+              ]
+            }
           },
           "optional": false,
           "body": null
@@ -338,7 +407,28 @@ expression: json
           "title": "Learn where Halsin is held",
           "titleLineId": "rescueHalsin.learn",
           "done": {
-            "raw": "holds(believesLocation(player, halsin, grove))"
+            "cel": "holds('believesLocation', ['player', 'halsin', 'grove'])",
+            "expr": {
+              "call": "holds",
+              "args": [
+                {
+                  "string": "believesLocation"
+                },
+                {
+                  "list": [
+                    {
+                      "string": "player"
+                    },
+                    {
+                      "string": "halsin"
+                    },
+                    {
+                      "string": "grove"
+                    }
+                  ]
+                }
+              ]
+            }
           },
           "optional": false,
           "body": null
@@ -397,10 +487,30 @@ expression: json
       "addr": "001-0800",
       "path": "user.xp",
       "op": "+=",
-      "value": "300",
-      "expr": {
-        "lit": 300.0
+      "value": {
+        "cel": "300",
+        "expr": {
+          "int": 300
+        }
       }
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": [
+      {
+        "name": "holds",
+        "overloads": [
+          {
+            "params": [
+              "string",
+              "list(dyn)"
+            ],
+            "result": "bool"
+          }
+        ]
+      }
+    ]
+  }
 }

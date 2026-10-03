@@ -3,15 +3,13 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the JSON IR described
-by [`schemas/lute-ir-0.31.schema.json`](../../schemas/lute-ir-0.31.schema.json),
-the schema for the current IR version (`0.31.0`; the file is renamed per
-release line, so an older `lute-ir-0.X.schema.json` named anywhere below is
-history, not a second live contract).
-It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**
-(design decision D1). Everything on the far side of the artifact is the
-engine's job. These documents describe that job, grounded in
-`crates/lute-compile` (the IR) and `crates/lute-check` (the static guarantees
-the engine may rely on).
+the schema for the current execution IR version (`0.32.0`; the file is
+`lute-ir-0.32.schema.json`). It runs
+no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge
+at compile time. Everything on the far side of the execution IR is the
+engine's job.
+These documents describe that job, grounded in `crates/lute-compile` and
+`crates/lute-check`.
 
 > **Permission boundary (0.17.0):** capability permissions reject forbidden
 > authored effects before an artifact is emitted; they do not sandbox the
@@ -21,9 +19,9 @@ the engine may rely on).
 
 ## What Lute hands you
 
-One artifact is produced per `.lute` document (`lute compile <file>` →
-`crates/lute-compile/src/lib.rs::compile`). Its shape is the `Artifact` struct
-(`ir.rs`):
+One execution IR is produced per `.lute` document (`lute compile <file>` →
+`crates/lute-compile/src/lib.rs::compile`). Its shape is the `ExecutionIr`
+struct (`ir.rs`):
 
 - an **envelope** — `kind` (`"scene"` | `"quest"`), `lute` (language version),
   `irVersion` (the version you gate on), `capabilityVersion` (a snapshot hash),
@@ -65,31 +63,71 @@ loads, exactly as it concatenates the command streams.
 
 ## Version negotiation
 
-Gate parsing on `irVersion` by **MAJOR** (0.13.0; previously major.minor):
+Gate parsing on the exact `irVersion` **major and minor** before 1.0:
 
-- accept any artifact whose `irVersion` MAJOR you implement — minor and
-  patch are compatible-by-default;
+- an engine implementing `0.32.x` MUST accept only `0.32.*` artifacts (and MAY
+  apply its patch policy), while a different pre-1.0 minor is refused;
+- after 1.0, minor and patch compatibility follows that released major's
+  policy;
 - refuse one from a different MAJOR;
-- **ignore unknown object fields** — new optional fields are added
-  append-only within a major line, so a newer minor/patch artifact still
-  loads on an older engine of the same major;
+- **ignore unknown object fields** only when the artifact's version is otherwise
+  accepted; fields are not assumed append-only across pre-1.0 minors;
 - treat an **unknown command `kind` as an error** — a new command kind is a
-  real capability you cannot fake, and this is the check that actually
-  protects you from a newer artifact, not the version number.
+  real capability you cannot fake.
 
 `lute` (the language version) is informational for the runtime and does not
 gate. `capabilityVersion` lets you refuse an artifact compiled against a plugin
 snapshot you do not match.
 
+## CEL slots and execution IR expressions
+
+Every CEL slot is `{ "cel": "<standard CEL>", "expr": <exprNode>,
+"authored"?: "<source when expanded>" }`; `expr` is present on every slot.
+`cel` is authoritative for evaluation, while `expr` is a portable walker view.
+The IR also carries `celEnv`, declaring exactly the roots and host functions
+used by its expressions.
+
+`exprNode` is the typed full-profile tree:
+
+| Shape | Meaning |
+|---|---|
+| `{"int":3}`, `{"double":3.5}`, `{"bool":true}`, `{"string":"x"}` | typed literal |
+| `{"list":[<node>,…]}` | list |
+| `{"path":"a.b.c"}` | canonical state read |
+| `{"index":<node>,"key":<node>}` | computed index |
+| `{"has":"a.b.c"}` | presence |
+| `{"op":"!"\|"-","l":<node>}` | unary |
+| `{"op":<sym>,"l":<node>,"r":<node>}` | binary, including `in` |
+| `{"cond":<node>,"then":<node>,"else":<node>}` | ternary |
+| `{"call":"<name>","args":[<node>,…]}` | conversion or host call |
+
+## Activation and evaluation
+
+An engine evaluates each CEL slot against nested maps built from live state:
+
+- each declared root and every intermediate map on the path to a declared slot
+  is present;
+- a non-reserved slot is present iff it has an effective value (write, else
+  seed, else default), so `has(run.tip)` tests whether the slot is present;
+- values retain their declared CEL types: `int`, `double`, `bool`, `string`,
+  enum members as `string`, and lists as lists;
+- reserved engine paths are always present with their reserved defaults: for
+  every quest the IR declares, `quest.<id>.state` and
+  `quest.<id>.failedBy` are `"unset"`; each objective's
+  `quest.<id>.objectives.<oid>.done` and `.failed` are `false`; and every lore
+  entry's `entry.<id>.read` and `.everRead` are `false`.
+
+For a `<match>` whose subject is a bare state path with no effective value, an
+`is` arm is satisfied only when its value is exactly `"unset"`; other `is`
+values are definitely false. Other arms evaluate normally, and an evaluation
+error means the arm is not satisfied.
+
 > **History.** Through `0.12.0` the gate was **major.minor**, and consecutive
 > releases (`0.11.0`, `0.12.0`) moved the gated line while changing nothing
-> an engine reads — every consumer paid a gate-widening edit for a pure
-> restamp. `0.13.0` relaxes the gate to MAJOR only. Pre-1.0 caveat this
-> makes explicit: a breaking IR change may still land in a minor (see
-> `0.10.0` below, and the `0.8.0` `addr`-width note under *Addressing*);
-> such changes are called out in the CHANGELOG and the schema rather than
-> fenced by the version gate, so an engine that reads an affected field
-> consults those when crossing a minor with a documented break.
+> an engine reads. `0.13.0` relaxed the gate to MAJOR only for the 0.x line,
+> but D6 now makes the pre-1.0 exception explicit: minors MAY change the IR
+> shape, so engines pin the exact `irVersion` minor until 1.0. After 1.0,
+> compatibility is governed by that major line's policy.
 
 **IR `0.10.0` changes the shape** — one field rename, the first since `0.8.0`.
 The injection provenance stamp's `reason` becomes **`explanation`**:
@@ -144,7 +182,10 @@ it with a program counter, resolving control-flow targets — which are all
   after the construct). A `converge` may point "one past the last record" of
   the addressing unit, i.e. fall-through.
 - **`match`** — each arm carries a `target`, plus an optional `otherwise` and a
-  `converge`.
+  `converge`; an `is` field marks the semantic shorthand. When the subject is
+  an unset bare state path, `is` values other than `"unset"` are definitely
+  false, while `is: "unset"` is satisfied. Other arms evaluate normally;
+  evaluation errors are not satisfied.
 - **`quest` / `on`** — declaration heads: `objective.body` and `on.body` are
   `addr` targets into separately-emitted body segments (see
   [quest-lifecycle.md](./quest-lifecycle.md)).
@@ -170,12 +211,12 @@ type Addr = string;
 // Every CEL slot carries its verbatim source under its own key — `option.when`,
 // `arm.test`, `set.value` — and the lowered portable `expr` AST (IR A7) ONLY
 // when that CEL is inside the closed §8.4 profile. A relational fact query
-// (`holds()`/`count()`) or a `visited()` read is outside it and carries raw
+// (`holds()`/`count()`) or a `visited()` read is outside it and carries CEL
 // text alone, so this two-way read is mandatory, not an optimisation.
-const evalSlot = (raw, expr, state, facts) =>
-  expr !== undefined ? evalExpr(expr, state) : evalCel(raw, state, facts);
+const evalSlot = (cel, expr, state, facts) =>
+  expr !== undefined ? evalExpr(expr, state) : evalCel(cel, state, facts);
 
-function run(artifact: Artifact, state: StateStore, facts: FactStore) {
+function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
   assertVersionCompatible(artifact.irVersion); // MAJOR gate (0.13.0)
 
   // scene: one continuous command stream. quest: see quest-lifecycle.md —
@@ -241,21 +282,8 @@ function run(artifact: Artifact, state: StateStore, facts: FactStore) {
   }
 }
 ```
+`evalSlot` evaluates the slot's `cel` with the declared `celEnv`; an engine
+may additionally use the typed `expr` walker for inspection or evaluation.
+Facts remain the Datalog store and bridge commands remain host operations.
+The execution IR is inert data; behavior begins in this dispatcher.
 
-`evalExpr` walks the portable `expr` AST (IR A7) — but that AST is **not**
-carried alongside every guard, and a dispatcher that reads only it plays the
-default branch of everything. Each CEL slot carries its verbatim source under
-its own key (`option.when`, `arm.test`, `set.value`) and the lowered `expr`
-**only when that CEL is inside the closed §8.4 profile**. Anything outside it —
-a `holds()`/`count()` fact query above all, and those are the guards a
-relational work is made of — omits `expr` entirely rather than emitting a
-half-tree. Measured on `docs/examples/haven/scenes/purser.lute`, every
-`option.when` and every `arm.test` in the artifact is raw CEL with **no**
-`expr` sibling. So `evalSlot` is two operations behind one name: walk the
-`expr` when it is there, and otherwise parse and evaluate the raw text
-yourself. An engine that cannot do the second needs a CEL evaluator, not a
-fallback; `lute run` resolves *every* slot from the raw text for exactly that
-reason (`crates/lute-cli/src/runner.rs`). `facts` is your Datalog store;
-`callBridgeAndApplyEffects` is the host bridge. Each is specified in its own
-document here. Nothing above evaluates anything at *compile* time — the
-artifact is inert data, and this loop is where behavior lives.

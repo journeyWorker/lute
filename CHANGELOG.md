@@ -38,6 +38,65 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [0.32.0] - 2026-10-02
+
+**Standard CEL, owned state, and versioned execution IR.**
+
+This release has breaking changes in three classes: **syntax** (fact functions
+use list-form calls and `number` becomes `int`/`double`), **semantics** (closed
+standard CEL profile, strict numeric typing, activation and error policy), and
+**IR** (the artifact is now named execution IR and carries typed `expr`,
+`celEnv`, engine ownership, and grant identity).
+
+### Migration
+
+- Run `lute fix` to rewrite legacy fact calls, `isSet`, and related forms.
+- Retype numeric declarations: integral counters to `int`; fractional,
+  division-derived, and other non-integral declarations to `double`.
+- The corpus declarations retyped to `double` are recorded here: **none**;
+  `grep 'type: double' docs/examples` finds no declarations beyond those
+  already typed as double in the release corpus.
+- CLI fact inputs (`--fact`, `--axis holds(<fact>)`, and mock `facts:`) retain
+  ground-fact notation; only CEL condition calls change.
+
+### Changed
+
+- Conditions are standard CEL from source to IR (closed profile, spec
+  `docs/proposals/scenario-dsl/0.32.0.md` §1–§4): fact queries are
+  `holds('rel', ['a', '_'])`, `count`, `countDistinct('rel', [...], col)`,
+  `validAt('rel', [...], t)`; presence is `has(a.b)` or `'k' in a.b`; numeric
+  types are `int` and `double`, and mixed `int`/`double` operations are
+  rejected. Inside a `"`-delimited attribute, CEL strings use single quotes.
+- Every IR condition slot is `{cel, expr, authored?}`; `expr` covers the full
+  profile with typed literals. The IR carries `celEnv` (roots and host-function
+  signatures), `owner: "engine"` on engine-owned state, and an explicit `is`
+  field on `<when is=…>` match arms.
+- Activation and error policy are normative: reserved quest and lore-entry
+  paths are always present with their reserved defaults; an erroring condition
+  is not satisfied; an erroring `::set` value halts the walk.
+- `lute run` refuses an execution IR whose major.minor differs from the
+  toolchain's while the IR is pre-1.0 (exit 2); from 1.0 the gate is MAJOR
+  only.
+- `W-QUEST-STATE-ISSET` is renamed `W-QUEST-STATE-HAS`.
+- Quest re-instantiation (new run, `rearm`, season reset) increments a
+  save-wide quest instance number, persisted in saves as `questInstances`.
+
+### Added
+
+- New diagnostics `E-FACT-QUERY` (list-form fact-query shape) and
+  `E-RUN-OWNED-WRITE` (`lute run` refuses an IR that writes an engine-owned
+  path or a reserved relation); `E-CEL-PROFILE`, `E-CEL-TYPE` and
+  `E-STATE-DECL` cover the removed forms and the numeric rules.
+- Grant events carry quest `instance` and reward `index`;
+  `(quest, instance, objective, index)` is unique within a save.
+- `lute run` and `lute play` accept `--dump-conditions <file>`: one JSONL record
+  per condition evaluation with the activation it read, the facts and visited
+  set, and Lute's result.
+- Conformance: the corpus covers every command kind, grant identity, owned-write
+  and stale-minor refusals, and CEL profile cases. CI replays it plus every
+  example play with `--dump-conditions` and re-evaluates each record with
+  `@bufbuild/cel`, `cel-go` and an `expr` walker; all must agree with Lute.
+
 ## [0.31.0] - 2026-09-29
 
 **Declared beat clock movement and schedule diagnostics.**

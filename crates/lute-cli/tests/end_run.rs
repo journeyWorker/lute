@@ -73,12 +73,10 @@ fn kinds(v: &serde_json::Value) -> Vec<&str> {
         .collect()
 }
 
-/// 0.13.0 version negotiation: the gate is MAJOR-only. A minor/patch
-/// difference within the implemented major line is compatible-by-default
-/// (the aligned releases 0.11.0/0.12.0 moved the minor while changing
-/// nothing an engine reads); a MAJOR mismatch still refuses at exit 2.
+/// Pre-1.0 version negotiation requires an exact major.minor line; a major
+/// mismatch is also refused.
 #[test]
-fn run_gates_on_major_only() {
+fn run_gates_on_pre_one_exact_minor() {
     let dir = temp_dir("gate");
     let src = dir.join("source.lute");
     let art = dir.join("artifact.json");
@@ -101,20 +99,27 @@ fn run_gates_on_major_only() {
     let mut v: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&art).unwrap()).unwrap();
 
-    // Same major, wildly different minor -> accepted.
-    v["irVersion"] = serde_json::json!("0.999.7");
+    // Same minor with a different patch -> accepted.
+    v["irVersion"] = serde_json::json!("0.32.7");
     std::fs::write(&art, serde_json::to_string(&v).unwrap()).unwrap();
     let ok = Command::new(BIN)
         .args(["run", art.to_str().unwrap()])
         .output()
         .unwrap();
-    assert!(
-        ok.status.success(),
-        "same-major minor drift must run: {}",
-        String::from_utf8_lossy(&ok.stderr)
-    );
+    assert!(ok.status.success(), "patch drift must run: {}", String::from_utf8_lossy(&ok.stderr));
 
-    // Different major -> refused, exit 2, message names the MAJOR policy.
+    // A different pre-1.0 minor -> refused with the exact-minor rule.
+    v["irVersion"] = serde_json::json!("0.31.0");
+    std::fs::write(&art, serde_json::to_string(&v).unwrap()).unwrap();
+    let minor = Command::new(BIN)
+        .args(["run", art.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_eq!(minor.status.code(), Some(2));
+    let minor_err = String::from_utf8_lossy(&minor.stderr);
+    assert!(minor_err.contains("exact major.minor"), "{minor_err}");
+
+    // Different major -> refused, exit 2.
     v["irVersion"] = serde_json::json!("1.0.0");
     std::fs::write(&art, serde_json::to_string(&v).unwrap()).unwrap();
     let no = Command::new(BIN)
@@ -123,10 +128,8 @@ fn run_gates_on_major_only() {
         .unwrap();
     assert_eq!(no.status.code(), Some(2));
     let err = String::from_utf8_lossy(&no.stderr);
-    assert!(
-        err.contains("unsupported irVersion") && err.contains("MAJOR"),
-        "{err}"
-    );
+    assert!(err.contains("unsupported irVersion") && err.contains("exact major.minor"), "{err}");
+
 }
 
 #[test]
@@ -287,7 +290,7 @@ fn run_does_not_refuse_a_selection_whose_guard_is_undecided() {
          entities:\n  crew: { members: [vesna] }\n\
          relations:\n  awake: { args: [crew], tier: run }\n---\n\
          \n## One\n\n<branch id=\"pick\">\n\
-         <choice id=\"timed\" label=\"Timed\" when=\"validAt(awake(vesna), now())\">\n\
+         <choice id=\"timed\" label=\"Timed\" when=\"validAt('awake', ['vesna'], now())\">\n\
          @narrator: timed.\n</choice>\n\
          <choice id=\"free\" label=\"Free\">\n@narrator: free.\n</choice>\n</branch>\n",
     )
@@ -478,8 +481,8 @@ fn match_is_arm_selects_on_compiled_expr_not_raw_test() {
 #[test]
 fn guarded_set_applies_only_when_its_guard_holds() {
     let source = "---\nkind: scene\nluteVersion: \"0.10.0\"\ncharacter: hero\nseason: 1\n\
-         episode: 1\ntitle: T\nstate:\n  run.n: { type: number, default: 0 }\n  \
-         run.k: { type: number, default: 0 }\n---\n\n## Shot 1.\n\n\
+         episode: 1\ntitle: T\nstate:\n  run.n: { type: int, default: 0 }\n  \
+         run.k: { type: int, default: 0 }\n---\n\n## Shot 1.\n\n\
          ::set{run.n += 2 when=\"run.k > 0\"}\n@narrator: done.\n";
     let n = |v: &serde_json::Value| v["state"]["run.n"].as_f64();
 

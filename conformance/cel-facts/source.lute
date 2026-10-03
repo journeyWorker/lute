@@ -1,0 +1,13 @@
+---
+kind: scene
+id: celFacts
+luteVersion: "0.32.0"
+title: CEL Facts
+uses: ./schema.yaml
+---
+## Facts
+::assert{ seen(mira, map) }
+@narrator{when="holds('seen', ['mira', 'map'])"}: holds
+@narrator{when="count('seen', ['_', '_']) == 2"}: count
+@narrator{when="countDistinct('seen', ['_', '_'], 0) == 2"}: distinct
+@narrator{when="validAt('seen', ['mira', 'map'], now())"}: valid

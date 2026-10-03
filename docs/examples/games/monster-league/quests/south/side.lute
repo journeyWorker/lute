@@ -11,8 +11,8 @@ title: Southshore side quests
 // of the Moonstone dig (run.southFossil); Dr. Kell revives it
 // (south.museumRevive, ::gift). Either fossil closes the quest.
 <quest id="southFossil" title="The museum's fossil" complete="any">
-  <objective id="dome" title="Bring a dome fossil back to life" done="holds(caught(domefossil))"/>
-  <objective id="spiral" title="Bring a spiral fossil back to life" done="holds(caught(spiralfossil))"/>
+  <objective id="dome" title="Bring a dome fossil back to life" done="holds('caught', ['domefossil'])"/>
+  <objective id="spiral" title="Bring a spiral fossil back to life" done="holds('caught', ['spiralfossil'])"/>
   <reward kind="MONEY" amount="1500"/>
   <on event="questComplete">
     @pebbletonCurator{vo}: The museum thanks you. The museum is also slightly jealous of you. Please visit with it.
@@ -31,7 +31,7 @@ title: Southshore side quests
 </quest>
 
 <quest id="southOldSaltFirst" title="Lesson one: a Goldfinn">
-  <objective id="show" title="Show Old Salt a Goldfinn" on="talk" target="npc.tidewellMorrow" done="holds(caught(goldfinn))"/>
+  <objective id="show" title="Show Old Salt a Goldfinn" on="talk" target="npc.tidewellMorrow" done="holds('caught', ['goldfinn'])"/>
   <on event="questComplete">
     @tidewellMorrow{emotion="happy"}: A Goldfinn! Useless, flappy, gasping thing. Keep it. Raise it. One day it'll bite the hand of everyone who laughed.
     @tidewellMorrow: Lesson two. A Goldfinn that grew up. A Crownfinn. Most people give up before the Goldfinn does. Don't.
@@ -40,7 +40,7 @@ title: Southshore side quests
 </quest>
 
 <quest id="southOldSaltBig" title="Lesson two: a Crownfinn" activate="accept">
-  <objective id="show" title="Show Old Salt a Crownfinn" on="talk" target="npc.tidewellMorrow" done="holds(caught(crownfinn))"/>
+  <objective id="show" title="Show Old Salt a Crownfinn" on="talk" target="npc.tidewellMorrow" done="holds('caught', ['crownfinn'])"/>
   <reward kind="ITEM" amount="1" target="mysticWater"/>
 </quest>
 

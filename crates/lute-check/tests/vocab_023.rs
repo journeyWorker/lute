@@ -33,7 +33,7 @@ fn scene(state: &str, body: &str) -> String {
     format!("---\nkind: scene\nid: a.one\nstate:\n{state}---\n## Shot 1.\n{body}")
 }
 
-const RUN_STATE: &str = "  run.day: { type: number, default: 1 }\n  \
+const RUN_STATE: &str = "  run.day: { type: int, default: 1 }\n  \
                          run.slot: { type: { enum: [morning, night] }, default: morning }\n";
 
 // --- §6 prev.run -------------------------------------------------------------
@@ -43,7 +43,7 @@ fn prev_run_mirrors_every_declared_run_path_and_is_maybe_unset() {
     // Guarded reads are clean; the mirror carries the run path's type.
     let clean = scene(
         RUN_STATE,
-        "@narrator{when=\"isSet(prev.run.day) && prev.run.day > 2\"}: Back again.\n\
+        "@narrator{when=\"has(prev.run.day) && prev.run.day > 2\"}: Back again.\n\
          <match on=\"prev.run.slot\">\n<when is=\"night\">\n@narrator: Late last time.\n</when>\n\
          <otherwise>\n@narrator: Otherwise.\n</otherwise>\n</match>\n",
     );
@@ -59,7 +59,7 @@ fn prev_run_mirrors_every_declared_run_path_and_is_maybe_unset() {
 
 #[test]
 fn prev_of_an_undeclared_run_path_is_undeclared() {
-    let src = scene(RUN_STATE, "@narrator{when=\"isSet(prev.run.dya)\"}: Hm.\n");
+    let src = scene(RUN_STATE, "@narrator{when=\"has(prev.run.dya)\"}: Hm.\n");
     let ds = run(&src, core(), SchemaImports::default());
     let hits = with_code(&ds, "E-UNDECLARED");
     assert_eq!(hits.len(), 1, "{ds:?}");
@@ -78,7 +78,7 @@ fn prev_run_is_read_only() {
     assert_eq!(hits.len(), 1, "{ds:?}");
     assert!(hits[0].message.contains("prev.run"), "{}", hits[0].message);
     // An author cannot declare the mirror either: `prev` is no state tier.
-    let decl = scene("  prev.run.day: { type: number }\n", "@narrator: Hi.\n");
+    let decl = scene("  prev.run.day: { type: int }\n", "@narrator: Hi.\n");
     let ds = run(&decl, core(), SchemaImports::default());
     assert!(ds.iter().any(|d| d.code == "E-STATE-NAMESPACE"), "{ds:?}");
 }
@@ -182,8 +182,8 @@ fn with_embers(credits: Option<&str>) -> CapabilitySnapshot {
 
 fn quest(handler_set: &str) -> String {
     format!(
-        "---\nkind: quest\nstate:\n  user.embers: {{ type: number, default: 0 }}\n  \
-         user.bond: {{ type: number, default: 0 }}\n---\n\
+        "---\nkind: quest\nstate:\n  user.embers: {{ type: int, default: 0 }}\n  \
+         user.bond: {{ type: int, default: 0 }}\n---\n\
          <quest id=\"climb\" start=\"true\">\n  <reward kind=\"EMBERS\" amount=\"100\"/>\n  \
          <objective id=\"out\" done=\"true\"/>\n  <on event=\"questComplete\">\n    \
          ::set{{{handler_set}}}\n    @narrator: The fire roars.\n  </on>\n</quest>\n"

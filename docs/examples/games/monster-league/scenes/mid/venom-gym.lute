@@ -5,7 +5,7 @@ title: Venom Gym
 on: challenge
 target: arena.venomGym
 once: false
-when: "!holds(defeated(kessler))"
+when: "!holds('defeated', ['kessler'])"
 ---
 
 // CONTRACT BEAT (owned by mid): asserts hasBadge(venom). Kessler's four

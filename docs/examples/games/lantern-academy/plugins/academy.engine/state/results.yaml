@@ -2,8 +2,8 @@ stateShapes:
   - name: dateResult
     fields:
       - { name: mood,   type: { enum: [awkward, sweet, perfect] }, default: awkward }
-      - { name: hearts, type: number, default: 0 }
+      - { name: hearts, type: int, default: 0 }
   - name: examResult
     fields:
       - { name: grade, type: { enum: [fail, pass, top] }, default: fail }
-      - { name: score, type: number, default: 0 }
+      - { name: score, type: int, default: 0 }

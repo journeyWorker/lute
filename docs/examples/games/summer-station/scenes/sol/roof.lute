@@ -6,7 +6,7 @@ on: visit
 target: place.roof
 priority: 20
 after: 'visited("sol.first")'
-when: "holds(at(sol, roof)) && run.day <= 3"
+when: "holds('at', ['sol', 'roof']) && run.day <= 3"
 ---
 
 ## The roof

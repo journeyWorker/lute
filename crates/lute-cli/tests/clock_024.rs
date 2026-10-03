@@ -53,7 +53,7 @@ fn project_with(tag: &str, state_owner: &str, clock: &str, docs: &[(&str, &str)]
         &dir,
         "world.schema.yaml",
         &format!(
-            "state:\n  run.day: {{ type: number, default: 1{state_owner} }}\n  \
+            "state:\n  run.day: {{ type: int, default: 1{state_owner} }}\n  \
              run.slot: {{ type: {{ enum: [morning, afternoon, night] }}, default: morning{state_owner} }}\n\
              {clock}"
         ),
@@ -400,7 +400,7 @@ fn advance_to_moves_to_the_next_such_position_and_a_step_judges_the_clock() {
 /// not a write to the clock's own paths.
 #[test]
 fn an_advance_step_carries_engine_writes() {
-    let leg = format!("  run.leg: {{ type: number, default: 1, owner: engine }}\n{RAISING_CLOCK}");
+    let leg = format!("  run.leg: {{ type: int, default: 1, owner: engine }}\n{RAISING_CLOCK}");
     let out = clock_play(
         "advance-engine",
         &leg,
@@ -428,7 +428,7 @@ fn an_advance_step_carries_engine_writes() {
     );
 }
 
-const MAP_CLOCK: &str = "  run.leg: { type: number, default: 1, owner: engine }\n\
+const MAP_CLOCK: &str = "  run.leg: { type: int, default: 1, owner: engine }\n\
                          clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, afternoon, night]\n  \
                          week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }\n  \
                          raise: { slot: slotStart, dayEnd: dayEnd }\n";
@@ -1188,8 +1188,8 @@ fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
 
     // An undeclared `raise` occasion, with the project's occasions known.
     write(&dir, "world.schema.yaml", &std::fs::read_to_string(&schema).unwrap().replace(
-        "run.day: { type: number, default: 1 }",
-        "run.day: { type: number, default: 1, owner: engine }",
+        "run.day: { type: int, default: 1 }",
+        "run.day: { type: int, default: 1, owner: engine }",
     ).replace("run.slot: { type: { enum: [morning, afternoon, night] }, default: morning }",
         "run.slot: { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }")
      .replace("slots: [morning, afternoon, night] }", "slots: [morning, afternoon, night], raise: nope }"));
@@ -1293,7 +1293,7 @@ fn a_rule_guard_def_error_lands_on_the_rule() {
         "s.lute",
         "---\nkind: scene\nid: s\nentities:\n  item: { members: [lamp] }\n\
          relations:\n  lit: { args: [item], derive: true }\nrules:\n  - \"lit(lamp) :- cel(\\\"@firstDy\\\")\"\n---\n\n\
-         ## S\n\n@narrator{when=\"holds(lit(lamp))\"}: Hi.\n",
+         ## S\n\n@narrator{when=\"holds('lit', ['lamp'])\"}: Hi.\n",
     );
     let t = text(&Command::new(BIN).arg("check").arg(&f).output().unwrap());
     assert!(t.contains("s.lute:9:6: error [E-RULE-GUARD-DEF]"), "{t}");
@@ -1360,7 +1360,7 @@ fn a_mock_seeding_a_clock_path_is_refused() {
 #[test]
 fn calendar_names_the_unknown_when_of_an_undecided_cell() {
     let odd = "---\nkind: scene\nid: odd\nuses: ../world.schema.yaml\non: visit\npriority: 5\n\
-               when: \"validAt(met(ada), quest.f.activatedAt)\"\n---\n\n## S\n\n@narrator: Odd.\n";
+               when: \"validAt('met', ['ada'], quest.f.activatedAt)\"\n---\n\n## S\n\n@narrator: Odd.\n";
     let quiet = "---\nkind: scene\nid: quiet\nuses: ../world.schema.yaml\non: visit\n---\n\n## S\n\n@narrator: Quiet.\n";
     let quest = "---\nkind: quest\nid: q\nuses: ../world.schema.yaml\n---\n\n\
                  <quest id=\"f\" start=\"true\">\n  <objective id=\"o\" done=\"run.day > 2\"/>\n</quest>\n";

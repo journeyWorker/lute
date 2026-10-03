@@ -16,6 +16,6 @@
     "version": "0.7.0",
     "license": "MIT",
     "description": "Tree-sitter grammar for the Lute Scenario DSL (editor-side: highlighting/folding host, not the authoritative AST)",
-    "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319"
+    "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225"
   }
 }

@@ -7,37 +7,37 @@ title: Road banter
 /* One bark per lull on the road (`banter`, select: first). Party-dependent
    barks outrank the generic ones; the sharpest reactions outrank everything. */
 
-<entry id="banterGrief" on="banter" category="bark" title="Corvin, alone" priority="60" once="run" when="holds(fell(isolde)) && holds(inParty(corvin))">
+<entry id="banterGrief" on="banter" category="bark" title="Corvin, alone" priority="60" once="run" when="holds('fell', ['isolde']) && holds('inParty', ['corvin'])">
   @corvin: Nobody's told me to stop talking in two days. I don't like it.
 </entry>
 
-<entry id="banterSold" on="banter" category="bark" title="Isolde, cold" priority="50" once="run" when="run.bridge == 'sold' && holds(inParty(isolde)) && holds(inParty(corvin))">
+<entry id="banterSold" on="banter" category="bark" title="Isolde, cold" priority="50" once="run" when="run.bridge == 'sold' && holds('inParty', ['isolde']) && holds('inParty', ['corvin'])">
   @isolde: Corvin. Walk on the other side of the wagon.
   @corvin: It was the Warden's decision.
   @isolde: I am aware. I am choosing which of you I can stand to look at.
 </entry>
 
-<entry id="banterCrate" on="banter" category="bark" title="Twelve crates" priority="30" once="run" when="holds(inParty(isolde)) && holds(inParty(corvin)) && !holds(knows(ledger))">
+<entry id="banterCrate" on="banter" category="bark" title="Twelve crates" priority="30" once="run" when="holds('inParty', ['isolde']) && holds('inParty', ['corvin']) && !holds('knows', ['ledger'])">
   @corvin: Twelve crates in the ninth wagon, Vane. The manifest says eleven.
   @isolde: Then the manifest is wrong.
   @corvin: Manifests are never wrong. They're just honest about different things.
 </entry>
 
-<entry id="banterRiver" on="banter" category="bark" title="Wren and Corvin" priority="35" once="run" when="@wrenWithUs && holds(inParty(corvin))">
+<entry id="banterRiver" on="banter" category="bark" title="Wren and Corvin" priority="35" once="run" when="@wrenWithUs && holds('inParty', ['corvin'])">
   @corvin: So what's the river saying now?
   @wren: That you owe it a coin from the ford crossing last spring.
   @corvin: How does it know that?
   @wren: How do you think I know that?
 </entry>
 
-<entry id="banterOath" on="banter" category="bark" title="Isolde hums" priority="20" once="run" when="quest.isoldeOath.state == 'active' && @wrenWithUs && holds(inParty(isolde))">
+<entry id="banterOath" on="banter" category="bark" title="Isolde hums" priority="20" once="run" when="quest.isoldeOath.state == 'active' && @wrenWithUs && holds('inParty', ['isolde'])">
   @wren: What's that you're humming?
   @isolde: A Coldwater song. I didn't know I still knew it.
 </entry>
 
-<entry id="banterLedger" on="banter" category="bark" title="Paper and fire" priority="25" once="run" when="holds(knows(ledger)) && holds(inParty(isolde))">
+<entry id="banterLedger" on="banter" category="bark" title="Paper and fire" priority="25" once="run" when="holds('knows', ['ledger']) && holds('inParty', ['isolde'])">
   @isolde: Coldwater. Pell's Reach. Harrow Top. They wrote the names down, like a shopping list.
-  @corvin{when="holds(inParty(corvin))"}: Everyone writes it down. That's how you know it was business.
+  @corvin{when="holds('inParty', ['corvin'])"}: Everyone writes it down. That's how you know it was business.
 </entry>
 
 <entry id="banterQuiet" on="banter" category="bark" title="The road">

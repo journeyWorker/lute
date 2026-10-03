@@ -1,0 +1,10 @@
+---
+kind: scene
+id: celPresence
+luteVersion: "0.32.0"
+title: CEL Presence
+uses: ./schema.yaml
+---
+## Presence
+@narrator{when="has(run.tip)"}: tip exists
+@narrator{when="!has(run.tip) && has(run.visits)"}: keyed presence

@@ -1,5 +1,5 @@
 state:
-  run.visits: { type: number, default: 0, per: place }
+  run.visits: { type: int, default: 0, per: place }
   run.done: { type: bool, default: false }
 entities:
   place: { members: [lab-b2, "001", hall] }

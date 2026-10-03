@@ -10,3 +10,6 @@ packages/core-*/bin/
 
 # git-worktree checkouts
 .worktrees/
+
+# external review reports (local only)
+/reports/

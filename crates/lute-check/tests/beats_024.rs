@@ -61,7 +61,7 @@ const VOCAB: &str = "entities:\n  person: { members: [maud, oskar] }\n  \
 
 const STATE: &str =
     "state:\n  run.slot: { type: { enum: [morning, afternoon, night] }, default: morning }\n  \
-                     user.bond: { type: number, default: 0 }\n";
+                     user.bond: { type: int, default: 0 }\n";
 
 fn scene(id: &str, fm: &str) -> String {
     format!("---\nkind: scene\nid: {id}\n{fm}{VOCAB}{STATE}---\n## Shot 1.\n@narrator: Hi.\n")
@@ -209,11 +209,11 @@ fn a_pure_schedule_atom_contributes_its_rule_guards_to_exclusivity() {
         project_beats(&[
             &scene(
                 "sol.first",
-                &format!("on: visit\ntarget: place.radio\nwhen: 'holds(at(maud, radio))'\n{fm}"),
+                &format!("on: visit\ntarget: place.radio\nwhen: \"holds('at', ['maud', 'radio'])\"\n{fm}"),
             ),
             &scene(
                 "ines.forecast",
-                &format!("on: visit\ntarget: place.radio\nwhen: 'holds(at(oskar, radio))'\n{fm}"),
+                &format!("on: visit\ntarget: place.radio\nwhen: \"holds('at', ['oskar', 'radio'])\"\n{fm}"),
             ),
         ])
     };
@@ -263,9 +263,9 @@ fn once_run_user_counts_user_tier_relations_and_quests() {
         project_beats(&[&src, &quests])
     };
     for when in [
-        "holds(felled(maud))",
+        "holds('felled', ['maud'])",
         "quest.chart.state == 'active'",
-        "count(felled(maud)) >= 1",
+        "count('felled', ['maud']) >= 1",
     ] {
         let out = run(when);
         assert_eq!(
@@ -275,9 +275,9 @@ fn once_run_user_counts_user_tier_relations_and_quests() {
         );
     }
     for when in [
-        "holds(seen(maud))",
+        "holds('seen', ['maud'])",
         "quest.errand.state == 'active'",
-        "holds(felled(maud)) && holds(seen(oskar))",
+        "holds('felled', ['maud']) && holds('seen', ['oskar'])",
     ] {
         let out = run(when);
         assert!(
@@ -399,15 +399,15 @@ fn a_relation_written_but_never_read_warns_once_at_its_declaration() {
     );
     // Read by a query, a rule body atom, or a rule guard: silent.
     for (decls, when) in [
-        (MET.to_string(), "holds(met(maud))"),
-        (MET.to_string(), "count(met(maud)) >= 1"),
-        (MET.to_string(), "countDistinct(met(P), P) >= 1"),
+        (MET.to_string(), "holds('met', ['maud'])"),
+        (MET.to_string(), "count('met', ['maud']) >= 1"),
+        (MET.to_string(), "countDistinct('met', ['_'], 0) >= 1"),
         (
             format!("{MET}rules:\n  - \"seen(P) :- met(P)\"\n"),
             "user.bond >= 0",
         ),
         (
-            format!("{MET}rules:\n  - \"seen(maud) :- cel(\\\"holds(met(maud))\\\")\"\n"),
+            format!("{MET}rules:\n  - \"seen(P) :- cel(\\\"holds('met', ['maud'])\\\")\"\n"),
             "user.bond >= 0",
         ),
     ] {
@@ -430,7 +430,7 @@ fn a_relation_written_but_never_read_warns_once_at_its_declaration() {
 #[test]
 fn a_def_no_reference_uses_warns_once_at_its_declaration() {
     let defs = |extra: &str| format!("{MET}defs:\n  quiet: \"user.bond == 0\"\n{extra}");
-    let src = usage_scene(&defs(""), "holds(met(maud))", "");
+    let src = usage_scene(&defs(""), "holds('met', ['maud'])", "");
     let out = usage(&[&src]);
     let hits: Vec<_> = out
         .iter()
@@ -443,11 +443,11 @@ fn a_def_no_reference_uses_warns_once_at_its_declaration() {
     );
     // Used in content, by another def, or in a rule guard: silent.
     for (extra, when) in [
-        ("", "@quiet && holds(met(maud))"),
-        ("  calm: \"@quiet\"\n", "@calm && holds(met(maud))"),
+        ("", "@quiet && holds('met', ['maud'])"),
+        ("  calm: \"@quiet\"\n", "@calm && holds('met', ['maud'])"),
         (
             "rules:\n  - \"seen(maud) :- cel(\\\"@quiet\\\")\"\n",
-            "holds(met(maud))",
+            "holds('met', ['maud'])",
         ),
     ] {
         let out = usage(&[&usage_scene(&defs(extra), when, "")]);
@@ -461,13 +461,13 @@ fn a_def_no_reference_uses_warns_once_at_its_declaration() {
 /// A use written only in a comment — a body `/* … */` or line-leading `//`,
 /// or a frontmatter `#` — is not a read: the relation and the def still
 /// warn. (The 0.26 investigation example stayed clean only through a
-/// comment naming `holds(points(blake))`.)
+/// comment naming `holds('points', ['blake'])`.)
 #[test]
 fn a_use_written_only_in_a_comment_is_not_a_read() {
     for (front, body) in [
-        ("", "/* holds(met(maud)) and @quiet */\n"),
-        ("", "// holds(met(maud)) and @quiet\n"),
-        ("# holds(met(maud)) and @quiet\n", ""),
+        ("", "/* holds('met', ['maud']) and @quiet */\n"),
+        ("", "// holds('met', ['maud']) and @quiet\n"),
+        ("# holds('met', ['maud']) and @quiet\n", ""),
     ] {
         let decls = format!("{MET}defs:\n  quiet: \"user.bond == 0\"\n{front}");
         let out = usage(&[&usage_scene(&decls, "user.bond >= 0", body)]);
@@ -482,7 +482,7 @@ fn a_use_written_only_in_a_comment_is_not_a_read() {
     let decls = format!("{MET}defs:\n  quiet: \"user.bond == 0\"\n");
     let out = usage(&[&usage_scene(
         &decls,
-        "@quiet && holds(met(maud))",
+        "@quiet && holds('met', ['maud'])",
         "/* a note */\n",
     )]);
     assert!(

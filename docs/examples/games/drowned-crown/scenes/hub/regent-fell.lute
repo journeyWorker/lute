@@ -6,7 +6,7 @@ pov: ilo
 on: hubVisit
 once: user
 priority: 50
-when: "holds(slew(regent))"
+when: "holds('slew', ['regent'])"
 ---
 
 ## Deck

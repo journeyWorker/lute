@@ -10,13 +10,13 @@ once: user
 
 @narrator: At the middle of the sea one lantern burns under the water, not on it.
 @hollow{emotion="neutral"}: That one is mine. The first wish I ever gave up on.
-@narrator{when="count(rowedWith(_)) >= 1"}: The one at the bow leans over the side and looks down with you.
-@nyx{when="holds(vigilWish(vesper))"}: Vesper's candle is down there too. The one you lit at the vigil. She pretends she doesn't know.
-@lumi{when="holds(learned(frostKing))"}: The Frost King's lantern. The codex said he'd drowned it himself.
+@narrator{when="count('rowedWith', ['_']) >= 1"}: The one at the bow leans over the side and looks down with you.
+@nyx{when="holds('vigilWish', ['vesper'])"}: Vesper's candle is down there too. The one you lit at the vigil. She pretends she doesn't know.
+@lumi{when="holds('learned', ['frostKing'])"}: The Frost King's lantern. The codex said he'd drowned it himself.
 <match on="quest.frostMissions.state">
   <when is="complete">
-    @nyx{emotion="happy" when="count(vigilWish(_)) == 0"}: You lit your vigil candle for him. Look, it's still going.
-    @nyx{when="count(vigilWish(_)) >= 1"}: You kept the whole vigil. Every candle out there is a little bit yours.
+    @nyx{emotion="happy" when="count('vigilWish', ['_']) == 0"}: You lit your vigil candle for him. Look, it's still going.
+    @nyx{when="count('vigilWish', ['_']) >= 1"}: You kept the whole vigil. Every candle out there is a little bit yours.
   </when>
   <otherwise>
     @lumi: Somebody should light a candle for him. Maybe at the next vigil.

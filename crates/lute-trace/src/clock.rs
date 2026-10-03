@@ -13,12 +13,14 @@ use crate::Value;
 /// or the slot is not one of the clock's slots; a day-granular clock reads
 /// its day alone).
 pub fn position(clock: &ClockDecl, state: &BTreeMap<String, Value>) -> Option<ClockAt> {
-    let Some(Value::Num(day)) = state.get(&clock.day) else {
-        return None;
+    let day = match state.get(&clock.day) {
+        Some(Value::Int(day)) => *day,
+        Some(Value::Double(day)) if day.fract() == 0.0 => *day as i64,
+        _ => return None,
     };
     match clock.slot.as_ref().map(|s| state.get(s)) {
-        None => clock.at(*day, None),
-        Some(Some(Value::Str(slot))) => clock.at(*day, Some(slot)),
+        None => clock.at(day as f64, None),
+        Some(Some(Value::Str(slot))) => clock.at(day as f64, Some(slot)),
         Some(_) => None,
     }
 }
@@ -30,7 +32,7 @@ pub fn values(clock: &ClockDecl, at: ClockAt) -> Vec<(String, Value)> {
         .into_iter()
         .map(|(path, v)| {
             let v = match v {
-                ClockValue::Num(n) => Value::Num(n as f64),
+                ClockValue::Int(n) => Value::Int(n),
                 ClockValue::Str(s) => Value::Str(s),
             };
             (path.to_string(), v)

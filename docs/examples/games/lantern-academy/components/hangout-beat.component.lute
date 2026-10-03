@@ -10,7 +10,7 @@ beat:
   on: visit
   target: "place.@place"
   once: day
-  when: "run.day <= 5 && !holds(locked(@who))"
+  when: "run.day <= 5 && !holds('locked', [@who])"
 ---
 
 ## Hangout

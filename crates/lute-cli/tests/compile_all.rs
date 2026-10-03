@@ -91,7 +91,7 @@ rules:
 ---
 
 <quest id=\"findKai\" title=\"Find Kai\" start=\"true\">
-  <objective id=\"meet\" done=\"holds(knows(kai))\">
+  <objective id=\"meet\" done=\"holds('knows', ['kai'])\">
     @narrator{code=\"0010\"}: You found Kai.
   </objective>
 </quest>
@@ -157,7 +157,7 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     );
 
     let index = read_json(&out.join("project.index.json"));
-    assert_eq!(index["irVersion"], "0.31.0");
+    assert_eq!(index["irVersion"], "0.32.0");
     assert!(
         index["capabilityVersion"]
             .as_str()

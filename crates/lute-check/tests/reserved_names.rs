@@ -33,7 +33,7 @@ fn reserved(extra: &str, body: &str) -> Vec<String> {
 #[test]
 fn a_state_root_cannot_name_a_def_or_an_entity_member() {
     let ms = reserved(
-        "state:\n  run.tips: { type: number, default: 0 }\ndefs:\n  run: \"run.tips > 4\"\n\
+        "state:\n  run.tips: { type: int, default: 0 }\ndefs:\n  run: \"run.tips > 4\"\n\
          entities:\n  item: { members: [lamp, clock] }\n",
         "",
     );
@@ -50,7 +50,7 @@ fn a_state_root_cannot_name_a_def_or_an_entity_member() {
     assert!(
         ms.iter().any(
             |m| m.contains("`clock` cannot name a member of entity kind `item`")
-                && m.contains("`holds(<relation>(clock))`")
+                && m.contains("a bare `clock` starts a state path")
         ),
         "{ms:#?}"
     );

@@ -7,7 +7,7 @@ occasions:
   dayClose:   { select: first, description: "The server day is about to roll over (user.day not yet advanced)" }
   # the roster
   homeTap:    { select: first, target: { prefix: hero, entity: hero }, description: "The player taps the hero on the home screen (hero.<hero>)" }
-  summon:     { select: first, target: { prefix: hero, entity: hero }, payload: { copies: number, streak: number, banner: { domain: banner } }, description: "A pull resolved to hero.<hero>. payload: copies owned now (this one included), pulls since the last SSR (pity), the banner. owned(<hero>) is asserted AFTER the beats" }
+  summon:     { select: first, target: { prefix: hero, entity: hero }, payload: { copies: int, streak: int, banner: { domain: banner } }, description: "A pull resolved to hero.<hero>. payload: copies owned now (this one included), pulls since the last SSR (pity), the banner. owned(<hero>) is asserted AFTER the beats" }
   bondStory:  { select: first, target: { prefix: hero, entity: hero }, description: "The player opens the hero's Bond tab and taps Story (hero.<hero>)" }
   # the story
   stageClear: { select: first, target: { prefix: stage, entity: stage }, raisedWhen: "@stageReleased", description: "A main-story stage was cleared (stage.<stage>); a stage exists only once its chapter is released" }

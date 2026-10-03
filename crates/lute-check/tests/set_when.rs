@@ -7,12 +7,12 @@ use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-    run.a: { type: number, default: 0 }\n  \
-    run.b: { type: number, default: 0 }\n  \
-    run.day: { type: number, default: 1 }\n  \
-    run.tip: { type: number }\n  \
+    run.a: { type: int, default: 0 }\n  \
+    run.b: { type: int, default: 0 }\n  \
+    run.day: { type: int, default: 1 }\n  \
+    run.tip: { type: int }\n  \
     run.flag: { type: bool, default: false }\n\
-    defs:\n  count: { type: number, cel: \"run.b + 1\" }\n  \
+    defs:\n  count: { type: int, cel: \"run.b + 1\" }\n  \
     warm: { type: bool, cel: \"run.b > 0\" }\n---\n## Shot 1.\n";
 
 fn codes(body: &str) -> Vec<String> {
@@ -89,11 +89,10 @@ fn guarded_write_is_not_a_definite_assignment() {
     );
 }
 
-/// The guard narrows the write's OWN reads: `isSet(run.tip)` proves the
-/// compound op's old-value read of `run.tip`.
+/// The guard narrows the write's OWN reads: `has(run.tip)` proves the
 #[test]
 fn guard_proves_the_writes_own_reads() {
-    let guarded = codes("::set{run.tip += 1 when=\"isSet(run.tip)\"}");
+    let guarded = codes("::set{run.tip += 1 when=\"has(run.tip)\"}");
     assert!(
         !guarded.contains(&"E-MAYBE-UNSET".to_string()),
         "{guarded:?}"

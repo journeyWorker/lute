@@ -368,11 +368,11 @@ once: run
 // Each accusation is offered only when the case file supports it: `culprit`
 // is derived, so what the detective has found decides what can be said.
 <branch id=\"accusation\" prompt=\"Who do you accuse?\">
-  <choice id=\"blake\" label=\"Arthur Blake\" when=\"holds(culprit(blake))\">
+  <choice id=\"blake\" label=\"Arthur Blake\" when=\"holds('culprit', ['blake'])\">
     @detective: You were not at your club, Blake. The ledger was written in this room at eleven, in your hand.
     ::set{ run.accused = \"blake\" }
   </choice>
-  <choice id=\"cass\" label=\"Cass Moreau\" when=\"holds(culprit(cass))\">
+  <choice id=\"cass\" label=\"Cass Moreau\" when=\"holds('culprit', ['cass'])\">
     @detective: It was your knife, Cass.
     ::set{ run.accused = \"cass\" }
   </choice>
@@ -395,8 +395,8 @@ title: Who killed Lord Ashby?
 // No `start`: the quest begins when a scene runs ::accept{quest=\"solveCase\"}.
 // `tier=\"run\"`: one case per playthrough — a new run starts it over.
 <quest id=\"solveCase\" title=\"Who killed Lord Ashby?\" tier=\"run\">
-  <objective id=\"evidence\" title=\"Examine the evidence\" done=\"count(suspected(_)) >= 2\"/>
-  <objective id=\"statements\" title=\"Hear both suspects\" done=\"holds(alibi(blake)) && holds(alibi(cass))\"/>
+  <objective id=\"evidence\" title=\"Examine the evidence\" done=\"count('suspected', ['_']) >= 2\"/>
+  <objective id=\"statements\" title=\"Hear both suspects\" done=\"holds('alibi', ['blake']) && holds('alibi', ['cass'])\"/>
   // `by=` fails the quest once a wrong name is on record.
   <objective id=\"accuse\" title=\"Name the killer\" done=\"run.accused == 'blake'\" by=\"run.accused != 'nobody'\"/>
   <on event=\"questComplete\">
@@ -571,8 +571,8 @@ occasions:
 state:
   # Written by the engine, read by content: a `::set` of it
   # is an error. `lute play` writes it with an `engine:` step.
-  run.day:        { type: number, default: 1, owner: engine }
-  user.bond.mara: { type: number, default: 0 }
+  run.day:        { type: int, default: 1, owner: engine }
+  user.bond.mara: { type: int, default: 0 }
 
 entities:
   npc:  { members: [mara, tomas] }
@@ -712,7 +712,7 @@ title: The lamp by the door
 // No `start`: the quest begins when a scene runs ::accept{quest=\"lampOut\"}.
 // `tier=\"run\"`: it belongs to this run — a new run starts it over.
 <quest id=\"lampOut\" title=\"The lamp by the door\" tier=\"run\">
-  <objective id=\"ask\" title=\"Ask Tomas about the oil\" done=\"holds(knows(lamp))\"/>
+  <objective id=\"ask\" title=\"Ask Tomas about the oil\" done=\"holds('knows', ['lamp'])\"/>
   // Judged when the engine raises `dayEnd`.
   <objective id=\"wait\" title=\"Wait for the day to end\" on=\"dayEnd\" done=\"run.day >= 2\"/>
   <on event=\"questComplete\">
@@ -1490,7 +1490,7 @@ fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
                 "# No scene to read yet: a progress counter a scene bumps with\n\
                  # `::set{{ {progress} += 1 }}`. Move it into the shared schema\n\
                  # once the project has one.\n\
-                 state:\n  {progress}: {{ type: number, default: 0 }}\n"
+                 state:\n  {progress}: {{ type: int, default: 0 }}\n"
             ));
             (String::new(), format!("{progress} >= 1"), " tier=\"run\"")
         }
@@ -1611,7 +1611,7 @@ fn new_schema(name: &str, dest: &Destination) -> ExitCode {
 # `defaults: uses:`. Every path should carry a `default:` so reads are
 # definitely assigned.
 state:
-  run.example: {{ type: number, default: 0 }}
+  run.example: {{ type: int, default: 0 }}
 
 # Relational vocabulary — uncomment and extend as needed:
 # entities:

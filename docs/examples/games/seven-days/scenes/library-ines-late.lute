@@ -5,7 +5,7 @@ title: The sheets she put aside anyway
 on: placeVisit
 target: place.library
 after: 'visited("library.ines.meet")'
-when: 'run.day > 3 && holds(present(ines, library)) && !run.lantern.paper'
+when: 'run.day > 3 && holds("present", ["ines", "library"]) && !run.lantern.paper'
 priority: 30
 ---
 

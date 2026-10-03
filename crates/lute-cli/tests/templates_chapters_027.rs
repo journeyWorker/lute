@@ -50,12 +50,12 @@ fn project(dir: &Path, scenes: &str) {
     write(
         dir,
         "world.schema.yaml",
-        "state:\n  user.bond: { type: number, default: 0 }\n",
+        "state:\n  user.bond: { type: int, default: 0 }\n",
     );
 }
 
 const BOND: &str = "---\ncomponent: bondStory\n\
-params:\n  who: { type: string }\n  need: { type: number, default: 0 }\n  prev: { type: string, default: \"\" }\n\
+params:\n  who: { type: string }\n  need: { type: int, default: 0 }\n  prev: { type: string, default: \"\" }\n\
 beat:\n  on: bond\n  once: user\n  when: \"user.bond >= @need\"\n  after: \"@prev\"\n---\n\
 ## Bond\n@narrator: A bond story begins.\n::body\n@narrator: The bond deepens.\n";
 
@@ -357,12 +357,12 @@ fn coverage_names_guards_attributes_component_matches_and_relative_paths() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1 }\ndefs:\n  today: { type: number, cel: \"run.day\" }\n",
+        "state:\n  run.day: { type: int, default: 1 }\ndefs:\n  today: { type: int, cel: \"run.day\" }\n",
     );
     write(
         &dir,
         "components/card.lute",
-        "---\ncomponent: card\nparams:\n  n: number\n---\n## Card\n\
+        "---\ncomponent: card\nparams:\n  n: int\n---\n## Card\n\
          <match on=\"@n\">\n<when is=\"1\">\n@narrator: Calm.\n</when>\n<otherwise>\n@narrator: Wild.\n</otherwise>\n</match>\n",
     );
     write(

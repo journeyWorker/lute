@@ -44,24 +44,24 @@ title: Route 1 — Hollowtown to the Hushwood crossroads
 
 <beat use="trainerBattle" id="r1YoungsterTodd" when="!@isNight" who="r1YoungsterTodd" intro="Hey! You've got a monster! That means we have to battle. It's the law. Probably." win="Okay, it's not actually the law." lose="See? The law is on my side." prize="96"/>
 
-<entry id="southR1YoungsterToddAfter" on="talk" target="npc.r1YoungsterTodd" category="bark" when="holds(defeated(r1YoungsterTodd))">
+<entry id="southR1YoungsterToddAfter" on="talk" target="npc.r1YoungsterTodd" category="bark" when="holds('defeated', ['r1YoungsterTodd'])">
   @r1YoungsterTodd: My cousin says if you rub a Pebblet it gets shinier. It doesn't. I rubbed it for a week.
 </entry>
 
 <beat use="trainerBattle" id="r1LassMina" who="r1LassMina" intro="You looked at me! Don't pretend you didn't. Battle!" win="Fine. Maybe you were looking at the view." lose="Next time, don't stare." prize="120"/>
 
-<entry id="southR1LassMinaAfter" on="talk" target="npc.r1LassMina" category="bark" when="holds(defeated(r1LassMina))">
+<entry id="southR1LassMinaAfter" on="talk" target="npc.r1LassMina" category="bark" when="holds('defeated', ['r1LassMina'])">
   @r1LassMina: I'm waiting for the Pebbleton bus. There is no Pebbleton bus. I'm starting to think there never was.
 </entry>
 
 <beat use="trainerBattle" id="r1BugCatcherRene" when="!@isNight" who="r1BugCatcherRene" intro="Shh! You'll scare the Inchlets. Actually, you already did. Now we battle." win="My Inchlets need a nap." lose="Bugs are small, but they're many!" prize="80"/>
 
-<entry id="southR1BugCatcherReneAfter" on="talk" target="npc.r1BugCatcherRene" category="bark" when="holds(defeated(r1BugCatcherRene))">
+<entry id="southR1BugCatcherReneAfter" on="talk" target="npc.r1BugCatcherRene" category="bark" when="holds('defeated', ['r1BugCatcherRene'])">
   @r1BugCatcherRene: An Inchlet turns into a Cocoonix and just sits there. I respect that. I'd like a week of just sitting.
 </entry>
 
 <beat use="trainerBattle" id="r1YoungsterBen" when="@isNight" who="r1YoungsterBen" intro="Don't tell my mum I'm out! Battle me and we'll call it even!" win="Okay, okay. Now we're even. Still don't tell her." lose="Ha! Night training works!" prize="104"/>
 
-<entry id="southR1YoungsterBenAfter" on="talk" target="npc.r1YoungsterBen" category="bark" when="holds(defeated(r1YoungsterBen)) && @isNight">
+<entry id="southR1YoungsterBenAfter" on="talk" target="npc.r1YoungsterBen" category="bark" when="holds('defeated', ['r1YoungsterBen']) && @isNight">
   @r1YoungsterBen: Duskbats only come out at night. That's why I'm out. That's the whole reason. Scientifically.
 </entry>

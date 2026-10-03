@@ -29,37 +29,37 @@ title: Route 4 — the Tidewell bridge
 
 <beat use="trainerBattle" id="r4YoungsterPip" who="r4YoungsterPip" intro="This is the Tidewell bridge challenge! I'm number one! First! The best one!" win="Number one of five, I mean. The easiest one." lose="Number one!" prize="140"/>
 
-<entry id="southR4YoungsterPipAfter" on="talk" target="npc.r4YoungsterPip" category="bark" when="holds(defeated(r4YoungsterPip))">
+<entry id="southR4YoungsterPipAfter" on="talk" target="npc.r4YoungsterPip" category="bark" when="holds('defeated', ['r4YoungsterPip'])">
   @r4YoungsterPip: Four more! They get harder. That's the rule. I made up the rule, but it's still true.
 </entry>
 
 <beat use="trainerBattle" id="r4LassEvie" who="r4LassEvie" intro="Number two! I'm not scared of heights, I'm scared of losing!" win="Now I'm scared of both." lose="Heights, zero. Me, one!" prize="176"/>
 
-<entry id="southR4LassEvieAfter" on="talk" target="npc.r4LassEvie" category="bark" when="holds(defeated(r4LassEvie))">
+<entry id="southR4LassEvieAfter" on="talk" target="npc.r4LassEvie" category="bark" when="holds('defeated', ['r4LassEvie'])">
   @r4LassEvie: Don't look down. I looked down once. There was a Tadswirl looking up. We just looked at each other for ages.
 </entry>
 
 <beat use="trainerBattle" id="r4CamperShane" who="r4CamperShane" intro="Number three! Middle of the bridge! The middle is the windiest! Hold on to your hat!" win="Lost my hat. And the battle." lose="Hat stays on!" prize="200"/>
 
-<entry id="southR4CamperShaneAfter" on="talk" target="npc.r4CamperShane" category="bark" when="holds(defeated(r4CamperShane))">
+<entry id="southR4CamperShaneAfter" on="talk" target="npc.r4CamperShane" category="bark" when="holds('defeated', ['r4CamperShane'])">
   @r4CamperShane: My hat's in the sea. A Sealpup will wear it now. That's fine. That's the circle of life.
 </entry>
 
 <beat use="trainerBattle" id="r4LassMei" who="r4LassMei" intro="Number four! You've come this far? Then I'll be your wall!" win="I'm a wall with a hole in it." lose="Blocked!" prize="176"/>
 
-<entry id="southR4LassMeiAfter" on="talk" target="npc.r4LassMei" category="bark" when="holds(defeated(r4LassMei))">
+<entry id="southR4LassMeiAfter" on="talk" target="npc.r4LassMei" category="bark" when="holds('defeated', ['r4LassMei'])">
   @r4LassMei: The man at the end of the bridge gives everyone a prize. He's very nice. He's too nice. Why is he so nice?
 </entry>
 
 <beat use="trainerBattle" id="r4BugCatcherCal" who="r4BugCatcherCal" intro="Number five! Last one! The final boss! My bugs are ready!" win="The final boss has fallen. Go see the man." lose="Final boss wins!" prize="100"/>
 
-<entry id="southR4BugCatcherCalAfter" on="talk" target="npc.r4BugCatcherCal" category="bark" when="holds(defeated(r4BugCatcherCal))">
+<entry id="southR4BugCatcherCalAfter" on="talk" target="npc.r4BugCatcherCal" category="bark" when="holds('defeated', ['r4BugCatcherCal'])">
   @r4BugCatcherCal: I'm the final boss because I got here last. That's not how bosses work? Well, it's how I work.
 </entry>
 
 // ── The man at the end of the bridge ─────────────────────────────────────
 
-<beat use="trainerBattle" id="r4GruntRecruiter" title="The man at the end of the bridge" when="holds(defeated(r4YoungsterPip)) && holds(defeated(r4LassEvie)) && holds(defeated(r4CamperShane)) && holds(defeated(r4LassMei)) && holds(defeated(r4BugCatcherCal))" who="r4GruntRecruiter" intro="Last chance! Join, or get beaten!" win="Arrgh! You could have been a star!" lose="See? You'd be great on the winning side." prize="480">
+<beat use="trainerBattle" id="r4GruntRecruiter" title="The man at the end of the bridge" when="holds('defeated', ['r4YoungsterPip']) && holds('defeated', ['r4LassEvie']) && holds('defeated', ['r4CamperShane']) && holds('defeated', ['r4LassMei']) && holds('defeated', ['r4BugCatcherCal'])" who="r4GruntRecruiter" intro="Last chance! Join, or get beaten!" win="Arrgh! You could have been a star!" lose="See? You'd be great on the winning side." prize="480">
   /* the nugget and the pitch only the first time */
   @r4GruntRecruiter{when="@southRecruiterMet"}: Back for more? The offer's still open. So is my fist.
   @grunt{as="Friendly Man" when="!@southRecruiterMet"}: Congratulations! You beat all five! Here's your prize, with the compliments of a certain organization.
@@ -69,7 +69,7 @@ title: Route 4 — the Tidewell bridge
   @r4GruntRecruiter{when="!@southRecruiterMet"}: No? Nobody says no. Then I'll have to make you say yes!
 </beat>
 
-<entry id="southR4GruntRecruiterAfter" on="talk" target="npc.r4GruntRecruiter" category="bark" when="holds(defeated(r4GruntRecruiter))">
+<entry id="southR4GruntRecruiterAfter" on="talk" target="npc.r4GruntRecruiter" category="bark" when="holds('defeated', ['r4GruntRecruiter'])">
   @r4GruntRecruiter: You can keep the nugget. The Director says a nugget is a seed. We'll see what it grows into.
 </entry>
 
@@ -77,6 +77,6 @@ title: Route 4 — the Tidewell bridge
 
 <beat use="trainerBattle" id="r4SwimmerNell" when="@isNight" who="r4SwimmerNell" intro="Pier to pier, forty lengths a night! I'll fit a battle in between lengths." win="Back in the water for me." lose="And that's my rest break over!" prize="160"/>
 
-<entry id="southR4SwimmerNellAfter" on="talk" target="npc.r4SwimmerNell" category="bark" when="holds(defeated(r4SwimmerNell)) && @isNight">
+<entry id="southR4SwimmerNellAfter" on="talk" target="npc.r4SwimmerNell" category="bark" when="holds('defeated', ['r4SwimmerNell']) && @isNight">
   @r4SwimmerNell: Marin at the Tide Gym swims these lengths too, before dawn. She's never beaten me. She says she's never raced me. Same thing.
 </entry>

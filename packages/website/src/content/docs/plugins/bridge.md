@@ -35,7 +35,7 @@ bridgeCapabilities:
     operation: play
     replay: recorded          # recorded | deterministic | none
     result:
-      - { name: score,   type: number }
+      - { name: score,   type: int }
       - { name: rank,    type: { enum: [fail, bronze, silver, gold] } }
       - { name: cleared, type: bool }
 ```

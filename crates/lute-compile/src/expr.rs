@@ -19,7 +19,8 @@
 //! [`ExprNode`] is a serde **`untagged`** enum: each variant serializes as its
 //! bare struct body (no discriminant), producing exactly these JSON shapes —
 //! field declaration order = serialized order:
-//! - literal   → `{"lit": <number|bool|string>}` (all numbers are f64/double)
+//! - literal   → `{"lit": <int|double|bool|string>}` (numeric literals retain
+//!   their `int` or `double` kind)
 //! - path      → `{"path": "user.level"}`
 //! - unary     → `{"op": "!"|"-", "l": <node>}`
 //! - binary    → `{"op": "<sym>", "l": <node>, "r": <node>}` where `<sym>` ∈
@@ -27,7 +28,6 @@
 //!   0.24.0 §1)
 //! - ternary   → `{"cond": <node>, "then": <node>, "else": <node>}`
 //! - list      → `{"list": [<node>, ...]}`
-//! - `isSet(p)`→ `{"isSet": "<path>"}`
 //! - `has(p)`  → `{"has": "<path>"}`
 
 use cel_parser::ast::{CallExpr, Expr};
@@ -41,8 +41,8 @@ use serde::Serialize;
 #[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
 pub enum ExprNode {
-    /// Scalar literal: `{"lit": <number|bool|string>}`.
-    Lit { lit: LitVal },
+    /// Typed scalar literal, flattened to `{int}`, `{double}`, `{bool}` or `{string}`.
+    Lit { #[serde(flatten)] lit: LitVal },
     /// Static state/subject path: `{"path": "a.b.c"}`.
     Path { path: String },
     /// Unary operator (`!`/`-`): `{"op": "<sym>", "l": <node>}`.
@@ -60,29 +60,39 @@ pub enum ExprNode {
         #[serde(rename = "else")]
         otherwise: Box<ExprNode>,
     },
-    /// List literal: `{"list": [<node>, ...]}`.
+    /// List literal.
     List { list: Vec<ExprNode> },
-    /// `isSet(path)` extension: `{"isSet": "<path>"}`.
-    IsSet {
-        #[serde(rename = "isSet")]
-        is_set: String,
-    },
-    /// `has(path)` macro: `{"has": "<path>"}`.
+    /// Computed map/list index.
+    Index { index: Box<ExprNode>, key: Box<ExprNode> },
+    /// Numeric conversion or engine host function.
+    Call { call: String, args: Vec<ExprNode> },
+    /// Presence test over a canonical path.
     Has { has: String },
 }
 
 /// A scalar literal value. Serialized untagged, so it emits a bare JSON number,
 /// bool, or string as the value of the `lit` field. All numeric CEL literals
 /// (`Int`/`UInt`/`Double`) collapse to an f64 double.
-#[derive(Clone, Debug, Serialize)]
-#[serde(untagged)]
+#[derive(Clone, Debug)]
 pub enum LitVal {
-    /// Numeric literal (always f64).
+    Int(i64),
     Num(f64),
-    /// Boolean literal.
     Bool(bool),
-    /// String literal.
     Str(String),
+}
+
+impl serde::Serialize for LitVal {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut out = serializer.serialize_struct("LitVal", 1)?;
+        match self {
+            LitVal::Int(v) => out.serialize_field("int", v)?,
+            LitVal::Num(v) => out.serialize_field("double", v)?,
+            LitVal::Bool(v) => out.serialize_field("bool", v)?,
+            LitVal::Str(v) => out.serialize_field("string", v)?,
+        }
+        out.end()
+    }
 }
 
 /// Parse a raw CEL fragment and lower it to a portable [`ExprNode`].
@@ -131,7 +141,17 @@ pub(crate) enum ArmExpr {
 /// left-folded with `||`. With a `test` guard the `is` expr is `&&`-joined to
 /// `lower_expr(test_raw)`. Reuses [`lower_expr`] for the subject and the guard
 /// — no hand-rolled CEL parsing.
+#[cfg(test)]
 pub(crate) fn synth_arm_expr(is: Option<&str>, test_raw: &str, subject_raw: &str) -> ArmExpr {
+    synth_arm_expr_typed(is, test_raw, subject_raw, false)
+}
+
+pub(crate) fn synth_arm_expr_typed(
+    is: Option<&str>,
+    test_raw: &str,
+    subject_raw: &str,
+    subject_is_double: bool,
+) -> ArmExpr {
     // Rule 2: no `is` → the arm expr is exactly the lowered `test` guard; the
     // subject is NOT inlined for a pure `test` guard (empty guard → `None`).
     let Some(is_raw) = is else {
@@ -140,7 +160,7 @@ pub(crate) fn synth_arm_expr(is: Option<&str>, test_raw: &str, subject_raw: &str
     // The subject inlined into every `is` comparison (A13). `None` when the
     // subject itself is outside the CEL profile — then no comparison lowers.
     let subject = lower_expr(subject_raw);
-    let is_expr = match synth_is_expr(is_raw, subject.as_ref()) {
+    let is_expr = match synth_is_expr(is_raw, subject.as_ref(), subject_is_double) {
         IsSynth::Unlowerable => return ArmExpr::UnsetOnCompoundSubject,
         IsSynth::Expr(node) => node,
     };
@@ -173,7 +193,7 @@ enum IsSynth {
 /// Lower a `<when is="…">` literal pattern (dsl §7.3.1) against the inlined
 /// `subject`: classify each alternative via the shared
 /// [`classify_is_literal`] (`true`/`false` → bool, number → f64, `unset` →
-/// `!isSet(path)`, range → bound comparisons, else → string), build a
+/// `!has(path)`, range → bound comparisons, else → string), build a
 /// comparison per alternative, then left-fold with `||`.
 /// Mirrors `lute_check::match_check::analyze_is_pattern`.
 ///
@@ -181,7 +201,11 @@ enum IsSynth {
 /// reaches compile in a checked document; should one slip through it is a
 /// malformed pattern, so the whole `is` expr lowers to `None` (the arm carries
 /// no `expr`, exactly like any other unlowerable pattern — see [`ArmExpr`]).
-fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
+fn synth_is_expr(
+    is_raw: &str,
+    subject: Option<&ExprNode>,
+    subject_is_double: bool,
+) -> IsSynth {
     let mut nodes: Vec<ExprNode> = Vec::new();
     for lit in is_alternatives(is_raw) {
         let Ok(class) = classify_is_literal(lit) else {
@@ -192,22 +216,20 @@ fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
             IsLiteral::Unset => match subject {
                 // 0.21.1 T1-1: `quest.<id>.state` is always assigned — the
                 // engine stores the MEMBER `"unset"` before activation — so
-                // `unset` there is `<subject> == "unset"`; `!isSet` would
+                // `unset` there is `<subject> == "unset"`; `!has` would
                 // never hold.
                 Some(ExprNode::Path { path }) if is_quest_state_path(path) => {
                     subject_eq(subject, LitVal::Str("unset".to_string()))
                 }
-                // `unset` → `!isSet(<subject-path>)`; requires a bare path.
+                // `unset` → `!has(<subject-path>)`; requires a bare path.
                 Some(ExprNode::Path { path }) => Some(ExprNode::Unary {
                     op: "!",
-                    l: Box::new(ExprNode::IsSet {
-                        is_set: path.clone(),
-                    }),
+                    l: Box::new(ExprNode::Has { has: path.clone() }),
                 }),
                 _ => return IsSynth::Unlowerable,
             },
-            IsLiteral::Num(n) => subject_eq(subject, LitVal::Num(n)),
-            IsLiteral::Range(range) => subject_in_range(subject, range),
+            IsLiteral::Num(n) => subject_eq(subject, pattern_num(n, subject_is_double)),
+            IsLiteral::Range(range) => subject_in_range(subject, range, subject_is_double),
             IsLiteral::Str(s) => subject_eq(subject, LitVal::Str(s)),
         };
         match node {
@@ -230,116 +252,6 @@ fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
     IsSynth::Expr(Some(folded))
 }
 
-/// dsl 0.27.0 T1-5(b): the arm's raw CEL condition, for an `is` arm whose
-/// synthesized `expr` does not lower (the subject, or the `test` guard, is
-/// outside the portable profile — a `@def` that expands to `visited('…')`).
-/// The arm's `test` then carries the whole condition, so an engine that
-/// evaluates `test` when `expr` is absent takes the arm the author meant.
-/// Without it the arm shipped an empty `test` and no `expr`: every runtime
-/// read it unknown and fell to `<otherwise>`.
-///
-/// Each alternative becomes `(<subject>) == <literal>` (a range, its two
-/// inclusive bounds), alternatives joined with `||`; a non-empty `test` is
-/// `&&`-joined. `None` for a pattern no CEL text can express: a malformed
-/// alternative (`E-WHEN-RANGE`-gated) or `unset` on a subject that is not a
-/// bare path (`E-WHEN-UNSET-SUBJECT`, reported by the caller).
-pub(crate) fn raw_arm_test(is_raw: &str, test_raw: &str, subject_raw: &str) -> Option<String> {
-    let subject = grouped(subject_raw.trim());
-    let mut alts: Vec<String> = Vec::new();
-    for lit in is_alternatives(is_raw) {
-        let alt = match classify_is_literal(lit).ok()? {
-            IsLiteral::Bool(b) => format!("{subject} == {b}"),
-            IsLiteral::Num(n) => format!("{subject} == {n}"),
-            IsLiteral::Str(s) => format!("{subject} == {}", cel_string(&s)),
-            IsLiteral::Range(range) => match (range.lo, range.hi) {
-                (Some(lo), Some(hi)) => format!("({subject} >= {lo} && {subject} <= {hi})"),
-                (Some(lo), None) => format!("{subject} >= {lo}"),
-                (None, Some(hi)) => format!("{subject} <= {hi}"),
-                (None, None) => return None,
-            },
-            IsLiteral::Unset => match lower_expr(subject_raw) {
-                Some(ExprNode::Path { path }) if is_quest_state_path(&path) => {
-                    format!("{subject} == 'unset'")
-                }
-                Some(ExprNode::Path { path }) => format!("!isSet({path})"),
-                _ => return None,
-            },
-        };
-        alts.push(alt);
-    }
-    if alts.is_empty() {
-        return None;
-    }
-    let is_text = alts.join(" || ");
-    let test = test_raw.trim();
-    Some(match (test.is_empty(), alts.len()) {
-        (true, _) => is_text,
-        (false, 1) => format!("{is_text} && {}", grouped(test)),
-        (false, _) => format!("({is_text}) && {}", grouped(test)),
-    })
-}
-
-/// `text` as one operand: unchanged when a bare path or already one
-/// parenthesized group (a `@def` expands to `(<body>)`), else wrapped.
-fn grouped(text: &str) -> String {
-    let bare_path = !text.is_empty()
-        && text
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
-    if bare_path || one_group(text) {
-        text.to_string()
-    } else {
-        format!("({text})")
-    }
-}
-
-/// Whether `text` is `( … )` with the opening parenthesis closed only by the
-/// last character (string literals skipped).
-fn one_group(text: &str) -> bool {
-    if !text.starts_with('(') || !text.ends_with(')') {
-        return false;
-    }
-    let mut depth = 0usize;
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-    for (i, c) in text.char_indices() {
-        if let Some(q) = quote {
-            match c {
-                _ if escaped => escaped = false,
-                '\\' => escaped = true,
-                _ if c == q => quote = None,
-                _ => {}
-            }
-            continue;
-        }
-        match c {
-            '\'' | '"' => quote = Some(c),
-            '(' => depth += 1,
-            ')' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 && i + 1 != text.len() {
-                    return false;
-                }
-            }
-            _ => {}
-        }
-    }
-    depth == 0
-}
-
-/// A CEL single-quoted string literal for an `is` member.
-fn cel_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' || ch == '\\' {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
-    out.push('\'');
-    out
-}
 
 /// `quest.<id>.state` exactly (a non-empty id; `quest.<id>.objectives.…` and
 /// `activatedAt` are not the lifecycle enum).
@@ -366,17 +278,32 @@ fn subject_cmp(subject: Option<&ExprNode>, op: &'static str, lit: LitVal) -> Opt
     })
 }
 
+/// A numeric pattern bound keeps CEL's integer/double distinction.
+fn pattern_num(n: f64, subject_is_double: bool) -> LitVal {
+    if !subject_is_double
+        && n.is_finite()
+        && n.fract() == 0.0
+        && n.abs() <= (1u64 << 53) as f64
+    {
+        LitVal::Int(n as i64)
+    } else {
+        LitVal::Num(n)
+    }
+}
+
 /// A numeric range literal (dsl 0.18.0) as bound comparisons against the
-/// inlined subject, both ends inclusive: `N..` → `subject >= N`, `..M` →
-/// `subject <= M`, `N..M` → `subject >= N && subject <= M`. Only the existing
-/// `>=`/`<=`/`&&` binary shapes — no new IR node kind.
-fn subject_in_range(subject: Option<&ExprNode>, range: NumRange) -> Option<ExprNode> {
+/// inlined subject, both ends inclusive.
+fn subject_in_range(
+    subject: Option<&ExprNode>,
+    range: NumRange,
+    subject_is_double: bool,
+) -> Option<ExprNode> {
     let lo = range
         .lo
-        .map(|lo| subject_cmp(subject, ">=", LitVal::Num(lo)));
+        .map(|lo| subject_cmp(subject, ">=", pattern_num(lo, subject_is_double)));
     let hi = range
         .hi
-        .map(|hi| subject_cmp(subject, "<=", LitVal::Num(hi)));
+        .map(|hi| subject_cmp(subject, "<=", pattern_num(hi, subject_is_double)));
     match (lo, hi) {
         (Some(l), Some(r)) => Some(ExprNode::Binary {
             op: "&&",
@@ -389,14 +316,11 @@ fn subject_in_range(subject: Option<&ExprNode>, range: NumRange) -> Option<ExprN
     }
 }
 
-/// Walk one `cel_parser::ast::Expr` into an [`ExprNode`]; `None` on any
-/// out-of-profile node (or any child that fails to lower).
 fn lower(expr: &Expr) -> Option<ExprNode> {
     match expr {
         Expr::Literal(v) => lower_literal(v),
         Expr::Ident(name) => Some(ExprNode::Path { path: name.clone() }),
         Expr::Select(sel) => {
-            // `has(p)` expands to a test-only Select; a plain Select is a path.
             let path = select_path(expr)?;
             if sel.test {
                 Some(ExprNode::Has { has: path })
@@ -411,22 +335,24 @@ fn lower(expr: &Expr) -> Option<ExprNode> {
             }
             Some(ExprNode::List { list: items })
         }
-        // `run.visits["lab-b2"]`: a member reached by a quoted name is the
-        // canonical dotted path it names.
-        Expr::Call(c) if c.func_name == cel_parser::ast::operators::INDEX => {
-            select_path(expr).map(|path| ExprNode::Path { path })
-        }
-        Expr::Call(c) if c.target.is_none() => lower_call(c),
+        Expr::Call(c) => lower_call(c),
         _ => None,
     }
 }
 
 /// Lower a receiverless `Call`: a synthetic operator (`cel_parser` lowers every
-/// operator to a fixed `func_name`), the ternary, or the `isSet(<path>)`
-/// extension. Anything else → `None`.
+/// operator to a fixed `func_name`), the ternary, indexing, or an admitted host
+/// function. Anything else → `None`.
 fn lower_call(c: &CallExpr) -> Option<ExprNode> {
     use cel_parser::ast::operators as op;
     let name = c.func_name.as_str();
+
+    if name == op::INDEX && c.args.len() == 2 {
+        return Some(ExprNode::Index {
+            index: Box::new(lower(&c.args[0].expr)?),
+            key: Box::new(lower(&c.args[1].expr)?),
+        });
+    }
 
     // Binary operators (exactly two operands under `l`/`r`).
     if let Some(sym) = binary_symbol(name) {
@@ -457,18 +383,25 @@ fn lower_call(c: &CallExpr) -> Option<ExprNode> {
             otherwise: Box::new(lower(&c.args[2].expr)?),
         });
     }
-    // `isSet(<static path>)` (mirrors `cel_resolve::is_profile_isset_call`).
-    if name.eq_ignore_ascii_case("isSet") && c.args.len() == 1 {
-        return Some(ExprNode::IsSet {
-            is_set: select_path(&c.args[0].expr)?,
-        });
+    let arity = match name {
+        "int" | "double" | "visited" => 1,
+        "holds" | "count" => 2,
+        "countDistinct" | "validAt" => 3,
+        "now" => 0,
+        _ => return None,
+    };
+    if c.args.len() != arity {
+        return None;
     }
-    None
+    Some(ExprNode::Call {
+        call: name.to_string(),
+        args: c.args.iter().map(|arg| lower(&arg.expr)).collect::<Option<_>>()?,
+    })
 }
 
 /// Map a `cel_parser` synthetic operator `func_name` to its binary symbol, or
-/// `None` when it is not an in-profile binary operator. The optional
-/// operators and index are deliberately excluded (dsl §8.4).
+/// `None` when it is not an in-profile binary operator. The optional operators
+/// are deliberately excluded (indexing is handled directly by `lower_call`).
 fn binary_symbol(name: &str) -> Option<&'static str> {
     use cel_parser::ast::operators as op;
     let sym = if name == op::EQUALS {
@@ -505,13 +438,11 @@ fn binary_symbol(name: &str) -> Option<&'static str> {
     Some(sym)
 }
 
-/// Lower a scalar literal. Every numeric literal (`Int`/`UInt`/`Double`)
-/// collapses to an f64 double. `Null` and `Bytes` are outside the slot profile
-/// and lower to `None`.
+/// Lower a scalar literal while preserving CEL's int/double distinction.
 fn lower_literal(v: &Val) -> Option<ExprNode> {
     let lit = match v {
-        Val::Int(i) => LitVal::Num(*i as f64),
-        Val::UInt(u) => LitVal::Num(*u as f64),
+        Val::Int(i) if i.unsigned_abs() <= (1u64 << 53) => LitVal::Int(*i),
+        Val::Int(_) | Val::UInt(_) => return None,
         Val::Double(d) => LitVal::Num(*d),
         Val::String(s) => LitVal::Str(s.clone()),
         Val::Boolean(b) => LitVal::Bool(*b),
@@ -541,7 +472,7 @@ mod tests {
         // Parens are transparent in the CEL AST.
         assert_eq!(
             lowered("user.level >= (1)"),
-            json!({"op": ">=", "l": {"path": "user.level"}, "r": {"lit": 1.0}})
+            json!({"op": ">=", "l": {"path": "user.level"}, "r": {"int": 1}})
         );
     }
 
@@ -550,7 +481,7 @@ mod tests {
         // `$` is token-substituted to `_`.
         assert_eq!(
             lowered("$ == 'gold'"),
-            json!({"op": "==", "l": {"path": "_"}, "r": {"lit": "gold"}})
+            json!({"op": "==", "l": {"path": "_"}, "r": {"string": "gold"}})
         );
     }
 
@@ -566,17 +497,22 @@ mod tests {
             json!({
                 "op": "in",
                 "l": {"path": "_"},
-                "r": {"list": [{"lit": "a"}, {"lit": "b"}]}
+                "r": {"list": [{"string": "a"}, {"string": "b"}]}
             })
         );
     }
 
     #[test]
-    fn not_isset() {
+    fn not_has() {
         assert_eq!(
-            lowered("!isSet(scene.x)"),
-            json!({"op": "!", "l": {"isSet": "scene.x"}})
+            lowered("!has(scene.x)"),
+            json!({"op": "!", "l": {"has": "scene.x"}})
         );
+    }
+
+    #[test]
+    fn not_isset() {
+        assert!(lower_expr("!isSet(scene.x)").is_none());
     }
 
     #[test]
@@ -600,10 +536,11 @@ mod tests {
 
     #[test]
     fn bool_and_numeric_literals() {
-        assert_eq!(lowered("true"), json!({"lit": true}));
-        assert_eq!(lowered("false"), json!({"lit": false}));
-        // Integer literal collapses to an f64 double.
-        assert_eq!(lowered("42"), json!({"lit": 42.0}));
+        assert_eq!(lowered("true"), json!({"bool": true}));
+        assert_eq!(lowered("false"), json!({"bool": false}));
+        // Integer literal preserves int distinction under 0.32.
+        assert_eq!(lowered("42"), json!({"int": 42}));
+        assert_eq!(lowered("42.0"), json!({"double": 42.0}));
     }
 
     #[test]
@@ -614,13 +551,14 @@ mod tests {
         );
         assert_eq!(
             lowered("$ ? 1 : 2"),
-            json!({"cond": {"path": "_"}, "then": {"lit": 1.0}, "else": {"lit": 2.0}})
+            json!({"cond": {"path": "_"}, "then": {"int": 1}, "else": {"int": 2}})
         );
     }
 
     #[test]
     fn isset_direct_and_null_out_of_profile() {
-        assert_eq!(lowered("isSet(scene.x)"), json!({"isSet": "scene.x"}));
+        // `isSet` is out of profile under 0.32 → not lowerable.
+        assert!(lower_expr("isSet(scene.x)").is_none());
         // A bare `null` literal is out of profile → not lowerable.
         assert!(lower_expr("null").is_none());
     }
@@ -640,11 +578,35 @@ mod tests {
         }
     }
 
+    fn arm_json_typed(
+        is: Option<&str>,
+        test_raw: &str,
+        subject_raw: &str,
+        subject_is_double: bool,
+    ) -> serde_json::Value {
+        match synth_arm_expr_typed(is, test_raw, subject_raw, subject_is_double) {
+            ArmExpr::Lowered(Some(node)) => serde_json::to_value(node).unwrap(),
+            other => panic!("expected a lowered arm expr, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn double_subject_ranges_preserve_double_bounds() {
+        assert_eq!(
+            arm_json_typed(Some("1..3"), "", "run.score", true),
+            json!({
+                "op": "&&",
+                "l": {"op": ">=", "l": {"path": "run.score"}, "r": {"double": 1.0}},
+                "r": {"op": "<=", "l": {"path": "run.score"}, "r": {"double": 3.0}}
+            })
+        );
+    }
+
     #[test]
     fn is_string_member_inlines_subject_equality() {
         assert_eq!(
             arm_json(Some("gold"), "", "scene.serve.debut.rank"),
-            json!({"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"lit": "gold"}})
+            json!({"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"string": "gold"}})
         );
     }
 
@@ -654,8 +616,8 @@ mod tests {
             arm_json(Some("silver|bronze"), "", "scene.serve.debut.rank"),
             json!({
                 "op": "||",
-                "l": {"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"lit": "silver"}},
-                "r": {"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"lit": "bronze"}}
+                "l": {"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"string": "silver"}},
+                "r": {"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"string": "bronze"}}
             })
         );
     }
@@ -664,7 +626,7 @@ mod tests {
     fn is_true_lowers_to_bool_equality() {
         assert_eq!(
             arm_json(Some("true"), "", "scene.flags.curious"),
-            json!({"op": "==", "l": {"path": "scene.flags.curious"}, "r": {"lit": true}})
+            json!({"op": "==", "l": {"path": "scene.flags.curious"}, "r": {"bool": true}})
         );
     }
 
@@ -672,15 +634,19 @@ mod tests {
     fn is_number_lowers_to_f64_equality() {
         assert_eq!(
             arm_json(Some("3"), "", "run.rank"),
-            json!({"op": "==", "l": {"path": "run.rank"}, "r": {"lit": 3.0}})
+            json!({"op": "==", "l": {"path": "run.rank"}, "r": {"int": 3}})
+        );
+        assert_eq!(
+            arm_json(Some("3.5"), "", "run.rank"),
+            json!({"op": "==", "l": {"path": "run.rank"}, "r": {"double": 3.5}})
         );
     }
 
     #[test]
-    fn is_unset_on_path_lowers_to_not_isset() {
+    fn is_unset_on_path_lowers_to_not_has() {
         assert_eq!(
             arm_json(Some("unset"), "", "scene.choices.barConvo"),
-            json!({"op": "!", "l": {"isSet": "scene.choices.barConvo"}})
+            json!({"op": "!", "l": {"has": "scene.choices.barConvo"}})
         );
     }
 
@@ -692,8 +658,18 @@ mod tests {
         assert_eq!(
             arm_json(Some("unset | failed"), "", "quest.lost.state"),
             json!({"op": "||",
-                "l": {"op": "==", "l": {"path": "quest.lost.state"}, "r": {"lit": "unset"}},
-                "r": {"op": "==", "l": {"path": "quest.lost.state"}, "r": {"lit": "failed"}}})
+                "l": {"op": "==", "l": {"path": "quest.lost.state"}, "r": {"string": "unset"}},
+                "r": {"op": "==", "l": {"path": "quest.lost.state"}, "r": {"string": "failed"}}})
+        );
+    }
+    #[test]
+    fn computed_index_lowers_recursively() {
+        assert_eq!(
+            lowered("user.bond[occasion.target]"),
+            json!({
+                "index": {"path": "user.bond"},
+                "key": {"path": "occasion.target"}
+            })
         );
     }
 
@@ -703,8 +679,8 @@ mod tests {
             arm_json(Some("gold"), "run.coins > 0", "scene.serve.debut.rank"),
             json!({
                 "op": "&&",
-                "l": {"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"lit": "gold"}},
-                "r": {"op": ">", "l": {"path": "run.coins"}, "r": {"lit": 0.0}}
+                "l": {"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"string": "gold"}},
+                "r": {"op": ">", "l": {"path": "run.coins"}, "r": {"int": 0}}
             })
         );
     }
@@ -714,10 +690,9 @@ mod tests {
         // No `is`: the arm expr is exactly the lowered guard (subject not inlined).
         assert_eq!(
             arm_json(None, "run.coins > 0", "scene.serve.debut.rank"),
-            json!({"op": ">", "l": {"path": "run.coins"}, "r": {"lit": 0.0}})
+            json!({"op": ">", "l": {"path": "run.coins"}, "r": {"int": 0}})
         );
     }
-
     #[test]
     fn is_unset_on_compound_subject_is_unlowerable() {
         // A non-path subject cannot back an `unset` isSet(path) — signal the
@@ -735,8 +710,8 @@ mod tests {
             arm_json(Some("1..3"), "", "run.rank"),
             json!({
                 "op": "&&",
-                "l": {"op": ">=", "l": {"path": "run.rank"}, "r": {"lit": 1.0}},
-                "r": {"op": "<=", "l": {"path": "run.rank"}, "r": {"lit": 3.0}}
+                "l": {"op": ">=", "l": {"path": "run.rank"}, "r": {"int": 1}},
+                "r": {"op": "<=", "l": {"path": "run.rank"}, "r": {"int": 3}}
             })
         );
     }
@@ -750,10 +725,10 @@ mod tests {
                 "op": "||",
                 "l": {
                     "op": "||",
-                    "l": {"op": "<=", "l": {"path": "run.rank"}, "r": {"lit": -0.5}},
-                    "r": {"op": "==", "l": {"path": "run.rank"}, "r": {"lit": 2.0}}
+                    "l": {"op": "<=", "l": {"path": "run.rank"}, "r": {"double": -0.5}},
+                    "r": {"op": "==", "l": {"path": "run.rank"}, "r": {"int": 2}}
                 },
-                "r": {"op": ">=", "l": {"path": "run.rank"}, "r": {"lit": 5.0}}
+                "r": {"op": ">=", "l": {"path": "run.rank"}, "r": {"int": 5}}
             })
         );
     }
@@ -772,40 +747,4 @@ mod tests {
         }
     }
 
-    // dsl 0.27.0 T1-5(b): an `is` arm whose expr cannot lower carries its
-    // whole condition as raw CEL in `test`.
-    #[test]
-    fn raw_arm_test_compares_an_unportable_subject_per_alternative() {
-        assert_eq!(
-            raw_arm_test("calm | 2..4 | true", "", "(visited('x'))").as_deref(),
-            Some(
-                "(visited('x')) == 'calm' || ((visited('x')) >= 2 && (visited('x')) <= 4) \
-                 || (visited('x')) == true"
-            )
-        );
-    }
-
-    #[test]
-    fn raw_arm_test_groups_operands_only_when_needed() {
-        // `(a) || (b)` opens and closes with parentheses but is two groups.
-        assert_eq!(
-            raw_arm_test("true", "", "(visited('a')) || (visited('b'))").as_deref(),
-            Some("((visited('a')) || (visited('b'))) == true")
-        );
-        // Several alternatives are grouped before the `test` is conjoined.
-        assert_eq!(
-            raw_arm_test("a|b", "visited('x')", "run.m").as_deref(),
-            Some("(run.m == 'a' || run.m == 'b') && (visited('x'))")
-        );
-        assert_eq!(
-            raw_arm_test("unset", "visited('x')", "quest.q.state").as_deref(),
-            Some("quest.q.state == 'unset' && (visited('x'))")
-        );
-    }
-
-    #[test]
-    fn raw_arm_test_refuses_what_no_cel_can_express() {
-        assert_eq!(raw_arm_test("1..2..3", "", "(visited('x'))"), None);
-        assert_eq!(raw_arm_test("unset", "", "(visited('x'))"), None);
-    }
 }

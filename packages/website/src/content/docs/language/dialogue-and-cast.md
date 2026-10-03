@@ -163,7 +163,7 @@ entities:
 relations:
   inParty: { args: [person], tier: run }
 cast:
-  isolde: { name: Isolde, present: "holds(inParty(isolde))", emotions: [calm, fierce] }
+  isolde: { name: Isolde, present: "holds('inParty', ['isolde'])", emotions: [calm, fierce] }
   corvin: { name: "Corvin Hale" }
 ```
 
@@ -174,9 +174,9 @@ The checker then asks, for every line by `isolde`, whether the guards around the
 ```lute
 @corvin: Where is Isolde?
 @isolde: Right here.
-@isolde{when="holds(inParty(isolde))"}: Right behind you.
+@isolde{when="holds('inParty', ['isolde'])"}: Right behind you.
 <branch id="ask">
-  <choice id="call" label="Call her over" when="holds(inParty(isolde))">
+  <choice id="call" label="Call her over" when="holds('inParty', ['isolde'])">
     @isolde{emotion="calm"}: I came.
     ::retract{ inParty(isolde) }
     @isolde: And now I'm leaving.
@@ -193,7 +193,7 @@ The checker then asks, for every line by `isolde`, whether the guards around the
 
 <!-- lute-diagnostics -->
 ```
-./scenes/camp.lute:12:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde))"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds(inParty(isolde))"}` — or move it under a guard that implies it
+./scenes/camp.lute:12:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds('inParty', ['isolde'])"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds('inParty', ['isolde'])"}` — or move it under a guard that implies it
 ```
 
 The guards that count are the line's own `when=`, every enclosing `<choice when>` (in a branch or a hub), `<match>` arms (the arm's `is=` or `test`, and the fact that no earlier arm matched), `<on when>`, `<objective done>`, and the scene beat's `when:`, an entry's `when=` or a bundle beat's `when=`. `@def`s in them are expanded. Some guards are implied by where the line sits:
@@ -203,28 +203,28 @@ The guards that count are the line's own `when=`, every enclosing `<choice when>
 - a quest's `questComplete` handler also assumes the quest's completion (dsl 0.27.0): the quest completed when one of its required objectives did, so one required objective's `done` holds. A handler of a quest whose required objectives all need `@withToby` may give Tobias a line without repeating the guard. An `::assert`, `::retract` or `::set` in an objective body or an earlier `questComplete` handler of the quest can cancel this assumption, like any other guard;
 - under `check-project`, a beat assumes that every always-eligible `once` beat ranked above it for the same occasion has already been spent.
 
-A `holds(A)` guard over a derived relation also implies the bodies of A's rules: with `inParty(P) :- recruited(P), not departed(P)`, a line guarded by `holds(inParty(isolde))` satisfies `present: "!holds(departed(isolde))"`. A relation whose rules are ground once bound, such as a `cel()`-only schedule, reads as the disjunction of those rule bodies.
+A `holds(A)` guard over a derived relation also implies the bodies of A's rules: with `inParty(P) :- recruited(P), not departed(P)`, a line guarded by `holds('inParty', ['isolde'])` satisfies `present: "!holds('departed', ['isolde'])"`. A relation whose rules are ground once bound, such as a `cel()`-only schedule, reads as the disjunction of those rule bodies.
 
-A write cancels a guard only when it can falsify it on that path. An `::assert` or `::retract` voids a guard atom of the same relation with unifiable arguments, or one derived through a rule that has the written relation as a premise, and only when it moves the atom the wrong way. Asserting `inParty(corvin)` keeps a `holds(inParty(isolde))` guard, and so does asserting a positive premise of it. A `::set` voids a guard that reads the path, including through such a rule. Each `&&` conjunct of a guard is judged on its own, and a write in one `<choice>` or `<match>` arm does not reach its siblings.
+A write cancels a guard only when it can falsify it on that path. An `::assert` or `::retract` voids a guard atom of the same relation with unifiable arguments, or one derived through a rule that has the written relation as a premise, and only when it moves the atom the wrong way. Asserting `inParty(corvin)` keeps a `holds('inParty', ['isolde'])` guard, and so does asserting a positive premise of it. A `::set` voids a guard that reads the path, including through such a rule. Each `&&` conjunct of a guard is judged on its own, and a write in one `<choice>` or `<match>` arm does not reach its siblings.
 
 A `{vo}` line is exempt, since a voiceover is not the speaker being there: they may speak from outside the scene's time, as a memory or a narration over it. An `{os}` line is still checked (dsl 0.25.0 D-E): `{os}` means the speaker is *in the scene*, heard but out of frame, so they must be present. There is no flag yet for a remote speaker, such as a voice over the radio or the phone.
 
 Facts are the one place where `lute check` and `check-project` differ. `check-project` also counts the facts that hold on every route to the line: asserted earlier on every path, or seeded and never retracted. So the last line above, `@isolde: Back again.` after `::assert{ inParty(isolde) }`, is clean there. A single-file `lute check` cannot see those facts, so it warns on that line too and adds a note saying that `check-project` does see them. Like any warning, `--deny W-CAST-ABSENT` makes it an error.
 
 Presence often has a second half that only the engine writes, such as "and she has not fallen":
-`present: "holds(inParty(isolde)) && !holds(fell(isolde))"`, where `fell` is a `reserved: true`
+`present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"`, where `fell` is a `reserved: true`
 relation. The checker does not know when the engine writes `fell`, so without help only a guard at
 each line or beat satisfies that half, and every line by `isolde` warns. A cast entry that adds
 **`assume: true`** (dsl 0.24.0 §4) reads every negated `holds` of a `reserved:` relation in
 `present:` as true, whether it is negated directly or through a rule such as
 `inParty(P) :- recruited(P), not fell(P)`. With it, the lines above warn exactly as they did with
-the plain `holds(inParty(isolde))` condition. The price is that a line spoken after the engine event
+the plain `holds('inParty', ['isolde'])` condition. The price is that a line spoken after the engine event
 needs its own guard, since the checker no longer asks for one, unless the relation names the
 events it changes on ([`changedOn`](#presence-after-engine-events-changedon), dsl 0.25.0):
 
 ```yaml
 cast:
-  isolde: { name: Isolde, present: "holds(inParty(isolde)) && !holds(fell(isolde))", assume: true }
+  isolde: { name: Isolde, present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])", assume: true }
 ```
 
 `present:`, `emotions:` and `assume:` are checker inputs. None of them reaches the compiled artifact.
@@ -240,13 +240,13 @@ relations:
   inParty: { args: [companion], tier: run }
   fell:    { args: [companion], tier: run, reserved: true, changedOn: [battleEnd] }
 cast:
-  isolde: { name: Isolde, present: "holds(inParty(isolde)) && !holds(fell(isolde))", assume: true }
+  isolde: { name: Isolde, present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])", assume: true }
 ```
 
-With `changedOn`, `assume: true` no longer reads `!holds(fell(…))` as true in a unit presented on one of those occasions: a scene, entry or bundle beat answering `on: battleEnd`, or a quest `<on event>` handler or `on=` objective body judged there. Under `check-project` the same holds for every **after-descendant** of such a unit in the [scenario graph](/connectivity/scene-graph/), over its `after:` / `after=` / `[start]` edges. Occasions have no static order of their own, so the graph is what says "after the battle". Take a camp scene that asserts `inParty(isolde)`, an aftermath scene on `battleEnd` with `after: 'visited("camp")'`, and a road scene with `after: 'visited("aftermath")'`:
+With `changedOn`, `assume: true` no longer reads `!holds('fell', ['…'])` as true in a unit presented on one of those occasions: a scene, entry or bundle beat answering `on: battleEnd`, or a quest `<on event>` handler or `on=` objective body judged there. Under `check-project` the same holds for every **after-descendant** of such a unit in the [scenario graph](/connectivity/scene-graph/), over its `after:` / `after=` / `[start]` edges. Occasions have no static order of their own, so the graph is what says "after the battle". Take a camp scene that asserts `inParty(isolde)`, an aftermath scene on `battleEnd` with `after: 'visited("camp")'`, and a road scene with `after: 'visited("aftermath")'`:
 
 ```lute
-@isolde{when="holds(inParty(isolde))"}: We should keep moving.
+@isolde{when="holds('inParty', ['isolde'])"}: We should keep moving.
 @isolde{os}: Wait for me!
 @isolde{vo}: I remember that road.
 ```
@@ -255,10 +255,10 @@ On the road, the first two lines warn again, each with a note saying why `assume
 
 <!-- lute-diagnostics unverified="verbatim lute check-project output; the W-CAST-ABSENT message is composed from a base literal plus the dsl 0.25.0 §6 changedOn suffix appended in crates/lute-check/src/cast.rs, so no single format! literal matches" -->
 ```
-./scenes/road.lute:11:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds(inParty(isolde)) && !holds(fell(isolde))"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}` — or move it under a guard that implies it; `assume: true` does not cover `fell`: this line follows an occasion its `changedOn:` names
+./scenes/road.lute:11:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"}` — or move it under a guard that implies it; `assume: true` does not cover `fell`: this line follows an occasion its `changedOn:` names
 ```
 
-Guard those lines with the whole condition, `@isolde{when="holds(inParty(isolde)) && !holds(fell(isolde))"}`, and the warnings go. Lines in the camp scene, which comes before the battle in the graph, stay covered by `assume: true`. Without `changedOn`, the 0.24 behaviour is unchanged: `assume: true` covers every line. `changedOn` on a relation that is not `reserved: true` is `E-RELATION-DECL`, and so is an occasion no plugin declares, with a did-you-mean (`` `changedOn: batleEnd` is not a declared occasion — did you mean `battleEnd`? ``). In a project whose plugins declare no occasions, the names are not checked.
+Guard those lines with the whole condition, `@isolde{when="holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"}`, and the warnings go. Lines in the camp scene, which comes before the battle in the graph, stay covered by `assume: true`. Without `changedOn`, the 0.24 behaviour is unchanged: `assume: true` covers every line. `changedOn` on a relation that is not `reserved: true` is `E-RELATION-DECL`, and so is an occasion no plugin declares, with a did-you-mean (`` `changedOn: batleEnd` is not a declared occasion — did you mean `battleEnd`? ``). In a project whose plugins declare no occasions, the names are not checked.
 
 ### Leaving the stage: `::clear`
 
@@ -312,7 +312,7 @@ member id: `Today is {{run.weekday}}.` reads `Today is Sunday.` (see
 
 ### Ordinals: `{{x:ordinal}}`
 
-A number can be rendered as an English ordinal with a **format hint** after a colon (dsl 0.24.0
+A numeric value can be rendered as an English ordinal with a **format hint** after a colon (dsl 0.24.0
 §4):
 
 ```lute check
@@ -320,7 +320,7 @@ A number can be rendered as an English ordinal with a **format hint** after a co
 kind: scene
 id: tower.gate
 state:
-  user.climbs: { type: number, default: 1 }
+  user.climbs: { type: int, default: 1 }
 ---
 
 ## The Gate
@@ -343,7 +343,7 @@ negative number, renders unchanged (`2.5`, `-3`). In the artifact the line's pla
 kind: scene
 id: road.camp
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 ---
 
 ## Camp
@@ -362,7 +362,7 @@ The IR placeholder carries `"format": "ordinalWord"`, and the engine localizes t
 kind: scene
 id: road.wagons
 state:
-  run.wagons: { type: number, default: 11 }
+  run.wagons: { type: int, default: 11 }
 ---
 
 ## Camp
@@ -387,4 +387,4 @@ entities:
 
 `{{occasion.target:start}} is quiet.` reads `The smugglers' cut is quiet.` for `cut`. When a form is absent the hint falls back: `:start` capitalizes the text (`Ashwraith den`), and `:indefinite` puts `an` before a text whose first letter is a vowel and `a` before any other (`an ashwraith den`). Declare `indefinite:` for the words that rule gets wrong (`an hour`, `a unicorn`). A label entry is a string or `{ text, start, indefinite }` with `text:` required; any other key is `E-ENTITY-KIND-SHAPE`. The IR carries the hint as the placeholder's `format` and the forms as `labelForms` on the kind's `entities[]` entry and on a state path typed by the kind, so an engine can localize them. A component param spliced as a literal takes the fallbacks.
 
-The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for a number, and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A number hint on a string, enum or bool path or def, or on `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on a number or a bool.
+The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for an `int` or `double`, and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A numeric hint on a string, enum or bool path or def, or on `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on an `int`, `double`, or bool.

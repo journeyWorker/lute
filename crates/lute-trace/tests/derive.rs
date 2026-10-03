@@ -128,7 +128,7 @@ rules:
 ---
 ## Shot 1.
 <branch id="verdict">
-<choice id="accuse" label="Accuse" when="holds(culprit(ann))">
+<choice id="accuse" label="Accuse" when="holds('culprit', ['ann'])">
 @narrator: accused
 </choice>
 <choice id="wait" label="Wait">
@@ -202,7 +202,7 @@ rules:
 ---
 ## Shot 1.
 <branch id="tunnel">
-<choice id="river" label="River" when="holds(inParty(wren))">
+<choice id="river" label="River" when="holds('inParty', ['wren'])">
 @narrator: river
 </choice>
 <choice id="road" label="Road">
@@ -242,7 +242,7 @@ character: x
 season: 1
 episode: 1
 state:
-  run.day: { type: number }
+  run.day: { type: int }
 entities:
   person: { members: [ann] }
 relations:
@@ -255,7 +255,7 @@ rules:
 ---
 ## Shot 1.
 <branch id="go">
-<choice id="now" label="Now" when="holds(ready(ann))">
+<choice id="now" label="Now" when="holds('ready', ['ann'])">
 @narrator: now
 </choice>
 <choice id="later" label="Later">
@@ -304,7 +304,7 @@ character: x
 season: 1
 episode: 1
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 entities:
   person: { members: [ann, bob, cy] }
   place: { members: [dock, pier] }
@@ -330,10 +330,10 @@ defs:
 ---
 ## Shot 1.
 <branch id="count">
-<choice id="yes" label="Yes" when="holds(testified(bob)) && holds(quiet(cy)) && !holds(quiet(ann)) && holds(early(ann)) && countDistinct(sawAt(W, _), W) == 2">
+<choice id="yes" label="Yes" when="holds('testified', ['bob']) && holds('quiet', ['cy']) && !holds('quiet', ['ann']) && holds('early', ['ann']) && countDistinct('sawAt', ['_', '_'], 0) == 2">
 @narrator: yes
 </choice>
-<choice id="no" label="No" when="countDistinct(sawAt(W, _), W) >= 3">
+<choice id="no" label="No" when="countDistinct('sawAt', ['_', '_'], 0) >= 3">
 @narrator: no
 </choice>
 <choice id="other" label="Other">
@@ -510,7 +510,7 @@ rules:
 ---
 ## Shot 1.
 <branch id="gate">
-<choice id="pass" label="Pass" when="holds(open(earth)) && holds(traveled(ann)) && !holds(traveled(bob))">
+<choice id="pass" label="Pass" when="holds('open', ['earth']) && holds('traveled', ['ann']) && !holds('traveled', ['bob'])">
 @narrator: pass
 </choice>
 <choice id="wait" label="Wait">

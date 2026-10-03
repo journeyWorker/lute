@@ -3,7 +3,7 @@ component: postcard
 effects: true
 params:
   to: { domain: recipient }
-  rank: { type: number, default: 10 }
+  rank: { type: int, default: 10 }
 beat:
   on: placeVisit
   target: place.post
@@ -12,7 +12,7 @@ beat:
   once: day
   share: postcardDay
   after: "visited('post.mira.meet')"
-  when: "holds(present(mira, post)) && run.machineFixed && !holds(sentTo(@to))"
+  when: "holds('present', ['mira', 'post']) && run.machineFixed && !holds('sentTo', [@to])"
 ---
 
 ## A postcard

@@ -1,7 +1,7 @@
 ---
 component: gauge
 params:
-  fathoms: { type: number, default: "@lastFathoms" }
+  fathoms: { type: int, default: "@lastFathoms" }
 ---
 
 ## Gauge

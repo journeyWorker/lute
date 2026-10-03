@@ -15,7 +15,7 @@ title: Cyra, Priestess of the Harvest Moon (limited SSR)
   @lumi{emotion="happy"}: The rate-up held! That's the {{occasion.payload.banner}}'s own priestess!
 </beat>
 
-<beat id="cyraDupe" on="summon" target="hero.cyra" once="false" priority="3" when="holds(owned(cyra)) && occasion.payload.copies <= 6">
+<beat id="cyraDupe" on="summon" target="hero.cyra" once="false" priority="3" when="holds('owned', ['cyra']) && occasion.payload.copies <= 6">
   @cyra{emotion="sleepy"}: Twice-harvested. Like good barley. I'll sleep twice as well.
 </beat>
 
@@ -24,7 +24,7 @@ title: Cyra, Priestess of the Harvest Moon (limited SSR)
   @cyra{when="@harvestLive"}: The moon's full this week. Everything grows. Even courage.
 </beat>
 
-<beat id="cyraBirthday" on="dailyReset" once="day" when="holds(celebrate(cyra))">
+<beat id="cyraBirthday" on="dailyReset" once="day" when="holds('celebrate', ['cyra'])">
   @cyra{emotion="happy"}: A birthday? For me? I'll plant the candles. See what comes up.
 </beat>
 

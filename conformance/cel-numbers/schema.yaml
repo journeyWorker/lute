@@ -1,0 +1,3 @@
+state:
+  run.i: { type: int, default: 3 }
+  run.d: { type: double, default: 3.5 }

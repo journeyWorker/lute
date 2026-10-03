@@ -145,7 +145,7 @@ fn a_tie_with_a_chain_priority_names_the_chain() {
     project(
         &dir,
         CHAPTER,
-        "state:\n  run.leg: { type: number, default: 0 }\n",
+        "state:\n  run.leg: { type: int, default: 0 }\n",
         "chapters:\n  - on: chapter\n    scenes: [c1, c2]\n",
     );
     write(&dir, "scenes/c1.lute", &scene("c1", "once: user\n"));
@@ -332,8 +332,8 @@ fn a_clock_only_condition_does_not_stall_a_chain() {
     project(
         &dir,
         "occasions:\n  dayStart: { select: first, description: a new day }\n",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  run.leg: { type: number, default: 0 }\n  \
-         run.stage: { type: number, default: 0, owner: engine }\n\
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n  run.leg: { type: int, default: 0 }\n  \
+         run.stage: { type: int, default: 0, owner: engine }\n\
          clock:\n  day: run.day\n  days: 7\n",
         "chapters:\n  - on: dayStart\n    scenes: [mon, tue, wed]\n",
     );
@@ -384,8 +384,8 @@ fn a_clock_only_condition_does_not_stall_a_chain() {
 #[test]
 fn a_hand_written_after_outside_a_chain_never_stalls() {
     let dir = temp_dir("handafter");
-    let schema = "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
-                  run.leg: { type: number, default: 0 }\n\
+    let schema = "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
+                  run.leg: { type: int, default: 0 }\n\
                   clock:\n  day: run.day\n  days: 7\n";
     let occasions = "occasions:\n  dayStart: { select: first, description: a new day }\n";
     project(
@@ -437,7 +437,7 @@ fn a_clock_window_that_closes_stalls_a_chain() {
     project(
         &dir,
         "occasions:\n  chapter: { select: first }\n",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
          run.slot: { type: { enum: [morning, afternoon, evening] }, default: morning, owner: engine }\n\
          clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, afternoon, evening]\n  days: 1\n",
         "chapters:\n  - on: chapter\n    scenes: [parlour, kitchen, garden]\n",
@@ -475,7 +475,7 @@ fn a_clock_window_that_closes_stalls_a_chain() {
     project(
         &dir,
         "occasions:\n  dayStart: { select: first }\n",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n\
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n\
          clock:\n  day: run.day\n  raise: { dayStart: dayStart }\n  days: 7\n",
         "chapters:\n  - on: dayStart\n    scenes: [mon, tue]\n",
     );
@@ -503,7 +503,7 @@ fn a_clock_window_that_closes_stalls_a_chain() {
     project(
         &dir,
         "occasions:\n  dayStart: { select: first }\n",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n\
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n\
          clock:\n  day: run.day\n  raise: { dayStart: dayStart }\n  days: 7\n  raiseAtStart: true\n",
         "chapters:\n  - on: dayStart\n    scenes: [mon, tue]\n",
     );

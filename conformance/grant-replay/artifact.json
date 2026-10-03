@@ -1,0 +1,109 @@
+{
+  "kind": "quest",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "meta": {
+    "id": "grantReplay",
+    "title": "Grant Replay"
+  },
+  "state": [
+    {
+      "path": "quest.grantReplay.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:grantReplay"
+    },
+    {
+      "path": "quest.grantReplay.objectives.finish.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:grantReplay"
+    },
+    {
+      "path": "quest.grantReplay.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:grantReplay"
+    },
+    {
+      "path": "run.finished",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.ready",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "grantReplay",
+      "title": "Replay",
+      "titleLineId": "grantReplay.title",
+      "start": {
+        "cel": "run.ready == true",
+        "expr": {
+          "op": "==",
+          "l": {
+            "path": "run.ready"
+          },
+          "r": {
+            "bool": true
+          }
+        }
+      },
+      "objectives": [
+        {
+          "id": "finish",
+          "title": "Finish",
+          "titleLineId": "grantReplay.finish",
+          "done": {
+            "cel": "run.finished == true",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "run.finished"
+              },
+              "r": {
+                "bool": true
+              }
+            }
+          },
+          "optional": false,
+          "body": null,
+          "rewards": [
+            {
+              "kind": "GOLD",
+              "amount": 1
+            }
+          ]
+        }
+      ],
+      "rewards": [
+        {
+          "kind": "XP",
+          "amount": 10
+        }
+      ],
+      "tier": "run"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

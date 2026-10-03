@@ -15,6 +15,6 @@ occasions:
   talk:      { select: first, target: { prefix: npc, entity: person }, description: "The player talks to someone (npc.<person>)" }
   # (0.27) the player hands someone the lantern they folded; the wrapping
   # minigame scores it 0..5 hearts, which the answering beat reads
-  gift:      { select: first, target: { prefix: npc, entity: person }, payload: { hearts: number }, description: "The player gives someone a folded lantern (npc.<person>); payload.hearts is how well the wrapping went" }
+  gift:      { select: first, target: { prefix: npc, entity: person }, payload: { hearts: int }, description: "The player gives someone a folded lantern (npc.<person>); payload.hearts is how well the wrapping went" }
   # day 10: the closing ceremony; judge the quests first so the ending reads them
   termEnd:   { select: first, judge: before, description: "The closing ceremony on day 10: the term's ending" }

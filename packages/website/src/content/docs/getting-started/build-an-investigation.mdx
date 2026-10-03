@@ -60,12 +60,12 @@ declaration map, no `---`/body. Create `world.schema.yaml`:
 # --- Scalar state -----------------------------------------------------------
 # Every path has a `default:`, so every read has a value from the start.
 state:
-  run.cluesLogged:  { type: number, default: 0 }
-  run.leadStrength: { type: number, default: 0 }
+  run.cluesLogged:  { type: int, default: 0 }
+  run.leadStrength: { type: int, default: 0 }
   run.suspectFocus: { type: { enum: [blake, cass, dana] }, default: blake }
   run.accused:      { type: { enum: [none, blake, cass, dana] }, default: none }
   run.trueKiller:   { type: { enum: [blake, cass, dana] }, default: blake }
-  user.solved:      { type: number, default: 0 }
+  user.solved:      { type: int, default: 0 }
 
 # --- Relational facts -------------------------------------------------------
 entities:
@@ -145,7 +145,7 @@ relational-fact deltas with `::assert{ foundClue(...) }` and bumps a scalar
 counter the quest gates on.
 
 The last line, *"Both threads pull toward one name"*, deliberately carries
-**no** guard. `when="holds(points(blake))"` would be redundant: both clues are
+**no** guard. `when="holds('points', ['blake'])"` would be redundant: both clues are
 asserted on the only route through this shot and `implicates(ledger, blake)` is
 a seed, so the rule derives `points(blake)` before the line on every
 playthrough — and `check-project` proves exactly that kind of claim (step 8).
@@ -210,7 +210,7 @@ must offer a way out. See [choices & hubs](/language/choices-and-hubs/). After
 the hub, a `<match>` reads the `run.suspectFocus` the choices wrote; it covers
 every member of the enum, so it needs no `<otherwise>`.
 
-`pressLedger` and `pressLetter` carry no `when="holds(foundClue(…))"` guard for
+`pressLedger` and `pressLetter` carry no `when="holds('foundClue', ['…'])"` guard for
 the same reason as the crime scene's last line: the crime scene asserts both
 clues on its only route, and the interview is only reachable `after:` it, so
 both facts already hold whenever this hub runs.
@@ -230,7 +230,7 @@ title: Identify the Killer
 <quest id="identifyKiller" tier="run" title="Identify the Killer" start="true">
   <objective id="gatherEvidence" title="Log at least two clues" done="run.cluesLogged >= 2"/>
   <objective id="nameSuspect" title="Name a suspect at the confrontation" done="run.accused != 'none'"/>
-  <objective id="followClues" title="Let the clues point at a suspect" done="holds(points(blake))" optional/>
+  <objective id="followClues" title="Let the clues point at a suspect" done="holds('points', ['blake'])" optional/>
 
   <on event="questComplete">
     ::set{ user.solved += 1 }
@@ -337,15 +337,15 @@ relational fact query (`holds(…)`, `count(…)`) in every guard: **impossible*
 (it holds on every declared route to the guard), or **possible** — the normal
 case for a guard, and silent. Put the guards back to see it. In
 `scenes/interview.lute`, give `pressLedger` the guard
-`when="holds(foundClue(ledger))"`, and give `pressLetter` a guard on a clue
-nobody ever logs, `when="holds(foundClue(knife))"`:
+`when="holds('foundClue', ['ledger'])"`, and give `pressLetter` a guard on a clue
+nobody ever logs, `when="holds('foundClue', ['knife'])"`:
 
 ```lute
-  <choice id="pressLedger" label="Press them on the ledger" when="holds(foundClue(ledger))">
+  <choice id="pressLedger" label="Press them on the ledger" when="holds('foundClue', ['ledger'])">
 ```
 
 ```lute
-  <choice id="pressLetter" label="Press them on the letter" when="holds(foundClue(knife))">
+  <choice id="pressLetter" label="Press them on the letter" when="holds('foundClue', ['knife'])">
 ```
 
 Run `lute check-project .` again. It now exits `1`, and among its output are
@@ -353,12 +353,12 @@ these two project-wide diagnostics:
 
 {/* lute-diagnostics */}
 ```
-./scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds(foundClue(ledger))` is redundant: `foundClue(ledger)` is asserted on every route to here (./scenes/crime-scene.lute:15)
+./scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds('foundClue', ['ledger'])` is redundant: `foundClue(ledger)` is asserted on every route to here (./scenes/crime-scene.lute:15)
 ```
 
 {/* lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" */}
 ```
-./scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds(foundClue(knife))` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes
+./scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds('foundClue', ['knife'])` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes
 ```
 
 The first guard can never close — the crime scene asserts the fact on its only
@@ -368,7 +368,7 @@ code and the project fails. Remove both guards again before you go on.
 
 The quest's `followClues` objective is decided the same way: `points(blake)`
 follows from the crime scene's asserts and a seed fact, so the objective can
-complete; give it a fact nothing produces, such as `holds(foundClue(knife))`,
+complete; give it a fact nothing produces, such as `holds('foundClue', ['knife'])`,
 and it becomes `E-OBJECTIVE-UNSATISFIABLE`. (A `done` is a predicate rather
 than a guard, so an always-true one is never flagged as redundant.)
 
@@ -572,8 +572,8 @@ Once a document checks clean it compiles to its JSON command-record artifact:
 lute compile scenes/crime-scene.lute --project . -o crime-scene.json
 ```
 
-Exit `0`; `crime-scene.json` is stamped `"lute": "0.31.0"` /
-`"irVersion": "0.31.0"`. Every document in the project compiles. That artifact —
+Exit `0`; `crime-scene.json` is stamped `"lute": "0.32.0"` /
+`"irVersion": "0.32.0"`. Every document in the project compiles. That artifact —
 not the source — is what an engine plays through the
 [runtime contract](/tooling/runtime-contract/).
 

@@ -135,7 +135,7 @@ fn diagnostics_are_sorted_by_byte_start() {
 fn spaced_state_path_decl_rejected() {
     // A `state:` path segment is a `CelIdent` (dsl §9.3): a character outside the name
     // rule is E-PATH-IDENT; a `-` is legal (dsl 0.30.0 §1).
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.affect total:\n    type: number\n---\n## Shot 1.\n@narrator: hi\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.affect total:\n    type: int\n---\n## Shot 1.\n@narrator: hi\n";
     let res = check(&input_for(text));
     assert!(
         res.diagnostics.iter().any(|d| d.code == "E-PATH-IDENT"),
@@ -148,7 +148,7 @@ fn spaced_state_path_decl_rejected() {
 fn hyphen_set_target_rejected() {
     // A `::set` LHS is a CEL-facing state path (dsl §7.3.4/§8.4). The target is
     // NOT declared (so E-PATH-IDENT can only come from the `::set` path check).
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.total:\n    type: number\n---\n## Shot 1.\n::set{scene.affect-total = 1}\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.total:\n    type: int\n---\n## Shot 1.\n::set{scene.affect-total = 1}\n";
     let res = check(&input_for(text));
     assert!(
         res.diagnostics.iter().any(|d| d.code == "E-PATH-IDENT"),
@@ -160,7 +160,7 @@ fn hyphen_set_target_rejected() {
 #[test]
 fn hyphen_def_name_rejected() {
     // A `defs` name is a CEL-facing identifier (dsl §8.1/§8.4).
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ndefs:\n  my-def:\n    type: number\n    cel: \"1\"\n---\n## Shot 1.\n@narrator: hi\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ndefs:\n  my-def:\n    type: int\n    cel: \"1\"\n---\n## Shot 1.\n@narrator: hi\n";
     let res = check(&input_for(text));
     assert!(
         res.diagnostics.iter().any(|d| d.code == "E-PATH-IDENT"),
@@ -172,7 +172,7 @@ fn hyphen_def_name_rejected() {
 #[test]
 fn hyphen_def_param_rejected() {
     // A def parameter name is CEL-facing (dsl §8.1/§8.4).
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ndefs:\n  scale:\n    type: number\n    params:\n      a-b: number\n    cel: \"1\"\n---\n## Shot 1.\n@narrator: hi\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ndefs:\n  scale:\n    type: int\n    params:\n      a-b: int\n    cel: \"1\"\n---\n## Shot 1.\n@narrator: hi\n";
     let res = check(&input_for(text));
     assert!(
         res.diagnostics.iter().any(|d| d.code == "E-PATH-IDENT"),
@@ -198,7 +198,7 @@ fn hyphen_directive_and_speaker_ok() {
 fn hyphen_path_ident_span_is_narrow() {
     // The meta-side E-PATH-IDENT span must point at the offending key, not the
     // whole frontmatter block (span-quality requirement).
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.affect total:\n    type: number\n---\n## Shot 1.\n@narrator: hi\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n# comment mentioning scene.affect total here\nstate:\n  scene.affect total:\n    type: int\n---\n## Shot 1.\n@narrator: hi\n";
     let res = check(&input_for(text));
     let d = res
         .diagnostics
@@ -236,7 +236,7 @@ fn hyphen_path_ident_span_is_narrow() {
 fn hyphen_path_ident_span_is_key_aware() {
     // The offending identifier ALSO appears in a comment above the real key. The
     // span must point at the mapping KEY line, not the earlier comment match.
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n# comment mentioning scene.affect total here\nstate:\n  scene.affect total:\n    type: number\n---\n## Shot 1.\n@narrator: hi\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n# comment mentioning scene.affect total here\nstate:\n  scene.affect total:\n    type: int\n---\n## Shot 1.\n@narrator: hi\n";
     let res = check(&input_for(text));
     let d = res
         .diagnostics

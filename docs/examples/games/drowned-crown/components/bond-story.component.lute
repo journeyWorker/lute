@@ -5,7 +5,7 @@ component: bondStory
 # before it).
 params:
   who: speaker
-  need: number
+  need: int
   prev: { type: string, default: "" }
   only: { type: string, default: "" }   # an extra condition, conjoined
 beat:

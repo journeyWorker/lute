@@ -33,8 +33,8 @@ fn compile_body(body: &str) -> serde_json::Value {
     std::fs::write(dir.join("reaction.lute"), REACTION).unwrap();
     let text = format!(
         "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\ncomponents: [reaction.lute]\n\
-         state:\n  run.approval.isolde: {{ type: number, default: 0 }}\n  \
-         run.approval.corvin: {{ type: number, default: 0 }}\n---\n## Shot 1.\n{body}\n"
+         state:\n  run.approval.isolde: {{ type: int, default: 0 }}\n  \
+         run.approval.corvin: {{ type: int, default: 0 }}\n---\n## Shot 1.\n{body}\n"
     );
     let (doc, _) = lute_syntax::parse(&text);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
@@ -64,7 +64,7 @@ fn compile_body(body: &str) -> serde_json::Value {
 }
 
 const REACTION: &str =
-    "---\ncomponent: reaction\neffects: true\nparams:\n  who: speaker\n  delta: number\n---\n\
+    "---\ncomponent: reaction\neffects: true\nparams:\n  who: speaker\n  delta: int\n---\n\
 ## Scene 1.\n@narrator: {{@who}} approves.\n<match on=\"@who\">\n\
 <when is=\"isolde\">\n::set{run.approval.isolde += @delta}\n</when>\n\
 <when is=\"corvin\">\n::set{run.approval.corvin += @delta}\n</when>\n\
@@ -82,7 +82,7 @@ fn sets(a: &serde_json::Value) -> Vec<(String, String, String)> {
             (
                 c["path"].as_str().unwrap().to_string(),
                 c["op"].as_str().unwrap().to_string(),
-                c["value"].as_str().unwrap().to_string(),
+                c["value"]["cel"].as_str().unwrap().to_string(),
             )
         })
         .collect()

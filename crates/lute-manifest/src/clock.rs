@@ -1,7 +1,7 @@
 //! dsl 0.24.0 §1: the declared clock.
 //!
 //! A schema MAY declare one clock over two existing `owner: engine` state
-//! paths — a number `day` and an enum `slot` — plus the order of the slots,
+//! paths — an int `day` and an enum `slot` — plus the order of the slots,
 //! an optional occasion raised after every advance, and an optional week.
 //! The clock stores nothing of its own (D-B): it gives those paths meaning —
 //! an order (`clock.index`), read-only aliases (`clock.day`, `clock.slot`),
@@ -43,7 +43,7 @@ pub fn is_clock_path(path: &str) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClockDecl {
-    /// The day path — `number`, `owner: engine`.
+    /// The day path — `int`, `owner: engine`.
     pub day: String,
     /// The slot path — an enum, `owner: engine`. Absent on a day-granular
     /// clock: every day is one slot, and `slots` is empty.
@@ -170,15 +170,15 @@ pub enum Advance {
 /// A value of one reserved `clock.*` path.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ClockValue {
-    Num(i64),
+    Int(i64),
     Str(String),
 }
 
 /// The type of one reserved `clock.*` path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClockPathType {
-    /// A whole number (`clock.index`, `clock.day`, `clock.weekday`).
-    Number,
+    /// An int (`clock.index`, `clock.day`, `clock.weekday`).
+    Int,
     /// One of the week's labels (`clock.weekdayLabel`).
     WeekdayLabel,
     /// One of `slots` (`clock.slot`).
@@ -303,14 +303,14 @@ impl ClockDecl {
     /// The reserved paths this clock declares, with their types.
     pub fn reserved_paths(&self) -> Vec<(&'static str, ClockPathType)> {
         let mut out = vec![
-            (CLOCK_INDEX, ClockPathType::Number),
-            (CLOCK_DAY, ClockPathType::Number),
+            (CLOCK_INDEX, ClockPathType::Int),
+            (CLOCK_DAY, ClockPathType::Int),
         ];
         if self.slot.is_some() {
             out.push((CLOCK_SLOT, ClockPathType::Slot));
         }
         if let Some(week) = &self.week {
-            out.push((CLOCK_WEEKDAY, ClockPathType::Number));
+            out.push((CLOCK_WEEKDAY, ClockPathType::Int));
             if !week.labels.is_empty() {
                 out.push((CLOCK_WEEKDAY_LABEL, ClockPathType::WeekdayLabel));
             }
@@ -441,14 +441,14 @@ impl ClockDecl {
     /// decides, in [`Self::reserved_paths`] order — all but `clock.ended`.
     pub fn values(&self, at: ClockAt) -> Vec<(&'static str, ClockValue)> {
         let mut out = vec![
-            (CLOCK_INDEX, ClockValue::Num(self.index(at))),
-            (CLOCK_DAY, ClockValue::Num(at.day)),
+            (CLOCK_INDEX, ClockValue::Int(self.index(at))),
+            (CLOCK_DAY, ClockValue::Int(at.day)),
         ];
         if let (Some(_), Some(name)) = (&self.slot, self.slot_name(at.slot)) {
             out.push((CLOCK_SLOT, ClockValue::Str(name.to_string())));
         }
         if let Some(wd) = self.weekday(at.day) {
-            out.push((CLOCK_WEEKDAY, ClockValue::Num(wd)));
+            out.push((CLOCK_WEEKDAY, ClockValue::Int(wd)));
         }
         if let Some(label) = self.weekday_label(at.day) {
             out.push((CLOCK_WEEKDAY_LABEL, ClockValue::Str(label.to_string())));

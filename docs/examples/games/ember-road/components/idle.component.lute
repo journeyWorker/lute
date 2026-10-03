@@ -9,5 +9,5 @@ beat:
   target: npc.@who
   title: "{{@who}}"
   once: "false"
-  when: "holds(inParty(@who))"
+  when: "holds('inParty', [@who])"
 ---

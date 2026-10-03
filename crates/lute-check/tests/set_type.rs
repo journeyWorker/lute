@@ -26,7 +26,7 @@ fn codes(text: &str) -> Vec<String> {
 // `run.n` number, `run.flag` bool, `run.note` string, `run.pick`/`run.other`
 // two DIFFERENT enums.
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-    run.n: { type: number, default: 0 }\n  \
+    run.n: { type: int, default: 0 }\n  \
     run.flag: { type: bool, default: false }\n  \
     run.note: { type: string, default: \"\" }\n  \
     run.pick: { type: { enum: [blake, cass, dana] }, default: blake }\n  \
@@ -80,7 +80,7 @@ fn message_and_span_follow_3_4() {
         .expect("expected E-SET-TYPE");
     assert!(
         d.message
-            .contains("writes a `bool` into `run.n`, declared `number`"),
+            .contains("writes a `bool` into `run.n`, declared `int`"),
         "got: {}",
         d.message
     );

@@ -18,5 +18,5 @@ id: harbor.quests
 </quest>
 
 <quest id="bigOne" title="Land the marlin" start="visited('firstNets')">
-  <objective id="marlin" title="Land a marlin before the last week" done="holds(caught(marlin))" by="run.day > 7"/>
+  <objective id="marlin" title="Land a marlin before the last week" done="holds('caught', ['marlin'])" by="run.day > 7"/>
 </quest>

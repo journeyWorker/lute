@@ -6,7 +6,7 @@ on: enterPlace
 target: place.powerPlant
 priority: 10
 once: false
-when: "!holds(caught(thunderwing))"
+when: "!holds('caught', ['thunderwing'])"
 after: 'visited("east.powerPlant")'
 ---
 

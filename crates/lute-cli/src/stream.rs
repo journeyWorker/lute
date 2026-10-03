@@ -1,17 +1,17 @@
-//! `lute compile-stream`: stream checked continuation artifacts as flushed NDJSON.
+//! `lute compile-stream`: stream checked continuation execution IR as flushed NDJSON.
 
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
 use lute_compile::streaming::{ContinuationCompilation, ContinuationCompiler};
-use lute_compile::Artifact;
+use lute_compile::ExecutionIr;
 use lute_core_span::Diagnostic;
 use serde::Serialize;
 
-/// One wire event. Borrowing artifacts and diagnostics lets serialization write
+/// One wire event. Borrowing execution IR and diagnostics lets serialization write
 /// directly to stdout without building an intermediate JSON value or cloning a
-/// full artifact snapshot.
+/// full execution IR snapshot.
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum Event<'a> {
@@ -19,13 +19,13 @@ enum Event<'a> {
         sequence: u64,
         #[serde(rename = "appendFrom")]
         append_from: usize,
-        artifact: &'a Artifact,
+        artifact: &'a ExecutionIr,
     },
     Update {
         sequence: u64,
         #[serde(rename = "appendFrom")]
         append_from: usize,
-        artifact: &'a Artifact,
+        artifact: &'a ExecutionIr,
     },
     Finish {
         sequence: u64,

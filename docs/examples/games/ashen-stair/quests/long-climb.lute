@@ -7,10 +7,10 @@ title: The long climb
 <quest id="longClimb" title="Reach the sky" start="true">
   <reward kind="KEEPSAKE" amount="1" target="skyStone"/>
   <reward kind="EMBERS" amount="100"/>
-  <objective id="gate" title="Get past the Gatekeeper" done="holds(everSlew(gatekeeper))">
+  <objective id="gate" title="Get past the Gatekeeper" done="holds('everSlew', ['gatekeeper'])">
     @narrator{code="0010"}: The door on the fourth floor has a new dent in it. Hers.
   </objective>
-  <objective id="warden" title="Face the Warden at the top" done="holds(everSlew(warden))"/>
+  <objective id="warden" title="Face the Warden at the top" done="holds('everSlew', ['warden'])"/>
   <objective id="out" title="Step out under the sky" on="runEnd" done="@escapedThisClimb"/>
   <on event="questComplete">
     @narrator{code="0020"}: Somewhere far below, the Hearth fire roars up the flue and Maud drops her cup.

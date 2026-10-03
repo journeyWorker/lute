@@ -7,7 +7,7 @@ title: A choice worth remembering
 state:
   run.metHelpfully:    { type: bool, default: false }
   run.sofaHelpOutcome: { type: { enum: [warm, cold] } }
-  run.tip:             { type: number }
+  run.tip:             { type: int }
 ---
 
 /*

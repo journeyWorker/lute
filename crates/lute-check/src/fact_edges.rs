@@ -2,26 +2,25 @@
 //!
 //! Progress gated by facts (`hasItem(spectralLens)`, `hasBadge(tide)`,
 //! `canPass(…)`) is invisible to the `after:` graph: every gym sits in layer
-//! 0. A fact edge `A -> B [F]` says node `B`'s gate reads `holds(F)` as a
-//! top-level conjunct (positive, ground or with `_`) and unit `A` asserts a
-//! fact that unifies with it — directly, or (through the root's rules, a
-//! bounded depth) a fact a rule deriving `F` needs positively; the edge
-//! then names the derived fact it serves (`via`).
+//! 0. A fact edge `A -> B [F]` says node `B`'s gate reads
+//! `holds('rel', [args])` as a top-level conjunct (positive, ground or with
+//! `_`) and unit `A` asserts a fact that unifies with it — directly, or
+//! (through the root's rules, a bounded depth) a fact a rule deriving `F`
+//! needs positively; the edge then names the derived fact it serves (`via`).
 //!
 //! Gates read: a scene beat's frontmatter `when:`, a bundle beat's or lore
 //! entry's `when=`, a quest's `start=` — and (HW27-09) the `raisedWhen` of
 //! the occasion a beat answers, ground with its member target
-//! (`holds(canEnter(occasion.target))` for `room.office`). Readers are graph nodes; producers
-//! are any unit that asserts (a scene, a quest, a lore entry or a bundle
-//! beat — `::use` sites included, the host carrying the component's bound
-//! writes). A producer is necessary for no reader: a reader with several
-//! producers needs only one of them, as with a `||` in `after:`.
+//! (`holds('canEnter', [occasion.target])` for `room.office`). Readers are
+//! graph nodes; producers are any unit that asserts (a scene, a quest, a lore
+//! entry or a bundle beat — `::use` sites included, the host carrying the
+//! component's bound writes). A producer is necessary for no reader: a reader
+//! with several producers needs only one of them, as with a `||` in `after:`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use cel_parser::ast::{operators as op, Expr};
-use cel_parser::reference::Val;
 use lute_syntax::ast::Document;
 use lute_syntax::datalog::{BodyLiteral, RuleTerm};
 
@@ -204,7 +203,7 @@ fn occasion_gate(folded: &FoldedEnv, on: &str, target: Option<&str>) -> Option<S
     Some(crate::occasion_bind::instantiate(gate, &member))
 }
 
-/// Every positive top-level conjunct `holds(rel(args…))` of `raw` (after
+/// Every positive top-level conjunct `holds('rel', [args…])` of `raw` (after
 /// `@def` expansion).
 fn required_holds(raw: &str, defs: &DefTable<'_>) -> Vec<(String, Args)> {
     let mut stack = Vec::new();
@@ -232,26 +231,12 @@ fn conjuncts(expr: &Expr, out: &mut Vec<(String, Args)>) {
         conjuncts(&c.args[1].expr, out);
         return;
     }
-    if c.func_name != "holds" || c.args.len() != 1 {
+    if c.func_name != "holds" {
         return;
     }
-    let Expr::Call(atom) = &c.args[0].expr else {
-        return;
-    };
-    if atom.target.is_some() {
-        return;
+    if let Some(query) = crate::fact_env::QueryPattern::from_call(c) {
+        out.push((query.relation, query.args));
     }
-    let args = atom
-        .args
-        .iter()
-        .map(|a| match &a.expr {
-            Expr::Ident(n) if n != "_" => Some(n.clone()),
-            Expr::Literal(Val::String(s)) => Some(s.to_string()),
-            Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
-            _ => None,
-        })
-        .collect();
-    out.push((atom.func_name.clone(), args));
 }
 
 /// What [`Ask::sources`] reads: the root's assert sites and rules.
@@ -337,5 +322,44 @@ impl Ask<'_> {
                 self.sources(&atom.relation, &sub, depth - 1, true, out);
             }
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::directive_facts::EffectDirectives;
+    use crate::rel_schema::RelVocab;
+    use std::path::PathBuf;
+
+    #[test]
+    fn list_form_gate_extracts_required_fact_atom_and_producer() {
+        let defs = DefTable {
+            bodies: &BTreeMap::new(),
+            params: &BTreeMap::new(),
+        };
+        let atoms = required_holds("holds('met', ['maud'])", &defs);
+        assert_eq!(atoms, vec![("met".to_string(), vec![Some("maud".to_string())])]);
+
+        let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+                   ## One\n::assert{met(maud)}\n";
+        let (doc, _) = lute_syntax::parse(text);
+        let path = PathBuf::from("producer.lute");
+        let docs = vec![(path.clone(), doc)];
+        let producers = crate::cast::fact_producers(&docs, &EffectDirectives::default());
+        let vocab = RelVocab::default();
+        let ask = Ask {
+            producers: &producers,
+            vocab: &vocab,
+        };
+        let mut found = Vec::new();
+        ask.sources(
+            "met",
+            &[Some("maud".to_string())],
+            RULE_DEPTH,
+            false,
+            &mut found,
+        );
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, (path, 0));
     }
 }

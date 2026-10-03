@@ -7,10 +7,10 @@ title: The drowned library
 /* The library opens once Ilo has seen the Regent fall: Quill remembers the
    books were kept for the heir. User tier: it spans every dive. */
 
-<quest id="libraryKey" title="The drowned library" tier="user" start="holds(felled(regent))">
+<quest id="libraryKey" title="The drowned library" tier="user" start="holds('felled', ['regent'])">
   <reward kind="PEARLS" amount="25"/>
-  <objective id="sluice" title="Work out the sluice gate" done="holds(solved(sluice))"/>
-  <objective id="keeper" title="Silence the Archivist" done="holds(felled(archivist))"/>
+  <objective id="sluice" title="Work out the sluice gate" done="holds('solved', ['sluice'])"/>
+  <objective id="keeper" title="Silence the Archivist" done="holds('felled', ['archivist'])"/>
   <on event="questActive">
     @quill{os when="entry.quillFirst.everRead"}: There's a library under the throne room. The heir's books. Your books, I suppose.
   </on>

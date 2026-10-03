@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.30.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.30.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.30.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.31.schema.json`](../schemas/lute-ir-0.31.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.32.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.32.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.32.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.32.schema.json`](../schemas/lute-ir-0.32.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -21,6 +21,12 @@ the language (e.g. a new CLI subcommand or a bug fix), a language delta can
 ship under any toolchain version, and the IR version answers a pure
 artifact-shape question the grammar never asks. What each number *means* is
 the row above; what each number *reads* is the rule below.
+
+The compiled artifact is consistently named the **execution IR** (not
+“artifact” or “compiled artifact”) in schemas, CLI contracts, and runtime
+documentation. Since 0.32, condition semantics are standard CEL under Lute's
+closed profile; consumers MUST NOT implement the retired bespoke condition
+semantics.
 
 ## Alignment
 
@@ -143,7 +149,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.31.schema.json`](../schemas/lute-ir-0.31.schema.json)
+published as [`schemas/lute-ir-0.32.schema.json`](../schemas/lute-ir-0.32.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -897,7 +903,7 @@ component or template param — stays an identifier. `0.29.1`'s split between
 Lute-declared names and engine-owned ids is gone. A name that is an
 identifier may be written bare in a condition; any name may be written as a
 quoted index or a quoted fact argument (`quest["zero-coke-001"].state`,
-`run.visits['lab-b2']`, `holds(at("lab-b2"))`), the two spellings being one
+`run.visits['lab-b2']`, `holds('at', ["lab-b2"])`), the two spellings being one
 name — in a guard, a `::set` / `::assert` / `::retract` target, a `{{…}}`,
 a Datalog rule, and play / test / trace inputs. A non-identifier name after a
 `.` is one `E-PATH-IDENT` naming the bracket spelling. Nothing `0.29.1`

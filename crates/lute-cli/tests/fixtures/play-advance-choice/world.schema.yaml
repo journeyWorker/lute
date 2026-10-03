@@ -1,5 +1,5 @@
 state:
-  run.day: { type: number, default: 1, owner: engine }
+  run.day: { type: int, default: 1, owner: engine }
   run.slot: { type: { enum: [morning, evening] }, default: morning, owner: engine }
 clock:
   day: run.day

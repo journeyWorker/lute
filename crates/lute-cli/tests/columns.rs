@@ -90,7 +90,7 @@ fn a_column_after_korean_text_counts_characters() {
 fn a_foreign_literal_in_a_condition_points_at_the_literal() {
     let text = "---\nkind: scene\nid: lit\nstate:\n  \
                 run.route: { type: { enum: [ren, mika] }, default: ren }\n  \
-                run.aff: { type: number, default: 0 }\n---\n## 장면\n\n\
+                run.aff: { type: int, default: 0 }\n---\n## 장면\n\n\
                 @narrator{when=\"run.aff >= 1 && run.route == 'rne'\"}: 안녕.\n";
     let path = temp_file("literal", text);
     let col = char_column(text, 10, "'rne'");

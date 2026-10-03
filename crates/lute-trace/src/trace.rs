@@ -596,7 +596,7 @@ fn trace_pipeline(
     // artifact carries it) holding in the world it left is `end: terminal`.
     let terminal = art
         .get("terminal")
-        .and_then(|t| t.get("raw"))
+        .and_then(|t| t.get("cel"))
         .and_then(Json::as_str)
         .map(str::to_string);
     let terminal = terminal.as_deref();
@@ -926,7 +926,7 @@ fn raised_member(
 /// the artifact does not assemble (it always does once compiled).
 fn judging_project(
     uri: &str,
-    artifact: lute_compile::Artifact,
+    artifact: lute_compile::ExecutionIr,
     occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
 ) -> Option<ExecProject> {
     let docs = BTreeMap::from([(uri.to_string(), artifact)]);
@@ -2250,7 +2250,7 @@ impl<'a> TraceDriver<'a> {
         self.cmds
             .get(addr)
             .and_then(|c| c.get("subject"))
-            .and_then(Json::as_str)
+            .and_then(|v| v.get("cel").and_then(Json::as_str))
             .unwrap_or("")
             .to_string()
     }
@@ -2260,7 +2260,9 @@ impl<'a> TraceDriver<'a> {
         let str_of = |v: &Json, k: &str| v.get(k).and_then(Json::as_str).map(str::to_string);
         self.steps.push(Step::Grant {
             quest: str_of(rec, "quest").unwrap_or_default(),
+            instance: rec.get("instance").and_then(Json::as_u64).unwrap_or(0),
             objective: str_of(rec, "objective"),
+            index: rec.get("index").and_then(Json::as_u64).unwrap_or(0) as usize,
             reward: GrantReward {
                 kind: str_of(&reward, "kind").unwrap_or_default(),
                 target: str_of(&reward, "target"),
@@ -2396,7 +2398,9 @@ fn json_text(v: Option<&Json>) -> String {
 }
 
 impl Driver for TraceDriver<'_> {
-    /// `choose:` (a mock's, `--choose`) with the runner's cursor rule, else
+    fn is_preview(&self) -> bool {
+        true
+    }
     /// an automatic pick: a branch takes its first open option; a hub makes
     /// one document-order pass over its open non-`exit` options, then takes
     /// the first open `exit`. A hub's scripted list is its visit sequence,

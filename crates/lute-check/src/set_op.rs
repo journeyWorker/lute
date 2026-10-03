@@ -320,13 +320,14 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnos
     };
 
     // §7.3.4 op/type matrix. `=` is a pure write (any type); the compound ops
-    // read-modify-write a numeric accumulator and require a `number` target.
-    if is_compound_op(&set.op) && ty != &Type::Number {
+    // read-modify-write a numeric accumulator and require an `int` or `double`
+    // target.
+    if is_compound_op(&set.op) && !matches!(ty, Type::Int | Type::Double) {
         diags.push(diag(
             "E-SET-OP-TYPE",
             format!(
-                "compound assignment `{}` requires a `number` target, but `{}` is declared `{}` \
-                 (dsl §7.3.4)",
+                "compound assignment `{}` requires an `int` or `double` target, but `{}` is \
+                 declared `{}` (dsl §7.3.4)",
                 set.op,
                 set.path,
                 type_name(ty)
@@ -381,7 +382,8 @@ fn descend<'s>(ty: &'s Type, segments: &str) -> Option<&'s Type> {
 fn type_name(ty: &Type) -> &'static str {
     match ty {
         Type::Bool => "bool",
-        Type::Number => "number",
+        Type::Int => "int",
+        Type::Double => "double",
         Type::Str => "str",
         Type::Enum(_) => "enum",
         Type::List(_) => "list",
@@ -468,7 +470,7 @@ mod tests {
     }
 
     fn schema_number() -> StateSchema {
-        schema_of("scene.affect.marina", Type::Number, Namespace::Scene)
+        schema_of("scene.affect.marina", Type::Int, Namespace::Scene)
     }
 
     fn ctx() -> Ctx<'static> {

@@ -1,0 +1,12 @@
+---
+kind: scene
+id: celNumbers
+luteVersion: "0.32.0"
+title: CEL Numbers
+uses: ./schema.yaml
+---
+## Numbers
+@narrator{when="run.i + 2 == 5 && run.d * 2.0 >= 7.0"}: arithmetic
+@narrator{when="run.i / 2 == 1 && run.i % 2 == 1"}: integer division
+@narrator{when="run.i < 4 ? true : false"}: ternary
+@narrator{when="-run.i < 0 && run.i in [1, 2, 3]"}: unary and list

@@ -193,7 +193,7 @@ fn otherwise_makes_infinite_domain_exhaustive() {
     decls.insert(
         "run.n".to_string(),
         StateDecl {
-            ty: Type::Number,
+            ty: Type::Int,
             default: None,
             namespace: Namespace::Run,
             owner: None,
@@ -223,8 +223,8 @@ fn infinite_domain_without_otherwise_is_nonexhaustive() {
     decls.insert(
         "run.n".to_string(),
         StateDecl {
-            ty: Type::Number,
-            default: Some(lute_manifest::types::Literal::Num(0.0)),
+            ty: Type::Int,
+            default: Some(lute_manifest::types::Literal::Int(0)),
             namespace: Namespace::Run,
             owner: None,
         },
@@ -303,6 +303,22 @@ fn defaulted_enum_full_coverage_is_not_unset_uncovered() {
         errs.is_empty(),
         "defaulted full-coverage enum should be clean, got {errs:?}"
     );
+}
+
+#[test]
+fn defaulted_engine_clock_weekday_is_not_maybe_unset() {
+    let mut schema = StateSchema::default();
+    schema.decls.insert(
+        lute_manifest::clock::CLOCK_WEEKDAY.to_string(),
+        StateDecl {
+            ty: Type::Int,
+            default: Some(lute_manifest::types::Literal::Int(0)),
+            namespace: Namespace::Run,
+            owner: Some(lute_manifest::types::Owner::Engine),
+        },
+    );
+    let info = infer_domain(Some(lute_manifest::clock::CLOCK_WEEKDAY), &schema);
+    assert!(!info.maybe_unset, "defaulted engine clock is assigned: {info:?}");
 }
 
 // ---- RC3: foreign reserved quest path domain (dsl 0.2.0 §5.2) ----------
@@ -1469,13 +1485,13 @@ fn num_coverage_contains_and_overlaps() {
 fn is_exhaustive_agrees_with_number_coverage() {
     // `is_exhaustive` (definite assignment) must match E-NONEXHAUSTIVE on
     // a number subject: the whole line (+ `unset` when maybe-unset).
-    let schema = |default: Option<f64>| {
+    let schema = |default: Option<i64>| {
         let mut decls = BTreeMap::new();
         decls.insert(
             "run.n".to_string(),
             StateDecl {
-                ty: Type::Number,
-                default: default.map(Literal::Num),
+                ty: Type::Int,
+                default: default.map(Literal::Int),
                 namespace: Namespace::Run,
                 owner: None,
             },
@@ -1497,11 +1513,11 @@ fn is_exhaustive_agrees_with_number_coverage() {
         "run.n",
         vec![when_is(Some("..0 | unset"), ""), when_is(Some("0.."), "")],
     );
-    assert!(is_exhaustive(&split, &schema(Some(0.0))));
-    assert!(!is_exhaustive(&gap, &schema(Some(0.0))));
+    assert!(is_exhaustive(&split, &schema(Some(0))));
+    assert!(!is_exhaustive(&gap, &schema(Some(0))));
     assert!(!is_exhaustive(&split, &schema(None)));
     assert!(is_exhaustive(&with_unset, &schema(None)));
-    for (m, s) in [(&split, schema(Some(0.0))), (&with_unset, schema(None))] {
+    for (m, s) in [(&split, schema(Some(0))), (&with_unset, schema(None))] {
         assert!(check_match(m, &s, &ctx()).is_empty());
     }
 }

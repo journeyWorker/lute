@@ -702,7 +702,8 @@ fn yaml_type_label(v: &serde_yaml::Value) -> Option<String> {
 pub(crate) fn type_label(ty: &Type) -> String {
     match ty {
         Type::Bool => "bool".to_string(),
-        Type::Number => "number".to_string(),
+        Type::Int => "int".to_string(),
+        Type::Double => "double".to_string(),
         Type::Str => "string".to_string(),
         Type::Enum(members) => format!("enum [{}]", members.join(", ")),
         Type::List(inner) => format!("list<{}>", type_label(inner)),
@@ -722,7 +723,8 @@ pub(crate) fn type_label(ty: &Type) -> String {
 pub(crate) fn literal_label(lit: &Literal) -> String {
     match lit {
         Literal::Bool(b) => b.to_string(),
-        Literal::Num(n) => n.to_string(),
+        Literal::Int(n) => n.to_string(),
+        Literal::Double(n) => n.to_string(),
         Literal::Str(s) => format!("\"{s}\""),
         Literal::List(items) => {
             format!(
@@ -1077,7 +1079,7 @@ pub(crate) fn subject_domain(
 /// one path). Drives hover only: completion has no finite menu to offer.
 pub(crate) fn subject_is_number(meta: &lute_check::TypedMeta, subject_path: &str) -> bool {
     subject_reconstructed_path(subject_path)
-        .and_then(|path| meta.state.decls.get(&path).map(|d| d.ty == Type::Number))
+        .and_then(|path| meta.state.decls.get(&path).map(|d| matches!(d.ty, Type::Int | Type::Double)))
         .unwrap_or(false)
 }
 

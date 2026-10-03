@@ -1812,6 +1812,7 @@ fn check_match_reach(
                 covered_or_ruled_out(u.num.contains(p), CoverItem::Num(p))
             }),
             Domain::Number => u.num.covers_all(),
+            Domain::IntNumber => u.num.covers_all(),
             Domain::Infinite => false,
         };
     if let (Some(span), true) = (otherwise_span, domain_covered) {
@@ -2469,13 +2470,19 @@ fn collect_conjuncts(expr: &Expr, ctx: &ConjunctCtx<'_>, out: &mut Vec<(String, 
     }
 }
 
-/// A ground `holds(rel(args…))` or `visited('id')` query as a pseudo-path
-/// (`holds(rel(a,b))`, `visited('id')`), so `holds(P)` and `!holds(P)` are
-/// exclusive like `x` and `!x`.
+/// A ground list-form `holds('rel', [args…])` or `visited('id')` query as a
+/// pseudo-path (`holds('rel', [a,b])`, `visited('id')`), so `holds(P)` and
+/// `!holds(P)` are exclusive like `x` and `!x`.
 fn holds_key(expr: &Expr) -> Option<String> {
     let Expr::Call(c) = expr else { return None };
-    (c.target.is_none() && matches!(c.func_name.as_str(), "holds" | "visited") && c.args.len() == 1)
-        .then(|| term_key(&c.args[0].expr).map(|t| format!("{}({t})", c.func_name)))
+    if c.target.is_some() {
+        return None;
+    }
+    if c.func_name == "holds" {
+        return crate::fact_env::QueryPattern::from_call(c).map(|q| q.to_string());
+    }
+    (c.func_name == "visited" && c.args.len() == 1)
+        .then(|| term_key(&c.args[0].expr).map(|t| format!("visited({t})")))
         .flatten()
 }
 
@@ -2492,14 +2499,14 @@ fn term_key(e: &Expr) -> Option<String> {
     }
 }
 
-/// dsl 0.24.0 (T3-3): what a positive `holds(rel(c…))` implies about state
-/// when the atom is a pure schedule — `rel` is `derive: true` and not
-/// engine-`reserved`, no seed fact is the atom, and EVERY rule whose head
-/// unifies with it is a ground head over `cel()` guards only (`at(sol,
-/// radio) :- cel("run.slot == 'morning'")`). The atom then holds exactly when
-/// one of those guards does, so a path every guard constrains is constrained
-/// to the union of their sets. Anything else (a variable head, a body atom,
-/// a comparison literal, no rule at all) implies nothing.
+/// dsl 0.24.0 (T3-3): what a positive list-form `holds('rel', [c…])` query
+/// implies about state when the atom is a pure schedule — `rel` is `derive:
+/// true` and not engine-`reserved`, no seed fact is the atom, and EVERY rule
+/// whose head unifies with it is a ground head over `cel()` guards only
+/// (`at(sol, radio) :- cel("run.slot == 'morning'")`). The atom then holds
+/// exactly when one of those guards does, so a path every guard constrains is
+/// constrained to the union of their sets. Anything else (a variable head, a
+/// body atom, a comparison literal, no rule at all) implies nothing.
 fn schedule_conjuncts(
     expr: &Expr,
     vocab: &crate::rel_schema::RelVocab,
@@ -2509,29 +2516,16 @@ fn schedule_conjuncts(
     let Expr::Call(c) = expr else {
         return Vec::new();
     };
-    if c.target.is_some() || c.func_name != "holds" || c.args.len() != 1 {
+    if c.target.is_some() || c.func_name != "holds" {
         return Vec::new();
     }
-    let Expr::Call(atom) = &c.args[0].expr else {
+    let Some(query) = crate::fact_env::QueryPattern::from_call(c) else {
         return Vec::new();
     };
-    if atom.target.is_some() {
-        return Vec::new();
-    }
-    let Some(consts) = atom
-        .args
-        .iter()
-        .map(|a| match &a.expr {
-            Expr::Ident(n) => Some(n.clone()),
-            Expr::Literal(Val::String(s)) => Some(s.to_string()),
-            Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
-            _ => None,
-        })
-        .collect::<Option<Vec<String>>>()
-    else {
+    let Some(consts) = query.args.iter().cloned().collect::<Option<Vec<String>>>() else {
         return Vec::new();
     };
-    let rel = atom.func_name.as_str();
+    let rel = query.relation.as_str();
     if !vocab
         .relations
         .get(rel)

@@ -7,7 +7,7 @@ params:
   only: { type: string, default: "" }
 beat:
   on: interview
-  when: "holds(present(@who, _)) && (@only)"
+  when: "holds('present', [@who, '_']) && (@only)"
 ---
 
 ## Interview

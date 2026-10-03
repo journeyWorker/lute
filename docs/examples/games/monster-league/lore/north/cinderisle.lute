@@ -3,7 +3,7 @@ kind: lore
 id: north.cinderisle
 title: Cinder Isle
 state:
-  scene.quizScore: { type: number, default: 0 }
+  scene.quizScore: { type: int, default: 0 }
 ---
 
 // Cinder Isle: a volcano with a town on its shoulder. The Blaze Gym (locked
@@ -60,25 +60,25 @@ state:
   @cinderVolcanologist{emotion="worried"}: The seismographs have been twitching since someone started poking around the old mansion lab. I don't like it.
 </entry>
 
-<entry id="northAshbyKey" on="talk" target="npc.cinderVolcanologist" category="bark" priority="5" when="holds(hasItem(volcanoKey))">
+<entry id="northAshbyKey" on="talk" target="npc.cinderVolcanologist" category="bark" priority="5" when="holds('hasItem', ['volcanoKey'])">
   @cinderVolcanologist{emotion="surprised"}: You found the Volcano Key in that ruin? Ignatius swore it melted in the fire. Hah. That old showman.
 </entry>
 
-<entry id="northAshbyBadge" on="talk" target="npc.cinderVolcanologist" category="bark" priority="6" when="holds(hasBadge(blaze))">
+<entry id="northAshbyBadge" on="talk" target="npc.cinderVolcanologist" category="bark" priority="6" when="holds('hasBadge', ['blaze'])">
   @cinderVolcanologist: The readings calmed down the day you beat Ignatius. I'm writing that up as coincidence. Officially.
 </entry>
 
 // ── the Gym Guide ───────────────────────────────────────────────────────────
 
-<entry id="northCinderGuideLocked" on="talk" target="npc.cinderGymGuide" category="bark" when="!holds(canPass(cinderGymDoor))">
+<entry id="northCinderGuideLocked" on="talk" target="npc.cinderGymGuide" category="bark" when="!holds('canPass', ['cinderGymDoor'])">
   @cinderGymGuide: Yo! Champ in the making! Bad news: Ignatius locked the gym and threw the key into the old mansion. He says only a trainer brave enough to fetch it deserves a battle.
 </entry>
 
-<entry id="northCinderGuideOpen" on="talk" target="npc.cinderGymGuide" category="bark" priority="1" when="holds(canPass(cinderGymDoor)) && !holds(defeated(ignatius))">
+<entry id="northCinderGuideOpen" on="talk" target="npc.cinderGymGuide" category="bark" priority="1" when="holds('canPass', ['cinderGymDoor']) && !holds('defeated', ['ignatius'])">
   @cinderGymGuide: You got the key! Okay, listen: Ignatius uses fire, fire and more fire. Water beats it, rock beats it, and the quiz machines inside beat everybody. Study!
 </entry>
 
-<entry id="northCinderGuideWon" on="talk" target="npc.cinderGymGuide" category="bark" priority="2" when="holds(defeated(ignatius))">
+<entry id="northCinderGuideWon" on="talk" target="npc.cinderGymGuide" category="bark" priority="2" when="holds('defeated', ['ignatius'])">
   @cinderGymGuide: The Blaze Badge! You're scorching! One gym left, in Verdant City. Nobody I know has ever seen that leader's face.
 </entry>
 

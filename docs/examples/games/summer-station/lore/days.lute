@@ -18,7 +18,7 @@ title: What each day brings
   @ines{emotion="worried" when="run.day >= 4"}: And that's a day we didn't have to spare.
 </beat>
 
-<beat id="postHorn" on="slotStart" title="The postbus" priority="5" once="false" when="run.slot == 'morning' && @postDay && !holds(pathShut(village))">
+<beat id="postHorn" on="slotStart" title="The postbus" priority="5" once="false" when="run.slot == 'morning' && @postDay && !holds('pathShut', ['village'])">
   ::sfx{sound="a two-tone horn, far below"}
   @narrator: The postbus horn floats up from the valley. Pell will be at the kitchen door within the hour, out of breath and full of news.
 </beat>

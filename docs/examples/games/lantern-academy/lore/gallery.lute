@@ -7,33 +7,33 @@ title: The gallery
 // The title screen's gallery: one entry per CG, offered once the save has
 // seen it. The engine shows the picture; the entry is its caption.
 
-<entry id="galFestival" on="gallery" title="The Lantern Festival" when="holds(cgSeen(cgFestival))">
+<entry id="galFestival" on="gallery" title="The Lantern Festival" when="holds('cgSeen', ['cgFestival'])">
   @narrator: A thousand paper lanterns on a black lake, and one of them is yours.
 </entry>
-<entry id="galRenStars" on="gallery" title="Ren — a star with your name" when="holds(cgSeen(cgRenStars))">
+<entry id="galRenStars" on="gallery" title="Ren — a star with your name" when="holds('cgSeen', ['cgRenStars'])">
   @narrator: The observatory roof. Ren points at nothing in particular and says your name.
 </entry>
-<entry id="galMikaFinish" on="gallery" title="Mika — a tie at walking pace" when="holds(cgSeen(cgMikaFinish))">
+<entry id="galMikaFinish" on="gallery" title="Mika — a tie at walking pace" when="holds('cgSeen', ['cgMikaFinish'])">
   @narrator: Two pairs of shoes on the finish line, exactly level.
 </entry>
-<entry id="galSorenLetter" on="gallery" title="Soren — the letter in the stacks" when="holds(cgSeen(cgSorenLetter))">
+<entry id="galSorenLetter" on="gallery" title="Soren — the letter in the stacks" when="holds('cgSeen', ['cgSorenLetter'])">
   @narrator: A letter between two old books, in blue ink and green, dated this year.
 </entry>
-<entry id="galKaiDuet" on="gallery" title="Kai — the fifth bar" when="holds(cgSeen(cgKaiDuet))">
+<entry id="galKaiDuet" on="gallery" title="Kai — the fifth bar" when="holds('cgSeen', ['cgKaiDuet'])">
   @narrator: Four hands on a piano with a hole on either side of it.
 </entry>
-<entry id="galRenEnd" on="gallery" title="Ren — signed once" when="holds(cgSeen(cgRenEnd))">
+<entry id="galRenEnd" on="gallery" title="Ren — signed once" when="holds('cgSeen', ['cgRenEnd'])">
   @narrator: A register with one name written in it, neatly, once.
 </entry>
-<entry id="galMikaEnd" on="gallery" title="Mika — services to morale" when="holds(cgSeen(cgMikaEnd))">
+<entry id="galMikaEnd" on="gallery" title="Mika — services to morale" when="holds('cgSeen', ['cgMikaEnd'])">
   @narrator: The whole hall on its feet for the slowest boy on the island.
 </entry>
-<entry id="galSorenEnd" on="gallery" title="Soren — on loan" when="holds(cgSeen(cgSorenEnd))">
+<entry id="galSorenEnd" on="gallery" title="Soren — on loan" when="holds('cgSeen', ['cgSorenEnd'])">
   @narrator: A return slip, with an address on it, pinned above a desk.
 </entry>
-<entry id="galKaiEnd" on="gallery" title="Kai — five bars" when="holds(cgSeen(cgKaiEnd))">
+<entry id="galKaiEnd" on="gallery" title="Kai — five bars" when="holds('cgSeen', ['cgKaiEnd'])">
   @narrator: A padlock hanging open on a piano lid, on a stage, in front of everybody.
 </entry>
-<entry id="galKeeperEnd" on="gallery" title="Hotaru — the new girl" when="holds(cgSeen(cgKeeperEnd))">
+<entry id="galKeeperEnd" on="gallery" title="Hotaru — the new girl" when="holds('cgSeen', ['cgKeeperEnd'])">
   @narrator: A girl in an old uniform in the front row of the ceremony, laughing, with no lantern at all.
 </entry>

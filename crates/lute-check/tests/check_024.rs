@@ -115,7 +115,7 @@ fn staged_cast_members_and_shape_only_projects_are_clean() {
 fn quest(attrs: &str, objectives: &str, on: &str) -> String {
     format!(
         "---\nkind: quest\nstate:\n  run.down: {{ type: bool, default: false }}\n  \
-         run.day: {{ type: number, default: 1 }}\n\
+         run.day: {{ type: int, default: 1 }}\n\
          defs:\n  slain: \"run.down == true\"\n---\n\
          <quest id=\"hunt\" title=\"Hunt\" start=\"true\"{attrs}>\n{objectives}\n{on}\n</quest>\n"
     )

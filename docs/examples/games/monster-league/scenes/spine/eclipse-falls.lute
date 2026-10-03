@@ -4,7 +4,7 @@ id: spine.eclipseFalls
 title: The Director steps down
 on: battleEnd
 priority: 100
-when: "holds(defeated(vex))"
+when: "holds('defeated', ['vex'])"
 ---
 
 ## The empty gym

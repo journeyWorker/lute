@@ -31,8 +31,7 @@ fn text(o: &Output) -> String {
         String::from_utf8_lossy(&o.stderr)
     )
 }
-
-const SCHEMA: &str = "state:\n  run.day: { type: number, default: 0 }\n\
+const SCHEMA: &str = "state:\n  run.day: { type: int, default: 0 }\n\
 entities:\n  person: { members: [maud] }\n  item: { members: [lens] }\n\
 relations:\n  met: { args: [person], tier: run }\n  hasItem: { args: [item], tier: run }\n  \
 canPass: { args: [item], derive: true }\n\
@@ -74,7 +73,7 @@ fn project(tag: &str) -> PathBuf {
     write(
         &dir,
         "scenes/tower.lute",
-        &scene("tower", "on: climb\nwhen: 'holds(canPass(lens))'\n", ""),
+        &scene("tower", "on: climb\nwhen: \"holds('canPass', ['lens'])\"\n", ""),
     );
     dir
 }
@@ -88,7 +87,7 @@ fn the_tie_check_reads_the_must_set_at_a_beats_slot() {
         &dir,
         "lore/barks.lute",
         "---\nkind: lore\nid: barks\nuses: ../world.schema.yaml\n---\n\
-         <entry id=\"stranger\" on=\"knock\" when=\"!holds(met(maud))\">\n@narrator: Who?\n</entry>\n",
+         <entry id=\"stranger\" on=\"knock\" when=\"!holds('met', ['maud'])\">\n@narrator: Who?\n</entry>\n",
     );
     let out = run(&["check-project", dir.to_str().unwrap()]);
     let t = text(&out);
@@ -120,8 +119,8 @@ fn beats_shows_a_fallback_covered_by_an_earlier_beat() {
         &dir,
         "lore/gates.lute",
         "---\nkind: lore\nid: gates\nuses: ../world.schema.yaml\n---\n\
-         <entry id=\"areaGate\" on=\"gate\" when=\"!holds(canPass(lens))\">\n@narrator: Area.\n</entry>\n\
-         <entry id=\"spineGate\" on=\"gate\" priority=\"-10\" when=\"!holds(canPass(lens))\">\n@narrator: Spine.\n</entry>\n\
+         <entry id=\"areaGate\" on=\"gate\" when=\"!holds('canPass', ['lens'])\">\n@narrator: Area.\n</entry>\n\
+         <entry id=\"spineGate\" on=\"gate\" priority=\"-10\" when=\"!holds('canPass', ['lens'])\">\n@narrator: Spine.\n</entry>\n\
          <entry id=\"liveGate\" on=\"gate\" priority=\"-20\" when=\"run.day > 3\">\n@narrator: Live.\n</entry>\n",
     );
     let out = run(&["beats", dir.to_str().unwrap(), "--occasion", "gate"]);

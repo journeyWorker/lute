@@ -40,10 +40,14 @@ pub fn typed_literal(entry: &Json, lit: &str) -> Result<Value, String> {
             "false" => Ok(Value::Bool(false)),
             _ => Err("a `bool` is `true` or `false`".to_string()),
         },
-        Some("number") => lit
+        Some("int") => lit
+            .parse::<i64>()
+            .map(Value::Int)
+            .map_err(|_| "an `int` takes an integer".to_string()),
+        Some("double") => lit
             .parse::<f64>()
-            .map(Value::Num)
-            .map_err(|_| "a `number` takes a number".to_string()),
+            .map(Value::Double)
+            .map_err(|_| "a `double` takes a number".to_string()),
         Some("enum") => {
             let domain: Vec<&str> = entry
                 .get("domain")
@@ -116,7 +120,8 @@ pub fn payload_value(
     use lute_manifest::types::Type;
     match ty {
         Type::Bool => typed_literal(&serde_json::json!({ "type": "bool" }), lit),
-        Type::Number => typed_literal(&serde_json::json!({ "type": "number" }), lit),
+        Type::Int => typed_literal(&serde_json::json!({ "type": "int" }), lit),
+        Type::Double => typed_literal(&serde_json::json!({ "type": "double" }), lit),
         Type::Enum(members) => typed_literal(
             &serde_json::json!({ "type": "enum", "domain": members }),
             lit,
@@ -225,7 +230,7 @@ pub fn payload_placeholder(ty: &lute_manifest::types::Type) -> String {
     use lute_manifest::types::Type;
     match ty {
         Type::Bool => "<true|false>".to_string(),
-        Type::Number => "<number>".to_string(),
+        Type::Int | Type::Double => "<number>".to_string(),
         Type::Enum(members) => format!("<{}>", members.join("|")),
         Type::Domain(k) | Type::Entity(k) => format!("<a {k}>"),
         _ => "<value>".to_string(),

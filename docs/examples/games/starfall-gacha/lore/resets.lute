@@ -20,7 +20,7 @@ title: Daily and weekly resets, event openings
 /* Birthdays: every owned hero whose birthday it is, one after another, in
    roster order. Each hero's own birthday line (lore/bonds/<hero>.lute)
    follows the banner. */
-<beat id="birthday" on="dailyReset" for="kind:hero" once="day" priority="1" when="holds(celebrate(occasion.target))">
+<beat id="birthday" on="dailyReset" for="kind:hero" once="day" priority="1" when="holds('celebrate', [occasion.target])">
   @lumi{emotion="happy"}: It's {{occasion.target}}'s birthday! A gift is in your mailbox. It's from all of us!
 </beat>
 
@@ -28,7 +28,7 @@ title: Daily and weekly resets, event openings
 <beat id="harvestOpens" on="dailyReset" once="season:harvest" priority="10" when="@harvestLive">
   @pim{emotion="happy"}: Harvest Moon Festival! Moon cakes, lanterns, and a very sleepy priestess on the banner.
   @pim{when="@harvestRerun"}: It's the rerun! Missed Cyra last time? Now's your chance. I'll be at my stall.
-  @pim{when="isSet(prev.season.harvest.tokens) && prev.season.harvest.tokens >= 400"}: Last moon you walked off with {{prev.season.harvest.tokens}} tokens. Big spender. Let's see if you top it.
+  @pim{when="has(prev.season.harvest.tokens) && prev.season.harvest.tokens >= 400"}: Last moon you walked off with {{prev.season.harvest.tokens}} tokens. Big spender. Let's see if you top it.
   @pim{when="quest.starfallMissions.state == 'failed'"}: And those comet missions you let slip? Gone with the comets. Not this time, eh?
   ::openBanner{banner="harvest"}
 </beat>
@@ -49,7 +49,7 @@ title: Daily and weekly resets, event openings
 
 <beat use="eventOpens" id="frostOpens" season="frost" live="@frostLive" banner="frost">
   @pim{emotion="happy"}: The Frostlight Vigil! The sea's frozen solid, and there's a very quiet girl on the banner.
-  @nyx{emotion="shy" when="!holds(owned(nyx))"}: ...Hello. Don't mind me. I'm just lighting things.
+  @nyx{emotion="shy" when="!holds('owned', ['nyx'])"}: ...Hello. Don't mind me. I'm just lighting things.
 </beat>
 
 <beat id="frostLastCall" on="dayClose" once="season:frost" share="frostLastCall" priority="1" when="@frostLive && @frostDaysLeft == 0">
@@ -71,6 +71,6 @@ title: Daily and weekly resets, event openings
 
 /* Each hero the player is close to (bond rank 2 or better) brings a candle
    on the first reset of the vigil. */
-<beat id="frostCandles" on="dailyReset" for="kind:hero" once="season:frost" priority="2" when="@frostLive && holds(owned(occasion.target)) && holds(bondRank(occasion.target, r2))">
+<beat id="frostCandles" on="dailyReset" for="kind:hero" once="season:frost" priority="2" when="@frostLive && holds('owned', [occasion.target]) && holds('bondRank', [occasion.target, 'r2'])">
   @narrator: {{occasion.target}} turns up at the door with a candle, already lit. "For the vigil," they say.
 </beat>

@@ -6,7 +6,7 @@ season: 1
 episode: 1
 title: The Full Showcase
 pov: fixer
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 # Root capability profile (project lute.project.yaml) — activates showcase.pack.
 profile: showcase
 # Scene-local plugin activation/options layered on top of the profile (§6.1.1):
@@ -23,7 +23,7 @@ uses: schema/game.schema.yaml
 components: [components/stinger.component.lute]
 # Genuinely scene-local (episode-scoped) declarations only (§9.2).
 state:
-  scene.affect.marina: { type: number, default: 0 }
+  scene.affect.marina: { type: int, default: 0 }
   scene.saw_demo:      { type: bool,   default: false }
 # Inline scene def (§8.1) — a pure CEL macro referenced as `@fond`.
 defs:

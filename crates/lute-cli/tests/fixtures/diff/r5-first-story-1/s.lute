@@ -2,7 +2,7 @@
 kind: scene
 id: s
 state:
-  run.clues: { type: number, default: 5 }
+  run.clues: { type: int, default: 5 }
 ---
 
 ## One

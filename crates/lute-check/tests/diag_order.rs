@@ -39,7 +39,7 @@ fn import_extends_type_diag_precedes_inline_state_merge_at_same_span() {
     st.decls.insert(
         "run.gold".into(),
         StateDecl {
-            ty: Type::Number,
+            ty: Type::Int,
             default: None,
             namespace: Namespace::Run,
             owner: None,

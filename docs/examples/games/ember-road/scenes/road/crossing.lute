@@ -42,16 +42,16 @@ after: 'visited("bridge.arrival")'
   </otherwise>
 </match>
 @narrator{when="quest.parley.failedBy == 'superseded'"}: Maelis never got her proof. Coldwater stays off the map.
-@corvin{when="quest.toll.failedBy == 'superseded' && holds(inParty(corvin))"}: Three deserters and a sack of silver, and we walked past them. I'll be bringing that up.
-@isolde{when="quest.isoldeOath.state == 'complete' && holds(inParty(isolde))"}: I swore at Coldwater I'd never again stand by and call it orders. Thank you for not making me a liar.
+@corvin{when="quest.toll.failedBy == 'superseded' && holds('inParty', ['corvin'])"}: Three deserters and a sack of silver, and we walked past them. I'll be bringing that up.
+@isolde{when="quest.isoldeOath.state == 'complete' && holds('inParty', ['isolde'])"}: I swore at Coldwater I'd never again stand by and call it orders. Thank you for not making me a liar.
 
 @narrator{when="run.hostagesFreed"}: Behind you at the ford, a miller is teaching two children to curse the Company properly.
 @narrator{when="!run.hostagesFreed && quest.hostages.state == 'failed'"}: Nobody at the ford will say where Pell and Hanne were taken. Nobody asks you.
-@narrator{when="holds(hostile(marrow))"}: The Marrow folk will not forget whose wagons came through their ford, or what was sold to pay for the crossing.
-@narrator{when="holds(sidedWith(dusk))"}: On the parapet a Duskbound crossbowman lifts his bow as the last wagon passes. A salute, of a kind.
-@narrator{when="holds(hostile(company))"}: The Ashen Company will want its strongbox back, and it knows your name.
-@narrator{when="holds(departed(wren))"}: Wren's pack is not on the last wagon. You keep looking for it anyway.
-@wren{when="@wrenWithUs && holds(knows(token))"}: Hold the wagon a moment. There. Tam's token, on the far side. He always wanted to see it.
-@narrator{when="count(loyal(_)) >= 2"}: Whatever the Company says about this crossing, the people around your fire will say something else.
+@narrator{when="holds('hostile', ['marrow'])"}: The Marrow folk will not forget whose wagons came through their ford, or what was sold to pay for the crossing.
+@narrator{when="holds('sidedWith', ['dusk'])"}: On the parapet a Duskbound crossbowman lifts his bow as the last wagon passes. A salute, of a kind.
+@narrator{when="holds('hostile', ['company'])"}: The Ashen Company will want its strongbox back, and it knows your name.
+@narrator{when="holds('departed', ['wren'])"}: Wren's pack is not on the last wagon. You keep looking for it anyway.
+@wren{when="@wrenWithUs && holds('knows', ['token'])"}: Hold the wagon a moment. There. Tam's token, on the far side. He always wanted to see it.
+@narrator{when="count('loyal', ['_']) >= 2"}: Whatever the Company says about this crossing, the people around your fire will say something else.
 @narrator{when="quest.emberRoad.state == 'complete'"}: {{run.wagons:plural(One wagon|#Word wagons)}} on the far bank. Brannoc counts them twice, and does not count the people.
 ::set{user.chaptersCleared += 1}

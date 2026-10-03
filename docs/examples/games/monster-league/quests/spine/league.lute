@@ -10,7 +10,7 @@ title: The League spine
 
 // ── The main line ─────────────────────────────────────────────────────────
 <quest id="league" title="Become the Champion" start="true">
-  <objective id="starter" title="Choose your first monster" done="count(chose(_)) >= 1"/>
+  <objective id="starter" title="Choose your first monster" done="count('chose', ['_']) >= 1"/>
   <objective id="badges" title="Earn the eight badges" quest="badgeRoad"/>
   <objective id="eclipse" title="Stop Team Eclipse" quest="eclipseArc"/>
   <objective id="elite" title="Defeat the Elite Four" quest="eliteFour"/>
@@ -24,14 +24,14 @@ title: The League spine
 // Stone and Tide first (south), then Spark / Bloom (east) and Mind / Venom
 // (mid) in either order, Blaze (north) once surf opens the sea, Earth last.
 <quest id="badgeRoad" title="The eight badges">
-  <objective id="stone" title="Stone Badge: Petra, Pebbleton" done="holds(hasBadge(stone))"/>
-  <objective id="tide" title="Tide Badge: Marin, Tidewell" done="holds(hasBadge(tide))"/>
-  <objective id="spark" title="Spark Badge: Lt. Volta, Portvolt" done="holds(hasBadge(spark))"/>
-  <objective id="bloom" title="Bloom Badge: Fern, Bloomfield" done="holds(hasBadge(bloom))"/>
-  <objective id="mind" title="Mind Badge: Sabine, Silvercrest" done="holds(hasBadge(mind))"/>
-  <objective id="venom" title="Venom Badge: Kessler, Wardenmere" done="holds(hasBadge(venom))"/>
-  <objective id="blaze" title="Blaze Badge: Ignatius, Cinder Isle" done="holds(hasBadge(blaze))"/>
-  <objective id="earth" title="Earth Badge: Verdant City" done="holds(hasBadge(earth))"/>
+  <objective id="stone" title="Stone Badge: Petra, Pebbleton" done="holds('hasBadge', ['stone'])"/>
+  <objective id="tide" title="Tide Badge: Marin, Tidewell" done="holds('hasBadge', ['tide'])"/>
+  <objective id="spark" title="Spark Badge: Lt. Volta, Portvolt" done="holds('hasBadge', ['spark'])"/>
+  <objective id="bloom" title="Bloom Badge: Fern, Bloomfield" done="holds('hasBadge', ['bloom'])"/>
+  <objective id="mind" title="Mind Badge: Sabine, Silvercrest" done="holds('hasBadge', ['mind'])"/>
+  <objective id="venom" title="Venom Badge: Kessler, Wardenmere" done="holds('hasBadge', ['venom'])"/>
+  <objective id="blaze" title="Blaze Badge: Ignatius, Cinder Isle" done="holds('hasBadge', ['blaze'])"/>
+  <objective id="earth" title="Earth Badge: Verdant City" done="holds('hasBadge', ['earth'])"/>
   <on event="questComplete">
     @profAlder{vo}: Eight badges! Then Victory Road will let you through. The Summit Plateau is at the top of it.
   </on>
@@ -44,7 +44,7 @@ title: The League spine
   <objective id="siege" title="Lift the siege of Ash Tower" done="run.lair.towerSiege == 'cleared'"/>
   <objective id="hideout" title="Raid the hideout under the Game Corner" done="run.lair.cornerHideout == 'cleared'"/>
   <objective id="hq" title="Free Helix Tower" done="run.lair.helixHQ == 'cleared'"/>
-  <objective id="vex" title="Face Director Vex" done="holds(defeated(vex))"/>
+  <objective id="vex" title="Face Director Vex" done="holds('defeated', ['vex'])"/>
   <on event="questComplete">
     @announcer: Radio Verdane, with the news: Team Eclipse has disbanded. Helix Tower has reopened to the public.
   </on>
@@ -54,19 +54,19 @@ title: The League spine
 // Champion's hall retracts every defeated(<elite>). An objective, once done,
 // stays done, so the streak is one count over the derived beatElite.
 <quest id="eliteFour" title="The Elite Four">
-  <objective id="streak" title="Beat all four in a row" done="count(beatElite(_)) >= 4"/>
+  <objective id="streak" title="Beat all four in a row" done="count('beatElite', ['_']) >= 4"/>
 </quest>
 
 // ── Kai ───────────────────────────────────────────────────────────────────
 // One objective per meeting: lab (spine), bridge (south), ferry (east),
 // tower (mid), road (north), champion (spine). Win or lose, a meeting counts.
 <quest id="rivalry" title="Kai" start="visited('spine.lab')">
-  <objective id="lab" title="Kai, in the lab" done="holds(rivalFought(lab))"/>
-  <objective id="bridge" title="Kai, on the Tidewell bridge" done="holds(rivalFought(bridge))"/>
-  <objective id="ferry" title="Kai, aboard the Meridian" done="holds(rivalFought(ferry))"/>
-  <objective id="tower" title="Kai, in Helix Tower" done="holds(rivalFought(tower))"/>
-  <objective id="road" title="Kai, on Victory Road" done="holds(rivalFought(road))"/>
-  <objective id="champion" title="Kai, in the Champion's hall" done="holds(rivalFought(champion))"/>
+  <objective id="lab" title="Kai, in the lab" done="holds('rivalFought', ['lab'])"/>
+  <objective id="bridge" title="Kai, on the Tidewell bridge" done="holds('rivalFought', ['bridge'])"/>
+  <objective id="ferry" title="Kai, aboard the Meridian" done="holds('rivalFought', ['ferry'])"/>
+  <objective id="tower" title="Kai, in Helix Tower" done="holds('rivalFought', ['tower'])"/>
+  <objective id="road" title="Kai, on Victory Road" done="holds('rivalFought', ['road'])"/>
+  <objective id="champion" title="Kai, in the Champion's hall" done="holds('rivalFought', ['champion'])"/>
   <on event="questComplete">
     <match on="run.rivalStanding">
       <when is="3..">
@@ -115,8 +115,8 @@ title: The League spine
 // ── After the League (postgame) ───────────────────────────────────────────
 // Opens with the crown; any one of these closes it.
 <quest id="legacy" title="After the League" start="@champion" complete="any">
-  <objective id="rift" title="Meet what sleeps in the Rift Cavern" on="caught" target="mon.aethon" done="holds(caught(aethon))"/>
-  <objective id="legends" title="Catch three of Verdane's legends" done="count(caughtLegend(_)) >= 3"/>
+  <objective id="rift" title="Meet what sleeps in the Rift Cavern" on="caught" target="mon.aethon" done="holds('caught', ['aethon'])"/>
+  <objective id="legends" title="Catch three of Verdane's legends" done="count('caughtLegend', ['_']) >= 3"/>
   <objective id="dex" title="Complete the Dex" done="@dexCaught >= 150"/>
   <on event="questComplete">
     @profAlder{vo}: {{userName}}, I have been a professor for forty years and I have never seen a Dex like yours. Come by the lab. Kai is here, and he wants a rematch.

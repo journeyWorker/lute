@@ -1,15 +1,15 @@
-//! `lute run` — the reference headless runner over a COMPILED artifact
+//! `lute run` — the reference headless runner over a COMPILED execution IR
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.30.schema.json`).
+//! `schemas/lute-ir-0.32.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
-//! artifact (`lute compile` output), gates on `irVersion` by **MAJOR** only
-//! (execution-model.md §"Version negotiation"), and executes the flat
+//! execution IR (`lute compile` output), gates on `irVersion` by exact minor
+//! while the IR major is 0 and by MAJOR only from 1.0 onward
 //! `commands` stream headlessly against a `--mock` playthrough — the same mock
 //! surfaces `lute trace --mock` reads (`state:`/`facts:`/`choose:`/`events:`/
 //! `accepts:`). Distinct from `lute trace`, which previews the SOURCE document
 //! under three-valued logic and refuses to run the engine machinery: `run`
-//! consumes the ARTIFACT an engine would and actually does the engine's job.
+//! consumes the EXECUTION IR an engine would and actually does the engine's job.
 //!
 //! The walk itself is [`lute_trace::exec::Machine`] — the one walker `lute
 //! play` runs too (its module doc lists what it implements: the dispatcher,
@@ -21,17 +21,17 @@
 //! mock's `bridges:`, a repeat force of a spent `once` hub option is skipped,
 //! a force of a guard-closed option refused, and no unknown halts the walk.
 //! `--entry <id>` / `--beat <id>` present one lore entry / bundle beat; a
-//! lore artifact without exactly one of them (or either flag on another
+//! lore execution IR without exactly one of them (or either flag on another
 //! kind) is a usage error.
 //!
 //! Output: a human transcript by default; `--json` emits a stable machine
 //! transcript `{ kind, irVersion, exit, commands, state, facts, quests }`.
 //!
 //! Exit codes: `0` a complete walk, `2` an I/O / usage failure (unreadable
-//! artifact/mock, malformed artifact, an `irVersion` outside the implemented
-//! MAJOR line, or an unknown command `kind`), `3` an incomplete walk (a
-//! `choice`/`hub` reached with no mock decision — mirroring `lute trace`'s §4.5
-//! incomplete convention).
+//! execution IR/mock, malformed execution IR, an `irVersion` outside the
+//! pre-1.0 exact-minor or post-1.0 MAJOR line, or an unknown command `kind`),
+//! `3` an incomplete walk (`choice`/`hub` reached with no mock decision —
+//! mirroring `lute trace`'s §4.5 incomplete convention).
 //!
 //! ## Deliberately NOT implemented (out of the reference runner's scope)
 //! These are host/engine policy the runtime contract leaves unspecified; the
@@ -52,6 +52,7 @@
 //!   surface and read unknown; the fact store is valid-now (`holds`/`count`
 //!   over the current least-fixpoint).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -64,21 +65,18 @@ use serde_json::{json, Value as Json};
 
 /// The IR major.minor line this reference runner implements, derived from
 /// [`lute_compile::LUTE_IR_VERSION`] so it follows the compiler's IR
-/// version forever. Parsing gates on **MAJOR only** (execution-model.md,
-/// 0.13.0): an artifact from a different MAJOR is refused (exit 2); minor
-/// and patch are compatible-by-default (fields are append-only within a
-/// major line and unknown fields are ignored), and an unknown command
-/// `kind` remains the hard error that catches a genuinely newer
-/// capability. The minor is still carried here because the `--json`
-/// transcript reports the full implemented line.
+/// version forever. Pre-1.0 parsing gates on the exact major.minor line
+/// (execution-model.md, Version negotiation); from 1.0 onward it gates on
+/// MAJOR only. The minor is still carried because the `--json` transcript
+/// reports the full implemented line.
 fn impl_ir_line() -> (u64, u64) {
     parse_major_minor(lute_compile::LUTE_IR_VERSION)
         .expect("LUTE_IR_VERSION must carry a major.minor prefix")
 }
 
-/// Execute a compiled artifact against a mock playthrough. See [`crate::Command::Run`].
+/// Execute a compiled execution IR against a mock playthrough. See [`crate::Command::Run`].
 /// `entry` / `beat` select the one `entry` record (dsl 0.19.0 §8) or bundle
-/// `beat` record (dsl 0.23.0 §4) a lore artifact presents: exactly one is
+/// `beat` record (dsl 0.23.0 §4) a lore execution IR presents: exactly one is
 /// required for `kind: "lore"`, either is refused for any other kind.
 /// `occasions` are the `--occasion` flags, raised after the mock's own
 /// `occasions:` (dsl 0.21.0 §7a.2).
@@ -89,6 +87,7 @@ pub fn run_artifact(
     json_out: bool,
     entry: Option<&str>,
     beat: Option<&str>,
+    dump_conditions: Option<&Path>,
 ) -> ExitCode {
     let text = match std::fs::read_to_string(artifact) {
         Ok(t) => t,
@@ -106,30 +105,36 @@ pub fn run_artifact(
         }
     };
 
-    // ── Version negotiation (execution-model.md): gate on MAJOR only.
-    // A minor/patch difference within the implemented major line is
-    // compatible by contract (append-only fields; unknown command kinds
-    // hard-error below at dispatch), so a 0.12.0 artifact runs on a
-    // 0.13.0 runner and vice versa. ──
-    let (impl_major, _impl_minor) = impl_ir_line();
+    // ── Version negotiation (execution-model.md): pre-1.0 exact minor,
+    // post-1.0 MAJOR only. ──
+    let (impl_major, impl_minor) = impl_ir_line();
     let ir_version = art.get("irVersion").and_then(Json::as_str).unwrap_or("");
     match parse_major_minor(ir_version) {
-        Some((maj, _)) if maj == impl_major => {}
+        Some((maj, min))
+            if maj == impl_major && (impl_major != 0 || min == impl_minor) => {}
         _ => {
+            let rule = if impl_major == 0 {
+                format!("pre-1.0 engines require exact major.minor {impl_major}.{impl_minor}")
+            } else {
+                format!("this runner implements MAJOR {impl_major}")
+            };
             eprintln!(
-                "lute run: unsupported irVersion {ir_version:?}: this runner implements the \
-                 major-{impl_major} line (engines gate on MAJOR; minor/patch are compatible)"
+                "lute run: unsupported irVersion {ir_version:?}: {rule} (got {ir_version:?})"
             );
             return ExitCode::from(2);
         }
     }
 
-    if !art.get("commands").map(Json::is_array).unwrap_or(false) {
-        eprintln!("lute run: artifact has no `commands` array");
-        return ExitCode::from(2);
+    if let Some(reason) = owned_write_refusal(&art) {
+        eprintln!("lute run: {reason}");
+        return ExitCode::from(1);
     }
 
-    // ── dsl 0.19.0 §8: a lore artifact is looked up, never played. ──
+    if !art.get("commands").map(Json::is_array).unwrap_or(false) {
+        eprintln!("lute run: execution IR has no `commands` array");
+        return ExitCode::from(2);
+    }
+    // ── dsl 0.19.0 §8: a lore execution IR is looked up, never played. ──
     let is_lore = art.get("kind").and_then(Json::as_str) == Some("lore");
     let presented = match (entry, beat) {
         (Some(_), Some(_)) => {
@@ -143,7 +148,7 @@ pub fn run_artifact(
     match (is_lore, presented) {
         (true, None) => {
             eprintln!(
-                "lute run: {} is a lore artifact — there is no sequence to play; pass \
+                 "lute run: {} is a lore execution IR — there is no sequence to play; pass \
                  `--entry <id>` to present one entry or `--beat <id>` to present one bundle beat",
                 artifact.display()
             );
@@ -151,7 +156,7 @@ pub fn run_artifact(
         }
         (false, Some((flag, id))) => {
             eprintln!(
-                "lute run: `--{flag} {id}` needs a lore artifact; {} is kind {:?}",
+                "lute run: `--{flag} {id}` needs a lore execution IR; {} is kind {:?}",
                 artifact.display(),
                 art.get("kind").and_then(Json::as_str).unwrap_or("scene")
             );
@@ -181,6 +186,73 @@ pub fn run_artifact(
 
     mock_set.occasions.extend(occasions);
     let mut m = run_machine(&art, &mock_set, entry, beat);
+    if let Some(path) = dump_conditions {
+        let file = match std::fs::File::create(path) {
+            Ok(file) => std::rc::Rc::new(std::cell::RefCell::new(file)),
+            Err(e) => {
+                eprintln!("lute run: cannot create condition dump {}: {e}", path.display());
+                return ExitCode::from(2);
+            }
+        };
+        let mut env = art.get("celEnv").cloned().unwrap_or_else(|| json!({}));
+        if let Json::Object(map) = &mut env {
+            let vars = map.entry("variables").or_insert_with(|| json!([]));
+            if let Json::Array(vars) = vars {
+                for root in ["prev", "occasion", "clock", "entry"] {
+                    if !vars.iter().any(|v| v.get("name").and_then(Json::as_str) == Some(root)) {
+                        vars.push(json!({"name": root, "type": "map(string, dyn)"}));
+                    }
+                }
+            }
+        }
+        let artifact_for_expr = art.clone();
+        {
+            let header = json!({"kind": "env", "env": env});
+            if let Ok(mut f) = file.try_borrow_mut() {
+                let _ = serde_json::to_writer(&mut *f, &header);
+                use std::io::Write;
+                let _ = writeln!(f);
+            }
+        }
+        m = m.with_eval_observer(move |raw, value, _atoms, snapshot| {
+            let expr = find_expr(&artifact_for_expr, raw).unwrap_or(Json::Null);
+            let (_roots, relations, needs_visited) = condition_scope(&expr);
+            let paths: BTreeSet<String> = snapshot.reads.iter().map(|(p, _)| p.clone()).collect();
+            let mut dump_state = snapshot.state.clone();
+            for (path, read) in snapshot.reads {
+                if let lute_trace::Read::Value(value) = read {
+                    dump_state.insert(path.clone(), value.clone());
+                }
+            }
+            for (id, status) in snapshot.quest_status {
+                dump_state.insert(
+                    format!("quest.{id}.state"),
+                    lute_trace::Value::Str(status.clone()),
+                );
+            }
+            if let Some(target) = snapshot.occasion_target {
+                dump_state.insert(
+                    "occasion.target".to_string(),
+                    lute_trace::Value::Str(target.to_string()),
+                );
+            }
+            let mut line = json!({
+                "cel": raw,
+                "expr": expr,
+                "activation": activation_json_paths(&dump_state, snapshot.state_types, &paths),
+                "facts": condition_facts(&snapshot.facts, &relations),
+                "result": typed_value(value),
+            });
+            if needs_visited {
+                line["visited"] = snapshot.visited.iter().cloned().collect::<Vec<_>>().into();
+            }
+            if let Ok(mut f) = file.try_borrow_mut() {
+                let _ = serde_json::to_writer(&mut *f, &line);
+                use std::io::Write;
+                let _ = writeln!(f);
+            }
+        });
+    }
     match m.run() {
         Err(msg) => {
             eprintln!("lute run: {}", lute_core_span::plain_message(&msg));
@@ -202,6 +274,489 @@ pub fn run_artifact(
         }
     }
 }
+pub(crate) fn typed_value(value: &lute_trace::Value) -> Json {
+    match value {
+        lute_trace::Value::Bool(v) => json!({"bool": v}),
+        lute_trace::Value::Int(v) => json!({"int": v}),
+        lute_trace::Value::Double(v) => json!({"double": if v.is_nan() { json!("nan") } else if v.is_infinite() { json!(if *v > 0.0 { "inf" } else { "-inf" }) } else { json!(v) }}),
+        lute_trace::Value::Str(v) => json!({"string": v}),
+        lute_trace::Value::Unknown => json!({"error": "unknown"}),
+        lute_trace::Value::Error(v) => json!({"error": v}),
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) fn activation_json(
+    state: &std::collections::BTreeMap<String, lute_trace::Value>,
+    types: &std::collections::BTreeMap<String, String>,
+) -> Json {
+    activation_json_scoped(state, types, &BTreeSet::new())
+}
+
+pub(crate) fn activation_json_scoped(
+    state: &std::collections::BTreeMap<String, lute_trace::Value>,
+    types: &std::collections::BTreeMap<String, String>,
+    selected_roots: &BTreeSet<String>,
+) -> Json {
+    activation_json_scoped_with_defaults(state, types, selected_roots, &BTreeMap::new())
+}
+
+pub(crate) fn activation_json_scoped_with_defaults(
+    state: &std::collections::BTreeMap<String, lute_trace::Value>,
+    types: &std::collections::BTreeMap<String, String>,
+    selected_roots: &BTreeSet<String>,
+    defaults: &BTreeMap<String, lute_trace::Value>,
+) -> Json {
+    fn insert(node: &mut Json, parts: &[&str], value: Json) {
+        if parts.is_empty() {
+            return;
+        }
+        if !node.get("map").is_some_and(Json::is_object) {
+            *node = json!({"map": {}});
+        }
+        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        if parts.len() == 1 {
+            map.insert(parts[0].to_string(), value);
+            return;
+        }
+        let child = map.entry(parts[0].to_string()).or_insert_with(|| json!({"map": {}}));
+        insert(child, &parts[1..], value);
+    }
+    fn ensure_maps(node: &mut Json, parts: &[&str]) {
+        if parts.len() < 2 {
+            return;
+        }
+        if !node.get("map").is_some_and(Json::is_object) {
+            *node = json!({"map": {}});
+        }
+        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        let child = map.entry(parts[0].to_string()).or_insert_with(|| json!({"map": {}}));
+        ensure_maps(child, &parts[1..]);
+    }
+    let all = selected_roots.is_empty();
+    let allowed = |path: &str| all || selected_roots.contains(path.split('.').next().unwrap_or(path));
+    let mut roots = json!({"map": {}});
+    for (path, value) in state {
+        if allowed(path) {
+            let parts: Vec<_> = path.split('.').collect();
+            insert(&mut roots, &parts, typed_value(value));
+        }
+    }
+    for (path, value) in defaults {
+        if !state.contains_key(path) && allowed(path) {
+            let parts: Vec<_> = path.split('.').collect();
+            insert(&mut roots, &parts, typed_value(value));
+        }
+    }
+    for (path, _ty) in types {
+        let root = path.split('.').next().unwrap_or(path);
+        if !all && !selected_roots.contains(root) && !(selected_roots.contains("prev")
+            && (path.starts_with("run.") || path.starts_with("season.")))
+        {
+            continue;
+        }
+        let parts: Vec<_> = path.split('.').collect();
+        if allowed(path) {
+            ensure_maps(&mut roots, &parts);
+        }
+        if path.starts_with("run.") || path.starts_with("season.") {
+            if all || selected_roots.contains("prev") {
+                let prev = format!("prev.{path}");
+                let prev_parts: Vec<_> = prev.split('.').collect();
+                ensure_maps(&mut roots, &prev_parts);
+            }
+        }
+        if state.contains_key(path) || defaults.contains_key(path) {
+            continue;
+        }
+        let fallback = match _ty.as_str() {
+            "bool" | "boolean" => Some(json!({"bool": false})),
+            "int" | "integer" => Some(json!({"int": 0})),
+            "double" | "number" => Some(json!({"double": 0.0})),
+            _ => None,
+        };
+        if let Some(value) = fallback.filter(|_| allowed(path)) {
+            insert(&mut roots, &parts, value);
+            continue;
+        }
+        let Some(value) = (path.starts_with("quest.") && path.ends_with(".state"))
+            .then(|| json!({"string": "unset"}))
+        else {
+            continue;
+        };
+        if allowed(path) {
+            insert(&mut roots, &parts, value);
+        }
+    }
+    for root in selected_roots {
+        let root_parts = [root.as_str()];
+        insert(&mut roots, &root_parts, json!({"map": {}}));
+    }
+    roots.get("map").cloned().unwrap_or_else(|| json!({}))
+}
+
+pub(crate) fn condition_scope(expr: &Json) -> (BTreeSet<String>, BTreeSet<String>, bool) {
+    fn visit(node: &Json, roots: &mut BTreeSet<String>, relations: &mut BTreeSet<String>, visited: &mut bool) {
+        let Json::Object(map) = node else { return };
+        if let Some(path) = map.get("path").and_then(Json::as_str).or_else(|| map.get("has").and_then(Json::as_str)) {
+            if let Some(root) = path.split('.').next() { roots.insert(root.to_string()); }
+        }
+        if let Some(call) = map.get("call").and_then(Json::as_str) {
+            if call == "visited" { *visited = true; }
+            if matches!(call, "holds" | "count" | "countDistinct" | "validAt") {
+                if let Some(rel) = map.get("args").and_then(Json::as_array).and_then(|a| a.first()).and_then(|v| v.get("string")).and_then(Json::as_str) {
+                    relations.insert(rel.to_string());
+                }
+            }
+        }
+        for child in map.values() { visit(child, roots, relations, visited); }
+    }
+    let mut roots = BTreeSet::new();
+    let mut relations = BTreeSet::new();
+    let mut visited = false;
+    visit(expr, &mut roots, &mut relations, &mut visited);
+    (roots, relations, visited)
+}
+
+
+pub(crate) fn activation_json_paths(
+    state: &BTreeMap<String, lute_trace::Value>,
+    types: &BTreeMap<String, String>,
+    selected_paths: &BTreeSet<String>,
+) -> Json {
+    fn insert(node: &mut Json, parts: &[&str], value: Option<Json>) {
+        if parts.is_empty() { return; }
+        if !node.get("map").is_some_and(Json::is_object) { *node = json!({"map": {}}); }
+        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        if parts.len() == 1 {
+            if let Some(value) = value { map.insert(parts[0].to_string(), value); }
+            else { map.entry(parts[0].to_string()).or_insert_with(|| json!({"map": {}})); }
+            return;
+        }
+        let child = map.entry(parts[0].to_string()).or_insert_with(|| json!({"map": {}}));
+        insert(child, &parts[1..], value);
+    }
+    let wanted = |candidate: &str| selected_paths.iter().any(|selected| {
+        selected == candidate
+            || selected.starts_with(&format!("{candidate}."))
+            || candidate.starts_with(&format!("{selected}."))
+    });
+    let mut out = json!({"map": {}});
+    for selected in selected_paths {
+        let root = selected.split('.').next().unwrap_or(selected);
+        insert(&mut out, &[root], None);
+    }
+    for (path, value) in state {
+        if wanted(path) { insert(&mut out, &path.split('.').collect::<Vec<_>>(), Some(typed_value(value))); }
+    }
+    for path in types.keys() {
+        if !wanted(path) || state.contains_key(path) { continue; }
+        let parts: Vec<_> = path.split('.').collect();
+        if parts.len() > 1 {
+            insert(&mut out, &parts[..parts.len() - 1], None);
+        }
+    }
+    for selected in selected_paths {
+        if selected.starts_with("prev.") {
+            let parts: Vec<_> = selected.split('.').collect();
+            if parts.len() > 2 {
+                insert(&mut out, &parts[..parts.len() - 1], None);
+            }
+        }
+    }
+    out.get("map").cloned().unwrap_or_else(|| json!({}))
+}
+
+pub(crate) fn condition_facts(
+    facts: &std::collections::BTreeSet<lute_trace::datalog::Fact>,
+    relations: &BTreeSet<String>,
+) -> Json {
+    facts.iter().filter(|(rel, _)| relations.contains(rel)).map(|(rel, args)| json!({
+        "rel": rel,
+        "args": args.iter().map(|a| json!({"string": a})).collect::<Vec<_>>()
+    })).collect()
+}
+
+#[cfg(test)]
+mod dump_tests {
+    use super::*;
+
+    #[test]
+    fn typed_encoder_preserves_numeric_kinds_and_errors() {
+        assert_eq!(typed_value(&lute_trace::Value::Int(3)), json!({"int": 3}));
+        assert_eq!(typed_value(&lute_trace::Value::Double(3.5)), json!({"double": 3.5}));
+        assert_eq!(typed_value(&lute_trace::Value::Error("division by zero".into())), json!({"error": "division by zero"}));
+    }
+
+    #[test]
+    fn activation_omits_unset_slots_but_exposes_quest_state() {
+        let state = std::collections::BTreeMap::from([(
+            "run.visits".to_string(),
+            lute_trace::Value::Bool(true),
+        )]);
+        let types = std::collections::BTreeMap::from([
+            ("run.tip".to_string(), "string".to_string()),
+            ("run.visits".to_string(), "bool".to_string()),
+            ("quest.demo.state".to_string(), "enum".to_string()),
+        ]);
+        let activation = activation_json(&state, &types);
+        assert_eq!(activation["run"]["map"]["visits"], json!({"bool": true}));
+        assert!(activation["run"]["map"].get("tip").is_none());
+        assert_eq!(activation["quest"]["map"]["demo"]["map"]["state"], json!({"string": "unset"}));
+    }
+
+    #[test]
+    fn path_activation_omits_unset_leaf_but_keeps_read_list() {
+        let state = BTreeMap::from([
+            ("run.visits.0".to_string(), lute_trace::Value::Str("zero".into())),
+            ("run.visits.1".to_string(), lute_trace::Value::Str("one".into())),
+        ]);
+        let types = BTreeMap::new();
+        let paths = BTreeSet::from(["run.lantern.wish".to_string(), "run.visits".to_string()]);
+        let activation = activation_json_paths(&state, &types, &paths);
+        assert!(activation["run"]["map"].get("lantern").is_none());
+        assert!(activation["run"]["map"].get("visits").is_some());
+    }
+    #[test]
+    fn direct_lore_run_binds_raised_target_member() {
+        let art = json!({
+            "kind": "lore",
+            "commands": [
+                {
+                    "kind": "beat",
+                    "addr": "001",
+                    "id": "catch.land",
+                    "on": "landed",
+                    "target": "kind:fish",
+                    "targetKind": {
+                        "kind": "fish",
+                        "prefix": "fish",
+                        "members": ["cod"]
+                    },
+                    "body": "002"
+                },
+                {
+                    "kind": "line",
+                    "addr": "002",
+                    "speaker": "narrator",
+                    "text": "You land a {{occasion.target}}.",
+                    "placeholders": [{"kind": "occasionTarget"}]
+                }
+            ]
+        });
+        let mock = lute_trace::MockSet {
+            occasions: vec!["landed@fish.cod".into()],
+            ..Default::default()
+        };
+        let mut machine = run_machine(&art, &mock, None, Some("catch.land"));
+        machine.run().unwrap();
+        assert!(machine
+            .driver()
+            .transcript
+            .iter()
+            .any(|record| record["text"] == "You land a cod."));
+        let mut unraised = run_machine(&art, &Default::default(), None, Some("catch.land"));
+        unraised.run().unwrap();
+        assert!(unraised
+            .driver()
+            .transcript
+            .iter()
+            .any(|record| record["text"] == "You land a kind:fish."));
+    }
+
+}
+
+pub(crate) fn find_expr(value: &Json, cel: &str) -> Option<Json> {
+    match value {
+        Json::Object(map) => {
+            if map.get("cel").and_then(Json::as_str) == Some(cel) {
+                return map.get("expr").cloned();
+            }
+            map.values().find_map(|v| find_expr(v, cel))
+        }
+        Json::Array(items) => items.iter().find_map(|v| find_expr(v, cel)),
+        _ => None,
+    }
+}
+
+
+/// Refuse hand-built or tampered execution IR that asks content to mutate
+/// state or facts owned by the engine. Compiled IR should already exclude
+/// these writes; this guard runs before mocks are loaded or a Machine starts.
+fn owned_write_refusal(art: &Json) -> Option<String> {
+    let owned: std::collections::BTreeSet<&str> = art
+        .get("state")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|entry| entry.get("owner").and_then(Json::as_str) == Some("engine"))
+        .filter_map(|entry| entry.get("path").and_then(Json::as_str))
+        .collect();
+    let reserved: std::collections::BTreeSet<&str> = art
+        .get("relations")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|entry| entry.get("reserved").and_then(Json::as_bool) == Some(true))
+        .filter_map(|entry| entry.get("name").and_then(Json::as_str))
+        .collect();
+    let owns = |path: &str| {
+        owned.contains(path)
+            || lute_check::target_writes::indexed_family(path).is_some_and(|family| {
+                owned.contains(family)
+                    || owned.iter().any(|p| {
+                        p.strip_prefix(family).is_some_and(|rest| rest.starts_with('.'))
+                    })
+            })
+    };
+    for command in art
+        .get("commands")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let kind = command.get("kind").and_then(Json::as_str).unwrap_or("");
+        if kind == "set" {
+            if let Some(path) = command.get("path").and_then(Json::as_str) {
+                if owns(path) {
+                    return Some(format!(
+                        "E-RUN-OWNED-WRITE: command writes engine-owned state path `{path}`"
+                    ));
+                }
+            }
+        }
+        if matches!(kind, "assert" | "retract") {
+            if let Some(relation) = command.get("relation").and_then(Json::as_str) {
+                if reserved.contains(relation) {
+                    return Some(format!(
+                        "E-RUN-OWNED-WRITE: command {}s reserved relation `{relation}`",
+                        kind
+                    ));
+                }
+            }
+        }
+        for (key, label) in [("asserts", "assert"), ("retracts", "retract")] {
+            if let Some(relation) = command
+                .get(key)
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .find_map(|fact| {
+                    fact.get("relation")
+                        .and_then(Json::as_str)
+                        .filter(|relation| reserved.contains(relation))
+                })
+            {
+                return Some(format!(
+                    "E-RUN-OWNED-WRITE: plugin {label}s reserved relation `{relation}`"
+                ));
+            }
+        }
+        if kind == "plugin" {
+            if let Some(path) = command
+                .get("effects")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|effect| effect.get("path").and_then(Json::as_str))
+                .find(|path| owns(path))
+            {
+                return Some(format!(
+                    "E-RUN-OWNED-WRITE: plugin writes engine-owned state path `{path}`"
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// The member a direct lore presentation binds as `occasion.target`.
+///
+/// Direct `lute run --entry/--beat` walks do not execute the quest occasion
+/// loop, so the selected lore command must apply the mock raise itself. The
+/// compiled target metadata carries the same member set trace uses: a
+/// `targetKind` carries its occasion prefix, while `forKind` carries members
+/// and accepts either a bare member or a prefixed target.
+fn direct_occasion_member(
+    art: &Json,
+    mock: &lute_trace::MockSet,
+    entry: Option<&str>,
+    beat: Option<&str>,
+) -> Option<String> {
+    let (kind, id) = match (entry, beat) {
+        (Some(id), None) => ("entry", id),
+        (None, Some(id)) => ("beat", id),
+        _ => return None,
+    };
+    let commands = art.get("commands")?.as_array()?;
+    let command = commands.iter().find(|command| {
+        command.get("kind").and_then(Json::as_str) == Some(kind)
+            && command.get("id").and_then(Json::as_str).is_some_and(|declared| {
+                declared == id
+                    || (kind == "beat" && declared.strip_suffix(&format!(".{id}")).is_some())
+            })
+    })?;
+    let occasion = command.get("on").and_then(Json::as_str)?;
+    let target = mock.occasions.iter().find_map(|raise| {
+        let (name, target) = lute_trace::split_occasion(raise);
+        (name == occasion).then_some(target).flatten()
+    });
+    let target_kind = command
+        .get("targetKind")
+        .or_else(|| command.get("forKind"))?;
+    let members = target_kind
+        .get("members")?
+        .as_array()?
+        .iter()
+        .filter_map(Json::as_str)
+        .collect::<Vec<_>>();
+    let candidate = match target {
+        Some(target) => {
+            if let Some(prefix) = command
+                .get("targetKind")
+                .and_then(|target_kind| target_kind.get("prefix"))
+                .and_then(Json::as_str)
+            {
+                target
+                    .strip_prefix(prefix)
+                    .and_then(|target| target.strip_prefix('.'))
+                    .unwrap_or(target)
+            } else {
+                target.rsplit_once('.').map(|(_, member)| member).unwrap_or(target)
+            }
+        }
+        None => {
+            return target_kind
+                .get("kind")
+                .and_then(Json::as_str)
+                .map(|k| format!("kind:{k}"))
+        }
+    };
+    members
+        .iter()
+        .any(|member| *member == candidate)
+        .then(|| candidate.to_string())
+}
+
+/// Bind a direct lore presentation's occasion target, unless the mock seeded
+/// `occasion.target` explicitly (the trace path gives that seed precedence).
+pub(crate) fn bind_direct_occasion_target<D: Driver>(
+    m: &mut Machine<D>,
+    art: &Json,
+    mock: &lute_trace::MockSet,
+    entry: Option<&str>,
+    beat: Option<&str>,
+) {
+    if !mock
+        .state
+        .iter()
+        .any(|(path, _, _)| path == lute_check::beats::OCCASION_TARGET)
+    {
+        if let Some(member) = direct_occasion_member(art, mock, entry, beat) {
+            m.bind_occasion_target(Some(&member));
+        }
+    }
+}
 
 /// `lute run`'s Machine over `art`: a fresh walk seeded by `mock`,
 /// presenting `entry` / `beat` of a lore artifact when given.
@@ -218,6 +773,7 @@ pub(crate) fn run_machine(
     if let Some(id) = beat {
         m = m.with_bundle_beat(id);
     }
+    bind_direct_occasion_target(&mut m, art, mock, entry, beat);
     m
 }
 
@@ -341,7 +897,7 @@ fn output_value(m: &Machine<RunDriver>, art: &Json) -> Json {
 }
 
 fn print_human(m: &Machine<RunDriver>, art: &Json, artifact: &Path) {
-    println!("run {} artifact {}", m.kind(), artifact.display());
+    println!("run {} execution IR {}", m.kind(), artifact.display());
     for e in &m.driver().transcript {
         let k = e.get("kind").and_then(Json::as_str).unwrap_or("");
         let a = e.get("addr").and_then(Json::as_str).unwrap_or("");
@@ -515,7 +1071,9 @@ fn print_human(m: &Machine<RunDriver>, art: &Json, artifact: &Path) {
                 } else {
                     ""
                 };
-                format!("  grant {owner}  {kind} {amount}{target}{annot}")
+                let instance = e.get("instance").and_then(Json::as_u64).unwrap_or(0);
+                let index = e.get("index").and_then(Json::as_u64).unwrap_or(0);
+                format!("  grant[#{instance} i{index}] {owner}  {kind} {amount}{target}{annot}")
             }
             _ => format!("  {a}  {k}"),
         };

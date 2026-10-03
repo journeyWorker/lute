@@ -21,7 +21,7 @@ title: Vesper, the Knight Who Left (limited SSR)
   @vesper{when="@starfallLive"}: The festival. Lights, music, joy. Disgusting. ...Save me a lantern.
 </beat>
 
-<beat id="vesperBirthday" on="dailyReset" once="day" when="holds(celebrate(vesper))">
+<beat id="vesperBirthday" on="dailyReset" once="day" when="holds('celebrate', ['vesper'])">
   @vesper{emotion="sad"}: Nobody's said happy birthday to me in eleven years.
   @vesper{emotion="smug"}: Don't make it a habit. ...Do make it a habit.
 </beat>

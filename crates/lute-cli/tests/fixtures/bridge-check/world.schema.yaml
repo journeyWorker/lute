@@ -4,8 +4,8 @@
 state:
   # Written by the engine, read by content (dsl 0.22.0 §1.2): a `::set` of it
   # is an error. `lute play` writes it with an `engine:` step.
-  run.day:        { type: number, default: 1, owner: engine }
-  user.bond.mara: { type: number, default: 0 }
+  run.day:        { type: int, default: 1, owner: engine }
+  user.bond.mara: { type: int, default: 0 }
 
 entities:
   npc:  { members: [mara, tomas] }

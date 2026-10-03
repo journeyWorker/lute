@@ -3,11 +3,11 @@
 //! Inside a beat that targets a kind (`target="kind:K"`) or presents once
 //! per member (`for="kind:K"`), `occasion.target` is the member the beat
 //! runs for. It may appear where a compile-time-ground member is expected:
-//! a fact-query pattern argument (`holds(owned(occasion.target))`) and an
-//! entity-indexed family index (`user.bond[occasion.target]`). The checker
-//! judges such a slot once per member ([`instantiate`] over the scope's
-//! members, [`OccasionScopes`]); the runtime substitutes the bound member
-//! when it evaluates the slot. Any other read (`occasion.target == 'x'`,
+//! a list-form fact-query pattern argument (`holds('owned', [occasion.target])`)
+//! and an entity-indexed family index (`user.bond[occasion.target]`). The
+//! checker judges such a slot once per member ([`instantiate`] over the
+//! scope's members, [`OccasionScopes`]); the runtime substitutes the bound
+//! member when it evaluates the slot. Any other read (`occasion.target == 'x'`,
 //! `{{occasion.target}}`) is an ordinary read of the bound value.
 
 use crate::beats::OCCASION_TARGET;
@@ -18,7 +18,7 @@ const FACT_QUERIES: &[&str] = &["holds", "count", "countDistinct", "validAt"];
 /// Where one `occasion.target` occurrence sits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Position {
-    /// A fact-query pattern argument: `holds(owned(occasion.target))`.
+    /// A fact-query pattern argument: `holds('owned', [occasion.target])`.
     PatternArg,
     /// A family index: `user.bond[occasion.target]`; `range` spans the
     /// brackets.
@@ -44,10 +44,9 @@ pub fn occurrences(cel: &str) -> Vec<Occurrence> {
     let mask = lute_cel::cel_string_mask(cel);
     let in_string = |i: usize| mask.get(i).copied().unwrap_or(false);
     let b = cel.as_bytes();
-    // Callee name of every open paren before a byte (a grouping paren has
-    // an empty callee).
-    let mut out = Vec::new();
     let mut stack: Vec<&str> = Vec::new();
+    let mut list_depth = 0usize;
+    let mut out = Vec::new();
     let mut i = 0;
     while i < b.len() {
         if in_string(i) {
@@ -55,6 +54,16 @@ pub fn occurrences(cel: &str) -> Vec<Occurrence> {
             continue;
         }
         match b[i] {
+            b'[' => {
+                list_depth += 1;
+                i += 1;
+                continue;
+            }
+            b']' => {
+                list_depth = list_depth.saturating_sub(1);
+                i += 1;
+                continue;
+            }
             b'(' => {
                 let mut s = i;
                 while s > 0 && b[s - 1].is_ascii_whitespace() {
@@ -105,9 +114,10 @@ pub fn occurrences(cel: &str) -> Vec<Occurrence> {
             } else {
                 let arg_of = stack.last().copied().unwrap_or("");
                 let outer = stack.len().checked_sub(2).map_or("", |k| stack[k]);
-                let pattern = !arg_of.is_empty()
-                    && !FACT_QUERIES.contains(&arg_of)
-                    && FACT_QUERIES.contains(&outer);
+                let pattern = (list_depth > 0 && FACT_QUERIES.contains(&arg_of))
+                    || (!arg_of.is_empty()
+                        && !FACT_QUERIES.contains(&arg_of)
+                        && FACT_QUERIES.contains(&outer));
                 Occurrence {
                     range: (i, end),
                     position: if pattern {
@@ -141,8 +151,8 @@ pub fn mentions_target(cel: &str) -> bool {
 }
 
 /// `cel` with every `occasion.target` replaced by `member`: a pattern
-/// argument by the member as a name (`holds(owned(aria))`,
-/// `holds(at("lab-b2"))`), a family index by a member path
+/// argument by the member as a name (`holds('owned', [aria])`,
+/// `holds('at', ['lab-b2'])`), a family index by a member path
 /// (`user.bond[occasion.target]` → `user.bond.aria` / `run.visits["lab-b2"]`),
 /// any other read by the string literal `'aria'`.
 pub fn instantiate(cel: &str, member: &str) -> String {
@@ -160,9 +170,22 @@ fn rewrite(cel: &str, member: &str, values: bool) -> String {
     let mut out = String::with_capacity(cel.len());
     let mut at = 0;
     for o in occurrences(cel) {
+        let list_context = cel[..o.range.0]
+            .rmatch_indices('[')
+            .next()
+            .map_or(false, |(open, _)| {
+                cel[..o.range.0]
+                    .rmatch_indices(']')
+                    .next()
+                    .is_none_or(|(close, _)| open > close)
+            });
         let replacement = match o.position {
-            Position::PatternArg if lute_manifest::ident::is_ident(member) => member.to_string(),
-            Position::PatternArg => format!("\"{member}\""),
+            Position::PatternArg if !list_context && lute_manifest::ident::is_ident(member) => {
+                member.to_string()
+            }
+            Position::PatternArg => {
+                format!("'{}'", member.replace('\\', "\\\\").replace('\'', "\\'"))
+            }
             Position::Index => lute_cel::path::bracket_spelling(&["", member]),
             Position::Value if values => format!("'{member}'"),
             Position::Value => continue,

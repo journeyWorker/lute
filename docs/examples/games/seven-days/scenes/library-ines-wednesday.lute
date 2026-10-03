@@ -5,7 +5,7 @@ title: Wednesday delivery
 on: placeVisit
 target: place.library
 after: 'visited("library.ines.meet")'
-when: '@at(3, "afternoon") && holds(present(ines, library))'
+when: '@at(3, "afternoon") && holds("present", ["ines", "library"])'
 priority: 40
 ---
 

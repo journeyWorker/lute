@@ -33,7 +33,7 @@ fn text(o: &Output) -> String {
 }
 
 const SCHEMA: &str = r#"state:
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 entities:
   person:    { members: [isolde, corvin, oda] }
   companion: { subsetOf: person, members: [isolde, corvin] }
@@ -53,7 +53,7 @@ rules:
 const CAMP: &str =
     "---\nkind: scene\nid: camp.fire\nuses: ../world.schema.yaml\non: visit\n---\n\n## Camp\n\n\
                     ::set{run.approval.isolde += 3}\n\
-                    @narrator{when=\"holds(loyal(isolde))\"}: Isolde keeps watch.\n";
+                    @narrator{when=\"holds('loyal', ['isolde'])\"}: Isolde keeps watch.\n";
 
 fn project(tag: &str) -> PathBuf {
     let dir = temp_dir(tag);

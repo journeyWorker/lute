@@ -25,7 +25,7 @@ fn vocab(tier: &str) -> String {
     format!(
         "entities:\n  foe: {{ members: [thief, cook] }}\n  item: {{ members: [key] }}\n\
          relations:\n  beaten: {{ args: [foe], tier: run }}\n  hasItem: {{ args: [item], tier: {tier} }}\n\
-         state:\n  run.day: {{ type: number, default: 0 }}\n"
+         state:\n  run.day: {{ type: int, default: 0 }}\n"
     )
 }
 
@@ -67,18 +67,18 @@ fn ties(texts: &[&str]) -> Vec<Diagnostic> {
     .collect()
 }
 
-const BOTH: &str = "holds(beaten(thief)) && holds(beaten(cook))";
+const BOTH: &str = "holds('beaten', ['thief']) && holds('beaten', ['cook'])";
 
 #[test]
 fn negations_are_normalized_before_the_exclusivity_check() {
     for negated in [
-        "!(holds(beaten(thief)) && holds(beaten(cook)))",
-        "!holds(beaten(thief)) || !holds(beaten(cook))",
-        "!(!(!holds(beaten(thief)) || !holds(beaten(cook)))) || (run.day < 0 && run.day > 0)",
-        "!(run.day >= 3) && !holds(beaten(cook))",
+        "!(holds('beaten', ['thief']) && holds('beaten', ['cook']))",
+        "!holds('beaten', ['thief']) || !holds('beaten', ['cook'])",
+        "!(!(!holds('beaten', ['thief']) || !holds('beaten', ['cook']))) || (run.day < 0 && run.day > 0)",
+        "!(run.day >= 3) && !holds('beaten', ['cook'])",
     ] {
         let when = if negated.contains("run.day >= 3") {
-            "run.day > 5 || holds(beaten(cook))"
+            "run.day > 5 || holds('beaten', ['cook'])"
         } else {
             BOTH
         };
@@ -88,7 +88,7 @@ fn negations_are_normalized_before_the_exclusivity_check() {
     }
     // A disjunct that overlaps keeps the tie, and says on which path.
     let body = [
-        entry("neg", "!holds(beaten(thief)) || run.day > 2"),
+        entry("neg", "!holds('beaten', ['thief']) || run.day > 2"),
         entry("pos", BOTH),
     ]
     .concat();
@@ -111,7 +111,7 @@ fn a_fact_only_the_beats_own_unplayed_presentation_asserts_excludes_it() {
         "on: talk\npriority: 10\n",
         "::assert{hasItem(key)}\n",
     );
-    let bark = lore("run", &entry("after", "holds(hasItem(key))"));
+    let bark = lore("run", &entry("after", "holds('hasItem', ['key'])"));
     assert!(ties(&[&giver, &bark]).is_empty());
 
     // A user-tier fact outlives the run the scene is spent for.
@@ -121,7 +121,7 @@ fn a_fact_only_the_beats_own_unplayed_presentation_asserts_excludes_it() {
         "on: talk\npriority: 10\n",
         "::assert{hasItem(key)}\n",
     );
-    let bark_user = lore("user", &entry("after", "holds(hasItem(key))"));
+    let bark_user = lore("user", &entry("after", "holds('hasItem', ['key'])"));
     let out = ties(&[&giver_user, &bark_user]);
     assert_eq!(out.len(), 1, "{out:?}");
     assert!(

@@ -213,7 +213,7 @@ pub enum LoadError {
     /// `AssetSegment.ty` is the SAME shared `Type` enum every other typed
     /// position uses (`crates/lute-manifest/src/schema.rs`), so every `Type`
     /// variant parses syntactically in a segment position; only four are
-    /// semantically admitted there (`enum`, `number`, `string`,
+    /// semantically admitted there (`enum`, `int`, `string`,
     /// `providerRef` — the set `asset.rs::validate_segments` actually
     /// enforces, and the only ones the plugin-system closed `Type ::=`
     /// production (0.0.1 §7) leaves unrestricted AND representable as the
@@ -314,7 +314,7 @@ impl std::fmt::Display for LoadError {
             } => write!(
                 f,
                 "`{file}`: assetKind `{kind}` segment `{segment}` declares type `{found}`, \
-                 but a segment position admits only `enum`, `number`, `string`, or \
+                 but a segment position admits only `enum`, `int`, `string`, or \
                  `providerRef`"
             ),
         }
@@ -700,7 +700,7 @@ fn load_package(
 
 /// The `Type` variants a segment position actually enforces
 /// (`crate::asset::validate_segments`'s non-catch-all arms): `enum`
-/// (membership), `number` (parses as `f64`), `string` (accepts anything),
+/// (membership), `int` (parses as integer), `string` (accepts anything),
 /// and `providerRef` (resolved against a provider snapshot — plugin-system
 /// 0.0.1 §7 names this the asset-kind-segment case explicitly, alongside
 /// attribute and frontmatter positions). Nothing else is admitted; see
@@ -709,7 +709,7 @@ fn load_package(
 fn segment_type_admitted(ty: &Type) -> bool {
     matches!(
         ty,
-        Type::Enum(_) | Type::Number | Type::Str | Type::ProviderRef(_)
+        Type::Enum(_) | Type::Int | Type::Str | Type::ProviderRef(_)
     )
 }
 

@@ -27,7 +27,7 @@ use std::rc::Rc;
 
 use cel_parser::ast::{operators as op, CallExpr, Expr, IdedExpr};
 use cel_parser::reference::Val;
-use lute_check::{Decided, RelVocab, StateSchema};
+use lute_check::{RelVocab, StateSchema};
 use lute_manifest::Literal;
 
 use crate::datalog::Program;
@@ -69,6 +69,7 @@ pub struct EffectiveState<'a> {
     seed: BTreeMap<String, Value>,
     writes: BTreeMap<String, Value>,
     reserved_reads: Rc<RefCell<BTreeMap<String, ReservedReadKind>>>,
+    read_log: Option<Rc<RefCell<Vec<(String, Read)>>>>,
 }
 
 impl<'a> EffectiveState<'a> {
@@ -81,8 +82,18 @@ impl<'a> EffectiveState<'a> {
             seed,
             writes: BTreeMap::new(),
             reserved_reads: Rc::new(RefCell::new(BTreeMap::new())),
+            read_log: None,
         }
     }
+
+    /// Enable the per-evaluation read log used by CEL observers. Ordinary
+    /// execution leaves this disabled so reads do not allocate a path/value
+    /// pair or a log entry.
+    pub(crate) fn with_read_log(mut self) -> Self {
+        self.read_log = Some(Rc::new(RefCell::new(Vec::new())));
+        self
+    }
+
 
     /// §4.3 read order: trace write → mock seed → RESERVED default (dsl
     /// 0.5.1 §1.2) → schema `default:` → unset. A RESERVED quest path
@@ -103,6 +114,16 @@ impl<'a> EffectiveState<'a> {
     /// that crate, so not reusable across the D1 quarantine boundary
     /// ([`expr_path`] carries the same idiom below).
     pub fn read(&self, path: &str) -> Read {
+        let result = self.read_inner(path);
+        if let Some(read_log) = &self.read_log {
+            read_log
+                .borrow_mut()
+                .push((path.to_string(), result.clone()));
+        }
+        result
+    }
+
+    fn read_inner(&self, path: &str) -> Read {
         if let Some(v) = self.writes.get(path) {
             return Read::Value(v.clone());
         }
@@ -129,6 +150,12 @@ impl<'a> EffectiveState<'a> {
             return Read::Value(literal_to_value(default));
         }
         Read::Unset
+    }
+
+    pub fn reads(&self) -> Vec<(String, Read)> {
+        self.read_log
+            .as_ref()
+            .map_or_else(Vec::new, |read_log| read_log.borrow().clone())
     }
 
     /// `::set path = v` (§4.4, sequential in-flow visibility). An `Unknown`
@@ -259,8 +286,33 @@ fn render_pattern(relation: &str, pattern: &[Pat]) -> String {
 /// a query is pattern LOOKUP: an unmatched derived relation is unknown, and
 /// the relation is logged in [`FactStore::derived_reads`].
 #[derive(Clone)]
+enum FactSet<'a> {
+    Borrowed(&'a BTreeSet<(String, Vec<String>)>),
+    Owned(BTreeSet<(String, Vec<String>)>),
+}
+
+impl<'a> FactSet<'a> {
+    fn as_ref(&self) -> &BTreeSet<(String, Vec<String>)> {
+        match self {
+            Self::Borrowed(facts) => facts,
+            Self::Owned(facts) => facts,
+        }
+    }
+
+    fn as_mut(&mut self) -> &mut BTreeSet<(String, Vec<String>)> {
+        if let Self::Borrowed(facts) = self {
+            *self = Self::Owned((*facts).clone());
+        }
+        match self {
+            Self::Borrowed(_) => unreachable!(),
+            Self::Owned(facts) => facts,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct FactStore<'a> {
-    facts: BTreeSet<(String, Vec<String>)>,
+    facts: FactSet<'a>,
     rel_vocab: &'a RelVocab,
     visited: BTreeSet<String>,
     derivation: Option<&'a Program>,
@@ -268,21 +320,28 @@ pub struct FactStore<'a> {
     /// [`EffectiveState`]'s reserved-read log, so shared across snapshots.
     derived_reads: Rc<RefCell<BTreeSet<String>>>,
     /// dsl 0.24 T1-1: derived relations whose materialized fixpoint read an
-    /// undecided rule guard ([`crate::datalog::Closure::undecided`]) — a
-    /// query over one is unknown, never a silent "no such fact".
+    /// undecided rule guard — a query over one reads unknown, never a silent
+    /// "no such fact".
     undecided: BTreeMap<String, Vec<UnresolvedAtom>>,
 }
 
 impl<'a> FactStore<'a> {
     pub fn new(rel_vocab: &'a RelVocab) -> Self {
         Self {
-            facts: BTreeSet::new(),
+            facts: FactSet::Owned(BTreeSet::new()),
             rel_vocab,
             visited: BTreeSet::new(),
             derivation: None,
             derived_reads: Rc::new(RefCell::new(BTreeSet::new())),
             undecided: BTreeMap::new(),
         }
+    }
+
+    /// Use the store's materialized fact set without rebuilding it for every
+    /// CEL expression. Mutating methods still detach a private owned copy.
+    pub fn with_facts(mut self, facts: &'a BTreeSet<(String, Vec<String>)>) -> Self {
+        self.facts = FactSet::Borrowed(facts);
+        self
     }
 
     /// Answer every query over `program`'s fixpoint of the held facts.
@@ -312,20 +371,20 @@ impl<'a> FactStore<'a> {
     }
 
     pub fn assert(&mut self, rel: &str, args: &[String]) {
-        self.facts.insert((rel.to_string(), args.to_vec()));
+        self.facts.as_mut().insert((rel.to_string(), args.to_vec()));
     }
 
     /// `_` wildcard positions retract every fact matching the GROUND
     /// positions, regardless of what occupies a wildcard slot.
     pub fn retract(&mut self, rel: &str, pattern: &[Pat]) {
         self.facts
+            .as_mut()
             .retain(|(r, args)| !(r == rel && pattern_matches(pattern, args)));
     }
 
-    /// The held (base) facts: mocks, seeds and walk deltas, before
-    /// derivation.
+    /// The held (base) facts: mocks, seeds and walk deltas, before derivation.
     pub fn base(&self) -> &BTreeSet<(String, Vec<String>)> {
-        &self.facts
+        self.facts.as_ref()
     }
 
     /// Derived relations a query read without derivation, sorted.
@@ -341,13 +400,16 @@ impl<'a> FactStore<'a> {
         let render = |(rel, args): &(String, Vec<String>)| format!("{rel}({})", args.join(", "));
         match self.derivation {
             Some(program) if !program.is_empty() => {
-                let closure = program.fixpoint(&self.facts, state);
+                let closure = program.fixpoint(self.facts.as_ref(), state);
                 (
                     closure.facts.iter().map(render).collect(),
                     closure.undecided.keys().cloned().collect(),
                 )
             }
-            _ => (self.facts.iter().map(render).collect(), BTreeSet::new()),
+            _ => (
+                self.facts.as_ref().iter().map(render).collect(),
+                BTreeSet::new(),
+            ),
         }
     }
 
@@ -369,10 +431,10 @@ impl<'a> FactStore<'a> {
         let closure;
         let facts = match self.derivation {
             Some(program) if !program.is_empty() => {
-                closure = program.fixpoint(&self.facts, state).facts;
+                closure = program.fixpoint(self.facts.as_ref(), state).facts;
                 &closure
             }
-            _ => &self.facts,
+            _ => self.facts.as_ref(),
         };
         let render = |rel: &str, args: &[String]| format!("{rel}({})", args.join(", "));
         let mut out = Vec::new();
@@ -441,20 +503,20 @@ impl<'a> FactStore<'a> {
         column: Option<usize>,
         state: &EffectiveState<'_>,
     ) -> Result<usize, Vec<UnresolvedAtom>> {
-        if let Some(atoms) = self.undecided.get(rel) {
+        if let Some(atoms) = self.undecided.get(rel).filter(|atoms| !atoms.is_empty()) {
             return Err(atoms.clone());
         }
         match self.derivation {
             Some(program) if !program.is_empty() => {
-                let closure = program.fixpoint(&self.facts, state);
-                if let Some(atoms) = closure.undecided.get(rel) {
+                let closure = program.fixpoint(self.facts.as_ref(), state);
+                if let Some(atoms) = closure.undecided.get(rel).filter(|atoms| !atoms.is_empty()) {
                     return Err(atoms.clone());
                 }
                 Ok(Self::scan(&closure.facts, rel, pattern, column))
             }
-            Some(_) => Ok(Self::scan(&self.facts, rel, pattern, column)),
+            Some(_) => Ok(Self::scan(self.facts.as_ref(), rel, pattern, column)),
             None => {
-                let n = Self::scan(&self.facts, rel, pattern, column);
+                let n = Self::scan(self.facts.as_ref(), rel, pattern, column);
                 if self.is_derived(rel) {
                     self.derived_reads.borrow_mut().insert(rel.to_string());
                     if n == 0 {
@@ -478,10 +540,9 @@ pub struct EvalEnv<'a> {
 pub(crate) fn literal_to_value(l: &Literal) -> Value {
     match l {
         Literal::Bool(b) => Value::Bool(*b),
-        Literal::Num(n) => Value::Num(*n),
+        Literal::Int(n) => Value::Int(*n),
+        Literal::Double(n) => Value::Double(*n),
         Literal::Str(s) => Value::Str(s.clone()),
-        // A scalar `state:` default is bool/number/string/enum (dsl §9.3);
-        // `List`/`Map` never occur here in the closed evaluated subset.
         Literal::List(_) | Literal::Map(_) => Value::Unknown,
     }
 }
@@ -489,23 +550,16 @@ pub(crate) fn literal_to_value(l: &Literal) -> Value {
 fn val_to_value(v: &Val) -> Value {
     match v {
         Val::Boolean(b) => Value::Bool(*b),
-        Val::Int(i) => Value::Num(*i as f64),
-        Val::UInt(u) => Value::Num(*u as f64),
-        Val::Double(d) => Value::Num(*d),
+        Val::Int(i) => Value::Int(*i),
+        Val::UInt(_) => Value::Error("uint values are not supported".into()),
+        Val::Double(d) => Value::Double(*d),
         Val::String(s) => Value::Str(s.clone()),
-        // Outside the closed Lute-CEL profile (dsl §8.4) — never produced by
-        // a document that passed `check` (trace refuses check errors, §4.3).
-        Val::Null | Val::Bytes(_) => Value::Unknown,
+        Val::Null | Val::Bytes(_) => Value::Error("unsupported CEL literal".into()),
     }
 }
 
-fn to_decided(v: Value) -> Option<Decided> {
-    match v {
-        Value::Bool(b) => Some(Decided::Bool(b)),
-        Value::Num(n) => Some(Decided::Num(n)),
-        Value::Str(s) => Some(Decided::Str(s)),
-        Value::Unknown => None,
-    }
+fn is_error(v: &Value) -> bool {
+    matches!(v, Value::Error(_))
 }
 
 /// A static state path — an `Ident`/`Select` chain whose members may also be
@@ -516,39 +570,6 @@ pub(crate) fn expr_path(expr: &Expr) -> Option<String> {
     lute_cel::path::static_path_string(expr)
 }
 
-/// `holds`/`count`'s pattern `Call` args → [`Pat`]s: `Ident("_")` is the
-/// existential wildcard, any other bare `Ident` a ground id, a boolean
-/// literal its `to_string()`. Mirrors `lute_check::cel_resolve`'s
-/// (`pattern_terms`, private to that crate) shape; `None` means a
-/// non-ground arg slipped through — defensive, unreachable against a
-/// document `trace` actually accepted (§4.3: trace refuses documents with
-/// check errors). dsl 0.27.0 §3: `occasion.target` is the member the beat
-/// runs for — `Err` records it unresolved while unbound.
-fn pattern_args(
-    c: &CallExpr,
-    env: &EvalEnv<'_>,
-    unresolved: &mut Vec<UnresolvedAtom>,
-) -> Option<Result<Vec<Pat>, ()>> {
-    let mut out = Vec::with_capacity(c.args.len());
-    for a in &c.args {
-        out.push(match &a.expr {
-            Expr::Ident(name) if name == "_" => Pat::Wildcard,
-            Expr::Literal(Val::Boolean(b)) => Pat::Ground(b.to_string()),
-            e if expr_path(e).as_deref() == Some(lute_check::beats::OCCASION_TARGET) => {
-                match eval_path_read(lute_check::beats::OCCASION_TARGET, env, unresolved) {
-                    Value::Str(member) => Pat::Ground(member),
-                    _ => return Some(Err(())),
-                }
-            }
-            // A bare name or a quoted one (`at("lab-b2")`) — the same name.
-            e => match lute_cel::path::atom_arg(e) {
-                Some(name) => Pat::Ground(name),
-                None => return None,
-            },
-        });
-    }
-    Some(Ok(out))
-}
 
 pub(crate) fn eval_path_read(
     path: &str,
@@ -587,13 +608,11 @@ fn eval_and(
     match (va, vb) {
         (Value::Bool(true), Value::Bool(true)) => Value::Bool(true),
         (Value::Bool(false), _) | (_, Value::Bool(false)) => Value::Bool(false),
+        (Value::Error(e), _) | (_, Value::Error(e)) => Value::Error(e),
         _ => Value::Unknown,
     }
 }
 
-/// K3 `||`: `true || x = true` (short-circuit, symmetric to [`eval_and`]);
-/// otherwise `false || false = false`, a `true` on either side wins, else
-/// unknown.
 fn eval_or(
     a: &IdedExpr,
     b: &IdedExpr,
@@ -608,13 +627,11 @@ fn eval_or(
     match (va, vb) {
         (Value::Bool(false), Value::Bool(false)) => Value::Bool(false),
         (Value::Bool(true), _) | (_, Value::Bool(true)) => Value::Bool(true),
+        (Value::Error(e), _) | (_, Value::Error(e)) => Value::Error(e),
         _ => Value::Unknown,
     }
 }
 
-/// `?:` — an unknown CONDITION is unknown (never guesses a branch, mirrors
-/// `lute_check::decide`'s ternary rule); a decided condition evaluates
-/// exactly the taken branch, so the untaken side never contributes an atom.
 fn eval_conditional(
     cond: &IdedExpr,
     then: &IdedExpr,
@@ -625,32 +642,94 @@ fn eval_conditional(
     match eval(&cond.expr, env, unresolved) {
         Value::Bool(true) => eval(&then.expr, env, unresolved),
         Value::Bool(false) => eval(&els.expr, env, unresolved),
+        Value::Error(e) => Value::Error(e),
         _ => Value::Unknown,
     }
 }
 
-/// Ordinary R3 ground unary/binary operators (comparison, arithmetic,
-/// equality) — ANY unknown operand makes the whole node unknown. Every
-/// operand is still evaluated (even once the result is known-unknown) so
-/// every atom that could resolve it lands in `unresolved`.
 fn eval_ground(
     name: &str,
     args: &[&IdedExpr],
     env: &EvalEnv<'_>,
     unresolved: &mut Vec<UnresolvedAtom>,
 ) -> Value {
-    let values: Vec<Value> = args
-        .iter()
-        .map(|a| eval(&a.expr, env, unresolved))
-        .collect();
-    if values.contains(&Value::Unknown) {
+    let values: Vec<Value> = args.iter().map(|a| eval(&a.expr, env, unresolved)).collect();
+    if values.iter().any(|v| matches!(v, Value::Unknown)) {
         return Value::Unknown;
     }
-    let decided: Option<Vec<Decided>> = values.into_iter().map(to_decided).collect();
-    decided
-        .and_then(|d| lute_check::apply_op(name, &d))
-        .map(Value::from)
-        .unwrap_or(Value::Unknown)
+    if let Some(Value::Error(e)) = values.iter().find(|v| is_error(v)) {
+        return Value::Error(e.clone());
+    }
+    scalar_op(name, &values)
+}
+
+fn scalar_op(name: &str, values: &[Value]) -> Value {
+    let bad = || Value::Error(format!("CEL operation `{name}` has invalid operands"));
+    match (name, values) {
+        (op::LOGICAL_NOT, [Value::Bool(v)]) => Value::Bool(!v),
+        (op::NEGATE, [Value::Int(v)]) => v.checked_neg().map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())),
+        (op::NEGATE, [Value::Double(v)]) => Value::Double(-v),
+        (op::EQUALS, [a, b]) => match (a, b) {
+            (Value::Bool(x), Value::Bool(y)) => Value::Bool(x == y),
+            (Value::Str(x), Value::Str(y)) => Value::Bool(x == y),
+            (Value::Int(x), Value::Int(y)) => Value::Bool(x == y),
+            (Value::Double(x), Value::Double(y)) => Value::Bool(x == y),
+            _ => bad(),
+        },
+        (op::NOT_EQUALS, [a, b]) => match scalar_op(op::EQUALS, &[a.clone(), b.clone()]) {
+            Value::Bool(v) => Value::Bool(!v),
+            Value::Error(e) => Value::Error(e),
+            _ => bad(),
+        },
+        (op::ADD | op::SUBSTRACT | op::MULTIPLY, [Value::Int(a), Value::Int(b)]) => {
+            let result = match name {
+                op::ADD => a.checked_add(*b),
+                op::SUBSTRACT => a.checked_sub(*b),
+                _ => a.checked_mul(*b),
+            };
+            result.map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into()))
+        }
+        (op::ADD | op::SUBSTRACT | op::MULTIPLY, [Value::Double(a), Value::Double(b)]) => {
+            let result = match name {
+                op::ADD => a + b,
+                op::SUBSTRACT => a - b,
+                _ => a * b,
+            };
+            Value::Double(result)
+        }
+        (op::DIVIDE, [Value::Int(a), Value::Int(b)]) => {
+            if *b == 0 { Value::Error("division by zero".into()) }
+            else { a.checked_div(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())) }
+        }
+        (op::DIVIDE, [Value::Double(a), Value::Double(b)]) => {
+            Value::Double(a / b)
+        }
+        (op::MODULO, [Value::Int(a), Value::Int(b)]) => {
+            if *b == 0 { Value::Error("division by zero".into()) }
+            else { a.checked_rem(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())) }
+        }
+        (op::GREATER | op::GREATER_EQUALS | op::LESS | op::LESS_EQUALS, [a, b]) => {
+            let ok = match (a, b) {
+                (Value::Int(a), Value::Int(b)) => Some((name, a.cmp(b))),
+                (Value::Double(a), Value::Double(b)) => a.partial_cmp(b).map(|o| (name, o)),
+                (Value::Str(a), Value::Str(b)) => Some((name, a.cmp(b))),
+                _ => None,
+            };
+            match ok {
+                Some((op_name, ord)) => Value::Bool(match op_name {
+                    op::GREATER => ord.is_gt(),
+                    op::GREATER_EQUALS => !ord.is_lt(),
+                    op::LESS => ord.is_lt(),
+                    _ => !ord.is_gt(),
+                }),
+                None => bad(),
+            }
+        }
+        (op::IN, [needle, rest @ ..]) => {
+            Value::Bool(rest.iter().any(|v| v == needle))
+        }
+        _ => bad(),
+    }
 }
 
 /// `in` over a list LITERAL (the only in-profile shape, dsl §8.4): every
@@ -663,6 +742,17 @@ fn eval_in(
     env: &EvalEnv<'_>,
     unresolved: &mut Vec<UnresolvedAtom>,
 ) -> Value {
+    if let Some(prefix) = expr_path(&list.expr) {
+        let key = match eval(&needle.expr, env, unresolved) {
+            Value::Str(s) => s,
+            Value::Error(e) => return Value::Error(e),
+            Value::Unknown => return Value::Unknown,
+            _ => return Value::Error("map membership key must be a string".into()),
+        };
+        let path = format!("{prefix}.{key}");
+        let prefix = format!("{path}.");
+        return Value::Bool(env.state.effective_paths().iter().any(|p| p == &path || p.starts_with(&prefix)));
+    }
     let Expr::List(elements) = &list.expr else {
         return Value::Unknown;
     };
@@ -706,7 +796,7 @@ fn eval_index(
         return Value::Unknown;
     };
     let idx = match eval(&index.expr, env, unresolved) {
-        Value::Num(n) if n.fract() == 0.0 && n >= 0.0 => n as usize,
+        Value::Int(n) if n >= 0 => n as usize,
         _ => return Value::Unknown,
     };
     match elements.elements.get(idx) {
@@ -715,61 +805,66 @@ fn eval_index(
     }
 }
 
-/// `holds(pattern)` / `count(pattern)` (§4.3): looks the pattern up via
-/// [`FactStore::lookup`] — over the Datalog fixpoint under `derive: true`
-/// (dsl 0.22.0 §6), a bounded scan otherwise. An unknown answer records
-/// the atoms that would decide it (for an unmatched derived relation
-/// without derivation, the rendered pattern as the "supply it as a mock"
-/// hint, §4.6). With `column` (`countDistinct`, dsl 0.24 T3-9) that
-/// position is a wildcard and the answer counts its distinct values.
-fn eval_fact_query(
-    kind: &str,
-    pattern: &IdedExpr,
-    column: Option<usize>,
-    env: &EvalEnv<'_>,
-    unresolved: &mut Vec<UnresolvedAtom>,
-) -> Value {
-    let Expr::Call(pat_call) = &pattern.expr else {
-        return Value::Unknown; // caller guarantees this; defensive fallback
-    };
-    let relation = pat_call.func_name.as_str();
-    let mut pats = match pattern_args(pat_call, env, unresolved) {
-        Some(Ok(pats)) => pats,
-        Some(Err(())) => return Value::Unknown, // unbound `occasion.target`
-        None => return Value::Unknown, // non-ground pattern; defensive, unreachable post-check
-    };
-    if let Some(slot) = column.and_then(|i| pats.get_mut(i)) {
-        *slot = Pat::Wildcard;
-    }
-    match env
-        .facts
-        .lookup_distinct(relation, &pats, column, env.state)
-    {
-        Ok(n) if kind == "holds" => Value::Bool(n > 0),
-        Ok(n) => Value::Num(n as f64),
-        Err(atoms) => {
-            unresolved.extend(atoms);
-            Value::Unknown
-        }
-    }
-}
-
-/// `countDistinct(rel(…, V, …), V)`: the one pattern position the variable
-/// names (dsl 0.24 T3-9; the checker admits nothing else).
-fn distinct_column(pattern: &IdedExpr, var: &IdedExpr) -> Option<usize> {
-    let (Expr::Call(p), Expr::Ident(v)) = (&pattern.expr, &var.expr) else {
-        return None;
-    };
-    p.args
-        .iter()
-        .position(|a| matches!(&a.expr, Expr::Ident(n) if n == v))
-}
 
 /// `isSet(<path>)`/`has(<path>)` are DEFINITE (D19): true iff an effective
 /// value exists (write → seed → default), false on unset — never unknown,
 /// so no atom is ever recorded here.
 fn eval_definite_presence(path: &str, env: &EvalEnv<'_>) -> Value {
     Value::Bool(!matches!(env.state.read(path), Read::Unset))
+}
+
+fn list_pattern_args(
+    args: &[IdedExpr],
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Option<Result<Vec<Pat>, ()>> {
+    let mut out = Vec::with_capacity(args.len());
+    for a in args {
+        out.push(match &a.expr {
+            Expr::Literal(Val::String(s)) if s == "_" => Pat::Wildcard,
+            Expr::Literal(Val::String(s)) => Pat::Ground(s.clone()),
+            Expr::Literal(Val::Boolean(b)) => Pat::Ground(b.to_string()),
+            e if expr_path(e).as_deref() == Some(lute_check::beats::OCCASION_TARGET) => {
+                match eval_path_read(lute_check::beats::OCCASION_TARGET, env, unresolved) {
+                    Value::Str(member) => Pat::Ground(member),
+                    _ => return Some(Err(())),
+                }
+            }
+            _ => return None,
+        });
+    }
+    Some(Ok(out))
+}
+
+fn eval_list_fact_query(
+    kind: &str,
+    c: &CallExpr,
+    column: Option<usize>,
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Value {
+    let Some(Expr::Literal(Val::String(relation))) = c.args.first().map(|a| &a.expr) else {
+        return Value::Error("relation name must be a string literal".into());
+    };
+    let Some(Expr::List(list)) = c.args.get(1).map(|a| &a.expr) else {
+        return Value::Error("relation arguments must be a list".into());
+    };
+    let mut pats = match list_pattern_args(&list.elements, env, unresolved) {
+        Some(Ok(pats)) => pats,
+        Some(Err(())) => return Value::Unknown,
+        None => return Value::Error("relation arguments must be literals".into()),
+    };
+    if let Some(slot) = column.and_then(|i| pats.get_mut(i)) {
+        *slot = Pat::Wildcard;
+    }
+    match env.facts.lookup_distinct(relation, &pats, column, env.state) {
+        Ok(n) if kind == "holds" => Value::Bool(n > 0),
+        Ok(n) => Value::Int(n as i64),
+        Err(atoms) => {
+            unresolved.extend(atoms);
+            Value::Unknown
+        }
+    }
 }
 
 fn eval_call(c: &CallExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
@@ -792,31 +887,62 @@ fn eval_call(c: &CallExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAto
         | (op::LESS_EQUALS, [a, b])
         | (op::EQUALS, [a, b])
         | (op::NOT_EQUALS, [a, b]) => eval_ground(c.func_name.as_str(), &[a, b], env, unresolved),
-        ("holds", [pattern]) | ("count", [pattern]) if matches!(pattern.expr, Expr::Call(_)) => {
-            eval_fact_query(c.func_name.as_str(), pattern, None, env, unresolved)
+        ("holds" | "count", [relation, args])
+            if matches!(args.expr, Expr::List(_)) =>
+        {
+            eval_list_fact_query(c.func_name.as_str(), c, None, env, unresolved)
         }
-        ("countDistinct", [pattern, var]) => match distinct_column(pattern, var) {
-            Some(col) => eval_fact_query("countDistinct", pattern, Some(col), env, unresolved),
-            None => Value::Unknown, // ill-shaped; defensive, unreachable post-check
+        ("countDistinct", [relation, args, column])
+            if matches!(args.expr, Expr::List(_)) =>
+        {
+            let Some(Expr::Literal(Val::Int(i))) = Some(&column.expr) else {
+                return Value::Error("countDistinct column must be an int".into());
+            };
+            if *i < 0 {
+                return Value::Error("countDistinct column must be non-negative".into());
+            }
+            eval_list_fact_query("countDistinct", c, Some(*i as usize), env, unresolved)
+        }
+        ("holds" | "count", [_]) | ("countDistinct", [_, _]) | ("isSet", [_]) => {
+            Value::Error("legacy evaluator form is not supported".into())
+        }
+        ("has", [arg]) => match expr_path(&arg.expr) {
+            Some(path) => eval_definite_presence(&path, env),
+            None => Value::Error("has() expects a state path".into()),
         },
-        // dsl 0.21.0 §7a.1: one string-literal scene id, definite (never an
-        // unresolved atom — the presented set is the mock).
+        ("int", [arg]) => match eval(&arg.expr, env, unresolved) {
+            Value::Int(i) => Value::Int(i),
+            Value::Double(d) if d.is_finite() && d >= i64::MIN as f64 && d < (i64::MAX as f64) + 1.0 => Value::Int(d as i64),
+            Value::Error(e) => Value::Error(e),
+            _ => Value::Error("int() expects a number".into()),
+        },
+        ("double", [arg]) => match eval(&arg.expr, env, unresolved) {
+            Value::Double(d) => Value::Double(d),
+            Value::Int(i) => Value::Double(i as f64),
+            Value::Error(e) => Value::Error(e),
+            _ => Value::Error("double() expects a number".into()),
+        },
         ("visited", [arg]) => match &arg.expr {
             Expr::Literal(Val::String(id)) => Value::Bool(env.facts.visited(id)),
-            _ => Value::Unknown, // non-literal arg; defensive, unreachable post-check
+            _ => Value::Error("visited() expects a string".into()),
         },
-        ("validAt", [pattern, _]) if matches!(pattern.expr, Expr::Call(_)) => {
+        ("validAt", [_, _]) => {
+            unresolved.push(UnresolvedAtom::Time);
+            Value::Unknown
+        }
+        ("validAt", [_, _, _]) => {
             unresolved.push(UnresolvedAtom::Time);
             Value::Unknown
         }
         ("now", []) => {
+            for path in ["clock.tick", "clock.day"] {
+                if let Read::Value(Value::Int(n)) = env.state.read(path) {
+                    return Value::Int(n);
+                }
+            }
             unresolved.push(UnresolvedAtom::Time);
             Value::Unknown
         }
-        (name, [arg]) if name.eq_ignore_ascii_case("isSet") => match expr_path(&arg.expr) {
-            Some(path) => eval_definite_presence(&path, env),
-            None => Value::Unknown, // malformed; defensive, unreachable post-check
-        },
         // Out of the closed profile (dsl §8.4) — never reached by a document
         // that passed `check` (trace refuses documents with check errors).
         _ => Value::Unknown,
@@ -854,15 +980,12 @@ pub(crate) fn guard_atoms(expr: &Expr, out: &mut Vec<GuardAtom>) {
             }
         }
         Expr::Call(c) => match (c.func_name.as_str(), c.args.as_slice()) {
-            // A member reached by a quoted name reads its dotted path.
             (op::INDEX, [target, idx]) if matches!(idx.expr, Expr::Literal(Val::String(_))) => {
                 match expr_path(expr) {
                     Some(path) => push(out, GuardAtom::Path(path)),
                     None => guard_atoms(&target.expr, out),
                 }
             }
-            // dsl 0.27.0 §3: the member path the family read resolves to,
-            // never the family (a `per:` family has no value of its own).
             (op::INDEX, [target, idx])
                 if expr_path(&idx.expr).as_deref() == Some(lute_check::beats::OCCASION_TARGET) =>
             {
@@ -871,31 +994,23 @@ pub(crate) fn guard_atoms(expr: &Expr, out: &mut Vec<GuardAtom>) {
                     None => guard_atoms(&target.expr, out),
                 }
             }
-            ("holds" | "count" | "countDistinct", [pattern, rest @ ..]) => {
-                if let Expr::Call(p) = &pattern.expr {
-                    // `countDistinct`'s column variable matches anything.
-                    let var = rest.first().and_then(|v| expr_path(&v.expr));
-                    let args: Vec<String> = p
-                        .args
-                        .iter()
-                        .map(|a| match &a.expr {
-                            Expr::Literal(Val::Boolean(b)) => b.to_string(),
-                            // Spelled so `holds(…)` re-parses it: a name
-                            // that is not an identifier stays quoted.
-                            Expr::Literal(Val::String(s)) if lute_manifest::ident::is_ident(s) => {
-                                s.to_string()
-                            }
-                            Expr::Literal(Val::String(s)) => format!("\"{s}\""),
-                            e => expr_path(e)
-                                .filter(|n| Some(n) != var.as_ref())
-                                .unwrap_or_else(|| "_".to_string()),
-                        })
-                        .collect();
-                    push(
-                        out,
-                        GuardAtom::Fact(format!("{}({})", p.func_name, args.join(", "))),
-                    );
-                }
+            ("holds" | "count" | "countDistinct", [relation, args, ..])
+                if matches!(relation.expr, Expr::Literal(Val::String(_)))
+                    && matches!(args.expr, Expr::List(_)) =>
+            {
+                let Some(Expr::Literal(Val::String(rel))) = Some(&relation.expr) else { return };
+                let Some(Expr::List(list)) = Some(&args.expr) else { return };
+                let terms: Vec<String> = list
+                    .elements
+                    .iter()
+                    .map(|a| match &a.expr {
+                        Expr::Literal(Val::String(s)) if lute_manifest::ident::is_ident(s) => s.clone(),
+                        Expr::Literal(Val::String(s)) => format!("\"{s}\""),
+                        Expr::Literal(Val::Boolean(b)) => b.to_string(),
+                        e => expr_path(e).unwrap_or_else(|| "_".to_string()),
+                    })
+                    .collect();
+                push(out, GuardAtom::Fact(format!("{rel}({})", terms.join(", "))));
             }
             ("visited", [arg]) => {
                 if let Expr::Literal(Val::String(id)) = &arg.expr {
@@ -903,18 +1018,12 @@ pub(crate) fn guard_atoms(expr: &Expr, out: &mut Vec<GuardAtom>) {
                 }
             }
             _ => {
-                if let Some(t) = &c.target {
-                    guard_atoms(&t.expr, out);
-                }
-                for a in &c.args {
-                    guard_atoms(&a.expr, out);
-                }
+                if let Some(t) = &c.target { guard_atoms(&t.expr, out); }
+                for a in &c.args { guard_atoms(&a.expr, out); }
             }
         },
         Expr::List(l) => {
-            for e in &l.elements {
-                guard_atoms(&e.expr, out);
-            }
+            for e in &l.elements { guard_atoms(&e.expr, out); }
         }
         _ => {}
     }
@@ -1108,7 +1217,7 @@ mod tests {
             facts: &facts,
         };
         let (v, unresolved) = eval_str("run.cond ? 1 : run.untouched", &env);
-        assert_eq!(v, Value::Num(1.0));
+        assert_eq!(v, Value::Int(1));
         assert!(unresolved.is_empty());
     }
 
@@ -1148,7 +1257,7 @@ mod tests {
             facts: &facts,
         };
         let (v, unresolved) = eval_str("[10, 20, 30][1]", &env);
-        assert_eq!(v, Value::Num(20.0));
+        assert_eq!(v, Value::Int(20));
         assert!(unresolved.is_empty());
     }
 
@@ -1207,28 +1316,43 @@ mod tests {
 
     #[test]
     fn effective_state_precedence_write_beats_seed_beats_default_beats_unset() {
-        let schema = schema_with(&[("run.tip", Type::Number, Some(Literal::Num(1.0)))]);
+        let schema = schema_with(&[("run.tip", Type::Double, Some(Literal::Double(1.0)))]);
         let mut seed = BTreeMap::new();
-        seed.insert("run.tip".to_string(), Value::Num(2.0));
+        seed.insert("run.tip".to_string(), Value::Double(2.0));
         let mut state = EffectiveState::new(&schema, seed);
 
         // default only
-        let schema_no_seed = schema_with(&[("run.other", Type::Number, Some(Literal::Num(9.0)))]);
+        let schema_no_seed = schema_with(&[("run.other", Type::Double, Some(Literal::Double(9.0)))]);
         let state_default = EffectiveState::new(&schema_no_seed, BTreeMap::new());
         assert_eq!(
             state_default.read("run.other"),
-            Read::Value(Value::Num(9.0))
+            Read::Value(Value::Double(9.0))
         );
 
         // seed beats default
-        assert_eq!(state.read("run.tip"), Read::Value(Value::Num(2.0)));
+        assert_eq!(state.read("run.tip"), Read::Value(Value::Double(2.0)));
 
         // write beats seed
-        state.write("run.tip", Value::Num(3.0));
-        assert_eq!(state.read("run.tip"), Read::Value(Value::Num(3.0)));
+        state.write("run.tip", Value::Double(3.0));
+        assert_eq!(state.read("run.tip"), Read::Value(Value::Double(3.0)));
 
         // nothing at all -> Unset
         assert_eq!(state.read("run.neverDeclared"), Read::Unset);
+    }
+
+    #[test]
+    fn read_capture_is_opt_in() {
+        let schema = schema_with(&[]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        assert_eq!(state.read("run.missing"), Read::Unset);
+        assert!(state.reads().is_empty());
+
+        let observed = EffectiveState::new(&schema, BTreeMap::new()).with_read_log();
+        assert_eq!(observed.read("run.missing"), Read::Unset);
+        assert_eq!(
+            observed.reads(),
+            vec![("run.missing".to_string(), Read::Unset)]
+        );
     }
 
     #[test]
@@ -1245,7 +1369,7 @@ mod tests {
         };
         // D19: isSet is definite presence, true even though the VALUE at
         // that path is unknown.
-        let (v, unresolved) = eval_str("isSet(run.tip)", &env);
+        let (v, unresolved) = eval_str("has(run.tip)", &env);
         assert_eq!(v, Value::Bool(true));
         assert!(unresolved.is_empty());
         // A plain value read of that same path IS unknown, and records it.
@@ -1262,7 +1386,7 @@ mod tests {
     #[test]
     fn isset_is_definite_true_when_seeded_false_when_unset() {
         let mut seed = BTreeMap::new();
-        seed.insert("run.tip".to_string(), Value::Num(5.0));
+        seed.insert("run.tip".to_string(), Value::Double(5.0));
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, seed);
         let vocab = RelVocab::default();
@@ -1272,11 +1396,11 @@ mod tests {
             facts: &facts,
         };
 
-        let (v, unresolved) = eval_str("isSet(run.tip)", &env);
+        let (v, unresolved) = eval_str("has(run.tip)", &env);
         assert_eq!(v, Value::Bool(true));
         assert!(unresolved.is_empty());
 
-        let (v, unresolved) = eval_str("isSet(run.neverDeclared)", &env);
+        let (v, unresolved) = eval_str("has(run.neverDeclared)", &env);
         assert_eq!(v, Value::Bool(false));
         assert!(unresolved.is_empty());
     }
@@ -1284,7 +1408,7 @@ mod tests {
     #[test]
     fn has_macro_is_definite_like_isset() {
         let mut seed = BTreeMap::new();
-        seed.insert("run.tip".to_string(), Value::Num(5.0));
+        seed.insert("run.tip".to_string(), Value::Double(5.0));
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, seed);
         let vocab = RelVocab::default();
@@ -1315,7 +1439,7 @@ mod tests {
             state: &state,
             facts: &facts,
         };
-        let (v, unresolved) = eval_str("!isSet(run.fresh)", &env);
+        let (v, unresolved) = eval_str("!has(run.fresh)", &env);
         assert_eq!(v, Value::Bool(true));
         assert!(unresolved.is_empty());
     }
@@ -1329,39 +1453,27 @@ mod tests {
         facts.assert("inParty", &["elena".to_string(), "grove".to_string()]);
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        let env = EvalEnv {
-            state: &state,
-            facts: &facts,
-        };
-
+        let env = EvalEnv { state: &state, facts: &facts };
         let (v, unresolved) = eval_str("holds(inParty(elena, grove))", &env);
-        assert_eq!(v, Value::Bool(true));
-        assert!(unresolved.is_empty());
-
-        let (v, unresolved) = eval_str("holds(inParty(elena, town))", &env);
-        assert_eq!(v, Value::Bool(false));
+        assert!(matches!(v, Value::Error(_)));
         assert!(unresolved.is_empty());
     }
 
     #[test]
-    fn holds_over_wildcard_pattern_is_existential_over_supplied_set() {
+    fn legacy_pattern_queries_are_evaluation_errors() {
         let vocab = rel_vocab_with(&[("inParty", false)]);
-        let mut facts = FactStore::new(&vocab);
-        facts.assert("inParty", &["elena".to_string(), "grove".to_string()]);
+        let facts = FactStore::new(&vocab);
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        let env = EvalEnv {
-            state: &state,
-            facts: &facts,
-        };
-
-        let (v, unresolved) = eval_str("holds(inParty(elena, _))", &env);
-        assert_eq!(v, Value::Bool(true));
-        assert!(unresolved.is_empty());
-
-        let (v, unresolved) = eval_str("count(inParty(_, _))", &env);
-        assert_eq!(v, Value::Num(1.0));
-        assert!(unresolved.is_empty());
+        let env = EvalEnv { state: &state, facts: &facts };
+        for raw in [
+            "holds(inParty(elena, grove))",
+            "count(inParty(_, _))",
+            "countDistinct(inParty(X), X)",
+            "isSet(run.ready)",
+        ] {
+            assert!(matches!(eval_str(raw, &env).0, Value::Error(_)), "{raw}");
+        }
     }
 
     // -- dsl 0.27.0 §3: the bound member as a pattern arg / family index ----
@@ -1377,9 +1489,9 @@ mod tests {
                 Value::Str(m.to_string()),
             );
         }
+
         seed
     }
-
     /// A quoted index reads the dotted path its members name, and a quoted
     /// fact argument is the bare name — either spelling, one answer.
     #[test]
@@ -1393,8 +1505,8 @@ mod tests {
             with_target(
                 None,
                 &[
-                    ("run.visits.lab-b2", Value::Num(2.0)),
-                    ("run.visits.001", Value::Num(1.0)),
+                    ("run.visits.lab-b2", Value::Int(2)),
+                    ("run.visits.001", Value::Int(1)),
                     ("quest.zero-coke-001.state", Value::Str("complete".into())),
                 ],
             ),
@@ -1404,15 +1516,12 @@ mod tests {
             facts: &facts,
         };
         for (raw, want) in [
-            (r#"run.visits["lab-b2"]"#, Value::Num(2.0)),
-            ("run.visits['001'] + 1", Value::Num(2.0)),
+            (r#"run.visits["lab-b2"]"#, Value::Int(2)),
+            ("run.visits['001'] + 1", Value::Int(2)),
             (
                 r#"quest["zero-coke-001"].state == "complete""#,
                 Value::Bool(true),
             ),
-            (r#"isSet(run.visits["lab-b2"])"#, Value::Bool(true)),
-            (r#"holds(at("lab-b2"))"#, Value::Bool(true)),
-            ("holds(at('001'))", Value::Bool(false)),
         ] {
             let (v, unresolved) = eval_str(raw, &env);
             assert_eq!(v, want, "{raw}");
@@ -1439,7 +1548,7 @@ mod tests {
                 state: &state,
                 facts: &facts,
             };
-            let (v, unresolved) = eval_str("holds(owned(occasion.target))", &env);
+            let (v, unresolved) = eval_str("holds(\"owned\", [occasion.target])", &env);
             assert_eq!(v, Value::Bool(want), "{member}");
             assert!(unresolved.is_empty(), "{member}: {unresolved:?}");
         }
@@ -1450,7 +1559,7 @@ mod tests {
             state: &state,
             facts: &facts,
         };
-        let (v, unresolved) = eval_str("holds(owned(occasion.target))", &env);
+        let (v, unresolved) = eval_str("holds(\"owned\", [occasion.target])", &env);
         assert_eq!(v, Value::Unknown);
         assert_eq!(
             unresolved,
@@ -1466,8 +1575,8 @@ mod tests {
         let seed = with_target(
             Some("bram"),
             &[
-                ("user.bond.bram", Value::Num(3.0)),
-                ("user.bond.aria", Value::Num(0.0)),
+                ("user.bond.bram", Value::Int(3)),
+                ("user.bond.aria", Value::Int(0)),
             ],
         );
         let state = EffectiveState::new(&schema, seed);
@@ -1519,7 +1628,8 @@ mod tests {
             facts: &facts,
         };
 
-        let (v, unresolved) = eval_str("holds(believesLocation(player, halsin, grove))", &env);
+        let (v, unresolved) =
+            eval_str("holds(\"believesLocation\", [\"player\", \"halsin\", \"grove\"])", &env);
         assert_eq!(v, Value::Unknown);
         assert_eq!(
             unresolved,
@@ -1551,7 +1661,8 @@ mod tests {
             facts: &facts,
         };
 
-        let (v, unresolved) = eval_str("holds(believesLocation(player, halsin, grove))", &env);
+        let (v, unresolved) =
+            eval_str("holds(\"believesLocation\", [\"player\", \"halsin\", \"grove\"])", &env);
         assert_eq!(v, Value::Bool(true));
         assert!(unresolved.is_empty());
     }
@@ -1569,7 +1680,7 @@ mod tests {
             facts: &facts,
         };
 
-        let (v, unresolved) = eval_str("holds(inParty(elena, grove))", &env);
+        let (v, unresolved) = eval_str("holds(\"inParty\", [\"elena\", \"grove\"])", &env);
         assert_eq!(v, Value::Bool(false));
         assert!(unresolved.is_empty());
         assert_eq!(
@@ -1767,8 +1878,8 @@ mod tests {
     #[test]
     fn integer_modulo_evaluates() {
         let schema = schema_with(&[
-            ("run.day", Type::Number, Some(Literal::Num(14.0))),
-            ("run.half", Type::Number, Some(Literal::Num(2.5))),
+            ("run.day", Type::Int, Some(Literal::Int(14))),
+            ("run.half", Type::Double, Some(Literal::Double(2.5))),
         ]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
@@ -1778,9 +1889,52 @@ mod tests {
             facts: &facts,
         };
         assert_eq!(eval_str("run.day % 7 == 0", &env).0, Value::Bool(true));
-        assert_eq!(eval_str("(run.day + 1) % 7", &env).0, Value::Num(1.0));
-        assert_eq!(eval_str("-7 % 3", &env).0, Value::Num(-1.0));
-        assert_eq!(eval_str("run.half % 2", &env).0, Value::Unknown);
-        assert_eq!(eval_str("run.day % 0", &env).0, Value::Unknown);
+        assert_eq!(eval_str("(run.day + 1) % 7", &env).0, Value::Int(1));
+        assert_eq!(eval_str("-7 % 3", &env).0, Value::Int(-1));
+        assert!(matches!(eval_str("run.half % 2", &env).0, Value::Error(_)));
+        assert!(matches!(eval_str("run.day % 0", &env).0, Value::Error(_)));
+    }
+    #[test]
+    fn cel_numeric_errors_and_list_host_functions() {
+        let schema = schema_with(&[
+            ("run.i", Type::Int, Some(Literal::Int(3))),
+            ("run.d", Type::Double, Some(Literal::Double(3.0))),
+            ("run.visits.hall", Type::Int, Some(Literal::Int(1))),
+        ]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        let vocab = rel_vocab_with(&[("at", false)]);
+        let mut facts = FactStore::new(&vocab);
+        facts.assert("at", &["hall".into()]);
+        let env = EvalEnv { state: &state, facts: &facts };
+        assert_eq!(eval_str("3 + 2", &env).0, Value::Int(5));
+        assert_eq!(eval_str("3.0 + 2.0", &env).0, Value::Double(5.0));
+        assert_eq!(eval_str("int(3.7)", &env).0, Value::Int(3));
+        assert_eq!(eval_str("int(-3.7)", &env).0, Value::Int(-3));
+        assert_eq!(eval_str("int(4)", &env).0, Value::Int(4));
+        assert_eq!(eval_str("double(4.0)", &env).0, Value::Double(4.0));
+        assert_eq!(eval_str("double(4)", &env).0, Value::Double(4.0));
+        assert_eq!(eval_str("1.0 / 0.0", &env).0, Value::Double(f64::INFINITY));
+        assert!(matches!(eval_str("0.0 / 0.0", &env).0, Value::Double(v) if v.is_nan()));
+        assert!(matches!(eval_str("1 / 0", &env).0, Value::Error(_)));
+        assert_eq!(eval_str("false && (1 / 0 == 0)", &env).0, Value::Bool(false));
+        assert_eq!(eval_str("true || (1 / 0 == 0)", &env).0, Value::Bool(true));
+        assert_eq!(eval_str("holds('at', ['hall'])", &env).0, Value::Bool(true));
+        assert_eq!(eval_str("count('at', ['_'])", &env).0, Value::Int(1));
+        assert_eq!(eval_str("has(run.i)", &env).0, Value::Bool(true));
+        assert_eq!(eval_str("'hall' in run.visits", &env).0, Value::Bool(true));
+        assert_eq!(eval_str("run.visits['hall']", &env).0, Value::Int(1));
+        assert_eq!(eval_str("visited('hall')", &env).0, Value::Bool(false));
+        assert!(matches!(eval_str("now()", &env).0, Value::Unknown));
+        assert!(matches!(eval_str("validAt('at', ['hall'], 1)", &env).0, Value::Unknown));
+    }
+    #[test]
+    fn derived_list_query_ignores_empty_undecided_bookkeeping() {
+        let schema = schema_with(&[]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        let vocab = RelVocab::default();
+        let facts = FactStore::new(&vocab)
+            .with_undecided(BTreeMap::from([("prime".into(), Vec::new())]));
+        let env = EvalEnv { state: &state, facts: &facts };
+        assert_eq!(eval_str("holds('prime', ['solt'])", &env).0, Value::Bool(false));
     }
 }

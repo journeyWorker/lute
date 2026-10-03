@@ -275,7 +275,7 @@ fn coverage_counts_the_documents_an_advance_step_presented() {
     write(
         &dir,
         "world.schema.yaml",
-        "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+        "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
          run.slot: { type: { enum: [morning, night] }, default: morning, owner: engine }\n\
          clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, night]\n  raise: dawn\n",
     );

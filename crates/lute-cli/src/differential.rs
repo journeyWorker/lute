@@ -38,7 +38,7 @@ use lute_trace::exec::{
     UnknownSite, Verdict,
 };
 
-use crate::runner::RunDriver;
+use crate::runner::{bind_direct_occasion_target, RunDriver};
 
 /// The in-repo cases the first S1 run compared (§4.2). A run comparing fewer
 /// than 90% of this fails: a broken enumerator must not pass vacuously.
@@ -174,7 +174,7 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
             let mut carry: Option<(BTreeMap<String, Value>, BTreeSet<_>, BTreeMap<_, _>)> = None;
             let mut last = None;
             for id in ids {
-                let m = match carry.take() {
+                let mut m = match carry.take() {
                     None => probed(art, &c.mock, &c.subject.names),
                     Some((s, f, q)) => {
                         let mut mock = c.mock.clone();
@@ -186,7 +186,9 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
                             .with_arm_probe()
                     }
                 };
-                let r = run_one(m.with_entry(id));
+                m = m.with_entry(id);
+                bind_direct_occasion_target(&mut m, art, &c.mock, Some(id), None);
+                let r = run_one(m);
                 transcript.extend(r.transcript.iter().cloned());
                 ir.extend(r.ir.iter().cloned());
                 let stop = r.flags.stops();
@@ -201,11 +203,18 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
         }
         present => {
             let mut m = probed(art, &c.mock, &c.subject.names);
-            match present {
-                Present::Document => {}
-                Present::Entries(ids) => m = m.with_entry(&ids[0]),
-                Present::Beat(id) => m = m.with_bundle_beat(id),
+            let (entry, beat) = match present {
+                Present::Document => (None, None),
+                Present::Entries(ids) => (Some(ids[0].as_str()), None),
+                Present::Beat(id) => (None, Some(id.as_str())),
+            };
+            if let Some(id) = entry {
+                m = m.with_entry(id);
             }
+            if let Some(id) = beat {
+                m = m.with_bundle_beat(id);
+            }
+            bind_direct_occasion_target(&mut m, art, &c.mock, entry, beat);
             let r = run_one(m);
             transcript = r.transcript;
             ir = r.ir;
@@ -390,6 +399,18 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
     if let Some(lit) = node.get("lit") {
         return lute_trace::exec::session::json_to_value(lit).unwrap_or(Value::Unknown);
     }
+    if let Some(i) = node.get("int").and_then(Json::as_i64) {
+        return Value::Int(i);
+    }
+    if let Some(d) = node.get("double").and_then(Json::as_f64) {
+        return Value::Double(d);
+    }
+    if let Some(b) = node.get("bool").and_then(Json::as_bool) {
+        return Value::Bool(b);
+    }
+    if let Some(s) = node.get("string").and_then(Json::as_str) {
+        return Value::Str(s.to_string());
+    }
     if let Some(path) = node.get("path").and_then(Json::as_str) {
         return reads
             .get(path)
@@ -421,12 +442,14 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
     let r = node.get("r").map(|n| expr_node_value(n, reads));
     let eq = |l: &Value, r: &Value| match (l, r) {
         (Value::Bool(a), Value::Bool(b)) => Some(a == b),
-        (Value::Num(a), Value::Num(b)) => Some(a == b),
+        (Value::Int(a), Value::Int(b)) => Some(a == b),
+        (Value::Double(a), Value::Double(b)) => Some(a == b),
         (Value::Str(a), Value::Str(b)) => Some(a == b),
         _ => None,
     };
     let cmp = |l: &Value, r: &Value| match (l, r) {
-        (Value::Num(a), Value::Num(b)) => a.partial_cmp(b),
+        (Value::Int(a), Value::Int(b)) => a.partial_cmp(b),
+        (Value::Double(a), Value::Double(b)) => a.partial_cmp(b),
         (Value::Str(a), Value::Str(b)) => Some(a.cmp(b)),
         _ => None,
     };
@@ -438,7 +461,8 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
             _ => Value::Unknown,
         },
         ("-", None) => match l {
-            Value::Num(n) => Value::Num(-n),
+            Value::Int(n) => n.checked_neg().map(Value::Int).unwrap_or(Value::Unknown),
+            Value::Double(n) => Value::Double(-n),
             _ => Value::Unknown,
         },
         ("&&", Some(r)) => match (l, r) {
@@ -458,18 +482,23 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
         (">", Some(r)) => decided(cmp(&l, &r).map(|o| o == Greater)),
         (">=", Some(r)) => decided(cmp(&l, &r).map(|o| o != Less)),
         ("+", Some(r)) => match (l, r) {
-            (Value::Num(a), Value::Num(b)) => Value::Num(a + b),
+            (Value::Int(a), Value::Int(b)) => a.checked_add(b).map(Value::Int).unwrap_or(Value::Unknown),
+            (Value::Double(a), Value::Double(b)) => Value::Double(a + b),
             (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
             _ => Value::Unknown,
         },
         ("-" | "*" | "/" | "%", Some(r)) => match (l, r) {
-            (Value::Num(a), Value::Num(b)) => match op {
-                "-" => Value::Num(a - b),
-                "*" => Value::Num(a * b),
-                "/" if b != 0.0 => Value::Num(a / b),
-                // dsl 0.24.0 §1: integer `%` (truncated remainder of two
-                // integral values); a fraction or a zero divisor is unknown.
-                "%" if a.fract() == 0.0 && b.fract() == 0.0 && b != 0.0 => Value::Num(a % b + 0.0),
+            (Value::Int(a), Value::Int(b)) => match op {
+                "-" => a.checked_sub(b).map(Value::Int).unwrap_or(Value::Unknown),
+                "*" => a.checked_mul(b).map(Value::Int).unwrap_or(Value::Unknown),
+                "/" if b != 0 => a.checked_div(b).map(Value::Int).unwrap_or(Value::Unknown),
+                "%" if b != 0 => a.checked_rem(b).map(Value::Int).unwrap_or(Value::Unknown),
+                _ => Value::Unknown,
+            },
+            (Value::Double(a), Value::Double(b)) => match op {
+                "-" => Value::Double(a - b),
+                "*" => Value::Double(a * b),
+                "/" if b != 0.0 => Value::Double(a / b),
                 _ => Value::Unknown,
             },
             _ => Value::Unknown,
@@ -965,7 +994,6 @@ fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
                 Some((doc.clone(), prepare(doc, rel, project.as_deref(), &gates)))
             })
             .collect();
-        eprintln!("DIFF_PREPARED_ROOT {} docs={}", root.dir.display(), prepared.len());
         for (doc, subject) in prepared {
             let Some(subject) = subject else { continue };
             let subject = Arc::new(subject);
@@ -1036,7 +1064,6 @@ fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
                 .plays_failed
                 .push(format!("{}: {e}", rel_slash(&play, &root.dir))),
         }
-        eprintln!("DIFF_PLAY_DONE {}", play.display());
     }
     corpus
 }
@@ -1288,8 +1315,10 @@ fn value_text(v: &Value) -> String {
     match v {
         Value::Unknown => "unknown".to_string(),
         Value::Bool(b) => b.to_string(),
+        Value::Int(n) => n.to_string(),
+        Value::Double(n) => num_text(*n),
         Value::Str(s) => s.clone(),
-        Value::Num(n) => num_text(*n),
+        Value::Error(e) => format!("error: {e}"),
     }
 }
 

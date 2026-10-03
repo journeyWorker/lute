@@ -1,0 +1,458 @@
+{
+  "kind": "scene",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "meta": {
+    "id": "celFacts",
+    "title": "CEL Facts"
+  },
+  "state": [],
+  "entities": [
+    {
+      "name": "item",
+      "members": [
+        "map",
+        "key"
+      ],
+      "open": false
+    },
+    {
+      "name": "who",
+      "members": [
+        "mira",
+        "jon"
+      ],
+      "open": false
+    }
+  ],
+  "relations": [
+    {
+      "name": "seen",
+      "args": [
+        "who",
+        "item"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    }
+  ],
+  "seedFacts": [
+    {
+      "relation": "seen",
+      "args": [
+        "jon",
+        "key"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "kind": "assert",
+      "addr": "001-0100",
+      "relation": "seen",
+      "args": [
+        "mira",
+        "map"
+      ]
+    },
+    {
+      "kind": "match",
+      "addr": "001-0200",
+      "subject": {
+        "cel": "holds('seen', ['mira', 'map'])",
+        "expr": {
+          "call": "holds",
+          "args": [
+            {
+              "string": "seen"
+            },
+            {
+              "list": [
+                {
+                  "string": "mira"
+                },
+                {
+                  "string": "map"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(holds('seen', ['mira', 'map']))",
+            "expr": {
+              "call": "holds",
+              "args": [
+                {
+                  "string": "seen"
+                },
+                {
+                  "list": [
+                    {
+                      "string": "mira"
+                    },
+                    {
+                      "string": "map"
+                    }
+                  ]
+                }
+              ]
+            },
+            "authored": "$"
+          },
+          "target": "001-0300"
+        }
+      ],
+      "otherwise": "001-0500",
+      "converge": "001-0600"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0300",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "holds",
+      "lineId": "celFacts.narrator_0010"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0400",
+      "target": "001-0600"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0500",
+      "target": "001-0600"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0600",
+      "subject": {
+        "cel": "count('seen', ['_', '_']) == 2",
+        "expr": {
+          "op": "==",
+          "l": {
+            "call": "count",
+            "args": [
+              {
+                "string": "seen"
+              },
+              {
+                "list": [
+                  {
+                    "string": "_"
+                  },
+                  {
+                    "string": "_"
+                  }
+                ]
+              }
+            ]
+          },
+          "r": {
+            "int": 2
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(count('seen', ['_', '_']) == 2)",
+            "expr": {
+              "op": "==",
+              "l": {
+                "call": "count",
+                "args": [
+                  {
+                    "string": "seen"
+                  },
+                  {
+                    "list": [
+                      {
+                        "string": "_"
+                      },
+                      {
+                        "string": "_"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "r": {
+                "int": 2
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-0700"
+        }
+      ],
+      "otherwise": "001-0900",
+      "converge": "001-1000"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0700",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "count",
+      "lineId": "celFacts.narrator_0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0800",
+      "target": "001-1000"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0900",
+      "target": "001-1000"
+    },
+    {
+      "kind": "match",
+      "addr": "001-1000",
+      "subject": {
+        "cel": "countDistinct('seen', ['_', '_'], 0) == 2",
+        "expr": {
+          "op": "==",
+          "l": {
+            "call": "countDistinct",
+            "args": [
+              {
+                "string": "seen"
+              },
+              {
+                "list": [
+                  {
+                    "string": "_"
+                  },
+                  {
+                    "string": "_"
+                  }
+                ]
+              },
+              {
+                "int": 0
+              }
+            ]
+          },
+          "r": {
+            "int": 2
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(countDistinct('seen', ['_', '_'], 0) == 2)",
+            "expr": {
+              "op": "==",
+              "l": {
+                "call": "countDistinct",
+                "args": [
+                  {
+                    "string": "seen"
+                  },
+                  {
+                    "list": [
+                      {
+                        "string": "_"
+                      },
+                      {
+                        "string": "_"
+                      }
+                    ]
+                  },
+                  {
+                    "int": 0
+                  }
+                ]
+              },
+              "r": {
+                "int": 2
+              }
+            },
+            "authored": "$"
+          },
+          "target": "001-1100"
+        }
+      ],
+      "otherwise": "001-1300",
+      "converge": "001-1400"
+    },
+    {
+      "kind": "line",
+      "addr": "001-1100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "distinct",
+      "lineId": "celFacts.narrator_0030"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1200",
+      "target": "001-1400"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1300",
+      "target": "001-1400"
+    },
+    {
+      "kind": "match",
+      "addr": "001-1400",
+      "subject": {
+        "cel": "validAt('seen', ['mira', 'map'], now())",
+        "expr": {
+          "call": "validAt",
+          "args": [
+            {
+              "string": "seen"
+            },
+            {
+              "list": [
+                {
+                  "string": "mira"
+                },
+                {
+                  "string": "map"
+                }
+              ]
+            },
+            {
+              "call": "now",
+              "args": []
+            }
+          ]
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(validAt('seen', ['mira', 'map'], now()))",
+            "expr": {
+              "call": "validAt",
+              "args": [
+                {
+                  "string": "seen"
+                },
+                {
+                  "list": [
+                    {
+                      "string": "mira"
+                    },
+                    {
+                      "string": "map"
+                    }
+                  ]
+                },
+                {
+                  "call": "now",
+                  "args": []
+                }
+              ]
+            },
+            "authored": "$"
+          },
+          "target": "001-1500"
+        }
+      ],
+      "otherwise": "001-1700",
+      "converge": "001-1800"
+    },
+    {
+      "kind": "line",
+      "addr": "001-1500",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "valid",
+      "lineId": "celFacts.narrator_0040"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1600",
+      "target": "001-1800"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1700",
+      "target": "001-1800"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "Facts"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": [
+      {
+        "name": "count",
+        "overloads": [
+          {
+            "params": [
+              "string",
+              "list(dyn)"
+            ],
+            "result": "int"
+          }
+        ]
+      },
+      {
+        "name": "countDistinct",
+        "overloads": [
+          {
+            "params": [
+              "string",
+              "list(dyn)",
+              "int"
+            ],
+            "result": "int"
+          }
+        ]
+      },
+      {
+        "name": "holds",
+        "overloads": [
+          {
+            "params": [
+              "string",
+              "list(dyn)"
+            ],
+            "result": "bool"
+          }
+        ]
+      },
+      {
+        "name": "now",
+        "overloads": [
+          {
+            "params": [],
+            "result": "int"
+          }
+        ]
+      },
+      {
+        "name": "validAt",
+        "overloads": [
+          {
+            "params": [
+              "string",
+              "list(dyn)",
+              "int"
+            ],
+            "result": "bool"
+          }
+        ]
+      }
+    ]
+  }
+}

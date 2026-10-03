@@ -6,8 +6,8 @@ use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::provider::ProviderSet;
 
 const FM: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-                  run.lab-b2: { type: number, default: 0 }\n  \
-                  run.labB2: { type: number, default: 0 }\n---\n";
+                  run.lab-b2: { type: int, default: 0 }\n  \
+                  run.labB2: { type: int, default: 0 }\n---\n";
 
 fn errors(body: &str) -> Vec<Diagnostic> {
     let input = CheckInput {
@@ -41,7 +41,7 @@ fn bare_and_quoted_spellings_are_one_path() {
         guarded("quest['zero-coke-001'].state == 'active'"),
         guarded("quest['q-1'].objectives['o-1'].done"),
         guarded("run['lab-b2'] > 0 && run.labB2 > 0 && run['labB2'] > 0"),
-        guarded("isSet(run['lab-b2'])"),
+        guarded("'lab-b2' in run"),
         "::set{run[\"lab-b2\"] += 1}".to_string(),
         "::set{run['labB2'] = 2}".to_string(),
         "@narrator: {{run[\"lab-b2\"]}} and {{run.labB2}}.".to_string(),

@@ -2,7 +2,7 @@
 kind: scene
 id: wrap
 on: wrap
-when: 'quest["zero-coke-001"].state == "complete" && holds(regular("lab-b2"))'
+when: 'quest["zero-coke-001"].state == "complete" && holds("regular", ["lab-b2"])'
 ---
 
 ## wrap

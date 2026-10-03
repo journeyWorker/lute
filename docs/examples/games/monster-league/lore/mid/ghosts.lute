@@ -29,8 +29,8 @@ title: Madame Oriel's ghost stories and the three haunts
       ::accept{quest="midGhostLighthouse"}
     </choice>
     <choice id="leave" label="Leave" exit>
-      @silvercrestMedium{when="!holds(hasItem(spectralLens))"}: You'll need to see them, of course, not just hear about them. There's a lens for that, somewhere in this city. Somewhere underground.
-      @silvercrestMedium{when="holds(hasItem(spectralLens))"}: Take that lens of yours and go and look. Then come back and tell me I was right.
+      @silvercrestMedium{when="!holds('hasItem', ['spectralLens'])"}: You'll need to see them, of course, not just hear about them. There's a lens for that, somewhere in this city. Somewhere underground.
+      @silvercrestMedium{when="holds('hasItem', ['spectralLens'])"}: Take that lens of yours and go and look. Then come back and tell me I was right.
     </choice>
   </hub>
 </beat>
@@ -41,7 +41,7 @@ title: Madame Oriel's ghost stories and the three haunts
 
 // ── the old theater (Silvercrest) ─────────────────────────────────────────
 
-<beat id="theaterGhost" on="enterPlace" target="place.silvercrestTheater" title="The theater ghost" once="false" when="holds(hasItem(spectralLens)) && !holds(midGhostSeen(silvercrestTheater))">
+<beat id="theaterGhost" on="enterPlace" target="place.silvercrestTheater" title="The theater ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['silvercrestTheater'])">
   ::bg{location="silvercrest-theater" time="night"}
   ::music{action="change" mood="eerie" volume="down"}
   @narrator: Dust sheets over the seats, and a spotlight that nobody switched on. On the stage, through the lens, a woman in a silver gown is bowing to an empty house.
@@ -50,17 +50,17 @@ title: Madame Oriel's ghost stories and the three haunts
   ::encounter{species="wraithling" level="30"}
 </beat>
 
-<entry id="midTheaterAfter" on="enterPlace" target="place.silvercrestTheater" category="bark" priority="-5" when="holds(midGhostSeen(silvercrestTheater))">
+<entry id="midTheaterAfter" on="enterPlace" target="place.silvercrestTheater" category="bark" priority="-5" when="holds('midGhostSeen', ['silvercrestTheater'])">
   @narrator: The theater is only a theater now. Somebody has lowered the curtain.
 </entry>
 
-<entry id="midTheaterEmpty" on="enterPlace" target="place.silvercrestTheater" category="bark" priority="-10" when="!holds(hasItem(spectralLens))">
+<entry id="midTheaterEmpty" on="enterPlace" target="place.silvercrestTheater" category="bark" priority="-10" when="!holds('hasItem', ['spectralLens'])">
   @narrator: Rows of dusty seats, a bare stage and a draught that smells of greasepaint. For a moment you are sure somebody is clapping.
 </entry>
 
 // ── the well (Wardenmere) ─────────────────────────────────────────────────
 
-<beat id="wellGhost" on="enterPlace" target="place.wardenmereWell" title="The well ghost" once="false" when="holds(hasItem(spectralLens)) && !holds(midGhostSeen(wardenmereWell))">
+<beat id="wellGhost" on="enterPlace" target="place.wardenmereWell" title="The well ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['wardenmereWell'])">
   ::bg{location="wardenmere-well" time="night"}
   ::music{action="change" mood="eerie" volume="down"}
   @narrator: You lean over the well and look down through the lens. Far below, a girl looks up and sings the first line of a song you almost know.
@@ -69,17 +69,17 @@ title: Madame Oriel's ghost stories and the three haunts
   ::encounter{species="wisplet" level="28"}
 </beat>
 
-<entry id="midWellAfter" on="enterPlace" target="place.wardenmereWell" category="bark" priority="-5" when="holds(midGhostSeen(wardenmereWell))">
+<entry id="midWellAfter" on="enterPlace" target="place.wardenmereWell" category="bark" priority="-5" when="holds('midGhostSeen', ['wardenmereWell'])">
   @narrator: You drop a pebble down the well. It lands with a plop, and then, very softly, a hum finishes the tune.
 </entry>
 
-<entry id="midWellEmpty" on="enterPlace" target="place.wardenmereWell" category="bark" priority="-10" when="!holds(hasItem(spectralLens))">
+<entry id="midWellEmpty" on="enterPlace" target="place.wardenmereWell" category="bark" priority="-10" when="!holds('hasItem', ['spectralLens'])">
   @narrator: An old stone well with a bucket and no rope. The water at the bottom is very still, and your reflection takes a moment too long to wave back.
 </entry>
 
 // ── the lighthouse (Fairhaven) ────────────────────────────────────────────
 
-<beat id="lighthouseGhost" on="enterPlace" target="place.fairhavenLighthouse" title="The lighthouse ghost" once="false" when="holds(hasItem(spectralLens)) && !holds(midGhostSeen(fairhavenLighthouse))">
+<beat id="lighthouseGhost" on="enterPlace" target="place.fairhavenLighthouse" title="The lighthouse ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['fairhavenLighthouse'])">
   ::bg{location="fairhaven-lighthouse" time="night"}
   ::music{action="change" mood="eerie" volume="down"}
   @narrator: A hundred and twelve steps to the lamp room. At the top, through the lens, an old man in oilskins is striking match after match against the dead lamp.
@@ -88,10 +88,10 @@ title: Madame Oriel's ghost stories and the three haunts
   ::encounter{species="phantomaw" level="34"}
 </beat>
 
-<entry id="midLighthouseAfter" on="enterPlace" target="place.fairhavenLighthouse" category="bark" priority="-5" when="holds(midGhostSeen(fairhavenLighthouse))">
+<entry id="midLighthouseAfter" on="enterPlace" target="place.fairhavenLighthouse" category="bark" priority="-5" when="holds('midGhostSeen', ['fairhavenLighthouse'])">
   @narrator: The lamp room is quiet. On the rail, a matchbox with one match left in it. You leave it where it is.
 </entry>
 
-<entry id="midLighthouseEmpty" on="enterPlace" target="place.fairhavenLighthouse" category="bark" priority="-10" when="!holds(hasItem(spectralLens))">
+<entry id="midLighthouseEmpty" on="enterPlace" target="place.fairhavenLighthouse" category="bark" priority="-10" when="!holds('hasItem', ['spectralLens'])">
   @narrator: A hundred and twelve steps up to a dead lamp and a smell of matches. There are burnt matches all over the floor. Some of them are new.
 </entry>

@@ -157,7 +157,7 @@ fn line_text_exactly_a_declared_param_warns() {
 #[test]
 fn line_text_exactly_a_declared_def_warns_and_an_unknown_name_does_not() {
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
-                 defs:\n  twice: { type: number, body: \"2 * 3\" }\n---\n## Shot 1.\n\
+                 defs:\n  twice: { type: int, body: \"2 * 3\" }\n---\n## Shot 1.\n\
                  @narrator: @twice\n@narrator: @nobody\n@narrator: say @twice now\n";
     let diags = check_text(scene, Default::default());
     let hits: Vec<_> = diags

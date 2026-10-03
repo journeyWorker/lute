@@ -7,4 +7,4 @@ assetKinds:
     segments:
       - { name: prefix,  const: PT }
       - { name: actor,   type: { providerRef: castId } }
-      - { name: variant, type: number }
+      - { name: variant, type: int }

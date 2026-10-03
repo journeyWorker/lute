@@ -16,7 +16,7 @@ facts:\n  - \"listed(ann)\"\n  - \"toured(ann, t1)\"\n";
 /// A scene whose `rules:` are `rules`, one line guarded on `traveled(ann)`.
 fn scene(rules: &[&str]) -> String {
     let rules: String = rules.iter().map(|r| format!("  - \"{r}\"\n")).collect();
-    format!("{HDR}rules:\n{rules}---\n## Shot 1.\n@narrator{{when=\"holds(traveled(ann))\"}}: a\n")
+    format!("{HDR}rules:\n{rules}---\n## Shot 1.\n@narrator{{when=\"holds('traveled', ['ann'])\"}}: a\n")
 }
 
 fn diags(text: &str) -> Vec<Diagnostic> {

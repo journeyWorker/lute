@@ -6,7 +6,7 @@ on: enterPlace
 target: place.sunfallShrine
 after: 'visited("isles.shrine")'
 once: false
-when: "!holds(defeated(duskAdminNyx))"
+when: "!holds('defeated', ['duskAdminNyx'])"
 priority: 10
 ---
 

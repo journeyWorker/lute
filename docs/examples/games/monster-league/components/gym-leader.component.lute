@@ -7,7 +7,7 @@ params:
   intro: string
   win: string      # the player won: the leader hands over the badge
   lose: string     # the player lost
-  prize: number
+  prize: int
 ---
 
 ## Gym leader

@@ -21,7 +21,7 @@ A schema declares at most one clock, beside the state it reads:
 ```yaml
 # world.schema.yaml
 state:
-  run.day:  { type: number, default: 1, owner: engine }
+  run.day:  { type: int, default: 1, owner: engine }
   run.slot: { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }
 entities:
   person: { members: [wren, hale] }
@@ -38,7 +38,7 @@ clock:
 
 | Key | Meaning |
 |---|---|
-| `day` | required; a `number` state path declared `owner: engine`. Day 1 is the first day |
+| `day` | required; an `int` state path declared `owner: engine`. Day 1 is the first day |
 | `slot` | optional; an enum state path declared `owner: engine`, inline (`{ enum: [...] }`) or a named domain (`{ domain: slot }`). `slot` and `slots` come together or not at all |
 | `slots` | with `slot`; the slot enum's members, each exactly once, in the order a day runs through them. The enum's own member order does not matter; this list is the clock's order |
 | `raise` | optional; the occasion the engine raises after every advance of the clock, where it stops, so beats can answer "a new slot has started". Or a map naming an occasion for each moment, each key optional: `{ slot, dayStart, dayEnd }` (see [Moving time](#moving-time)) |
@@ -73,7 +73,7 @@ Everything wrong with a clock is `E-CLOCK-DECL`:
   repeated `slots` list, a `week.length` of 0, a `week.first` outside `0..length-1`, or a
   `week.labels` list whose length is not `week.length` (`week.labels` is a list, one label per
   weekday; an enum's or entity kind's `labels:` is the map);
-- a `day` or `slot` path that is not declared, not of the right type (`day` a `number`, `slot` an
+- a `day` or `slot` path that is not declared, not of the right type (`day` an `int`, `slot` an
   enum), the same path twice, or not `owner: engine`; a `day` path whose default is below 1 (the
   clock counts from day 1);
 - `slots` that are not exactly the slot enum's members;
@@ -107,10 +107,10 @@ deadline, `{{…}}`.
 
 | Path | Type | Value |
 |---|---|---|
-| `clock.day` | number | the day path's value (`run.day` above) |
+| `clock.day` | int | the day path's value (`run.day` above) |
 | `clock.slot` | enum of `slots` | the slot path's value. Only on a clock with slots |
-| `clock.index` | number | `(day - 1) * len(slots) + ` the slot's position in `slots` (from 0); `day - 1` on a clock without slots. It only grows: day 1 morning is 0, day 1 night is 2, day 2 morning is 3 |
-| `clock.weekday` | whole number `0..length-1` | `(week.first + day - 1) mod week.length`. Only with a `week:` |
+| `clock.index` | int | `(day - 1) * len(slots) + ` the slot's position in `slots` (from 0); `day - 1` on a clock without slots. It only grows: day 1 morning is 0, day 1 night is 2, day 2 morning is 3 |
+| `clock.weekday` | int `0..length-1` | `(week.first + day - 1) mod week.length`. Only with a `week:` |
 | `clock.weekdayLabel` | enum of `week.labels` | `week.labels[clock.weekday]`, renderable in `{{…}}`. Only with `week.labels` |
 | `clock.ended` | bool | `true` once a finite clock has ended ([A clock that ends](#a-clock-that-ends)). Only with `last:` / `days:` |
 
@@ -553,7 +553,7 @@ plays. The checker warns at the `by`:
 quests/q.lute:8:69: warning [W-DEADLINE-BEFORE-WINDOW] objective `lamp` fails before it can be done: its `done` `visited('ward.lamp')` can first hold at day 2 h03, but its deadline `by: clock.index > 8` already holds at day 2 h01 — move the deadline after that window
 ```
 
-Here `ward.lamp` is eligible only while `holds(lit(hall))`, and the one rule for `lit(hall)` is
+Here `ward.lamp` is eligible only while `holds('lit', ['hall'])`, and the one rule for `lit(hall)` is
 `cel("run.night == 2 && run.hour == 'h03'")`. A `done` that comes true on the same arrival as the
 deadline is not a problem, because `done` wins the tie.
 
@@ -662,7 +662,7 @@ reading `X`, so a domain used only to type state no longer draws `W-DOMAIN-UNREA
 ### Integer `%`
 
 `%` is the integer remainder, and it joins the CEL profile (it used to be `E-CEL-PROFILE`). "Every
-seventh day" is now a condition, and a def over it is typed `number` by inference:
+seventh day" is now a condition, and a def over it is typed `int` by inference:
 
 ```lute check
 ---
@@ -672,7 +672,7 @@ on: townVisit
 when: "@restDay"
 once: false
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 defs:
   restDay: "run.day % 7 == 0"
 ---
@@ -684,7 +684,7 @@ defs:
 @narrator: The shutters stay down. Nobody works on the seventh day.
 ```
 
-Both operands must be integers. A non-number operand (`'a' % 2`, a bool path) or a fractional
+Both operands must be integers. A non-`int` operand (`'a' % 2`, a bool path) or a fractional
 literal is `E-CEL-TYPE`:
 
 ```lute expect="E-CEL-TYPE"
@@ -694,7 +694,7 @@ id: square.restDay
 on: townVisit
 when: "run.day % 2.5 == 0"
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 ---
 
 # The square
@@ -704,7 +704,7 @@ state:
 @narrator: Half a rest.
 ```
 
-A number path cannot be proven whole by the checker, so the rest of the rule is the engine's. The
+A numeric path cannot be proven whole by the checker, so the rest of the rule is the engine's. The
 result is the truncated remainder, which takes the sign of the dividend: `-7 % 3 == -1`, and
 `7 % -3 == 1`. A fractional value or a zero divisor makes the result unknown, never a fractional
 remainder or a crash. `lute trace`, `lute test`, `lute play`, and the condition decider all follow
@@ -720,9 +720,9 @@ A single conditional write used to need a `<match>` or `<when>` around it. `when
 kind: scene
 id: bakery.visit
 state:
-  run.day: { type: number, default: 1 }
-  run.aff.wren: { type: number, default: 0 }
-  run.warmed.wren: { type: number, default: 0 }
+  run.day: { type: int, default: 1 }
+  run.aff.wren: { type: int, default: 0 }
+  run.warmed.wren: { type: int, default: 0 }
 ---
 
 # The bakery
@@ -743,8 +743,8 @@ provably never hold:
 kind: scene
 id: bakery.visit
 state:
-  run.day: { type: number, default: 1 }
-  run.aff.wren: { type: number, default: 0 }
+  run.day: { type: int, default: 1 }
+  run.aff.wren: { type: int, default: 0 }
 ---
 
 # The bakery

@@ -288,7 +288,7 @@ pub fn translate_cel_parse(
     }
 
     // Rule 7 (dsl 0.24 T3-8): a fact query over a relation named like a CEL
-    // macro/keyword (`holds(has(lamp))`) — the declaration is
+    // macro/keyword (`holds('has', ['lamp'])`) — the declaration is
     // `E-RESERVED-NAME`; say why this use cannot parse.
     if let Some((start, end, name)) = scan_reserved_query_relation(raw, &mask) {
         return Translation {
@@ -346,26 +346,43 @@ fn scan_reserved_query_relation<'r>(
             continue;
         }
         let mut j = i;
-        while j < b.len() && b[j] == b' ' {
+        while j < b.len() && b[j].is_ascii_whitespace() {
             j += 1;
         }
         if b.get(j) != Some(&b'(') {
             continue;
         }
         j += 1;
-        while j < b.len() && b[j] == b' ' {
+        while j < b.len() && b[j].is_ascii_whitespace() {
             j += 1;
         }
+        let quote = *b.get(j)?;
+        if !matches!(quote, b'\'' | b'"') {
+            continue;
+        }
+        j += 1;
         let rs = j;
-        while j < b.len() && is_ident(b[j]) {
+        while j < b.len() && b[j] != quote {
             j += 1;
         }
-        let rel = &raw[rs..j];
-        while j < b.len() && b[j] == b' ' {
+        let re = j;
+        if b.get(j) != Some(&quote) {
+            continue;
+        }
+        j += 1;
+        while j < b.len() && b[j].is_ascii_whitespace() {
             j += 1;
         }
-        if b.get(j) == Some(&b'(') && lute_manifest::reserved::is_cel_word(rel) {
-            return Some((rs, rs + rel.len(), rel));
+        if b.get(j) != Some(&b',') {
+            continue;
+        }
+        j += 1;
+        while j < b.len() && b[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        let rel = &raw[rs..re];
+        if b.get(j) == Some(&b'[') && lute_manifest::reserved::is_cel_word(rel) {
+            return Some((rs, re, rel));
         }
     }
     None

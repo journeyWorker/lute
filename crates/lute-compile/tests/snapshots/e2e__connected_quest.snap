@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "quest",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {},
   "state": [
     {
@@ -45,9 +45,9 @@ expression: json
       "title": "Return to the Overlook",
       "titleLineId": "overlookReturn.title",
       "start": {
-        "raw": "true",
+        "cel": "true",
         "expr": {
-          "lit": true
+          "bool": true
         }
       },
       "objectives": [
@@ -56,7 +56,7 @@ expression: json
           "title": "Return to the overlook",
           "titleLineId": "overlookReturn.returned",
           "done": {
-            "raw": "run.returnedToOverlook",
+            "cel": "run.returnedToOverlook",
             "expr": {
               "path": "run.returnedToOverlook"
             }
@@ -73,5 +73,15 @@ expression: json
       "node": "overlookReturn",
       "follows": "visited('kestrel.s01ep01')"
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
 }

@@ -5,7 +5,7 @@ title: The radio room
 on: visit
 target: place.radio
 priority: 20
-when: "holds(at(sol, radio))"
+when: "holds('at', ['sol', 'radio'])"
 ---
 
 ## The radio room

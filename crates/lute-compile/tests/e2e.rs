@@ -109,12 +109,12 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
         }
         for arm in c["arms"].as_array().into_iter().flatten() {
             assert_target(arm["target"].as_str().unwrap(), &valid);
-            assert_cel_clean("match.arm.test", arm["test"].as_str().unwrap());
+            assert_cel_clean("match.arm.test", arm["test"]["cel"].as_str().unwrap());
         }
         for opt in c["options"].as_array().into_iter().flatten() {
             assert_target(opt["target"].as_str().unwrap(), &valid);
             assert!(opt["lineId"].as_str().is_some_and(|s| !s.is_empty()));
-            if let Some(when) = opt["when"].as_str() {
+            if let Some(when) = opt["when"]["cel"].as_str() {
                 assert_cel_clean("choice.option.when", when);
             }
         }
@@ -132,22 +132,19 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
                 );
                 assert!(c.get("code").is_none(), "no standalone code field (§4.2)");
             }
-            Some("match") => assert_cel_clean("match.subject", c["subject"].as_str().unwrap()),
-            Some("set") => assert_cel_clean("set.value", c["value"].as_str().unwrap()),
-            // dsl 0.2.0 quest/on records (IR addendum §3): `start`/`fail`/
-            // `done`/`when` are `{raw, expr}` CEL pairs — clean; each
-            // objective/on `body` target resolves like any other
-            // control-flow target (same `valid` set, quest-indexed units).
+            Some("match") => assert_cel_clean("match.subject", c["subject"]["cel"].as_str().unwrap()),
+            Some("set") => assert_cel_clean("set.value", c["value"]["cel"].as_str().unwrap()),
+            // Quest/on records carry CEL slot objects with `cel` and `expr`.
             Some("quest") => {
-                if let Some(start) = c["start"]["raw"].as_str() {
+                if let Some(start) = c["start"]["cel"].as_str() {
                     assert_cel_clean("quest.start", start);
                 }
-                if let Some(fail) = c["fail"]["raw"].as_str() {
+                if let Some(fail) = c["fail"]["cel"].as_str() {
                     assert_cel_clean("quest.fail", fail);
                 }
                 for obj in c["objectives"].as_array().into_iter().flatten() {
-                    assert_cel_clean("objective.done", obj["done"]["raw"].as_str().unwrap());
-                    if let Some(when) = obj["visibleWhen"]["raw"].as_str() {
+                    assert_cel_clean("objective.done", obj["done"]["cel"].as_str().unwrap());
+                    if let Some(when) = obj["visibleWhen"]["cel"].as_str() {
                         assert_cel_clean("objective.visibleWhen", when);
                     }
                     if let Some(body) = obj["body"].as_str() {
@@ -156,7 +153,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
                 }
             }
             Some("on") => {
-                if let Some(when) = c["when"]["raw"].as_str() {
+                if let Some(when) = c["when"]["cel"].as_str() {
                     assert_cel_clean("on.when", when);
                 }
                 assert_target(c["body"].as_str().expect("on.body"), &valid);
@@ -164,7 +161,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
             // dsl 0.19.0 §7: the entry `body` is the `on.body` convention —
             // a resolvable target (an empty body = the unit's one-past-end).
             Some("entry") => {
-                if let Some(when) = c["when"]["raw"].as_str() {
+                if let Some(when) = c["when"]["cel"].as_str() {
                     assert_cel_clean("entry.when", when);
                 }
                 assert_target(c["body"].as_str().expect("entry.body"), &valid);
@@ -172,7 +169,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
             // dsl 0.23.0 §4: a bundle beat's `body` follows the entry
             // convention, and its `when` is expanded like every CEL slot.
             Some("beat") => {
-                if let Some(when) = c["when"]["raw"].as_str() {
+                if let Some(when) = c["when"]["cel"].as_str() {
                     assert_cel_clean("beat.when", when);
                 }
                 assert_target(c["body"].as_str().expect("beat.body"), &valid);
@@ -189,7 +186,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
     }
     // dsl 0.21.0 §3.1: a scene beat's `when` is `@def`-expanded like every
     // other CEL slot.
-    if let Some(when) = json["meta"]["beat"]["when"]["raw"].as_str() {
+    if let Some(when) = json["meta"]["beat"]["when"]["cel"].as_str() {
         assert_cel_clean("meta.beat.when", when);
     }
     // Retired identifier must not exist anywhere (§4.2).
@@ -343,9 +340,9 @@ fn lore_beat_barks() {
 }
 
 /// dsl 0.21.0 §7a.1/§7a.2/§8: quests meet occasions. `visited('<scene id>')`
-/// is out of the portable `expr` profile like `holds(…)`, so its `done` pair
-/// carries `raw` alone; the `on="runEnd"` objective gains `on` appended after
-/// every 0.20 objective field, and the continuous objective has none.
+/// is an admitted host call and every quest/objective condition is a `{cel,
+/// expr}` slot; the `on="runEnd"` objective gains `on` appended after every
+/// 0.20 objective field, and the continuous objective has none.
 #[test]
 fn quest_occasions() {
     golden(

@@ -4,11 +4,11 @@
 # affection, the route, the ending, and the locks it sets. user.* and the
 # user-tier relations are the save's memory across terms (NG+).
 state:
-  run.day:  { type: number, default: 1, owner: engine }
+  run.day:  { type: int, default: 1, owner: engine }
   run.slot: { type: { domain: slot }, default: morning, owner: engine }
 
   # Affection per love interest, this term: run.aff.ren, run.aff.mika, ...
-  run.aff: { type: number, default: 0, per: suitor }
+  run.aff: { type: int, default: 0, per: suitor }
   # Whose lantern you floated at the festival (day 6). `none` until then.
   run.route:  { type: { domain: route }, default: none }
   # Which ending the term reached (set on day 10). NG+ reads prev.run.ending.
@@ -16,15 +16,15 @@ state:
   # The midterm grade (day 4). No default: unset until the exam is sat.
   run.exam: { type: { domain: grade } }
   # Paper lanterns folded for the festival (the festivalPrep quest).
-  run.lanterns: { type: number, default: 0 }
+  run.lanterns: { type: int, default: 0 }
   # Evenings spent studying with Soren before the exam.
-  run.study: { type: number, default: 0 }
+  run.study: { type: int, default: 0 }
 
   # The last day someone lit the dorm window's lanterns (the lampDuty quest).
-  run.lampDay: { type: number, default: 0 }
+  run.lampDay: { type: int, default: 0 }
 
   # How many terms this save has finished (the ending component counts them).
-  user.terms: { type: number, default: 0 }
+  user.terms: { type: int, default: 0 }
 
 # Day 1 is a Monday. The engine raises slotStart wherever an advance stops,
 # and once where a term starts (day 1 morning: the ferry arrival).
@@ -93,4 +93,4 @@ defs:
   ngPlus: "user.terms >= 1"
   festivalNight: "run.day == 6 && run.slot == 'evening'"
   # The good-ending bar for a route's affection.
-  devoted: { type: bool, params: { s: number }, cel: "s >= 7" }
+  devoted: { type: bool, params: { s: int }, cel: "s >= 7" }

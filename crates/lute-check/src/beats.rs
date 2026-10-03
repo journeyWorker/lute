@@ -1999,10 +1999,9 @@ struct Beat<'a> {
     /// explains, since only these are the author's to change.
     stated: Option<String>,
     stated_dnf: Option<crate::reachability::Dnf>,
-    /// The facts the beat asserts that may hold before it plays, as
-    /// `holds(rel(a,b))` pseudo-paths, each with why — what a tie message
-    /// says when another beat reads one.
-    persists: Vec<(String, String)>,
+    /// Facts the beat asserts that may hold before it plays: diagnostic
+    /// ground fact, canonical query pattern pseudo-path, and persistence reason.
+    persists: Vec<(String, String, String)>,
     /// The flag that stays set across runs once the beat played:
     /// `visited('<id>')` for a scene or bundle beat, `entry.<id>.everRead`
     /// for an entry.
@@ -2186,7 +2185,7 @@ pub fn check_project_beats(
             ) {
                 match f.persists {
                     None => absent.push(format!("!{}", f.query)),
-                    Some(why) => persists.push((f.query.replace(", ", ","), why)),
+                    Some(why) => persists.push((f.key, f.pattern, why)),
                 }
             }
             // dsl 0.27.0 (T3-11): what the beat's `after:` requires — a
@@ -2905,7 +2904,11 @@ fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> Why {
                 x.ever_flag
             ));
         }
-        if let Some((fact, why)) = x.persists.iter().find(|(f, _)| dy.requires_true(f)) {
+        if let Some((fact, _, why)) = x
+            .persists
+            .iter()
+            .find(|(_, pattern, _)| dy.requires_true(pattern))
+        {
             return Why::Other(format!(
                 "{} reads `{fact}`, which {} asserts, but {why}",
                 y.name, x.name
@@ -3007,13 +3010,13 @@ pub(crate) fn read_tier(expr: &cel_parser::ast::Expr, tiers: &UserTier<'_>) -> O
             )
         }
         Expr::Call(c) if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct") => {
-            let relation = match c.args.first().map(|a| &a.expr) {
-                Some(Expr::Call(atom)) if c.target.is_none() => {
-                    tiers.relations.get(&atom.func_name)
-                }
-                _ => None,
-            };
-            Some(match relation.map(|r| r.tier.as_deref()) {
+            let relation = crate::fact_env::QueryPattern::from_call(c)
+                .map(|q| q.relation);
+            Some(match relation
+                .as_deref()
+                .and_then(|name| tiers.relations.get(name))
+                .map(|r| r.tier.as_deref())
+            {
                 Some(None | Some("run")) => ReadTier::Run,
                 Some(Some("user")) => ReadTier::User,
                 Some(Some("app")) => ReadTier::App,
@@ -3082,10 +3085,10 @@ pub(crate) fn read_tiers(
 
 /// `when` (already `@def`-expanded) reads at least one piece of state, every
 /// one of them user-tier ([`ReadTier::User`]), and calls no function but the
-/// CEL operators, `isSet`/`has`, and a query of a user-tier relation. A
-/// run-tier relation or quest, `visited()`, or `now()` may change within a
-/// run. `prev.run.*` is the previous run's snapshot, which every run
-/// replaces: run history, not user-tier (dsl 0.23.1).
+/// CEL operators, `has`, and a query of a user-tier relation. A run-tier
+/// relation or quest, `visited()`, or `now()` may change within a run.
+/// `prev.run.*` is the previous run's snapshot, which every run replaces:
+/// run history, not user-tier (dsl 0.23.1).
 fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
     use cel_parser::ast::Expr;
     fn walk(expr: &Expr, tiers: &UserTier<'_>, reads: &mut usize) -> bool {

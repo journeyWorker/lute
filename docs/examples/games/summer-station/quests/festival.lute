@@ -19,10 +19,10 @@ title: The Lantern Festival
 
 // Accepted in wren.first. The lantern must be finished before the festival.
 <quest id="lantern" title="Wren's lantern" tier="run">
-  <objective id="paper" title="Find paper that won't tear in the wind" done="holds(carrying(paper))"/>
-  <objective id="wire" title="Beg some wire off the radio room" done="holds(carrying(wire))"/>
-  <objective id="candle" title="Find a candle that burns slow" done="holds(carrying(candle))"/>
-  <objective id="build" title="Build it with Wren before Sunday" on="visit" target="place.village" done="count(carrying(_)) >= 3" by="run.day >= 7"/>
+  <objective id="paper" title="Find paper that won't tear in the wind" done="holds('carrying', ['paper'])"/>
+  <objective id="wire" title="Beg some wire off the radio room" done="holds('carrying', ['wire'])"/>
+  <objective id="candle" title="Find a candle that burns slow" done="holds('carrying', ['candle'])"/>
+  <objective id="build" title="Build it with Wren before Sunday" on="visit" target="place.village" done="count('carrying', ['_']) >= 3" by="run.day >= 7"/>
   <reward kind="KEEPSAKE" amount="1"/>
   <on event="questComplete">
     @narrator: The lantern stands on Wren's windowsill, ribbed with radio wire, waiting for Sunday.

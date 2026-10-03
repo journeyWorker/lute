@@ -25,11 +25,11 @@ fn scene(body: &str, state: &str) -> String {
     )
 }
 
-fn artifact_json(artifact: &lute_compile::Artifact) -> serde_json::Value {
+fn artifact_json(artifact: &lute_compile::ExecutionIr) -> serde_json::Value {
     serde_json::to_value(artifact).expect("artifact serializes")
 }
 
-fn batch(text: &str) -> lute_compile::Artifact {
+fn batch(text: &str) -> lute_compile::ExecutionIr {
     let input = input(text);
     let checked = lute_check::check(&input);
     compile_with_check(&input, checked, &IdentityTemplates::default())
@@ -40,7 +40,7 @@ fn batch(text: &str) -> lute_compile::Artifact {
 fn cumulative_reanalysis_carries_state_between_units() {
     let prefix = scene(
         "",
-        "state:\n  run.value: { type: number }\n  run.result: { type: number }\n",
+        "state:\n  run.value: { type: int }\n  run.result: { type: int }\n",
     );
     let mut compiler = ContinuationCompiler::new(input(&prefix), IdentityTemplates::default())
         .expect("valid scene template");

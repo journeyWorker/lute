@@ -84,6 +84,21 @@ pub(crate) fn lift_def(name: &str, v: &Value) -> Result<Value, String> {
             ))
         }
     }
+    if let Some(params) = v.get("params").and_then(|p| p.as_mapping()) {
+        for (param, value) in params {
+            let ty = value.get("type").unwrap_or(value);
+            if ty.as_str() == Some("number") {
+                return Err(format!(
+                    "invalid def `{name}` parameter `{}`: {}",
+                    param.as_str().unwrap_or("?"),
+                    lute_manifest::types::NUMBER_TYPE_REMOVED
+                ));
+            }
+        }
+    }
+    if v.get("type").and_then(|t| t.as_str()) == Some("number") {
+        return Err(format!("invalid def `{name}`: {}", lute_manifest::types::NUMBER_TYPE_REMOVED));
+    }
     match v.get("type") {
         Some(t) if serde_yaml::from_value::<Type>(t.clone()).is_err() => Err(format!(
             "invalid def `{name}`: `type:` is not a type; a def produces `bool`, `number`, \

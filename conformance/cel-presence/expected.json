@@ -1,0 +1,28 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "kind": "match",
+      "result": "otherwise"
+    },
+    {
+      "addr": "001-0500",
+      "kind": "match",
+      "result": "arm 1"
+    },
+    {
+      "addr": "001-0600",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "keyed presence"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.32",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.visits": true
+  }
+}

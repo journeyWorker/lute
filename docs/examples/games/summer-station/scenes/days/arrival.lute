@@ -13,7 +13,7 @@ when: "run.day == 1 && run.slot == 'morning'"
 ::music{action="start" mood="peaceful" volume="down"}
 @narrator: The funicular car shudders the last ten metres and stops against the buffers with a sound like a dropped drawer.
 @narrator: Hallen Ridge Weather Station: two stone huts, a mast, a white louvred box on legs, and more sky than you have ever been under.
-@narrator{when="isSet(prev.run.route)"}: It looks exactly as you left it last summer. The door still sticks.
+@narrator{when="has(prev.run.route)"}: It looks exactly as you left it last summer. The door still sticks.
 
 ::use{component="enter" who="ines"}
 @ines{emotion="stern"}: You're the intern. You're early. Good.

@@ -14,12 +14,12 @@ series: frostCodex
   ::assert{learned(lanternSea)}
 </entry>
 
-<entry id="frostKingPage" on="codexOpen" target="topic.frostKing" title="The Frost King" when="holds(learned(lanternSea))">
+<entry id="frostKingPage" on="codexOpen" target="topic.frostKing" title="The Frost King" when="holds('learned', ['lanternSea'])">
   @narrator: Before he was hollow he was the Frost King, and his first wish was for winter to stay. It did. He drowned the lantern himself.
   ::assert{learned(frostKing)}
 </entry>
 
-<entry id="nyxOathPage" on="codexOpen" target="topic.nyxOath" title="Nyx's Oath" when="holds(owned(nyx))">
+<entry id="nyxOathPage" on="codexOpen" target="topic.nyxOath" title="Nyx's Oath" when="holds('owned', ['nyx'])">
   @nyx{emotion="shy"}: I swore to keep one candle lit for every wish nobody kept. It's a lot of candles.
   ::assert{learned(nyxOath)}
 </entry>

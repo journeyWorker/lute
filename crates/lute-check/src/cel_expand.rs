@@ -334,7 +334,7 @@ mod tests {
             .map(|(k, ps)| {
                 (
                     k.to_string(),
-                    ps.iter().map(|n| (n.to_string(), Type::Number)).collect(),
+                    ps.iter().map(|n| (n.to_string(), Type::Int)).collect(),
                 )
             })
             .collect();

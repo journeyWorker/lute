@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 uses: ../world.schema.yaml
 title: Who Wakes
 ---
@@ -14,9 +14,9 @@ title: Who Wakes
   the earliest node in the route graph from which the question can be asked.
 */
 <quest id="whoWakes" tier="run" title="Who Wakes" start="true" follows="visited('haven.s01ep01')">
-<objective id="bringSomebodyUp" title="Bring somebody up out of the bank" done="count(awake(_)) >= 2"/>
+<objective id="bringSomebodyUp" title="Bring somebody up out of the bank" done="count('awake', ['_']) >= 2"/>
 <objective id="knowTheExchange" title="Learn what a body costs the schedule" done="run.shedPressure >= 1" visibleWhen="quest.whoWakes.objectives.bringSomebodyUp.done"/>
-<objective id="theFifthBody" title="Find the one the ship never counted" done="holds(found(ottavio))" optional/>
+<objective id="theFifthBody" title="Find the one the ship never counted" done="holds('found', ['ottavio'])" optional/>
 <on event="questComplete">
 @narrator: Two of you up, and a schedule that had already read the bill.
 </on>

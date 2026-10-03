@@ -25,7 +25,7 @@ Since 0.22.0 the surface also carries what a model otherwise reads out of siblin
 - On `occasions`, each occasion's `description` and its `target` — `false`, `true` (shape-only), or a `{ prefix, entity }` domain whose beat targets must be `<prefix>.<member>`.
 - **Component signatures** in the human outline — each imported component with its parameters and their types, as JSON `components` already carried them — so a model writes `::use{component="…" …}` against the signature, not just the name.
 
-The human outline prints the same additions — `defs (N):`, `builtinDirectives (N):`, the `scenes`/`quests`/`entries` id lists, `run.day: number (owner: engine)`, `knows/1(item) [run]`, and `talk (select: first, target: npc.<npc>)`.
+The human outline prints the same additions — `defs (N):`, `builtinDirectives (N):`, the `scenes`/`quests`/`entries` id lists, `run.day: int (owner: engine)`, `knows/1(item) [run]`, and `talk (select: first, target: npc.<npc>)`.
 
 ## Feedback loop: `lute check --json`
 
@@ -142,7 +142,7 @@ $ lute context docs/examples/property-tracks.lute --project docs/examples --json
 
 Both keys are folded into `capabilityVersion`, so the prompt-cache key already moves when a vocabulary does. If the union is empty for a slot the document needs, the fix is a *declaration*, not a different attribute value — see [Content vocabulary](/language/vocabulary/) for the three routes. Two follow-on codes catch a model writing the declaration itself: `E-ENUM-MISSING-SEMANTICS` (`action` declared without `exits:`, or `anchor` without `default:` — the compiler branches on those members and no longer infers them from a name prefix) and `E-DOMAIN-DUP` (one slot declared by both a plugin and a project route in the same root; pick one route per slot).
 
-**`E-STATE-COLLECTION`.** Author `state:` is scalar: `bool | number | string | enum`. A `list`, `record`, or `map` declaration is rejected. Models reach for `type: { list: string }` constantly, and this was the single case where a document clean under 0.7.0 newly failed at 0.8.0. The fix is never to coerce the type — it is to model the collection as [`relations:`](/state/facts-and-datalog/), which is what the relational layer exists for. Feed the diagnostic back verbatim; it names the remedy.
+**`E-STATE-COLLECTION`.** Author `state:` is scalar: `bool | int | double | string | enum`. A `list`, `record`, or `map` declaration is rejected. Models reach for `type: { list: string }` constantly, and this was the single case where a document clean under 0.7.0 newly failed at 0.8.0. The fix is never to coerce the type — it is to model the collection as [`relations:`](/state/facts-and-datalog/), which is what the relational layer exists for. Feed the diagnostic back verbatim; it names the remedy.
 
 ```lute expect="E-STATE-COLLECTION"
 ---
@@ -162,7 +162,7 @@ state:
 <!-- lute-diagnostics -->
 ```console
 $ lute check scene.lute
-scene.lute:7:3: error [E-STATE-COLLECTION] state path `run.inventory` cannot declare a collection type (`list`/`record`/`map`); author state is scalar (number|bool|string|enum) — model collections as `relations:` or a plugin `state_shapes` slot
+scene.lute:7:3: error [E-STATE-COLLECTION] state path `run.inventory` cannot declare a collection type (`list`/`record`/`map`); author state is (int|double|bool|string|enum) — model collections as `relations:` or a plugin `state_shapes` slot
 failed: scene.lute (1 error(s), 0 warning(s))
 ```
 

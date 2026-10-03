@@ -43,10 +43,10 @@ never run as a scene.
 ```yaml
 state:
   run.choseHelp: { type: bool, default: false }
-  user.level:    { type: number, default: 1 }
+  user.level:    { type: int, default: 1 }
 defs:
   helped: "run.choseHelp"
-  atLeast: { type: bool, params: { n: number }, cel: "user.level >= n" }
+  atLeast: { type: bool, params: { n: int }, cel: "user.level >= n" }
 ```
 
 A def is its CEL body as a string — `helped: "run.choseHelp"` — and its type is inferred from that

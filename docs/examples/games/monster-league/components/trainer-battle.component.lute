@@ -7,7 +7,7 @@ params:
   intro: string    # the line of sight line
   win: string      # the player won: the trainer's defeat line
   lose: string     # the player lost: the trainer's gloat
-  prize: number    # prize money on a win
+  prize: int         # prize money on a win
 # A beat template (0.27): `<beat use="trainerBattle" id="<who>" who="<who>" …/>`
 # is the whole trainer. It answers trainerSpotted@trainer.<who> and stays
 # repeatable until the trainer is beaten (spentBy). The defeat check is the
@@ -16,7 +16,7 @@ params:
 beat:
   on: trainerSpotted
   target: trainer.@who
-  spentBy: "holds(defeated(@who))"
+  spentBy: "holds('defeated', [@who])"
 ---
 
 ## Trainer battle

@@ -5,9 +5,9 @@ title: The valves
 on: examine
 target: fixture.hydroValves
 priority: 10
-spentBy: "holds(solved(hydroValves))"
+spentBy: "holds('solved', ['hydroValves'])"
 state:
-  scene.wrong: { type: number, default: 0 }
+  scene.wrong: { type: int, default: 0 }
 ---
 
 ## Valves

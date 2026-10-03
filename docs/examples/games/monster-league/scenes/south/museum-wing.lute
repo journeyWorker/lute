@@ -6,7 +6,7 @@ on: talk
 target: npc.pebbletonKell
 priority: 10
 after: 'visited("south.museumRevive")'
-when: "holds(hasBadge(tide))"
+when: "holds('hasBadge', ['tide'])"
 ---
 
 // With both Southshore badges, the museum trusts the player with its own

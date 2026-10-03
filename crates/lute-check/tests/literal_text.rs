@@ -11,7 +11,7 @@ use lute_test_vocab::vocab_snapshot;
 
 fn check_body(body: &str) -> Vec<Diagnostic> {
     let text = format!(
-        "---\nkind: scene\nid: lamp\nstate:\n  run.oil: {{ type: number, default: 1 }}\n  \
+        "---\nkind: scene\nid: lamp\nstate:\n  run.oil: {{ type: int, default: 1 }}\n  \
          run.knowsName: {{ type: bool, default: false }}\n---\n\n## Lamp Room\n\n{body}\n"
     );
     check(&CheckInput {

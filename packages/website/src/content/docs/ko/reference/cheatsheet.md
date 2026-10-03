@@ -20,7 +20,7 @@ after: 'visited("cafe.arrival")'
 priority: 10
 when: "run.tips == 0"
 state:
-  run.tips: { type: number, default: 0 }
+  run.tips: { type: int, default: 0 }
   run.mood: { type: { enum: [calm, tense] }, default: calm }
 ---
 
@@ -164,15 +164,15 @@ chapters:                               # 0.28.0: chains of scenes by id, in pla
 `world.schema.yaml`은 `---` 구분선이 없는 일반 YAML입니다. 씬은 `uses:`로 이 파일을 가져옵니다:
 
 ```yaml
-state:                                   # scalar only: number | bool | string | enum
-  run.pressure: { type: number, default: 0 }
-  run.day:      { type: number, default: 1, owner: engine }   # content reads it; ::set is E-ENGINE-OWNED-WRITE
+state:                                   # scalar only: int | double | bool | string | enum
+  run.pressure: { type: int, default: 0 }
+  run.day:      { type: int, default: 1, owner: engine }   # content reads it; ::set is E-ENGINE-OWNED-WRITE
   run.slot:     { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }
   run.mood:     { type: { enum: [calm, tense] }, default: calm }
   run.rival:    { type: { enum: [kai, lee] } }       # no default: maybe-unset until set
-  run.trust:    { type: number, default: { _: 0, vesna: 2 }, per: crew }   # 0.24.0: run.trust.vesna (2), run.trust.toma (0)
+  run.trust:    { type: int, default: { _: 0, vesna: 2 }, per: crew }   # 0.24.0: run.trust.vesna (2), run.trust.toma (0)
   run.today:    { type: { domain: weekday }, default: mon }     # {{run.today}} renders "Monday"
-  user.runs:    { type: number, default: 0 }
+  user.runs:    { type: int, default: 0 }
   app.rating:   { type: { enum: [teen, adult] }, default: teen }
 enums:                                   # content vocabulary: you declare every member
   emotion: [neutral, happy, worried]
@@ -198,10 +198,10 @@ rules:
 defs:
   calm: "run.pressure < 2"                    # shorthand: the body alone, type inferred (bool)
   veteran: "user.runs >= 10"
-  vesnaKnows: "holds(knows(vesna, manifest))"
-  zoom: "run.pressure > 2 ? 1.3 : 1.1"        # inferred number
+  vesnaKnows: "holds('knows', ['vesna', 'manifest'])"
+  zoom: "run.pressure > 2 ? 1.3 : 1.1"        # inferred double
   closeUp: "1.3"                              # a constant: the only kind of def an attribute takes
-  atLeast: { type: bool, params: { n: number }, cel: "user.runs >= n" }   # params need type:
+  atLeast: { type: bool, params: { n: int }, cel: "user.runs >= n" }   # params need type:
 clock:                                   # optional (0.24.0), one per project: see Clock below
   day: run.day                           # owner: engine
   slot: run.slot                         # optional, with slots: (owner: engine); omit both for a clock of whole days
@@ -211,17 +211,17 @@ clock:                                   # optional (0.24.0), one per project: s
   week: { length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }   # optional
   last: { day: 1, slot: night }          # optional (0.27.0): where the clock ends; or days: 1
 cast:                                    # optional (0.23.0): once declared, any other speaker is E-CAST-UNKNOWN
-  vesna: { name: Vesna, present: "holds(awake(vesna))", emotions: [neutral, worried] }   # 0.24.0 keys
+  vesna: { name: Vesna, present: "holds('awake', ['vesna'])", emotions: [neutral, worried] }   # 0.24.0 keys
   toma:  { name: Toma }
   mira:  { name: Mira }
   guard1: { name: Night Guard, sharedName: true }   # 0.26.0: a role name several speakers share
   guard2: { name: Night Guard, sharedName: true }
 ```
 
-def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`, `isSet`은 `bool`이고, `count`, 산술, 숫자 리터럴은
-`number`이며, 경로를 그대로 읽으면 그 경로의 타입입니다. 검사기가 타입을 알 수 없는 본문(예: `"@other"`)은
-긴 형태 `{ type: …, cel: … }`로 써야 하며, 그렇지 않으면 `E-DEF-DECL`입니다.
-
+def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count`와 산술은 피연산자에 따라
+`int` 또는 `double`, 정수·소수 리터럴은 `int`/`double`이며, 경로를 그대로 읽으면 그 경로의 타입입니다.
+검사기가 타입을 알 수 없는 본문(예: `"@other"`)은 긴 형태 `{ type: …, cel: … }`로 써야 하며, 그렇지 않으면
+`E-DEF-DECL`입니다.
 어휘 슬롯은 `emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType` 일곱 가지입니다.
 아무도 선언하지 않은 슬롯을 쓰면 `E-DOMAIN-UNKNOWN`입니다. `action`에는 `exits:`를, `anchor`에는
 `default:`를 반드시 적어야 합니다.
@@ -235,7 +235,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`, `isSet`은 `bool`이�
 가드가 `present`를 함의하지 않으면 `W-CAST-ABSENT`이고, 화자의 `emotions:` 밖의 `emotion=`은
 `E-BAD-ENUM`입니다. `{vo}` 줄은 제외됩니다(화자가 씬의 시간 밖에 있을 수 있음). `{os}` 줄은 검사합니다.
 `{os}`는 씬 안에 있지만 화면 밖이라는 뜻이기 때문입니다. 항목에 `assume: true`를 두면 `present:` 안의 엔진
-`reserved:` 관계에 대한 부정 `holds`를 참으로 읽으므로, `present: "holds(inParty(isolde)) && !holds(fell(isolde))"`에는
+`reserved:` 관계에 대한 부정 `holds`를 참으로 읽으므로, `present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"`에는
 `inParty` 가드만 있으면 됩니다. 0.25.0부터 그 관계가 `changedOn: [battleEnd]`를 선언하면, `battleEnd`에 제시된
 단위와 시나리오 그래프에서 그 뒤에 오는 모든 단위(`after:` / `after=` / `[start]` 간선)에서는 `assume`이 더 이상
 그 관계를 덮지 않습니다. 그런 줄은 가드를 달 때까지 다시 경고합니다.
@@ -245,7 +245,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`, `isSet`은 `bool`이�
 두 번 적으면 `E-ENTITY-KIND-SHAPE`이며, 스키마는 다른 import가 선언한 종류에 `add:`로 멤버를 더할 수
 있습니다(`crew: { add: [ilsabet] }`. 종류를 선언하는 import는 정확히 하나여야 하고, 두 파일이 같은 멤버를
 더하면 두 파일을 모두 밝히는 `E-ENTITY-KIND-SHAPE`). 규칙 본문은 머리가 먹이지 않는 관계에 대해
-`count(R(…))`나 `countDistinct(R(…), V…)`를 `>=`, `>`, `<=`, `<`, `==`, `!=`로 비교할 수 있습니다(그렇지
+`count(R(…))`이나 `countDistinct(R(…), V…)`를 `>=`, `>`, `<=`, `<`, `==`, `!=`로 비교할 수 있습니다(그렇지
 않으면 `E-RULE-AGGREGATE-CYCLE`). 여러 문서의 프론트매터 `state:`가 같은 경로를 선언하면 `type`, `default`,
 `per`, `owner`가 모두 같아야 합니다(`E-STATE-DECL-CONFLICT`). 경로를 함께 쓰려면 두 문서가 모두 가져오는
 스키마에 한 번만 선언하세요. 같은 `name:`을 가진 캐스트 항목 둘은 둘 다 `sharedName: true`가 아니면
@@ -294,7 +294,7 @@ enums:
   musicAction: [start, fadeOut]
   vfxType: [whiteOut]
 state:
-  run.affection: { type: number, default: 0 }
+  run.affection: { type: int, default: 0 }
 ---
 
 ## Counter
@@ -337,9 +337,9 @@ state:
 kind: scene
 id: cafe.counter
 state:
-  scene.warmth: { type: number, default: 0 }
+  scene.warmth: { type: int, default: 0 }
   run.metMira:  { type: bool, default: false }
-  run.tip:      { type: number, default: 0 }
+  run.tip:      { type: int, default: 0 }
 defs:
   warm: "scene.warmth >= 2"
 ---
@@ -397,7 +397,7 @@ defs:
 kind: scene
 id: cafe.moods
 state:
-  run.tips:  { type: number, default: 0 }
+  run.tips:  { type: int, default: 0 }
   run.mood:  { type: { enum: [calm, tense, joyful] }, default: calm }
   run.rival: { type: { enum: [kai, lee] } }
 ---
@@ -471,7 +471,7 @@ state:
 kind: scene
 id: ship.archive
 state:
-  run.trust: { type: number, default: 0 }
+  run.trust: { type: int, default: 0 }
   run.seen:  { type: bool }
 entities:
   crew:  { members: [vesna, toma] }
@@ -484,11 +484,11 @@ relations:
 
 ::set{run.seen = true}     /* the first write of a no-default path must be `=` */
 ::set{run.trust += 1}      /* also -= and *= */
-@vesna{when="isSet(prev.run.trust) && prev.run.trust >= 3"}: You trusted me last time.
+@vesna{when="has(prev.run.trust) && prev.run.trust >= 3"}: You trusted me last time.
 @vesna{when="run.seen"}: You found the archive.
 ::assert{knows(vesna, manifest)}
-@vesna{when="holds(knows(vesna, manifest))"}: I read the manifest.
-@vesna{when="count(knows(_, manifest)) >= 2"}: So we both know.
+@vesna{when="holds('knows', ['vesna', 'manifest'])"}: I read the manifest.
+@vesna{when="count('knows', ['_', 'manifest']) >= 2"}: So we both know.
 ::retract{knows(vesna, _)}
 ```
 
@@ -499,7 +499,7 @@ relations:
 
 `prev.run.<path>`(0.23.0)는 선언된 모든 `run.*` 경로에 대해, 이전 런이 끝났을 때 `run.<path>`가 가졌던
 값을 같은 타입으로 읽습니다. 읽기 전용이고(`E-QUEST-RESERVED-WRITE`) 첫 런이 끝나기 전에는 값이 없으므로,
-읽을 때마다 `isSet(prev.run.x)`나 `unset` 갈래가 필요합니다(`E-MAYBE-UNSET`). `prev.*` 경로를 직접
+읽을 때마다 `has(prev.run.x)`나 `unset` 갈래가 필요합니다(`E-MAYBE-UNSET`). `prev.*` 경로를 직접
 선언하면 `E-STATE-NAMESPACE`입니다. `lute play`는 `newRun`에서 스냅숏을 뜨고, 플레이 스크립트나 목의
 `state:`로 시드할 수 있습니다.
 
@@ -510,8 +510,8 @@ relations:
 kind: scene
 id: camp.fire
 state:
-  run.day:      { type: number, default: 1 }
-  run.approval: { type: number, default: 0, per: companion }   # run.approval.isolde, run.approval.corvin
+  run.day:      { type: int, default: 1 }
+  run.approval: { type: int, default: 0, per: companion }   # run.approval.isolde, run.approval.corvin
 entities:
   person:    { members: [isolde, corvin, hollis] }
   companion: { subsetOf: person, members: [isolde, corvin] }   # every member is a person
@@ -535,10 +535,10 @@ rules:
 ::assert{inParty(isolde)}
 ::set{run.approval.isolde += 2}
 ::set{run.approval.corvin += 1 when="run.day > 3"}
-@isolde{when="holds(loyal(isolde))"}: I'm with you.
-@hollis{when="countDistinct(sawAt(W, _), W) >= 2"}: Two of us saw it.
-@hollis{when="holds(witness(hollis))"}: I was there.
-@hollis{when="holds(unseen(corvin))"}: Nobody saw Corvin.
+@isolde{when="holds('loyal', ['isolde'])"}: I'm with you.
+@hollis{when="countDistinct('sawAt', ['_', '_'], 0) >= 2"}: Two of us saw it.
+@hollis{when="holds('witness', ['hollis'])"}: I was there.
+@hollis{when="holds('unseen', ['corvin'])"}: Nobody saw Corvin.
 ```
 
 - `per: companion`은 멤버마다 `run.approval.<member>`를 선언합니다. 콘텐츠는 멤버 이름으로 씁니다. 이
@@ -550,7 +550,7 @@ rules:
   (`E-DATALOG-PARSE`)와 비교식에서는 여전히 오류입니다.
 - 규칙 본문의 `not r(…)`은 그런 팩트가 없을 때 성립합니다(`unseen(P)`: `sawAt(P, _)`가 아예 없음). 부정은
   아무것도 묶지 않으므로, 그 변수는 모두 같은 본문의 양의 원자가 묶어야 합니다. 아니면 `E-DATALOG-UNSAFE`입니다.
-- `countDistinct(sawAt(W, _), W)`는 한 위치의 서로 다른 값 개수를 세고, `count(…)`는 튜플 개수를 셉니다.
+- `countDistinct('sawAt', ['_', '_'], 0)`는 한 위치의 서로 다른 값 개수를 세고, `count(…)`는 튜플 개수를 셉니다.
   `count`처럼 규칙 가드에는 쓸 수 없습니다.
 - 규칙 가드는 `@def`를 부를 수 있습니다. 없는 def, 잘못된 인자 개수, `$`는 `E-RULE-GUARD-DEF`입니다.
   규칙 본문의 종류 원자(`companion(P)`)는 멤버십 검사입니다.
@@ -560,7 +560,7 @@ rules:
   실행하거나 전혀 실행하지 않으며, play는 `skip ::give{item="potion"} — when: false`로 출력). 검사기는 가드
   달린 디렉티브를 확정된 쓰기, 팩트, 수락으로 세지 않습니다. 내장 레코드로 로워링되는 디렉티브(`::bg`,
   `::sfx`, `::auto`, `::clear` 같은 모든 코어 연출 디렉티브와 `::end`, `::mark`, 플러그인 `lower:` 레코드)는
-  `when=`을 거부하며(`E-UNKNOWN-ATTR`, `<match>`에 넣으세요), `<track>` 클립도 마찬가지입니다(`E-TIMELINE-CONTENT`). CEL 호출처럼 이름 붙인 관계(`has`, `holds`, `count`, `isSet`, `now`, …)는 `E-RESERVED-NAME`입니다(예약된 이름 전체: [예약된 이름](/ko/reference/reserved-names/)).
+  `when=`을 거부하며(`E-UNKNOWN-ATTR`, `<match>`에 넣으세요), `<track>` 클립도 마찬가지입니다(`E-TIMELINE-CONTENT`). CEL 호출처럼 이름 붙인 관계(`has`, `holds`, `count`, `now`, …)는 `E-RESERVED-NAME`입니다(예약된 이름 전체: [예약된 이름](/ko/reference/reserved-names/)).
 
 배타 관계(0.25.0): `excludes:`는 같은 인자에서 결코 함께 성립하지 않는 관계를 적습니다.
 
@@ -581,13 +581,13 @@ rules:
 ## Gallery
 
 ::assert{seen(elias)}
-@maren{when="holds(seenAfter(elias))"}: He was on the stairs after the storm.
+@maren{when="holds('seenAfter', ['elias'])"}: He was on the stairs after the storm.
 ```
 
 - 짝은 선언된 관계여야 하고, 인자 종류가 같아야 하며, 자기 자신일 수 없습니다(`E-RELATION-DECL`). IR의
   `RelationEntry.excludes`에는 대칭 폐포가 실립니다.
-- `check-project`: `holds(seenAfter(x)) && holds(fell(x))`는 죽은 가드이고(`E-ARM-DEAD` / `E-BEAT-UNREACHABLE`),
-  `holds(seenAfter(x))` 아래의 `!holds(fell(x))`는 `W-FACT-GUARANTEED`이며, 여기서 `::assert{fell(elias)}`는
+- `check-project`: `holds('seenAfter', ['x']) && holds('fell', ['x'])`는 죽은 가드이고(`E-ARM-DEAD` / `E-BEAT-UNREACHABLE`),
+  `holds('seenAfter', ['x'])` 아래의 `!holds('fell', ['x'])`는 `W-FACT-GUARANTEED`이며, 여기서 `::assert{fell(elias)}`는
   `E-FACT-EXCLUSIVE`(다른 쪽이 모든 경로에서 성립), 짝을 깨뜨릴 수밖에 없는 `fell(P) :- seenAfter(P)` 같은 규칙은
   `E-RULE-EXCLUSIVE`입니다.
 - 둘 다 가능하기만 한 곳에서는 `lute play`가 쓰기 지점에서 `✗ exclusive: fell(elias) and seenAfter(elias) both
@@ -619,13 +619,12 @@ rules:
 
 | 연산자 | 함수와 참조 |
 |---|---|
-| `== != < <= > >=` · `&& \|\| !` · `+ - * /` · `%`(0.24.0: 정수 전용) · `c ? a : b` · `x in ['a', 'b']` · 문자열·숫자 리터럴 | `has(p)` / `isSet(p)`(값이 있는가) · `holds(rel(a, _))` · `count(rel(_)) >= n` · `countDistinct(rel(W, _), W)`(0.24.0) · `validAt(rel(a), quest.q.activatedAt)` · `visited('scene.id')` · `@def` / `@def(args)` · `$`(`<match>` 안에서만) |
-
-쓸 수 없는 것: `size`, `matches`, `map`/`filter`/`exists`/`all`(`E-CEL-PROFILE`). 가드에서도 def
-본문에서도 마찬가지입니다. `%`는 두 정수를 받으며, 숫자가 아닌 피연산자나 소수 리터럴은 `E-CEL-TYPE`입니다.
-값이 없음은 문자열 `'unset'`이 아닙니다(`E-UNSET-LITERAL`). `!isSet(p)`나
+| `== != < <= > >=` · `&& \|\| !` · `+ - * /` · `%`(0.24.0: 정수 전용) · `c ? a : b` · `x in ['a', 'b']` · 정수·소수 리터럴 | `has(p)` / `'k' in a.b`(값이 있는가) · `holds('rel', ['a', '_'])` · `count('rel', ['_']) >= n` · `countDistinct('rel', ['_', '_'], 0)`(0.24.0) · `validAt('rel', ['a'], quest.q.activatedAt)` · `visited('scene.id')` · `@def` / `@def(args)` · `$`(`<match>` 안에서만) |
+| 쓸 수 없는 것: `size`, `matches`, `map`/`filter`/`exists`/`all`(`E-CEL-PROFILE`). 가드에서도 def
+본문에서도 마찬가지입니다. `%`는 `int` 피연산자 두 개를 받으며, `int`가 아닌 피연산자나 소수 리터럴은 `E-CEL-TYPE`입니다.
+값이 없음은 문자열 `'unset'`이 아닙니다(`E-UNSET-LITERAL`). `!has(p)`나
 `is="unset"`으로 확인하세요. 예외는 `quest.<id>.state`로, 여기서는 `unset`이 실제 멤버입니다.
-`quest.q.state == 'unset'`으로 쓰세요. `isSet(quest.q.state)`는 항상 참입니다(`W-QUEST-STATE-ISSET`).
+`quest.q.state == 'unset'`으로 쓰세요. `has(quest.q.state)`는 항상 참입니다(`W-QUEST-STATE-HAS`).
 0.26.0부터 가드가 enum 경로, `occasion.target`, 퀘스트의 `state` / `failedBy`와 비교하는 문자열(`==`, `!=`,
 `in [...]`의 원소)은 그 멤버여야 합니다. `run.rank == 'silvr'`는 `is="silvr"`처럼
 `E-WHEN-LITERAL-DOMAIN`이며, 비슷한 이름을 제안합니다.
@@ -639,7 +638,7 @@ id, 문서 id의 각 부분, `share` 키, 시즌, relation, enum과 엔티티 �
 여기에 쓴 `lamp-lit`은 `lampLit`을 알려 주는 오류입니다.
 
 식별자인 이름은 조건식에 그대로 쓸 수 있고, 어떤 이름이든 JavaScript가 키에 접근하듯 따옴표로 쓸 수
-있습니다: `quest["zero-coke-001"].state`, `run.visits["lab-b2"]`, `holds(at("lab-b2"))`. 두 표기는 같은
+있습니다: `quest["zero-coke-001"].state`, `run.visits["lab-b2"]`, `holds('at', ["lab-b2"])`. 두 표기는 같은
 이름입니다. `quest.zero-coke-001.state`는 뺄셈으로 읽히므로 `E-PATH-IDENT`이며, 대괄호 표기를 알려 줍니다.
 
 CEL이 들어가는 곳: `<match on>`, `<when test>`, 줄이나 선택지의 `when=`, `::set`의 우변과 `when=`,
@@ -665,7 +664,7 @@ priority: 50
 once: user
 after: 'visited("cafe.counter")'
 state:
-  user.runs:       { type: number, default: 0 }
+  user.runs:       { type: int, default: 0 }
   run.giftRefused: { type: bool, default: false }
 ---
 
@@ -679,7 +678,7 @@ state:
 kind: lore
 id: vesna.barks
 state:
-  user.runs: { type: number, default: 0 }
+  user.runs: { type: int, default: 0 }
 ---
 
 <entry id="vesnaBark" on="talk" target="npc.vesna" category="bark">
@@ -702,7 +701,7 @@ state:
 kind: lore
 id: cafe.talks
 state:
-  run.tips: { type: number, default: 0 }
+  run.tips: { type: int, default: 0 }
 ---
 
 <beat id="miraOrder" on="talk" target="npc.mira" title="Order" priority="10" when="run.tips >= 3">
@@ -747,7 +746,7 @@ state:
 | `advances` | 0.31.0. 씬 프론트매터, `<entry>`, `<beat>`에 `slot`, `day`, 또는 1 이상의 정수를 선언합니다. 비트가 제시되면 엔진이 그만큼 시계를 이동하고 퀘스트를 정산한 뒤 `raise:` 계기를 발생시킵니다. 프로젝트에 `clock:`이 없으면 오류입니다. |
 | `also` | 0.23.0. `select: first` 계기의 씬(`also: true`)과 번들 비트(`also`): 승자 뒤에, 또는 주 비트가 하나도 자격이 없을 때는 혼자 제시되며, 승자를 대신하지 않습니다. 엔트리에 쓰거나 `select: all` / `sequence` 계기에 쓰면 `E-BEAT-ATTR`입니다. `W-BEAT-SHADOWED`와 `W-BEAT-PRIORITY-TIE`는 `also` 비트를 무시합니다. |
 | `share` | 0.25.0. 씬(`share:`), 엔트리와 번들 비트(`share=`): 여러 곳에서 이야기되는 한 사건을 위한 프로젝트 전체의 키입니다. 키의 어느 비트든 제시되면(엔트리는 읽히면) 그 키의 모든 비트가 `once` 기간 동안 소진됩니다(`lute play`: `` once: user — `share: miraThanks` already spent … by cafe.talks.thanksCounter ``). `false`가 아닌 `once`를 함께 써야 하고, 한 키의 모든 비트는 같은 `once`를 선언해야 합니다. 그렇지 않으면 `E-BEAT-ATTR`입니다. `lute beats`는 `user, share miraThanks`로 보여 줍니다. |
-| `spentBy` | 0.27.0. 씬(`spentBy:`), 엔트리와 번들 비트(`spentBy=`): 제시 대신 비트를 소진하는 조건입니다(`spentBy: "holds(solved(valves))"`). 0.28.0부터 래치입니다. 한 번 성립하면 조건이 다시 거짓이 되어도 비트는 `once` 기간(쓰지 않으면 `run`, 주마다 초기화하려면 `once: week`) 동안 소진된 채로 남고, `lute play`는 ``spentBy: `run.solved` held — spent this run``으로 알립니다. `once: false`나 `share`와 함께 쓰면 `E-BEAT-ATTR`, 시작부터 성립하면 `W-BEAT-SPENT-AT-START`입니다. `once`를 쓰지 않았는데 조건이 다시 거짓이 될 수 있으면(철회되는 팩트, 시즌 상태, rearm되는 퀘스트) `W-SPENT-BY-REVERSIBLE`이며, `once: false` + `when: "!(…)"`, `once: season:<name>`, 또는 래치를 유지하는 `once: run`을 알려 줍니다. |
+| `spentBy` | 0.27.0. 씬(`spentBy:`), 엔트리와 번들 비트(`spentBy=`): 제시 대신 비트를 소진하는 조건입니다(`spentBy: "holds('solved', ['valves'])"`). 0.28.0부터 래치입니다. 한 번 성립하면 조건이 다시 거짓이 되어도 비트는 `once` 기간(쓰지 않으면 `run`, 주마다 초기화하려면 `once: week`) 동안 소진된 채로 남고, `lute play`는 ``spentBy: `run.solved` held — spent this run``으로 알립니다. `once: false`나 `share`와 함께 쓰면 `E-BEAT-ATTR`, 시작부터 성립하면 `W-BEAT-SPENT-AT-START`입니다. `once`를 쓰지 않았는데 조건이 다시 거짓이 될 수 있으면(철회되는 팩트, 시즌 상태, rearm되는 퀘스트) `W-SPENT-BY-REVERSIBLE`이며, `once: false` + `when: "!(…)"`, `once: season:<name>`, 또는 래치를 유지하는 `once: run`을 알려 줍니다. |
 | `use` | 0.27.0. 번들 비트(`use="bondStory"`): 비트 템플릿입니다. 컴포넌트의 `beat:` 머리가 `<beat>`가 직접 쓰지 않은 키를 모두 채웁니다(`@param`은 인자로 바뀌고, 빈 값은 빠지며, id 하나뿐인 `after`는 `visited("<id>")`입니다). 템플릿 본문이 먼저 실행되고(최상위 `::body`가 있으면 비트 자신의 본문이 그 자리에 들어갑니다), 나머지 속성은 파라미터입니다(`E-COMPONENT-ARG`). `<beat use="trainer" id="r3Joey" who="joey"/>`는 한 줄 비트입니다. 잘못 쓰면 `E-TEMPLATE`입니다. |
 | `for` | 0.27.0. 대상 없는 `select: sequence` 계기의 씬(`for: "kind:crew"`), 엔트리와 번들 비트(`for="kind:crew"`): `when`이 성립하는 멤버마다 한 번씩, 멤버 순서대로 제시되며 그 멤버를 `occasion.target`으로 읽습니다(`lute play`: `✓ cafe.birthday for toma`). `once`(와 `spentBy`)는 0.28.0부터 멤버마다 따로 소진됩니다. `target`과 함께 쓰거나, 대상이 있는 계기나 sequence가 아닌 계기에 쓰면 `E-BEAT-ATTR`입니다. |
 
@@ -765,7 +764,7 @@ state:
 `occasion.target`으로 `when`, 가드, 텍스트에서 읽습니다. priority가 같으면 그 멤버를 직접 지목한 비트가
 이기고(동점 아님), 종류 대상(또는 `for`)이 없는 비트에서 `occasion.target`을 읽으면 `E-UNDECLARED`입니다.
 0.27.0부터는 사실 인자와 `per:` 인덱스로도 쓸 수 있고, 멤버마다 검사됩니다:
-`holds(regular(occasion.target))`, `user.bond[occasion.target] >= 2`. `lute play`는
+`holds('regular', [occasion.target])`, `user.bond[occasion.target] >= 2`. `lute play`는
 `{{occasion.target}}`을 종류의 라벨로(없으면 캐스트 `name:`으로, 그것도 없으면 id로) 렌더링하고, 테스트는
 `state: { occasion.target: toma }`로 멤버를 정합니다:
 
@@ -804,7 +803,7 @@ occasions:
   runEnd:    { select: first, judge: before }   # 0.24.0: judge on="runEnd" objectives before the beats
   evening:   { select: sequence }        # every eligible beat, in selection order (0.23.0)
   inbox:     { select: all, description: Letters waiting at the fountain }
-  gift:      { select: first, target: { prefix: npc, entity: crew }, payload: { hearts: number } }   # 0.27.0: beats read occasion.payload.hearts; a play step gives payload: { hearts: 2 }
+  gift:      { select: first, target: { prefix: npc, entity: crew }, payload: { hearts: int } }   # 0.27.0: beats read occasion.payload.hearts; a play step gives payload: { hearts: 2 }
 ```
 
 ```yaml
@@ -857,7 +856,7 @@ when: "clock.weekday < 5"
 @mira: {{clock.weekdayLabel}} again. That's slot {{clock.index}} of the story.
 ```
 
-- `day`(number)는 `owner: engine` 경로여야 합니다. `slot`(enum, 역시 `owner: engine`)과 `slots`(그 멤버를
+- `day`(`int`)는 `owner: engine` 경로여야 합니다. `slot`(enum, 역시 `owner: engine`)과 `slots`(그 멤버를
   순서대로)는 선택이지만 둘을 함께 써야 하며, 둘 다 없으면 날 단위로만 세는 시계입니다. 잘못된 시계나 두 번째
   시계, 콘텐츠 소유 경로, `slot` 없는 `slots`, 모르는 `raise` 계기(프로젝트의 플러그인이 계기를 선언할 때부터
   검사), `payload:`가 있는 `raise` 계기는 `E-CLOCK-DECL`입니다.
@@ -896,7 +895,7 @@ when: "clock.weekday < 5"
 퀘스트를 정산하며 `raise:` 계기를 발생시킵니다. 따라서 별도의 `advance:`를 바로 이어 쓰면 시간이 두 번 이동합니다.
 플레이는 이를 메모로 표시하므로 중복 스텝을 삭제하세요. 이 키는 선언된 프로젝트 시계가 필요하고, 이전 플러그인
 설정의 `spendsSlot: true`는 `advances: slot`으로, `spendsSlots: n`은 `advances: n`으로 옮깁니다.
-- 0.27.0: 계기는 `raisedWhen: "holds(canEnter(occasion.target))"`를 선언할 수 있습니다(플러그인
+- 0.27.0: 계기는 `raisedWhen: "holds('canEnter', [occasion.target])"`를 선언할 수 있습니다(플러그인
   `occasions/*.yaml`): 그 계기의 비트는 관문 아래에서 판정되고(`E-BEAT-UNREACHABLE`이 관문을 댐), `lute beats`는
   관문이 결코 성립하지 않는 대상을 표시하며, `lute play`는 관문이 거짓일 때 그 계기를 발생시키는 스텝을
   거부하고(`E-OCCASION-GATE`, 종료 코드 1), 관문이 막은 시계 발생은 메모와 함께 건너뜁니다. 스키마(만)는
@@ -916,9 +915,9 @@ when: "clock.weekday < 5"
 kind: scene
 id: diner.payday
 state:
-  run.day:    { type: number, default: 1 }
-  run.visits: { type: number, default: 1 }
-  run.tab:    { type: number, default: 0 }
+  run.day:    { type: int, default: 1 }
+  run.visits: { type: int, default: 1 }
+  run.tab:    { type: int, default: 0 }
   run.today:  { type: { domain: weekday }, default: fri }
 enums:
   weekday: { members: [mon, fri], labels: { mon: Monday, fri: Friday } }
@@ -942,11 +941,11 @@ enums:
 kind: quest
 id: cafe.quests
 state:
-  run.tips:  { type: number, default: 0 }
+  run.tips:  { type: int, default: 0 }
   run.fired: { type: bool, default: false }
   run.found: { type: bool, default: false }
-  run.day:   { type: number, default: 1 }
-  user.xp:   { type: number, default: 0 }
+  run.day:   { type: int, default: 1 }
+  user.xp:   { type: int, default: 0 }
 ---
 
 <quest id="regular" title="Become a regular" start="true" fail="run.fired" follows="visited('cafe.counter')">
@@ -1008,8 +1007,8 @@ state:
 kind: quest
 id: keep.quests
 state:
-  run.day:   { type: number, default: 1 }
-  run.gold:  { type: number, default: 0 }
+  run.day:   { type: int, default: 1 }
+  run.gold:  { type: int, default: 0 }
   run.freed: { type: bool, default: false }
   run.lamp:  { type: bool, default: false }
 ---
@@ -1140,7 +1139,7 @@ params:
 ```
 
 컴포넌트 파일 이름은 `name.component.lute`입니다. 본문에는 대사, 연출, `@param` 참조, 파라미터에 대한
-`<match>`를 둘 수 있으며 스스로 상태를 읽거나 쓰지 않습니다. `{{@param}}`은 number, bool, enum
+`<match>`를 둘 수 있으며 스스로 상태를 읽거나 쓰지 않습니다. `{{@param}}`은 `int`, `double`, bool, enum
 파라미터를 렌더링하고, 0.23.0부터는 `string` 파라미터도 렌더링합니다. 리터럴 `::use` 인자가 펼칠 때
 치환되므로 호출 지점마다 자기 문장을 자기 `lineId`로 출하합니다. 텍스트에 끼워 넣는 `string` 파라미터에
 `@def`를 넘기면 `E-REF-TYPE`입니다. 가져오는 씬은 `components:`에 파일을 적고
@@ -1184,11 +1183,11 @@ component: praise
 effects: true
 params:
   who: speaker
-  delta: number
+  delta: int
 entities:                                  # declared here only so this file checks alone:
   companion: { members: [isolde, corvin] } # at `::use` the host's schema decides
 state:
-  run.approval: { type: number, default: 0, per: companion }
+  run.approval: { type: int, default: 0, per: companion }
 ---
 
 ## Praise
@@ -1287,7 +1286,7 @@ id: storm.beat
 | `lute scenario <dir> [reach <node> \| envelope <node> \| knowledge [--for <node>]] [--facts] [--format text\|json\|dot]` | `after:` 그래프, 도달 가능성, 보장되는 상태와 팩트. 노드는 씬 id, `quest:<id>`, 또는 번들 비트의 정식 id입니다(그대로 또는 `beat:<doc>.<beat>`, 간선 없는 진입 노드로 그려짐). `knowledge`(0.23.0)는 팩트 가드가 있는 비트, 엔트리, 목표마다 질의하는 관계를 찾고, 각 관계를 규칙을 거슬러 그것을 만드는 쪽까지 추적합니다: assert하는 문서, 시드 팩트, 엔진(`reserved`), 또는 만드는 쪽 없음. 부정 전제를 깨뜨릴 수 있는 팩트도 알려 줍니다. `--for`에는 엔트리 id나 `<quest>.<objective>`도 줄 수 있습니다. 0.24.0부터 모든 가드 자리를 다루고, 종류 원자를 멤버십으로 읽으며(``suitor(sol) — entity kind `suitor`; sol is a member``), 규칙의 `cel()` 전제가 읽는 것을 밝힙니다. 0.26.0: `knowledge`는 규칙의 `count(…)` 전제를 그것이 세는 팩트의 생산자까지 추적하고, `--facts`는 팩트 생산 간선(`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`, `--format json`: `factEdges`, `dot`: 점선)을 그립니다. `reach --endings[=<occasion>]`(0.27.0)는 엔딩마다 — 그 occasion에 답하는 비트, 또는 인자가 없으면 `::end`를 실행할 수 있는 모든 비트 — `after:` 판정, `when` 판정(절대 참이 안 됨 / 절대 이기지 못함), 만족 가능한 `when`이 읽는 것과 그것을 쓰는 쪽(아무도 쓰지 않으면 `nothing writes it`), 그리고 `N ending(s): A reachable, B unreachable, C unknown` 요약을 보여 줍니다. |
 | `lute beats <dir> [--occasion o] [--target t] [--json] [--expand]` | 0.23.0. 계기별(대상별) 비트 사다리를 선택 순서대로 보여 줍니다: priority, `once`(번들 비트의 `day` / `slot` 포함), `also`, `after:`, `when`(`@def`는 쓴 그대로, `--expand`면 펼침), 제목, 그리고 `check-project`의 판정(도달 불가, 가려짐, 동점, once-run-user). 프로젝트가 깨끗하게 검사되지 않아도 됩니다. 0.26.0부터 앞선, 결코 소진되지 않는 비트가 그 `when`을 함의해 늘 이기는 폴백은 `covered by <id>`로(`--json`: `coveredBy`) 표시되고, 종류 대상 비트에는 `kind:<kind>` 사다리가 생기며, `--target`은 아무 멤버나 받습니다. |
 | `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. 디렉티브 속성(`give.item`)의 모든 값, 또는 한 보상 종류의 모든 대상을 그것을 쓰는 문서와 줄과 함께 나열합니다. 컴포넌트를 거쳐 전달된 값은 그 `::use`에서(`via component <name>`), 대상 없는 보상은 `(no target)`으로 나옵니다. 병합 전에 누가 무엇을 주는지 봅니다. |
-| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds(awake(toma))=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>[@<axis>[=<value>],…]] [--target <T>] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. 축들의 곱의 모든 칸(첫 축이 가장 느리게 바뀜)에서 계기별로 play와 같은 자격 판정을 보여 줍니다: 승자나 제시 목록, 가려진 자격 있는 비트 `+N`, 판정할 수 없는 칸 `?`, 마지막으로 어느 칸에서도 자격이 없는 비트와 (0.24.0) 어딘가에서 자격은 있었지만 한 번도 제시되지 않은 비트. 스크립트의 세이브에서 그 스텝을 재생한 상태(`--until`까지)나 선언된 기본값에서 시작합니다. `--where`는 조건이 성립하지 않는 칸을 뺍니다. 대상 있는 계기는 비트가 이름을 붙인 대상마다 열 하나를 받으며, `--target mon.inchlet`은 대상을 직접 고릅니다(`--occasion`의 `@` 뒤에는 대상이 아니라 축을 씁니다). 0.24.0: `clock[=d1..d2]`는 날 × 슬롯을 시계 순서로 펼치고, `visited()` 축은 id를 세이브에 넣거나 뺍니다. `--occasion dusk@clock.day`(또는 `@run.day,run.slot=night`, 바뀌는 어느 경로든)는 그 계기를 그 축의 값마다 한 번 평가하고 나머지 칸은 비웁니다. `--facts at`은 칸마다 누가 어디 있는지 보여 줍니다. 0.27.0: `--axis run.aff.*=6,7`은 `per:` 패밀리의 모든 멤버를, `--axis 'run.aff[run.route]=6,7'`은 각 칸에서 `run.route` 축이 가리키는 멤버 하나만 설정합니다(나머지는 세이브 값이나 기본값 유지). 패밀리 이름만 쓴 `--axis run.aff`는 두 형태를 알려 주는 사용 오류입니다. |
+| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds('awake', ['toma'])=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>[@<axis>[=<value>],…]] [--target <T>] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. 축들의 곱의 모든 칸(첫 축이 가장 느리게 바뀜)에서 계기별로 play와 같은 자격 판정을 보여 줍니다: 승자나 제시 목록, 가려진 자격 있는 비트 `+N`, 판정할 수 없는 칸 `?`, 마지막으로 어느 칸에서도 자격이 없는 비트와 (0.24.0) 어딘가에서 자격은 있었지만 한 번도 제시되지 않은 비트. 스크립트의 세이브에서 그 스텝을 재생한 상태(`--until`까지)나 선언된 기본값에서 시작합니다. `--where`는 조건이 성립하지 않는 칸을 뺍니다. 대상 있는 계기는 비트가 이름을 붙인 대상마다 열 하나를 받으며, `--target mon.inchlet`은 대상을 직접 고릅니다(`--occasion`의 `@` 뒤에는 대상이 아니라 축을 씁니다). 0.24.0: `clock[=d1..d2]`는 날 × 슬롯을 시계 순서로 펼치고, `visited()` 축은 id를 세이브에 넣거나 뺍니다. `--occasion dusk@clock.day`(또는 `@run.day,run.slot=night`, 바뀌는 어느 경로든)는 그 계기를 그 축의 값마다 한 번 평가하고 나머지 칸은 비웁니다. `--facts at`은 칸마다 누가 어디 있는지 보여 줍니다. 0.27.0: `--axis run.aff.*=6,7`은 `per:` 패밀리의 모든 멤버를, `--axis 'run.aff[run.route]=6,7'`은 각 칸에서 `run.route` 축이 가리키는 멤버 하나만 설정합니다(나머지는 세이브 값이나 기본값 유지). 패밀리 이름만 쓴 `--axis run.aff`는 두 형태를 알려 주는 사용 오류입니다. |
 | `lute lore <dir>` | 대상별·시리즈별 엔트리와 비트, 그리고 그것이 드러내는 팩트. |
 | `lute context <file> [--project <dir>]` | 여기서 쓸 수 있는 모든 것: 디렉티브(내장 포함), 어휘, 상태(`owner: engine` 표시), def, 등급과 `reserved` 여부를 담은 관계, 대상 도메인을 담은 계기, 캐스트, 컴포넌트 시그니처, 모든 씬·퀘스트·엔트리 id. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`의 것입니다(0.27.0). |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | 프로젝트별로 설정하는 권고성 편집 린트(`L-*`). 선형 VN 지표는 비트, 컴포넌트, 퀘스트, 로어를 건너뜁니다. 0.26.0부터 `W-DISPLAY-NAME-DUP`도 보고합니다(`--deny W-DISPLAY-NAME-DUP`로 오류로 올림). |
@@ -1378,7 +1377,7 @@ FAIL  tests/north/gull.test.yaml  (tests/north/../../lore/north/gull.lute)
 ``eligible ember: expected true, got false — its `after="visited('ren.confession')"` is false — mock `visited: [ren.confession]` ``로
 읽힙니다. 가드가 거짓인 선택지에 떨어진 `--choose`(또는 테스트의 `choose:`)는 가드, 그 가드를 거짓으로 만든
 읽기 하나하나, 그리고 그것을 바꿀 목을 댑니다:
-``its guard `holds(found(receipt))` decided false: `found(receipt)` does not hold (mock `--fact "found(receipt)"`)``
+``its guard `holds('found', ['receipt'])` decided false: `found(receipt)` does not hold (mock `--fact "found(receipt)"`)``
 — 테스트에서는 `facts: ["found(receipt)"]`로, 플레이에서는 YAML 키로 씁니다.
 
 `plays/first.play.yaml`. 최상위 키는 `state`, `facts`, `choose`, `derive`, `bridges`(0.24.0), 세이브 시드인
@@ -1503,12 +1502,12 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-CONTENT-OUTSIDE-SHOT` | 첫 `## 제목` 앞에 콘텐츠가 있습니다. |
 | `E-DOMAIN-UNKNOWN` | `emotion=`, `action=`, `anchor`, `mood` 등을 썼지만 그 슬롯에 선언된 멤버가 없습니다. |
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | 상태 경로나 `@def`가 선언되지 않았거나, 그 스키마를 가져오지 않았습니다. |
-| `E-MAYBE-UNSET` | 기본값도, 앞선 `::set`도, `isSet` 가드도 없는 경로를 읽었습니다. `prev.run.*`를 읽을 때는 항상 필요합니다. |
+| `E-MAYBE-UNSET` | 기본값도, 앞선 `::set`도, `has` 가드도 없는 경로를 읽었습니다. `prev.run.*`를 읽을 때는 항상 필요합니다. |
 | `E-CAST-UNKNOWN` | 캐스트가 선언되어 있는데(스키마의 `cast:`나 플러그인의 `cast` 내보내기) 이 화자는 그 안에 없거나, (0.24.0) `::auto{character}`, `::camera{focus}`, `speaker` 컴포넌트 인자가 캐스트 밖을 가리킵니다. 메시지가 가장 가까운 id를 제안합니다. |
-| `W-CAST-ABSENT` | 0.24.0. 화자의 캐스트 항목이 `present:`를 선언했는데 줄을 감싼 가드가 그것을 함의하지 않습니다(`{vo}` 줄은 제외, `{os}` 줄은 검사). 줄에 가드를 달거나(`@corvin{when="holds(inParty(corvin))"}`) 그런 가드 아래로 옮기세요. 가드를 거짓으로 만들 수 있는 쓰기만 그 가드를 무효로 합니다. 단일 파일 `check`는 모든 경로에서 assert된 팩트를 볼 수 없지만 `check-project`는 봅니다. 0.25.0: 관계의 `changedOn:` 계기 뒤의 줄에서는 `assume: true`가 그 관계를 덮지 않습니다. |
+| `W-CAST-ABSENT` | 0.24.0. 화자의 캐스트 항목이 `present:`를 선언했는데 줄을 감싼 가드가 그것을 함의하지 않습니다(`{vo}` 줄은 제외, `{os}` 줄은 검사). 줄에 가드를 달거나(`@corvin{when="holds('inParty', ['corvin'])"}`) 그런 가드 아래로 옮기세요. 가드를 거짓으로 만들 수 있는 쓰기만 그 가드를 무효로 합니다. 단일 파일 `check`는 모든 경로에서 assert된 팩트를 볼 수 없지만 `check-project`는 봅니다. 0.25.0: 관계의 `changedOn:` 계기 뒤의 줄에서는 `assume: true`가 그 관계를 덮지 않습니다. |
 | `E-BAD-ENUM` | enum 밖의 값입니다. 0.24.0부터는 화자의 캐스트 `emotions:` 밖의 `emotion=`도 해당합니다(`happy`는 `isolde`의 감정이 아님). 0.26.0부터는 `{ entity: K }`로 타입을 정한 속성에 그 종류 밖의 값을 줄 때도 해당합니다(비슷한 이름 제안과 함께, 컴포넌트 파라미터를 거친 값도). |
 | `E-ENGINE-OWNED-WRITE` | `::set`이 `owner: engine`으로 선언된 경로에 씁니다. 콘텐츠는 읽기만 합니다. `lute play`에서는 `engine:` 스텝으로, trace와 test에서는 목의 `state:`로 쓰세요. |
-| `W-QUEST-STATE-ISSET` | `isSet(quest.<id>.state)`는 항상 참입니다. `'unset'`과 비교하세요. |
+| `W-QUEST-STATE-HAS` | `has(quest.<id>.state)`는 항상 참입니다. `'unset'`과 비교하세요. |
 | `W-TEXT-LOOKS-LIKE-REF` | 줄의 텍스트 전체가 def나 파라미터 이름인 `@name`이라 글자 그대로 출하됩니다. `{{@name}}`으로 쓰세요. |
 | `E-UNSET-UNCOVERED` / `E-NONEXHAUSTIVE` | `<match>`가 `unset`, enum 멤버, 숫자 틈을 놓쳤습니다(메시지가 빠진 값을 알려 줌). 갈래나 `<otherwise>`를 추가하세요. 0.24.0부터는 비트의 `when:`이 먼저 도메인을 좁히므로, 그것이 배제한 갈래는 쓰지 않아도 됩니다. |
 | `E-WHEN-LITERAL-DOMAIN` | `<when is>` 리터럴, 또는 0.26.0부터 가드가 `==` / `!=` / `in [...]`로 비교하는 문자열이 대상의 도메인(enum, `occasion.target`의 종류, 퀘스트의 `state` / `failedBy`) 멤버가 아닙니다. 메시지가 멤버를 나열하고, 비교라면 가장 가까운 멤버를 제안합니다. |
@@ -1609,7 +1608,7 @@ expect:                                 # judged at the end; a miss exits 1
 kind: scene
 id: clock.cheat
 state:
-  run.day: { type: number, default: 1, owner: engine }
+  run.day: { type: int, default: 1, owner: engine }
 ---
 
 ## Night
@@ -1725,7 +1724,7 @@ unknown입니다.
 경로의 도메인을 모두 덮는 `||`는 항상 성립합니다. 0.22에서 깨끗하게 검사되던 프로젝트가 이제
 `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`,
 `W-BEAT-PRIORITY-TIE`를 보고할 수 있습니다. 실제 모순이니 조건을 고치세요. `unset`도 하나의 값으로 치므로,
-기본값 없는 경로에서 `run.m > 5 && run.m < 3`은 판정되지 않고 `isSet(run.m) && run.m > 5 && run.m < 3`은
+기본값 없는 경로에서 `run.m > 5 && run.m < 3`은 판정되지 않고 `has(run.m) && run.m > 5 && run.m < 3`은
 거짓입니다.
 
 ```lute expect="E-BEAT-UNREACHABLE"
@@ -1735,7 +1734,7 @@ id: late.shift
 on: townVisit
 when: "run.day > 5 && run.day < 3"
 state:
-  run.day: { type: number, default: 1 }
+  run.day: { type: int, default: 1 }
 ---
 
 ## Late
@@ -1772,8 +1771,8 @@ trace와 test는 `lute play`, `lute run`처럼 마크에서 이어 가고(`<next
 kind: scene
 id: tab.open
 state:
-  run.day: { type: number, default: 1 }
-  run.tab: { type: number }
+  run.day: { type: int, default: 1 }
+  run.tab: { type: int }
 ---
 
 ## Tab
@@ -1790,7 +1789,7 @@ state:
 kind: scene
 id: week.end
 state:
-  run.hours: { type: number, default: 0 }
+  run.hours: { type: int, default: 0 }
 ---
 
 ## Payday
@@ -1816,7 +1815,7 @@ rules:
 
 ## Ledger
 
-@narrator{when="holds(debtor(ada, hollis))"}: Ada owes.
+@narrator{when="holds('debtor', ['ada', 'hollis'])"}: Ada owes.
 ```
 
 **`transcriptContains`는 재생된 줄만 봅니다.** 0.24.0부터 `lute play`와 `lute test` 모두 제시된 콘텐츠
@@ -1831,7 +1830,7 @@ rules:
 **응답 없는 브리지는 멈춥니다. 기본값으로 채우지 않습니다.** 뒤의 가드가 결과를 읽는 플러그인 호출에는
 `bridges:` 응답이 필요합니다. 응답이 없으면 `lute play`는 기본 갈래로 가기 전에 그 호출에서 멈추고(종료
 코드 3), `lute trace` / `lute test`는 결과를 알 수 없음으로 읽어, 그대로 쓸 수 있는 답인
-`bridges: { check: [ { passed: <bool>, margin: <number> } ] }` 힌트와 함께 미완료로 멈춥니다. 예전에는 상태
+`bridges: { check: [ { passed: <bool>, margin: <int> } ] }` 힌트와 함께 미완료로 멈춥니다. 예전에는 상태
 모양의 기본값을 읽었습니다. 결과 슬롯을 시드하던 0.23.1 테스트나 목(`state: { scene.check.guards.passed: true }`)은
 더 이상 가드를 정하지 못하니, 그 시드를 `bridges: { check: [ { passed: true, margin: 3 } ] }`로 바꾸세요.
 

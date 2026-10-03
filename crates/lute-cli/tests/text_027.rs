@@ -66,7 +66,7 @@ fn project(tag: &str, rooms: &str) -> PathBuf {
         &dir,
         "world.schema.yaml",
         &format!(
-            "state:\n  run.lamps: {{ type: number, default: 1 }}\n  \
+            "state:\n  run.lamps: {{ type: int, default: 1 }}\n  \
              run.last: {{ type: {{ domain: room }}, default: chapel }}\n  \
              run.near: {{ type: {{ entity: room }}, default: chapel }}\n\
              entities:\n{rooms}"

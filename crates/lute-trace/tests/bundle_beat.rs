@@ -45,7 +45,7 @@ const BUNDLE: &str = r#"---
 kind: lore
 id: interviews
 state:
-  run.porterTrust: { type: number, default: 0 }
+  run.porterTrust: { type: int, default: 0 }
 ---
 
 <entry id="porterNote" target="item.porter_note">

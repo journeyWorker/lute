@@ -122,12 +122,12 @@ fn run_entry_presents_one_entry_and_the_engine_marks_it_read() {
 fn run_lore_without_entry_or_entry_on_a_scene_is_a_usage_error() {
     let (code, stdout, stderr) = lute(&["run", ARTIFACT, "--json"]);
     assert_eq!(code, Some(2), "stdout: {stdout}");
-    assert!(stderr.contains("is a lore artifact"), "{stderr}");
+    assert!(stderr.contains("is a lore execution IR"), "{stderr}");
     assert!(stdout.is_empty(), "{stdout}");
 
     let (code, _, stderr) = lute(&["run", SCENE_ARTIFACT, "--entry", "scientistLog1"]);
     assert_eq!(code, Some(2));
-    assert!(stderr.contains("needs a lore artifact"), "{stderr}");
+    assert!(stderr.contains("needs a lore execution IR"), "{stderr}");
 
     let (code, _, stderr) = lute(&["run", ARTIFACT, "--entry", "nope"]);
     assert_eq!(code, Some(2));

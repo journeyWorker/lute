@@ -207,7 +207,7 @@ fn a_for_entry_writes_on_each_members_first_read() {
     let dir = project(
         "forentry",
         "  departure: { select: sequence }\n",
-        "state:\n  run.bond: { type: number, default: 0, per: npc }\n\
+        "state:\n  run.bond: { type: int, default: 0, per: npc }\n\
          entities:\n  npc: { members: [maud, oskar, sable] }\n\
          cast:\n  maud: { name: Maud }\n  oskar: { name: Oskar }\n  sable: { name: Sable }\n",
         &[("lore/send.lute", lore)],
@@ -236,7 +236,7 @@ fn a_failed_required_subquest_fails_its_parent_by_subquest() {
     let dir = project(
         "subquest",
         "  hearing: { select: first }\n",
-        "state:\n  run.day: { type: number, default: 1 }\n  run.filed: { type: bool, default: false }\n",
+        "state:\n  run.day: { type: int, default: 1 }\n  run.filed: { type: bool, default: false }\n",
         &[("quests/q.lute", quests), ("scenes/h.lute", &hall)],
     );
     let out = play(
@@ -270,7 +270,7 @@ fn a_subquest_objective_missing_its_by_fails_its_quest_and_cascades() {
     let dir = project(
         "subquest-by",
         "  hearing: { select: first }\n",
-        "state:\n  run.day: { type: number, default: 1 }\n  run.filed: { type: bool, default: false }\n",
+        "state:\n  run.day: { type: int, default: 1 }\n  run.filed: { type: bool, default: false }\n",
         &[("quests/q.lute", quests), ("scenes/h.lute", &hall)],
     );
     let out = play(
@@ -295,7 +295,7 @@ fn a_quest_test_reads_an_unwritten_objective_failed_as_false() {
     let dir = project(
         "objfailed",
         "  hearing: { select: first }\n",
-        "state:\n  run.day: { type: number, default: 1 }\n  run.filed: { type: bool, default: false }\n",
+        "state:\n  run.day: { type: int, default: 1 }\n  run.filed: { type: bool, default: false }\n",
         &[("quests/q.lute", quests)],
     );
     let pin = "expect:\n  state: { quest.inquiry.objectives.report.failed: false }\n";

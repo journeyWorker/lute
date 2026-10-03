@@ -1,9 +1,9 @@
 ---
 kind: quest
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 title: Act 1 — Save the Grove (subquest tree)
 state:
-  run.act:               { type: number, default: 0 }
+  run.act:               { type: int, default: 0 }
   run.region:             { type: string, default: "" }
   run.npc.halsin.dead:    { type: bool,   default: false }
   run.npc.halsin.freed:   { type: bool,   default: false }

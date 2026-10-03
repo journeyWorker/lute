@@ -5,7 +5,7 @@ title: The captain's cabin
 on: talk
 target: npc.captainOrla
 after: 'visited("east.ferryRival")'
-when: "!holds(hasItem(hmCut))"
+when: "!holds('hasItem', ['hmCut'])"
 ---
 
 // CONTRACT BEAT (seeded by the lead; owned by east): hands over hmCut

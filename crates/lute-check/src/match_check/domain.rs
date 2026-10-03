@@ -19,11 +19,11 @@ pub enum Domain {
     /// decl or component param). Coverage is the union of the arms' closed
     /// intervals ([`NumCoverage`]); exhaustive iff that union is the whole
     /// line.
+    /// Real-valued numeric subject.
     Number,
-    /// The whole numbers `lo..=hi` of a `number` subject whose range the
-    /// schema knows ([`StateSchema::int_ranges`] — `clock.weekday`, dsl
-    /// 0.24.0 §1): exhaustive once every one of them is covered, and a
-    /// literal matching none of them is foreign.
+    /// Integer-valued numeric subject without a bounded range.
+    IntNumber,
+    /// The whole numbers `lo..=hi` of a bounded integer subject.
     IntRange { lo: i64, hi: i64 },
     /// Infinite / unknowable domain (string, opaque, unresolved subject): an
     /// `<otherwise>` is mandatory.
@@ -141,14 +141,16 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
                 (Type::Bool, _) => {
                     Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)])
                 }
-                (Type::Number, _) => match schema.int_ranges.get(path) {
+                (Type::Int, _) => match schema.int_ranges.get(path) {
                     Some(&(lo, hi)) => Domain::IntRange { lo, hi },
-                    None => Domain::Number,
+                    None => Domain::IntNumber,
                 },
+                (Type::Double, _) => Domain::Number,
                 _ => Domain::Infinite,
             };
             // dsl 0.26.0 §5: `occasion.target` is bound whenever its kind
-            // beat runs.
+            // beat runs. Engine-derived clock roots with a declared default
+            // are likewise assigned before content can match on them.
             let maybe_unset = decl.default.is_none()
                 && path != crate::beats::OCCASION_TARGET
                 && matches!(
@@ -234,7 +236,8 @@ pub(crate) fn param_domain(
     let domain = match ty {
         Type::Bool => Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
         Type::Enum(members) => finite(members),
-        Type::Number => Domain::Number,
+        Type::Int => Domain::IntNumber,
+        Type::Double => Domain::Number,
         Type::Domain(name) => match domains.get(name) {
             Some(d) if !d.open => finite(&d.members),
             _ => Domain::Infinite,

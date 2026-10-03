@@ -1,17 +1,17 @@
 ---
 kind: quest
-luteVersion: "0.31.0"
+luteVersion: "0.32.0"
 title: Act 1 — Emerald Grove
 state:
-  run.act:               { type: number, default: 0 }
+  run.act:               { type: int, default: 0 }
   run.region:             { type: string, default: "" }
   run.npc.halsin.dead:    { type: bool,   default: false }
   run.npc.halsin.freed:   { type: bool,   default: false }
   run.metHalsin:          { type: bool,   default: false }
   run.groveOutcome:       { type: string, default: "" }
-  run.scouts.found:       { type: number, default: 0 }
-  user.xp:                { type: number, default: 0 }
-  user.reputation.grove:  { type: number, default: 0 }
+  run.scouts.found:      { type: int, default: 0 }
+  user.xp:                { type: int, default: 0 }
+  user.reputation.grove:  { type: int, default: 0 }
 ---
 
 /*

@@ -80,7 +80,7 @@ const VOCAB: &str =
 
 fn validat_scene(t_arg: &str) -> String {
     format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<branch>\n<choice id=\"a\" label=\"a\" when=\"validAt(inParty(ana), {t_arg})\">\n@narrator: hi\n</choice>\n<choice id=\"b\" label=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<branch>\n<choice id=\"a\" label=\"a\" when=\"validAt('inParty', ['ana'], {t_arg})\">\n@narrator: hi\n</choice>\n<choice id=\"b\" label=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
     )
 }
 
@@ -216,7 +216,7 @@ fn validat_against_quest_activated_at_is_clean() {
     // implicitly-declared reserved quest field), no E-MAYBE-UNSET (narrative
     // time admits no `isSet`/`has` guard — that would itself be
     // E-TEMPORAL-ARG — so the engine-populated anchor is definite).
-    let cs = codes(&quest_done("validAt(sawClue(map), quest.q1.activatedAt)"));
+    let cs = codes(&quest_done("validAt('sawClue', ['map'], quest.q1.activatedAt)"));
     for code in [
         "E-TEMPORAL-ARG",
         "E-UNDECLARED",
@@ -235,7 +235,7 @@ fn foreign_quest_activated_at_is_narrative_time_too() {
     // decl to resolve against — otherwise `validAt`'s second argument would
     // be E-TEMPORAL-ARG purely because the quest lives in another file.
     let cs = codes(&quest_done(
-        "validAt(sawClue(map), quest.elsewhere.activatedAt)",
+        "validAt('sawClue', ['map'], quest.elsewhere.activatedAt)",
     ));
     assert!(!cs.contains(&"E-TEMPORAL-ARG".to_string()), "{cs:?}");
     assert!(!cs.contains(&"E-UNDECLARED".to_string()), "{cs:?}");
@@ -245,7 +245,7 @@ fn foreign_quest_activated_at_is_narrative_time_too() {
 fn author_decl_of_quest_activated_at_is_reserved_decl() {
     let cs = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
-         state:\n  quest.q1.activatedAt: { type: number }\n---\n## Shot 1.\n@x: hi\n",
+         state:\n  quest.q1.activatedAt: { type: int }\n---\n## Shot 1.\n@x: hi\n",
     );
     assert!(cs.contains(&"E-QUEST-RESERVED-DECL".to_string()), "{cs:?}");
 }

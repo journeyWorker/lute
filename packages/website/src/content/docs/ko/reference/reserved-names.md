@@ -6,7 +6,7 @@ description: "Lute가 스스로 쓰는 이름, 각 이름을 거부하는 자리
 어떤 낱말은 Lute에서 이미 뜻이 있다. `run` 같은 state 루트, 값이 없음을 뜻하는
 `unset`, CEL 리터럴과 키워드, play 스크립트의 스텝이 그렇다. 선언한 이름이 그
 낱말로 읽힐 자리라면 그 이름을 쓸 수 없다. entity 멤버 `clock`은
-`holds(found(clock))`에서 `clock` state 루트로 읽히고, 선택지 `true`는
+`holds('found', ['clock'])`에서 `clock` state 루트로 읽히고, 선택지 `true`는
 `<when is="true">`에서 불리언으로 읽힌다.
 
 그래서 검사기는 예약된 이름을 쓰는 곳이 아니라 선언한 곳에서 거부한다. 오류는
@@ -14,6 +14,10 @@ description: "Lute가 스스로 쓰는 이름, 각 이름을 거부하는 자리
 param은 `E-TEMPLATE`). 메시지는 그 낱말이 이미 무슨 뜻인지 말하고 대신 쓸 이름을
 제시한다. 멤버라면 `theClock`, 선택지라면 `yes` 같은 이름이다.
 `lute --explain E-RESERVED-NAME`은 같은 표를 터미널에 찍는다.
+
+0.32부터 조건은 제한된 표준 CEL 프로필을 사용하며 숫자 타입은 `int`와
+`double`입니다(`number`는 제거됨). 사실 함수는
+`holds('관계', ['인자', '_'])` 같은 list 형식으로 씁니다.
 
 ## 표
 
@@ -23,12 +27,12 @@ param은 `E-TEMPLATE`). 메시지는 그 낱말이 이미 무슨 뜻인지 말�
 | --- | --- | --- | --- |
 | `unset` | entity 멤버; enum 멤버; scene·beat·entry·choice id | 값이 없음을 뜻하는 말. `is="unset"`과 `== 'unset'`은 아무 값도 없는 경로를 검사하므로 `unset`이라는 값은 결코 맞지 않는다 | E-RESERVED-NAME |
 | `true` `false` `null` | entity 멤버; enum 멤버; scene·beat·entry·choice id; relation; 시즌; state 경로 조각(quest·objective·entry·branch·hub id 포함) | CEL 리터럴. 조건과 `is=`에서 이름이 아니라 값으로 읽힌다 | E-RESERVED-NAME |
-| `_` | entity 멤버; enum 멤버 | 사실 패턴의 와일드카드(`holds(knows(_))`)이자 `per:` 기본값의 나머지 키 | E-RESERVED-NAME |
+| `_` | entity member; enum member | 사실 패턴의 와일드카드(`holds('knows', ['_'])`)이자 `per:` 기본값의 나머지 키 | E-RESERVED-NAME |
 | `none` | scene·beat·entry·choice id | play와 test에서 고르지 않음, 이긴 것 없음을 뜻하는 말(`pick: none`, `winner: none`) | E-RESERVED-NAME |
-| `scene` `run` `user` `app` `quest` `entry` `prev` `clock` `occasion` `season` | entity 멤버; def | state 루트. 조건에서 루트 이름만 쓰면 state 경로가 시작되므로 `holds(found(clock))`와 `@clock`은 state를 읽는다 | E-RESERVED-NAME |
+| `scene` `run` `user` `app` `quest` `entry` `prev` `clock` `occasion` `season` | entity 멤버; def | state 루트. 조건에서 루트 이름만 쓰면 state 경로가 시작되므로 `holds('found', ['clock'])`와 `@clock`은 state를 읽는다 | E-RESERVED-NAME |
 | `scene` `run` `user` `app` `quest` `entry` `prev` `clock` `occasion` `season` `day` `week` `slot` | 시즌 | state 루트이거나 `once`/tier 기간. `once="season:run"`이 뜻이 다른 `once="run"` 옆에 놓인다 | E-RESERVED-NAME |
 | `as` `break` `const` `continue` `else` `for` `function` `if` `import` `in` `let` `loop` `namespace` `package` `return` `var` `void` `while` | entity 멤버; relation; 시즌; state 경로 조각(quest·objective·entry·branch·hub id 포함) | CEL 키워드. 조건에서 이름으로 쓸 수 없다(`quest.in.state`는 파싱되지 않는다) | E-RESERVED-NAME |
-| `all` `count` `countDistinct` `exists` `exists_one` `filter` `has` `holds` `isSet` `map` `now` `validAt` `visited` | relation | Lute-CEL 호출이나 CEL 매크로. `holds(<이름>(…))`가 호출로 파싱된다 | E-RESERVED-NAME |
+| `all` `count` `countDistinct` `exists` `exists_one` `filter` `has` `holds` `map` `now` `validAt` `visited` | relation | Lute-CEL 호출이나 CEL 매크로. `holds('관계', ['인자', …])`가 호출로 파싱된다 | E-RESERVED-NAME |
 | `completed` `active` | relation | `after:` 호출(`completed("<quest>")`, `active("<quest>")`). `after="completed(dorm)"`이 퀘스트 호출로 읽힌다 | E-RESERVED-NAME |
 | `cel` `not` | relation | 규칙 단어. `rules:`에서 `not(…)`은 부정이고 `cel("…")`은 조건이다 | E-RESERVED-NAME |
 | `narrator` | cast id | 내장 내레이션 화자. `@narrator:` 줄은 내레이션이므로 이 cast 항목은 보이지 않고, 그 `present:`가 모든 내레이션 줄에 걸린다 | E-RESERVED-NAME, E-PLUGIN-RESERVED-NAME |

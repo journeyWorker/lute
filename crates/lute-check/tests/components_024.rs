@@ -74,10 +74,10 @@ fn line_of(text: &str, needle: &str) -> u32 {
     text.lines().position(|l| l.contains(needle)).unwrap() as u32 + 1
 }
 
-const APPROVAL: &str = "---\ncomponent: approval\neffects: true\nparams:\n  delta: number\n---\n\
+const APPROVAL: &str = "---\ncomponent: approval\neffects: true\nparams:\n  delta: int\n---\n\
 ## Scene 1.\n@narrator: Noted.\n::set{run.approval.isolde += @delta}\n";
 
-const DECLARED: &str = "state:\n  run.approval.isolde: { type: number, default: 0 }\n";
+const DECLARED: &str = "state:\n  run.approval.isolde: { type: int, default: 0 }\n";
 
 #[test]
 fn set_in_effects_body_is_admitted_and_clean_where_the_host_declares_it() {
@@ -122,7 +122,7 @@ fn write_to_a_path_the_host_does_not_declare_is_undeclared_at_the_use() {
 
 #[test]
 fn write_to_an_engine_owned_host_path_is_engine_owned_write_at_the_use() {
-    let front = "state:\n  run.approval.isolde: { type: number, default: 0, owner: engine }\n";
+    let front = "state:\n  run.approval.isolde: { type: int, default: 0, owner: engine }\n";
     let s = scene(front, "::use{component=\"approval\" delta=\"2\"}");
     let ds = run(APPROVAL, &s, &[]);
     let d = ds
@@ -181,7 +181,7 @@ fn a_presentational_body_may_not_use_an_effects_component() {
     .unwrap();
     std::fs::write(dir.join("c.lute"), comp).unwrap();
     let s = scene(
-        "state:\n  run.x: { type: number, default: 0 }\n",
+        "state:\n  run.x: { type: int, default: 0 }\n",
         "::use{component=\"outer\"}",
     );
     let (doc, _) = lute_syntax::parse(&s);

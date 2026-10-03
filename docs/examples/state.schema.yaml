@@ -1,5 +1,5 @@
 state:
   run.choseHelp: { type: bool, default: false }
-  user.level: { type: number, default: 1 }
+  user.level: { type: int, default: 1 }
 defs:
   helped: { type: bool, cel: "run.choseHelp" }

@@ -46,7 +46,7 @@ the `into=` sugar:
 
 `into="run.<path>"` alone appends `::set{run.<path> = <value>}` to that arm. The target path is
 named by **`into`** and must be declared in your schema. **`value`** defaults to `true` for a
-`bool` path; an `enum` or `number` path requires an explicit `value`. (0.6.0 removed the old
+bool path; an `enum` or numeric (`int` or `double`) path requires an explicit `value`. (0.6.0 removed the old
 `persist="run"` attribute; a stray `persist=` is now `E-PERSIST-REMOVED`, and `lute fix` deletes it
 automatically.) A later episode reacts by reading the named fact — never the raw choice key, which
 has already cleared:
@@ -93,7 +93,7 @@ order. Hub choices carry two extra boolean flags — **`once`** and **`exit`**:
   regardless of `once`, so the engine can grey out an already-seen topic. It is set when the
   choice is picked, before its arm runs, so inside that arm it is always `true` (a `<match>` arm
   needing it `false` there is `E-ARM-DEAD`). To tell the first pick from later ones, count picks
-  in a `scene.*` number the arm sets. The hub also folds `scene.choices.<hubId>` (the
+  in a `scene.*` int path the arm sets. The hub also folds `scene.choices.<hubId>` (the
   last-selected enum) — both are readable in a `<match>`.
 - **Exit.** Taking an `exit` choice runs its arm and leaves the hub. If no choice is eligible at a
   presentation point, the hub auto-exits.

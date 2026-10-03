@@ -96,10 +96,10 @@ title: Bloomfield, the garden town
 
 // ── the Bloom Gym guide ──────────────────────────────────────────────────
 
-<entry id="eastBloomGuideBefore" on="talk" target="npc.bloomfieldGymGuide" category="bark" when="!holds(defeated(fern))">
+<entry id="eastBloomGuideBefore" on="talk" target="npc.bloomfieldGymGuide" category="bark" when="!holds('defeated', ['fern'])">
   @bloomfieldGymGuide: Fern's grass monsters put you to sleep, then drink your health. Bring something that doesn't sleep. Or something on fire.
 </entry>
 
-<entry id="eastBloomGuideAfter" on="talk" target="npc.bloomfieldGymGuide" category="bark" when="holds(defeated(fern))">
+<entry id="eastBloomGuideAfter" on="talk" target="npc.bloomfieldGymGuide" category="bark" when="holds('defeated', ['fern'])">
   @bloomfieldGymGuide: Two badges in Eastmarch! With Fly you can go home any time. Your mum would like that, I bet.
 </entry>

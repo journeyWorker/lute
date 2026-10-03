@@ -7,7 +7,7 @@ components: [../components/reaction.component.lute]
 
 <beat after="visited('bridge.arrival')" id="maelisTerms" on="talk" target="npc.maelis" title="Show Maelis the proof" priority="30" when="quest.parley.state == 'active' && @hasProof">
   <match>
-    <when test="holds(knows(ledger))">
+    <when test="holds('knows', ['ledger'])">
       @narrator: You hold up the ledger. Maelis does not take it at first. She reads it from where she stands, the way you read a gravestone.
       @maelis: Coldwater. Burned. In a clerk's hand. They wrote it down.
     </when>
@@ -25,13 +25,13 @@ components: [../components/reaction.component.lute]
       ::set{run.hostagesFreed = true}
     </when>
   </match>
-  @isolde{when="holds(inParty(isolde))"}: Maelis. For what it's worth.
+  @isolde{when="holds('inParty', ['isolde'])"}: Maelis. For what it's worth.
   @maelis: It's worth nothing, Vane. Keep it anyway.
   ::set{run.bridge = "parleyed"}
   @maelis: Drop the chain.
 </beat>
 
-<beat after="visited('bridge.arrival')" id="maelisSale" on="talk" target="npc.maelis" title="Corvin's offer" priority="20" when="quest.toll.state == 'active' && holds(inParty(corvin))">
+<beat after="visited('bridge.arrival')" id="maelisSale" on="talk" target="npc.maelis" title="Corvin's offer" priority="20" when="quest.toll.state == 'active' && holds('inParty', ['corvin'])">
   @corvin: Three deserters, a sack of your silver, and the cellar under the ford where they sleep. Ask me how I know.
   @maelis: I don't care how you know. I care whether it's true.
   <branch id="sale" prompt="Maelis is listening. So is everyone else.">

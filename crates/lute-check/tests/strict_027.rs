@@ -226,7 +226,7 @@ fn a_per_family_declares_the_members_its_sub_kinds_add() {
     let imp = imports(&[(
         "w.yaml",
         "state:\n  user.seen: { type: bool, default: false, per: npc }\n  \
-         user.bond: { type: number, default: { sefa: 5, _: 0 }, per: bonded }\n\
+         user.bond: { type: int, default: { sefa: 5, _: 0 }, per: bonded }\n\
          entities:\n  npc: { members: [tavi] }\n  bonded: { subsetOf: npc, members: [brann] }\n  \
          confidant: { subsetOf: bonded, members: [sefa] }\n",
     )]);
@@ -249,5 +249,5 @@ fn a_per_family_declares_the_members_its_sub_kinds_add() {
     }
     assert!(!imp.state.decls.contains_key("user.bond.tavi"));
     let sefa = &imp.state.decls["user.bond.sefa"];
-    assert_eq!(sefa.default, Some(lute_manifest::types::Literal::Num(5.0)));
+    assert_eq!(sefa.default, Some(lute_manifest::types::Literal::Int(5)));
 }

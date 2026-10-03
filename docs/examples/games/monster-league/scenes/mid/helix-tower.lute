@@ -27,8 +27,8 @@ when: "run.lair.helixHQ != 'cleared' && run.lair.towerSiege == 'cleared'"
 @silvercrestReceptionist{when="run.lair.helixHQ == 'hidden'"}: Welcome to Helix Corp. We are... under new management. Please don't make a scene.
 @narrator{when="run.lair.helixHQ == 'found'"}: The receptionist sees you and quietly slides a card key across the desk again, in case you lost the first one.
 ::set{run.lair.helixHQ = "found" when="run.lair.helixHQ == 'hidden'"}
-::use{component="trainerBattle" who="helixGruntLobby" intro="Visitors sign in! You didn't sign in! That's a battle!" win="You can go up. I'll put you down as a delivery." lose="And stay signed out!" prize="720" when="!holds(defeated(helixGruntLobby))"}
-::next{to="thrownOut" when="!holds(defeated(helixGruntLobby))"}
+::use{component="trainerBattle" who="helixGruntLobby" intro="Visitors sign in! You didn't sign in! That's a battle!" win="You can go up. I'll put you down as a delivery." lose="And stay signed out!" prize="720" when="!holds('defeated', ['helixGruntLobby'])"}
+::next{to="thrownOut" when="!holds('defeated', ['helixGruntLobby'])"}
 
 ## The card key
 
@@ -39,25 +39,25 @@ when: "run.lair.helixHQ != 'cleared' && run.lair.towerSiege == 'cleared'"
 
 ::bg{location="helix-offices" time="day"}
 @narrator: Open-plan offices. The staff are still at their desks, typing very carefully, with grunts reading over their shoulders.
-::use{component="trainerBattle" who="helixGruntF3" intro="Nobody leaves their desk before five! That includes you!" win="Is it five yet? It feels like five." lose="Back to your desk. Wait, you don't have a desk." prize="760" when="!holds(defeated(helixGruntF3))"}
-::next{to="thrownOut" when="!holds(defeated(helixGruntF3))"}
+::use{component="trainerBattle" who="helixGruntF3" intro="Nobody leaves their desk before five! That includes you!" win="Is it five yet? It feels like five." lose="Back to your desk. Wait, you don't have a desk." prize="760" when="!holds('defeated', ['helixGruntF3'])"}
+::next{to="thrownOut" when="!holds('defeated', ['helixGruntF3'])"}
 
 ## The seventh floor
 
 ::bg{location="helix-lab" time="day"}
 @narrator: The research floor. A tank in the middle holds a sketch of a sleeping giant, labelled SUBJECT S, TO BE WOKEN.
-::use{component="trainerBattle" who="helixScientistOrrin" intro="The Director will have his giants, and I will have my grant. Stand aside!" win="My grant! Do you know how long those forms take?" lose="Science marches on. Over you, specifically." prize="960" when="!holds(defeated(helixScientistOrrin))"}
-::next{to="thrownOut" when="!holds(defeated(helixScientistOrrin))"}
+::use{component="trainerBattle" who="helixScientistOrrin" intro="The Director will have his giants, and I will have my grant. Stand aside!" win="My grant! Do you know how long those forms take?" lose="Science marches on. Over you, specifically." prize="960" when="!holds('defeated', ['helixScientistOrrin'])"}
+::next{to="thrownOut" when="!holds('defeated', ['helixScientistOrrin'])"}
 
 ## The tenth floor
 
-::use{component="trainerBattle" who="helixGruntF10" intro="The boardroom's one floor up, and you're not getting there. I've been practising this line all week." win="I should have practised the battle." lose="Nailed it. The line AND the battle." prize="800" when="!holds(defeated(helixGruntF10))"}
-::next{to="thrownOut" when="!holds(defeated(helixGruntF10))"}
+::use{component="trainerBattle" who="helixGruntF10" intro="The boardroom's one floor up, and you're not getting there. I've been practising this line all week." win="I should have practised the battle." lose="Nailed it. The line AND the battle." prize="800" when="!holds('defeated', ['helixGruntF10'])"}
+::next{to="thrownOut" when="!holds('defeated', ['helixGruntF10'])"}
 
 ## The eleventh floor
 
 ::bg{location="helix-atrium" time="day"}
-::next{to="boardroom" when="holds(rivalFought(tower))"}
+::next{to="boardroom" when="holds('rivalFought', ['tower'])"}
 ::auto{character="rival" action="enter"}
 @rival{emotion="smug"}: There you are. I cleared floors one to ten while you were riding the lift.
 @narrator: You did not ride the lift.

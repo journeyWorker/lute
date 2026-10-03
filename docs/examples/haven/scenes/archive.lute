@@ -33,7 +33,7 @@ after: 'visited("haven.s01ep07")'
   not be a `<match on>` subject but is admitted in `<when test>`. See T8.
 */
 <match on="true">
-<when test="holds(awake(ilsabet))">
+<when test="holds('awake', ['ilsabet'])">
 ::auto{character="ilsabet" action="unseal"}
 @ilsabet{code="0100" emotion="clipped"}: Move. That drawer is mine and it has been for eleven years.
 @ilsabet{code="0110" emotion="stricken"}: Filed heading. And it is not the heading we are flying.
@@ -67,6 +67,6 @@ after: 'visited("haven.s01ep07")'
 </choice>
 </branch>
 
-@vesna{code="0230" emotion="level" when="holds(can_halt(vesna))"}: I can stop it. That is not the same as knowing how to make it want to.
+@vesna{code="0230" emotion="level" when="holds('can_halt', ['vesna'])"}: I can stop it. That is not the same as knowing how to make it want to.
 @vesna{code="0240" emotion="clipped"}: Listed mass and a filed voyage. That's the whole of what it counts, and both of them are wrong, and nobody has ever once gone forward and said so.
 @narrator{code="0250"}: Forward, then, with the paper.

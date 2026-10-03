@@ -52,7 +52,7 @@ title: Sunport
 </entry>
 
 // The Dusk Remnant's grunts, once beaten, all say the same thing.
-<beat id="duskBeaten" on="talk" target="kind:islesDusk" title="A beaten grunt" once="false" when="holds(defeated(occasion.target))">
+<beat id="duskBeaten" on="talk" target="kind:islesDusk" title="A beaten grunt" once="false" when="holds('defeated', [occasion.target])">
   @narrator: The grunt pulls up the collar of a grey coat and will not look at {{userName}}.
 </beat>
 
@@ -69,6 +69,6 @@ title: Sunport
 
 // ── the shrine door ─────────────────────────────────────────────────────────
 
-<entry id="islesShrineSealed" on="enterPlace" target="place.sunfallShrine" category="bark" priority="-10" when="!holds(canPass(islesShrineDoor))">
+<entry id="islesShrineSealed" on="enterPlace" target="place.sunfallShrine" category="bark" priority="-10" when="!holds('canPass', ['islesShrineDoor'])">
   @narrator: Stone steps lead down under the town to a round door with no handle. Three slots in the ceiling let in no light at all.
 </entry>

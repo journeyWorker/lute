@@ -11,7 +11,7 @@ title: The week's promises
   <objective id="paper" title="Find paper that will not drown (ask at the library)" done="run.lantern.paper" by="@friAfternoonOver">
     @narrator: The paper is thin as an onion skin and tougher than it looks.
   </objective>
-  <objective id="wish" title="Write a wish on the lantern" done="isSet(run.lantern.wish)" optional/>
+  <objective id="wish" title="Write a wish on the lantern" done="has(run.lantern.wish)" optional/>
 </quest>
 
 <quest id="theoLighthouse" title="Wednesday night at the lighthouse" tier="run">

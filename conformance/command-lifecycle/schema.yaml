@@ -1,0 +1,4 @@
+entities:
+  who: { members: [hero] }
+relations:
+  seen: { args: [who], tier: run }

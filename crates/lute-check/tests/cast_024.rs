@@ -9,7 +9,7 @@ use lute_check::connectivity::{
     scene_key_set, unreachable_quest_ids,
 };
 use lute_check::{
-    check, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv, GroundFact,
+    check, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv,
     MaySet, MetaKind, Mode, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity, Span};
@@ -23,8 +23,8 @@ const ABSENT: &str = "W-CAST-ABSENT";
 const VOCAB: &str = "entities:\n  companion: { members: [isolde, corvin] }\n\
     relations:\n  inParty: { args: [companion], tier: run }\n\
     enums:\n  emotion: [calm, fierce, sad]\n\
-    state:\n  run.x: { type: number, default: 0 }\n  run.withUs: { type: bool, default: false }\n\
-    defs:\n  isoldeHere: { type: bool, cel: \"holds(inParty(isolde))\" }\n";
+    state:\n  run.x: { type: int, default: 0 }\n  run.withUs: { type: bool, default: false }\n\
+    defs:\n  isoldeHere: { type: bool, cel: \"holds('inParty', ['isolde'])\" }\n";
 
 fn member(id: &str, present: Option<&str>, emotions: Option<&[&str]>) -> CastMember {
     CastMember {
@@ -44,7 +44,7 @@ fn snapshot() -> CapabilitySnapshot {
     for m in [
         member(
             "isolde",
-            Some("holds(inParty(isolde))"),
+            Some("holds('inParty', ['isolde'])"),
             Some(&["calm", "fierce"]),
         ),
         member("corvin", Some("run.withUs == true"), None),
@@ -123,9 +123,9 @@ fn an_unguarded_line_by_a_present_speaker_warns_once() {
     assert_eq!(hits[0].severity, Severity::Warning);
     assert_eq!(anchored(&src, hits[0]), "isolde");
     let msg = &hits[0].message;
-    assert!(msg.contains("present: \"holds(inParty(isolde))\""), "{msg}");
+    assert!(msg.contains("present: \"holds('inParty', ['isolde'])\""), "{msg}");
     assert!(
-        msg.contains("@isolde{when=\"holds(inParty(isolde))\"}"),
+        msg.contains("@isolde{when=\"holds('inParty', ['isolde'])\"}"),
         "{msg}"
     );
 }
@@ -133,8 +133,8 @@ fn an_unguarded_line_by_a_present_speaker_warns_once() {
 #[test]
 fn the_lines_own_when_implies_presence() {
     let src = scene(
-        "@isolde{when=\"holds(inParty(isolde))\"}: Onward.\n\
-         @isolde{when=\"holds(inParty(corvin))\"}: Wrong guard.",
+        "@isolde{when=\"holds('inParty', ['isolde'])\"}: Onward.\n\
+         @isolde{when=\"holds('inParty', ['corvin'])\"}: Wrong guard.",
     );
     let ds = diags(&src);
     assert_clean_vocab(&ds);
@@ -144,14 +144,14 @@ fn the_lines_own_when_implies_presence() {
         1,
         "only the line guarded by someone else's presence: {ds:?}"
     );
-    assert!(src[hits[0].span.byte_start..].starts_with("isolde{when=\"holds(inParty(corvin))"));
+    assert!(src[hits[0].span.byte_start..].starts_with("isolde{when=\"holds('inParty', ['corvin'])"));
 }
 
 #[test]
 fn a_scene_beat_when_conjunction_implies_presence() {
     let src = scene_as(
         "a.one",
-        "on: hubVisit\nwhen: \"holds(inParty(isolde)) && run.x >= 1\"\n",
+        "on: hubVisit\nwhen: \"holds('inParty', ['isolde']) && run.x >= 1\"\n",
         "@isolde: The fire is warm.",
     );
     let ds = diags(&src);
@@ -174,7 +174,7 @@ fn an_occasion_gate_and_not_terminal_imply_presence() {
         OccasionDecl {
             name: "roofNight".into(),
             select: OccasionSelect::First,
-            raised_when: Some("run.x >= 1 && holds(inParty(isolde))".into()),
+            raised_when: Some("run.x >= 1 && holds('inParty', ['isolde'])".into()),
             ..Default::default()
         },
     );
@@ -280,7 +280,7 @@ fn a_write_between_the_guard_and_the_line_voids_the_guard() {
         "a `::set` of the guarded path"
     );
     let retract = scene(
-        "<branch id=\"b\">\n<choice id=\"c\" label=\"Part\" when=\"holds(inParty(isolde))\">\n\
+        "<branch id=\"b\">\n<choice id=\"c\" label=\"Part\" when=\"holds('inParty', ['isolde'])\">\n\
          ::retract{inParty(isolde)}\n@isolde: Farewell.\n</choice>\n\
          <choice id=\"d\" label=\"Stay\">\n@narrator: Nothing.\n</choice>\n</branch>",
     );
@@ -298,7 +298,7 @@ fn a_plugin_present_that_does_not_parse_is_reported_once_and_not_decided() {
     let mut snap = snapshot();
     snap.cast.insert(
         "isolde".into(),
-        member("isolde", Some("holds(inParty(isolde)"), None),
+        member("isolde", Some("holds('inParty', ['isolde']"), None),
     );
     let src = scene("@isolde: One.\n@isolde: Two.");
     let ds = check(&input(&src, snap)).diagnostics;
@@ -429,7 +429,7 @@ const REL_VOCAB: &str = "entities:\n  companion: { members: [isolde, mara, wren,
     at: { args: [person, place], derive: true }\n  carrying: { args: [part], tier: run }\n\
     rules:\n  - 'inParty(P) :- recruited(P), not departed(P), not fell(P)'\n  \
     - 'at(sol, radio) :- cel(\"run.x == 1\")'\n\
-    state:\n  run.x: { type: number, default: 0 }\n";
+    state:\n  run.x: { type: int, default: 0 }\n";
 
 /// [`snapshot`] plus speakers present over [`REL_VOCAB`]: `mara` while not
 /// departed, `wren` in the party or not yet recruited, `sol` on his
@@ -438,14 +438,14 @@ const REL_VOCAB: &str = "entities:\n  companion: { members: [isolde, mara, wren,
 fn rel_snapshot() -> CapabilitySnapshot {
     let mut snap = snapshot();
     for mut m in [
-        member("mara", Some("!holds(departed(mara))"), None),
+        member("mara", Some("!holds('departed', ['mara'])"), None),
         member(
             "wren",
-            Some("holds(inParty(wren)) || !holds(recruited(wren))"),
+            Some("holds('inParty', ['wren']) || !holds('recruited', ['wren'])"),
             None,
         ),
-        member("sol", Some("holds(at(sol, radio))"), None),
-        member("tomas", Some("holds(inParty(tomas))"), None),
+        member("sol", Some("holds('at', ['sol', 'radio'])"), None),
+        member("tomas", Some("holds('inParty', ['tomas'])"), None),
         member("quill", Some("entry.meet.everRead"), None),
     ] {
         m.assume = (m.id == "tomas").then_some(true);
@@ -476,7 +476,7 @@ fn absent_lines<'s>(src: &'s str, ds: &[Diagnostic]) -> Vec<&'s str> {
 #[test]
 fn a_write_in_one_choice_does_not_reach_a_sibling_choice() {
     let src = rel_scene(
-        "on: hubVisit\nwhen: \"!holds(recruited(wren))\"\n",
+        "on: hubVisit\nwhen: \"!holds('recruited', ['wren'])\"\n",
         "<branch id=\"ask\">\n<choice id=\"yes\" label=\"Join us\">\n@wren: Gladly.\n::assert{recruited(wren)}\n</choice>\n\
          <choice id=\"no\" label=\"Stay\">\n@wren: I'll stay.\n</choice>\n</branch>\n@wren: After the branch.",
     );
@@ -493,7 +493,7 @@ fn a_write_in_one_choice_does_not_reach_a_sibling_choice() {
 #[test]
 fn an_assert_invalidates_only_a_guard_atom_it_can_falsify() {
     let src = rel_scene(
-        "on: hubVisit\nwhen: \"holds(inParty(isolde)) && !holds(carrying(wire))\"\n",
+        "on: hubVisit\nwhen: \"holds('inParty', ['isolde']) && !holds('carrying', ['wire'])\"\n",
         "::assert{recruited(tomas)}\n@isolde: Another pair of hands.\n\
          ::assert{recruited(isolde)}\n@isolde: A positive premise only helps.\n\
          ::assert{carrying(wire)}\n@isolde: Another conjunct of the guard fell, not mine.\n\
@@ -511,7 +511,7 @@ fn an_assert_invalidates_only_a_guard_atom_it_can_falsify() {
 #[test]
 fn a_derived_guard_implies_its_rule_premises() {
     let src = rel_scene(
-        "on: hubVisit\nwhen: \"holds(inParty(mara))\"\n",
+        "on: hubVisit\nwhen: \"holds('inParty', ['mara'])\"\n",
         "@mara: With you.\n@wren: Me too?",
     );
     let ds = rel_diags(&src);
@@ -536,7 +536,7 @@ fn a_cel_only_schedule_is_read_as_its_guard() {
     );
     assert_eq!(absent_lines(&off, &rel_diags(&off)), ["sol: Not my shift."]);
     let atom = rel_scene(
-        "on: hubVisit\nwhen: \"holds(at(sol, radio))\"\n",
+        "on: hubVisit\nwhen: \"holds('at', ['sol', 'radio'])\"\n",
         "@sol: Here.\n::set{run.x = 3}\n@sol: The schedule moved.",
     );
     assert_eq!(
@@ -619,7 +619,7 @@ fn assume_reads_a_negated_reserved_relation_as_holding() {
 fn a_disjunct_proven_by_a_fact_only_the_unit_itself_asserts_counts() {
     // Wren is present "in the party, or not yet recruited". Only this
     // `once: run` scene recruits her, after its first line and in one
-    // choice, so `!holds(recruited(wren))` holds before and beside it —
+    // choice, so `!holds('recruited', ['wren'])` holds before and beside it —
     // even though another scene can make her depart and `fell` is reserved.
     let meet = rel_scene(
         "on: hubVisit\n",
@@ -628,7 +628,7 @@ fn a_disjunct_proven_by_a_fact_only_the_unit_itself_asserts_counts() {
          </branch>\n@wren: After the branch.",
     );
     let leaves = rel_scene(
-        "on: hubVisit\npriority: 5\nwhen: \"holds(inParty(wren))\"\n",
+        "on: hubVisit\npriority: 5\nwhen: \"holds('inParty', ['wren'])\"\n",
         "::assert{departed(wren)}",
     )
     .replace("id: a.rel", "id: a.leaves");
@@ -686,7 +686,7 @@ fn battle_scene(id: &str, fm: &str, body: &str) -> String {
 }
 
 /// A `tomas` line guarded by every premise of his `present` but `fell`.
-const TOMAS: &str = "@tomas{when=\"holds(recruited(tomas)) && !holds(departed(tomas))\"}";
+const TOMAS: &str = "@tomas{when=\"holds('recruited', ['tomas']) && !holds('departed', ['tomas'])\"}";
 
 /// The spoken text of every `W-CAST-ABSENT` line of `ds`.
 fn absent_said<'s>(src: &'s str, ds: &[Diagnostic]) -> Vec<&'s str> {
@@ -813,25 +813,25 @@ fn a_guard_needing_a_changed_on_fact_takes_assume_away() {
     };
     // The unit's own `when`, directly and through `count`.
     let unit = said(
-        "on: hubVisit\nwhen: \"holds(fell(isolde))\"\n",
+        "on: hubVisit\nwhen: \"holds('fell', ['isolde'])\"\n",
         &format!("{TOMAS}: Two days quiet."),
     );
     assert_eq!(unit, ["Two days quiet."]);
     let counted = said(
-        "on: hubVisit\nwhen: \"count(fell(_)) >= 1\"\n",
+        "on: hubVisit\nwhen: \"count('fell', ['_']) >= 1\"\n",
         &format!("{TOMAS}: Cairns."),
     );
     assert_eq!(counted, ["Cairns."]);
     // A line's own guard, and only that line.
     let line = said(
         "on: hubVisit\n",
-        "@tomas{when=\"holds(recruited(tomas)) && !holds(departed(tomas)) && holds(fell(isolde))\"}: She's gone.\n\
-         @tomas{when=\"holds(recruited(tomas)) && !holds(departed(tomas))\"}: Morning.",
+        "@tomas{when=\"holds('recruited', ['tomas']) && !holds('departed', ['tomas']) && holds('fell', ['isolde'])\"}: She's gone.\n\
+         @tomas{when=\"holds('recruited', ['tomas']) && !holds('departed', ['tomas'])\"}: Morning.",
     );
     assert_eq!(line, ["She's gone."]);
     // A guard that holds without a `fell` fact proves nothing.
     let either = said(
-        "on: hubVisit\nwhen: \"holds(fell(isolde)) || run.x == 1\"\n",
+        "on: hubVisit\nwhen: \"holds('fell', ['isolde']) || run.x == 1\"\n",
         &format!("{TOMAS}: Maybe."),
     );
     assert!(either.is_empty(), "{either:?}");
@@ -925,7 +925,7 @@ fn schema_meta(yaml: &str) -> lute_syntax::ast::Meta {
 #[test]
 fn a_schema_cast_entry_checks_present_and_emotions_at_its_key() {
     let yaml = "enums:\n  emotion: [calm, fierce]\n\
-                cast:\n  isolde: { name: Isolde, present: \"holds(inParty(isolde)) &&\", emotions: [calm, grumpy] }\n  \
+                cast:\n  isolde: { name: Isolde, present: \"holds('inParty', ['isolde']) &&\", emotions: [calm, grumpy] }\n  \
                 corvin: { present: \"size(run.party) > 1\" }\n  \
                 maud: { name: Maud, present: \"run.x >= 1\", emotions: [calm] }\n";
     let meta = schema_meta(yaml);

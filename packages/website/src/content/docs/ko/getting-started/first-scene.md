@@ -6,7 +6,7 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 이 문서는 Lute를 한 번도 다뤄본 적 없는 시나리오 작가를 위한 "여기서 시작" 안내입니다 —
 컴파일러 배경지식은 필요 없습니다. 빈 파일에서 **작지만 실제로 동작하는 장면 하나**를 단계별로
 만들며, 매 단계마다 실제 `lute` 도구를 실행해 도구가 정확히 뭐라고 말하는지 확인합니다. 언어
-버전 **0.31.0**를 대상으로 합니다.
+버전 **0.32.0**를 대상으로 합니다.
 
 일반 텍스트 편집기, 터미널, 그리고 `lute` 명령
 ([먼저 설치하세요](/ko/getting-started/installation/))이 필요합니다. 여기서 작성하는 모든
@@ -288,9 +288,9 @@ lute: applied 1 fix(es)
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.31.0",
-  "irVersion": "0.31.0",
-  "capabilityVersion": "ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319",
+  "lute": "0.32.0",
+  "irVersion": "0.32.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "id": "mira.s01ep01",
     "title": "A Quiet Table"
@@ -581,12 +581,12 @@ id — 당신이 지정한 특정 파일에 맞게 해석하여:
 ```
 $ lute context episodes/diner.lute
 lute: note: using project episodes (nearest lute.project.yaml); pass --project to choose another
-capabilityVersion: ab1fc53850ae8e585b54639fcd0677bf05af561c2be4a55609a1a0b968519319
+capabilityVersion: f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225
 permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (12):
   auto: character: string, anchor: domain:anchor, action: domain:action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location: string, time: string, assetId: string   [mutatesScene]
-  camera: focus: string, zoom: number, moveX: number, moveY: number, shake: number, reset: bool, duration: number, easing: string, delay: number, wait: bool
+  camera: focus: string, zoom: double, moveX: double, moveY: double, shake: double, reset: bool, duration: double, easing: string, delay: double, wait: bool
   clear:    [reads.onStage mayExitCharacter]
   cut: assetId: string, action: enum[show, hide], full: bool
   end: reason: string   [terminatesWalk]
@@ -625,8 +625,8 @@ builtinDirectives (10):
   ::clear{[when="<condition>"]} — take every character on stage off it; takes no attributes
 directiveAttrs (5; beyond each directive's own):
   when: condition — every directive
-  duration: number — every directive but ::clear
-  delay: number — every directive but ::clear
+  duration: double — every directive but ::clear
+  delay: double — every directive but ::clear
   wait: bool — every directive but ::clear
   at: time — a directive inside a <track> clip only
 beatKeys (11; scene frontmatter `key: value`; <entry> / <beat> attributes `key="value"`):

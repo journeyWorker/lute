@@ -12,7 +12,7 @@ title: Aria, the Starcaller (SSR)
   @aria{emotion="happy"}: I'm Aria. I call stars. Usually they answer. Tonight, you did.
 </beat>
 
-<beat id="ariaDupe" on="summon" target="hero.aria" once="false" priority="3" when="holds(owned(aria)) && occasion.payload.copies <= 6">
+<beat id="ariaDupe" on="summon" target="hero.aria" once="false" priority="3" when="holds('owned', ['aria']) && occasion.payload.copies <= 6">
   @aria{emotion="shy"}: Me again! I'll count this as a second wish. Or a {{occasion.payload.copies:ordinal}}.
 </beat>
 
@@ -21,7 +21,7 @@ title: Aria, the Starcaller (SSR)
   @aria{when="@weekend"}: It's the weekend! Stars don't take weekends. I asked.
 </beat>
 
-<beat id="ariaBirthday" on="dailyReset" once="day" when="holds(celebrate(aria))">
+<beat id="ariaBirthday" on="dailyReset" once="day" when="holds('celebrate', ['aria'])">
   @aria{emotion="surprised"}: You remembered my birthday? I didn't even tell the stars.
 </beat>
 

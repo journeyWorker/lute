@@ -94,11 +94,11 @@ title: Fairhaven (the day care, the lighthouse, the Dex rater)
   </match>
 </entry>
 
-<entry id="midKeeper" on="talk" target="npc.fairhavenKeeper" category="bark" when="!holds(midGhostSeen(fairhavenLighthouse))">
+<entry id="midKeeper" on="talk" target="npc.fairhavenKeeper" category="bark" when="!holds('midGhostSeen', ['fairhavenLighthouse'])">
   @fairhavenKeeper: I keep the lighthouse. I don't light it. Thirty years ago the light went out on its own, and every night since, something at the top has been trying to light it again.
 </entry>
 
-<entry id="midKeeperAfter" on="talk" target="npc.fairhavenKeeper" category="bark" when="holds(midGhostSeen(fairhavenLighthouse))">
+<entry id="midKeeperAfter" on="talk" target="npc.fairhavenKeeper" category="bark" when="holds('midGhostSeen', ['fairhavenLighthouse'])">
   @fairhavenKeeper: You saw it? The old keeper. Still on shift. Well. Somebody has to be.
 </entry>
 

@@ -17,6 +17,8 @@
       "state": "failed"
     },
     {
+      "index": 0,
+      "instance": 1,
       "kind": "grant",
       "onFailed": true,
       "quest": "parentQ",
@@ -32,6 +34,8 @@
       "state": "failed"
     },
     {
+      "index": 0,
+      "instance": 1,
       "kind": "grant",
       "onFailed": true,
       "quest": "findKey",
@@ -43,7 +47,7 @@
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.31",
+  "irVersion": "0.32",
   "kind": "quest",
   "quests": {
     "findKey": "failed",

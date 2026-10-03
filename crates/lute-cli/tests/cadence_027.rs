@@ -64,7 +64,7 @@ fn play(dir: &Path, script: &str) -> Output {
         .unwrap()
 }
 
-const DAY_CLOCK: &str = "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+const DAY_CLOCK: &str = "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
      run.solved: { type: bool, default: false, owner: engine }\n\
      clock:\n  day: run.day\n";
 
@@ -208,8 +208,8 @@ fn spent_by_once_sets_how_long_it_stays_spent() {
     );
 }
 
-const SEASON_SCHEMA: &str = "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
-     season.harvest.tokens: { type: number, default: 0 }\n\
+const SEASON_SCHEMA: &str = "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
+     season.harvest.tokens: { type: int, default: 0 }\n\
      clock:\n  day: run.day\n\
      defs:\n  harvestLive: \"(run.day >= 3 && run.day <= 4) || (run.day >= 8 && run.day <= 9)\"\n\
      seasons:\n  harvest: { live: \"@harvestLive\" }\n";
@@ -363,9 +363,9 @@ fn one_long_advance_settles_every_day_it_crosses() {
 /// where it opens and fails its deadline where it closes.
 #[test]
 fn one_long_advance_starts_and_fails_a_season_quest_inside_the_window() {
-    let schema = "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+    let schema = "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
                   run.slot: { type: { enum: [morning, night] }, default: morning, owner: engine }\n  \
-                  season.fair.stalls: { type: number, default: 0 }\n\
+                  season.fair.stalls: { type: int, default: 0 }\n\
                   clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, night]\n\
                   defs:\n  fairLive: \"run.day == 3\"\n\
                   seasons:\n  fair: { live: \"@fairLive\" }\n";
@@ -404,8 +404,8 @@ fn one_long_advance_starts_and_fails_a_season_quest_inside_the_window() {
 #[test]
 fn one_long_advance_rearms_at_the_crossed_position() {
     let schema = format!(
-        "state:\n  run.day: {{ type: number, default: 1, owner: engine }}\n  \
-         run.floors: {{ type: number, default: 0, owner: engine }}\n\
+        "state:\n  run.day: {{ type: int, default: 1, owner: engine }}\n  \
+         run.floors: {{ type: int, default: 0, owner: engine }}\n\
          clock:\n  day: run.day\n{WEEK_CLOCK}\
          defs:\n  monday: \"clock.weekday == 0\"\n"
     );
@@ -444,9 +444,9 @@ fn one_long_advance_rearms_at_the_crossed_position() {
 
 #[test]
 fn one_long_advance_observes_every_slot_it_crosses() {
-    let schema = "state:\n  run.day: { type: number, default: 1, owner: engine }\n  \
+    let schema = "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
                   run.slot: { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }\n  \
-                  season.fair.stalls: { type: number, default: 0 }\n\
+                  season.fair.stalls: { type: int, default: 0 }\n\
                   clock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, afternoon, night]\n\
                   seasons:\n  fair: { live: \"run.slot == 'afternoon'\" }\n";
     let dir = project(
@@ -524,7 +524,7 @@ fn a_season_fault_in_a_schema_is_reported_once_at_the_schema() {
         (
             "live-number",
             SEASON_SCHEMA.replace("\"@harvestLive\" }", "\"run.day\" }"),
-            "[E-REF-TYPE] season `harvest` `live: run.day`: `run.day` is a number but this \
+            "[E-REF-TYPE] season `harvest` `live: run.day`: `run.day` is an int but this \
              position expects a bool — compare it (for example `run.day > 0`)",
         ),
     ];
@@ -632,7 +632,7 @@ fn test_eligible_honours_spent_by() {
         &[
             (
                 "scenes/valves.lute",
-                &scene("ward.valves", "spentBy: \"holds(solved(valves))\"\n", "The valves hiss."),
+                &scene("ward.valves", "spentBy: \"holds('solved', ['valves'])\"\n", "The valves hiss."),
             ),
             (
                 "tests/open.test.yaml",
@@ -669,7 +669,7 @@ fn test_eligible_honours_spent_by() {
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(
-        t.contains("its spentBy: `holds(solved(valves))` holds"),
+        t.contains("its spentBy: `holds('solved', ['valves'])` holds"),
         "{t}"
     );
 }

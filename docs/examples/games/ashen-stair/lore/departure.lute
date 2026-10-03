@@ -12,7 +12,7 @@ title: Leaving the Hearth
   @narrator{code="0010"}: The door to the Stair stands open. It always does. That is the worst thing about it.
 </entry>
 
-<entry id="sendOff" on="departure" for="kind:npc" once="run" when="user.bond[occasion.target] >= 3 && holds(keepsakeFrom(occasion.target))">
+<entry id="sendOff" on="departure" for="kind:npc" once="run" when="user.bond[occasion.target] >= 3 && holds('keepsakeFrom', [occasion.target])">
   @narrator{code="0010"}: {{occasion.target}} looks up as she passes.
   <match on="occasion.target">
     <when is="maud">
