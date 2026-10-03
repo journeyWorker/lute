@@ -53,8 +53,57 @@
         }
       }
     }
+    ,
+    "constraints": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/constraint" }
+    }
   },
   "definitions": {
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["reachable", "completable", "speaksOnlyWhen", "noSingleSlotProgress"] },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "node": { "type": "string", "minLength": 1 },
+        "quest": { "type": "string", "minLength": 1 },
+        "speaker": { "type": "string", "minLength": 1 },
+        "when": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "reachable" } } },
+          "then": {
+            "required": ["node"],
+            "not": { "anyOf": [{ "required": ["quest"] }, { "required": ["speaker"] }, { "required": ["when"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "completable" } } },
+          "then": {
+            "required": ["quest"],
+            "not": { "anyOf": [{ "required": ["node"] }, { "required": ["speaker"] }, { "required": ["when"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "noSingleSlotProgress" } } },
+          "then": {
+            "required": ["quest"],
+            "not": { "anyOf": [{ "required": ["node"] }, { "required": ["speaker"] }, { "required": ["when"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "speaksOnlyWhen" } } },
+          "then": {
+            "required": ["speaker", "when"],
+            "not": { "anyOf": [{ "required": ["node"] }, { "required": ["quest"] }] }
+          }
+        }
+      ]
+    },
     "profile": {
       "type": "object",
       "properties": {

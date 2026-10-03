@@ -1460,6 +1460,10 @@ fn count_atom(cmp: &Expr, a: &Expr, b: &Expr, ctx: &DecideCtx<'_>) -> Option<Ato
 }
 
 fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnostic {
+    let evidence = match crate::evidence::classification(code) {
+        Some(crate::evidence::DiagnosticClass::Analysis { evidence }) => Some(evidence),
+        _ => None,
+    };
     Diagnostic {
         code: code.to_string(),
         severity,
@@ -1470,5 +1474,6 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence,
     }
 }

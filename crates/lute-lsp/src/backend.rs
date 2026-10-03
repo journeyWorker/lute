@@ -22,11 +22,11 @@ use std::path::{Path, PathBuf};
 
 use dashmap::DashMap;
 use lute_check::{
-    check, check_cel_slot, parse_meta_kind, resolve_imports, translate_cel_parse, CheckInput,
-    MetaKind, Mode,
+    check, check_cel_slot, parse_meta_kind, translate_cel_parse, MetaKind, Mode,
 };
-use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
+use lute_model::{assemble_input_with_mode, BuiltInput, InputCache};
 use lute_manifest::project::MetaDefaults;
+use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CodeActionOrCommand, CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
@@ -60,7 +60,6 @@ pub struct DocumentSnapshot {
 
 /// The Lute language server: an LSP client handle plus the concurrent map of open
 /// documents keyed by their [`Uri`].
-#[derive(Debug)]
 pub struct Backend {
     client: Client,
     docs: DashMap<Uri, DocumentSnapshot>,
@@ -248,28 +247,25 @@ impl Backend {
                 return;
             }
         }
-        let (cap, providers, rdiags) = self.snapshot_for(&uri, &snapshot.text);
-        // Resolve `uses:` schema imports (dsl §9.2) with the SAME resolver the
-        // editor features use (`imports_for`), so diagnostics and features never
-        // disagree on the imported schema. A non-file uri resolves to no imports.
-        let imports = self.imports_for(&uri, &snapshot.text);
-        // Resolve `components:` component imports (dsl §13) from the same scene
-        // directory, mirroring `imports_for`, so `::use` validates identically on
-        // both surfaces.
-        let components = self.components_for(&uri, &snapshot.text);
-        let input = CheckInput {
-            text: snapshot.text.clone(),
-            uri: uri.as_str().to_string(),
-            snapshot: cap,
-            // Clone: `providers` is reused below for the opt-in lint pass so
-            // both surfaces resolve provider ids against the SAME pinned
-            // catalog.
-            providers: providers.clone(),
-            mode: Mode::Author,
-            imports,
-            components,
-            defaults: self.defaults_for(&uri),
+        let Some(file_path) = uri_to_path(&uri) else {
+            return;
         };
+        let project_root = find_project_root(&file_path);
+        let request_cache = InputCache::default();
+        let loaded_project = project_root
+            .as_deref()
+            .map(|root| request_cache.project(root));
+        let (built, (doc_ast, _)) = assemble_input_with_mode(
+            &request_cache,
+            &file_path,
+            snapshot.text.clone(),
+            None,
+            project_root.as_deref(),
+            None,
+            Mode::Author,
+        );
+        let input = built.input;
+        let providers = input.providers.clone();
         let result = check(&input);
         self.warn_if_older_than_stamp(&snapshot.text, &input.defaults)
             .await;
@@ -283,28 +279,21 @@ impl Backend {
         // their fixits (spec §8 permits fixits on lint diagnostics; today
         // none of the v1 rules emit any, but the cache is the general seam).
         let mut all_diags = result.diagnostics;
-        if let Some(file_path) = uri_to_path(&uri) {
-            if let Some(project_root) = find_project_root(&file_path) {
-                let project = lute_manifest::project::load_project(&project_root)
-                    .ok()
-                    .flatten();
-                // The manifest's `chapters:` derivation, as `check` read the
-                // document: a chain-listed scene lints as the beat it is.
-                let (mut doc_ast, _) = lute_syntax::parse(&snapshot.text);
-                lute_check::chapters::apply_chapters(
-                    &mut doc_ast,
-                    &input.defaults,
-                    &input.snapshot.occasions,
-                );
-                all_diags.extend(crate::lint::lint_document(
-                    &file_path,
-                    &project_root,
-                    project.as_ref(),
-                    &providers,
-                    &doc_ast,
-                    &snapshot.text,
-                ));
-            }
+        if let Some(project_root) = project_root.as_deref() {
+            let project = loaded_project
+                .as_deref()
+                .and_then(|loaded| loaded.as_ref().ok())
+                .and_then(Option::as_ref);
+            // `assemble_input_with_mode` already applied project defaults and
+            // chapter derivations to this parsed document.
+            all_diags.extend(crate::lint::lint_document(
+                &file_path,
+                project_root,
+                project,
+                &providers,
+                &doc_ast,
+                &snapshot.text,
+            ));
         }
         // Task 15: retain the ORIGINAL diagnostics (fixits/covered intact)
         // beside the published LSP form for `code_action` to read back later.
@@ -320,6 +309,14 @@ impl Backend {
                 lsp
             })
             .collect();
+        let mut rdiags = built.resolve_diags;
+        if let Some(Err(message)) = loaded_project.as_deref() {
+            rdiags.push(lute_manifest::project::ResolveDiag {
+                span: None,
+                code: "E-PROJECT-CONFIG".to_string(),
+                message: message.clone(),
+            });
+        }
         diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
         self.publish(uri, Some((diags, Some(snapshot.version))), foreign)
             .await;
@@ -463,10 +460,9 @@ impl Backend {
     ///   `schema_import::read_and_parse` uses for a `.yaml`/`.yml` import target
     ///   (a synthetic whole-file `Meta`, no `---` envelope) — reused verbatim so
     ///   a declaration parses identically whether opened directly or imported.
-    /// * [`resolve_imports`] — this file's OWN `uses:`/`extends:` (dsl §9.2),
-    ///   the SAME resolver [`imports_for`](Self::imports_for) runs for a scene,
-    ///   so the state schema `defs:` CEL is checked against includes whatever
-    ///   this declaration itself imports.
+    /// * The model assembly's `imports` — this file's OWN `uses:`/`extends:`
+    ///   (dsl §9.2), resolved by the same `InputCache` path used for scenes,
+    ///   so the state schema `defs:` CEL is checked against its includes.
     /// * [`lute_check::schema_import::merge_domains`] — this file's own
     ///   `enums:`/`entities:` unioned with its imports, checked against the
     ///   project's active baseline (A4), catching an `E-DOMAIN-DUP` collision
@@ -502,22 +498,29 @@ impl Backend {
             MetaKind::Schema,
         );
 
-        let dir = file_path.parent().unwrap_or_else(|| Path::new("."));
-        let imports = resolve_imports(dir, &typed.uses, &typed.extends, whole);
-        diags.extend(imports.diags.clone());
-
-        let project = match lute_manifest::project::load_project(project_root) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("lute-lsp: {e}");
-                None
-            }
-        };
-        let (baseline, rdiags) = lute_manifest::project::resolve_document_snapshot(
-            project.as_ref(),
-            typed.profile.as_deref(),
-            &typed.plugins,
+        let request_cache = InputCache::default();
+        let (built, _) = assemble_input_with_mode(
+            &request_cache,
+            file_path,
+            snapshot.text.clone(),
+            None,
+            Some(project_root),
+            None,
+            Mode::Author,
         );
+        // Declaration imports and the active project baseline come from the
+        // same model assembly used by scene analysis.
+        let imports = built.input.imports.clone();
+        diags.extend(imports.diags.clone());
+        let baseline = built.input.snapshot.clone();
+        let mut rdiags = built.resolve_diags;
+        if let Err(message) = request_cache.project(project_root).as_ref() {
+            rdiags.push(lute_manifest::project::ResolveDiag {
+                span: None,
+                code: "E-PROJECT-CONFIG".to_string(),
+                message: message.clone(),
+            });
+        }
 
         // Domain refs: this file's own `enums:`/`entities:` unioned with its
         // imports, checked against the project's active baseline. Both sources
@@ -630,6 +633,7 @@ impl Backend {
                         message: t.message,
                         span: cel_span,
                         layer: Layer::Cel,
+                        evidence: None,
                         fixits: Vec::new(),
                         provenance: None,
                         covered: Vec::new(),
@@ -655,125 +659,33 @@ impl Backend {
             .await;
     }
 
-    /// The governing manifest's `defaults:` for `uri` (0.10.0 §6), discovered
-    /// exactly as [`snapshot_for`](Self::snapshot_for) discovers the project.
-    ///
-    /// The CLI applies these to a document's frontmatter before any
-    /// frontmatter rule runs, so the LSP must too or the two surfaces disagree
-    /// on what a document declares — which is precisely what
-    /// `lute-lsp/tests/divergence.rs` exists to catch.
-    fn defaults_for(&self, uri: &Uri) -> lute_manifest::project::MetaDefaults {
-        uri_to_path(uri)
-            .and_then(|p| find_project_root(&p))
-            .and_then(|root| lute_manifest::project::load_project(&root).unwrap_or_default())
-            .map(|p| p.defaults)
-            .unwrap_or_default()
-    }
 
-    /// Resolve a document's `uses:` schema imports (dsl §9.2) relative to its
-    /// directory — the SINGLE resolver shared by [`analyze`](Self::analyze) and
-    /// the four editor-feature handlers, so the diagnostics surface and the
-    /// editor features never disagree on the imported state/defs. A non-file uri
-    /// (no filesystem parent) resolves to no imports (`SchemaImports::default`);
-    /// any I/O/parse/cycle failure degrades to a best-effort result, never panics.
-    fn imports_for(&self, uri: &Uri, text: &str) -> lute_check::SchemaImports {
-        let (doc, _) = lute_syntax::parse(text);
-        let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
-            &doc.meta,
-            &lute_manifest::snapshot::CapabilitySnapshot::default(),
-            lute_check::meta::MetaKind::Scene,
-            &self.defaults_for(uri),
-        );
-        uri_to_path(uri)
-            .and_then(|p| {
-                p.parent().map(|d| {
-                    lute_check::resolve_imports(d, &meta0.uses, &meta0.extends, doc.meta.span)
-                })
-            })
-            .unwrap_or_default()
-    }
-
-    /// Resolve a document's `components:` component imports (dsl §13) relative to
-    /// its directory — the analyze-side analog of [`imports_for`](Self::imports_for),
-    /// so `::use` invocations validate against the SAME component table the CLI
-    /// (`main.rs`) resolves. A non-file uri (no filesystem parent) resolves to no
-    /// components (`ComponentSet::default`); any I/O/parse/cycle failure degrades
-    /// to a best-effort result, never panics.
-    fn components_for(&self, uri: &Uri, text: &str) -> lute_check::ComponentSet {
-        let (doc, _) = lute_syntax::parse(text);
-        let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
-            &doc.meta,
-            &lute_manifest::snapshot::CapabilitySnapshot::default(),
-            lute_check::meta::MetaKind::Scene,
-            &self.defaults_for(uri),
-        );
-        uri_to_path(uri)
-            .and_then(|p| {
-                p.parent()
-                    .map(|d| lute_check::resolve_components(d, &meta0.components, doc.meta.span))
-            })
-            .unwrap_or_default()
-    }
 
     /// The current full text of the open document `uri`, or `None` if it is not
     /// open. Cloned so the feature call runs without holding the `DashMap` guard.
     fn document_text(&self, uri: &Uri) -> Option<String> {
         self.docs.get(uri).map(|d| d.text.clone())
     }
-
-    /// Build the capability snapshot for `uri`'s document by discovering a
-    /// `lute.project.yaml` above the file and resolving through the SHARED
-    /// [`resolve_document_snapshot`](lute_manifest::project::resolve_document_snapshot)
-    /// — the *identical* resolution the CLI runs (plugin §11), so the two
-    /// surfaces build byte-identical snapshots and cannot diverge.
-    ///
-    /// The scene's frontmatter `profile`/`plugins` are lifted with a default
-    /// core-only baseline — today's behavior. A malformed project is returned as
-    /// a project diagnostic at the document start while the semantic fallback
-    /// remains core-only, so editor users do not silently miss configuration
-    /// failures.
-    fn snapshot_for(
+    fn assemble(
         &self,
         uri: &Uri,
-        text: &str,
-    ) -> (
-        lute_manifest::snapshot::CapabilitySnapshot,
-        lute_manifest::provider::ProviderSet,
-        Vec<lute_manifest::project::ResolveDiag>,
-    ) {
-        let (doc, _) = lute_syntax::parse(text);
-        let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
-            &doc.meta,
-            &lute_manifest::snapshot::CapabilitySnapshot::default(),
-            lute_check::meta::MetaKind::Scene,
-            &self.defaults_for(uri),
+        text: String,
+    ) -> Option<(BuiltInput, lute_syntax::ast::Document)> {
+        let path = uri_to_path(uri)?;
+        let root = find_project_root(&path);
+        let request_cache = InputCache::default();
+        let (built, (doc, _)) = assemble_input_with_mode(
+            &request_cache,
+            &path,
+            text,
+            None,
+            root.as_deref(),
+            None,
+            Mode::Author,
         );
-        let mut load_diags = Vec::new();
-        let project = uri_to_path(uri)
-            .and_then(|p| find_project_root(&p))
-            .and_then(|root| match lute_manifest::project::load_project(&root) {
-                Ok(p) => p,
-                Err(message) => {
-                    load_diags.push(lute_manifest::project::ResolveDiag {
-                        span: None,
-                        code: "E-PROJECT-CONFIG".to_string(),
-                        message,
-                    });
-                    None
-                }
-            });
-        // Load the project's pinned provider catalog through the SAME shared
-        // helper the CLI uses when `--providers` is absent, so the editor
-        // resolves provider ids identically to the headless build (plugin §10).
-        let providers = lute_manifest::project::project_providers(project.as_ref());
-        let (snapshot, mut rdiags) = lute_manifest::project::resolve_document_snapshot(
-            project.as_ref(),
-            meta0.profile.as_deref(),
-            &meta0.plugins,
-        );
-        load_diags.append(&mut rdiags);
-        (snapshot, providers, load_diags)
+        Some((built, doc))
     }
+
 }
 
 impl LanguageServer for Backend {
@@ -845,9 +757,11 @@ impl LanguageServer for Backend {
         let Some(text) = self.document_text(&pos.text_document.uri) else {
             return Ok(None);
         };
-        let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = self.snapshot_for(&pos.text_document.uri, &text).0;
-        let imports = self.imports_for(&pos.text_document.uri, &text);
+        let Some((built, doc)) = self.assemble(&pos.text_document.uri, text.clone()) else {
+            return Ok(None);
+        };
+        let snapshot = built.input.snapshot;
+        let imports = built.input.imports;
         let off = position_to_byte(&text, pos.position);
         Ok(hover::hover_at(&doc, &snapshot, &imports, off))
     }
@@ -860,9 +774,12 @@ impl LanguageServer for Backend {
         let Some(text) = self.document_text(&pos.text_document.uri) else {
             return Ok(None);
         };
-        let (doc, _) = lute_syntax::parse(&text);
-        let (snapshot, providers, _) = self.snapshot_for(&pos.text_document.uri, &text);
-        let imports = self.imports_for(&pos.text_document.uri, &text);
+        let Some((built, doc)) = self.assemble(&pos.text_document.uri, text.clone()) else {
+            return Ok(None);
+        };
+        let snapshot = built.input.snapshot;
+        let providers = built.input.providers;
+        let imports = built.input.imports;
         let off = position_to_byte(&text, pos.position);
         let items = completion::complete_at(&doc, &snapshot, &providers, &imports, off);
         if items.is_empty() {
@@ -883,9 +800,11 @@ impl LanguageServer for Backend {
         let Some(text) = self.document_text(&uri) else {
             return Ok(None);
         };
-        let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = self.snapshot_for(&uri, &text).0;
-        let imports = self.imports_for(&uri, &text);
+        let Some((built, doc)) = self.assemble(&uri, text.clone()) else {
+            return Ok(None);
+        };
+        let snapshot = built.input.snapshot;
+        let imports = built.input.imports;
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
         Ok(
@@ -907,9 +826,11 @@ impl LanguageServer for Backend {
         let Some(text) = self.document_text(&uri) else {
             return Ok(None);
         };
-        let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = self.snapshot_for(&uri, &text).0;
-        let imports = self.imports_for(&uri, &text);
+        let Some((built, doc)) = self.assemble(&uri, text.clone()) else {
+            return Ok(None);
+        };
+        let snapshot = built.input.snapshot;
+        let imports = built.input.imports;
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
         let locs: Vec<Location> = nav::references_at(
@@ -1781,9 +1702,9 @@ mod tests {
 
     /// FINDING 1 guard: a document under a project whose plugin graph has a
     /// `DependsCycle` MUST publish that resolver diagnostic as an LSP diagnostic,
-    /// even when the document itself is core-clean. Before the fix, `snapshot_for`
-    /// discarded the resolver `Vec<ResolveDiag>`, so `analyze` never published it
-    /// and the editor silently mis-validated against a broken project. Drives a
+    /// even when the document itself is core-clean. Before the model assembly
+    /// path was wired through, `analyze` discarded resolver diagnostics and the
+    /// editor silently mis-validated against a broken project. Drives a
     /// real `LspService<Backend>` end to end: initialize -> didOpen a `file://`
     /// scene under a temp project with two mutually-depending plugins, then assert
     /// the published set carries a `DependsCycle` diagnostic sourced "lute" at the

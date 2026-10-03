@@ -246,6 +246,7 @@ fn into_diag(code: &str, message: String, span: Span, severity: Severity) -> Dia
         code: code.to_string(),
         severity,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),
@@ -277,6 +278,7 @@ fn persist_removed_diag(persist_attr: &Attr, src: &str) -> Diagnostic {
         message: "the `persist` attribute was removed in 0.6.0 — `into=` alone now records \
                   the run fact (dsl 0.6.0 §2.2)"
             .to_string(),
+        evidence: None,
         span: persist_attr.span,
         layer: Layer::Logic,
         fixits: vec![Fixit {
@@ -323,6 +325,7 @@ fn as_removed_diag(as_attr: &Attr) -> Diagnostic {
         message: "the `as` attribute was renamed to `into` in 0.1.0 — `into=` names the run \
                   fact this choice records (dsl 0.10.0 §4); `lute fix` performs the rename"
             .to_string(),
+        evidence: None,
         span: as_attr.span,
         layer: Layer::Logic,
         fixits: vec![Fixit {

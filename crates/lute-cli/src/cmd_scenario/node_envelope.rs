@@ -198,32 +198,6 @@ fn print_facts_section(out: &mut String, scenario: &RootScenario, root: &Path) {
     }
 }
 
-/// True when the project's prerequisite graph contains a cycle (`E-CONN-CYCLE`,
-/// dsl §2.4/§4.1 §A). Kahn's algorithm in `assemble_graph` emits every node
-/// EXCEPT the cycle members and everything transitively downstream of one, so
-/// a graph is cyclic iff `topo_order` is shorter than the node set — a
-/// self-contained signal that needs no diagnostic replay.
-fn graph_has_cycle(scenario: &RootScenario) -> bool {
-    scenario.graph.topo_order.len() < scenario.graph.nodes.len()
-}
-
-/// True when `node` is ON or DOWNSTREAM of a prerequisite cycle
-/// (`E-CONN-CYCLE`, dsl §2.4/§4.1 §A) — per-node cycle degradation (spec
-/// §4.1). `assemble_graph` excludes exactly those nodes from `topo_order`, so
-/// [`lute_check::connectivity::check_reachability`] AND [`envelope::propagate`]
-/// (each iterating `topo_order`) populate NEITHER `reach` NOR `envs` for them;
-/// a cycle-INDEPENDENT node keeps its real verdict and is never degraded. The
-/// test is a node absent from `reach` in a root that does contain a cycle —
-/// the same absence [`reach_verdict_text`]'s cycle arm keys off, reused
-/// verbatim so a node's reach verdict and its envelope note never disagree.
-///
-/// [`reach_verdict_text`]: crate::cmd_scenario::reach::reach_verdict_text
-pub(crate) fn node_cycle_degraded(
-    scenario: &RootScenario,
-    node: &lute_check::connectivity::NodeId,
-) -> bool {
-    !scenario.reach.contains_key(node) && graph_has_cycle(scenario)
-}
 
 /// Print the explicit per-node `E-CONN-CYCLE` degradation note (C-honesty,
 /// persona review), mirroring [`reach_verdict_text`]'s cycle wording so a
@@ -266,7 +240,7 @@ fn print_scene_envelope(
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
          before its own writes):"
     );
-    if node_cycle_degraded(scenario, node_id) {
+    if crate::node_cycle_degraded(scenario, node_id) {
         print_cycle_envelope_note(out);
     }
     if scenario.tainted.contains(node_id) {
@@ -375,7 +349,7 @@ fn print_quest_envelope(
     // from `reach`), so the `after.is_some()` guard is REQUIRED. A cycle-
     // independent `after` quest keeps its real tables with no note (per-node
     // recovery, spec §4.1); only a cyclic/downstream one prints the note.
-    if quest.follows.is_some() && node_cycle_degraded(scenario, &node_id) {
+    if quest.follows.is_some() && crate::node_cycle_degraded(scenario, &node_id) {
         print_cycle_envelope_note(out);
     }
     let qe = envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);

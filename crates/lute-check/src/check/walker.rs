@@ -761,6 +761,7 @@ fn timeline_content_diag(message: String, span: Span) -> Diagnostic {
         code: lute_syntax::parser::E_TIMELINE_CONTENT.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),

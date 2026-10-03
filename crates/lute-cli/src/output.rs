@@ -58,13 +58,6 @@ pub(crate) fn apply_deny_json(d: &Diagnostic, policy: &DenyPolicy, value: &mut s
     }
 }
 
-pub(crate) fn plural(n: usize) -> &'static str {
-    if n == 1 {
-        ""
-    } else {
-        "s"
-    }
-}
 
 /// Write `s` to stdout as raw bytes, returning any I/O error instead of
 /// panicking the way `print!`/`println!` do when the pipe is closed (EPIPE,

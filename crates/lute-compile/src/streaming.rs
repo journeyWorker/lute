@@ -337,6 +337,7 @@ fn service_diagnostic(code: &str, message: &str, source: &str, range: Range<usiz
         code: code.to_string(),
         severity: Severity::Error,
         message: message.to_string(),
+        evidence: None,
         span: Span::from_bytes(&TextIndex::new(source), start, end),
         layer: Layer::Content,
         fixits: Vec::new(),

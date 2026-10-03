@@ -28,6 +28,17 @@ pub struct SourceMap {
     pub entries: BTreeMap<String, Span>,
     /// Every bundle `<beat>`, by its canonical `<document id>.<beat id>`.
     pub beats: BTreeMap<String, Span>,
+    /// Every `<quest>` reward and objective reward, keyed by
+    /// `owner#declaration-index`.
+    pub rewards: BTreeMap<String, RewardSource>,
+}
+
+/// Source provenance for one declarative reward.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RewardSource {
+    pub owner: String,
+    pub declaration_index: usize,
+    pub span: Span,
 }
 
 /// Where one record came from.

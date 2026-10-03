@@ -66,6 +66,8 @@ mod cmd_compile;
 mod cmd_context;
 mod cmd_scenario;
 mod cmd_trace;
+mod cmd_constraints;
+mod cmd_impact;
 mod cmd_version;
 mod codes;
 mod compile_all;
@@ -75,8 +77,6 @@ mod differential;
 mod doctor;
 mod endings;
 mod explain;
-mod input;
-mod input_cache;
 mod knowledge;
 mod lint;
 mod loc;
@@ -103,28 +103,31 @@ use cmd_check::run_check;
 use cmd_check_project::run_check_project;
 use cmd_compile::dispatch_compile;
 use cmd_context::run_context;
+use cmd_constraints::run_constraints;
+use cmd_impact::run_impact;
 use cmd_scenario::run_scenario;
 use cmd_trace::run_trace;
 use cmd_version::run_version;
-use input_cache::InputCache;
 
 // The shared surface the other modules reach as `crate::…`.
 pub(crate) use cli::ScenarioCommand;
 pub(crate) use cmd_context::attr_type_str;
 pub(crate) use cmd_scenario::graph::{fact_edge_label, topo_layers, when_visited_hint, FactGraph};
-pub(crate) use cmd_scenario::node_envelope::node_cycle_degraded;
-pub(crate) use cmd_scenario::reach::{format_prereq, reach_verdict_text, unanchored_quests};
+pub(crate) use cmd_scenario::reach::{format_prereq, reach_evidence, reach_verdict_text, unanchored_quests};
 pub(crate) use cmd_scenario::{
-    assemble_root_scenario, node_ref_to_id, primary_node_ambiguity_note, resolve_node_ref, NodeRef,
-    RootScenario,
+    node_ref_to_id, primary_node_ambiguity_note, resolve_node_ref, NodeRef,
 };
-pub(crate) use input::{assemble_input, build_input, build_input_with, read_document, BuiltInput};
+pub(crate) use lute_model::{
+    assemble_root_scenario, node_cycle_degraded, RootScenario,
+};
+pub(crate) use lute_model::BuiltInput;
 pub(crate) use output::{cwd_relative, render_diagnostics, severity_str, write_stdout, DenyPolicy};
-pub(crate) use project::gate::{gate_for_doc, reconciled_project_results, ReconciledProject};
-pub(crate) use project::reconcile::reconcile_collected;
+pub(crate) use lute_model::{
+    reconciled_project_results, reconcile_collected, ReconciledProject,
+};
 pub(crate) use project::{
-    collect_project_docs, find_lute_files, nearest_manifest_dir, parse_project_docs,
-    project_assert_relations, project_quest_ids, project_root_for, ByRoot, DocGroup,
+    collect_project_docs, find_lute_files, parse_project_docs, project_assert_relations,
+    project_quest_ids, ByRoot, DocGroup,
 };
 
 fn main() -> ExitCode {
@@ -181,6 +184,12 @@ fn main() -> ExitCode {
             wip,
             engine.as_deref(),
         ),
+        Command::Impact { dir, target, json, providers } => {
+            run_impact(&dir, &target, json, providers.as_deref())
+        }
+        Command::Constraints { dir, json, run, providers } => {
+            run_constraints(&dir, json, run, providers.as_deref())
+        }
         Command::Lint {
             path,
             json,

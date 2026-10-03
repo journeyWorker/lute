@@ -7,12 +7,9 @@
 //! per-root pass calls (never duplicated math — only the presentation, and
 //! the omission of diagnostics, differ).
 
-use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_check::{check_definite_assignment, defassign, envelope};
-use lute_core_span::Span;
 
 use crate::cli::ScenarioCommand;
 use crate::cmd_scenario::graph::run_scenario_graph;
@@ -21,8 +18,8 @@ use crate::cmd_scenario::reach::run_scenario_reach;
 use crate::endings;
 use crate::knowledge;
 use crate::output::write_stdout;
-use crate::project::reconcile::compute_conn_fixpoint;
-use crate::project::{collect_project_docs, ByRoot, DocGroup};
+use lute_model::{assemble_root_scenario, RootScenario};
+use crate::project::{collect_project_docs, ByRoot};
 
 pub(crate) mod graph;
 pub(crate) mod node_envelope;
@@ -68,184 +65,6 @@ pub(crate) fn node_ref_to_id(node: &NodeRef) -> lute_check::connectivity::NodeId
     }
 }
 
-/// Everything `lute scenario` needs for ONE resolved project root, built
-/// from the SAME `lute_check::connectivity`/`envelope` analyses
-/// `run_check_project`'s own per-root pass calls (T5/T6/T8/T9/T10) — never
-/// re-derived independently. Unlike `check-project`, this never scans for
-/// project diagnostics (`E-CONN-*`/`E-STATE-MAYBE-UNAVAILABLE`): a
-/// read-only reporting surface, not a pass/fail gate (dsl §5:571-584).
-pub(crate) struct RootScenario {
-    pub(crate) graph: lute_check::connectivity::ConnGraph,
-    pub(crate) reach:
-        BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
-    pub(crate) envs: BTreeMap<lute_check::connectivity::NodeId, envelope::Env>,
-    pub(crate) tainted: BTreeSet<lute_check::connectivity::NodeId>,
-    pub(crate) reads_per_scene: BTreeMap<String, Vec<(String, Span)>>,
-    pub(crate) key_set: BTreeMap<String, Vec<(PathBuf, Span)>>,
-    /// Every bundle beat's canonical id (dsl 0.23.0 §4) with its
-    /// declarations — each is a [`lute_check::connectivity::NodeId::Beat`]
-    /// graph node (lamplight N8, ashen N9).
-    pub(crate) beat_keys: BTreeMap<String, Vec<(PathBuf, Span)>>,
-    pub(crate) quest_ids: BTreeSet<String>,
-    pub(crate) ambiguous_quests: BTreeSet<String>,
-    pub(crate) unreachable_quests: BTreeSet<String>,
-    /// The subset of `unreachable_quests` that is unreachable via a
-    /// PROVABLY dead REQUIRED objective (dsl 0.4.0 §8.2 rule C4 -- the
-    /// cause C4 deliberately does NOT surface as a standalone
-    /// `E-QUEST-UNREACHABLE`) -- kept SEPARATE from the lifecycle cause
-    /// (`start=false`/`fail=true`) so [`reach_verdict_text`] can name the
-    /// correct diagnostic code for each cause, never misattributing a C4
-    /// note to the suppressed standalone code.
-    ///
-    /// [`reach_verdict_text`]: crate::cmd_scenario::reach::reach_verdict_text
-    pub(crate) dead_required_objective_quests: BTreeSet<String>,
-    /// `D` (dsl §4.3 spec lines 442-448): the project-resolved `run.*`/
-    /// `user.*` schema-defaulted set, unioned across every doc's own
-    /// resolved schema in this root — [`envelope::quest_envelope`]'s own
-    /// defaults-only floor.
-    pub(crate) envelope_d: BTreeSet<String>,
-    /// This root's plain (doc-stripped-of-`FoldedEnv`) docs — quest
-    /// envelope printing needs the `&Quest` struct itself
-    /// ([`envelope::quest_envelope`]'s signature), never re-parsed here.
-    pub(crate) docs: Vec<(PathBuf, lute_syntax::ast::Document)>,
-    /// T8/T9's per-document write sets, KEPT rather than consumed. Inverting
-    /// `per_doc.scene` names the WRITERS of a path (#15, T9.14); the envelope
-    /// already computed it and dropped it on the floor.
-    pub(crate) per_doc: envelope::PerDocEffects,
-    /// The root's relational vocabulary — declared relations, their arity and
-    /// `derive` flag, the `facts:` seeds and the rules. The envelope tables
-    /// are scalar-only, so at the scene whose every line is gated on who is
-    /// awake the tool that exists to say what is true on arrival did not
-    /// mention the subject (#15, T4.7).
-    pub(crate) rel_vocab: lute_check::RelVocab,
-    /// dsl 0.20.0 §6: per scene key, the facts guaranteed on arrival (the
-    /// fact envelope beside the scalar one), each with where it is
-    /// established.
-    pub(crate) scene_must: BTreeMap<String, Vec<lute_check::fact_env::MustFact>>,
-}
-
-/// Assemble [`RootScenario`] for one resolved root's docs — mirrors
-/// `run_check_project`'s own per-root block (T5 `assemble_graph`, T6
-/// `check_reachability`, T8/T9 `PerDocEffects`, T10 `propagate`) verbatim,
-/// minus the diagnostic emission (`lute scenario` reports, never gates).
-pub(crate) fn assemble_root_scenario(
-    group_full: &DocGroup,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
-) -> RootScenario {
-    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = group_full
-        .iter()
-        .map(|(p, d, _)| (p.clone(), d.clone()))
-        .collect();
-    let key_set = lute_check::connectivity::scene_key_set(&docs);
-    let quest_ids = lute_check::connectivity::quest_id_set(&docs);
-    let beat_keys = lute_check::connectivity::bundle_beat_key_set(&docs);
-    let (graph, _cycle_diags) =
-        lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
-    // T7/T14/Fix2 wiring: shares `compute_conn_fixpoint`'s finite-fixpoint
-    // iteration with `run_check_project` (see that fn's own doc comment
-    // for the termination + soundness argument) -- never re-derived
-    // independently.
-    let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&docs);
-    let fp = compute_conn_fixpoint(
-        &docs,
-        group_full,
-        file_results,
-        &graph,
-        &quest_ids,
-        &ambiguous_quests,
-    );
-    let reach = fp.reach;
-    let unreachable_quests = fp.unreachable_quests;
-    let dead_required_objective_quests = fp.dead_required_objective_quests;
-    let scene_must = fp.scene_must;
-
-    let mut per_doc = envelope::PerDocEffects::default();
-    let mut envelope_d: BTreeSet<String> = BTreeSet::new();
-    let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
-    let mut rel_vocab = lute_check::RelVocab::default();
-    for (_path, doc, folded) in group_full {
-        envelope_d.extend(envelope::schema_defaults(&folded.env.state));
-        // Every doc in one resolved root folds the SAME imported vocabulary;
-        // taking the last non-empty one matches how `check-project`'s own
-        // project-wide relational passes read it.
-        if !folded.env.rel_vocab.relations.is_empty() {
-            rel_vocab = (*folded.env.rel_vocab).clone();
-        }
-        for quest in &doc.quests {
-            if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
-                continue;
-            }
-            per_doc.quest_writes_on_complete.insert(
-                quest.id.clone(),
-                envelope::writes_on_complete(quest, &folded.env.state),
-            );
-        }
-    }
-    let mut group_ix: std::collections::HashMap<&Path, usize> =
-        std::collections::HashMap::with_capacity(group_full.len());
-    for (i, (p, _, _)) in group_full.iter().enumerate() {
-        group_ix.entry(p.as_path()).or_insert(i);
-    }
-    for (key, occurrences) in &key_set {
-        let Some((scene_path, _)) = occurrences.first() else {
-            continue;
-        };
-        let Some((_, doc, folded)) = group_ix.get(scene_path.as_path()).map(|&i| &group_full[i])
-        else {
-            continue;
-        };
-        let all_nodes: Vec<lute_syntax::ast::Node> = doc
-            .shots
-            .iter()
-            .flat_map(|s| s.body.iter().cloned())
-            .collect();
-        let scope = defassign::Scope::of(folded);
-        let beat_when = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref());
-        let (_local_diags, assigned, reads) =
-            check_definite_assignment(&all_nodes, &scope, beat_when);
-        // Same T4.4/T4.6 carry-forward parity fix as `run_check_project`'s
-        // T11 wiring above (dsl §7 soundness invariant) -- `lute scenario
-        // envelope`/`reach` must not classify a domain-exhaustive `<match>`
-        // subject read as entry-dependent either.
-        let exhaustive_spans = defassign::exhaustive_match_subject_spans(&all_nodes, &scope);
-        let reads: Vec<(String, Span)> = reads
-            .into_iter()
-            .filter(|(_, span)| {
-                !exhaustive_spans
-                    .iter()
-                    .any(|s| s.byte_start == span.byte_start && s.byte_end == span.byte_end)
-            })
-            .collect();
-        per_doc.scene.insert(
-            key.clone(),
-            (
-                envelope::guaranteed(&assigned),
-                envelope::possible_writes(&all_nodes),
-            ),
-        );
-        reads_per_scene.insert(key.clone(), reads);
-    }
-    let (envs, tainted) = envelope::propagate(&graph, &per_doc, &envelope_d);
-
-    RootScenario {
-        graph,
-        reach,
-        envs,
-        tainted,
-        reads_per_scene,
-        key_set,
-        beat_keys,
-        quest_ids,
-        ambiguous_quests,
-        unreachable_quests,
-        dead_required_objective_quests,
-        envelope_d,
-        docs,
-        per_doc,
-        rel_vocab,
-        scene_must,
-    }
-}
 
 /// Find EVERY resolved root (sorted, deterministic — [`ByRoot`] is a
 /// `BTreeMap`) whose docs declare `node` (a scene key in `scene_key_set` or

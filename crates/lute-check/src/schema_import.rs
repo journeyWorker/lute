@@ -246,6 +246,7 @@ fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
         code: code.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span: at,
         layer: Layer::Content,
         fixits: Vec::new(),

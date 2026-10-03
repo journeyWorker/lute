@@ -375,6 +375,7 @@ pub fn check_when_test_literals(doc: &Document, src: &str) -> Vec<Diagnostic> {
                      (dsl 0.18.0 §3)",
                     rw.test,
                 ),
+                evidence: None,
                 span: zeroed_span(rw.start, rw.end),
                 layer: Layer::Logic,
                 fixits: vec![Fixit {

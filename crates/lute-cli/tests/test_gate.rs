@@ -91,6 +91,8 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
     let t = &v["tests"][0];
     assert_eq!(t["passed"], false, "{v:#}");
     assert_eq!(t["exit"], "incomplete", "{v:#}");
+    // The run did not decide the halting guard: the result is `unknown`.
+    assert_eq!(t["evidence"], "unknown", "{v:#}");
     let u = &t["unresolved"][0];
     assert_eq!(u["atoms"][0], "--fact \"allied(ana, bo)\"", "{v:#}");
     assert_eq!(u["supply"][0], "`facts: [\"allied(ana, bo)\"]`", "{v:#}");

@@ -69,6 +69,7 @@ pub(super) fn check_lute_version_stale(
         code: W_LUTE_VERSION_STALE.to_string(),
         severity: Severity::Warning,
         message,
+        evidence: None,
         span: crate::meta::meta_key_span(meta, "luteVersion"),
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -186,8 +187,8 @@ mod lute_version_tests {
     /// `0.31.0` is a language AND IR release: declared beat/entry advancement
     /// and the two clock-window diagnostics move all axes to the same number.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_33_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.33.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.33.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_34_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.34.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.34.0");
     }
 }

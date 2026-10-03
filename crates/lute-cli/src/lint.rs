@@ -25,7 +25,7 @@ use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
 use lute_lint::{lint, parse_config, LintConfig, LintDocInput, LintOutcome, LintScope};
 use lute_manifest::lint::namespace_active_lints;
 use lute_manifest::loader::load_plugins_dir;
-use lute_manifest::project::{load_project, project_providers, ProjectConfig};
+use lute_manifest::project::{project_providers, ProjectConfig};
 use lute_manifest::resolve::resolve_activation;
 
 /// clap `value_parser` for `lute lint --deny <CODE>`.
@@ -87,64 +87,8 @@ impl LintDenyPolicy {
     }
 }
 
-/// Recursively collect every `*.lute` file under `dir`, sorted for
-/// determinism. Duplicated logic with `crate::find_lute_files` (private) —
-/// intentional: the lint walk does NOT canonicalize/dedupe symlinks
-/// because lint diagnostics never depend on a single-physical-doc-once
-/// invariant the way project-quest-id uniqueness does; keeping this local
-/// avoids widening the public seam.
-fn find_lute_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
-    let mut out = Vec::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(d) = stack.pop() {
-        for entry in std::fs::read_dir(&d)? {
-            let entry = entry?;
-            let path = entry.path();
-            if entry.file_type()?.is_dir() {
-                stack.push(path);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("lute") {
-                out.push(path);
-            }
-        }
-    }
-    out.sort();
-    Ok(out)
-}
 
-/// Walk from `file`'s directory upward until a `lute.project.yaml` is
-/// found; return that directory. When no ancestor carries one, return
-/// `fallback` (the invocation root, or `file.parent()` for a bare file).
-fn nearest_manifest_root(file: &Path, fallback: &Path) -> PathBuf {
-    let mut dir = file.parent().unwrap_or(fallback).to_path_buf();
-    loop {
-        if dir.join("lute.project.yaml").is_file() {
-            return dir;
-        }
-        match dir.parent() {
-            Some(parent) if parent != dir => dir = parent.to_path_buf(),
-            _ => return fallback.to_path_buf(),
-        }
-    }
-}
 
-/// Same nested-root grouping `check-project`/`collect_project_docs` use,
-/// but bounded by `walk_root` (i.e. matches `crate::project_root_for`
-/// semantics exactly).
-fn project_root_for(file: &Path, walk_root: &Path) -> PathBuf {
-    let mut dir = file.parent().unwrap_or(walk_root);
-    loop {
-        if dir.join("lute.project.yaml").is_file() {
-            return dir.to_path_buf();
-        }
-        if dir == walk_root {
-            return walk_root.to_path_buf();
-        }
-        dir = match dir.parent() {
-            Some(parent) => parent,
-            None => return walk_root.to_path_buf(),
-        };
-    }
-}
 
 /// Resolve `<root>/lute.lint.yaml` (or `explicit` when the user passed
 /// `--config`). Returns `Ok(None)` on an absent file (defaults are fine);
@@ -230,31 +174,36 @@ fn relative_display(file: &Path, root: &Path) -> PathBuf {
 /// Read `file` into a [`LintDocInput`] with its `path` set to the
 /// root-relative display form. Returns `Err(exit 2)` on an unreadable file.
 ///
-/// Under a manifest (`cache` given) the document is the one
-/// [`crate::assemble_input`] parses and desugars for `check-project` — a
-/// scene a `chapters:` chain lists carries the `on:` the chain derives, so
-/// lint classifies it as the beat every other surface reads — returned with
-/// the [`crate::input::BuiltInput`] for the root's project passes.
+/// Under a manifest (`with_project` true) the document is assembled through
+/// the shared model input path used by `check-project` — a scene a `chapters:`
+/// chain lists carries the `on:` the chain derives, so lint classifies it as
+/// the beat every other surface reads — returned with the model's
+/// [`lute_model::BuiltInput`] for the root's project passes.
 fn build_lint_input(
     file: &Path,
     root: &Path,
-    cache: Option<&crate::input_cache::InputCache>,
-) -> Result<(LintDocInput, Option<crate::input::BuiltInput>), ExitCode> {
-    let text = match std::fs::read_to_string(file) {
-        Ok(t) => t,
-        Err(e) => {
-            let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot read {}: {e}", file.display());
+    with_project: bool,
+) -> Result<(LintDocInput, Option<lute_model::BuiltInput>), ExitCode> {
+    let (text, doc, built) = if with_project {
+        let Some(built) = lute_model::build_input(file, None, Some(root), None) else {
             return Err(ExitCode::from(2));
-        }
-    };
-    let (doc, built) = match cache {
-        Some(cache) => {
-            let (built, (doc, _)) =
-                crate::assemble_input(cache, file, text.clone(), None, Some(root), None);
-            (doc, Some(built))
-        }
-        None => (lute_syntax::parse(&text).0, None),
+        };
+        let text = built.input.text.clone();
+        let mut parsed = lute_syntax::parse(&text);
+        lute_check::meta::apply_quest_tier_default(&mut parsed.0, &built.defaults);
+        lute_check::chapters::apply_chapters(
+            &mut parsed.0,
+            &built.defaults,
+            &built.input.snapshot.occasions,
+        );
+        (text, parsed.0, Some(built))
+    } else {
+        let text = lute_model::read_document(file).map_err(|message| {
+            eprintln!("{message}");
+            ExitCode::from(2)
+        })?;
+        let doc = lute_syntax::parse(&text).0;
+        (text, doc, None)
     };
     Ok((
         LintDocInput {
@@ -266,7 +215,30 @@ fn build_lint_input(
     ))
 }
 
-/// Group the discovered files by resolved project root and run the engine
+fn project_for_root(root: &Path) -> Result<Option<ProjectConfig>, ExitCode> {
+    if !root.join("lute.project.yaml").is_file() {
+        return Ok(None);
+    }
+    let opts = lute_model::ModelOptions {
+        providers: None,
+        permission_profile: None,
+        mode: lute_check::Mode::Ci,
+        compile: false,
+        wip: false,
+    };
+    let model = lute_model::ProjectModel::build_single_root(root, &opts).map_err(|error| {
+        eprintln!("lute: cannot load project {}: {error}", root.display());
+        ExitCode::from(2)
+    })?;
+    model.manifest().cloned().ok_or_else(|| {
+        eprintln!(
+            "lute: cannot load project manifest {}",
+            root.join("lute.project.yaml").display()
+        );
+        ExitCode::from(2)
+    }).map(Some)
+}
+
 /// once per root. Returns `Err(exit 2)` on any I/O / malformed-YAML failure.
 fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcome, ExitCode> {
     let mut aggregated = LintOutcome::default();
@@ -290,19 +262,19 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
-        let root = nearest_manifest_root(path, &fallback);
+        let root = lute_model::nearest_manifest_dir(path).unwrap_or(fallback);
         let mut m = BTreeMap::new();
         m.insert(root, vec![path.to_path_buf()]);
         m
     } else {
-        let files = find_lute_files(path).map_err(|e| {
+        let files = lute_model::find_lute_files(path).map_err(|e| {
             let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot walk {}: {e}", path.display());
             ExitCode::from(2)
         })?;
         let mut m: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
         for f in files {
-            let root = project_root_for(&f, path);
+            let root = lute_model::project_root_for(&f, path);
             m.entry(root).or_default().push(f);
         }
         m
@@ -326,17 +298,9 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
             ),
         };
 
-        // Load the project (for plugin lints + provider catalog). Absent
+        // Load the project through the shared semantic model. Absent
         // manifest ⇒ defaults-only, no plugin rules.
-        let project = match load_project(&root) {
-            Ok(p) => p,
-            Err(e) => {
-                // Malformed project manifests surface through `lute check`;
-                // for `lute lint` treat it as a walk failure (exit 2).
-                eprintln!("lute: {e}");
-                return Err(ExitCode::from(2));
-            }
-        };
+        let project = project_for_root(&root)?;
         let providers = project_providers(project.as_ref());
         let plugin_rules = plugin_rules_for_root(project.as_ref());
 
@@ -344,12 +308,9 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
         // reads them ([`build_lint_input`]).
         let (inputs, builts): (Vec<LintDocInput>, Vec<_>) = {
             use rayon::prelude::*;
-            let cache = project
-                .as_ref()
-                .map(|_| crate::input_cache::InputCache::default());
             files
                 .par_iter()
-                .map(|f| build_lint_input(f, &root, cache.as_ref()))
+                .map(|f| build_lint_input(f, &root, project.is_some()))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .unzip()
@@ -414,7 +375,7 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
 fn display_name_dups(
     root: &Path,
     plugins_dir: &Path,
-    builts: &[&crate::input::BuiltInput],
+    builts: &[&lute_model::BuiltInput],
     inputs: &[LintDocInput],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let per_doc: Vec<_> = builts

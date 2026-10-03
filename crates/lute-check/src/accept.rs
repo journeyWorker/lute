@@ -375,6 +375,7 @@ fn accept_diag(code: &str, message: String, span: Span) -> Diagnostic {
         code: code.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),

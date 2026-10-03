@@ -1,0 +1,17 @@
+[package]
+name = "lute-model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lute-core-span = { path = "../lute-core-span" }
+lute-manifest = { path = "../lute-manifest" }
+lute-check = { path = "../lute-check" }
+lute-compile = { path = "../lute-compile" }
+lute-cel = { path = "../lute-cel" }
+lute-syntax = { path = "../lute-syntax" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+rayon = "1.12"

@@ -3028,6 +3028,10 @@ fn foreign_comparison_message(subject: &str, literal: &str, members: &[String]) 
 
 /// Build a `Layer::Logic` diagnostic (a §5.2 reachability check).
 pub(crate) fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnostic {
+    let evidence = match crate::evidence::classification(code) {
+        Some(crate::evidence::DiagnosticClass::Analysis { evidence }) => Some(evidence),
+        _ => None,
+    };
     Diagnostic {
         code: code.to_string(),
         severity,
@@ -3038,5 +3042,6 @@ pub(crate) fn diag(code: &str, severity: Severity, message: String, span: Span) 
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence,
     }
 }

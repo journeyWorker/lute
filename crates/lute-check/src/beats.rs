@@ -2285,10 +2285,9 @@ pub fn check_project_beats(
                 W_BEAT_ONCE_RUN_USER,
                 Severity::Warning,
                 format!(
-                    "{} is spent once per run by default (`once: run`), but its `when` `{}` \
-                     reads only user-tier state, which a new run does not reset — once it holds \
-                     it holds every run, so the beat plays again each run; write `once: run` if \
-                     it should replay every run, use `once: user` for a beat heard once ever, or \
+                    "{} defaults to `once: run` and its `when` `{}` reads only user-tier \
+                     state; it may replay on later runs. Write `once: run` to make the \
+                     policy explicit, use `once: user` for a beat heard once ever, or \
                      gate it on run-tier state (dsl 0.22.0 §13)",
                     b.name,
                     b.when.as_deref().unwrap_or_default().trim()
@@ -3277,6 +3276,10 @@ fn beat_diag(
     span: Span,
     layer: Layer,
 ) -> Diagnostic {
+    let evidence = match crate::evidence::classification(code) {
+        Some(crate::evidence::DiagnosticClass::Analysis { evidence }) => Some(evidence),
+        _ => None,
+    };
     Diagnostic {
         code: code.to_string(),
         severity,
@@ -3287,6 +3290,7 @@ fn beat_diag(
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence,
     }
 }
 

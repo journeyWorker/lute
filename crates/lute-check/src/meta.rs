@@ -610,6 +610,7 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
         code: code.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -770,6 +771,7 @@ fn lift_extra_block(
                           is a scalar (string/int/float/bool) or a flat list of scalars \
                           (dsl 0.15.0 §3)"
                     .to_string(),
+                evidence: None,
                 span: meta_key_span(meta, "extra"),
                 layer: Layer::Content,
                 fixits: Vec::new(),
@@ -786,6 +788,7 @@ fn lift_extra_block(
                 code: "E-META-VALUE".to_string(),
                 severity: Severity::Error,
                 message: "`extra:` mapping keys must be strings (dsl 0.15.0 §3)".to_string(),
+                evidence: None,
                 span: meta_key_span(meta, "extra"),
                 layer: Layer::Content,
                 fixits: Vec::new(),
@@ -807,6 +810,7 @@ fn lift_extra_block(
                      of scalars; nested mappings and non-scalar list entries are not allowed \
                      (dsl 0.15.0 §3)"
                 ),
+                evidence: None,
                 span: meta_key_span(meta, key),
                 layer: Layer::Content,
                 fixits: Vec::new(),
@@ -922,6 +926,7 @@ pub fn parse_meta_kind_with_defaults(
         code: code.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -935,6 +940,7 @@ pub fn parse_meta_kind_with_defaults(
         code: code.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span: sp,
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -1211,6 +1217,7 @@ pub fn parse_meta_kind_with_defaults(
                     "`{key}` no longer carries scene identity (superseded by `id:`); move it \
                      under `extra:` to keep it searchable (dsl 0.15.0 §4)"
                 ),
+                evidence: None,
                 span: meta_key_span(meta, key),
                 layer: Layer::Content,
                 fixits: Vec::new(),
@@ -2538,6 +2545,7 @@ fn state_decl_diag(message: String, span: Span) -> Diagnostic {
         code: "E-STATE-DECL".to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),

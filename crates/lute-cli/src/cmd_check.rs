@@ -7,13 +7,12 @@ use std::process::ExitCode;
 
 use lute_check::{check, fold_env, CheckInput, Mode};
 use lute_core_span::{Diagnostic, Severity, Span};
-use lute_manifest::project::{load_project, resolve_document_snapshot};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
-use crate::input::{build_input, build_input_with, BuiltInput};
-use crate::input_cache::InputCache;
+use lute_model::{build_input, manifest_context, BuiltInput};
 use crate::output::{apply_deny_json, print_human, DenyPolicy};
-use crate::project::{discover_project, find_lute_files, nearest_manifest_dir};
+use crate::project::{discover_project, find_lute_files};
+use lute_model::nearest_manifest_dir;
 
 /// Every document under `root` whose `::use` names component `name`
 /// (dsl 0.10.0 §9 rule 4).
@@ -238,6 +237,7 @@ pub(crate) fn component_root_diag(component: &str, at: Span) -> Diagnostic {
         ),
         span: at,
         layer: lute_core_span::Layer::Content,
+        evidence: None,
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
@@ -278,9 +278,8 @@ fn caller_resolved_common(
 
     let mut per_caller: Vec<BTreeSet<(String, String)>> = Vec::new();
     let mut sample: BTreeMap<(String, String), Diagnostic> = BTreeMap::new();
-    let cache = InputCache::default();
     for caller in callers {
-        let Some(built) = build_input_with(&cache, caller, providers, Some(root), None) else {
+        let Some(built) = build_input(caller, providers, Some(root), None) else {
             continue;
         };
         let res = check(&built.input);
@@ -351,6 +350,7 @@ pub(crate) fn engine_semantic_diags(
                 message: format!("engine `{}` does not support semantic id `{id}`", matrix.engine),
                 span,
                 layer: lute_core_span::Layer::Content,
+                evidence: None,
                 fixits: Vec::new(), provenance: None, covered: Vec::new(), related: Vec::new(),
             };
             let mut diagnostic = lute_check::rel_schema::at_origin(diagnostic, origin);
@@ -489,8 +489,11 @@ fn schema_as_imported_diags(file: &Path) -> Vec<Diagnostic> {
     let (Some(base), Some(name)) = (canon.parent(), canon.file_name()) else {
         return Vec::new();
     };
-    let project = nearest_manifest_dir(file).and_then(|dir| load_project(&dir).ok().flatten());
-    let (snapshot, _) = resolve_document_snapshot(project.as_ref(), None, &Default::default());
+    let root = nearest_manifest_dir(file).unwrap_or_else(|| base.to_path_buf());
+    let Ok(context) = manifest_context(&root) else {
+        return Vec::new();
+    };
+    let snapshot = context.snapshot;
     let text = format!(
         "---\nkind: scene\nid: schema-check\nuses: '{}'\n---\n\n## Check\n",
         name.to_string_lossy().replace('\'', "''")
@@ -504,7 +507,7 @@ fn schema_as_imported_diags(file: &Path) -> Vec<Diagnostic> {
     let input = CheckInput {
         uri: base.join("schema-check.lute").display().to_string(),
         snapshot,
-        providers: lute_manifest::project::project_providers(project.as_ref()),
+        providers: context.providers,
         mode: Mode::Ci,
         imports: lute_check::resolve_imports(base, &meta.uses, &meta.extends, doc.meta.span),
         components: lute_check::resolve_components(base, &[], doc.meta.span),

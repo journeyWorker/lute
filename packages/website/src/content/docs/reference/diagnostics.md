@@ -308,6 +308,18 @@ A scene, quest, or beat is provably unreachable — no evaluation order can ever
 
 Spec: [dsl §4.1](/spec/), [dsl §4.2](/spec/)
 
+### E-CONSTRAINT-DECL
+
+A project constraint declaration is malformed: it has an unknown key or kind, misses a required field, names a bad node, or repeats an id.
+
+Spec: [dsl 0.34.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md)
+
+### E-CONSTRAINT-VIOLATED
+
+A project constraint is violated; the diagnostic carries the verdict's evidence, bounded scope when applicable, and causal spans.
+
+Spec: [dsl 0.34.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md)
+
 ### E-CONTENT-LINE-BRACKET
 
 A content line's attributes are written with `[…]` instead of the required `{…}` (the same delimiter `::directive{…}` uses).
@@ -1494,7 +1506,7 @@ An asset id looks like a placeholder that should be resolved before release.
 
 ### W-BEAT-ONCE-RUN-USER
 
-A scene beat's `once` defaults to `run`, but its `when` reads only user-tier state, so it replays every run unless `once` is authored explicitly.
+A scene beat's `once` defaults to `run`, but its `when` reads only user-tier state, so it may replay on every run unless `once` is authored explicitly.
 
 Spec: [dsl 0.22.0 §13](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md), [dsl 0.23.1](/spec/)
 
@@ -1668,7 +1680,7 @@ Spec: [dsl 0.4.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### W-OBJECTIVE-STRANDED
 
-A required objective can only be completed by beats whose clock-bounded windows may all close, but the objective has no `until=` or `by=` deadline with a failure handler.
+Within the declared clock windows, a required objective may be stranded because its candidate beats' windows can all close; no path search is performed.
 
 Spec: [dsl 0.31.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
 
@@ -1746,7 +1758,7 @@ Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-SLOT-CONTENTION
 
-Two required objectives in one run can only be completed by advancing beats at the same single clock position, so one presentation consumes the other objective's only slot.
+Within the declared clock windows, two required objectives may contend for the same single clock position; no path search is performed.
 
 Spec: [dsl 0.31.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
 

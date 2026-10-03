@@ -1170,6 +1170,50 @@ pub const W_OBJECTIVE_STRANDED: &str = "W-OBJECTIVE-STRANDED";
 /// `W-SLOT-CONTENTION`: required objectives in one run compete for the same
 /// single clock position, and every beat that can complete either consumes time.
 pub const W_SLOT_CONTENTION: &str = "W-SLOT-CONTENTION";
+/// One deterministic projection of an objective onto declared clock slots.
+#[derive(Clone, Debug)]
+pub struct ObjectiveSlotResult {
+    pub quest: String,
+    pub objective: String,
+    pub declared_windows: Vec<lute_manifest::clock::ClockAt>,
+    pub candidate_beats: Vec<(String, Span)>,
+    pub verdict: Option<&'static str>,
+}
+
+/// Build the shared per-objective slot result used by both legacy warnings and
+/// project constraint projections. No path search is performed.
+pub fn project_objective_slot_results(
+    docs: &[(PathBuf, Document)],
+    foldeds: &[&FoldedEnv],
+) -> Vec<ObjectiveSlotResult> {
+    let beats = crate::beats::project_beats(docs, foldeds);
+    let mut out = Vec::new();
+    for ((path, doc), folded) in docs.iter().zip(foldeds) {
+        let Some(clock) = folded.env.state.clock.as_ref() else { continue };
+        for q in &doc.quests {
+            for node in &q.body {
+                let Node::Objective(o) = node else { continue };
+                if o.optional || o.id.is_empty() { continue; }
+                let candidates = objective_completion_beats(o, folded, &beats, docs);
+                let mut windows = Vec::new();
+                let mut candidate_beats = Vec::new();
+                let mut bounded = true;
+                for beat in candidates {
+                    let Some(window) = bounded_window(beat, clock) else { bounded = false; break };
+                    windows.extend(window);
+                    candidate_beats.push((beat.id.clone(), beat.anchor));
+                }
+                windows.sort();
+                windows.dedup();
+                let verdict = if !bounded || windows.is_empty() { None } else if o.until.is_none() && o.by.is_none() { Some(W_OBJECTIVE_STRANDED) } else { Some("holds") };
+                let _ = path;
+                out.push(ObjectiveSlotResult { quest: q.id.clone(), objective: o.id.clone(), declared_windows: windows, candidate_beats, verdict });
+            }
+        }
+    }
+    out.sort_by(|a, b| (&a.quest, &a.objective).cmp(&(&b.quest, &b.objective)));
+    out
+}
 /// `E-ADVANCE-CASCADE`: an unguarded beat answers the clock occasion that
 /// raises at each position and advances by a period that lets it answer again.
 /// The runtime still bounds every cascade, but this is an authoring error: a
@@ -1485,26 +1529,29 @@ pub fn check_project_objective_clock_windows(
                 };
                 let reset = run_tier(q);
                 if !has_deadline {
-                    out.push((
-                        path.clone(),
-                        crate::reachability::diag(
-                            W_OBJECTIVE_STRANDED,
-                            if reset { Severity::Info } else { Severity::Warning },
-                            format!(
-                                "required objective `{}` can only be completed by clock-bounded beats \
-                                 whose windows close at {}; it has no `until=` or `by=` — {} \
-                                 (dsl 0.31.0 §3)",
-                                o.id,
-                                clock.describe(first),
-                                if reset {
-                                    "the next run retries"
-                                } else {
-                                    "add `until=` or `by=` so a missed window fails the objective"
-                                }
-                            ),
-                            o.span,
+                    let mut diagnostic = crate::reachability::diag(
+                        W_OBJECTIVE_STRANDED,
+                        if reset { Severity::Info } else { Severity::Warning },
+                        format!(
+                            "required objective `{}` can only be completed by clock-bounded beats \
+                             whose windows close at {}; it has no `until=` or `by=` — {} \
+                             (dsl 0.31.0 §3)",
+                            o.id,
+                            clock.describe(first),
+                            if reset {
+                                "the next run retries"
+                            } else {
+                                "add `until=` or `by=` so a missed window fails the objective"
+                            }
                         ),
-                    ));
+                        o.span,
+                    );
+                    if let Some(crate::evidence::DiagnosticClass::Analysis { evidence }) =
+                        crate::evidence::classification(W_OBJECTIVE_STRANDED)
+                    {
+                        diagnostic.evidence = Some(evidence);
+                    }
+                    out.push((path.clone(), diagnostic));
                 }
                 if positions.len() == 1
                     && windows.iter().all(|(pb, w)| pb.advances.is_some() && w.len() == 1)
@@ -1534,15 +1581,18 @@ pub fn check_project_objective_clock_windows(
                 clock.describe(*pos_a)
             );
             for (path, span) in [(path_a, span_a), (path_b, span_b)] {
-                out.push((
-                    path.clone(),
-                    crate::reachability::diag(
-                        W_SLOT_CONTENTION,
-                        Severity::Warning,
-                        message.clone(),
-                        *span,
-                    ),
-                ));
+                let mut diagnostic = crate::reachability::diag(
+                    W_SLOT_CONTENTION,
+                    Severity::Warning,
+                    message.clone(),
+                    *span,
+                );
+                if let Some(crate::evidence::DiagnosticClass::Analysis { evidence }) =
+                    crate::evidence::classification(W_SLOT_CONTENTION)
+                {
+                    diagnostic.evidence = Some(evidence);
+                }
+                out.push((path.clone(), diagnostic));
             }
         }
     }

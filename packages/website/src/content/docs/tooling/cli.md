@@ -53,6 +53,107 @@ $ lute check-project . --wip
 
 Without `--wip` the same line is `error [E-ENTRY-UNREACHABLE]` and the command exits **1**; with it the project passes. [`lute scenario knowledge`](/tooling/overviews/#lute-scenario-knowledge) lists every such relation as `NO PRODUCER`. Since 0.23.0 the decider behind these three codes, `E-ARM-DEAD`, and `W-BEAT-PRIORITY-TIE` also reasons per path across `&&`/`||`, so a contradiction such as `run.slot == 'morning' && run.slot == 'evening'` is now reported where 0.22 missed it — see [how a `when` is decided](/language/beats/#how-a-when-is-decided).
 
+Since 0.34.0, project-wide commands load one `ProjectModel` per nearest manifest root; `check-project`, `scenario`, `beats`, `impact`, `calendar`, `play`, and `test` therefore share one reconciled snapshot. Analysis-derived results carry an `evidence` level (`proven`, `witnessed`, `bounded`, `heuristic`, or `unknown`). Human output adds `[bounded: <scope>]`, `[heuristic]`, or `[unknown]`; it does not suffix `proven` or `witnessed`. A bounded result means “within this scope”, never “no path exists”.
+
+Constraints declared in `lute.project.yaml` are also checked by `check-project`: only violations are diagnostics; holds and unknowns appear in the report below.
+
+## impact
+
+```console
+$ lute impact <dir> <target> [--json]
+```
+
+Ask which project items depend on a target. Targets are `state:<path>`,
+`fact:<rel>(<args>)` (`_` is a wildcard), `relation:<rel>`, `scene:<id>`,
+`quest:<id>`, `objective:<quest>.<id>`, `entry:<id>`, `beat:<id>`,
+`occasion:<name>`, `def:<name>`, and `component:<name>`. The result is the
+transitive reverse-dependency closure over a finite graph: an item is affected
+when its eligibility, reachability, presented content, rewards, or effects read
+something in the target's reverse closure. This is dependency existence, not a
+claim that changing a value must flip the item. Cycles terminate via a visited
+set; the strongest chain wins (`proven` > `witnessed` > `bounded` >
+`heuristic` > `unknown`).
+
+For example, `lute impact docs/examples/games/drowned-crown
+fact:felled(regent)` reports affected lines, quests/objectives, rewards,
+disclosures, beats/scenes, and downstream facts/state. Each item includes a
+target-to-item reason chain; each link has an edge, reason, file, line, and
+source span.
+
+`--json` has this shape (empty groups remain present):
+
+```json
+{
+  "target": {"kind": "fact", "relation": "felled", "args": ["regent"]},
+  "root": "docs/examples/games/drowned-crown",
+  "items": {
+    "lines": [{"key": "line:...", "lineId": "...", "speaker": "brann",
+      "file": "lore/brann.lute", "line": 27, "evidence": "proven",
+      "reasons": [{"edge": "gates", "reason": "holds('felled',['regent'])",
+        "file": "lore/brann.lute", "line": 26,
+        "sourceSpan": {"byte_start": 1106, "byte_end": 1172, "line": 26,
+          "column": 140, "utf16_range": [1106, 1172]}}]}],
+    "quests": [], "objectives": [], "rewards": [], "disclosures": [],
+    "beats": [], "downstream": []
+  }
+}
+```
+
+## constraints
+
+```console
+$ lute constraints <dir> [--json] [--run]
+```
+
+Declare project invariants under `constraints:` in `lute.project.yaml`.
+Supported kinds and fields are:
+
+```yaml
+constraints:
+  - id: regent-reachable
+    kind: reachable
+    node: scene:hub.regentFell
+    severity: error
+  - id: library-completes
+    kind: completable
+    quest: libraryKey
+  - id: dead-brann-never-speaks
+    kind: speaksOnlyWhen
+    speaker: brann
+    when: "!holds('felled', ['brann'])"
+  - id: no-slot-only-progress
+    kind: noSingleSlotProgress
+    quest: '*'
+```
+
+`reachable` takes `node`; `completable` takes `quest`; `speaksOnlyWhen`
+takes `speaker` and CEL `when`; `noSingleSlotProgress` takes `quest:<id>` or
+`'*'`. Every declaration needs a unique non-empty `id`, a closed-set `kind`,
+kind-specific fields, and optional `severity` (default `error`).
+
+Each result is `holds`, `violated`, or `unknown`, with `evidence`; bounded
+results include `scope: "declared clock windows; no path search"`. The report
+always lists every constraint, including holds and unknowns. `--run` executes
+the project's play/test scripts and records witnessed quest-completion
+transitions for `completable`. `check-project` reports only violations
+(`E-CONSTRAINT-VIOLATED`) and malformed declarations (`E-CONSTRAINT-DECL`);
+there is no `W-CONSTRAINT-UNKNOWN`.
+
+## Evidence levels
+
+`proven` is a sound static proof; `witnessed` comes from a supplied run or
+trace; `bounded` is sound only within its declared finite scope; `heuristic`
+is conservative guidance; `unknown` means the analysis did not decide.
+Diagnostics may carry optional JSON `evidence` and `scope` fields (bounded
+diagnostics must include a non-empty scope). `trace`, `play`, `test`,
+`calendar`, `scenario`, and `beats` add `evidence` to each verdict/result;
+calendar aggregate results also carry `scope`. Parse, type, and declaration
+errors omit evidence.
+
+The new impact and constraints sections are part of the 0.34.0 command
+contract; the repository's current version remains 0.34.0 until the release
+stamps move.
+
 ## compile
 
 ```console

@@ -383,7 +383,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.33.0";
+pub const LUTE_IR_VERSION: &str = "0.34.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -761,7 +761,7 @@ fn source_side_tables(
     doc_id: Option<&str>,
     commands: &[Command],
 ) {
-    use source_map::{trimmed, ObjectiveSource, QuestSource};
+    use source_map::{trimmed, ObjectiveSource, QuestSource, RewardSource};
     let text = |slot: Option<&lute_syntax::ast::CelSlot>| trimmed(slot.map(|s| s.raw.as_str()));
     for quest in &doc.quests {
         let objectives = quest
@@ -811,6 +811,26 @@ fn source_side_tables(
     for beat in &doc.beats {
         map.beats
             .insert(lute_check::bundle_beat_key(doc_id, &beat.id), beat.span);
+    }
+
+    for quest in &doc.quests {
+        for (index, reward) in quest.rewards.iter().enumerate() {
+            let owner = format!("quest:{}", quest.id);
+            map.rewards.insert(format!("{owner}#{index}"), RewardSource {
+                owner, declaration_index: index, span: reward.span,
+            });
+        }
+        for objective in quest.body.iter().filter_map(|node| match node {
+            Node::Objective(objective) => Some(objective),
+            _ => None,
+        }) {
+            for (index, reward) in objective.rewards.iter().enumerate() {
+                let owner = format!("{}.{}", quest.id, objective.id);
+                map.rewards.insert(format!("{owner}#{index}"), RewardSource {
+                    owner, declaration_index: index, span: reward.span,
+                });
+            }
+        }
     }
 }
 
@@ -1627,12 +1647,12 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.33.0 axis alignment (docs/versioning.md): standard CEL
+        // 0.34.0 axis alignment (docs/versioning.md): standard CEL
         // conditions, int/double, execution IR, owner in IR, and grant
         // identity move the language and IR, and the workspace toolchain
         // follows the same release number.
-        assert_eq!(super::LUTE_IR_VERSION, "0.33.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.33.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.34.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.34.0");
     }
 
     #[test]
@@ -1641,8 +1661,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.33.0");
-        assert_eq!(v["irVersion"], "0.33.0");
+        assert_eq!(v["lute"], "0.34.0");
+        assert_eq!(v["irVersion"], "0.34.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

@@ -1,12 +1,11 @@
 //! `lute catalog refresh`.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_manifest::core::load_core_snapshot;
-use lute_manifest::project::{load_project, resolve_document_snapshot};
 use lute_manifest::provider::ProviderSnapshot;
+use lute_model::manifest_context;
 
 /// Re-stamp every provider snapshot in `dir` to the current `capabilityVersion`
 /// and clear `stale`, rewriting each file in place (plugin §10). A missing dir is
@@ -30,17 +29,15 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
     // malformed project must not silently mis-stamp: surface it and fall back to
     // the core-only version rather than pretending it loaded.
     let version = match project {
-        Some(p) => match load_project(p) {
-            Ok(cfg) => {
-                resolve_document_snapshot(cfg.as_ref(), None, &BTreeMap::new())
-                    .0
-                    .version
+        Some(p) => {
+            match manifest_context(p) {
+                Ok(context) => context.snapshot.version,
+                Err(e) => {
+                    eprintln!("lute: {e}");
+                    load_core_snapshot().version
+                }
             }
-            Err(e) => {
-                eprintln!("lute: {e}");
-                load_core_snapshot().version
-            }
-        },
+        }
         None => load_core_snapshot().version,
     };
 

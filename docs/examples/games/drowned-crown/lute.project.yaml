@@ -9,7 +9,7 @@ profiles:
 # Frontmatter every document inherits (dsl 0.10.0 §6): no document repeats
 # its language version or its schema imports.
 defaults:
-  luteVersion: "0.33.0"
+  luteVersion: "0.34.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
   components: [components/gauge.component.lute, components/keepsake.component.lute, components/bond-story.component.lute]
 # The last dive, chained: rail, throne, crown (dsl 0.27.0 §8). The occasion is
@@ -17,3 +17,14 @@ defaults:
 chapters:
   - on: lastDive
     scenes: [last.rail, last.throne, last.crown]
+constraints:
+  - id: regent-reachable
+    kind: reachable
+    node: scene:hub.regentFell
+  - id: regent-only-at-defeat
+    kind: speaksOnlyWhen
+    speaker: regent
+    when: "occasion.target == 'foe.regent'"
+  - id: no-slot-only-progress
+    kind: noSingleSlotProgress
+    quest: '*'

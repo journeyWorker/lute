@@ -10,15 +10,10 @@
 //! `project.index.json` carrying the union ([`lute_compile::index`]).
 //!
 //! ## What it reuses, and why that matters
-//! Nothing here re-derives project structure. The document set comes from the
-//! SAME [`crate::find_lute_files`] walk `check-project` uses, and each
-//! document's gate verdict from the SAME single-root
-//! [`crate::reconciled_project_results`] + [`crate::gate_for_doc`] pair a
-//! single-file `compile --project` runs — computed ONCE for the whole project
-//! rather than once per file (which would be quadratic, and could observe a
-//! project being edited underneath it differently on each pass). So
-//! `compile --all` and `compile <file> --project <dir>` can never disagree about
-//! whether a document compiles.
+//! Nothing here re-derives project structure. The document set and each
+//! document's checks and artifacts come from one [`lute_model::ProjectModel`]
+//! build for the whole project, rather than one pass per file. This keeps
+//! `compile --all` aligned with the project's model semantics.
 //!
 //! ## All-or-nothing
 //! Every document is compiled IN MEMORY first. A single failing gate prints its
@@ -33,12 +28,9 @@ use std::process::ExitCode;
 use lute_compile::index::{build_index, voice_key_collisions, IndexInput, E_DUP_VOICEKEY};
 use lute_compile::locale::LocaleBundle;
 use lute_compile::ExecutionIr;
-use lute_manifest::project::load_project;
 
-use rayon::prelude::*;
-
-use crate::input_cache::InputCache;
-use crate::{gate_for_doc, reconciled_project_results, render_diagnostics, DenyPolicy};
+use lute_model::{relocate_imported_diags, ModelError, ModelOptions, ProjectModel};
+use crate::{render_diagnostics, DenyPolicy};
 
 /// The project index's fixed file name inside the output directory.
 const INDEX_FILE: &str = "project.index.json";
@@ -121,118 +113,131 @@ pub fn run(
             return ExitCode::from(2);
         }
     }
-    // ONE project reconciliation for every document (module doc).
-    let reconciled = match reconciled_project_results(project, providers) {
-        Ok(r) => r,
-        Err(code) => return code,
+    let opts = ModelOptions {
+        providers: providers.map(Path::to_path_buf),
+        permission_profile: permission_profile.map(str::to_owned),
+        mode: lute_check::Mode::Ci,
+        compile: true,
+        wip: false,
     };
-    // 0.8.0 §9: `identity:` templates are a PROJECT setting, so every document
-    // in the project shares one resolved pair — loaded once, exactly as
-    // `run_compile`'s own `--project` arm loads it.
-    let identity = load_project(project)
-        .ok()
-        .flatten()
-        .map(|p| p.identity)
-        .unwrap_or_default();
+    let model = match ProjectModel::build(project, &opts) {
+        Ok(model) => model,
+        Err(ModelError::Compile { path, diagnostics }) => {
+            if json {
+                match serde_json::to_string_pretty(&diagnostics) {
+                    Ok(mut rendered) => {
+                        rendered.push('\n');
+                        print!("{rendered}");
+                    }
+                    Err(e) => {
+                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            } else {
+                print!("{}", render_diagnostics(&path, &diagnostics, policy));
+            }
+            return ExitCode::FAILURE;
+        }
+        Err(ModelError::Index(errors)) => {
+            for e in &errors {
+                eprintln!(
+                    "lute compile --all: {}",
+                    lute_core_span::plain_message(&e.to_string())
+                );
+            }
+            eprintln!(
+                "lute compile --all: {} vocabulary conflict(s); no output written",
+                errors.len()
+            );
+            return ExitCode::FAILURE;
+        }
+        Err(error) => {
+            eprintln!("lute: cannot build project {}: {error}", project.display());
+            return ExitCode::from(2);
+        }
+    };
+    if model.has_resolution_errors() {
+        for document in model.documents() {
+            for diagnostic in &document.resolve_diags {
+                eprintln!(
+                    "lute compile --all: {} [{}] {}",
+                    document.path.display(),
+                    diagnostic.code,
+                    diagnostic.message
+                );
+            }
+        }
+        eprintln!("lute compile --all: project resolution failed; no output written");
+        return ExitCode::FAILURE;
+    }
+    let mut project_diagnostics = model.project_diagnostics().to_vec();
+    let mut per_doc: Vec<_> = model
+        .documents()
+        .iter()
+        .map(|doc| (doc.path.clone(), doc.check.clone()))
+        .collect();
+    relocate_imported_diags(&mut per_doc, &mut project_diagnostics, project);
+    let project_errors: Vec<_> = project_diagnostics
+        .iter()
+        .filter(|(_, diagnostic)| diagnostic.severity == lute_core_span::Severity::Error)
+        .collect();
+    if !project_errors.is_empty() {
+        for (_, diagnostic) in project_errors {
+            eprintln!("lute compile --all: {}", diagnostic.text());
+        }
+        eprintln!("lute compile --all: project diagnostics prevent output");
+        return ExitCode::FAILURE;
+    }
 
-    let mut compiled: Vec<Compiled> = Vec::new();
-    // Path-keyed so the failure report is byte-sorted regardless of which
-    // document failed first.
-    let mut failures: BTreeMap<PathBuf, String> = BTreeMap::new();
+    let mut compiled = Vec::new();
+    let mut failures = BTreeMap::new();
     let mut denied = 0usize;
     let mut warnings = String::new();
-
-    // `per_doc` is a `BTreeMap` — already path-sorted, so `documents` and every
-    // conflict message below is deterministic without a second sort.
-    //
-    // Every document's input and compile are independent of every other: they
-    // run in parallel against one per-run [`InputCache`], then fold back in
-    // path order below, so stderr, early exits, and the output are exactly
-    // the sequential ones.
-    let cache = InputCache::default();
-    type Built = (
-        crate::BuiltInput,
-        Option<Result<ExecutionIr, Vec<lute_core_span::Diagnostic>>>,
-    );
-    let prepared: Vec<(&PathBuf, Option<String>, Result<Built, String>)> = reconciled
-        .per_doc
-        .par_iter()
-        .filter(|(file, _)| !is_component_file(file))
-        .map(|(file, base)| {
-            let rel = rel_slash(file, project);
-            let built = crate::read_document(file).map(|text| {
-                let (built, _) = crate::assemble_input(
-                    &cache,
-                    file,
-                    text,
-                    providers,
-                    Some(project),
-                    permission_profile,
-                );
-                let outcome = (rel.is_some() && !built.resolve_error).then(|| {
-                    let gate = gate_for_doc(&reconciled, file, base);
-                    lute_compile::compile_with_check(&built.input, gate, &identity)
-                });
-                (built, outcome)
-            });
-            (file, rel, built)
-        })
-        .collect();
-    for (file, rel, built) in prepared {
-        let Some(rel) = rel else {
+    for doc in model.documents() {
+        if is_component_file(&doc.path) {
+            continue;
+        }
+        let Some(rel) = rel_slash(&doc.path, project) else {
             eprintln!(
                 "lute compile --all: {} is not under --project {}",
-                file.display(),
+                doc.path.display(),
                 project.display()
             );
             return ExitCode::from(2);
         };
-        let (built, outcome) = match built {
-            Ok(b) => b,
-            Err(message) => {
-                eprintln!("{message}");
-                return ExitCode::from(2);
-            }
-        };
-        built.report_project_diags();
-        // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
-        // option, missing active plugin, bad identity template) is a build-failing
-        // error; it printed above, and it MUST gate here or it would pass silently.
-        let Some(outcome) = outcome else {
-            return ExitCode::from(1);
-        };
-        match outcome {
-            Ok(mut artifact) => {
-                if let Some(bundle) = bundle {
-                    let missing = lute_compile::locale::merge_locales(&mut artifact, bundle);
-                    denied += missing.iter().filter(|d| policy.denied(d)).count();
-                    warnings.push_str(&render_diagnostics(file, &missing, policy));
-                }
-                compiled.push(Compiled {
-                    artifact_rel: format!("{rel}.json"),
-                    out_path: out_dir.join(format!("{rel}.json")),
-                    rel,
-                    artifact,
-                });
-            }
-            Err(diags) => {
-                let rendered = if json {
-                    match serde_json::to_string_pretty(&diags) {
-                        Ok(mut s) => {
-                            s.push('\n');
-                            s
-                        }
-                        Err(e) => {
-                            eprintln!("lute: failed to serialize diagnostics: {e}");
-                            return ExitCode::from(2);
-                        }
+        if !doc.check.ok {
+            let rendered = if json {
+                match serde_json::to_string_pretty(&doc.check.diagnostics) {
+                    Ok(mut s) => {
+                        s.push('\n');
+                        s
                     }
-                } else {
-                    render_diagnostics(file, &diags, policy)
-                };
-                failures.insert(file.clone(), rendered);
-            }
+                    Err(e) => {
+                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            } else {
+                render_diagnostics(&doc.path, &doc.check.diagnostics, policy)
+            };
+            failures.insert(doc.path.clone(), rendered);
+            continue;
         }
+        let Some(mut artifact) = doc.artifact.clone() else {
+            continue;
+        };
+        if let Some(bundle) = bundle {
+            let missing = lute_compile::locale::merge_locales(&mut artifact, bundle);
+            denied += missing.iter().filter(|d| policy.denied(d)).count();
+            warnings.push_str(&render_diagnostics(&doc.path, &missing, policy));
+        }
+        compiled.push(Compiled {
+            artifact_rel: format!("{rel}.json"),
+            out_path: out_dir.join(format!("{rel}.json")),
+            rel,
+            artifact,
+        });
     }
 
     // Warnings first: they belong to documents that DID compile, and a reader

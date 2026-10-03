@@ -22,8 +22,8 @@ use lute_check::envelope;
 
 use crate::{
     assemble_root_scenario, collect_project_docs, format_prereq, node_cycle_degraded,
-    node_ref_to_id, primary_node_ambiguity_note, reach_verdict_text, resolve_node_ref, topo_layers,
-    unanchored_quests, NodeRef, RootScenario, ScenarioCommand,
+    node_ref_to_id, primary_node_ambiguity_note, reach_evidence, reach_verdict_text,
+    resolve_node_ref, topo_layers, unanchored_quests, NodeRef, RootScenario, ScenarioCommand,
 };
 
 /// Render the scenario report in a non-text format. See
@@ -247,6 +247,10 @@ fn root_graph_json(
                 "reach".to_string(),
                 Value::String(reach_token(scenario, node).to_string()),
             );
+            obj.insert(
+                "evidence".to_string(),
+                Value::String(reach_evidence(scenario, node).to_string()),
+            );
             obj.insert("prereq".to_string(), prereq_json(scenario, node));
             Value::Object(obj)
         })
@@ -392,12 +396,17 @@ fn reach_json(
 
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
         obj.insert("unavailable".to_string(), Value::String(note));
+        obj.insert("evidence".to_string(), Value::String("unknown".to_string()));
         return print_json(&Value::Object(obj));
     }
 
     obj.insert(
         "reach".to_string(),
         Value::String(reach_token(&scenario, &node_id).to_string()),
+    );
+    obj.insert(
+        "evidence".to_string(),
+        Value::String(reach_evidence(&scenario, &node_id).to_string()),
     );
     obj.insert(
         "verdict".to_string(),
@@ -433,6 +442,10 @@ fn reach_json(
                 r.insert(
                     "reach".to_string(),
                     Value::String(reach_token(&scenario, t).to_string()),
+                );
+                r.insert(
+                    "evidence".to_string(),
+                    Value::String(reach_evidence(&scenario, t).to_string()),
                 );
                 r.insert(
                     "verdict".to_string(),

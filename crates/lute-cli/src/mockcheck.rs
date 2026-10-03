@@ -82,10 +82,10 @@ fn find_mocks(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// Every subject is looked up in `by_root` — the documents `check-project`
 /// already parsed and folded — so no document is parsed twice and every mock
 /// is validated against exactly the schema its subject really resolves.
-pub fn check_mocks_under(
+pub fn check_mocks_under<'a>(
     dir: &Path,
     by_root: &crate::ByRoot,
-    inputs: &BTreeMap<PathBuf, (PathBuf, lute_check::CheckInput)>,
+    inputs: &BTreeMap<PathBuf, (PathBuf, &'a lute_check::CheckInput)>,
 ) -> std::io::Result<Vec<(PathBuf, Diagnostic)>> {
     // Canonical path -> the already-parsed document, its folded env, and the
     // check input it resolved: its capability snapshot (the plugin calls
@@ -101,7 +101,7 @@ pub fn check_mocks_under(
     for group in by_root.values() {
         for (path, doc, folded) in group {
             if let Ok(c) = std::fs::canonicalize(path) {
-                let input = inputs.get(path).map(|(_, input)| input);
+                let input = inputs.get(path).map(|(_, input)| *input);
                 docs.insert(c, (doc, folded, input));
             }
         }
@@ -214,61 +214,3 @@ pub fn check_mocks_under(
     Ok(out)
 }
 
-/// dsl 0.24.0 §2, 0.25.0 §5: per quest id, every trace mock
-/// (`mocks/*.yaml`) or scenario test (`*.test.yaml`) under the project root
-/// `root` whose top-level `accept:` / `accepts:` list names it, as
-/// root-relative paths in path order. No acceptance source — a mock proves
-/// a test, not the game — only what `W-QUEST-NEVER-ACCEPTED` names when it
-/// warns anyway. Best effort: an unreadable or malformed file contributes
-/// nothing (the mock pass above and `lute test` report it), and a nested
-/// project root (a subdirectory with its own `lute.project.yaml`) is left
-/// to its own pass.
-pub fn mocked_accepts_under(root: &Path) -> BTreeMap<String, Vec<PathBuf>> {
-    let mut out: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(d) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&d) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if entry.file_type().is_ok_and(|t| t.is_dir()) {
-                if !path.join("lute.project.yaml").is_file() {
-                    stack.push(path);
-                }
-                continue;
-            }
-            let name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or_default();
-            let in_mocks = path
-                .parent()
-                .and_then(|p| p.file_name())
-                .and_then(|n| n.to_str())
-                == Some("mocks");
-            if !(name.ends_with(".test.yaml") || (in_mocks && name.ends_with(".yaml"))) {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let Ok(serde_yaml::Value::Mapping(top)) = serde_yaml::from_str(&text) else {
-                continue;
-            };
-            let rel = path.strip_prefix(root).unwrap_or(&path);
-            if let Some(serde_yaml::Value::Sequence(items)) = top.get("accepts") {
-                for id in items.iter().filter_map(|i| i.as_str()) {
-                    let files = out.entry(id.to_string()).or_default();
-                    if !files.iter().any(|f| f == rel) {
-                        files.push(rel.to_path_buf());
-                    }
-                }
-            }
-        }
-    }
-    for files in out.values_mut() {
-        files.sort();
-    }
-    out
-}

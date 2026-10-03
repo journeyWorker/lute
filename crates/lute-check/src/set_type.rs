@@ -532,6 +532,7 @@ fn diag(message: String, span: Span) -> Diagnostic {
         code: E_SET_TYPE.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Staging,
         fixits: Vec::new(),

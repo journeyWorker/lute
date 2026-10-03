@@ -1,6 +1,7 @@
 pub mod assemble;
 pub mod asset;
 pub mod clock;
+pub mod constraints;
 pub mod core;
 pub mod entities;
 pub mod ident;

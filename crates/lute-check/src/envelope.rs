@@ -590,6 +590,7 @@ fn maybe_unavailable_error(path: &str, span: Span, engine_owned: bool) -> Diagno
         code: E_STATE_MAYBE_UNAVAILABLE.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),
@@ -609,6 +610,7 @@ fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
              `after:` a scene every route passes that sets it, or guard the read with \
              `isSet({path})` (dsl §4.3)"
         ),
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),

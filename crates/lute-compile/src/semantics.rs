@@ -427,7 +427,7 @@ mod tests {
 
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
-            kind: DocKind::Scene, lute: "0.33.0".into(), ir_version: "0.33.0".into(),
+            kind: DocKind::Scene, lute: "0.34.0".into(), ir_version: "0.34.0".into(),
             capability_version: "cap".into(), required_semantics: vec![],
             meta: ArtifactMeta::Scene(SceneMeta { id: "s".into(), character: None, season: None, episode: None, episode_id: None, title: None, extra: BTreeMap::new(), plugin: BTreeMap::new(), beat: None }),
             state: vec![], entities: vec![], enums: vec![], relations: vec![], seed_facts: vec![], rules: vec![], commands: vec![], prereq_edges: vec![], shots: vec![], clock: None, gates: vec![], terminal: None, terminal_persists: false, seasons: vec![], outside_run: vec![], cel_env: CelEnv::default(),

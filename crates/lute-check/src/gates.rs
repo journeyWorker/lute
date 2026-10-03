@@ -211,6 +211,7 @@ fn meta_value(message: String, span: Span) -> Diagnostic {
         code: "E-META-VALUE".to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -704,6 +705,7 @@ fn terminal_persistent(
              what a new run should forget as run-tier, or, when the ending outlives runs on \
              purpose, say so: `terminal: {{ when: \"…\", persists: true }}`"
         ),
+        evidence: None,
         span: at,
         layer: Layer::Cel,
         fixits: Vec::new(),
@@ -821,6 +823,7 @@ pub(crate) fn outside_occasion(raw: &str, at: Span) -> Option<Diagnostic> {
              `occasion.*` has a value only while a beat answers its occasion; judge the member \
              in that beat's `when` (dsl 0.28.0 §1)"
         ),
+        evidence: None,
         span: at,
         layer: Layer::Cel,
         fixits: Vec::new(),
@@ -958,6 +961,7 @@ pub(crate) fn check_condition(raw: &str, at: Span, ctx: &crate::ctx::Ctx<'_>) ->
                 code: "E-CEL-PARSE".to_string(),
                 severity: Severity::Error,
                 message: err.message,
+                evidence: None,
                 span: at,
                 layer: Layer::Cel,
                 fixits: Vec::new(),
@@ -1123,6 +1127,7 @@ pub(crate) fn seam_reachability(
                 verdict,
                 None,
             ),
+            evidence: None,
             span: b.span,
             layer: Layer::Content,
             fixits: Vec::new(),
@@ -1156,6 +1161,7 @@ pub fn untargeted_gate_diag(on: &str, gate: &str, at: Span) -> Diagnostic {
              for no target — declare its `target:` as `{{ prefix, entity }}` or drop the read \
              (dsl 0.27.0 §4)"
         ),
+        evidence: None,
         span: at,
         layer: Layer::Content,
         fixits: Vec::new(),

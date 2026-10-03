@@ -66,9 +66,20 @@ pub fn to_lsp_diagnostic(
             .map(|href| lsp_types::CodeDescription { href }),
         source: Some("lute".into()),
         message: d.text().into_owned(),
+        data: evidence_data(d),
         related_information: covered_related_information(d, idx, uri),
         ..Default::default()
     }
+}
+
+fn evidence_data(d: &Diagnostic) -> Option<serde_json::Value> {
+    let evidence = d.evidence.as_ref()?;
+    let mut data = serde_json::Map::new();
+    data.insert("evidence".into(), serde_json::json!(evidence));
+    if let lute_core_span::Evidence::Bounded { scope } = evidence {
+        data.insert("scope".into(), serde_json::json!(scope));
+    }
+    Some(serde_json::Value::Object(data))
 }
 
 /// Map `d.covered` (dsl 0.4.0 §8.2 C1/C5: `lute-check`'s `collapse_same_root`,
@@ -174,6 +185,7 @@ mod tests {
             code: code.into(),
             severity: sev,
             message: "x".into(),
+            evidence: None,
             span,
             layer: Layer::Cel,
             fixits: vec![],
@@ -191,6 +203,7 @@ mod tests {
             code: "E-UNDECLARED".into(),
             severity: Severity::Error,
             message: "x".into(),
+            evidence: None,
             span: Span {
                 byte_start: 5,
                 byte_end: 8,

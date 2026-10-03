@@ -71,3 +71,10 @@ reachable here means nothing static refutes it, not that a run reaches it: a pla
 One accepted conservative gap: because the edge model over-approximates `||` position, a node reachable *only* via a disjunct that passes through a cyclic node is conservatively reported degraded even though its independent disjunct could prove it reachable. This is sound — **a false `Unknown` is always safe; a false `Reachable` never is** — and recovering it needs SCC-condensation-aware analysis (future work).
 
 Under the locked A-hybrid enforcement posture the graph is advisory data the engine *may* honor, so every reachability message is worded "under your declared `after` routes," never as an unconditional runtime claim.
+
+## Evidence in 0.34.0
+
+Scenario reach results include `evidence` in JSON. A structural reachability
+proof is `proven`; a cycle-degraded or undecided result is `unknown`. Human
+wording remains scoped to the declared `after` routes and never claims a
+bounded analysis proves that no runtime path exists.

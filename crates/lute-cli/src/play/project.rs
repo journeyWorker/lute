@@ -8,9 +8,9 @@ use std::process::ExitCode;
 use lute_compile::ExecutionIr;
 use lute_manifest::schema::OccasionDecl;
 use lute_trace::exec::record::NeedleVocab;
+use lute_model::{relocate_imported_diags, ModelOptions, ProjectModel};
 use lute_trace::exec::session::ExecProject;
 use lute_trace::exec::BridgeReads;
-
 /// `path` relative to `root`, forward-slash joined — the project-relative
 /// artifact identity `compile_all.rs`'s private `rel_slash` uses.
 fn project_rel(path: &Path, root: &Path) -> Option<String> {
@@ -53,9 +53,11 @@ pub(crate) const TEST: Gate = Gate {
 /// carries the exit code after the diagnostics are printed.
 pub(super) fn compile_project(project_dir: &Path, gate: Gate, matrix: &crate::EngineMatrix) -> Result<ExecProject, ExitCode> {
     let Gate { cmd, refuses } = gate;
-    match crate::manifests::validate_manifests_under(project_dir) {
+    let project_dir = lute_model::nearest_manifest_dir(project_dir)
+        .unwrap_or_else(|| project_dir.to_path_buf());
+    match crate::manifests::validate_manifests_under(&project_dir) {
         Ok(mut verdicts) => {
-            crate::manifests::mark_inert_under(&mut verdicts, project_dir);
+            crate::manifests::mark_inert_under(&mut verdicts, &project_dir);
             if crate::manifests::report_and_gate(&verdicts)
                 | crate::manifests::gate_chapters(&verdicts)
             {
@@ -71,46 +73,86 @@ pub(super) fn compile_project(project_dir: &Path, gate: Gate, matrix: &crate::En
             return Err(ExitCode::from(2));
         }
     }
+    let policy = crate::DenyPolicy::default();
 
-    let reconciled = crate::reconciled_project_results(project_dir, None)?;
-    // Round-5 G-17: a schema or plugin fault every importing document
-    // shares is reported once, at its own line, as `check-project` folds it
-    // — not once per document that fails to compile over it.
-    let faults = reconciled.schema_faults(project_dir);
-    if !faults.is_empty() {
-        for line in &faults {
-            println!("{line}");
+    let source_model = ProjectModel::build_single_root(
+        &project_dir,
+        &ModelOptions {
+            providers: None,
+            permission_profile: None,
+            mode: lute_check::Mode::Ci,
+            compile: true,
+            wip: false,
+        },
+    )
+    .map_err(|error| {
+        eprintln!("{cmd}: cannot build {}: {error}", project_dir.display());
+        ExitCode::from(1)
+    })?;
+    if source_model.has_resolution_errors() {
+        for document in source_model.documents() {
+            for diagnostic in &document.resolve_diags {
+                eprintln!(
+                    "{cmd}: {} [{}] {}",
+                    document.path.display(),
+                    diagnostic.code,
+                    diagnostic.message
+                );
+            }
+        }
+        eprintln!("{cmd}: project resolution failed; refusing to {refuses}");
+        return Err(ExitCode::from(1));
+    }
+    let mut project_diagnostics = source_model.project_diagnostics().to_vec();
+    let mut per_doc: Vec<_> = source_model
+        .documents()
+        .iter()
+        .map(|source| (source.path.clone(), source.check.clone()))
+        .collect();
+    relocate_imported_diags(&mut per_doc, &mut project_diagnostics, &project_dir);
+    for (path, diagnostic) in &mut project_diagnostics {
+        if path.extension().and_then(|extension| extension.to_str()) == Some("lute") {
+            continue;
+        }
+        let message = diagnostic.message.split(" (imported by ").next().unwrap_or(&diagnostic.message);
+        let count = per_doc.len();
+        diagnostic.message = format!(
+            "{message} (imported by {count} document{})",
+            if count == 1 { "" } else { "s" }
+        );
+    }
+    let project_errors: Vec<_> = project_diagnostics
+        .iter()
+        .filter(|(_, d)| d.severity == lute_core_span::Severity::Error)
+        .collect();
+    if !project_errors.is_empty() {
+        for (path, diagnostic) in &project_errors {
+            print!(
+                "{}",
+                crate::render_diagnostics(path, std::slice::from_ref(diagnostic), &policy)
+            );
         }
         eprintln!(
-            "{cmd}: {} schema or plugin error(s) every importing document shares; refusing \
-             to {refuses}",
-            faults.len()
+            "{cmd}: {} project diagnostic(s); refusing to {refuses}",
+            project_errors.len()
         );
         return Err(ExitCode::from(1));
     }
-    let identity = lute_manifest::project::load_project(project_dir)
-        .ok()
-        .flatten()
-        .map(|p| p.identity)
-        .unwrap_or_default();
-
-    let mut compiled: BTreeMap<String, ExecutionIr> = BTreeMap::new();
     let mut occasions: BTreeMap<String, OccasionDecl> = BTreeMap::new();
+    let mut compiled: BTreeMap<String, ExecutionIr> = BTreeMap::new();
     let mut failures: BTreeMap<PathBuf, String> = BTreeMap::new();
-    let policy = crate::DenyPolicy::default();
     let mut world_events: BTreeSet<String> = BTreeSet::new();
-    // dsl 0.26.0 §3.1: the bridge capabilities' `result:` types, per tag.
     let mut bridge_types = BridgeReads::default();
-    let cache = crate::InputCache::default();
     let mut display_names: BTreeMap<String, String> = BTreeMap::new();
     let mut needles = NeedleVocab::default();
     let mut chapter_afters: BTreeSet<String> = BTreeSet::new();
 
-    for (file, base) in &reconciled.per_doc {
+    for source in source_model.documents() {
+        let file = &source.path;
         if crate::compile_all::is_component_file(file) {
             continue;
         }
-        let Some(rel) = project_rel(file, project_dir) else {
+        let Some(rel) = project_rel(file, &project_dir) else {
             eprintln!(
                 "{cmd}: {} is not under {}",
                 file.display(),
@@ -118,60 +160,40 @@ pub(super) fn compile_project(project_dir: &Path, gate: Gate, matrix: &crate::En
             );
             return Err(ExitCode::from(2));
         };
-        let Some(built) = crate::build_input_with(&cache, file, None, Some(project_dir), None)
-        else {
-            return Err(ExitCode::from(2));
-        };
-        // The project's resolve lines (a plugin that fails to load, a bad
-        // option) were printed once, above, by the reconcile pass.
-        if built.resolve_error {
-            eprintln!(
-                "{cmd}: the project's plugins or manifest do not resolve (see above); refusing \
-                 to {refuses}"
-            );
-            return Err(ExitCode::from(1));
+        let input = &source.input;
+        for (name, decl) in &input.snapshot.occasions {
+            occasions.entry(name.clone()).or_insert_with(|| decl.clone());
         }
-        for (name, decl) in &built.input.snapshot.occasions {
-            occasions
-                .entry(name.clone())
-                .or_insert_with(|| decl.clone());
-        }
-        world_events.extend(built.input.snapshot.events.keys().cloned());
-        for (id, m) in
-            lute_check::cast::declared_cast(&built.input.snapshot, &built.input.imports, &[])
-        {
+        world_events.extend(input.snapshot.events.keys().cloned());
+        for (id, m) in lute_check::cast::declared_cast(&input.snapshot, &input.imports, &[]) {
             if let Some(name) = m.name {
                 display_names.entry(id).or_insert(name);
             }
         }
-        bridge_types = bridge_types.with_result_types(&built.input.snapshot);
-        needles.union(NeedleVocab::of(&built.input, &built.meta));
-        // dsl 0.28.0 §4: whose `after:` a chain wrote — read off the
-        // desugared scene, so an `after:` the scene wrote is never credited
-        // to `chapters:` whatever its text (T3-18).
-        let (mut desugared, _) = lute_syntax::parse(&built.input.text);
+        bridge_types = bridge_types.with_result_types(&input.snapshot);
+        needles.union(NeedleVocab::of(input, &source.folded.typed));
+        let (mut desugared, _) = lute_syntax::parse(&input.text);
         lute_check::chapters::apply_chapters(
             &mut desugared,
-            &built.input.defaults,
-            &built.input.snapshot.occasions,
+            &input.defaults,
+            &input.snapshot.occasions,
         );
         chapter_afters.extend(lute_check::chapters::derived_after(&desugared));
-        let doc_gate = crate::gate_for_doc(&reconciled, file, base);
-        match lute_compile::compile_with_check(&built.input, doc_gate, &identity) {
-            Ok(artifact) => {
-                if let Err(e) = matrix.negotiate(&serde_json::to_value(&artifact).unwrap_or_default()) {
-                    eprintln!("{cmd}: {e}");
-                    return Err(ExitCode::from(2));
-                }
-                compiled.insert(rel, artifact);
-            }
-            Err(diags) => {
-                failures.insert(
-                    file.clone(),
-                    crate::render_diagnostics(file, &diags, &policy),
-                );
-            }
+        if !source.check.ok {
+            failures.insert(
+                file.clone(),
+                crate::render_diagnostics(file, &source.check.diagnostics, &policy),
+            );
+            continue;
         }
+        let Some(artifact) = source.artifact.clone() else {
+            continue;
+        };
+        if let Err(e) = matrix.negotiate(&serde_json::to_value(&artifact).unwrap_or_default()) {
+            eprintln!("{cmd}: {e}");
+            return Err(ExitCode::from(2));
+        }
+        compiled.insert(rel, artifact);
     }
 
     if !failures.is_empty() {

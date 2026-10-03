@@ -25,6 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use lute_check::{check_atom, FoldedEnv};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::{type_accepts, Literal, Type};
+pub use lute_manifest::yaml_text::{yaml_span, YamlStep};
 use lute_syntax::ast::{Arm, AttrValue, Document, Hub, Node};
 use lute_syntax::datalog::{parse_fact, DatalogError};
 
@@ -189,192 +190,6 @@ impl ChooseSpans {
     }
 }
 
-/// One step of a path into a YAML document.
-pub enum YamlStep<'a> {
-    Key(&'a str),
-    Item(usize),
-    /// The value of the key the path names so far (last step only).
-    Value,
-}
-
-/// The span of the node `path` names in `text` — a final key's own scalar,
-/// a final item's first token — or `None` when `text` has no such node.
-///
-/// A `serde_yaml::Value` keeps no position, but `serde_yaml` stamps an error
-/// a visitor raises with the start mark of the node being visited: this
-/// deserializes along `path` and raises one AT the target, so the position
-/// is libyaml's own (flow or block style, quoted keys and all).
-pub fn yaml_span(text: &str, path: &[YamlStep<'_>]) -> Option<Span> {
-    use serde::de::DeserializeSeed;
-    let err = YamlSeek(path)
-        .deserialize(serde_yaml::Deserializer::from_str(text))
-        .err()?;
-    // `serde_yaml` prefixes the message with the node's path (`bridges.check[0]: …`).
-    if !err.to_string().contains(YAML_FOUND) {
-        return None;
-    }
-    let start = err.location()?.index();
-    let end = match path.last() {
-        Some(YamlStep::Key(k)) if text[start..].starts_with(k) => start + k.len(),
-        Some(YamlStep::Value) => start + scalar_len(&text[start..]),
-        _ => start,
-    };
-    Some(Span::from_bytes(
-        &lute_core_span::TextIndex::new(text),
-        start,
-        end,
-    ))
-}
-
-/// The error [`yaml_span`] raises at its target.
-const YAML_FOUND: &str = "yaml_span: found";
-
-/// [`yaml_span`]'s walk: the node it is handed is the one the path so far
-/// names; an empty remaining path makes it the target.
-struct YamlSeek<'p>(&'p [YamlStep<'p>]);
-
-impl<'de> serde::de::DeserializeSeed<'de> for YamlSeek<'_> {
-    type Value = ();
-    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
-        d.deserialize_any(self)
-    }
-}
-
-impl<'de> serde::de::Visitor<'de> for YamlSeek<'_> {
-    type Value = ();
-    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("any YAML node")
-    }
-    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
-        if self.at_target() {
-            return Err(serde::de::Error::custom(YAML_FOUND));
-        }
-        let want = match self.0.split_first() {
-            Some((YamlStep::Key(k), rest)) => Some((*k, rest)),
-            _ => None,
-        };
-        while let Some(hit) =
-            map.next_key_seed(YamlKey(want.map(|(k, rest)| (k, rest.is_empty()))))?
-        {
-            match want {
-                Some((_, rest)) if hit => map.next_value_seed(YamlSeek(rest))?,
-                _ => {
-                    map.next_value::<serde::de::IgnoredAny>()?;
-                }
-            }
-        }
-        Ok(())
-    }
-    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
-        if self.at_target() {
-            return Err(serde::de::Error::custom(YAML_FOUND));
-        }
-        let want = match self.0.split_first() {
-            Some((YamlStep::Item(i), rest)) => Some((*i, rest)),
-            _ => None,
-        };
-        for n in 0.. {
-            let more = match want {
-                Some((i, rest)) if i == n => seq.next_element_seed(YamlSeek(rest))?.is_some(),
-                _ => seq.next_element::<serde::de::IgnoredAny>()?.is_some(),
-            };
-            if !more {
-                break;
-            }
-        }
-        Ok(())
-    }
-    fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<(), E> {
-        self.scalar()
-    }
-    fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<(), E> {
-        self.scalar()
-    }
-    fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<(), E> {
-        self.scalar()
-    }
-    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<(), E> {
-        self.scalar()
-    }
-    fn visit_str<E: serde::de::Error>(self, _: &str) -> Result<(), E> {
-        self.scalar()
-    }
-    fn visit_unit<E: serde::de::Error>(self) -> Result<(), E> {
-        self.scalar()
-    }
-    fn visit_none<E: serde::de::Error>(self) -> Result<(), E> {
-        self.scalar()
-    }
-}
-
-impl YamlSeek<'_> {
-    /// The node handed to this step is the target: the path ends here, or
-    /// only its [`YamlStep::Value`] is left.
-    fn at_target(&self) -> bool {
-        matches!(self.0, [] | [YamlStep::Value])
-    }
-
-    /// A scalar is the target when the path ends here, else a dead end.
-    fn scalar<E: serde::de::Error>(&self) -> Result<(), E> {
-        if self.at_target() {
-            Err(E::custom(YAML_FOUND))
-        } else {
-            Ok(())
-        }
-    }
-}
-
-/// The byte length of the scalar `rest` starts with: a quoted one through
-/// its closing quote, a plain one up to the flow or line end.
-fn scalar_len(rest: &str) -> usize {
-    match rest.chars().next() {
-        Some(q @ ('"' | '\'')) => rest[1..].find(q).map_or(rest.len(), |i| i + 2),
-        _ => {
-            let end = rest.find(['\n', ',', '}', ']', '#']).unwrap_or(rest.len());
-            rest[..end].trim_end().len()
-        }
-    }
-}
-
-/// A mapping key against the key [`YamlSeek`] wants: `(key, last step)`.
-/// Yields whether it matched; the last step's match is the target.
-struct YamlKey<'k>(Option<(&'k str, bool)>);
-
-impl<'de> serde::de::DeserializeSeed<'de> for YamlKey<'_> {
-    type Value = bool;
-    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<bool, D::Error> {
-        d.deserialize_any(self)
-    }
-}
-
-impl<'de> serde::de::Visitor<'de> for YamlKey<'_> {
-    type Value = bool;
-    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("a mapping key")
-    }
-    fn visit_str<E: serde::de::Error>(self, s: &str) -> Result<bool, E> {
-        match self.0 {
-            Some((want, true)) if want == s => Err(E::custom(YAML_FOUND)),
-            Some((want, false)) => Ok(want == s),
-            _ => Ok(false),
-        }
-    }
-    fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<bool, E> {
-        Ok(false)
-    }
-    fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<bool, E> {
-        Ok(false)
-    }
-    fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<bool, E> {
-        Ok(false)
-    }
-    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<bool, E> {
-        Ok(false)
-    }
-    fn visit_unit<E: serde::de::Error>(self) -> Result<bool, E> {
-        Ok(false)
-    }
-}
 
 /// The placeholder a bridge-answer hint writes for a result slot of type
 /// `ty` (dsl 0.24.0 §5): `<bool>`, `<number>`, `<string>`, an enum's
@@ -577,6 +392,7 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence: None,
     }
 }
 

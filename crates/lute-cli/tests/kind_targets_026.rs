@@ -390,6 +390,15 @@ fn lute_beats_gives_each_ladder_cell_its_own_verdict() {
     };
     assert_eq!(shadowed_by("hero.cyra"), json!(["s.limitedGlow"]));
     assert_eq!(shadowed_by("hero.aria"), Json::Null);
+    let out = run(&["beats", d, "--target", "hero.cyra", "--json"]);
+    let v: Json = serde_json::from_slice(&out.stdout).unwrap();
+    let row = v["roots"][0]["ladders"][0]["beats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["id"] == "s.goldLight")
+        .unwrap();
+    assert_eq!(row["shadowedByEvidence"], "heuristic");
 }
 
 /// dsl 0.28.0: a kind beat whose `when` never holds for one member — as

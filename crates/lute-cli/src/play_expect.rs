@@ -224,6 +224,7 @@ impl ExpectMiss {
             "key": self.key,
             "expected": self.expected,
             "actual": self.actual,
+            "evidence": "witnessed",
         })
     }
 }

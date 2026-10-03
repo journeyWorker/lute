@@ -652,6 +652,7 @@ fn diag(message: String, span: Span) -> Diagnostic {
         code: crate::cel_resolve::E_CEL_TYPE.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Cel,
         fixits: Vec::new(),

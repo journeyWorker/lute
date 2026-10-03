@@ -37,6 +37,7 @@ fn diag(message: String, span: Span) -> Diagnostic {
         code: E_CONN_EPISODE_ID_DUP.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),
@@ -349,6 +350,7 @@ fn unknown_node_diag(message: String, span: Span) -> Diagnostic {
         code: E_CONN_UNKNOWN_NODE.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),
@@ -945,6 +947,7 @@ pub fn cycle_diag(message: String, span: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence: Some(lute_core_span::Evidence::Proven),
     }
 }
 
@@ -1804,6 +1807,7 @@ fn unreachable_diag(message: String, span: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence: Some(lute_core_span::Evidence::Proven),
     }
 }
 
@@ -1818,6 +1822,7 @@ fn too_complex_diag(message: String, span: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence: Some(lute_core_span::Evidence::Proven),
     }
 }
 

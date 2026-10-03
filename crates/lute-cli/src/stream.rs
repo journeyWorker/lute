@@ -48,7 +48,7 @@ pub fn run(
     // file against — `--project`, else the nearest manifest.
     let discovered = crate::project::discover_project(file, project);
     let project = project.or(discovered.as_deref());
-    let Some(built) = crate::build_input(file, providers, project, permission_profile) else {
+    let Some(built) = lute_model::build_input(file, providers, project, permission_profile) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();

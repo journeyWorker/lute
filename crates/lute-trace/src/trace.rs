@@ -1292,7 +1292,14 @@ fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
             )
         })
         .collect();
+    let runtime_witness = !driver.steps.is_empty();
     let report = TraceReport {
+        evidence: match &exit {
+            TraceExit::Complete => lute_core_span::Evidence::Witnessed,
+            TraceExit::Incomplete => lute_core_span::Evidence::Unknown,
+            TraceExit::Refused(_) if runtime_witness => lute_core_span::Evidence::Witnessed,
+            TraceExit::Refused(_) => lute_core_span::Evidence::Unknown,
+        },
         file: input.uri.clone(),
         seeds: seeds_summary(mocks),
         steps: driver.steps,
@@ -1331,17 +1338,20 @@ fn logic_diag(code: &str, message: String, span: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence: None,
     }
 }
 
 fn choice_diag(span: Span, id: &str, choice_id: &str, reason: &str) -> Diagnostic {
-    logic_diag(
+    let mut diagnostic = logic_diag(
         mock::E_TRACE_CHOICE,
         format!(
             "`--choose {id}={choice_id}` is ineligible at its presentation point: {reason} (dsl 0.4.0 §4.4)"
         ),
         span,
-    )
+    );
+    diagnostic.evidence = Some(lute_core_span::Evidence::Witnessed);
+    diagnostic
 }
 
 // ---------------------------------------------------------------------
@@ -1764,7 +1774,7 @@ impl<'a> TraceDriver<'a> {
             return d;
         }
         if refused && !self.exclusive.is_empty() {
-            return logic_diag(
+            let mut diagnostic = logic_diag(
                 lute_check::fact_check::E_FACT_EXCLUSIVE,
                 format!(
                     "this write makes exclusive relations hold together: {} (dsl 0.25.0 §1)",
@@ -1772,6 +1782,8 @@ impl<'a> TraceDriver<'a> {
                 ),
                 self.last_write.unwrap_or_else(mock::synthetic_span),
             );
+            diagnostic.evidence = Some(lute_core_span::Evidence::Witnessed);
+            return diagnostic;
         }
         logic_diag("E-COMPILE-INTERNAL", msg, mock::synthetic_span())
     }
@@ -3341,6 +3353,7 @@ fn beat_when_note(
 
 fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
     TraceReport {
+        evidence: lute_core_span::Evidence::Unknown,
         file: uri.to_string(),
         seeds: seeds_summary(mocks),
         steps: Vec::new(),

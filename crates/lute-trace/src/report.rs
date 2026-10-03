@@ -464,6 +464,8 @@ pub struct TraceReport {
     pub decisions: Vec<Decision>,
     pub unresolved: Vec<UnresolvedEntry>,
     pub coverage: Coverage,
+    /// Evidence of the supplied walk's verdict.
+    pub evidence: lute_core_span::Evidence,
     /// §3.1: an informational (never error, never reachability) note when
     /// the resolved schema declares seed `facts:` but none were supplied
     /// as mocks — names at least one declared-but-un-supplied relation.

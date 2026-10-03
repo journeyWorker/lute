@@ -229,6 +229,7 @@ pub(super) fn validate_components(
                 code: d.code.clone(),
                 severity: d.severity,
                 message: d.message.clone(),
+                evidence: d.evidence.clone(),
                 span: match &src_index {
                     Some(idx) => Span::from_bytes(idx, d.span.byte_start, d.span.byte_end),
                     None => d.span,

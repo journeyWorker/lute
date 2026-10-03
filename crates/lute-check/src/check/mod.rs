@@ -144,6 +144,7 @@ use walker::Walker;
 
 /// The input to one `check()` invocation — the document text plus the resolved
 /// capability surface it is validated against.
+#[derive(Clone)]
 pub struct CheckInput {
     /// Raw `.lute` document source.
     pub text: String,

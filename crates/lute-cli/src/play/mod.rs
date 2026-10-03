@@ -315,7 +315,11 @@ pub fn run_play(
             if script.has_expect() {
                 root.insert(
                     "expect".into(),
-                    json!({ "misses": misses.iter().map(ExpectMiss::to_json).collect::<Vec<_>>() }),
+                    json!({
+                        "evidence": "witnessed",
+                        "script": script_path.display().to_string(),
+                        "misses": misses.iter().map(ExpectMiss::to_json).collect::<Vec<_>>()
+                    }),
                 );
             }
             if let Some((_, j)) = &explained {
@@ -364,7 +368,6 @@ pub fn run_play(
     }
 }
 
-/// One `*.play.yaml` as `lute test` runs it (dsl 0.22.0 §4).
 pub(crate) struct PlayTestRun {
     pub misses: Vec<ExpectMiss>,
     /// `complete | incomplete | error`.
@@ -374,15 +377,12 @@ pub(crate) struct PlayTestRun {
     /// Project-relative (forward-slash) source paths of every document a
     /// presentation came from — `--coverage`'s numerator.
     pub presented_docs: BTreeSet<String>,
-    /// T3-20: every beat the play presented, as `(document, id)` — the id
-    /// the project index gives it (a scene's key, an entry's id, a bundle
-    /// beat's `<document id>.<beat id>`): `--coverage`'s per-beat units.
     pub presented: BTreeSet<(String, String)>,
-    /// T3-20: every branch/hub the play answered — `--coverage`'s choice
-    /// rows, fed the same table trace's paths feed.
     pub choices: Vec<PlayedChoice>,
-    /// Why the walk halted, when it did (empty when complete).
     pub notes: Vec<String>,
+    /// Quest ids that transition to complete during a step, excluding quests
+    /// already complete in the initial saved state.
+    pub completed_quests: BTreeSet<String>,
 }
 
 /// A project compiled once for every play of one `lute test` run (T2-1):
@@ -471,6 +471,16 @@ pub(crate) fn run_play_for_test(
     {
         played_choices(p, document, transcript, &mut choices);
     }
+    let initial_complete: BTreeSet<String> = play
+        .start
+        .iter()
+        .flat_map(|q| completed_quests(q.transcript.as_slice()))
+        .collect();
+    let completed_quests: BTreeSet<String> = quests
+        .iter()
+        .flat_map(|(_, transcript)| completed_quests(transcript))
+        .filter(|id| !initial_complete.contains(id))
+        .collect();
     Ok(PlayTestRun {
         misses,
         // The exit class of how the play ended: a terminal ending completed.
@@ -489,7 +499,28 @@ pub(crate) fn run_play_for_test(
             .map(|h| h.message().to_string())
             .into_iter()
             .collect(),
+        completed_quests,
     })
+}
+
+fn completed_quests(transcript: &[Json]) -> BTreeSet<String> {
+    fn walk(value: &Json, out: &mut BTreeSet<String>) {
+        match value {
+            Json::Object(map) => {
+                if let Some(quests) = map.get("quests").and_then(Json::as_object) {
+                    for (id, state) in quests {
+                        if state.as_str() == Some("complete") { out.insert(id.clone()); }
+                    }
+                }
+                for value in map.values() { walk(value, out); }
+            }
+            Json::Array(values) => for value in values { walk(value, out); },
+            _ => {}
+        }
+    }
+    let mut out = BTreeSet::new();
+    for value in transcript { walk(value, &mut out); }
+    out
 }
 
 fn collect_presented<'a>(beat: &'a Presented, out: &mut Vec<&'a Presented>) {

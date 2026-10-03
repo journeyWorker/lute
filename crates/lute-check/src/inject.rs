@@ -752,6 +752,7 @@ fn exit_inert_diag(speaker: &str, action: &str, span: Span) -> Diagnostic {
              pose rather than a departure, remove it from the `action` domain's `exits:` \
              (dsl 0.10.0 §11.2)"
         ),
+        evidence: None,
         span,
         layer: Layer::Staging,
         fixits: Vec::new(),
@@ -822,6 +823,7 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
         code: W_STAGE_ABSENT.to_string(),
         severity: Severity::Warning,
         message,
+        evidence: None,
         span,
         layer: Layer::Staging,
         fixits: Vec::new(),
@@ -860,6 +862,7 @@ fn missing_anchor_domain_diag(character: &str, span: Span) -> Diagnostic {
              schema reached through `uses:`, or in a plugin's `enums` export, or write an \
              explicit `anchor` here (dsl 0.9.0 D-D)"
         ),
+        evidence: None,
         span,
         layer: Layer::Staging,
         fixits: Vec::new(),

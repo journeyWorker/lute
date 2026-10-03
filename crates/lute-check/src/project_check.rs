@@ -50,6 +50,7 @@ fn diag(message: String, span: Span) -> Diagnostic {
         code: "E-QUEST-ID-DUP".to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),
@@ -184,6 +185,7 @@ fn ref_diag(message: String, span: Span, whole_project: bool) -> Diagnostic {
         code: code.to_string(),
         severity,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),
@@ -716,6 +718,7 @@ fn tree_diag(code: &str, message: String, span: Span) -> Diagnostic {
         code: code.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),
@@ -1112,6 +1115,7 @@ pub fn check_doc_quest_rearm(doc: &Document, folded: &crate::check::FoldedEnv) -
                     rearm.raw.trim(),
                     q.id
                 ),
+                evidence: None,
                 span: rearm.span,
                 layer: Layer::Logic,
                 fixits: Vec::new(),
@@ -1413,6 +1417,7 @@ pub fn check_quest_tier_implicit(
                     format!("its conditions read only {state} state")
                 }
             ),
+            evidence: None,
             span: q.id_span,
             layer: Layer::Logic,
             fixits: Vec::new(),
@@ -1526,6 +1531,7 @@ pub fn check_project_subquest_unsatisfiable(
                     parent = e.parent,
                     child = e.child,
                 ),
+                evidence: None,
                 span: e.span,
                 layer: Layer::Logic,
                 fixits: Vec::new(),
@@ -1607,6 +1613,7 @@ pub fn check_project_quest_handlers(docs: &[(PathBuf, Document)]) -> Vec<(PathBu
                              it; add a `fail=` condition or remove the handler (dsl 0.22.0 §7)",
                             quest.id
                         ),
+                        evidence: None,
                         span: on.event_span,
                         layer: Layer::Logic,
                         fixits: Vec::new(),
@@ -1686,6 +1693,7 @@ pub fn component_unverified_diag(component: &str, at: Span, scope: ComponentScop
              frontmatter and body against its OWN `uses:` — the one vocabulary that is discarded \
              at `::use` and never applies at runtime (dsl 0.9.0 §6.1). {next} (dsl 0.10.0 §9, D-W)"
         ),
+        evidence: None,
         span: at,
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -1895,6 +1903,7 @@ pub fn check_project_domain_reads(
                      artifact's `enums` array. Read it, or remove the declaration \
                      (dsl 0.10.0 §11.1)"
                 ),
+                evidence: None,
                 span,
                 layer: Layer::Staging,
                 fixits: Vec::new(),
@@ -2009,6 +2018,7 @@ pub fn check_project_branch_ids(
                         shown(other),
                         other_span.line
                     ),
+                    evidence: None,
                     span,
                     layer: Layer::Logic,
                     fixits: Vec::new(),

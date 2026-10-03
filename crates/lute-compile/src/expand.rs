@@ -326,6 +326,7 @@ fn expand_slot(
             code: "E-COMPILE-EXPAND".to_string(),
             severity: Severity::Error,
             message,
+            evidence: None,
             span: slot.span,
             layer: Layer::Cel,
             fixits: Vec::new(),

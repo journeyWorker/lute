@@ -1,22 +1,17 @@
 //! `lute check-project`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_check::CheckInput;
 use lute_core_span::{Diagnostic, Severity, Span};
-use lute_manifest::project::load_project;
-use rayon::prelude::*;
+use lute_check::CheckInput;
+use lute_model::relocate_imported_diags;
 
-use crate::cmd_check::{compile_gate_diags, engine_semantic_diags, merge_gate_diags};
-use crate::compile_all;
+use crate::cmd_check::{engine_semantic_diags, merge_gate_diags};
 use crate::manifests;
 use crate::mockcheck;
 use crate::output::{apply_deny_json, print_human, severity_str, DenyPolicy};
-use crate::project::reconcile::{
-    reconcile_collected, relocate_imported_diags, rollup_component_body_diags,
-};
 use crate::project::{collect_project_inputs, normalize_span_from_text};
 
 /// Recursively `check` every `*.lute` under `dir` ([`collect_project_docs`],
@@ -35,11 +30,14 @@ pub(crate) fn run_check_project(
     providers: Option<&Path>,
     policy: &DenyPolicy,
     wip: bool,
-    _engine: Option<&Path>,
+    engine: Option<&Path>,
 ) -> ExitCode {
-    let matrix = match crate::EngineMatrix::load(_engine) {
-        Ok(m) => m,
-        Err(e) => { eprintln!("lute check-project: {e}"); return ExitCode::from(2); }
+    let matrix = match crate::EngineMatrix::load(engine) {
+        Ok(matrix) => matrix,
+        Err(error) => {
+            eprintln!("lute check-project: {error}");
+            return ExitCode::from(2);
+        }
     };
     // 0.10.0 §7 (D-D): validate EVERY manifest under the tree, once each,
     // before any document work. Anchored at the manifest's own path, which
@@ -56,26 +54,111 @@ pub(crate) fn run_check_project(
         return ExitCode::FAILURE;
     }
 
-    let (file_results, by_root, inputs, resolve_errors) =
-        match collect_project_inputs(dir, providers, false) {
+    let (mut file_results, by_root, models, resolve_errors) =
+        match collect_project_inputs(dir, providers, false, wip) {
             Ok(v) => v,
             Err(code) => return code,
         };
-    // Keyed before `reconcile_collected` takes the (aligned) results.
-    let inputs: BTreeMap<PathBuf, (PathBuf, CheckInput)> = file_results
+    let inputs: BTreeMap<PathBuf, (PathBuf, &CheckInput)> = models
         .iter()
-        .map(|(p, _)| p.clone())
-        .zip(inputs)
+        .flat_map(|model| {
+            model
+                .documents()
+                .iter()
+                .map(|doc| (doc.path.clone(), (model.root().to_path_buf(), &doc.input)))
+        })
         .collect();
-    let (mut file_results, mut project_diags, _nodes_by_path, _) =
-        reconcile_collected(file_results, &by_root, wip);
-
-    project_compile_pass(&mut file_results, &mut project_diags, &inputs, _engine.is_some().then_some(&matrix));
-    fold_inherited_version_stale(&mut file_results, &mut project_diags, &inputs);
-
-    // Round-5 T3-4, then dsl 0.10.0 §9 rule 2.
+    let mut project_diags: Vec<(PathBuf, lute_core_span::Diagnostic)> = models
+        .iter()
+        .flat_map(|model| model.project_diagnostics().iter().cloned())
+        .collect();
     relocate_imported_diags(&mut file_results, &mut project_diags, dir);
-    rollup_component_body_diags(&mut file_results);
+    // Project constraint verdicts are anchored at their manifest declarations.
+    for model in &models {
+        let Some(project) = model.manifest() else { continue; };
+        let docs: Vec<_> = model.documents().iter().map(|d| (d.path.clone(), d.doc.clone())).collect();
+        let folded_refs: Vec<_> = model.documents().iter().map(|d| &d.folded).collect();
+        let slots = lute_check::clock_positions::project_objective_slot_results(&docs, &folded_refs);
+        for result in lute_model::constraints::evaluate_constraints_with_foldeds(model.root(), project, &docs, &folded_refs, model.reconciled().scenarios.get(model.root()).expect("model scenario"), &slots) {
+            if !result.declaration_errors.is_empty() {
+                let manifest = model.root().join("lute.project.yaml");
+                for error in &result.declaration_errors {
+                    let mut diagnostic = manifests::as_diagnostic(&error.code, error.message.clone());
+                    diagnostic.span = error.span;
+                    project_diags.push((manifest.clone(), diagnostic));
+                }
+                continue;
+            }
+            if matches!(result.verdict, lute_model::constraints::ConstraintVerdict::Holds | lute_model::constraints::ConstraintVerdict::Unknown) { continue; }
+            let Some(decl) = project.constraints.iter().find(|c| c.id == result.id) else { continue; };
+            let manifest = model.root().join("lute.project.yaml");
+            let text = std::fs::read_to_string(&manifest).unwrap_or_default();
+            let idx = lute_core_span::TextIndex::new(&text);
+            let span = lute_core_span::Span::from_bytes(&idx, decl.span.start.min(text.len()), decl.span.end.min(text.len()));
+            let unknown = matches!(result.verdict, lute_model::constraints::ConstraintVerdict::Unknown);
+            let severity = if unknown { Severity::Info } else if matches!(result.evidence, lute_core_span::Evidence::Bounded { .. }) && decl.severity == lute_manifest::constraints::ConstraintSeverity::Error { Severity::Warning } else { match decl.severity { lute_manifest::constraints::ConstraintSeverity::Error => Severity::Error, lute_manifest::constraints::ConstraintSeverity::Warning => Severity::Warning, lute_manifest::constraints::ConstraintSeverity::Info => Severity::Info } };
+            let mut diagnostic = manifests::as_diagnostic("E-CONSTRAINT-VIOLATED", format!("constraint `{}` is {}", result.id, if unknown { "unknown" } else { "violated" }));
+            diagnostic.severity = severity;
+            diagnostic.span = span;
+            diagnostic.evidence = Some(result.evidence.clone());
+            for cause in result.related {
+                let file = cause.provenance.clone().unwrap_or_else(|| manifest.display().to_string());
+                diagnostic.related.push(lute_core_span::RelatedDiagnostic { file, diagnostic: cause });
+            }
+            project_diags.push((manifest, diagnostic));
+        }
+    }
+    for (path, diagnostic) in &mut project_diags {
+        if path.extension().and_then(|extension| extension.to_str()) == Some("lute") {
+            continue;
+        }
+        let imported_by = inputs
+            .values()
+            .filter(|(root, _)| *root == lute_model::project_root_for(path, dir))
+            .count();
+        if imported_by > 0 {
+            let message = diagnostic
+                .message
+                .split(" (imported by ")
+                .next()
+                .unwrap_or(&diagnostic.message);
+            diagnostic.message = format!(
+                "{message} (imported by {imported_by} document{})",
+                if imported_by == 1 { "" } else { "s" }
+            );
+        }
+    }
+    for model in &models {
+        for doc in model.documents() {
+            let (Some(artifact), Some(source_map)) = (&doc.artifact, &doc.source_map) else {
+                continue;
+            };
+            if let Some((_, result)) = file_results.iter_mut().find(|(path, _)| path == &doc.path) {
+                merge_gate_diags(result, engine_semantic_diags(&doc.input, artifact, source_map, &matrix));
+            }
+        }
+    }
+
+    for model in &models {
+        let index_inputs: Vec<_> = model
+            .documents()
+            .iter()
+            .filter_map(|doc| {
+                Some(lute_compile::index::IndexInput {
+                    path: doc.path.strip_prefix(model.root()).ok()?.to_string_lossy().replace('\\', "/"),
+                    artifact_path: String::new(),
+                    artifact: doc.artifact.as_ref()?,
+                })
+            })
+            .collect();
+        for collision in lute_compile::index::voice_key_collisions(&index_inputs) {
+            project_diags.push((
+                model.root().join("lute.project.yaml"),
+                manifests::as_diagnostic(lute_compile::index::E_DUP_VOICEKEY, collision.to_string()),
+            ));
+        }
+    }
+    fold_inherited_version_stale(&mut file_results, &mut project_diags, &inputs);
 
     // dsl 0.10.0 §11.1 (**D-V**): `W-DOMAIN-UNREAD` is project-wide only. The
     // per-document halves ride on each `CheckResult`; the union and the
@@ -357,7 +440,7 @@ fn print_project_row(path: &Path, d: &Diagnostic, policy: &DenyPolicy) {
 fn fold_inherited_version_stale(
     file_results: &mut [(PathBuf, lute_check::CheckResult)],
     project_diags: &mut Vec<(PathBuf, Diagnostic)>,
-    inputs: &BTreeMap<PathBuf, (PathBuf, CheckInput)>,
+    inputs: &BTreeMap<PathBuf, (PathBuf, &CheckInput)>,
 ) {
     let inherited = |d: &Diagnostic| {
         d.code == lute_check::W_LUTE_VERSION_STALE
@@ -399,135 +482,3 @@ fn fold_inherited_version_stale(
     }
 }
 
-/// `check-project`'s compile pass (0.21.1): the checks that only exist once a
-/// document has been compiled, or once every document of a root is in hand —
-/// run here so `check-project` cannot pass a project `compile --all` and
-/// `play` refuse.
-///
-/// Per document that passed the reconciled check (its own verdict plus every
-/// project-wide error anchored on it — the same verdict `compile --all`
-/// gates on): a component runs `lute check`'s compile gate
-/// ([`compile_gate_diags`]); any other document is compiled
-/// (`compile_with_check`) under its root's `identity:` templates, and its
-/// compile-stage errors join its result — among them the post-expansion
-/// `E-DUP-LINE-CODE` (T1-10). Per root: the single-snapshot gate
-/// `build_index` enforces (`E-CAPABILITY-MISMATCH`, T1-11, over every
-/// non-component document whether or not it checked clean) and
-/// `E-DUP-VOICEKEY` (T1-9, over the compiled artifacts). Both are anchored
-/// at the root's `lute.project.yaml` with no position — the manifest owns
-/// the profile set and the identity templates that decide them.
-pub(crate) fn project_compile_pass(
-    file_results: &mut [(PathBuf, lute_check::CheckResult)],
-    project_diags: &mut Vec<(PathBuf, Diagnostic)>,
-    inputs: &BTreeMap<PathBuf, (PathBuf, CheckInput)>,
-    matrix: Option<&crate::EngineMatrix>,
-) {
-    #[derive(Default)]
-    struct RootBuild {
-        snapshots: Vec<(String, String)>,
-        artifacts: Vec<(String, lute_compile::ExecutionIr)>,
-    }
-    let mut roots: BTreeMap<PathBuf, RootBuild> = BTreeMap::new();
-    let mut identities = BTreeMap::new();
-    // Every file an `E-` project diagnostic is anchored on: its compile is
-    // blocked like a failing per-file check.
-    let error_paths: BTreeSet<&PathBuf> = project_diags
-        .iter()
-        .filter(|(_, d)| d.severity == Severity::Error)
-        .map(|(p, _)| p)
-        .collect();
-    // `(file index, root, rel, component)` of every unblocked document.
-    let mut jobs: Vec<(usize, &PathBuf, String, bool)> = Vec::new();
-    for (i, (path, result)) in file_results.iter().enumerate() {
-        let Some((root, input)) = inputs.get(path) else {
-            continue;
-        };
-        let component = compile_all::is_component_file(path);
-        let rel = path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let build = roots.entry(root.clone()).or_default();
-        if !component {
-            build
-                .snapshots
-                .push((rel.clone(), input.snapshot.version.clone()));
-        }
-        if !result.ok || error_paths.contains(path) {
-            continue;
-        }
-        if !component {
-            identities.entry(root.clone()).or_insert_with(|| {
-                load_project(root)
-                    .ok()
-                    .flatten()
-                    .map(|p| p.identity)
-                    .unwrap_or_default()
-            });
-        }
-        jobs.push((i, root, rel, component));
-    }
-
-    // Each document compiles independently of every other: in parallel, then
-    // applied in file order so artifacts and merged diagnostics are exactly
-    // the sequential ones.
-    let results: &[(PathBuf, lute_check::CheckResult)] = file_results;
-    let outcomes: Vec<Result<(lute_compile::ExecutionIr, lute_compile::SourceMap), Vec<Diagnostic>>> = jobs
-        .par_iter()
-        .map(|&(i, root, _, component)| {
-            let (path, result) = &results[i];
-            let input = &inputs[path].1;
-            if component {
-                Err(compile_gate_diags(input))
-            } else {
-                lute_compile::compile_mapped(input, result.clone(), &identities[root])
-            }
-        })
-        .collect();
-    for ((i, root, rel, _), outcome) in jobs.into_iter().zip(outcomes) {
-        match outcome {
-            Ok((artifact, source_map)) => {
-                if let Some(matrix) = matrix {
-                    let input = &inputs[&file_results[i].0].1;
-                    let diags = engine_semantic_diags(input, &artifact, &source_map, matrix);
-                    merge_gate_diags(&mut file_results[i].1, diags);
-                }
-                roots.get_mut(root).expect("every job's root was entered above").artifacts.push((rel, artifact))
-            }
-            Err(diags) => merge_gate_diags(&mut file_results[i].1, diags),
-        }
-    }
-
-    for (root, build) in roots {
-        let manifest = root.join("lute.project.yaml");
-        let anchor = if manifest.is_file() { manifest } else { root };
-        // `E-` code => error; spanless, so it prints with no position.
-        let project_error = manifests::as_diagnostic;
-        let snapshots = build
-            .snapshots
-            .iter()
-            .map(|(doc, version)| (doc.as_str(), version.as_str()));
-        for e in lute_compile::index::capability_mismatches(snapshots) {
-            project_diags.push((
-                anchor.clone(),
-                project_error(lute_compile::index::E_CAPABILITY_MISMATCH, e.to_string()),
-            ));
-        }
-        let index_inputs: Vec<lute_compile::index::IndexInput<'_>> = build
-            .artifacts
-            .iter()
-            .map(|(rel, artifact)| lute_compile::index::IndexInput {
-                path: rel.clone(),
-                artifact_path: String::new(),
-                artifact,
-            })
-            .collect();
-        for c in lute_compile::index::voice_key_collisions(&index_inputs) {
-            project_diags.push((
-                anchor.clone(),
-                project_error(lute_compile::index::E_DUP_VOICEKEY, c.to_string()),
-            ));
-        }
-    }
-}

@@ -12,7 +12,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
 The machine-checkable shape is
-[`schemas/lute-ir-0.33.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.33.schema.json)
+[`schemas/lute-ir-0.34.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.34.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -125,20 +125,20 @@ serialized: an engine needs no member semantics at runtime.
 
 Every host negotiates in this order, before opening a playback session:
 
-1. **Exact-minor IR gate.** Before 1.0, a `0.33` engine accepts only
-   `0.33.*` artifacts. It refuses `0.32.*` and `0.34.*`; patch handling is
+1. **Exact-minor IR gate.** Before 1.0, a `0.34` engine accepts only
+   `0.34.*` artifacts. It refuses `0.33.*` and `0.35.*`; patch handling is
    the engine's policy. From 1.0 onward, the released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
    `engine`, `irVersion`, and unique `supportedIds` are required; `version`
    and `description` are descriptive. The full registry is in the
-   [0.33.0 proposal §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry).
+  [0.33.0 proposal §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry).
 
 The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.33.0"
+irVersion: "0.34.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1

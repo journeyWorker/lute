@@ -767,6 +767,7 @@ fn arm_diag(code: &str, message: String, span: lute_core_span::Span) -> Diagnost
         code: code.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),

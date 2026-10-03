@@ -9,10 +9,10 @@ use lute_core_span::Severity;
 
 use crate::cmd_check::{component_name_of, component_root_diag};
 use crate::compile_all;
-use crate::input::{build_input, BuiltInput};
+use lute_model::{build_input, BuiltInput};
 use crate::loc;
 use crate::output::{render_diagnostics, severity_str, write_stdout, DenyPolicy};
-use crate::project::gate::project_gate_result;
+use lute_model::project_gate_result;
 
 /// Route `lute compile` to the single-file ([`run_compile`]) or whole-project
 /// ([`compile_all::run`]) path, rejecting every flag combination that means

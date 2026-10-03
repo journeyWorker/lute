@@ -47,7 +47,7 @@
 //!
 //! `--project <dir>` resolves every traced document EXACTLY as `lute trace
 //! <file> --project <dir>` does — same flag, same help text, same
-//! [`crate::build_input`] call, same provider-catalog precedence (plugin
+//! [`lute_model::build_input`] call, same provider-catalog precedence (plugin
 //! §10: an explicit `--providers <dir>` wins; otherwise auto-discover
 //! through the project's pinned catalog). Before this flag existed, every
 //! test traced with a hardcoded `project: None`, so a document whose schema
@@ -83,6 +83,7 @@ use lute_trace::{
     TraceExit, TraceReport, UnresolvedEntry,
 };
 use rayon::prelude::*;
+use lute_model::{nearest_manifest_dir, ModelDocument, ModelError, ModelOptions, ProjectModel};
 
 use crate::play_expect::ExpectMiss;
 
@@ -428,9 +429,9 @@ struct TestResult {
     /// failing test used to print only `exit: expected complete, got
     /// incomplete`, hiding the one thing the author needs next.
     unresolved: Vec<UnresolvedEntry>,
-    /// Selections the test's `choose:` forced past an unknown guard — the
-    /// walk continued, but that guard was never decided (T1-13).
     forced_unknown: Vec<UnresolvedEntry>,
+    /// Quest ids observed transitioning to complete during this test trace.
+    completed_quests: BTreeSet<String>,
     /// A test: the trace's beat-`when` note, when the scene's own eligibility
     /// does not hold under the test's mocks (T1-13) — shown on a PASS too,
     /// because a scene the selector would never present passing its test is
@@ -454,6 +455,7 @@ impl TestResult {
             refusal: Some(lines),
             unresolved: Vec::new(),
             forced_unknown: Vec::new(),
+            completed_quests: BTreeSet::new(),
             notes: Vec::new(),
         }
     }
@@ -786,10 +788,10 @@ pub fn run_test(
     let mut results = Vec::new();
     let mut cov = CoverageAccum::default();
     let mut noted: BTreeSet<PathBuf> = BTreeSet::new();
-    let mut shared = Shared::for_tests(&test_files, project, providers);
-
-    // Round-5 G-17: a schema or plugin fault every importing document
-    // shares is reported once, at its own line, as `check-project` folds it
+    let mut shared = match Shared::for_tests(&test_files, project, providers) {
+        Ok(shared) => shared,
+        Err(code) => return code,
+    };
     // — then the run is refused, instead of one failed test (and one
     // `<doc>:1:1` copy) per document that imports it.
     let play_roots: BTreeSet<PathBuf> = play_files
@@ -907,7 +909,7 @@ pub fn run_test(
     };
     let coverage_root: PathBuf = match project {
         Some(p) => p.to_path_buf(),
-        None => match crate::nearest_manifest_dir(dir) {
+        None => match nearest_manifest_dir(dir) {
             Some(root) if canonical_key(&root) != canonical_key(walk_root) => root,
             _ => walk_root.to_path_buf(),
         },
@@ -957,11 +959,11 @@ pub fn run_test(
 
 /// The project state every test and play of one run shares (T2-1),
 /// computed before they run so the parallel tests and plays only read it.
-#[derive(Default)]
 struct Shared {
-    /// Per-run memo of the shared document inputs every traced document
-    /// resolves.
-    inputs: crate::InputCache,
+    /// Retained project models, keyed by canonical project root. Every
+    /// project test borrows its document input and analysis from one of these
+    /// models for the entire run.
+    models: BTreeMap<String, ProjectModel>,
     /// The project May producer set per project root (T1-14), for every
     /// root a test mocking `facts:` resolves against — it costs a full
     /// project collection.
@@ -985,7 +987,7 @@ struct Shared {
 fn producer_root(lute_path: &Path, project: Option<&Path>) -> Option<(PathBuf, bool)> {
     match project {
         Some(p) => Some((p.to_path_buf(), true)),
-        None => crate::nearest_manifest_dir(lute_path).map(|root| (root, false)),
+        None => nearest_manifest_dir(lute_path).map(|root| (root, false)),
     }
 }
 
@@ -994,12 +996,17 @@ fn producer_root(lute_path: &Path, project: Option<&Path>) -> Option<(PathBuf, b
 fn project_dir_of(file: &Path, project: Option<&Path>) -> Option<PathBuf> {
     project
         .map(Path::to_path_buf)
-        .or_else(|| crate::nearest_manifest_dir(file))
+        .or_else(|| nearest_manifest_dir(file))
 }
 
 impl Shared {
     /// Collect, once per root, what `test_files` read of their projects.
-    fn for_tests(test_files: &[PathBuf], project: Option<&Path>, providers: Option<&Path>) -> Self {
+    fn for_tests(
+        test_files: &[PathBuf],
+        project: Option<&Path>,
+        providers: Option<&Path>,
+    ) -> Result<Self, ExitCode> {
+        let mut model_roots: BTreeSet<PathBuf> = BTreeSet::new();
         let mut producer_roots: BTreeSet<(PathBuf, bool)> = BTreeSet::new();
         let mut quest_roots: BTreeSet<PathBuf> = BTreeSet::new();
         let mut gate_roots: BTreeSet<PathBuf> = BTreeSet::new();
@@ -1016,6 +1023,9 @@ impl Shared {
                 .parent()
                 .unwrap_or_else(|| Path::new("."))
                 .join(&rel);
+            if let Some(root) = project_dir_of(&lute_path, project) {
+                model_roots.insert(root);
+            }
             if !mocks.facts.is_empty() {
                 producer_roots.extend(producer_root(&lute_path, project));
             }
@@ -1024,7 +1034,46 @@ impl Shared {
             }
             gate_roots.extend(project_dir_of(&lute_path, project));
         }
-        let mut shared = Shared::default();
+        let opts = ModelOptions {
+            providers: providers.map(Path::to_path_buf),
+            permission_profile: None,
+            mode: lute_check::Mode::Ci,
+            compile: false,
+            wip: false,
+        };
+        let mut shared = Shared {
+            models: BTreeMap::new(),
+            producers: BTreeMap::new(),
+            quests: BTreeMap::new(),
+            plays: BTreeMap::new(),
+            gates: BTreeMap::new(),
+        };
+        for root in model_roots {
+            let model = ProjectModel::build_single_root(&root, &opts).map_err(|error| {
+                eprintln!("lute: cannot build project {}: {error}", root.display());
+                match error {
+                    ModelError::Io(_) | ModelError::Input(_) => ExitCode::from(2),
+                    ModelError::Resolve(_)
+                    | ModelError::Compile { .. }
+                    | ModelError::Index(_) => ExitCode::from(1),
+                }
+            })?;
+            if model.has_resolution_errors() {
+                for document in model.documents() {
+                    for diagnostic in &document.resolve_diags {
+                        eprintln!(
+                            "lute test: {} [{}] {}",
+                            document.path.display(),
+                            diagnostic.code,
+                            diagnostic.message
+                        );
+                    }
+                }
+                eprintln!("lute test: project resolution failed; refusing to run the tests");
+                return Err(ExitCode::from(1));
+            }
+            shared.models.insert(canonical_key(&root), model);
+        }
         for (root, single_root) in producer_roots {
             let set = crate::project_assert_relations(&root, single_root, providers);
             shared.producers.insert(root, set);
@@ -1037,7 +1086,16 @@ impl Shared {
             let rec = crate::reconciled_project_results(&root, providers).ok();
             shared.gates.insert(root, rec);
         }
-        shared
+        Ok(shared)
+    }
+
+    /// Find a project-model document by canonical file identity.
+    fn document(&self, path: &Path) -> Option<&ModelDocument> {
+        let key = canonical_key(path);
+        self.models
+            .values()
+            .flat_map(ProjectModel::documents)
+            .find(|document| canonical_key(&document.path) == key)
     }
 
     /// Compile, once per project, what the expect-carrying `play_files`
@@ -1085,6 +1143,14 @@ impl Shared {
     /// gate `lute trace --project` applies); `None` when the project could
     /// not be analysed or does not hold the document — the standalone
     /// check then decides, as `lute trace` without a project does.
+    fn schema_faults(&self, root: &Path) -> Option<Vec<String>> {
+        Some(self.gates.get(root)?.as_ref()?.schema_faults(root))
+    }
+
+    /// `lute_path`'s gate verdict in the project at `root` (the spec §5
+    /// gate `lute trace --project` applies); `None` when the project could
+    /// not be analysed or does not hold the document — the standalone
+    /// check then decides, as `lute trace` without a project does.
     fn gate(&self, root: &Path, lute_path: &Path) -> Option<lute_check::CheckResult> {
         self.gates.get(root)?.as_ref()?.gate(lute_path)
     }
@@ -1096,11 +1162,24 @@ impl Shared {
 /// error. When `cov` is `Some`, the produced report is folded into it.
 ///
 /// `project` resolves the traced document EXACTLY as `lute trace --project`
-/// does (module docs): threaded straight into [`crate::build_input`], never
+/// does (module docs): threaded straight into [`lute_model::build_input`], never
 /// substituted for `None`. A project-resolution `E-` diagnostic
 /// (`resolve_error`) is therefore a build-failing error here too — `Err(1)`,
 /// never folded into a per-test `TestResult` where a caller filtering on
 /// `passed` could mistake a broken manifest for a failing assertion.
+/// Run one scenario test in-process and report only a quest completion
+/// transition observed by its trace. Seeded `complete` status is not enough.
+pub(crate) fn run_test_for_constraint(root: &Path, script: &Path, quest: &str) -> bool {
+    let files = [script.to_path_buf()];
+    let Ok(shared) = Shared::for_tests(&files, Some(root), None) else {
+        return false;
+    };
+    let Ok(result) = run_one_test(script, None, Some(root), false, &shared, None) else {
+        return false;
+    };
+    result.completed_quests.contains(quest)
+}
+
 fn run_one_test(
     test_file: &Path,
     providers: Option<&Path>,
@@ -1300,7 +1379,7 @@ fn run_one_test(
     // nearest `lute.project.yaml` — announced once per project root.
     let discovered = match project {
         Some(_) => None,
-        None => crate::nearest_manifest_dir(&lute_path),
+        None => nearest_manifest_dir(&lute_path),
     };
     if let Some(root) = &discovered {
         let shown = crate::cwd_relative(&root.display().to_string());
@@ -1318,31 +1397,71 @@ fn run_one_test(
         ));
     }
     let resolve_with = project.or(discovered.as_deref());
+    if let Some(root) = resolve_with {
+        if let Some(faults) = shared.schema_faults(root).filter(|faults| !faults.is_empty()) {
+            return Ok(TestResult::refused(
+                test_file,
+                display_path(root),
+                "invalid",
+                faults,
+            ));
+        }
+    }
 
-    let doc_text = match crate::read_document(&lute_path) {
-        Ok(doc_text) => doc_text,
-        Err(message) => {
-            eprintln!("{message}");
+    let model_doc = resolve_with.and_then(|_| shared.document(&lute_path));
+    let standalone = if model_doc.is_none() {
+        if resolve_with.is_some() {
+            eprintln!(
+                "lute: project model has no document {}",
+                lute_path.display()
+            );
+            return Err(ExitCode::from(1));
+        }
+        let Some(built) = lute_model::build_input(&lute_path, providers, None, None) else {
             return Err(ExitCode::from(2));
+        };
+        built.report_project_diags();
+        Some(built)
+    } else {
+        None
+    };
+    let mut standalone_doc = None;
+    let mut standalone_folded = None;
+    if let Some(built) = standalone.as_ref() {
+        let (mut doc, _) = lute_syntax::parse(&built.input.text);
+        let _ = lute_check::desugar_document(&mut doc, &built.input);
+        let (folded, _, _) = lute_check::fold_env(&doc, &built.input);
+        standalone_doc = Some(doc);
+        standalone_folded = Some(folded);
+    }
+    let (input, doc, folded, meta, resolve_error) = match model_doc {
+        Some(document) => (
+            &document.input,
+            &document.doc,
+            &document.folded,
+            &document.folded.typed,
+            document.resolve_error,
+        ),
+        None => {
+            let built = standalone.as_ref().expect("standalone input is present");
+            (
+                &built.input,
+                standalone_doc.as_ref().expect("standalone document is present"),
+                standalone_folded.as_ref().expect("standalone fold is present"),
+                &standalone_folded.as_ref().expect("standalone fold is present").typed,
+                built.resolve_error,
+            )
         }
     };
-    let (built, _) = crate::assemble_input(
-        &shared.inputs,
-        &lute_path,
-        doc_text,
-        providers,
-        resolve_with,
-        None,
-    );
-    for m in &built.project_diags {
-        eprintln!("{}", crate::input::project_diag_line(m));
+    if let Some(document) = model_doc {
+        for diag in &document.resolve_diags {
+            eprintln!(
+                "lute: [{}] {}",
+                diag.code,
+                lute_core_span::plain_message(&diag.message)
+            );
+        }
     }
-    let crate::BuiltInput {
-        input,
-        resolve_error,
-        meta,
-        ..
-    } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
@@ -1399,8 +1518,7 @@ fn run_one_test(
         .chain(expect_items("notFacts"))
         .collect();
     if !expect_atoms.is_empty() {
-        let doc = desugared(&input);
-        let (folded, _, _) = lute_check::fold_env(&doc, &input);
+        let folded = folded;
         let problems: Vec<String> = expect_atoms
             .iter()
             .flat_map(|&(key, i, atom)| {
@@ -1452,8 +1570,7 @@ fn run_one_test(
     // nearest one, not reported as a miss. `unset` is the spelling of "no
     // value" (an implicit choice slot, a quest), never a typo.
     if !expect_state.is_empty() {
-        let doc = desugared(&input);
-        let (folded, _, _) = lute_check::fold_env(&doc, &input);
+        let folded = folded;
         let problems: Vec<String> = expect_state
             .iter()
             .filter(|(_, want, _)| want != "unset")
@@ -1482,10 +1599,11 @@ fn run_one_test(
         .and_then(|e| e.get("eligible"))
         .map(|want| match want {
             serde_yaml::Value::Mapping(m) => {
-                let doc = desugared(&input);
                 let doc_id = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
                     .ok()
-                    .and_then(|v| v.get("id")?.as_str().map(str::to_string));
+                    .and_then(|v: serde_yaml::Value| {
+                        v.get("id").and_then(serde_yaml::Value::as_str).map(str::to_string)
+                    });
                 serde_yaml::Value::Mapping(
                     m.iter()
                         .map(|(k, v)| {
@@ -1526,8 +1644,6 @@ fn run_one_test(
         .get("expect")
         .is_some_and(|e| e.get("facts").is_some() || e.get("notFacts").is_some());
     if entries.is_empty() && beat.is_none() {
-        let doc = desugared(&input);
-        let (folded, _, _) = lute_check::fold_env(&doc, &input);
         if folded.doc_kind == lute_check::DocKind::Lore
             && (judges_eligibility_by_id || judges_world)
         {
@@ -1584,7 +1700,6 @@ fn run_one_test(
         .chain(expected_quests.iter().copied())
         .collect();
     if !named_quests.is_empty() {
-        let doc = desugared(&input);
         let foreign = named_quests
             .iter()
             .any(|id| !doc.quests.iter().any(|q| q.id == *id));
@@ -1607,9 +1722,10 @@ fn run_one_test(
     // `lute trace --project` and `lute play` gate on), else the standalone
     // check. An unpresented entry / beat is judged under the same mocks and
     // verdict (T3-5).
-    let checked = resolve_with
-        .and_then(|root| shared.gate(root, &lute_path))
-        .unwrap_or_else(|| lute_check::check(&input));
+    let checked = match resolve_with.and_then(|root| shared.gate(root, &lute_path)) {
+        Some(check) => check,
+        None => model_doc.map_or_else(|| lute_check::check(input), |d| d.check.clone()),
+    };
     let eligibility_mocks = judges_eligibility_by_id.then(|| (mocks.clone(), checked.clone()));
     let (report, exit) = if let Some(beat) = &beat {
         trace_beat_with_check(&input, checked, mocks, beat, project_asserts.as_ref())
@@ -1794,7 +1910,6 @@ fn run_one_test(
         // default before any write, as in a play (T3-65).
         if let Some(state) = expect.get("state").and_then(|v| v.as_mapping()) {
             let final_state = &report.final_state;
-            let doc = desugared(&input);
             for (k, v) in state {
                 let Some(path) = k.as_str() else { continue };
                 let want = yaml_scalar_text(v).unwrap_or_default();
@@ -1823,7 +1938,7 @@ fn run_one_test(
         // document of the project declares, against where the walk left it
         // (round-5 T3-24, [`ForeignQuestStart::judge`]).
         if let Some(quests) = expect.get("quests").and_then(|v| v.as_mapping()) {
-            let final_quests = final_quests(&report, &input);
+            let final_quests = final_quests(&report, doc);
             for (k, v) in quests {
                 let Some(id) = k.as_str() else { continue };
                 let want = yaml_scalar_text(v).unwrap_or_default();
@@ -1929,7 +2044,7 @@ fn run_one_test(
                     if let (Some(id), Some((mocks, checked))) = (id.as_deref(), &eligibility_mocks)
                     {
                         alone =
-                            eligibility_alone(&input, checked, mocks, id, project_asserts.as_ref());
+                            eligibility_alone(doc, input, checked, mocks, id, project_asserts.as_ref());
                         matched = alone
                             .as_ref()
                             .map(presented_eligibility)
@@ -1941,7 +2056,6 @@ fn run_one_test(
                 // nothing the document declares gets a did-you-mean.
                 let why = if matched.is_empty() {
                     id.as_deref().and_then(|id| {
-                        let doc = desugared(&input);
                         let names = doc
                             .entries
                             .iter()
@@ -2116,6 +2230,16 @@ fn run_one_test(
         refusal: None,
         unresolved: report.unresolved.clone(),
         forced_unknown: report.forced_unknown.clone(),
+        completed_quests: report
+            .decisions
+            .iter()
+            .filter(|decision| {
+                decision.construct == "quest"
+                    && decision.outcome == "complete"
+                    && decision.guard.as_deref() != Some("seeded")
+            })
+            .map(|decision| decision.id.clone())
+            .collect(),
         notes: report
             .notes
             .iter()
@@ -2273,6 +2397,7 @@ fn run_one_play(
         refusal: None,
         unresolved: Vec::new(),
         forced_unknown: Vec::new(),
+        completed_quests: run.completed_quests,
         notes: run.notes,
     })
 }
@@ -2388,28 +2513,19 @@ fn names_presented(p: &str, id: &str) -> bool {
     p == id || p.ends_with(&format!(".{id}"))
 }
 
-/// `input`'s document as `check` sees it: parsed, then desugared — the beats
-/// a `beat:` template or a `chapters:` chain derives included (dsl 0.27.0 §6), so a
-/// test names and judges them like authored ones.
-fn desugared(input: &lute_check::CheckInput) -> lute_syntax::ast::Document {
-    let (mut doc, _) = lute_syntax::parse(&input.text);
-    let _ = lute_check::desugar_document(&mut doc, input);
-    doc
-}
 
-/// `id`'s eligibility judged on its own under `mocks` and the gate verdict
 /// `checked` (dsl 0.24.0, T3-5): the entry / bundle beat of `input`'s
 /// document is presented alone, from the mocked start, and its head's
 /// verdict read back. Empty when the document declares no such entry or
 /// beat.
 fn eligibility_alone(
+    doc: &lute_syntax::ast::Document,
     input: &lute_check::CheckInput,
     checked: &lute_check::CheckResult,
     mocks: &lute_trace::MockSet,
     id: &str,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> Option<TraceReport> {
-    let doc = desugared(input);
     let checked = checked.clone();
     let (report, _) = if doc.entries.iter().any(|e| e.id == id) {
         trace_entries_with_check(input, checked, mocks.clone(), &[id], project_asserts)
@@ -2452,8 +2568,7 @@ fn ineligible_notes(report: &TraceReport, asserted: Option<&serde_yaml::Value>) 
 /// awaited an accept, or that was never decided at all never left `unset`.
 /// Read off the transcript's decisions, the same record the human report
 /// prints, never a second lifecycle model.
-fn final_quests(report: &TraceReport, input: &lute_check::CheckInput) -> BTreeMap<String, String> {
-    let doc = desugared(input);
+fn final_quests(report: &TraceReport, doc: &lute_syntax::ast::Document) -> BTreeMap<String, String> {
     let mut out: BTreeMap<String, String> = doc
         .quests
         .iter()
@@ -3290,6 +3405,8 @@ fn render_json(
                         "expected": e.expected,
                         "actual": e.actual,
                         "passed": e.passed,
+                        "evidence": "witnessed",
+                        "script": r.test_file.display().to_string(),
                     });
                     // dsl 0.27.0 §4 (HW27-04): an `eligible` miss because
                     // the engine would not raise the beat's occasion.
@@ -3303,9 +3420,11 @@ fn render_json(
                 "test": r.test_file.display().to_string(),
                 "kind": r.kind,
                 "file": r.lute_file,
+                "script": r.test_file.display().to_string(),
                 "exit": r.exit,
                 "end": r.end,
                 "passed": r.passed,
+                "evidence": if r.passed { "witnessed" } else { "unknown" },
                 "refusal": r.refusal,
                 "autopicked": r.autopicked.clone(),
                 "expectations": expectations,

@@ -308,6 +308,18 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 명세: [dsl §4.1](/spec/), [dsl §4.2](/spec/)
 
+### E-CONSTRAINT-DECL
+
+프로젝트 제약 선언이 잘못되었습니다. 알 수 없는 키/종류, 누락된 필수 필드, 잘못된 노드 참조 또는 중복 ID가 포함되어 있습니다.
+
+명세: [dsl 0.34.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md)
+
+### E-CONSTRAINT-VIOLATED
+
+프로젝트 제약이 위반되었습니다. 진단에는 판정의 증거 수준과 해당하는 경우 제한 범위 및 원인 스팬이 포함됩니다.
+
+명세: [dsl 0.34.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md)
+
 ### E-CONTENT-LINE-BRACKET
 
 콘텐츠 라인의 속성이 필수인 `{…}` 대신 `[…]`로 작성되었습니다. (`::directive{…}`와 같은 구분자를 써야 합니다.)

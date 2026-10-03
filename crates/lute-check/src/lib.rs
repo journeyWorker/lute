@@ -13,11 +13,13 @@ pub mod chapters;
 pub mod check;
 pub mod clock;
 pub mod clock_positions;
+pub mod deps;
 pub mod component_effects;
 pub mod component_import;
 pub mod connectivity;
 pub mod content_line;
 pub mod ctx;
+pub mod evidence;
 pub mod datalog_check;
 pub mod decide;
 pub mod def_decl;
@@ -74,7 +76,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.33.0";
+pub const LUTE_LANG_VERSION: &str = "0.34.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -162,7 +164,7 @@ pub use bundles::{
     bundle_beat_also, bundle_beat_key, bundle_beat_once, bundle_beat_priority, check_bundle_beats,
     BUNDLE_BEAT_ATTRS,
 };
-pub use cast::{check_speakers, declared_cast, E_CAST_UNKNOWN};
+pub use cast::{check_speakers, decide_guard_implication, declared_cast, E_CAST_UNKNOWN};
 pub use cel_expand::{expand_cel, DefTable};
 pub use cel_message::{translate_cel_parse, Translation};
 pub use cel_paths::{is_entry_ever_read, is_reserved_entry_read, reserved_entry_id, E_PATH_IDENT};
@@ -230,6 +232,7 @@ pub use project_check::{
 pub use clock_positions::{
     check_project_advance_cascades, check_project_objective_clock_windows, E_ADVANCE_CASCADE,
     W_OBJECTIVE_STRANDED, W_SLOT_CONTENTION,
+    project_objective_slot_results, ObjectiveSlotResult,
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;

@@ -439,6 +439,16 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl §4.1", "dsl §4.2"],
     },
     Code {
+        code: "E-CONSTRAINT-DECL",
+        summary: "A project constraint declaration is malformed: it has an unknown key or kind, misses a required field, names a bad node, or repeats an id.",
+        spec: &["dsl 0.34.0 §5.1"],
+    },
+    Code {
+        code: "E-CONSTRAINT-VIOLATED",
+        summary: "A project constraint is violated; the diagnostic carries the verdict's evidence, bounded scope when applicable, and causal spans.",
+        spec: &["dsl 0.34.0 §5.2"],
+    },
+    Code {
         code: "E-CONTENT-LINE-BRACKET",
         summary: "A content line's attributes are written with `[…]` instead of the required `{…}` (the same delimiter `::directive{…}` uses).",
         spec: &["dsl §2.1"],
@@ -1520,7 +1530,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-BEAT-ONCE-RUN-USER",
-        summary: "A scene beat's `once` defaults to `run`, but its `when` reads only user-tier state, so it replays every run unless `once` is authored explicitly.",
+        summary: "A scene beat's `once` defaults to `run`, but its `when` reads only user-tier state, so it may replay on every run unless `once` is authored explicitly.",
         spec: &["dsl 0.22.0 §13", "dsl 0.23.1"],
     },
     Code {
@@ -1665,7 +1675,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-OBJECTIVE-STRANDED",
-        summary: "A required objective can only be completed by beats whose clock-bounded windows may all close, but the objective has no `until=` or `by=` deadline with a failure handler.",
+        summary: "Within the declared clock windows, a required objective may be stranded because its candidate beats' windows can all close; no path search is performed.",
         spec: &["dsl 0.31.0 §3"],
     },
     Code {
@@ -1735,7 +1745,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-SLOT-CONTENTION",
-        summary: "Two required objectives in one run can only be completed by advancing beats at the same single clock position, so one presentation consumes the other objective's only slot.",
+        summary: "Within the declared clock windows, two required objectives may contend for the same single clock position; no path search is performed.",
         spec: &["dsl 0.31.0 §4"],
     },
     Code {
@@ -1992,6 +2002,18 @@ mod tests {
             "{} drifted from the registry",
             path.display()
         );
+    }
+
+    #[test]
+    fn every_registry_code_has_exactly_one_evidence_classification() {
+        let registry: std::collections::BTreeSet<&str> = CODES.iter().map(|code| code.code).collect();
+        let table = lute_check::evidence::DIAGNOSTIC_CLASSIFICATIONS;
+        let mut classified = std::collections::BTreeSet::new();
+        for (code, _) in table {
+            assert!(classified.insert(*code), "duplicate evidence classification for {code}");
+            assert!(registry.contains(code), "evidence table has unregistered code {code}");
+        }
+        assert_eq!(classified, registry, "registry and evidence table drifted");
     }
 
     /// The reserved-names reference is the one table: the English page holds

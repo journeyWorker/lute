@@ -61,6 +61,25 @@ fn play_in(project: &Path, tag: &str, script: &str, json: bool) -> Output {
     Command::new(BIN).args(&args).output().unwrap()
 }
 
+#[test]
+fn a_project_with_an_invalid_plugin_configuration_refuses_to_play() {
+    let dir = temp_dir("invalid-plugin-config");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: bad\nprofiles:\n  bad:\n    plugins: { missing.plugin: true }\n",
+    );
+    write(
+        &dir,
+        "scenes/start.lute",
+        "---\nkind: scene\nid: start\non: visit\n---\n\n## Start\n\n@narrator: This must not run.\n",
+    );
+    let out = play_in(&dir, "invalid-plugin-config-script", "steps:\n  - occasion: visit\n", false);
+    assert_eq!(out.status.code(), Some(1), "{}{}", stdout(&out), stderr(&out));
+    assert!(stderr(&out).contains("refusing to play"), "{}", stderr(&out));
+    assert!(!stdout(&out).contains("This must not run."), "{}", stdout(&out));
+}
+
 /// Play `script` over the hub fixture with `--json`; asserts the exit code.
 fn play_json(tag: &str, script: &str, exit: i32) -> Json {
     let out = play_in(&fixture(), tag, script, true);
@@ -160,6 +179,8 @@ fn priority_outranks_index_order() {
     assert_eq!(candidate(&v, 2, "hub.idle")["eligible"], true);
     assert_eq!(candidate(&v, 2, "hub.welcome")["eligible"], true);
     assert_eq!(winner(&v, 2), Some("hub.welcome"));
+    assert_eq!(v["evidence"], "witnessed");
+    assert_eq!(candidate(&v, 2, "hub.idle")["evidence"], "witnessed");
 }
 
 #[test]

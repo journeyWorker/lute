@@ -100,7 +100,7 @@ use std::process::ExitCode;
 use lute_check::meta::canonical_episode_key;
 use lute_compile::locale::LocaleBundle;
 use lute_core_span::Severity;
-use lute_manifest::project::{load_project, IdentityTemplates};
+use lute_manifest::project::IdentityTemplates;
 use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, Document, Node};
 
 /// One translatable unit extracted from a document, carrying the byte offset
@@ -457,25 +457,6 @@ fn is_component_document(doc: &Document) -> bool {
         .is_some()
 }
 
-/// The `identity:` templates (dsl 0.8.0 §9) in force for `root`, loaded once
-/// per resolved root and cached. A root with no (or an unreadable)
-/// `lute.project.yaml` gets [`IdentityTemplates::default`] — the 0.7.0 shapes,
-/// byte-for-byte. `load_project`'s own `E-IDENTITY-TEMPLATE` reporting belongs
-/// to `check`/`compile`; `loc` is a read-only extraction surface and stays
-/// silent, using whatever the loader resolved (a rejected template is already
-/// reset to its default there).
-fn templates_for<'a>(
-    root: &Path,
-    cache: &'a mut BTreeMap<PathBuf, IdentityTemplates>,
-) -> &'a IdentityTemplates {
-    cache.entry(root.to_path_buf()).or_insert_with(|| {
-        load_project(root)
-            .ok()
-            .flatten()
-            .map(|p| p.identity)
-            .unwrap_or_default()
-    })
-}
 
 /// Parse every `.lute` under `dir` (skipping — with a stderr note — any file
 /// whose parse produces an `Error`-severity diagnostic) and collect all
@@ -484,18 +465,16 @@ fn templates_for<'a>(
 /// the whole result is deterministic.
 ///
 /// Each file's `identity:` templates resolve against its OWN nearest-ancestor
-/// project root ([`crate::project_root_for`], bounded below by `dir`) — the
+/// project root ([`lute_model::project_root_for`], bounded below by `dir`) —
 /// same nested-subproject rule `check-project` and `lute scenario` use, so a
 /// walk spanning two subprojects exports each one's real ids.
 fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
-    let files = crate::find_lute_files(dir).map_err(|e| {
+    let files = lute_model::find_lute_files(dir).map_err(|e| {
         let e = lute_manifest::io_reason(&e);
         eprintln!("lute loc: cannot walk {}: {e}", dir.display());
         ExitCode::from(2)
     })?;
     let mut units = Vec::new();
-    let mut templates: BTreeMap<PathBuf, IdentityTemplates> = BTreeMap::new();
-    let cache = crate::InputCache::default();
     for path in &files {
         // #3 / T6.10 fix (i): expand `::use` before extracting, so a
         // component's lines are exported once PER CALL SITE under the
@@ -504,14 +483,15 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         // `trace_document`), in the same order, with the same three passes;
         // `expand_document` is deliberately NOT run, because `{{…}}`
         // interpolation is what a translator must see intact.
-        let root = crate::project_root_for(path, dir);
-        let Some(built) = crate::build_input_with(&cache, path, None, Some(&root), None) else {
+        let root = lute_model::project_root_for(path, dir);
+        let Some(built) = lute_model::build_input(path, None, Some(&root), None) else {
             eprintln!(
                 "lute loc: skipping {} — cannot resolve inputs",
                 path.display()
             );
             continue;
         };
+        let identity = built.identity.clone();
         let input = built.input;
         let (mut doc, diags) = lute_syntax::parse(&input.text);
         let errors = diags
@@ -543,7 +523,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
             &folded.env.state,
             &folded.env.occasion_scopes,
         );
-        let ident = templates_for(&root, &mut templates).clone();
+        let ident = identity;
         document_units(
             &path.display().to_string(),
             &doc,

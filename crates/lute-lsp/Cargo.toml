@@ -17,6 +17,7 @@ lute-core-span = { path = "../lute-core-span" }
 lute-check = { path = "../lute-check" }
 lute-lint = { path = "../lute-lint" }
 lute-manifest = { path = "../lute-manifest" }
+lute-model = { path = "../lute-model" }
 lute-syntax = { path = "../lute-syntax" }
 lute-cel = { path = "../lute-cel" }
 cel-parser = "0.10.1"
@@ -25,6 +26,7 @@ tokio = { version = "1.52.3", features = ["full"] }
 dashmap = "6.2.1"
 serde_yaml = { workspace = true }
 
+serde_json = "1.0.150"
 [dev-dependencies]
 tower = "0.5.3"
 futures = "0.3.32"
