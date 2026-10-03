@@ -22,7 +22,10 @@ use lute_manifest::types::Type;
 use lute_syntax::ast::{Arm, AttrValue, Document, Node, ACCEPT_DIRECTIVE};
 use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind};
 
-use super::{attr_enum_values, type_label, Cursor, QuestConstruct};
+use lute_resolve::cursor::{
+    attr_enum_values, asset_kind_for, asset_segment_index, attr_at, span_contains, subject_domain,
+    type_label, Cursor, QuestConstruct,
+};
 
 /// Completion candidates at byte offset `off`. Empty when the cursor is somewhere
 /// with nothing to offer.
@@ -40,8 +43,8 @@ pub fn complete_at(
         return items;
     }
     let (mut meta, _) = parse_meta(&doc.meta, snapshot);
-    super::merge_imports(&mut meta, imports);
-    let Some(cursor) = super::resolve(doc, off) else {
+    lute_resolve::cursor::merge_imports(&mut meta, imports);
+    let Some(cursor) = lute_resolve::cursor::resolve(doc, off) else {
         return Vec::new();
     };
     match cursor {
@@ -65,7 +68,7 @@ pub fn complete_at(
                 });
             if !permitted {
                 Vec::new()
-            } else if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
+            } else if let Some(kind) = asset_kind_for(snapshot, dir, key) {
                 asset_segment_items(kind, doc, providers, off)
             } else {
                 enum_value_items(snapshot, imports, &meta, dir, key)
@@ -500,13 +503,13 @@ fn asset_segment_items(
     providers: &ProviderSet,
     off: usize,
 ) -> Vec<CompletionItem> {
-    let Some(attr) = super::attr_at(doc, off) else {
+    let Some(attr) = attr_at(doc, off) else {
         return Vec::new();
     };
     let AttrValue::Str(value) = &attr.value else {
         return Vec::new();
     };
-    let idx = super::asset_segment_index(kind, value, attr.value_span.byte_start, off);
+    let idx = asset_segment_index(kind, value, attr.value_span.byte_start, off);
     let Some(seg) = kind.segments.get(idx) else {
         return Vec::new();
     };
@@ -656,7 +659,7 @@ fn is_pattern_items(
     meta: &lute_check::TypedMeta,
     subject_path: &str,
 ) -> Vec<CompletionItem> {
-    let Some(domain) = super::subject_domain(doc, meta, subject_path) else {
+    let Some(domain) = subject_domain(doc, meta, subject_path) else {
         return Vec::new();
     };
     domain
@@ -720,23 +723,23 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
     fn scan(nodes: &[Node], off: usize, out: &mut Vec<String>) {
         for node in nodes {
             match node {
-                Node::Directive(d) if super::span_contains(d.span, off) => {
+                Node::Directive(d) if span_contains(d.span, off) => {
                     out.extend(d.attrs.iter().map(|a| a.key.clone()));
                 }
-                Node::Line(l) if super::span_contains(l.span, off) => {
+                Node::Line(l) if span_contains(l.span, off) => {
                     out.extend(l.attrs.iter().map(|a| a.key.clone()));
                 }
-                Node::Branch(b) if super::span_contains(b.span, off) => {
+                Node::Branch(b) if span_contains(b.span, off) => {
                     for c in &b.choices {
                         scan(&c.body, off, out);
                     }
                 }
-                Node::Hub(h) if super::span_contains(h.span, off) => {
+                Node::Hub(h) if span_contains(h.span, off) => {
                     for b in h.bodies() {
                         scan(b, off, out);
                     }
                 }
-                Node::Match(m) if super::span_contains(m.span, off) => {
+                Node::Match(m) if span_contains(m.span, off) => {
                     for arm in &m.arms {
                         let body = match arm {
                             Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
@@ -744,19 +747,19 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
                         scan(body, off, out);
                     }
                 }
-                Node::Timeline(t) if super::span_contains(t.span, off) => {
+                Node::Timeline(t) if span_contains(t.span, off) => {
                     for track in &t.tracks {
                         for clip in &track.clips {
                             if let lute_syntax::ast::ClipNode::Directive(d) = &clip.node {
-                                if super::span_contains(d.span, off) {
+                            if span_contains(d.span, off) {
                                     out.extend(d.attrs.iter().map(|a| a.key.clone()));
                                 }
                             }
                         }
                     }
                 }
-                Node::On(o) if super::span_contains(o.span, off) => scan(&o.body, off, out),
-                Node::Objective(ob) if super::span_contains(ob.span, off) => {
+                Node::On(o) if span_contains(o.span, off) => scan(&o.body, off, out),
+                Node::Objective(ob) if span_contains(ob.span, off) => {
                     scan(&ob.body, off, out)
                 }
                 _ => {}

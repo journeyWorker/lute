@@ -582,6 +582,7 @@ dependencies = [
  "lute-lint",
  "lute-manifest",
  "lute-model",
+ "lute-resolve",
  "lute-syntax",
  "lute-trace",
  "rayon",
@@ -642,6 +643,7 @@ dependencies = [
  "lute-lint",
  "lute-manifest",
  "lute-model",
+ "lute-resolve",
  "lute-syntax",
  "lute-test-vocab",
  "serde_json",
@@ -675,6 +677,21 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "serde_yaml",
+ "sha2",
+]
+
+[[package]]
+name = "lute-resolve"
+version = "0.34.0"
+dependencies = [
+ "lute-cel",
+ "lute-check",
+ "lute-core-span",
+ "lute-manifest",
+ "lute-model",
+ "lute-syntax",
+ "serde",
  "serde_yaml",
 ]
 

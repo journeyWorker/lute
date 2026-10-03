@@ -102,6 +102,9 @@ pub struct SemanticGraph {
     pub nodes: BTreeMap<NodeKey, GraphNode>,
     pub edges: Vec<GraphEdge>,
     pub outgoing: BTreeMap<NodeKey, Vec<usize>>,
+    /// Authored nodes whose canonical key occurs at multiple source spans.
+    /// Consumers must refuse these keys rather than silently selecting one.
+    pub ambiguous: BTreeSet<NodeKey>,
 }
 
 impl SemanticGraph {
@@ -215,6 +218,18 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
     } else {
         None
     };
+    // Authored choices/options are source nodes in their own right.  Their
+    // identity is document + owning branch/hub id + option id; it is stable
+    // across unrelated source movement and is the spelling used by context
+    // targets (for example `choice:scene.key:branch.option`).
+    for shot in &d.doc.shots {
+        let parent = NodeKey::new(NodeKind::Shot, format!("{doc_id}:{}", shot.heading));
+        add_choice_nodes(g, d, &doc_id, &parent, &shot.body, &mut owners);
+    }
+    for q in &d.doc.quests {
+        let parent = NodeKey::new(NodeKind::Quest, q.id.clone());
+        add_choice_nodes(g, d, &doc_id, &parent, &q.body, &mut owners);
+    }
 
     let mut line_nodes: Vec<(Span, NodeKey)> = Vec::new();
     for shot in &d.doc.shots {
@@ -659,6 +674,88 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
     }
 }
 
+fn add_choice_nodes(
+    g: &mut SemanticGraph,
+    d: &ModelDocument,
+    doc_id: &str,
+    parent: &NodeKey,
+    nodes: &[Node],
+    owners: &mut Vec<(Span, NodeKey)>,
+) {
+    for node in nodes {
+        match node {
+            Node::Branch(branch) => {
+                for choice in &branch.choices {
+                    if choice.id.is_empty() {
+                        continue;
+                    }
+                    let key = NodeKey::new(
+                        NodeKind::Choice,
+                        format!("{doc_id}:{}.{}", branch.id, choice.id),
+                    );
+                    if g.nodes.get(&key).is_some_and(|node| node.span != Some(choice.span)) {
+                        g.ambiguous.insert(key.clone());
+                    }
+                    g.node(key.clone(), Some(d.path.clone()), Some(choice.span));
+                    g.edge(
+                        parent.clone(),
+                        key.clone(),
+                        "contains",
+                        "branch contains authored choice",
+                        Some(d.path.clone()),
+                        Some(choice.span),
+                        Evidence::Proven,
+                    );
+                    owners.push((choice.span, key.clone()));
+                    add_choice_nodes(g, d, doc_id, &key, &choice.body, owners);
+                }
+            }
+            Node::Hub(hub) => {
+                let hub_id = hub.attrs.iter().find(|attr| attr.key == "id").and_then(|attr| match &attr.value {
+                    lute_syntax::ast::AttrValue::Str(value) => Some(value.as_str()),
+                    _ => None,
+                }).unwrap_or("hub");
+                for choice in &hub.choices {
+                    if choice.id.is_empty() {
+                        continue;
+                    }
+                    let key = NodeKey::new(
+                        NodeKind::Choice,
+                        format!("{doc_id}:{hub_id}.{}", choice.id),
+                    );
+                    if g.nodes.get(&key).is_some_and(|node| node.span != Some(choice.span)) {
+                        g.ambiguous.insert(key.clone());
+                    }
+                    g.node(key.clone(), Some(d.path.clone()), Some(choice.span));
+                    g.edge(
+                        parent.clone(),
+                        key.clone(),
+                        "contains",
+                        "hub contains authored option",
+                        Some(d.path.clone()),
+                        Some(choice.span),
+                        Evidence::Proven,
+                    );
+                    owners.push((choice.span, key.clone()));
+                    add_choice_nodes(g, d, doc_id, &key, &choice.body, owners);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let body = match arm {
+                        lute_syntax::ast::Arm::When { body, .. } => body,
+                        lute_syntax::ast::Arm::Otherwise { body, .. } => body,
+                    };
+                    add_choice_nodes(g, d, doc_id, parent, body, owners);
+                }
+            }
+            Node::Objective(objective) => add_choice_nodes(g, d, doc_id, parent, &objective.body, owners),
+            Node::On(on) => add_choice_nodes(g, d, doc_id, parent, &on.body, owners),
+            _ => {}
+        }
+    }
+}
+
 fn add_slot_dependency_edges(
     g: &mut SemanticGraph,
     owner: &NodeKey,
@@ -916,6 +1013,67 @@ mod tests {
         assert!(graph.edges.iter().any(|edge| {
             edge.source.key == "knows(@who)" && edge.evidence == Evidence::Heuristic
         }));
+    }
+    #[test]
+    fn authored_choice_key_survives_insertion_before_it() {
+        let parent = NodeKey::new(NodeKind::Shot, "scene:shot");
+        let existing = NodeKey::new(NodeKind::Choice, "scene:branch.coffee");
+        let inserted = NodeKey::new(NodeKind::Choice, "scene:branch.before");
+        let mut graph = SemanticGraph::default();
+        graph.edge(
+            parent.clone(),
+            existing.clone(),
+            "contains",
+            "branch contains authored choice",
+            Some("scene.lute".into()),
+            None,
+            Evidence::Proven,
+        );
+        let before = graph
+            .edges
+            .iter()
+            .find(|edge| edge.target == existing)
+            .cloned()
+            .unwrap();
+        graph.edge(
+            parent,
+            inserted,
+            "contains",
+            "branch contains authored choice",
+            Some("scene.lute".into()),
+            None,
+            Evidence::Proven,
+        );
+        assert_eq!(
+            graph
+                .edges
+                .iter()
+                .find(|edge| edge.target == existing)
+                .cloned(),
+            Some(before)
+        );
+    }
+ 
+    #[test]
+    fn duplicate_choice_key_is_marked_ambiguous() {
+        let key = NodeKey::new(NodeKind::Choice, "scene:branch.coffee");
+        let span = |start| Span {
+            byte_start: start,
+            byte_end: start + 1,
+            line: 1,
+            column: start as u32 + 1,
+            utf16_range: (start as u32, start as u32 + 1),
+        };
+        let mut graph = SemanticGraph::default();
+        graph.node(key.clone(), Some("scene.lute".into()), Some(span(1)));
+        if graph
+            .nodes
+            .get(&key)
+            .is_some_and(|node| node.span != Some(span(9)))
+        {
+            graph.ambiguous.insert(key.clone());
+        }
+        assert!(graph.ambiguous.contains(&key));
     }
 }
 fn owner_for(owners: &[(Span, NodeKey)], span: Span, fallback: &NodeKey) -> NodeKey {

@@ -22,9 +22,9 @@ use lute_core_span::Span;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{Document, InterpKind};
 
-use super::{
-    branch_span, choice_id, def_decl_span, interp_ref_name, is_state_path, path_at, path_uses,
-    ref_at, ref_uses, state_decl_span, Cursor,
+use lute_resolve::cursor::{
+    branch_span, choice_id, def_decl_span, interp_path, interp_ref_name, is_state_path, path_at,
+    path_uses, ref_at, ref_uses, resolve, state_decl_span, Cursor,
 };
 
 /// The declaration site of the symbol at byte offset `off`, or `None` when the
@@ -43,7 +43,7 @@ pub fn definition_at(
     _imports: &SchemaImports,
     off: usize,
 ) -> Option<Span> {
-    let cursor = super::resolve(doc, off)?;
+    let cursor = resolve(doc, off)?;
     match cursor {
         Cursor::SetPath { path, .. } => path_definition(doc, path),
         Cursor::Cel { slot, .. } => {
@@ -61,7 +61,7 @@ pub fn definition_at(
         }
         Cursor::Interp(i) => match i.kind {
             // A state path jumps to its `state:`/`<branch>` decl, as a CEL path does.
-            InterpKind::Path => path_definition(doc, &super::interp_path(&i.raw)),
+            InterpKind::Path => path_definition(doc, &interp_path(&i.raw)),
             // An `@ref` jumps to its def decl site (`@fond` → the `fond` key).
             InterpKind::Ref => interp_ref_name(&i.raw).and_then(|name| def_decl_span(doc, &name)),
             // A reserved token has no decl site.
@@ -106,7 +106,7 @@ pub fn references_at(
     off: usize,
     include_declaration: bool,
 ) -> Vec<Span> {
-    let Some(cursor) = super::resolve(doc, off) else {
+    let Some(cursor) = resolve(doc, off) else {
         return Vec::new();
     };
     let mut uses = match cursor {
@@ -125,7 +125,7 @@ pub fn references_at(
             }
         }
         Cursor::Interp(i) => match i.kind {
-            InterpKind::Path => path_uses(doc, &super::interp_path(&i.raw)),
+            InterpKind::Path => path_uses(doc, &interp_path(&i.raw)),
             InterpKind::Ref => interp_ref_name(&i.raw)
                 .map(|name| ref_uses(doc, &name))
                 .unwrap_or_default(),

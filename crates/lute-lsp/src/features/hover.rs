@@ -22,9 +22,10 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{AttrValue, Document, InterpKind};
 use tower_lsp_server::ls_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
-use super::{
-    attr_enum_values, choice_id, def_info, interp_ref_name, is_state_path, literal_label, path_at,
-    ref_at, type_label, Cursor, QuestConstruct,
+use lute_resolve::cursor::{
+    attr_at, attr_enum_values, asset_kind_for, asset_segment_index, choice_id, def_info,
+    interp_path, interp_ref_name, is_state_path, literal_label, path_at, ref_at, subject_domain,
+    subject_is_number, type_label, Cursor, QuestConstruct,
 };
 
 /// Hover documentation for the construct at byte offset `off`, or `None` when the
@@ -36,8 +37,8 @@ pub fn hover_at(
     off: usize,
 ) -> Option<Hover> {
     let (mut meta, _) = parse_meta(&doc.meta, snapshot);
-    super::merge_imports(&mut meta, imports);
-    let cursor = super::resolve(doc, off)?;
+    lute_resolve::cursor::merge_imports(&mut meta, imports);
+    let cursor = lute_resolve::cursor::resolve(doc, off)?;
     let md = match cursor {
         Cursor::DirectiveName(tag) => directive_hover(snapshot, tag),
         Cursor::AttrValue {
@@ -46,7 +47,7 @@ pub fn hover_at(
         } => {
             // An `assetId` value documents the segment under the cursor; else an
             // enum attr documents its domain; else the attr's own declaration.
-            if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
+            if let Some(kind) = asset_kind_for(snapshot, dir, key) {
                 asset_segment_hover(kind, doc, off)
             } else if let Some(vals) = attr_enum_values(snapshot, imports, &meta, dir, key) {
                 Some(format!("**enum** `{key}`\n\ndomain: {}", vals.join(", ")))
@@ -82,7 +83,7 @@ pub fn hover_at(
             // A state path renders its `state:` decl (or the implicit choice path),
             // exactly as a CEL-slot path read does.
             InterpKind::Path => {
-                let path = super::interp_path(&i.raw);
+                let path = interp_path(&i.raw);
                 if is_state_path(&path) {
                     state_hover(&meta, &path).or_else(|| choice_hover(&path))
                 } else {
@@ -99,10 +100,10 @@ pub fn hover_at(
                 i.raw
             )),
         },
-        Cursor::IsPattern { subject_path } => super::subject_domain(doc, &meta, subject_path)
+        Cursor::IsPattern { subject_path } => subject_domain(doc, &meta, subject_path)
             .map(|domain| format!("**pattern** — domain: {}", domain.join(", ")))
             .or_else(|| {
-                super::subject_is_number(&meta, subject_path).then(|| {
+                subject_is_number(&meta, subject_path).then(|| {
                     "**pattern** — domain: int or double; literals are points (`3`, `-1.5`) or \
                      inclusive ranges (`1..3`, `2..`, `..0`)"
                         .to_string()
@@ -210,11 +211,11 @@ fn attr_hover(snapshot: &CapabilitySnapshot, directive: &str, key: &str) -> Opti
 /// current authored value is appended — the breakdown derived from the same
 /// [`AssetKindDecl`] the checker uses, never a re-hardcoded vocabulary.
 fn asset_segment_hover(kind: &AssetKindDecl, doc: &Document, off: usize) -> Option<String> {
-    let attr = super::attr_at(doc, off)?;
+    let attr = attr_at(doc, off)?;
     let AttrValue::Str(value) = &attr.value else {
         return None;
     };
-    let idx = super::asset_segment_index(kind, value, attr.value_span.byte_start, off);
+    let idx = asset_segment_index(kind, value, attr.value_span.byte_start, off);
     let seg = kind.segments.get(idx)?;
     let mut s = format!("**{}**", seg.name);
     if let Some(c) = &seg.r#const {

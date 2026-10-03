@@ -27,10 +27,15 @@ pub mod cel_ast;
 pub mod datalog;
 pub mod incremental;
 pub mod is_pattern;
+pub mod format;
 pub mod lex;
 pub mod parser;
 pub mod path;
+pub mod trivia;
 pub mod walk;
 
-pub use ast::scan_label_interps;
+pub use format::{format_source, format_yaml_source, FormatError, FormatOptions, FormatResult};
 pub use parser::parse;
+pub use trivia::{source_stream, SourceStream, SourceToken, TokenKind};
+pub use ast::scan_label_interps;
+

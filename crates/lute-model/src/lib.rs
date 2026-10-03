@@ -8,6 +8,8 @@ pub mod cache;
 pub mod input;
 pub mod manifest;
 pub mod project;
+pub mod revision;
+pub mod diff;
 pub mod reconcile;
 pub mod scenario;
 pub mod gate;
@@ -42,3 +44,5 @@ impl ProjectModel {
 
 pub use graph::{GraphEdge, GraphNode, NodeKey, NodeKind, SemanticGraph};
 pub use impact::{ImpactItem, ImpactReport, ImpactTarget};
+pub use revision::{project_revision, FileRevision, ProjectRevision, RevisionError};
+pub use diff::{diff_models, ChangeKind, DiffError, SemanticChange, SemanticDiff, SourceLocation};

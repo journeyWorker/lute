@@ -459,6 +459,16 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.5.0 §2.1", "dsl 0.6.0 §3.3"],
     },
     Code {
+        code: "E-CONTEXT-POSITION",
+        summary: "A context position query has an invalid coordinate or falls outside the source file.",
+        spec: &["dsl 0.35.0 §3.3", "dsl 0.35.0 §8"],
+    },
+    Code {
+        code: "E-CONTEXT-TARGET",
+        summary: "A context target key is unknown or ambiguous in the project graph.",
+        spec: &["dsl 0.35.0 §3.1", "dsl 0.35.0 §8"],
+    },
+    Code {
         code: "E-DATALOG-FUNCTION",
         summary: "An `::assert`/`::retract` payload, a `facts:` entry, or a `rules:` term uses a compound/function term such as `f(g(x))`, but facts and rule terms admit only ground identifiers/booleans.",
         spec: &["dsl 0.3.0 §7.1"],
@@ -537,6 +547,16 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-DERIVED-WRITE",
         summary: "Content asserts or retracts a relation declared `derive: true`, though a derived relation is computed by `rules:` and must not be written directly.",
         spec: &["dsl 0.3.0 §5"],
+    },
+    Code {
+        code: "E-DIFF-INPUT",
+        summary: "A diff side cannot be read, safely materialized, or built into a complete project model.",
+        spec: &["dsl 0.35.0 §4", "dsl 0.35.0 §8"],
+    },
+    Code {
+        code: "E-DIFF-MODEL",
+        summary: "A semantic diff cannot produce a complete project model for one side.",
+        spec: &["dsl 0.35.0 §4", "dsl 0.35.0 §8"],
     },
     Code {
         code: "E-DOLLAR-OUTSIDE-MATCH",
@@ -687,6 +707,16 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-FLAG-VALUE",
         summary: "A flag attribute (`<choice once>`/`exit`, `<objective optional>`, `<beat also>`) is given a value other than `true`/`false`; a flag is written bare, and a beat/entry `once` period on a choice is refused.",
         spec: &["dsl 0.28.0 §1"],
+    },
+    Code {
+        code: "E-FMT",
+        summary: "The formatter cannot parse or preserve the requested file.",
+        spec: &["dsl 0.35.0 §1", "dsl 0.35.0 §8"],
+    },
+    Code {
+        code: "E-FMT-CHECK",
+        summary: "A formatter check found noncanonical bytes in the requested file.",
+        spec: &["dsl 0.35.0 §1", "dsl 0.35.0 §8"],
     },
     Code {
         code: "E-FRONTMATTER-SCHEMA",
@@ -912,6 +942,31 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-ON-NO-EVENT",
         summary: "An `<on>` has no `event` attribute — every `<on>` must be anchored to a discrete event.",
         spec: &["dsl 0.2.0 §4.1"],
+    },
+    Code {
+        code: "E-PATCH-CHECK",
+        summary: "A staged patch introduces a new check or project error.",
+        spec: &["dsl 0.35.0 §5.2", "dsl 0.35.0 §8"],
+    },
+    Code {
+        code: "E-PATCH-EDIT",
+        summary: "A patch edit is malformed, outside its target, overlaps another edit, or fails its escape-hatch span assertion.",
+        spec: &["dsl 0.35.0 §5.1", "dsl 0.35.0 §5.2", "dsl 0.35.0 §8"],
+    },
+    Code {
+        code: "E-PATCH-PRESERVE",
+        summary: "A patch violates a requested preserve claim, including an ambiguous reward or component match.",
+        spec: &["dsl 0.35.0 §5.3", "dsl 0.35.0 §8"],
+    },
+    Code {
+        code: "E-PATCH-STALE",
+        summary: "A patch base project or asserted file revision differs from the current revision.",
+        spec: &["dsl 0.35.0 §5.2", "dsl 0.35.0 §8"],
+    },
+    Code {
+        code: "E-PATCH-TARGET",
+        summary: "A patch target is unknown, ambiguous, or has no editable source anchor.",
+        spec: &["dsl 0.35.0 §5.1", "dsl 0.35.0 §8"],
     },
     Code {
         code: "E-PATH-IDENT",
@@ -1302,6 +1357,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-TAG-NOT-ONE-LINE",
         summary: "A `<tag …>` opener's attributes wrap past its own physical line instead of staying on one line as the grammar requires.",
         spec: &["dsl §2.3"],
+    },
+    Code {
+        code: "E-TASK-TRAP",
+        summary: "An edit-task suite trap did not refuse or flag the patch as expected.",
+        spec: &["dsl 0.35.0 §6", "dsl 0.35.0 §8"],
     },
     Code {
         code: "E-TEMPLATE",

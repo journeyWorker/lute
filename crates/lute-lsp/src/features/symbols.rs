@@ -32,7 +32,7 @@ use lute_syntax::ast::{Arm, BundleBeat, Document, Entry, Match, Node, Quest, Sho
 use tower_lsp_server::ls_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::backend::{byte_to_position, span_to_range};
-use crate::features::byte_span;
+use lute_resolve::cursor::byte_span;
 
 /// The document outline: one shot symbol per shot, with its `<branch>`/`<match>`
 /// blocks nested as children.
