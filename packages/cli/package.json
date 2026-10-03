@@ -30,9 +30,9 @@
   },
   "dependencies": {},
   "optionalDependencies": {
-    "@lute-lang/lute-core-darwin-arm64": "0.31.0",
-    "@lute-lang/lute-core-linux-x64": "0.31.0",
-    "@lute-lang/lute-core-win32-x64": "0.31.0"
+    "@lute-lang/lute-core-darwin-arm64": "0.32.0",
+    "@lute-lang/lute-core-linux-x64": "0.32.0",
+    "@lute-lang/lute-core-win32-x64": "0.32.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
