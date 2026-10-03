@@ -1401,6 +1401,7 @@ fn scenario_reach_reports_a_bare_quest_as_unanchored() {
     assert!(out.status.success(), "{}", stderr(&out));
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
     assert_eq!(v["reach"], "unanchored", "{v}");
+    assert_eq!(v["evidence"], "proven", "{v}");
     assert_eq!(v["node"], "quest(loose)", "{v}");
 }
 
@@ -1447,6 +1448,7 @@ fn scenario_draws_subquest_and_start_edges_without_after() {
     assert!(out.status.success(), "{}", stderr(&out));
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
     assert_eq!(v["reach"], "reachable", "{v}");
+    assert_eq!(v["evidence"], "proven", "{v}");
     assert_eq!(
         v["anchors"],
         serde_json::json!([{ "kind": "subquest", "from": ["quest(emberRoad)"] }]),

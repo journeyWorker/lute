@@ -893,3 +893,11 @@ The overviews read the same beat table an engine does. Since 0.23.0, a beat row 
 {"id": "day.market", "kind": "scene", "document": "scenes/day/market.lute", "on": "dayStart", "priority": 0, "once": "run", "when": "run.day == 3", "title": "Market day"}
 {"id": "dock.storm", "kind": "scene", "document": "scenes/dock/storm.lute", "on": "placeVisit", "target": "place.dock", "priority": 50, "once": "run", "when": "run.slot == 'evening' && run.day == 2"}
 ```
+
+## Evidence in 0.34.0
+
+`calendar` cell results and aggregate rows carry `evidence`; bounded
+aggregates also carry their finite `scope` (axes, product, seed, and any
+`--where` filter). A calendar result is therefore bounded to the evaluated
+grid, not a claim about all runtime states. `scenario`, `beats`, `play`, and
+`test` expose the same evidence vocabulary in JSON.

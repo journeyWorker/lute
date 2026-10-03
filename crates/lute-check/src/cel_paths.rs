@@ -29,7 +29,7 @@ use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr};
 /// `occasion` (dsl 0.26.0 §5): a kind beat's `occasion.target`.
 /// `season` (dsl 0.27.0 §5): a declared season's tier `season.<name>.*`.
 /// The list itself is the reserved-names table's ([`lute_manifest::reserved`]).
-pub(crate) const STATE_ROOTS: &[&str] = lute_manifest::reserved::STATE_ROOTS;
+pub const STATE_ROOTS: &[&str] = lute_manifest::reserved::STATE_ROOTS;
 
 /// `true` for any path rooted at the read-only `prev` mirror (dsl 0.23.0 §6).
 pub fn is_prev_path(path: &str) -> bool {
@@ -70,31 +70,23 @@ pub fn text_state_path(text: &str) -> Option<String> {
 
 /// How a state path appears in an expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PathRole {
+pub enum PathRole {
     /// An ordinary value read (subject to definite-assignment, dsl §9.4).
     Read,
-    /// A presence test (`has(p)`) in a **dominating** position (top
-    /// level or a conjunct of `&&`): it proves the path for the guarded body.
+    /// A presence test (`has(p)`) in a **dominating** position.
     Guard,
-    /// A presence test in a **non-dominating** position (under `||`/`!`/`?:`):
-    /// it proves nothing for the guarded body (dsl §9.4). The path is still
-    /// surfaced so read-site declaration checks are unaffected; the reads it
-    /// short-circuits over carry it in [`PathUse::local`] instead.
+    /// A presence test in a non-dominating position.
     WeakGuard,
 }
 
 /// One reconstructed state path plus how it was used.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PathUse {
+pub struct PathUse {
     pub path: String,
     pub role: PathRole,
-    /// dsl 0.24.0 (T1-7b): the paths an enclosing short-circuit proves present
-    /// at THIS read — `has(p) && …p…`, `has(p) ? …p… : …`,
-    /// `!has(p) || …p…`, `!has(p) ? … : …p…`, at any depth. Local to the
-    /// subexpression it sits in: it never proves the guarded body (that is
-    /// [`PathRole::Guard`]'s job). Empty when no guard encloses the read.
     pub local: Vec<String>,
 }
+
 
 /// `true` when `path`'s leading segment is a state tier (`scene`/`run`/…).
 pub(crate) fn is_state_path(path: &str) -> bool {
@@ -406,7 +398,7 @@ pub(crate) fn quest_id_fault(what: &str, id: &str) -> Option<String> {
 
 /// Collect every maximal state-path use in `expr` (recursing into all
 /// sub-expressions: call args, list/map/struct elements, comprehensions).
-pub(crate) fn collect_path_uses(expr: &Expr) -> Vec<PathUse> {
+pub fn collect_path_uses(expr: &Expr) -> Vec<PathUse> {
     let mut walk = Walk::default();
     walk.expr(expr, true);
     walk.out

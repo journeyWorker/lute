@@ -125,7 +125,36 @@ profiles:
       expect(ok).toBe(false);
     });
   }
+  test("accepts every constraint kind with its declared fields", () => {
+    const { ajv, projectSchema } = loadAjv();
+    const doc = Bun.YAML.parse(`
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+constraints:
+  - { id: reach, kind: reachable, node: scene:intro }
+  - { id: complete, kind: completable, quest: main }
+  - { id: speak, kind: speaksOnlyWhen, speaker: narrator, when: "true" }
+  - { id: slots, kind: noSingleSlotProgress, quest: main }
+`);
+    const { ok, errors } = validateAgainst(ajv, projectSchema.$id, doc);
+    expect(ok, JSON.stringify(errors)).toBe(true);
+  });
+
+  for (const [name, yaml] of [
+    ["cross-kind field", "constraints: [{ id: x, kind: reachable, quest: q }]\n"],
+    ["unknown kind", "constraints: [{ id: x, kind: impossible, node: scene:s }]\n"],
+    ["missing required field", "constraints: [{ id: x, kind: completable }]\n"],
+  ]) {
+    test(`rejects constraint ${name}`, () => {
+      const { ajv, projectSchema } = loadAjv();
+      const { ok } = validateAgainst(ajv, projectSchema.$id, Bun.YAML.parse(yaml));
+      expect(ok).toBe(false);
+    });
+  }
 });
+
 
 // --- schemas/lute.schema.json: state/defs/enums/entities declaration doc ---
 

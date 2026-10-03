@@ -11,6 +11,10 @@ pub mod project;
 pub mod reconcile;
 pub mod scenario;
 pub mod gate;
+pub mod constraints;
+pub mod graph;
+pub mod derivation;
+pub mod impact;
 
 pub use cache::InputCache;
 pub use input::{
@@ -31,3 +35,10 @@ pub use scenario::{assemble_root_scenario, node_cycle_degraded, RootScenario};
 pub use gate::{
     gate_for_doc, project_gate_result, reconciled_project_results, ReconciledProject,
 };
+
+impl ProjectModel {
+    pub fn graph(&self) -> graph::SemanticGraph { graph::SemanticGraph::build(self) }
+}
+
+pub use graph::{GraphEdge, GraphNode, NodeKey, NodeKind, SemanticGraph};
+pub use impact::{ImpactItem, ImpactReport, ImpactTarget};

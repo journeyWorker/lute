@@ -308,6 +308,18 @@ A scene, quest, or beat is provably unreachable — no evaluation order can ever
 
 Spec: [dsl §4.1](/spec/), [dsl §4.2](/spec/)
 
+### E-CONSTRAINT-DECL
+
+A project constraint declaration is malformed: it has an unknown key or kind, misses a required field, names a bad node, or repeats an id.
+
+Spec: [dsl 0.34.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md)
+
+### E-CONSTRAINT-VIOLATED
+
+A project constraint is violated; the diagnostic carries the verdict's evidence, bounded scope when applicable, and causal spans.
+
+Spec: [dsl 0.34.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md)
+
 ### E-CONTENT-LINE-BRACKET
 
 A content line's attributes are written with `[…]` instead of the required `{…}` (the same delimiter `::directive{…}` uses).

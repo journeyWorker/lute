@@ -102,6 +102,33 @@ pub(crate) enum Command {
         #[arg(long)]
         wip: bool,
     },
+    /// Report the reverse dependency closure for a project target.
+    Impact {
+        /// Project directory to inspect.
+        dir: PathBuf,
+        /// Target key (`fact:rel(args)`, `state:path`, or a declared node).
+        target: String,
+        /// Emit the normative structured JSON report.
+        #[arg(long)]
+        json: bool,
+        /// Directory of pinned provider snapshots.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
+    },
+    /// Report project author constraints.
+    Constraints {
+        /// Project directory to inspect.
+        dir: PathBuf,
+        /// Emit every constraint result as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Execute *.play.yaml and *.test.yaml scripts for witnesses.
+        #[arg(long)]
+        run: bool,
+        /// Pinned providers.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
+    },
     /// Run configurable content/metric advisory lints over a `.lute`
     /// document or a directory tree (https://lute-lang.vercel.app/tooling/linting/).
     /// Distinct from `lute check`: this surface publishes advisory `L-*`

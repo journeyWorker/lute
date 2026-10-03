@@ -73,6 +73,41 @@ pub(crate) fn run_check_project(
         .flat_map(|model| model.project_diagnostics().iter().cloned())
         .collect();
     relocate_imported_diags(&mut file_results, &mut project_diags, dir);
+    // Project constraint verdicts are anchored at their manifest declarations.
+    for model in &models {
+        let Some(project) = model.manifest() else { continue; };
+        let docs: Vec<_> = model.documents().iter().map(|d| (d.path.clone(), d.doc.clone())).collect();
+        let folded_refs: Vec<_> = model.documents().iter().map(|d| &d.folded).collect();
+        let slots = lute_check::clock_positions::project_objective_slot_results(&docs, &folded_refs);
+        for result in lute_model::constraints::evaluate_constraints_with_foldeds(model.root(), project, &docs, &folded_refs, model.reconciled().scenarios.get(model.root()).expect("model scenario"), &slots) {
+            if !result.declaration_errors.is_empty() {
+                let manifest = model.root().join("lute.project.yaml");
+                for error in &result.declaration_errors {
+                    let mut diagnostic = manifests::as_diagnostic(&error.code, error.message.clone());
+                    diagnostic.span = error.span;
+                    project_diags.push((manifest.clone(), diagnostic));
+                }
+                continue;
+            }
+            if matches!(result.verdict, lute_model::constraints::ConstraintVerdict::Holds | lute_model::constraints::ConstraintVerdict::Unknown) { continue; }
+            let Some(decl) = project.constraints.iter().find(|c| c.id == result.id) else { continue; };
+            let manifest = model.root().join("lute.project.yaml");
+            let text = std::fs::read_to_string(&manifest).unwrap_or_default();
+            let idx = lute_core_span::TextIndex::new(&text);
+            let span = lute_core_span::Span::from_bytes(&idx, decl.span.start.min(text.len()), decl.span.end.min(text.len()));
+            let unknown = matches!(result.verdict, lute_model::constraints::ConstraintVerdict::Unknown);
+            let severity = if unknown { Severity::Info } else if matches!(result.evidence, lute_core_span::Evidence::Bounded { .. }) && decl.severity == lute_manifest::constraints::ConstraintSeverity::Error { Severity::Warning } else { match decl.severity { lute_manifest::constraints::ConstraintSeverity::Error => Severity::Error, lute_manifest::constraints::ConstraintSeverity::Warning => Severity::Warning, lute_manifest::constraints::ConstraintSeverity::Info => Severity::Info } };
+            let mut diagnostic = manifests::as_diagnostic("E-CONSTRAINT-VIOLATED", format!("constraint `{}` is {}", result.id, if unknown { "unknown" } else { "violated" }));
+            diagnostic.severity = severity;
+            diagnostic.span = span;
+            diagnostic.evidence = Some(result.evidence.clone());
+            for cause in result.related {
+                let file = cause.provenance.clone().unwrap_or_else(|| manifest.display().to_string());
+                diagnostic.related.push(lute_core_span::RelatedDiagnostic { file, diagnostic: cause });
+            }
+            project_diags.push((manifest, diagnostic));
+        }
+    }
     for (path, diagnostic) in &mut project_diags {
         if path.extension().and_then(|extension| extension.to_str()) == Some("lute") {
             continue;

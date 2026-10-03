@@ -66,6 +66,8 @@ mod cmd_compile;
 mod cmd_context;
 mod cmd_scenario;
 mod cmd_trace;
+mod cmd_constraints;
+mod cmd_impact;
 mod cmd_version;
 mod codes;
 mod compile_all;
@@ -101,6 +103,8 @@ use cmd_check::run_check;
 use cmd_check_project::run_check_project;
 use cmd_compile::dispatch_compile;
 use cmd_context::run_context;
+use cmd_constraints::run_constraints;
+use cmd_impact::run_impact;
 use cmd_scenario::run_scenario;
 use cmd_trace::run_trace;
 use cmd_version::run_version;
@@ -109,7 +113,7 @@ use cmd_version::run_version;
 pub(crate) use cli::ScenarioCommand;
 pub(crate) use cmd_context::attr_type_str;
 pub(crate) use cmd_scenario::graph::{fact_edge_label, topo_layers, when_visited_hint, FactGraph};
-pub(crate) use cmd_scenario::reach::{format_prereq, reach_verdict_text, unanchored_quests};
+pub(crate) use cmd_scenario::reach::{format_prereq, reach_evidence, reach_verdict_text, unanchored_quests};
 pub(crate) use cmd_scenario::{
     node_ref_to_id, primary_node_ambiguity_note, resolve_node_ref, NodeRef,
 };
@@ -180,6 +184,12 @@ fn main() -> ExitCode {
             wip,
             engine.as_deref(),
         ),
+        Command::Impact { dir, target, json, providers } => {
+            run_impact(&dir, &target, json, providers.as_deref())
+        }
+        Command::Constraints { dir, json, run, providers } => {
+            run_constraints(&dir, json, run, providers.as_deref())
+        }
         Command::Lint {
             path,
             json,

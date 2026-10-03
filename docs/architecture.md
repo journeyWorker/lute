@@ -71,6 +71,14 @@ target is the flat command-record format the engine consumes.
 > [`0.0.7`](proposals/plugin-system/0.0.7.md); human overview:
 > [`plugin-system.md`](plugin-system.md). Use the specs as the SoT and this doc
 > for the AST/compiler/LSP architecture.
+## Project loading (0.34.0)
+
+All project commands load through one project model per nearest manifest root.
+`check-project`, `context`, `scenario`, `beats`, `impact`, `calendar`, `play`,
+and `test` build reports from that model; single-file analysis uses the same
+input assembly. This note records the architectural ownership only; command
+semantics remain in the normative 0.34 proposal and command references.
+
 >
 > **The `.lute` snippets in this file are illustrative prose, not gated fixtures.** No CI job
 > checks them semantically: the `examples` job runs `lute check-project docs/examples` and the

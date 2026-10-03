@@ -546,7 +546,7 @@ dependencies = [
 
 [[package]]
 name = "lute-cel"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "cel-parser",
  "lute-core-span",
@@ -555,7 +555,7 @@ dependencies = [
 
 [[package]]
 name = "lute-check"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "cel-parser",
  "insta",
@@ -571,7 +571,7 @@ dependencies = [
 
 [[package]]
 name = "lute-cli"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "cel-parser",
  "clap",
@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "lute-compile"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "cel-parser",
  "insta",
@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "lute-core-span"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -617,7 +617,7 @@ dependencies = [
 
 [[package]]
 name = "lute-lint"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "cel-parser",
  "lute-cel",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "lute-lsp"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "cel-parser",
  "dashmap",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "lute-manifest"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "lute-core-span",
  "serde",
@@ -664,7 +664,7 @@ dependencies = [
 
 [[package]]
 name = "lute-model"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "lute-cel",
  "lute-check",
@@ -680,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "lute-syntax"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "lute-core-span",
  "lute-manifest",
@@ -688,14 +688,14 @@ dependencies = [
 
 [[package]]
 name = "lute-test-vocab"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "lute-manifest",
 ]
 
 [[package]]
 name = "lute-trace"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "cel-parser",
  "lute-cel",
@@ -711,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "lute-wasm"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "console_error_panic_hook",
  "lute-check",

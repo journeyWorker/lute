@@ -17,8 +17,8 @@ fn compile_marina_exits_zero_with_artifact_json() {
         String::from_utf8_lossy(&out.stderr)
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(v["lute"], "0.33.0");
-    assert_eq!(v["irVersion"], "0.33.0");
+    assert_eq!(v["lute"], "0.34.0");
+    assert_eq!(v["irVersion"], "0.34.0");
     assert_eq!(
         v["requiredSemantics"],
         serde_json::json!(["lute.core/1", "lute.staging/1", "lute.timeline/1"])

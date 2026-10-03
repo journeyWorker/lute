@@ -429,9 +429,9 @@ struct TestResult {
     /// failing test used to print only `exit: expected complete, got
     /// incomplete`, hiding the one thing the author needs next.
     unresolved: Vec<UnresolvedEntry>,
-    /// Selections the test's `choose:` forced past an unknown guard — the
-    /// walk continued, but that guard was never decided (T1-13).
     forced_unknown: Vec<UnresolvedEntry>,
+    /// Quest ids observed transitioning to complete during this test trace.
+    completed_quests: BTreeSet<String>,
     /// A test: the trace's beat-`when` note, when the scene's own eligibility
     /// does not hold under the test's mocks (T1-13) — shown on a PASS too,
     /// because a scene the selector would never present passing its test is
@@ -455,6 +455,7 @@ impl TestResult {
             refusal: Some(lines),
             unresolved: Vec::new(),
             forced_unknown: Vec::new(),
+            completed_quests: BTreeSet::new(),
             notes: Vec::new(),
         }
     }
@@ -1166,6 +1167,19 @@ impl Shared {
 /// (`resolve_error`) is therefore a build-failing error here too — `Err(1)`,
 /// never folded into a per-test `TestResult` where a caller filtering on
 /// `passed` could mistake a broken manifest for a failing assertion.
+/// Run one scenario test in-process and report only a quest completion
+/// transition observed by its trace. Seeded `complete` status is not enough.
+pub(crate) fn run_test_for_constraint(root: &Path, script: &Path, quest: &str) -> bool {
+    let files = [script.to_path_buf()];
+    let Ok(shared) = Shared::for_tests(&files, Some(root), None) else {
+        return false;
+    };
+    let Ok(result) = run_one_test(script, None, Some(root), false, &shared, None) else {
+        return false;
+    };
+    result.completed_quests.contains(quest)
+}
+
 fn run_one_test(
     test_file: &Path,
     providers: Option<&Path>,
@@ -2216,6 +2230,16 @@ fn run_one_test(
         refusal: None,
         unresolved: report.unresolved.clone(),
         forced_unknown: report.forced_unknown.clone(),
+        completed_quests: report
+            .decisions
+            .iter()
+            .filter(|decision| {
+                decision.construct == "quest"
+                    && decision.outcome == "complete"
+                    && decision.guard.as_deref() != Some("seeded")
+            })
+            .map(|decision| decision.id.clone())
+            .collect(),
         notes: report
             .notes
             .iter()
@@ -2373,6 +2397,7 @@ fn run_one_play(
         refusal: None,
         unresolved: Vec::new(),
         forced_unknown: Vec::new(),
+        completed_quests: run.completed_quests,
         notes: run.notes,
     })
 }
@@ -3380,6 +3405,8 @@ fn render_json(
                         "expected": e.expected,
                         "actual": e.actual,
                         "passed": e.passed,
+                        "evidence": "witnessed",
+                        "script": r.test_file.display().to_string(),
                     });
                     // dsl 0.27.0 §4 (HW27-04): an `eligible` miss because
                     // the engine would not raise the beat's occasion.
@@ -3393,9 +3420,11 @@ fn render_json(
                 "test": r.test_file.display().to_string(),
                 "kind": r.kind,
                 "file": r.lute_file,
+                "script": r.test_file.display().to_string(),
                 "exit": r.exit,
                 "end": r.end,
                 "passed": r.passed,
+                "evidence": if r.passed { "witnessed" } else { "unknown" },
                 "refusal": r.refusal,
                 "autopicked": r.autopicked.clone(),
                 "expectations": expectations,

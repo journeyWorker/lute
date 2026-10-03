@@ -179,6 +179,8 @@ fn priority_outranks_index_order() {
     assert_eq!(candidate(&v, 2, "hub.idle")["eligible"], true);
     assert_eq!(candidate(&v, 2, "hub.welcome")["eligible"], true);
     assert_eq!(winner(&v, 2), Some("hub.welcome"));
+    assert_eq!(v["evidence"], "witnessed");
+    assert_eq!(candidate(&v, 2, "hub.idle")["evidence"], "witnessed");
 }
 
 #[test]

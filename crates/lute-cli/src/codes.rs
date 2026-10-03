@@ -439,6 +439,16 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl §4.1", "dsl §4.2"],
     },
     Code {
+        code: "E-CONSTRAINT-DECL",
+        summary: "A project constraint declaration is malformed: it has an unknown key or kind, misses a required field, names a bad node, or repeats an id.",
+        spec: &["dsl 0.34.0 §5.1"],
+    },
+    Code {
+        code: "E-CONSTRAINT-VIOLATED",
+        summary: "A project constraint is violated; the diagnostic carries the verdict's evidence, bounded scope when applicable, and causal spans.",
+        spec: &["dsl 0.34.0 §5.2"],
+    },
+    Code {
         code: "E-CONTENT-LINE-BRACKET",
         summary: "A content line's attributes are written with `[…]` instead of the required `{…}` (the same delimiter `::directive{…}` uses).",
         spec: &["dsl §2.1"],

@@ -180,8 +180,10 @@ fn calendar_evaluates_every_cell_with_winner_shadowed_and_holes() {
     );
     // `select: all` offers every eligible beat and has no winner.
     let board = result(&v, 0, "board", Some("place.inn"));
-    assert_eq!(ids(&board["presented"]), ["noteA", "noteB"]);
+    assert_eq!(board["evidence"], "bounded");
+    assert!(board["scope"].as_str().is_some_and(|s| s.contains("axes:")));
     assert!(board["winner"].is_null());
+    assert_eq!(ids(&board["presented"]), ["noteA", "noteB"]);
 
     // Night: the derived `present(ada, inn)` flips the inn; the dock is a hole.
     assert_eq!(result(&v, 1, "dayStart", None)["winner"], "town.memo");
@@ -205,6 +207,8 @@ fn calendar_evaluates_every_cell_with_winner_shadowed_and_holes() {
     let never = v["neverEligible"].as_array().unwrap();
     assert_eq!(never.len(), 1, "{never:?}");
     assert_eq!(never[0]["id"], "inn.again");
+    assert_eq!(never[0]["evidence"], "bounded");
+    assert!(never[0]["scope"].as_str().is_some_and(|s| s.contains("where:")));
     assert_eq!(
         never[0]["reasons"][0],
         "after: visited(\"inn.ada\") is not satisfied"
@@ -265,7 +269,8 @@ fn calendar_text_csv_and_usage_errors() {
         ),
         "{s}"
     );
-    assert!(s.contains("never eligible in any cell: 1\n  inn.again [scene, scenes/inn-again.lute] placeVisit@place.inn"), "{s}");
+    assert!(s.contains("never eligible in any cell [bounded: axes:"), "{s}");
+    assert!(s.contains("inn.again [scene, scenes/inn-again.lute] placeVisit@place.inn"), "{s}");
 
     let csv = lute(&[
         "calendar",
@@ -654,7 +659,7 @@ fn calendar_facts_grid_and_never_presented_list() {
         "{s}"
     );
     assert!(
-        s.contains("eligible but never presented in any cell: 2\n"),
+        s.contains("eligible but never presented in any cell [bounded: axes:"),
         "{s}"
     );
 

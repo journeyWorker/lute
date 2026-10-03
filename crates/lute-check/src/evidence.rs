@@ -90,6 +90,8 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
     ("E-CONN-PROFILE", DiagnosticClass::SourceError),
     ("E-CONN-UNKNOWN-NODE", DiagnosticClass::SourceError),
     ("E-CONN-UNREACHABLE", DiagnosticClass::Analysis { evidence: lute_core_span::Evidence::Proven }),
+    ("E-CONSTRAINT-DECL", DiagnosticClass::SourceError),
+    ("E-CONSTRAINT-VIOLATED", DiagnosticClass::Analysis { evidence: lute_core_span::Evidence::Bounded { scope: BOUNDED_CLOCK_SCOPE.to_string() } }),
     ("E-CONTENT-LINE-BRACKET", DiagnosticClass::SourceError),
     ("E-CONTENT-OUTSIDE-SHOT", DiagnosticClass::SourceError),
     ("E-DATALOG-FUNCTION", DiagnosticClass::SourceError),

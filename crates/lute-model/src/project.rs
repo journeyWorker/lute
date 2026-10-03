@@ -240,6 +240,19 @@ impl ProjectModel {
         } else {
             None
         };
+        let manifest = lute_manifest::project::load_project(&root).ok().flatten();
+        if let Some(config) = manifest.as_ref() {
+            let manifest_path = root.join("lute.project.yaml");
+            let text = std::fs::read_to_string(&manifest_path).unwrap_or_default();
+            let idx = lute_core_span::TextIndex::new(&text);
+            for item in &config.constraint_diags {
+                let mut diagnostic = resolution_diagnostic(&format!("{}: {}", item.code, item.message));
+                if let Some(span) = &item.span {
+                    diagnostic.span = lute_core_span::Span::from_bytes(&idx, span.start, span.end);
+                }
+                project_diagnostics.push((manifest_path.clone(), diagnostic));
+            }
+        }
         for document in &mut documents {
             for diagnostic in &mut document.check.diagnostics {
                 annotate_diagnostic(diagnostic);
@@ -249,7 +262,6 @@ impl ProjectModel {
             annotate_diagnostic(diagnostic);
         }
         let checks = documents.iter().map(|d| (d.path.clone(), d.check.clone())).collect();
-        let manifest = lute_manifest::project::load_project(&root).ok().flatten();
         let reconciled = ReconciledOutputs {
             checks,
             diagnostics: project_diagnostics.clone(),

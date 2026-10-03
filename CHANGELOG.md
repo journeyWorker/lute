@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.33.0`, the grammar and semantics the checker
+- **Language** — currently `0.34.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.33.0`) and gated on by consuming engines.
+  artifact (currently `0.34.0`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,38 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.34.0] - 2026-10-03
+
+This release is a clean-cut, breaking change in the **source, toolchain, and
+analysis/JSON contracts**. Project commands use one project model; analysis
+results expose explicit evidence levels; and manifests may declare constraints.
+
+### Added
+
+- The shared project model, `lute impact` dependency-closure query, and
+  `lute constraints` report for `reachable`, `completable`, `speaksOnlyWhen`,
+  and `noSingleSlotProgress` declarations.
+- Evidence levels `proven`, `witnessed`, `bounded`, `heuristic`, and `unknown`
+  across diagnostics and analysis command results, with bounded scopes,
+  witnesses, and counterexamples where applicable.
+
+### Changed
+
+- `check-project`, `scenario`, `beats`, `calendar`, `play`, and `test` share
+  one project snapshot; `check-project` reports constraint violations only.
+- Human bounded/heuristic/unknown wording is explicitly scoped, including
+  `W-OBJECTIVE-STRANDED` and `W-SLOT-CONTENTION`; “not found within bounds” is
+  no longer described as “no path exists”.
+- Project checks reuse prepared analysis state, reducing repeated loading and
+  fact-analysis work while preserving results.
+
+### Breaking
+
+- JSON diagnostics and command verdicts gain additive `evidence` fields and
+  bounded results gain `scope`; consumers must accept the new contract.
+- `lute.project.yaml` now validates `constraints:` declarations strictly.
+  There is no legacy loader or compatibility output mode.
 
 ## [0.33.0] - 2026-10-03
 

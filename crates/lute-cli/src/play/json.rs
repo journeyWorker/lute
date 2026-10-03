@@ -175,6 +175,10 @@ pub(super) fn render_json(play: &Playthrough) -> Json {
         }
     }
     root.insert(
+        "evidence".into(),
+        json!(if play.outcome.is_ok() { "witnessed" } else { "unknown" }),
+    );
+    root.insert(
         "start".into(),
         json!({ "quests": quests_json(&play.start) }),
     );
@@ -225,6 +229,15 @@ fn render_occasion_json(o: &mut serde_json::Map<String, Json>, body: &StepBody) 
     if let Some(why) = not_raised {
         o.insert("notRaised".into(), json!(why));
     }
+    let evidence = if candidates
+        .iter()
+        .any(|c| matches!(c.verdict, Verdict::Unknown(_)))
+    {
+        "unknown"
+    } else {
+        "witnessed"
+    };
+    o.insert("evidence".into(), json!(evidence));
     let cands: Vec<Json> = candidates
         .iter()
         .map(|c| {
@@ -236,12 +249,13 @@ fn render_occasion_json(o: &mut serde_json::Map<String, Json>, body: &StepBody) 
             if let Some(member) = &c.for_member {
                 m.insert("for".into(), json!(member));
             }
-            let (eligible, reason) = match &c.verdict {
-                Verdict::Eligible => (json!(true), None),
-                Verdict::Ineligible(r) => (json!(false), Some(r.to_string())),
-                Verdict::Unknown(d) => (Json::Null, Some(format!("when: unknown ({d})"))),
+            let (eligible, reason, evidence) = match &c.verdict {
+                Verdict::Eligible => (json!(true), None, "witnessed"),
+                Verdict::Ineligible(r) => (json!(false), Some(r.to_string()), "witnessed"),
+                Verdict::Unknown(d) => (Json::Null, Some(format!("when: unknown ({d})")), "unknown"),
             };
             m.insert("eligible".into(), eligible);
+            m.insert("evidence".into(), json!(evidence));
             if c.read {
                 m.insert("read".into(), json!(true));
             }
@@ -287,6 +301,7 @@ fn presented_json(candidates: &[Candidate], pr: &Presented) -> Json {
         "document": pr.document,
         "commands": pr.transcript,
         "stateDelta": state_delta(&pr.state_before, &pr.state_after),
+        "evidence": "witnessed",
     });
     if candidates.iter().any(|c| c.also && c.id == pr.id) {
         m["also"] = json!(true);

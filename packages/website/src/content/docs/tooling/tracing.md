@@ -501,3 +501,10 @@ Before walking, trace resolves the document exactly as `check` does and **refuse
 Since 0.6.1, trace also emits a warning (not a refusal) — `W-TRACE-MOCK-UNPRODUCIBLE` — for a `--fact`/mock-YAML fact whose relation no authored producer can ever assert (`producible()` judges it not producible): the supplied answer can never arise in reachable play, so a "complete" walk seeded with it proves nothing. A `reserved: true` or `open: engine`-argument relation is producible by definition and never warns.
 
 The judgement covers the whole project when trace can see one — `--project <dir>`, or a `lute.project.yaml` above the traced file: a relation is producible when a `facts:` seed, or an `::assert` in any document `check-project` does not prove unreachable, can produce it; a derived relation is judged through its rules. With no project the warning judges the traced document alone and says so (`judged against this document only; pass --project <dir> to count the asserts of the project's other documents`), so a clue asserted in a sibling scene is only "not producible" there.
+
+## Evidence in 0.34.0
+
+Trace decisions and JSON verdicts carry `evidence`: a concrete mock-driven
+decision is `witnessed`; an unresolved guard or incomplete walk is `unknown`.
+The suffix is `[unknown]` when shown to a human. A trace is one supplied walk,
+not proof of every possible path.

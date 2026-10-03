@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.33.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.34.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -127,7 +127,7 @@ fixtures. `command-staging` covers `background`, `music`, `sfx`, `vfx`, `sprite`
 `camera`, `cut`, `video`, and `barrier`; `command-lifecycle` covers `accept`,
 `beat`, and `retract`; `command-plugin` covers `plugin`. No requested kind is
 unsupported by the reference runner. The staging fixture uses a live
-`luteVersion: "0.33.0"` header, as do the lifecycle and plugin sources.
+`luteVersion: "0.34.0"` header, as do the lifecycle and plugin sources.
 
 ## Boundaries — what the reference runner deliberately does NOT implement
 

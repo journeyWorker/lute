@@ -1027,3 +1027,12 @@ for kind targets, `W-ENTRY-WRITE-REREAD`, the sharper `W-BEAT-PRIORITY-TIE`, and
 the draft
 [`0.27.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
 for `once: week`, `once: season:<name>`, and `spentBy`.
+
+## Evidence in 0.34.0
+
+`lute beats` adds `evidence` to each verdict in JSON. Proven checker
+decisions remain `proven`; conservative ladder guidance is `heuristic`, and
+clock-window findings are `bounded` with scope
+`declared clock windows; no path search`. The bounded
+`W-OBJECTIVE-STRANDED` and `W-SLOT-CONTENTION` messages describe only that
+scope, not a universal impossibility.

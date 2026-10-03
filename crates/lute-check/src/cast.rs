@@ -191,6 +191,36 @@ use crate::fact_env::{FactEnv, FactScope};
 use crate::match_check::DomainInfo;
 use crate::rel_schema::RelVocab;
 
+/// Conservative public guard-implication decider for project constraints.
+/// Exact guards are sufficient proof; an exact negated guard proves the
+/// condition false. Conjunction is represented by one entry per enclosing
+/// guard, so any conjunct can establish either implication.
+pub fn decide_guard_implication(guards: &[&str], target: &str) -> Option<bool> {
+    let target = target.trim();
+    if target == "true" {
+        return Some(true);
+    }
+    if target == "false" {
+        return Some(false);
+    }
+    if guards.iter().any(|guard| guard.trim() == target) {
+        return Some(true);
+    }
+    let target_negation = negate_guard(target);
+    if guards.iter().any(|guard| guard.trim() == target_negation) {
+        return Some(false);
+    }
+    None
+}
+
+fn negate_guard(raw: &str) -> String {
+    let raw = raw.trim();
+    if let Some(inner) = raw.strip_prefix('!') {
+        inner.trim().to_string()
+    } else {
+        format!("!{raw}")
+    }
+}
 /// `W-CAST-ABSENT` (dsl 0.24.0 §4): a content line by a speaker whose cast
 /// entry declares `present:`, where the conjunction of the line's enclosing
 /// guards does not imply that condition.

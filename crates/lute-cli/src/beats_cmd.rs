@@ -196,6 +196,23 @@ impl Cells<'_, '_> {
     }
 }
 
+fn evidence_json(evidence: Option<&lute_core_span::Evidence>) -> Option<Json> {
+    let evidence = evidence?;
+    let mut obj = serde_json::Map::new();
+    let value = match evidence {
+        lute_core_span::Evidence::Proven => "proven",
+        lute_core_span::Evidence::Witnessed => "witnessed",
+        lute_core_span::Evidence::Bounded { scope } => {
+            obj.insert("scope".into(), json!(scope));
+            "bounded"
+        }
+        lute_core_span::Evidence::Heuristic => "heuristic",
+        lute_core_span::Evidence::Unknown => "unknown",
+    };
+    obj.insert("evidence".into(), json!(value));
+    Some(Json::Object(obj))
+}
+
 fn kind_label(kind: ProjectBeatKind) -> &'static str {
     match kind {
         ProjectBeatKind::Scene => "scene",
@@ -203,7 +220,6 @@ fn kind_label(kind: ProjectBeatKind) -> &'static str {
         ProjectBeatKind::Bundle => "bundle",
     }
 }
-
 /// `when` as one line (a multi-line frontmatter scalar folds to spaces).
 fn one_line(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -460,18 +476,20 @@ fn verdict_words(
     let mut words: Vec<String> = words
         .into_iter()
         .map(|w| match (w, shadowed_by) {
-            ("shadowed", Some(by)) => format!("shadowed by {}", by.join(" / ")),
+            ("shadowed", Some(by)) => format!("shadowed by {} [heuristic]", by.join(" / ")),
             _ => w.to_string(),
         })
         .collect();
-    if let Some(by) = shadowed_by.filter(|_| !words.iter().any(|w| w.starts_with("shadowed"))) {
-        words.insert(0, format!("shadowed by {}", by.join(" / ")));
+    if let Some(by) =
+        shadowed_by.filter(|_| !words.iter().any(|w| w.starts_with("shadowed")))
+    {
+        words.insert(0, format!("shadowed by {} [heuristic]", by.join(" / ")));
     }
     if !never_for.is_empty() {
         words.insert(0, format!("never for {}", never_for.join(" / ")));
     }
     if let Some(id) = covered {
-        words.push(format!("covered by {id}"));
+        words.push(format!("covered by {id} [heuristic]"));
     }
     if words.is_empty() {
         "-".to_string()
@@ -664,10 +682,12 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                     }
                     if let Some(id) = covered[i] {
                         m.insert("coveredBy".into(), json!(id));
+                        m.insert("coveredByEvidence".into(), json!("heuristic"));
                     }
                     // dsl 0.27.0 (T3-9): this ladder's own verdict.
                     if let Some(by) = cells.shadowed_by(l, i) {
                         m.insert("shadowedBy".into(), json!(by));
+                        m.insert("shadowedByEvidence".into(), json!("heuristic"));
                     }
                     // dsl 0.28.0: the ladder's targets its `when` never
                     // holds for.
@@ -681,11 +701,16 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                             verdicts[i]
                                 .iter()
                                 .map(|d| {
-                                    json!({
-                                        "code": d.code,
-                                        "severity": crate::severity_str(d.severity),
-                                        "message": d.text(),
-                                    })
+                                    let mut v = serde_json::Map::new();
+                                    v.insert("code".into(), json!(d.code));
+                                    v.insert("severity".into(), json!(crate::severity_str(d.severity)));
+                                    v.insert("message".into(), json!(d.text()));
+                                    if let Some(fields) = evidence_json(d.evidence.as_ref()) {
+                                        if let Json::Object(fields) = fields {
+                                            v.extend(fields);
+                                        }
+                                    }
+                                    Json::Object(v)
                                 })
                                 .collect(),
                         ),

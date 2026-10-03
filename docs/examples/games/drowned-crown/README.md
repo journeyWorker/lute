@@ -70,6 +70,18 @@ lute beats docs/examples/games/drowned-crown --occasion talk --target npc.sefa
 lute calendar docs/examples/games/drowned-crown --axis user.runs=1..6 --occasion talk --target npc.tavi
 ```
 
+The project also demonstrates the 0.34.0 analysis surfaces:
+
+```sh
+lute impact docs/examples/games/drowned-crown fact:felled(regent)
+lute constraints docs/examples/games/drowned-crown
+```
+
+`impact` reports the transitive reverse-dependency closure with reason chains;
+its `evidence` values distinguish proven links from heuristic overlap. The
+constraints report lists every manifest invariant, including `unknown`
+verdicts.
+
 ## Origin
 
 Written as a dogfood project for Lute 0.23 by an agent persona (round 3) and carried to 0.29; it

@@ -1,8 +1,10 @@
 # Lute current-rules handbook
 
-This is the normative, current-rules view of Lute as of 0.33.0. It includes
+This is the normative, current-rules view of Lute as of 0.34.0. It includes
 the phase-2 domain-module and semantic-negotiation contract; the 0.32
 execution-IR rules remain the base contract and are linked where relevant.
+The 0.34 project-model, evidence, impact, and constraints documentation is
+marked as the upcoming contract until the release stamps move.
 This handbook is intentionally not a release history. The versioned
 [scenario DSL proposals](../proposals/scenario-dsl/) explain why and when a
 rule was introduced; each page links only to proposal files present in this
@@ -27,4 +29,14 @@ Lute source plus project declarations are authoritative. Compilation lowers chec
 
 Conditions use the closed standard-CEL profile in [DSL 0.32 §1](../proposals/scenario-dsl/0.32.0.md#1-conditions-are-standard-cel). A condition error is not satisfied; an erroneous `::set` halts without a partial write. State owned by the engine is readable but not content-writable.
 
-**Genre recommendation, not execution contract:** a project may recommend that only significant actions consume time (the 0.31 convention). The engine contract is instead that the host advances the clock according to declared `advance`/`advances` operations and settles at the documented points.
+## Genre guidance
+
+Genre guidance is advice for authors, not an engine obligation. A project may
+recommend that only significant actions consume time (the 0.31 convention),
+but a checker must not turn that recommendation into a runtime guarantee.
+
+## Execution contract
+
+The host advances the clock according to declared `advance`/`advances`
+operations and settles at the documented points. A checker may report schedule
+consequences, but the host owns time advancement.

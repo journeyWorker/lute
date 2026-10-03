@@ -5,7 +5,7 @@
 ## Constructs and rules
 
 - **Clock declaration/derived paths:** schema `clock.day`, `slot`, `week`, `raise`, and finite bounds define engine-owned movement. `clock.index`, weekday/label and `clock.ended` are read-only derived paths.
-- **Advance/calendar:** play `advance` and beat `advances` move the clock; every crossed position settles quests and raises declared occasions at explicit stops. `lute calendar` is bounded analysis, not runtime truth.
+- **Advance/calendar:** play `advance` and beat `advances` move the clock; every crossed position settles quests and raises declared occasions at explicit stops. The host advances time; `lute calendar` is bounded analysis, not runtime truth.
 - **Run/prior mirrors:** `newRun` resets run-tier state/facts/quests, applies queued next-run accepts, then settles. `prev.run.*` and `prev.season.*` expose the prior window and are read-only.
 - **Seasons:** `live` false→true opens a season, snapshots prior values, resets season state/cadence and season-tier quests; truth staying true does not reopen it.
 - **State tiers/reset:** scene resets per presentation; run/user/app persist by their scopes; quest and season resets follow declarations and preserve quest instance counters.

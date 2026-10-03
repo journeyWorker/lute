@@ -1543,8 +1543,21 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
             .map(|(&i, s)| (&p.index.beats[i], s))
             .collect()
     };
+    let scope = format!(
+        "axes: {}; product: {} cells × {} columns; seed: {}; where: {}",
+        resolved
+            .iter()
+            .map(|a| a.path.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
+        cells.len(),
+        columns.len(),
+        origin.describe(),
+        args.where_.unwrap_or("none"),
+    );
     let report = Report {
         from: origin.describe(),
+        scope,
         pruned,
         axes: &resolved,
         columns: &columns,
@@ -1573,6 +1586,8 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
 struct Report<'a> {
     /// Where every cell starts ([`Origin::describe`]).
     from: String,
+    /// Finite axes/product, replay seed, and optional `--where` filter.
+    scope: String,
     /// Cells `--where` dropped.
     pruned: usize,
     axes: &'a [Axis],
@@ -2136,6 +2151,7 @@ fn render_text(dir: &Path, r: &Report<'_>) -> String {
             "lost to ",
         ),
     ] {
+        let title = format!("{title} [bounded: {}]", r.scope);
         let _ = write!(out, "\n{title}: ");
         if list.is_empty() {
             out.push_str("none\n");
@@ -2189,8 +2205,11 @@ fn render_json(r: &Report<'_>) -> Json {
         }
         m
     };
+    let scope = r.scope.clone();
     let mut out = json!({
         "from": r.from,
+        "scope": r.scope,
+        "evidence": "bounded",
         "pruned": r.pruned,
         "axes": r.axes.iter().map(|a| json!({
             "path": a.path,
@@ -2221,6 +2240,13 @@ fn render_json(r: &Report<'_>) -> Json {
                 r.insert("winner".into(), json!(o.winner));
                 r.insert("presented".into(), json!(o.presented));
                 r.insert("shadowed".into(), json!(o.shadowed));
+                if o.undecided {
+                    r.insert("evidence".into(), json!("unknown"));
+                } else {
+                    r.insert("evidence".into(), json!("bounded"));
+                    r.insert("witnessed".into(), json!(true));
+                    r.insert("scope".into(), json!(scope.clone()));
+                }
                 if !o.unknown.is_empty() {
                     r.insert("unknown".into(), Json::Array(o.unknown.iter().map(|(id, why)| {
                         json!({ "id": id, "reason": why })
@@ -2247,11 +2273,15 @@ fn render_json(r: &Report<'_>) -> Json {
         "neverEligible": r.never_eligible.iter().map(|(b, s)| {
             let mut m = beat_json(b);
             m.insert("reasons".into(), json!(s.reasons));
+            m.insert("evidence".into(), json!("bounded"));
+            m.insert("scope".into(), json!(scope.clone()));
             Json::Object(m)
         }).collect::<Vec<_>>(),
         "neverPresented": r.never_presented.iter().map(|(b, s)| {
             let mut m = beat_json(b);
             m.insert("beatenBy".into(), json!(s.beaten_by));
+            m.insert("evidence".into(), json!("bounded"));
+            m.insert("scope".into(), json!(scope.clone()));
             Json::Object(m)
         }).collect::<Vec<_>>(),
     });

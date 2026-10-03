@@ -24,6 +24,7 @@ use crate::resolve::{
 };
 use crate::snapshot::CapabilitySnapshot;
 use crate::types::Literal;
+use crate::constraints::{parse_constraints, ConstraintDecl};
 
 /// A loaded `lute.project.yaml`: the resolved profile graph plus the absolute
 /// plugins directory the registry loads from.
@@ -58,6 +59,8 @@ pub struct ProjectConfig {
     /// manifest supplies none, which is every manifest written before this
     /// release.
     pub defaults: MetaDefaults,
+    /// Source locations retained from the manifest's `chapters:` YAML.
+    pub chapter_origins: Vec<ChapterOrigin>,
     /// `E-DEFAULTS-KEY` diagnostics raised while resolving `defaults:`. Held
     /// on the config rather than failing the load — same treatment as
     /// `identity_diags`, for the same reason: a bad `defaults:` must not
@@ -77,6 +80,20 @@ pub struct ProjectConfig {
     /// located. The key is dropped, so the rest of the manifest still loads;
     /// the manifest is invalid.
     pub key_diags: Vec<ResolveDiag>,
+    /// Typed project-level constraints and declaration diagnostics.
+    pub constraints: Vec<ConstraintDecl>,
+    pub constraint_diags: Vec<ResolveDiag>,
+}
+
+/// Source locations for one manifest `chapters:` chain.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChapterOrigin {
+    /// The manifest file containing this chain.
+    pub file: PathBuf,
+    /// The chain's `on:` value, when it has one.
+    pub on: Option<lute_core_span::Span>,
+    /// Each accepted scene id and its YAML span.
+    pub scenes: BTreeMap<String, lute_core_span::Span>,
 }
 
 /// A resolution diagnostic surfaced to the caller (folded into the check
@@ -120,7 +137,7 @@ pub const E_MANIFEST: &str = "E-MANIFEST";
 
 /// The top-level keys of `lute.project.yaml`. `sequence` is retired
 /// (`chapters:`) and refused by [`resolve_chapters`], not here.
-pub const MANIFEST_KEYS: [&str; 9] = [
+pub const MANIFEST_KEYS: [&str; 10] = [
     "defaultProfile",
     "profiles",
     "pluginsDir",
@@ -130,6 +147,7 @@ pub const MANIFEST_KEYS: [&str; 9] = [
     "chapters",
     "permissions",
     "sequence",
+    "constraints",
 ];
 
 /// The keys of one `profiles:` entry.
@@ -178,6 +196,8 @@ struct RawProject {
     /// the new spelling.
     #[serde(default)]
     sequence: Option<serde_yaml::Value>,
+    #[serde(default)]
+    constraints: Option<serde_yaml::Value>,
     #[serde(default)]
     permissions: PermissionSet,
 }
@@ -1260,6 +1280,40 @@ fn drop_unknown_keys(
     }
 }
 
+fn chapter_origins(
+    text: &str,
+    raw: Option<&serde_yaml::Value>,
+    path: &Path,
+) -> Vec<ChapterOrigin> {
+    let Some(serde_yaml::Value::Sequence(items)) = raw else {
+        return Vec::new();
+    };
+    let file = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    use crate::yaml_text::{yaml_span, YamlStep::{Item, Key, Value}};
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let on = item.get("on").and_then(serde_yaml::Value::as_str)
+                .and_then(|_| yaml_span(text, &[Key("chapters"), Item(i), Key("on"), Value]));
+            let mut scenes = BTreeMap::new();
+            if let Some(values) = item.get("scenes").and_then(serde_yaml::Value::as_sequence) {
+                for (j, value) in values.iter().enumerate() {
+                    let Some(value) = value.as_str() else { continue };
+                    let Some(span) = yaml_span(text, &[Key("chapters"), Item(i), Key("scenes"), Item(j), Value]) else { continue };
+                    scenes.entry(value.to_string()).or_insert(span);
+                }
+            }
+            ChapterOrigin {
+                file: file.clone(),
+                on,
+                scenes,
+            }
+        })
+        .collect()
+}
+
+
 /// Read `<project_dir>/lute.project.yaml` into a [`ProjectConfig`].
 ///
 /// Distinguishes an absent config from a broken one (plugin §11): a missing
@@ -1403,7 +1457,9 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
     let catalog_dir = project_dir.join(raw.catalog_dir.as_deref().unwrap_or("catalog/"));
     let (identity, identity_diags) = resolve_identity(raw.identity, &locate);
     let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults, &locate);
+    let chapter_origins = chapter_origins(&text, raw.chapters.as_ref(), &path);
     let (chapters, chapter_diags) = resolve_chapters(raw.chapters, raw.sequence);
+    let (constraints, constraint_diags) = parse_constraints(raw.constraints.as_ref(), &text);
     let mut defaults = defaults.with_chapters(chapters);
     if defaults.get("questTier").is_some() {
         if let Some(r) = locate(&["defaults", "questTier"]) {
@@ -1413,7 +1469,6 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
                 Some((file, lute_core_span::Span::from_bytes(&idx, r.start, r.end)));
         }
     }
-
     Ok(Some(ProjectConfig {
         graph,
         permissions: raw.permissions,
@@ -1423,9 +1478,12 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
         identity,
         identity_diags,
         defaults,
+        chapter_origins,
         defaults_diags,
         chapter_diags,
         key_diags,
+        constraints,
+        constraint_diags,
     }))
 }
 
@@ -1573,4 +1631,30 @@ pub fn resolve_document_snapshot(
     snapshot.restrict_permissions(&permissions);
 
     (snapshot, diags)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chapter_origins_anchor_flow_style_values() {
+        let text = "defaultProfile: core\nprofiles: {core: {plugins: {}}}\nchapters: [{on: open, scenes: [first, second]}]\n";
+        let value: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
+        let origins = chapter_origins(
+            text,
+            value.get("chapters"),
+            Path::new("lute.project.yaml"),
+        );
+        assert_eq!(origins.len(), 1);
+        let on = origins[0].on.expect("flow `on` span");
+        assert_eq!(&text[on.byte_start..on.byte_end], "open");
+        assert_eq!(
+            &text[origins[0].scenes["first"].byte_start..origins[0].scenes["first"].byte_end],
+            "first"
+        );
+        assert_eq!(
+            &text[origins[0].scenes["second"].byte_start..origins[0].scenes["second"].byte_end],
+            "second"
+        );
+    }
 }
