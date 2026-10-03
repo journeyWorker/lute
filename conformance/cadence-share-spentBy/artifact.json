@@ -1,0 +1,65 @@
+{
+  "kind": "lore",
+  "lute": "0.33.0",
+  "irVersion": "0.33.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.knowledge.facts/1",
+    "lute.lore/1",
+    "lute.occasions.selection/1",
+    "lute.time.cadence/1"
+  ],
+  "meta": {
+    "id": "cadence"
+  },
+  "state": [],
+  "entities": [
+    {
+      "name": "who",
+      "members": [
+        "hero"
+      ],
+      "open": false
+    }
+  ],
+  "relations": [
+    {
+      "name": "seen",
+      "args": [
+        "who"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "beat",
+      "addr": "001-0100",
+      "id": "cadence.daily",
+      "on": "talk",
+      "target": "npc.hero",
+      "title": "Daily line",
+      "titleLineId": "cadence.daily.title",
+      "priority": 0,
+      "once": "run",
+      "share": "dailyLine",
+      "body": "001-0200"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Once each day.",
+      "lineId": "cadence.daily.narrator_0010"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

@@ -9,7 +9,7 @@ use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::project::load_project;
 use rayon::prelude::*;
 
-use crate::cmd_check::{compile_gate_diags, merge_gate_diags};
+use crate::cmd_check::{compile_gate_diags, engine_semantic_diags, merge_gate_diags};
 use crate::compile_all;
 use crate::manifests;
 use crate::mockcheck;
@@ -35,7 +35,12 @@ pub(crate) fn run_check_project(
     providers: Option<&Path>,
     policy: &DenyPolicy,
     wip: bool,
+    _engine: Option<&Path>,
 ) -> ExitCode {
+    let matrix = match crate::EngineMatrix::load(_engine) {
+        Ok(m) => m,
+        Err(e) => { eprintln!("lute check-project: {e}"); return ExitCode::from(2); }
+    };
     // 0.10.0 §7 (D-D): validate EVERY manifest under the tree, once each,
     // before any document work. Anchored at the manifest's own path, which
     // the per-document `lute:` replay never carried.
@@ -65,7 +70,7 @@ pub(crate) fn run_check_project(
     let (mut file_results, mut project_diags, _nodes_by_path, _) =
         reconcile_collected(file_results, &by_root, wip);
 
-    project_compile_pass(&mut file_results, &mut project_diags, &inputs);
+    project_compile_pass(&mut file_results, &mut project_diags, &inputs, _engine.is_some().then_some(&matrix));
     fold_inherited_version_stale(&mut file_results, &mut project_diags, &inputs);
 
     // Round-5 T3-4, then dsl 0.10.0 §9 rule 2.
@@ -415,6 +420,7 @@ pub(crate) fn project_compile_pass(
     file_results: &mut [(PathBuf, lute_check::CheckResult)],
     project_diags: &mut Vec<(PathBuf, Diagnostic)>,
     inputs: &BTreeMap<PathBuf, (PathBuf, CheckInput)>,
+    matrix: Option<&crate::EngineMatrix>,
 ) {
     #[derive(Default)]
     struct RootBuild {
@@ -467,7 +473,7 @@ pub(crate) fn project_compile_pass(
     // applied in file order so artifacts and merged diagnostics are exactly
     // the sequential ones.
     let results: &[(PathBuf, lute_check::CheckResult)] = file_results;
-    let outcomes: Vec<Result<lute_compile::ExecutionIr, Vec<Diagnostic>>> = jobs
+    let outcomes: Vec<Result<(lute_compile::ExecutionIr, lute_compile::SourceMap), Vec<Diagnostic>>> = jobs
         .par_iter()
         .map(|&(i, root, _, component)| {
             let (path, result) = &results[i];
@@ -475,17 +481,20 @@ pub(crate) fn project_compile_pass(
             if component {
                 Err(compile_gate_diags(input))
             } else {
-                lute_compile::compile_with_check(input, result.clone(), &identities[root])
+                lute_compile::compile_mapped(input, result.clone(), &identities[root])
             }
         })
         .collect();
     for ((i, root, rel, _), outcome) in jobs.into_iter().zip(outcomes) {
         match outcome {
-            Ok(artifact) => roots
-                .get_mut(root)
-                .expect("every job's root was entered above")
-                .artifacts
-                .push((rel, artifact)),
+            Ok((artifact, source_map)) => {
+                if let Some(matrix) = matrix {
+                    let input = &inputs[&file_results[i].0].1;
+                    let diags = engine_semantic_diags(input, &artifact, &source_map, matrix);
+                    merge_gate_diags(&mut file_results[i].1, diags);
+                }
+                roots.get_mut(root).expect("every job's root was entered above").artifacts.push((rel, artifact))
+            }
             Err(diags) => merge_gate_diags(&mut file_results[i].1, diags),
         }
     }

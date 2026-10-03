@@ -1,0 +1,27 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "kind": "camera"
+    },
+    {
+      "addr": "001-0200",
+      "at": 1.0,
+      "kind": "barrier",
+      "note": "timeline join — no real clock simulated",
+      "timeline": 1
+    },
+    {
+      "addr": "001-0300",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "Timed."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.33",
+  "kind": "scene",
+  "quests": {},
+  "state": {}
+}

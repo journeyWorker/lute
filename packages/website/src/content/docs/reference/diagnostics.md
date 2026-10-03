@@ -174,6 +174,12 @@ The project's `chapters:` is malformed — not a list of `{ on, scenes }` chains
 
 Spec: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
+### E-CHECK-ENGINE-SEMANTICS
+
+A construct requires a semantic capability the selected engine does not support.
+
+Spec: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
+
 ### E-CHOICE-DUP
 
 A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub.
@@ -446,11 +452,29 @@ Two `<track>`s in a `<timeline>` share the same track key.
 
 Two voiced lines with different text compile to the same `voiceKey`, so one recording would voice both — usually because the `voiceKey` template lacks `{prefix}` and collides across documents.
 
+### E-ENGINE-IR-VERSION
+
+The engine matrix and execution artifact are outside the accepted IR version line.
+
+Spec: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md), [dsl 0.33.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
+
+### E-ENGINE-MATRIX
+
+The engine capability matrix is unreadable or malformed.
+
+Spec: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
+
 ### E-ENGINE-OWNED-WRITE
 
 An `::set` writes a state path declared `owner: engine`, though the engine writes such a path and content may only read it.
 
 Spec: [dsl 0.22.0 §1.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
+
+### E-ENGINE-SEMANTICS
+
+The selected engine does not support a semantic capability required by the artifact.
+
+Spec: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
 
 ### E-ENTITY-KIND-CLASH
 
@@ -1119,6 +1143,12 @@ Spec: [dsl 0.32.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead.
 
 Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+
+### E-SEMANTICS-UNKNOWN
+
+An execution artifact or engine matrix names an unknown semantic id.
+
+Spec: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
 
 ### E-SET-OP-TYPE
 

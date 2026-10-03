@@ -2,10 +2,10 @@
 //! structural invariants + byte determinism.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use lute_check::{CheckInput, Mode};
-use lute_compile::compile;
+use lute_compile::{compile, field_is_registered};
 
 /// Assemble the CheckInput exactly as `lute compile` (Task 13) does.
 fn input_for(path: &str, project_dir: Option<&str>) -> CheckInput {
@@ -25,7 +25,17 @@ fn input_for(path: &str, project_dir: Option<&str>) -> CheckInput {
         &meta0.plugins,
     );
     let base = file.parent().unwrap_or_else(|| Path::new("."));
-    let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
+    let defaults = project
+        .as_ref()
+        .map(|p| p.defaults.clone())
+        .unwrap_or_default();
+    let mut uses = meta0.uses.clone();
+    if uses.is_empty() {
+        if let Some(values) = defaults.get("uses").and_then(serde_yaml::Value::as_sequence) {
+            uses.extend(values.iter().filter_map(serde_yaml::Value::as_str).map(str::to_owned));
+        }
+    }
+    let imports = lute_check::resolve_imports(base, &uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
     CheckInput {
         text,
@@ -35,7 +45,7 @@ fn input_for(path: &str, project_dir: Option<&str>) -> CheckInput {
         mode: Mode::Ci,
         imports,
         components,
-        defaults: Default::default(),
+        defaults,
     }
 }
 
@@ -549,4 +559,79 @@ fn assert_relation_missing_from_schema_fails_the_checker() {
         caught.is_err(),
         "an assert relation absent from the emitted schema must fail the checker"
     );
+}
+fn semantic_field_coverage_walk(value: &serde_json::Value, path: &str) {
+    let Some(object) = value.as_object() else {
+        if let Some(items) = value.as_array() {
+            for (i, item) in items.iter().enumerate() {
+                semantic_field_coverage_walk(item, &format!("{path}[{i}]"));
+            }
+        }
+        return;
+    };
+    for (field, child) in object {
+        assert!(
+            field_is_registered(field),
+            "E-SEMANTICS-FIELD: serialized field `{field}` at {path} has no registry field-table row"
+        );
+        if matches!(field.as_str(), "extra" | "plugin" | "fields" | "texts" | "labels" | "labelForms") {
+            continue;
+        }
+        semantic_field_coverage_walk(child, &format!("{path}.{field}"));
+    }
+}
+
+fn source_files(root: &Path, out: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(root).expect("corpus directory readable") {
+        let path = entry.expect("directory entry readable").path();
+        if path.is_dir() {
+            source_files(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "lute")
+            && !path.file_name().is_some_and(|name| name.to_string_lossy().ends_with(".component.lute"))
+        {
+            out.push(path);
+        }
+    }
+}
+
+fn project_root(path: &Path) -> Option<PathBuf> {
+    let mut dir = path.parent();
+    while let Some(candidate) = dir {
+        if candidate.join("lute.project.yaml").is_file() {
+            return Some(candidate.to_path_buf());
+        }
+        dir = candidate.parent();
+    }
+    None
+}
+
+#[test]
+fn every_corpus_serialized_field_is_registry_covered() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files = Vec::new();
+    source_files(&root.join("docs/examples"), &mut files);
+    source_files(&root.join("conformance"), &mut files);
+    // CorpusImpl is still recording the new 0.33 fixtures; only recorded
+    // conformance directories participate until that slice lands its artifacts.
+    files.retain(|path| {
+        !path.starts_with(root.join("conformance"))
+            || path.parent().is_some_and(|dir| dir.join("artifact.json").is_file())
+    });
+    files.retain(|path| !path.starts_with(root.join("conformance/invalid")));
+    files.sort();
+    assert!(!files.is_empty(), "semantic corpus must not be empty");
+
+    for path in files {
+        let project = project_root(&path);
+        let path_text = path.to_string_lossy().into_owned();
+        let project_text = project.as_ref().map(|p| p.to_string_lossy().into_owned());
+        let input = input_for(&path_text, project_text.as_deref());
+        let artifact = match compile(&input) {
+            Ok(artifact) => artifact,
+            Err(_diags) if path.starts_with(root.join("docs/examples")) => continue,
+            Err(diags) => panic!("semantic corpus source {path_text} failed to compile: {diags:?}"),
+        };
+        let json = serde_json::to_value(artifact).expect("IR serializes");
+        semantic_field_coverage_walk(&json, &path_text);
+    }
 }

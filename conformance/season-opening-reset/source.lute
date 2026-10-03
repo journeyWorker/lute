@@ -1,0 +1,10 @@
+---
+kind: quest
+luteVersion: "0.33.0"
+uses: ./schema.yaml
+title: Season opening reset
+---
+
+<quest id="seasonQ" title="Season quest" tier="season:ashfall" rearm="run.rearm">
+  <objective id="done" done="run.atGoal == true" />
+</quest>

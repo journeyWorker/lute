@@ -1,0 +1,113 @@
+{
+  "kind": "lore",
+  "lute": "0.33.0",
+  "irVersion": "0.33.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.knowledge.facts/1",
+    "lute.lore/1",
+    "lute.occasions.gates/1",
+    "lute.occasions.selection/1",
+    "lute.quest.lifecycle/1",
+    "lute.time.cadence/1"
+  ],
+  "meta": {
+    "id": "lifecycle"
+  },
+  "state": [
+    {
+      "path": "run.ended",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "entities": [
+    {
+      "name": "item",
+      "members": [
+        "map",
+        "key"
+      ],
+      "open": false
+    },
+    {
+      "name": "who",
+      "members": [
+        "mira",
+        "jon"
+      ],
+      "open": false
+    }
+  ],
+  "relations": [
+    {
+      "name": "seen",
+      "args": [
+        "who",
+        "item"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "beat",
+      "addr": "001-0100",
+      "id": "lifecycle.signal",
+      "on": "talk",
+      "target": "npc.hero",
+      "title": "Signal",
+      "titleLineId": "lifecycle.signal.title",
+      "priority": 0,
+      "once": "run",
+      "body": "001-0200"
+    },
+    {
+      "kind": "accept",
+      "addr": "001-0200",
+      "quest": "signalQuest"
+    },
+    {
+      "kind": "retract",
+      "addr": "001-0300",
+      "relation": "seen",
+      "args": [
+        "mira",
+        "map"
+      ]
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The signal is received.",
+      "lineId": "lifecycle.signal.narrator_0010"
+    }
+  ],
+  "terminal": {
+    "cel": "run.ended == true",
+    "expr": {
+      "op": "==",
+      "l": {
+        "path": "run.ended"
+      },
+      "r": {
+        "bool": true
+      }
+    }
+  },
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

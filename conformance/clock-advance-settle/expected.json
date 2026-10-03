@@ -1,0 +1,28 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "eligible": true,
+      "id": "clockAdvance.advance",
+      "kind": "beat"
+    },
+    {
+      "addr": "001-0200",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "A day passes."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.33",
+  "kind": "lore",
+  "quests": {},
+  "state": {
+    "clock.day": 1,
+    "clock.ended": false,
+    "clock.index": 0,
+    "run.atGoal": true,
+    "run.day": 1
+  }
+}

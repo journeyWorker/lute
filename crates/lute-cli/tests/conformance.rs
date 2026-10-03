@@ -323,6 +323,15 @@ fn every_fixture_carries_live_stamps() {
                  per conformance/README.md",
             ));
         }
+        let recorded_semantics = recorded["requiredSemantics"].clone();
+        let fresh_semantics = fresh["requiredSemantics"].clone();
+        if recorded_semantics != fresh_semantics {
+            failures.push(format!(
+                "{name}: recorded `requiredSemantics` {recorded_semantics} \
+                 differs from `semantics::collect` on the recompiled source \
+                 ({fresh_semantics}); update the fixture and README inventory",
+            ));
+        }
         let _ = std::fs::remove_dir_all(&scratch);
     }
 
@@ -385,6 +394,27 @@ fn grant_identity_fields_are_recorded() {
     }
 }
 
+/// Engine-matrix invalid fixtures are intentionally not replay fixtures: they
+/// exercise the loader gate before a transcript can be produced.
+#[test]
+fn invalid_engine_matrices_are_rejected() {
+    let root = corpus_dir().join("invalid");
+    let cases = [
+        ("missing-required-id", root.join("../staging-all-directives/artifact.json"), "E-ENGINE-SEMANTICS"),
+        ("unsupported-ir-line", root.join("stale-minor/artifact.json"), "E-ENGINE-IR-VERSION"),
+        ("malformed-matrix", root.join("stale-minor/artifact.json"), "E-ENGINE-MATRIX"),
+    ];
+    for (name, artifact, diagnostic) in cases {
+        let matrix = root.join(name).join("engine.yaml");
+        let out = Command::new(BIN)
+            .args(["run", &path_arg(&artifact), "--engine", &path_arg(&matrix), "--json"])
+            .output()
+            .unwrap_or_else(|e| panic!("{name}: cannot spawn {BIN}: {e}"));
+        assert_eq!(out.status.code(), Some(2), "{name}: stderr: {}", String::from_utf8_lossy(&out.stderr));
+        assert!(String::from_utf8_lossy(&out.stderr).contains(diagnostic), "{name}: stderr: {}", String::from_utf8_lossy(&out.stderr));
+    }
+}
+
 /// The major.minor line of a full `x.y.z` version — what the `--json`
 /// transcript's `irVersion` records.
 fn ir_line(full: &str) -> String {
@@ -411,6 +441,7 @@ fn source_lute_version(src: &str) -> Option<String> {
                 .to_string()
         })
 }
+
 
 fn path_arg(p: &Path) -> String {
     p.to_str()

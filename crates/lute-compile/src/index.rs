@@ -36,7 +36,7 @@
 //! tuple/rule from two documents is one fact, deduplicated (spec §4.1: facts and
 //! rules always UNION, never dup-checked).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
@@ -178,6 +178,8 @@ impl IndexBeat {
 pub struct ProjectIndex {
     pub ir_version: String,
     pub capability_version: String,
+    /// Sorted union of the compiler-derived capabilities of every artifact.
+    pub required_semantics: Vec<String>,
     pub documents: Vec<IndexDocument>,
     pub entities: Vec<EntityKindEntry>,
     pub enums: Vec<EnumEntry>,
@@ -382,9 +384,11 @@ pub fn build_index(
     let mut seed_facts: BTreeMap<(String, Vec<String>), SeedFactEntry> = BTreeMap::new();
     let mut outside_run: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut rules: BTreeMap<(String, String), RuleEntry> = BTreeMap::new();
+    let mut required_semantics: BTreeSet<String> = BTreeSet::new();
 
     for d in docs {
         let a = d.artifact;
+        required_semantics.extend(a.required_semantics.iter().cloned());
         for e in &a.entities {
             entities.push(&e.name, e, &d.path, &mut errors);
         }
@@ -536,6 +540,7 @@ pub fn build_index(
     Ok(ProjectIndex {
         ir_version: ir_version.to_string(),
         capability_version: capability.map(|(_, v)| v.to_string()).unwrap_or_default(),
+        required_semantics: required_semantics.into_iter().collect(),
         documents,
         entities: entities.finish(),
         enums: enums.finish(),
@@ -689,6 +694,7 @@ mod tests {
             lute: "0.11.0".to_string(),
             ir_version: "0.11.0".to_string(),
             capability_version: capability.to_string(),
+            required_semantics: Vec::new(),
             meta: ArtifactMeta::Scene(SceneMeta {
                 id: format!("{character}.s01ep02"),
                 character: Some(character.to_string()),
@@ -762,6 +768,7 @@ mod tests {
     #[test]
     fn unions_dedupes_and_sorts_every_axis() {
         let mut a = scene("marina", "cap-1");
+        a.required_semantics = vec!["lute.core/1".into(), "lute.knowledge.facts/1".into()];
         a.relations = vec![relation("knows", &["npc"]), relation("owns", &["item"])];
         a.seed_facts = vec![fact("knows", "kai"), fact("owns", "key")];
         a.rules = vec![rule("trusts", "trusts(X) :- knows(X)")];
@@ -770,6 +777,7 @@ mod tests {
             edge: PrereqEdge::After("visited(\"a.b\")".to_string()),
         }];
         let mut b = scene("kai", "cap-1");
+        b.required_semantics = vec!["lute.core/1".into(), "lute.quest.lifecycle/1".into()];
         // Same relation + same fact + same rule as `a`: one union entry each.
         b.relations = vec![relation("knows", &["npc"]), relation("aware", &["npc"])];
         b.seed_facts = vec![fact("knows", "kai")];
@@ -790,6 +798,14 @@ mod tests {
         );
         assert_eq!(index.documents[0].artifact, "a/a.lute.json");
         assert_eq!(index.documents[0].key, "marina.s01ep02");
+        assert_eq!(
+            index.required_semantics,
+            vec![
+                "lute.core/1",
+                "lute.knowledge.facts/1",
+                "lute.quest.lifecycle/1",
+            ]
+        );
         assert_eq!(index.capability_version, "cap-1");
         assert_eq!(
             index

@@ -1,0 +1,56 @@
+{
+  "kind": "lore",
+  "lute": "0.33.0",
+  "irVersion": "0.33.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.lore/1",
+    "lute.occasions.selection/1",
+    "lute.time.cadence/1",
+    "lute.time.clock/1"
+  ],
+  "meta": {
+    "id": "clockAdvance"
+  },
+  "state": [
+    {
+      "path": "run.day",
+      "type": "int",
+      "default": 1,
+      "owner": "engine"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "beat",
+      "addr": "001-0100",
+      "id": "clockAdvance.advance",
+      "on": "talk",
+      "target": "npc.hero",
+      "title": "Advance the clock",
+      "titleLineId": "clockAdvance.advance.title",
+      "priority": 0,
+      "once": "run",
+      "advances": "day",
+      "body": "001-0200"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "A day passes.",
+      "lineId": "clockAdvance.advance.narrator_0010"
+    }
+  ],
+  "clock": {
+    "day": "run.day",
+    "days": 7
+  },
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

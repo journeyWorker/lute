@@ -1,0 +1,8 @@
+entities:
+  who: { members: [mira, jon] }
+  item: { members: [map, key] }
+relations:
+  seen: { args: [who, item], tier: run }
+state:
+  run.ended: { type: bool, default: false }
+terminal: "run.ended == true"

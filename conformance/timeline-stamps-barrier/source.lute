@@ -1,0 +1,17 @@
+---
+kind: scene
+luteVersion: "0.33.0"
+character: hero
+season: 1
+episode: 1
+title: Timeline stamps
+---
+
+## Timeline
+
+<timeline duration="1">
+  <track subject="camera">
+    ::camera{focus="hero" duration="1"}
+  </track>
+</timeline>
+@narrator: Timed.

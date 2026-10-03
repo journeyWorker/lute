@@ -1,8 +1,16 @@
 {
   "kind": "lore",
-  "lute": "0.32.0",
-  "irVersion": "0.32.0",
+  "lute": "0.33.0",
+  "irVersion": "0.33.0",
   "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.knowledge.facts/1",
+    "lute.lore/1",
+    "lute.occasions.selection/1",
+    "lute.quest.lifecycle/1",
+    "lute.time.cadence/1"
+  ],
   "meta": {
     "id": "lifecycle"
   },

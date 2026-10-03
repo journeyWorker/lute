@@ -1,0 +1,10 @@
+---
+kind: lore
+luteVersion: "0.33.0"
+id: cadence
+uses: ./schema.yaml
+---
+
+<beat id="daily" on="talk" target="npc.hero" once="run" share="dailyLine" title="Daily line">
+  @narrator: Once each day.
+</beat>

@@ -1,0 +1,64 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "kind": "background"
+    },
+    {
+      "addr": "001-0200",
+      "kind": "music"
+    },
+    {
+      "addr": "001-0300",
+      "kind": "sfx"
+    },
+    {
+      "addr": "001-0400",
+      "kind": "vfx"
+    },
+    {
+      "addr": "001-0500",
+      "kind": "sprite"
+    },
+    {
+      "addr": "001-0600",
+      "kind": "camera"
+    },
+    {
+      "addr": "001-0700",
+      "kind": "cut"
+    },
+    {
+      "addr": "001-0800",
+      "kind": "video"
+    },
+    {
+      "addr": "001-0900",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "The harbor waits."
+    },
+    {
+      "addr": "001-1000",
+      "kind": "camera"
+    },
+    {
+      "addr": "001-1100",
+      "kind": "cut"
+    },
+    {
+      "addr": "001-1200",
+      "kind": "video"
+    },
+    {
+      "addr": "001-1300",
+      "kind": "music"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.33",
+  "kind": "scene",
+  "quests": {},
+  "state": {}
+}

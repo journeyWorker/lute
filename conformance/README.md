@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.32.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.33.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -127,7 +127,7 @@ fixtures. `command-staging` covers `background`, `music`, `sfx`, `vfx`, `sprite`
 `camera`, `cut`, `video`, and `barrier`; `command-lifecycle` covers `accept`,
 `beat`, and `retract`; `command-plugin` covers `plugin`. No requested kind is
 unsupported by the reference runner. The staging fixture uses a live
-`luteVersion: "0.32.0"` header, as do the lifecycle and plugin sources.
+`luteVersion: "0.33.0"` header, as do the lifecycle and plugin sources.
 
 ## Boundaries — what the reference runner deliberately does NOT implement
 
@@ -164,3 +164,31 @@ cargo run -q -p lute-cli -- run "$d/artifact.json" --mock "$d/mock.yaml" --json 
 `artifact.json` is checked in (not regenerated on demand) precisely so a
 third-party engine can conform against a **frozen** compiler output — an engine
 must not need the Lute compiler to run the suite.
+
+## 0.33 semantic fixture inventory
+
+Record (or re-record) the semantic-registry fixtures with:
+
+```sh
+for d in conformance/{staging-all-directives,staging-video-blocking,timeline-stamps-barrier,quest-handler-snapshot,clock-advance-settle,cadence-share-spentBy,season-opening-reset,rearm-instance-preserved,occasion-priority-targets,occasion-also-for-kind,beat-after-index-order,occasion-raisedWhen-terminal,occasion-outside-run,knowledge-keyed-retract,knowledge-negation-aggregate-recursion,knowledge-validity-half-open,knowledge-validAt-now,lore-first-read-disclosure,lore-reread-state,lore-bundle-beat}; do
+  cargo run -q -p lute-cli -- compile "$d/source.lute" -o "$d/artifact.json"
+  cargo run -q -p lute-cli -- run "$d/artifact.json" --mock "$d/mock.yaml" --json > "$d/expected.json"
+done
+```
+
+| fixture | collected semantic ids (compiled source) |
+|---|---|
+| staging-all-directives; staging-video-blocking | `lute.core/1`, `lute.staging/1` |
+| timeline-stamps-barrier | `lute.core/1`, `lute.staging/1`, `lute.timeline/1` |
+| quest-handler-snapshot | `lute.core/1`, `lute.quest.lifecycle/1`, `lute.quest.rewards/1` |
+| clock-advance-settle | `lute.core/1`, `lute.lore/1`, `lute.occasions.selection/1`, `lute.time.cadence/1`, `lute.time.clock/1` |
+| cadence-share-spentBy | `lute.core/1`, `lute.knowledge.facts/1`, `lute.lore/1`, `lute.occasions.selection/1`, `lute.time.cadence/1` |
+| season-opening-reset; rearm-instance-preserved | `lute.core/1`, `lute.quest.lifecycle/1`, `lute.time.seasons/1` |
+| occasion-priority-targets; occasion-also-for-kind; beat-after-index-order | `lute.core/1`, `lute.knowledge.facts/1`, `lute.lore/1`, `lute.occasions.selection/1`, `lute.quest.lifecycle/1`, `lute.time.cadence/1` |
+| occasion-raisedWhen-terminal; occasion-outside-run | `lute.core/1`, `lute.knowledge.facts/1`, `lute.lore/1`, `lute.occasions.gates/1`, `lute.occasions.selection/1`, `lute.quest.lifecycle/1`, `lute.time.cadence/1` |
+| knowledge-keyed-retract | `lute.core/1`, `lute.knowledge.facts/1` |
+| knowledge-negation-aggregate-recursion | `lute.core/1`, `lute.knowledge.facts/1`, `lute.knowledge.rules/1` |
+| knowledge-validity-half-open; knowledge-validAt-now | `lute.core/1`, `lute.knowledge.facts/1`, `lute.knowledge.temporal/1` |
+| lore-first-read-disclosure; lore-reread-state; lore-bundle-beat | `lute.core/1`, `lute.knowledge.facts/1`, `lute.lore/1` |
+
+Invalid engine fixtures use `engine.yaml`, an artifact, and `expected-stderr`; they must exit 2 with `E-ENGINE-SEMANTICS`, `E-ENGINE-IR-VERSION`, and `E-ENGINE-MATRIX` respectively.

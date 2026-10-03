@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.31.0`, the grammar and semantics the checker
+- **Language** — currently `0.33.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.31.0`) and gated on by consuming engines.
+  artifact (currently `0.33.0`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,60 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.33.0] - 2026-10-03
+
+**Domain modules and semantic negotiation.**
+
+This release is a breaking change in the **IR and engine contract**: the
+compiler now declares the engine-visible semantic obligations of each artifact,
+and playback engines must negotiate those obligations before executing anything.
+The source language remains unchanged; this is a clean pre-1.0 cutover.
+
+### Changed
+
+- The execution-IR envelope gains compiler-derived, sorted, duplicate-free
+  `requiredSemantics` immediately after `capabilityVersion`. The project index
+  carries the sorted union of its document artifacts; authors cannot hand-edit
+  or reorder either field.
+- The pre-1.0 exact major.minor IR gate runs first. `lute.engine.yaml` semantic
+  negotiation runs second, so an engine accepts only its IR line and every
+  required semantic id it supports.
+- `lute run --engine <FILE>` and `lute play --engine <FILE>` refuse an
+  unsupported semantic id before playback (exit 2,
+  `E-ENGINE-SEMANTICS`). `check --engine` and `check-project --engine` perform
+  author-time checks instead and report source spans.
+- `lute.core/1` is the complete baseline. Enums used only for state typing
+  remain core; `lute.knowledge.facts/1` is collected only for relational
+  vocabulary, fact deltas, fact queries, or fact metadata.
+
+### Added
+
+- The 0.33 semantic-id registry covers core, staging, timeline, quest
+  lifecycle/rewards, clock/cadence/seasons, occasion selection/gates,
+  knowledge facts/rules/temporal, and lore.
+- Engine matrices use the YAML `engine`, `irVersion`, and unique `supportedIds`
+  fields, with optional descriptive `version` and `description`. The built-in
+  `reference` matrix supports every current id.
+- Diagnostics `E-ENGINE-MATRIX`, `E-ENGINE-IR-VERSION`,
+  `E-ENGINE-SEMANTICS`, `E-CHECK-ENGINE-SEMANTICS`, and
+  `E-SEMANTICS-UNKNOWN`.
+- Conformance fixtures exercise every registry trigger, semantic negotiation,
+  malformed matrices, unsupported IR lines, and refusal-before-playback.
+- The IR schema line moves to `0.33.0`; consuming engines must use the
+  exact-minor pre-1.0 gate.
+
+### Migration
+
+- Recompile and re-record every artifact, project index, and conformance
+  fixture. Do not provide `requiredSemantics` in source or edit it in JSON.
+- Add `lute.engine.yaml` to each engine integration, declare the exact `0.33`
+  IR line and every semantic id implemented by that engine, and refuse missing
+  ids before opening a playback session.
+- A 0.32 engine refuses 0.33 artifacts at the exact-minor gate. Plugin and
+  bridge compatibility remains the exact `capabilityVersion` snapshot; no
+  plugin semantic id is added.
+
 
 ## [0.32.0] - 2026-10-02
 

@@ -1215,7 +1215,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     if !dir.is_dir() {
         return usage(format!("{} is not a project directory", dir.display()));
     }
-    let p = match compile_project(dir, super::project::CALENDAR) {
+    let p = match compile_project(dir, super::project::CALENDAR, &crate::EngineMatrix::reference()) {
         Ok(p) => p,
         Err(code) => return code,
     };

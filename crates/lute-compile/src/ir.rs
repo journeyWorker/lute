@@ -24,6 +24,10 @@ pub struct ExecutionIr {
     pub ir_version: String,
     /// Plugin-system §13 capability snapshot stamp (A9): `snapshot.version`.
     pub capability_version: String,
+    /// Exact engine semantic capabilities required by this lowered artifact.
+    /// Compiler-derived, sorted, and duplicate-free; serialized immediately
+    /// after the plugin capability snapshot.
+    pub required_semantics: Vec<String>,
     pub meta: ArtifactMeta,
     pub state: Vec<StateEntry>,
     /// Merged relational entity kinds (dsl 0.3.0 §3.1), name-sorted

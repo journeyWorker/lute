@@ -1,0 +1,10 @@
+---
+kind: quest
+luteVersion: "0.33.0"
+uses: ./schema.yaml
+title: Rearm instance
+---
+
+<quest id="rearmQ" title="Rearm quest" tier="season:ashfall" rearm="run.rearm">
+  <objective id="done" done="run.atGoal == true" />
+</quest>

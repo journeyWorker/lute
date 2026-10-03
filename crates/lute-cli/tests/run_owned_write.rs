@@ -19,7 +19,7 @@ fn run(ir: serde_json::Value) -> std::process::Output {
 }
 
 fn base() -> serde_json::Value {
-    serde_json::json!({"irVersion":"0.32.0", "kind":"scene", "commands":[]})
+    serde_json::json!({"irVersion":"0.33.0", "kind":"scene", "requiredSemantics":["lute.core/1"], "commands":[]})
 }
 
 #[test]
@@ -36,6 +36,7 @@ fn run_refuses_engine_owned_state_write_before_execution() {
 #[test]
 fn run_refuses_reserved_relation_assert_before_execution() {
     let mut ir = base();
+    ir["requiredSemantics"] = serde_json::json!(["lute.core/1", "lute.knowledge.facts/1"]);
     ir["relations"] = serde_json::json!([{"name":"engineFact", "reserved":true}]);
     ir["commands"] = serde_json::json!([{"kind":"assert", "addr":"assert", "relation":"engineFact", "args":[]}]);
     let out = run(ir);

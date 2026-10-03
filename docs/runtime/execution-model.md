@@ -2,12 +2,11 @@
 
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
-compiler — it checks a `.lute` document and lowers it to the JSON IR described
-the schema for the current execution IR version (`0.32.0`; the file is
-`lute-ir-0.32.schema.json`). It runs
-no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge
-at compile time. Everything on the far side of the execution IR is the
-engine's job.
+compiler — it checks a `.lute` document and lowers it to the execution IR
+described by the current schema (`0.33.0`; the file is
+`lute-ir-0.33.schema.json`). It runs no CEL, no Datalog fixpoint, keeps no
+fact store, and fires no bridge at compile time. Everything on the far side of
+the execution IR is the engine's job.
 These documents describe that job, grounded in `crates/lute-compile` and
 `crates/lute-check`.
 
@@ -23,6 +22,8 @@ One execution IR is produced per `.lute` document (`lute compile <file>` →
 `crates/lute-compile/src/lib.rs::compile`). Its shape is the `ExecutionIr`
 struct (`ir.rs`):
 
+
+
 - an **envelope** — `kind` (`"scene"` | `"quest"`), `lute` (language version),
   `irVersion` (the version you gate on), `capabilityVersion` (a snapshot hash),
   and `meta`. `meta.id` (present since dsl 0.15.0 §2) is the **canonical scene
@@ -36,6 +37,12 @@ struct (`ir.rs`):
   present (dsl 0.21.0) is a **beat**: besides explicit flow, the engine may
   select it when it raises the named occasion (see
   [beats-and-occasions.md](./beats-and-occasions.md));
+  an envelope field **`requiredSemantics`** immediately after
+  `capabilityVersion`: a compiler-derived, sorted, duplicate-free list of
+  semantic ids used by this artifact. Every executable artifact includes
+  `lute.core/1`; authors cannot provide, remove, or reorder the list. The
+  registry and trigger mapping are normative in the
+  [0.33.0 proposal §2–§3](../proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry).
 - a **folded state table** — `state: StateEntry[]` (see
   [state-lifecycle.md](./state-lifecycle.md));
 - a **declared vocabulary** — `entities` / `enums` / `relations` / `seedFacts` /
@@ -63,21 +70,44 @@ loads, exactly as it concatenates the command streams.
 
 ## Version negotiation
 
-Gate parsing on the exact `irVersion` **major and minor** before 1.0:
+An engine MUST negotiate in this order, before it opens a playback session or
+executes any command:
 
-- an engine implementing `0.32.x` MUST accept only `0.32.*` artifacts (and MAY
-  apply its patch policy), while a different pre-1.0 minor is refused;
-- after 1.0, minor and patch compatibility follows that released major's
-  policy;
-- refuse one from a different MAJOR;
-- **ignore unknown object fields** only when the artifact's version is otherwise
-  accepted; fields are not assumed append-only across pre-1.0 minors;
-- treat an **unknown command `kind` as an error** — a new command kind is a
-  real capability you cannot fake.
+1. **Exact-minor IR gate.** For pre-1.0 IR, an engine implementing `0.33.x`
+   accepts only `0.33.*` artifacts and refuses every other major.minor line
+   (`0.32.*`, `0.34.*`, and so on). Patch policy is optional within `0.33`.
+   From 1.0 onward, the gate changes to the released major's policy.
+2. **Semantic capability gate.** Load the engine's immutable
+   `lute.engine.yaml` matrix. Its required fields are `engine`, `irVersion`,
+   and unique `supportedIds`; `version` and `description` are descriptive.
+   Compare every artifact `requiredSemantics` entry with `supportedIds`.
+   Unknown or malformed matrix ids are errors, and an unknown artifact id is
+   `E-SEMANTICS-UNKNOWN`.
+
+`lute run --engine <file>` and `lute play --engine <file>` perform both gates.
+If any required id is absent, playback MUST be refused **before playback** —
+no command, condition, asset, or bridge may run — with exit code 2 and
+`E-ENGINE-SEMANTICS`. A malformed matrix uses `E-ENGINE-MATRIX`; an
+unsupported exact-minor line uses `E-ENGINE-IR-VERSION`. The built-in
+`reference` matrix supports every current registry id.
+
+`lute check --engine <file>` and `lute check-project --engine <file>` perform
+the same negotiation at author time, without playback. They report each
+lowered construct whose semantic id is absent, including its source span,
+semantic id, and engine name, as `E-CHECK-ENGINE-SEMANTICS`. The project form
+negotiates the sorted union in its project index and identifies each
+contributing document/span.
+
+The project index carries `requiredSemantics`, the sorted union of its
+document artifacts, so an engine can negotiate before opening every document.
+Plugin snapshot compatibility remains the exact `capabilityVersion` check; it
+is not part of the semantic matrix. The complete registry, trigger table,
+matrix format, and version rules live in the
+[0.33.0 proposal](../proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry),
+not in this runtime guide.
 
 `lute` (the language version) is informational for the runtime and does not
-gate. `capabilityVersion` lets you refuse an artifact compiled against a plugin
-snapshot you do not match.
+gate.
 
 ## CEL slots and execution IR expressions
 
@@ -217,7 +247,8 @@ const evalSlot = (cel, expr, state, facts) =>
   expr !== undefined ? evalExpr(expr, state) : evalCel(cel, state, facts);
 
 function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
-  assertVersionCompatible(artifact.irVersion); // MAJOR gate (0.13.0)
+  assertExactMinorCompatible(artifact.irVersion); // pre-1.0 0.33.* gate
+  assertRequiredSemantics(artifact.requiredSemantics, engineMatrix);
 
   // scene: one continuous command stream. quest: see quest-lifecycle.md —
   // `quest`/`on` records are declarations the lifecycle driver consults, not

@@ -51,7 +51,7 @@ pub(crate) const TEST: Gate = Gate {
 /// the `compile --all` gate — refusing to run `gate`'s command over a
 /// project that does not wholly compile — and build its index. `Err`
 /// carries the exit code after the diagnostics are printed.
-pub(super) fn compile_project(project_dir: &Path, gate: Gate) -> Result<ExecProject, ExitCode> {
+pub(super) fn compile_project(project_dir: &Path, gate: Gate, matrix: &crate::EngineMatrix) -> Result<ExecProject, ExitCode> {
     let Gate { cmd, refuses } = gate;
     match crate::manifests::validate_manifests_under(project_dir) {
         Ok(mut verdicts) => {
@@ -159,6 +159,10 @@ pub(super) fn compile_project(project_dir: &Path, gate: Gate) -> Result<ExecProj
         let doc_gate = crate::gate_for_doc(&reconciled, file, base);
         match lute_compile::compile_with_check(&built.input, doc_gate, &identity) {
             Ok(artifact) => {
+                if let Err(e) = matrix.negotiate(&serde_json::to_value(&artifact).unwrap_or_default()) {
+                    eprintln!("{cmd}: {e}");
+                    return Err(ExitCode::from(2));
+                }
                 compiled.insert(rel, artifact);
             }
             Err(diags) => {
@@ -205,6 +209,7 @@ pub(super) fn compile_project(project_dir: &Path, gate: Gate) -> Result<ExecProj
 pub(super) fn compile_play_project(
     dir: &Path,
     gate: Gate,
+    matrix: &crate::EngineMatrix,
 ) -> Result<ExecProject, (ExitCode, String)> {
     if !dir.is_dir() {
         return Err((
@@ -212,5 +217,5 @@ pub(super) fn compile_play_project(
             format!("{} is not a project directory", dir.display()),
         ));
     }
-    compile_project(dir, gate).map_err(|code| (code, String::new()))
+    compile_project(dir, gate, matrix).map_err(|code| (code, String::new()))
 }

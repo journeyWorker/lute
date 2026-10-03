@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED execution IR
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.32.schema.json`).
+//! `schemas/lute-ir-0.33.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! execution IR (`lute compile` output), gates on `irVersion` by exact minor
@@ -70,8 +70,9 @@ use serde_json::{json, Value as Json};
 /// MAJOR only. The minor is still carried because the `--json` transcript
 /// reports the full implemented line.
 fn impl_ir_line() -> (u64, u64) {
-    parse_major_minor(lute_compile::LUTE_IR_VERSION)
-        .expect("LUTE_IR_VERSION must carry a major.minor prefix")
+    parse_ir_version(lute_compile::LUTE_IR_VERSION)
+        .map(|(major, minor, _)| (major, minor))
+        .expect("LUTE_IR_VERSION must be MAJOR.MINOR.PATCH")
 }
 
 /// Execute a compiled execution IR against a mock playthrough. See [`crate::Command::Run`].
@@ -82,6 +83,7 @@ fn impl_ir_line() -> (u64, u64) {
 /// `occasions:` (dsl 0.21.0 §7a.2).
 pub fn run_artifact(
     artifact: &Path,
+    engine: Option<&Path>,
     mock: Option<&Path>,
     occasions: Vec<String>,
     json_out: bool,
@@ -104,13 +106,21 @@ pub fn run_artifact(
             return ExitCode::from(2);
         }
     };
+    let matrix = match crate::EngineMatrix::load(engine) {
+        Ok(m) => m,
+        Err(e) => { eprintln!("lute run: {e}"); return ExitCode::from(2); }
+    };
+    if let Err(e) = matrix.negotiate(&art) {
+        eprintln!("lute run: {e}");
+        return ExitCode::from(2);
+    }
 
     // ── Version negotiation (execution-model.md): pre-1.0 exact minor,
     // post-1.0 MAJOR only. ──
     let (impl_major, impl_minor) = impl_ir_line();
     let ir_version = art.get("irVersion").and_then(Json::as_str).unwrap_or("");
-    match parse_major_minor(ir_version) {
-        Some((maj, min))
+    match parse_ir_version(ir_version) {
+        Some((maj, min, _))
             if maj == impl_major && (impl_major != 0 || min == impl_minor) => {}
         _ => {
             let rule = if impl_major == 0 {
@@ -253,16 +263,18 @@ pub fn run_artifact(
             }
         });
     }
-    match m.run() {
+    let direct_lore = is_lore && presented.is_some();
+    let result = m.run();
+    if direct_lore {
+        m.bind_occasion_target(None);
+    }
+    match result {
         Err(msg) => {
             eprintln!("lute run: {}", lute_core_span::plain_message(&msg));
             ExitCode::from(2)
         }
         Ok(()) => {
             if json_out {
-                // `serde_json` (no `preserve_order`) emits object keys
-                // sorted, so this machine transcript is byte-stable across
-                // runs — the conformance `expected.json` contract.
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&output_value(&m, &art)).unwrap_or_default()
@@ -777,12 +789,13 @@ pub(crate) fn run_machine(
     m
 }
 
-/// Parse `"0.9.0"` → `(0, 9)`; `None` when it lacks a `major.minor` prefix.
-fn parse_major_minor(v: &str) -> Option<(u64, u64)> {
-    let mut it = v.split('.');
-    let maj = it.next()?.parse().ok()?;
-    let min = it.next()?.parse().ok()?;
-    Some((maj, min))
+/// Parse a full numeric `MAJOR.MINOR.PATCH` IR version.
+fn parse_ir_version(v: &str) -> Option<(u64, u64, u64)> {
+    let parts: Vec<_> = v.split('.').collect();
+    if parts.len() != 3 || parts.iter().any(|part| part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit())) {
+        return None;
+    }
+    Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
 }
 
 /// `lute run`'s [`Driver`]: the mock's `choose:` and `bridges:`, a spent
