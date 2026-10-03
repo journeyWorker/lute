@@ -24,6 +24,7 @@ fn diag(message: String, span: Span) -> Diagnostic {
         code: E_SEASON_DECL.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -712,6 +713,7 @@ fn ungated(
             "{what} is not gated on season `{name}`: its {own} does not imply the season's \
              `live: {live}`, {consequence} — {fix}"
         ),
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),

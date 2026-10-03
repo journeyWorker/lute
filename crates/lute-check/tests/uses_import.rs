@@ -92,6 +92,7 @@ fn import_diags_are_surfaced() {
         code: "E-USES-CYCLE".to_string(),
         severity: lute_core_span::Severity::Error,
         message: "synthetic".to_string(),
+        evidence: None,
         span: lute_core_span::Span {
             byte_start: 0,
             byte_end: 0,

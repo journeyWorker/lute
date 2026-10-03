@@ -78,6 +78,7 @@ pub(crate) fn scope_members<'c>(ctx: &'c Ctx<'_>, span: Span) -> Result<&'c [Str
             code: "E-UNDECLARED".to_string(),
             severity: Severity::Error,
             message: crate::beats::occasion_target_scope_message(),
+            evidence: None,
             span,
             layer: Layer::Logic,
             fixits: Vec::new(),

@@ -11,7 +11,7 @@ use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
 
 use crate::context;
-use crate::input::{build_input, BuiltInput};
+use lute_model::{build_input, BuiltInput};
 use crate::output::write_stdout;
 
 /// Emit the project-resolved AUTHORING SURFACE for `file`: everything an AI

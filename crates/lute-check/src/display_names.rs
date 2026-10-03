@@ -168,6 +168,7 @@ fn warning(message: String, span: Span, related: Vec<RelatedDiagnostic>) -> Diag
         code: W_DISPLAY_NAME_DUP.to_string(),
         severity: Severity::Warning,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),

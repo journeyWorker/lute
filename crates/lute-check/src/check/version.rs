@@ -69,6 +69,7 @@ pub(super) fn check_lute_version_stale(
         code: W_LUTE_VERSION_STALE.to_string(),
         severity: Severity::Warning,
         message,
+        evidence: None,
         span: crate::meta::meta_key_span(meta, "luteVersion"),
         layer: Layer::Content,
         fixits: Vec::new(),

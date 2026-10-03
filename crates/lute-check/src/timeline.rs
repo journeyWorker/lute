@@ -568,6 +568,7 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
         code: code.to_string(),
         severity,
         message,
+        evidence: None,
         span,
         layer: Layer::Staging,
         fixits: Vec::new(),

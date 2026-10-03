@@ -23,6 +23,7 @@ fn clock_diag(message: String, span: Span) -> Diagnostic {
         code: E_CLOCK_DECL.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -726,6 +727,7 @@ pub fn check_once_needs_clock(
                 message: "`advances` moves the declared clock, but the project declares no \
                     `clock:` — declare one in a schema (dsl 0.31.0 §1)"
                     .to_string(),
+                evidence: None,
                 span: doc.meta.span,
                 layer: Layer::Content,
                 fixits: Vec::new(),
@@ -765,6 +767,7 @@ pub fn check_once_needs_clock(
         code: crate::beats::E_BEAT_ATTR.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),

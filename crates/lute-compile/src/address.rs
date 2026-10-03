@@ -365,6 +365,7 @@ fn internal(message: String) -> Diagnostic {
         code: "E-COMPILE-INTERNAL".to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span: Span {
             byte_start: 0,
             byte_end: 0,

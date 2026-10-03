@@ -78,6 +78,7 @@ impl Text<'_> {
             code: code.to_string(),
             severity: Severity::Warning,
             message,
+            evidence: None,
             span: self.span_of(start, end),
             layer: Layer::Content,
             fixits: Vec::new(),

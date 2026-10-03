@@ -577,6 +577,7 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence: None,
     }
 }
 

@@ -340,6 +340,7 @@ pub(crate) fn check_for_kinds(
                 code: crate::beats::E_BEAT_ATTR.to_string(),
                 severity: lute_core_span::Severity::Error,
                 message,
+                evidence: None,
                 span: *span,
                 layer: lute_core_span::Layer::Logic,
                 fixits: Vec::new(),
@@ -469,6 +470,7 @@ pub fn payload_decls(
                 code: "E-UNDECLARED".to_string(),
                 severity: lute_core_span::Severity::Error,
                 message,
+                evidence: None,
                 span: slot.span,
                 layer: lute_core_span::Layer::Cel,
                 fixits: Vec::new(),
@@ -599,6 +601,7 @@ pub(crate) fn check_payload_domains(
                      `{k}` is not a declared enum or entity kind{}",
                     crate::rel_schema::member_hint(k, &names)
                 ),
+                evidence: None,
                 span,
                 layer: lute_core_span::Layer::Content,
                 fixits: Vec::new(),

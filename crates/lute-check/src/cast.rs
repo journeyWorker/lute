@@ -160,6 +160,7 @@ pub(crate) fn unknown(
         code: E_CAST_UNKNOWN.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),
@@ -202,6 +203,10 @@ fn cast_diag(
     message: String,
     span: Span,
 ) -> Diagnostic {
+    let evidence = match crate::evidence::classification(code) {
+        Some(crate::evidence::DiagnosticClass::Analysis { evidence }) => Some(evidence),
+        _ => None,
+    };
     Diagnostic {
         code: code.to_string(),
         severity,
@@ -212,6 +217,7 @@ fn cast_diag(
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+        evidence,
     }
 }
 

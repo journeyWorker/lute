@@ -618,6 +618,7 @@ fn normalize_nodes(
                                     severity: Severity::Error,
                                     message: "`::use` is not allowed inside a <timeline> clip"
                                         .to_string(),
+                                    evidence: None,
                                     span: cd.span,
                                     layer: Layer::Content,
                                     fixits: Vec::new(),
@@ -786,6 +787,7 @@ fn expand_use(
             severity: Severity::Error,
             message: "`::use` names no resolvable component (gate should have caught this)"
                 .to_string(),
+            evidence: None,
             span: d.span,
             layer: Layer::Content,
             fixits: Vec::new(),
@@ -828,6 +830,7 @@ fn expand_use(
                 "`::use` args for component `{name}` do not match its params: {} (gate should have caught this)",
                 parts.join("; ")
             ),
+            evidence: None,
             span: d.span,
             layer: Layer::Content,
             fixits: Vec::new(),

@@ -184,6 +184,7 @@ pub fn fold_env(
                             "state path `{path}` overrides base declared type {:?} with {:?}; persisted state must keep a stable type",
                             imported.ty, decl.ty
                         ),
+                        evidence: None,
                         span: doc.meta.span,
                         layer: Layer::Content,
                         fixits: Vec::new(),
@@ -202,6 +203,7 @@ pub fn fold_env(
                     message: format!(
                         "state path `{path}` is declared by an imported schema (§9.2); a scene must not redeclare or override it"
                     ),
+                    evidence: None,
                     span: doc.meta.span,
                     layer: Layer::Content,
                     fixits: Vec::new(),
@@ -269,6 +271,7 @@ pub fn fold_env(
                          quest field (dsl 0.2.0 §5.2); it must not be author-declared in \
                          `state:`"
                     ),
+                    evidence: None,
                     span: doc.meta.span,
                     layer: Layer::Content,
                     fixits: Vec::new(),
@@ -639,6 +642,7 @@ pub fn fold_env(
                 code: crate::def_decl::E_DEF_DECL.to_string(),
                 severity: Severity::Error,
                 message: msg,
+                evidence: None,
                 span: doc.meta.span,
                 layer: Layer::Content,
                 fixits: Vec::new(),
@@ -654,6 +658,7 @@ pub fn fold_env(
             code: crate::def_decl::E_DEF_DECL.to_string(),
             severity: Severity::Error,
             message: msg,
+            evidence: None,
             span: crate::meta::meta_key_span(&doc.meta, &name),
             layer: Layer::Content,
             fixits: Vec::new(),
@@ -832,6 +837,7 @@ pub fn fold_env(
                 code: "E-STATE-DECL".to_string(),
                 severity: Severity::Error,
                 message: message.to_string(),
+                evidence: None,
                 span,
                 layer: Layer::Content,
                 fixits: Vec::new(),
@@ -858,6 +864,7 @@ pub fn fold_env(
                 code: code.to_string(),
                 severity: Severity::Error,
                 message: message.to_string(),
+                evidence: None,
                 span,
                 layer: Layer::Content,
                 fixits: Vec::new(),

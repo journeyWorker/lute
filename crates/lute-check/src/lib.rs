@@ -18,6 +18,7 @@ pub mod component_import;
 pub mod connectivity;
 pub mod content_line;
 pub mod ctx;
+pub mod evidence;
 pub mod datalog_check;
 pub mod decide;
 pub mod def_decl;

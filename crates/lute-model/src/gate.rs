@@ -7,10 +7,9 @@ use std::process::ExitCode;
 
 use lute_core_span::{Diagnostic, Severity, Span};
 
-use crate::cmd_scenario::assemble_root_scenario;
-use crate::cmd_scenario::node_envelope::node_cycle_degraded;
-use crate::project::reconcile::reconcile_collected;
-use crate::project::{collect_project_docs, normalize_span_from_text};
+use crate::reconcile::relocate_imported_diags;
+use crate::scenario::node_cycle_degraded;
+use crate::{normalize_span_from_text, ModelOptions, ProjectModel};
 
 /// The reconciled project analysis for the compile/trace project-aware gate
 /// (connectivity design spec §5): per-document reconciled `CheckResult`s
@@ -18,19 +17,11 @@ use crate::project::{collect_project_docs, normalize_span_from_text};
 /// project-wide diagnostics. Produced by [`reconciled_project_results`] over a
 /// SINGLE-ROOT collection (the whole `--project <dir>` is ONE root — §5's
 /// single-root rule), reusing the SAME [`reconcile_collected`] analysis
-pub(crate) struct ReconciledProject {
-    pub(crate) per_doc: BTreeMap<PathBuf, lute_check::CheckResult>,
-    pub(crate) project_diagnostics: Vec<(PathBuf, Diagnostic)>,
-    /// Spec §5 gate signal: every node that is ON or DOWNSTREAM of a
-    /// prerequisite cycle — absent from the sound topological order while its
-    /// root has a cycle (`node_cycle_degraded`). A target hosting any of these
-    /// blocks, even when the emitted `E-CONN-CYCLE` was anchored to a DIFFERENT
-    /// node's file (see [`project_gate_result`]). Complete by Kahn's
-    /// construction — no under-approximation of overlapping cycles.
-    pub(crate) cycle_degraded: BTreeSet<lute_check::connectivity::NodeId>,
-    /// Every graph node's `(id, span)` keyed by its declaring document — the
-    /// gate's target-path -> hosted-nodes lookup.
-    pub(crate) nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
+pub struct ReconciledProject {
+    pub per_doc: BTreeMap<PathBuf, lute_check::CheckResult>,
+    pub project_diagnostics: Vec<(PathBuf, Diagnostic)>,
+    pub cycle_degraded: BTreeSet<lute_check::connectivity::NodeId>,
+    pub nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
 }
 
 impl ReconciledProject {
@@ -38,7 +29,7 @@ impl ReconciledProject {
     /// the project by canonical identity; `None` when `file` is not one of
     /// its documents. The one envelope `lute trace --project`, `lute test`
     /// and the differential harness gate a document on.
-    pub(crate) fn gate(&self, file: &Path) -> Option<lute_check::CheckResult> {
+    pub fn gate(&self, file: &Path) -> Option<lute_check::CheckResult> {
         let canon = std::fs::canonicalize(file).ok()?;
         let (key, base) = self
             .per_doc
@@ -53,18 +44,27 @@ impl ReconciledProject {
     /// at the fault's own position counting its importers, instead of one
     /// copy per importing document. `dir` is the project directory the
     /// lines are shown under.
-    pub(crate) fn schema_faults(&self, dir: &Path) -> Vec<String> {
-        let mut per_doc: Vec<(PathBuf, lute_check::CheckResult)> = self
+    pub fn schema_faults(&self, dir: &Path) -> Vec<String> {
+        let mut per_doc: Vec<_> = self
             .per_doc
             .iter()
-            .map(|(p, r)| (p.clone(), r.clone()))
+            .map(|(path, result)| (path.clone(), result.clone()))
             .collect();
-        let mut moved = Vec::new();
-        crate::project::reconcile::relocate_imported_diags(&mut per_doc, &mut moved, dir);
+        let mut moved = self.project_diagnostics.clone();
+        relocate_imported_diags(&mut per_doc, &mut moved, dir);
         moved
             .into_iter()
-            .filter(|(_, d)| d.severity == Severity::Error)
-            .map(|(path, d)| {
+            .filter(|(path, d)| {
+                d.severity == Severity::Error
+                    && path.extension().and_then(|e| e.to_str()) != Some("lute")
+            })
+            .map(|(path, mut d)| {
+                let count = per_doc.len();
+                let message = d.message.split(" (imported by ").next().unwrap_or(&d.message);
+                d.message = format!(
+                    "{message} (imported by {count} document{})",
+                    if count == 1 { "" } else { "s" }
+                );
                 format!(
                     "{}:{}:{}: error [{}] {}",
                     path.display(),
@@ -86,36 +86,35 @@ impl ReconciledProject {
 /// gate pulls the target document's reconciled `CheckResult` from.
 /// `Err(ExitCode::from(2))` on the same I/O failures [`collect_project_docs`]
 /// surfaces.
-pub(crate) fn reconciled_project_results(
+pub fn reconciled_project_results(
     dir: &Path,
     providers: Option<&Path>,
 ) -> Result<ReconciledProject, ExitCode> {
-    let (file_results, by_root) = collect_project_docs(dir, providers, true)?;
-    // Spec §5 gate: a target blocks when a node it hosts is ON or DOWNSTREAM
-    // of a prerequisite cycle — i.e. absent from the sound topological order
-    // while its root has a cycle. Decided by `node_cycle_degraded` over the
-    // SAME `assemble_root_scenario` analysis `lute scenario` reports from, so a
-    // target's gate verdict never disagrees with its `scenario reach` view.
-    // This topological-order exclusion is COMPLETE (Kahn frees exactly the
-    // cycle-INDEPENDENT nodes), where a DFS back-edge stack slice
-    // under-approximates overlapping cycles. Built BEFORE `reconcile_collected`
-    // consumes `file_results`.
+    let opts = ModelOptions {
+        providers: providers.map(Path::to_path_buf),
+        permission_profile: None,
+        mode: lute_check::Mode::Ci,
+        compile: false,
+        wip: false,
+    };
+    let model = ProjectModel::build_single_root(dir, &opts).map_err(|error| {
+        eprintln!("lute: cannot build project {}: {error}", dir.display());
+        ExitCode::from(2)
+    })?;
+    let outputs = model.reconciled();
     let mut cycle_degraded: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
-    for group_full in by_root.values() {
-        let scenario = assemble_root_scenario(group_full, &file_results);
+    for scenario in outputs.scenarios.values() {
         for node in scenario.graph.nodes.keys() {
-            if node_cycle_degraded(&scenario, node) {
+            if node_cycle_degraded(scenario, node) {
                 cycle_degraded.insert(node.clone());
             }
         }
     }
-    let (file_results, project_diagnostics, nodes_by_path, _) =
-        reconcile_collected(file_results, &by_root, false);
     Ok(ReconciledProject {
-        per_doc: file_results.into_iter().collect(),
-        project_diagnostics,
+        per_doc: outputs.checks.iter().cloned().collect(),
+        project_diagnostics: outputs.diagnostics.clone(),
         cycle_degraded,
-        nodes_by_path,
+        nodes_by_path: outputs.nodes_by_path.clone(),
     })
 }
 
@@ -132,7 +131,7 @@ pub(crate) fn reconciled_project_results(
 /// `dir`'s recursively-collected `.lute` set, this errors EXPLICITLY
 /// (`ExitCode::from(2)`) rather than silently falling back to a standalone
 /// `check` — a silent fallback would mask a mistyped path or wrong `--project`.
-pub(crate) fn project_gate_result(
+pub fn project_gate_result(
     file: &Path,
     dir: &Path,
     providers: Option<&Path>,
@@ -166,17 +165,18 @@ pub(crate) fn project_gate_result(
 /// observe a project mid-edit differently between passes).
 ///
 /// [`compile_all::run`]: crate::compile_all::run
-pub(crate) fn gate_for_doc(
+pub fn gate_for_doc(
     reconciled: &ReconciledProject,
     path: &PathBuf,
     base: &lute_check::CheckResult,
 ) -> lute_check::CheckResult {
     let mut result = base.clone();
-    // §5: block on the TARGET's own reconciled diagnostics only — merge in
-    // every project-wide diagnostic anchored on this same file (its own
-    // `E-STATE-MAYBE-UNAVAILABLE`/`E-CONN-*`), never a sibling's.
+    // §5: merge diagnostics anchored on the target. Schema/plugin/manifest
+    // faults are global to every importing document, so they also block every
+    // target rather than allowing compilation to reach malformed CEL.
     for (p, d) in &reconciled.project_diagnostics {
-        if p == path {
+        let global = p.extension().and_then(|e| e.to_str()) != Some("lute");
+        if p == path || global {
             result.diagnostics.push(d.clone());
         }
     }

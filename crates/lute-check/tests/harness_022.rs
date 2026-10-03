@@ -549,7 +549,7 @@ fn once_run_beat_gated_only_on_user_state_is_advised() {
         .unwrap();
     assert!(
         d.message
-            .contains("write `once: run` if it should replay every run"),
+            .contains("it may replay on later runs"),
         "{}",
         d.message
     );

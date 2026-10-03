@@ -441,6 +441,7 @@ fn config_diag(message: String, span: Span) -> Diagnostic {
         code: E_LINT_CONFIG.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Content,
         fixits: Vec::new(),

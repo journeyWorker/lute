@@ -56,6 +56,7 @@ fn persist_removed_diag() -> Diagnostic {
         code: "E-PERSIST-REMOVED".to_string(),
         severity: Severity::Error,
         message: "`persist=` was removed from the language; delete it (dsl 0.6.0 §2.2)".to_string(),
+        evidence: None,
         span: span(8, 21),
         layer: Layer::Logic,
         fixits: vec![Fixit {
@@ -139,6 +140,7 @@ fn cel_parse_eq_fixit_becomes_one_action() {
         code: "E-CEL-PARSE".to_string(),
         severity: Severity::Error,
         message: "`=` assigns; comparison is `==` — did you mean `run.act == 1`?".to_string(),
+        evidence: None,
         span: span(6, 17),
         layer: Layer::Cel,
         fixits: vec![Fixit {
@@ -166,6 +168,7 @@ fn fixit_less_diagnostic_yields_no_action() {
         code: "E-UNDECLARED".to_string(),
         severity: Severity::Error,
         message: "unknown path".to_string(),
+        evidence: None,
         span: span(0, 4),
         layer: Layer::Content,
         fixits: Vec::new(),

@@ -112,6 +112,7 @@ pub fn as_diagnostic(code: &str, message: String) -> Diagnostic {
             utf16_range: (0, 0),
         },
         layer: Layer::Logic,
+        evidence: None,
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
@@ -254,11 +255,7 @@ fn manifest_surface(
     lute_manifest::project::IdentityTemplates,
     lute_manifest::project::MetaDefaults,
 ) {
-    let (snapshot, _) = lute_manifest::project::resolve_document_snapshot(
-        cfg,
-        None,
-        &std::collections::BTreeMap::new(),
-    );
+    let snapshot = lute_model::resolve_snapshot(cfg);
     let identity = cfg.map(|c| c.identity.clone()).unwrap_or_default();
     let defaults = cfg.map(|c| c.defaults.clone()).unwrap_or_default();
     (snapshot.version, identity, defaults)

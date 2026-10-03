@@ -115,6 +115,53 @@ pub enum Layer {
     Cel,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Evidence {
+    Proven,
+    Witnessed,
+    Bounded { scope: String },
+    Heuristic,
+    Unknown,
+}
+impl Evidence {
+    /// Construct a bounded verdict; empty scopes are rejected.
+    pub fn bounded(scope: impl Into<String>) -> Option<Self> {
+        let scope = scope.into();
+        (!scope.trim().is_empty()).then_some(Self::Bounded { scope })
+    }
+}
+
+
+impl Serialize for Evidence {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let value = match self {
+            Self::Proven => "proven",
+            Self::Witnessed => "witnessed",
+            Self::Bounded { .. } => "bounded",
+            Self::Heuristic => "heuristic",
+            Self::Unknown => "unknown",
+        };
+        s.serialize_str(value)
+    }
+}
+
+impl<'de> Deserialize<'de> for Evidence {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(d)?;
+        match value.as_str() {
+            "proven" => Ok(Self::Proven),
+            "witnessed" => Ok(Self::Witnessed),
+            "bounded" => Err(serde::de::Error::custom(
+                "bounded evidence requires a non-empty scope",
+            )),
+            "heuristic" => Ok(Self::Heuristic),
+            "unknown" => Ok(Self::Unknown),
+            _ => Err(serde::de::Error::custom("invalid evidence")),
+        }
+    }
+}
+
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Fixit {
     pub title: String,
@@ -133,16 +180,16 @@ pub struct TextEdit {
 /// spec (`(dsl 0.24.0 §4)`); every output surface shows [`Self::text`], the
 /// plain sentence, and names the spec through `lute --explain <CODE>` and the
 /// JSON `spec` field instead (dsl 0.27.0 §9, T3-17).
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
     pub code: String, // stable, e.g. "E-UNDECLARED"
     pub severity: Severity,
     pub message: String,
+    /// Evidence attached to an analysis-derived diagnostic.
+    pub evidence: Option<Evidence>,
     pub span: Span,
     pub layer: Layer,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fixits: Vec<Fixit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<String>,
     /// Further document-order occurrences of the SAME root-cause diagnostic
     /// (dsl 0.4.0 §8.2 C1/C5, D11): populated ONLY by `lute-check`'s
@@ -151,7 +198,6 @@ pub struct Diagnostic {
     /// instead of emitting N identical diagnostics. Additive — never removed
     /// or retyped; empty (and un-serialized) for every diagnostic that is not
     /// a collapse primary.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub covered: Vec<Span>,
     /// Sub-diagnostics surfaced from ANOTHER file, attributed to it (dsl
     /// 0.5.0 §2.2 importer-visible component sub-diagnostics): populated on
@@ -159,14 +205,93 @@ pub struct Diagnostic {
     /// parse/frontmatter diagnostics, so an importing document's output
     /// (human or `--json`) carries what actually failed in the imported file
     /// without a separate re-`check` of it. Empty for every other diagnostic.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub related: Vec<RelatedDiagnostic>,
 }
 
+#[derive(Deserialize)]
+struct DiagnosticWire {
+    code: String,
+    severity: Severity,
+    message: String,
+    #[serde(default)]
+    evidence: Option<String>,
+    #[serde(default)]
+    scope: Option<String>,
+    span: Span,
+    layer: Layer,
+    #[serde(default)]
+    fixits: Vec<Fixit>,
+    #[serde(default)]
+    provenance: Option<String>,
+    #[serde(default)]
+    covered: Vec<Span>,
+    #[serde(default)]
+    related: Vec<RelatedDiagnostic>,
+}
+
+impl<'de> Deserialize<'de> for Diagnostic {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let wire = DiagnosticWire::deserialize(d)?;
+        let evidence = match wire.evidence.as_deref() {
+            None => {
+                if wire.scope.is_some() {
+                    return Err(serde::de::Error::custom("scope requires bounded evidence"));
+                }
+                None
+            }
+            Some("bounded") => {
+                let scope = wire.scope.ok_or_else(|| {
+                    serde::de::Error::custom("bounded evidence requires a non-empty scope")
+                })?;
+                Some(Evidence::bounded(scope).ok_or_else(|| {
+                    serde::de::Error::custom("bounded evidence requires a non-empty scope")
+                })?)
+            }
+            Some(value) => {
+                if wire.scope.is_some() {
+                    return Err(serde::de::Error::custom(
+                        "scope is only valid for bounded evidence",
+                    ));
+                }
+                Some(match value {
+                    "proven" => Evidence::Proven,
+                    "witnessed" => Evidence::Witnessed,
+                    "heuristic" => Evidence::Heuristic,
+                    "unknown" => Evidence::Unknown,
+                    _ => return Err(serde::de::Error::custom("invalid evidence")),
+                })
+            }
+        };
+        Ok(Self {
+            code: wire.code,
+            severity: wire.severity,
+            message: wire.message,
+            evidence,
+            span: wire.span,
+            layer: wire.layer,
+            fixits: wire.fixits,
+            provenance: wire.provenance,
+            covered: wire.covered,
+            related: wire.related,
+        })
+    }
+}
+
 impl Diagnostic {
-    /// The message as an author reads it ([`plain_message`]).
+    /// The message as an author reads it ([`plain_message`]), with analysis
+    /// evidence made explicit where it is not a proof or direct witness.
     pub fn text(&self) -> std::borrow::Cow<'_, str> {
-        plain_message(&self.message)
+        let message = plain_message(&self.message);
+        let suffix = match &self.evidence {
+            Some(Evidence::Bounded { scope }) => Some(format!(" [bounded: {scope}]")),
+            Some(Evidence::Heuristic) => Some(" [heuristic]".to_string()),
+            Some(Evidence::Unknown) => Some(" [unknown]".to_string()),
+            _ => None,
+        };
+        match suffix {
+            Some(suffix) => std::borrow::Cow::Owned(format!("{message}{suffix}")),
+            None => message,
+        }
     }
 }
 
@@ -177,12 +302,18 @@ impl Serialize for Diagnostic {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
         let spec = spec_citations(&self.message);
-        let mut st = s.serialize_struct("Diagnostic", 10)?;
+        let mut st = s.serialize_struct("Diagnostic", 12)?;
         st.serialize_field("code", &self.code)?;
         st.serialize_field("severity", &self.severity)?;
-        st.serialize_field("message", &self.text())?;
+        st.serialize_field("message", &plain_message(&self.message))?;
         st.serialize_field("span", &self.span)?;
         st.serialize_field("layer", &self.layer)?;
+        if let Some(evidence) = &self.evidence {
+            st.serialize_field("evidence", evidence)?;
+            if let Evidence::Bounded { scope } = evidence {
+                st.serialize_field("scope", scope)?;
+            }
+        }
         if !self.fixits.is_empty() {
             st.serialize_field("fixits", &self.fixits)?;
         }
@@ -550,6 +681,7 @@ mod tests {
             provenance: None,
             covered: Vec::new(),
             related: Vec::new(),
+            evidence: None,
         };
         let v = serde_json::to_value(&d).unwrap();
         assert_eq!(v["message"], "bad");
@@ -563,5 +695,63 @@ mod tests {
             None,
             "a lint rule's code has no section"
         );
+    }
+    #[test]
+    fn evidence_suffix_and_json_fields() {
+        let d = Diagnostic {
+            code: "W-OBJECTIVE-STRANDED".into(),
+            severity: Severity::Warning,
+            message: "may be stranded".into(),
+            span: Span::from_bytes(&TextIndex::new("x"), 0, 1),
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+            evidence: Some(Evidence::Bounded {
+                scope: "declared clock windows; no path search".into(),
+            }),
+        };
+        assert_eq!(
+            d.text(),
+            "may be stranded [bounded: declared clock windows; no path search]"
+        );
+        let value = serde_json::to_value(&d).unwrap();
+        assert_eq!(value["evidence"], "bounded");
+        assert_eq!(value["scope"], "declared clock windows; no path search");
+    }
+
+    #[test]
+    fn bounded_diagnostic_round_trips_and_requires_scope() {
+        let diagnostic = Diagnostic {
+            code: "W-OBJECTIVE-STRANDED".into(),
+            severity: Severity::Warning,
+            message: "may be stranded".into(),
+            span: Span::from_bytes(&TextIndex::new("x"), 0, 1),
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+            evidence: Some(Evidence::bounded("declared clock windows; no path search").unwrap()),
+        };
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        let restored: Diagnostic = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(restored, diagnostic);
+        let missing = serde_json::json!({
+            "code": "W-OBJECTIVE-STRANDED", "severity": "warning", "message": "x",
+            "evidence": "bounded", "span": diagnostic.span, "layer": "logic"
+        });
+        assert!(serde_json::from_value::<Diagnostic>(missing).is_err());
+        let empty = serde_json::json!({
+            "code": "W-OBJECTIVE-STRANDED", "severity": "warning", "message": "x",
+            "evidence": "bounded", "scope": "", "span": diagnostic.span, "layer": "logic"
+        });
+        assert!(serde_json::from_value::<Diagnostic>(empty).is_err());
+        let whitespace = serde_json::json!({
+            "code": "W-OBJECTIVE-STRANDED", "severity": "warning", "message": "x",
+            "evidence": "bounded", "scope": "   ", "span": diagnostic.span, "layer": "logic"
+        });
+        assert!(serde_json::from_value::<Diagnostic>(whitespace).is_err());
     }
 }

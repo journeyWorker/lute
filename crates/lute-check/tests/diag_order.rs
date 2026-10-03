@@ -54,6 +54,7 @@ fn import_extends_type_diag_precedes_inline_state_merge_at_same_span() {
         code: "E-EXTENDS-STATE-TYPE".to_string(),
         severity: Severity::Error,
         message: "IMPORT-SOURCED run.silver".to_string(),
+        evidence: None,
         span: meta_span,
         layer: Layer::Content,
         fixits: Vec::new(),

@@ -292,6 +292,7 @@ fn on_one_position_the_cause_comes_first() {
         code: code.to_string(),
         severity: lute_core_span::Severity::Error,
         message: String::new(),
+        evidence: None,
         span: lute_core_span::Span {
             byte_start: 10,
             byte_end: 12,

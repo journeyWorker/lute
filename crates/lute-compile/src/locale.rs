@@ -231,6 +231,7 @@ fn missing_diag(locale: &str, line_id: &str) -> Diagnostic {
         code: W_L10N_MISSING.to_string(),
         severity: Severity::Warning,
         message: format!("no `{locale}` text for `{line_id}`"),
+        evidence: None,
         span: Span {
             byte_start: 0,
             byte_end: 0,

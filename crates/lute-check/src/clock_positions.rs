@@ -1485,26 +1485,29 @@ pub fn check_project_objective_clock_windows(
                 };
                 let reset = run_tier(q);
                 if !has_deadline {
-                    out.push((
-                        path.clone(),
-                        crate::reachability::diag(
-                            W_OBJECTIVE_STRANDED,
-                            if reset { Severity::Info } else { Severity::Warning },
-                            format!(
-                                "required objective `{}` can only be completed by clock-bounded beats \
-                                 whose windows close at {}; it has no `until=` or `by=` — {} \
-                                 (dsl 0.31.0 §3)",
-                                o.id,
-                                clock.describe(first),
-                                if reset {
-                                    "the next run retries"
-                                } else {
-                                    "add `until=` or `by=` so a missed window fails the objective"
-                                }
-                            ),
-                            o.span,
+                    let mut diagnostic = crate::reachability::diag(
+                        W_OBJECTIVE_STRANDED,
+                        if reset { Severity::Info } else { Severity::Warning },
+                        format!(
+                            "required objective `{}` can only be completed by clock-bounded beats \
+                             whose windows close at {}; it has no `until=` or `by=` — {} \
+                             (dsl 0.31.0 §3)",
+                            o.id,
+                            clock.describe(first),
+                            if reset {
+                                "the next run retries"
+                            } else {
+                                "add `until=` or `by=` so a missed window fails the objective"
+                            }
                         ),
-                    ));
+                        o.span,
+                    );
+                    if let Some(crate::evidence::DiagnosticClass::Analysis { evidence }) =
+                        crate::evidence::classification(W_OBJECTIVE_STRANDED)
+                    {
+                        diagnostic.evidence = Some(evidence);
+                    }
+                    out.push((path.clone(), diagnostic));
                 }
                 if positions.len() == 1
                     && windows.iter().all(|(pb, w)| pb.advances.is_some() && w.len() == 1)
@@ -1534,15 +1537,18 @@ pub fn check_project_objective_clock_windows(
                 clock.describe(*pos_a)
             );
             for (path, span) in [(path_a, span_a), (path_b, span_b)] {
-                out.push((
-                    path.clone(),
-                    crate::reachability::diag(
-                        W_SLOT_CONTENTION,
-                        Severity::Warning,
-                        message.clone(),
-                        *span,
-                    ),
-                ));
+                let mut diagnostic = crate::reachability::diag(
+                    W_SLOT_CONTENTION,
+                    Severity::Warning,
+                    message.clone(),
+                    *span,
+                );
+                if let Some(crate::evidence::DiagnosticClass::Analysis { evidence }) =
+                    crate::evidence::classification(W_SLOT_CONTENTION)
+                {
+                    diagnostic.evidence = Some(evidence);
+                }
+                out.push((path.clone(), diagnostic));
             }
         }
     }

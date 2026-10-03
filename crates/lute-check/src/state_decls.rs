@@ -190,6 +190,7 @@ fn error(message: String, span: Span) -> Diagnostic {
         code: E_STATE_DECL_CONFLICT.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span,
         layer: Layer::Logic,
         fixits: Vec::new(),

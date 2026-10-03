@@ -6,17 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_check::{fold_env, CheckInput};
 use lute_core_span::{Diagnostic, Span, TextIndex};
-use rayon::prelude::*;
-
-use crate::cmd_scenario::assemble_root_scenario;
-use crate::input::{assemble_input, read_document, BuiltInput};
-use crate::input_cache::InputCache;
-
-pub(crate) mod gate;
-pub(crate) mod reconcile;
-
+use lute_model::{assemble_root_scenario, nearest_manifest_dir};
 /// Recursively collect every `*.lute` file under `dir`, sorted byte-wise
 /// (`PathBuf`'s `Ord` is byte-lexicographic) for deterministic output
 /// regardless of the OS's directory-iteration order. Symlinked directories
@@ -40,64 +31,13 @@ pub(crate) mod reconcile;
 /// first rather than depending on directory-iteration order). A canonicalize
 /// failure (e.g. a dangling symlink) is surfaced exactly like every other
 /// walk I/O error above, never silently skipped or panicked on.
-pub(crate) fn find_lute_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
-    let mut out = Vec::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(d) = stack.pop() {
-        for entry in std::fs::read_dir(&d)? {
-            let entry = entry?;
-            let path = entry.path();
-            if entry.file_type()?.is_dir() {
-                stack.push(path);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("lute") {
-                out.push(path);
-            }
-        }
-    }
-    out.sort();
+pub(crate) use lute_model::find_lute_files;
 
-    let mut seen_canonical = BTreeSet::new();
-    let mut deduped = Vec::with_capacity(out.len());
-    for path in out {
-        let canonical = std::fs::canonicalize(&path)?;
-        if seen_canonical.insert(canonical) {
-            deduped.push(path);
-        }
-    }
-    Ok(deduped)
-}
-
-/// Resolve the project root for `file` (found under `walk_root` by
-/// [`find_lute_files`]): the NEAREST ancestor directory — starting at
-/// `file`'s own parent, walking upward — whose `lute.project.yaml` exists.
-/// Bounded below by `walk_root` itself, which is always the LAST directory
-/// tested; the walk never ascends above it. Returns `walk_root` unchanged
-/// when no ancestor up to and including it has a manifest, preserving
-/// today's flat single-project behavior for a `walk_root` with no nested
-/// subprojects. Deterministic and total: every path's `Path::parent()`
-/// ancestry is finite, so the walk always terminates; the only filesystem
-/// interaction is an existence check, never a read.
-pub(crate) fn project_root_for(file: &Path, walk_root: &Path) -> PathBuf {
-    let mut dir = file.parent().unwrap_or(walk_root);
-    loop {
-        if dir.join("lute.project.yaml").is_file() {
-            return dir.to_path_buf();
-        }
-        if dir == walk_root {
-            return walk_root.to_path_buf();
-        }
-        dir = match dir.parent() {
-            Some(parent) => parent,
-            None => return walk_root.to_path_buf(),
-        };
-    }
-}
 
 /// One resolved project root's docs, each paired with its parsed
 /// `Document` and `fold_env`'s `FoldedEnv` — the per-root unit
 /// `check-project` and `lute scenario` (T14) both group by.
-pub(crate) type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, lute_check::FoldedEnv)>;
-pub(crate) type ByRoot = BTreeMap<PathBuf, DocGroup>;
+pub(crate) use lute_model::{ByRoot, DocGroup};
 
 /// Walk `dir` for `.lute` files ([`find_lute_files`]), `check()` +
 /// `fold_env` each one, and group the parsed docs by resolved project root
@@ -123,8 +63,32 @@ pub(crate) fn collect_project_docs(
     providers: Option<&Path>,
     single_root: bool,
 ) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
+    if !single_root {
+        let opts = lute_model::ModelOptions {
+            providers: providers.map(Path::to_path_buf),
+            permission_profile: None,
+            mode: lute_check::Mode::Ci,
+            compile: false,
+            wip: false,
+        };
+        let mut file_results = Vec::new();
+        let mut by_root = BTreeMap::new();
+        for model in lute_model::ProjectModel::roots_under(dir, &opts).map_err(|error| {
+            eprintln!("lute: cannot build project under {}: {error}", dir.display());
+            ExitCode::from(2)
+        })? {
+            let root = model.root().to_path_buf();
+            let mut group = Vec::new();
+            for doc in model.documents() {
+                file_results.push((doc.path.clone(), doc.check.clone()));
+                group.push((doc.path.clone(), doc.doc.clone(), doc.folded.clone()));
+            }
+            by_root.insert(root, group);
+        }
+        return Ok((file_results, by_root));
+    }
     let (file_results, by_root, _, resolve_errors) =
-        collect_project_inputs(dir, providers, single_root)?;
+        collect_project_inputs(dir, providers, single_root, false)?;
     if resolve_errors > 0 && !single_root {
         return Err(ExitCode::from(1));
     }
@@ -144,115 +108,64 @@ pub(crate) fn collect_project_inputs(
     dir: &Path,
     providers: Option<&Path>,
     single_root: bool,
+    wip: bool,
 ) -> Result<
     (
         Vec<(PathBuf, lute_check::CheckResult)>,
         ByRoot,
-        Vec<(PathBuf, CheckInput)>,
+        Vec<lute_model::ProjectModel>,
         usize,
     ),
     ExitCode,
 > {
-    let files = find_lute_files(dir).map_err(|e| {
-        let e = lute_manifest::io_reason(&e);
-        eprintln!("lute: cannot walk {}: {e}", dir.display());
-        ExitCode::from(2)
-    })?;
-
-    // One document's contribution, computed independently of every other —
-    // so the files are checked in parallel against one shared per-run
-    // [`InputCache`], then folded back IN WALK ORDER below: stderr lines,
-    // early exits, and every returned vector are exactly the sequential ones.
-    struct Checked {
-        root: PathBuf,
-        built: BuiltInput,
-        /// `None` when the resolve-error gate below stops at this file.
-        analysis: Option<(
-            lute_syntax::ast::Document,
-            lute_check::FoldedEnv,
-            lute_check::CheckResult,
-        )>,
-    }
-    let cache = InputCache::default();
-    let checked: Vec<Result<Checked, String>> = files
-        .par_iter()
-        .map(|file| {
-            let root = if single_root {
-                dir.to_path_buf()
-            } else {
-                project_root_for(file, dir)
-            };
-            let text = read_document(file)?;
-            let (built, parsed) = assemble_input(&cache, file, text, providers, Some(&root), None);
-            let analysis = (!built.resolve_blocks || single_root).then(|| {
-                let input = &built.input;
-                let mut doc = parsed.0.clone();
-                // dsl 0.27.0 §6: template beats are ordinary beats to every pass.
-                let _ = lute_check::desugar_document(&mut doc, input);
-                // dsl 0.24.0 §4: the project passes (fact Must/may, connectivity)
-                // see an effects component's writes where its `::use` performs them.
-                lute_check::splice_component_effects(&mut doc, &input.components, &input.snapshot);
-                let (folded, _, _) = fold_env(&doc, input);
-                let result = lute_check::check_parsed(input, parsed);
-                (doc, folded, result)
-            });
-            Ok(Checked {
-                root,
-                built,
-                analysis,
-            })
-        })
-        .collect();
-
-    let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> = Vec::with_capacity(files.len());
-    let mut by_root: ByRoot = BTreeMap::new();
-    let mut inputs: Vec<(PathBuf, CheckInput)> = Vec::with_capacity(files.len());
-    // A plugin or manifest fault is the project's, not each document's:
-    // every document under the same root resolves it alike, so each distinct
-    // line prints once.
-    let mut reported: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let mut resolve_errors = 0;
-    for (file, checked) in files.iter().zip(checked) {
-        let Checked {
-            root,
-            built,
-            analysis,
-        } = checked.map_err(|message| {
-            eprintln!("{message}");
+    let opts = lute_model::ModelOptions {
+        providers: providers.map(Path::to_path_buf),
+        permission_profile: None,
+        mode: lute_check::Mode::Ci,
+        compile: true,
+        wip,
+    };
+    let models = if single_root {
+        vec![lute_model::ProjectModel::build_single_root(dir, &opts).map_err(|error| {
+            eprintln!("lute: cannot build project {}: {error}", dir.display());
             ExitCode::from(2)
-        })?;
-        for m in &built.project_diags {
-            if reported.insert(m.clone()) {
-                eprintln!("{}", crate::input::project_diag_line(m));
-                resolve_errors += usize::from(m.starts_with("E-"));
+        })?]
+    } else {
+        lute_model::ProjectModel::roots_under(dir, &opts).map_err(|error| {
+            eprintln!("lute: cannot build project under {}: {error}", dir.display());
+            ExitCode::from(2)
+        })?
+    };
+    let mut file_results = Vec::new();
+    let mut by_root = BTreeMap::new();
+    let mut reported = BTreeSet::new();
+    for model in &models {
+        let root = model.root().to_path_buf();
+        for doc in model.documents() {
+            for message in &doc.project_diags {
+                if reported.insert(message.clone()) {
+                    eprintln!("{}", lute_model::project_diag_line(message));
+                }
+            }
+            file_results.push((doc.path.clone(), doc.check.clone()));
+            by_root
+                .entry(root.clone())
+                .or_insert_with(Vec::new)
+                .push((doc.path.clone(), doc.doc.clone(), doc.folded.clone()));
+        }
+    }
+    let mut resolve_messages = BTreeSet::new();
+    for model in &models {
+        for doc in model.documents() {
+            for message in &doc.project_diags {
+                if message.starts_with("E-") {
+                    resolve_messages.insert(message.clone());
+                }
             }
         }
-        // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
-        // option, missing active plugin, bad identity template) is a
-        // build-failing error; it printed above, and it MUST gate or it would
-        // pass silently.
-        //
-        // ONLY under per-file root resolution (`single_root == false`). With
-        // `single_root == true` the caller has deliberately forced every file
-        // under ONE root to reconcile a DIFFERENT target document's envelope
-        // (connectivity spec §5) — a sibling that legitimately belongs to a
-        // nested subproject then resolves against the wrong `lute.project.yaml`
-        // and reports e.g. `E-PROFILE-UNKNOWN` for a profile its own project
-        // does define. That is an artifact of the forced root, not a fault of
-        // the document being compiled, and must not fail it. `check-project`
-        // (which uses each file's own nearest root) still catches the real ones.
-        let Some((doc, folded, result)) = analysis else {
-            return Err(ExitCode::from(1));
-        };
-        by_root
-            .entry(root.clone())
-            .or_default()
-            .push((file.clone(), doc, folded));
-        file_results.push((file.clone(), result));
-        inputs.push((root, built.input));
     }
-
-    Ok((file_results, by_root, inputs, resolve_errors))
+    let resolve_errors = resolve_messages.len();
+    Ok((file_results, by_root, models, resolve_errors))
 }
 
 /// Read and parse each of `files` (under the walk root `dir`) as every
@@ -265,18 +178,7 @@ pub(crate) fn parse_project_docs(
     dir: &Path,
     files: &[PathBuf],
 ) -> Vec<std::io::Result<(lute_syntax::ast::Document, Vec<Diagnostic>)>> {
-    let cache = InputCache::default();
-    files
-        .par_iter()
-        .map(|file| {
-            let text = std::fs::read_to_string(file)?;
-            let root = project_root_for(file, dir);
-            let (built, (mut doc, diags)) =
-                assemble_input(&cache, file, text, None, Some(&root), None);
-            let _ = lute_check::desugar_document(&mut doc, &built.input);
-            Ok((doc, diags))
-        })
-        .collect()
+    lute_model::parse_project_docs(dir, files)
 }
 
 /// Re-derive `span`'s `line`/`column`/`utf16_range` from its byte offsets
@@ -305,23 +207,6 @@ pub(crate) fn normalize_span_from_text(text: &str, span: Span) -> Span {
     Span::from_bytes(&idx, start, end)
 }
 
-/// The directory whose `lute.project.yaml` governs `file`: the nearest
-/// ancestor (starting at `file`'s own directory) that has one, or `None`.
-/// Unlike [`project_root_for`] this is not bounded by a walk root — a single
-/// file or test directory handed to `trace`/`test` still belongs to the
-/// project it sits in.
-pub(crate) fn nearest_manifest_dir(file: &Path) -> Option<PathBuf> {
-    let abs = std::fs::canonicalize(file).ok()?;
-    let start = if abs.is_dir() {
-        abs.as_path()
-    } else {
-        abs.parent()?
-    };
-    start
-        .ancestors()
-        .find(|d| d.join("lute.project.yaml").is_file())
-        .map(Path::to_path_buf)
-}
 
 /// The manifest a single-file command (`check`, `trace`, `compile`,
 /// `compile-stream`, `context`) resolves `file` against when no `--project`

@@ -53,6 +53,7 @@ pub(super) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<D
                         code: crate::cel_paths::E_PATH_IDENT.to_string(),
                         severity: Severity::Error,
                         message: g.message(&interp.raw),
+                        evidence: None,
                         span: interp.span,
                         layer: Layer::Cel,
                         fixits: Vec::new(),
@@ -165,6 +166,7 @@ pub(super) fn check_interp_referent(
                         message: format!(
                             "`@{name}` produces a non-renderable type; a `{{{{…}}}}` interpolation renders only number/bool/enum{advice} (dsl §7.6)"
                         ),
+                        evidence: None,
                         span: interp.span,
                         layer: Layer::Cel,
                         fixits: Vec::new(),
@@ -229,6 +231,7 @@ pub(super) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
              family path indexed by the raised member (`user.bond[occasion.target]`), a def \
              `@ref` / `@ref(args)`, or `userName` are permitted; {advice}"
         ),
+        evidence: None,
         span,
         layer: Layer::Cel,
         fixits: Vec::new(),
@@ -403,6 +406,7 @@ pub(super) fn check_interp_format(
         code: code.to_string(),
         severity: Severity::Error,
         message,
+        evidence: None,
         span: interp.span,
         layer: Layer::Cel,
         fixits: Vec::new(),
@@ -496,6 +500,7 @@ pub(super) fn text_looks_like_ref(l: &lute_syntax::ast::Line, ctx: &Ctx<'_>) -> 
              line text is never evaluated; to show the value of `@{name}` write \
              `{{{{@{name}}}}}` (dsl §7.6)"
         ),
+        evidence: None,
         span: l.text_span,
         layer: Layer::Content,
         fixits: Vec::new(),

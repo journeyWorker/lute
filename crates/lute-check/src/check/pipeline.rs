@@ -46,6 +46,7 @@ pub(super) fn cel_parse_diagnostics(
                 code: t.code.to_string(),
                 severity: Severity::Error,
                 message: t.message,
+                evidence: None,
                 span: t.span.unwrap_or(slot_span),
                 layer: Layer::Cel,
                 fixits: t.fixits,
@@ -90,6 +91,7 @@ fn def_body_diagnostics(
                     code: t.code.to_string(),
                     severity: Severity::Error,
                     message: format!("def `{name}`: {}", t.message),
+                    evidence: None,
                     span,
                     layer: Layer::Cel,
                     fixits: Vec::new(),
@@ -226,6 +228,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
             .chain(import_diags)
             .collect();
         normalize_spans(&idx, &input.text, &mut diags);
+        crate::evidence::annotate(&mut diags);
         super::postprocess::order_diagnostics(&mut diags);
         return CheckResult {
             ok: false,
@@ -252,6 +255,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     code: t.code.to_string(),
                     severity: Severity::Error,
                     message: t.message,
+                    evidence: None,
                     span: t.span.unwrap_or(slot.span),
                     layer: Layer::Cel,
                     fixits: t.fixits,
@@ -959,6 +963,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                       `name: <type>` or the long form `name: { type: <type>, default: <value> }` \
                       (dsl §13, 0.26.0 §3.3)"
                 .to_string(),
+            evidence: None,
             span: doc.meta.span,
             layer: Layer::Content,
             fixits: Vec::new(),
@@ -989,7 +994,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let diags = collapse_same_root(diags);
     // A name the manifest's `defaults.uses` declares, missing because this
     // document's own `uses:` replaced that list: the error says so.
-    let diags = crate::defaults_note::note_replaced_uses(&doc, input, diags);
+    let mut diags = crate::defaults_note::note_replaced_uses(&doc, input, diags);
 
     // Some-vs-None policy for the resolved view.
     let structural_break = diags
@@ -1005,6 +1010,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         })
     };
 
+    crate::evidence::annotate(&mut diags);
     let ok = !diags.iter().any(|d| d.severity == Severity::Error);
     let _ = &input.uri; // carried for the surfaces; check() itself is uri-agnostic.
     CheckResult {

@@ -37,10 +37,7 @@ use lute_trace::exec::{
     BridgeCall, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown, Pick, Seed,
     UnknownSite, Verdict,
 };
-
 use crate::runner::{bind_direct_occasion_target, RunDriver};
-
-/// The in-repo cases the first S1 run compared (§4.2). A run comparing fewer
 /// than 90% of this fails: a broken enumerator must not pass vacuously.
 const COMPARED_FLOOR: usize = 201;
 
@@ -847,7 +844,7 @@ impl Gates {
 }
 
 fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> Option<Subject> {
-    let built = crate::build_input(file, None, project, None)?;
+    let built = lute_model::build_input(file, None, project, None)?;
     let crate::BuiltInput {
         input, identity, ..
     } = built;

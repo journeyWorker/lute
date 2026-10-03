@@ -92,17 +92,16 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
 /// occasion vocabulary with the beats answering each occasion, and the
 /// DEDUPLICATED project-resolution problems resolution surfaced.
 ///
-/// Deliberately no second resolution path: this reuses `crate::build_input` —
+/// Deliberately no second resolution path: this reuses `lute_model::build_input` —
 /// the SAME per-document resolution `lute check`/`check-project` perform (each
-/// file's own project root via `crate::project_root_for`, its activated
+/// file's own project root via `lute_model::project_root_for`, its activated
 /// capability snapshot per plugin §4/§11, then its `uses:`/`extends:` schema
 /// imports per dsl §9.2) — and folds it through the SAME `merge_domains` the
 /// checker consults for `Type::Domain` resolution. So a slot `doctor` calls
 /// declared is a slot the checker resolves, and a plugin it calls active is a
 /// plugin some document's snapshot carries, by construction rather than by two
 /// implementations agreeing.
-///
-/// `root` is the WALK ROOT handed to `crate::project_root_for`, i.e. the lower
+/// `root` is the WALK ROOT handed to `lute_model::project_root_for`, i.e. the lower
 /// bound of each file's own ancestor search. It MUST be the directory `doctor`
 /// was asked about, for the reason spelled out at the call site.
 ///
@@ -142,10 +141,9 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
         utf16_range: (0, 0),
     };
     let mut scan = ProjectScan::default();
-    let cache = crate::InputCache::default();
     for file in lute_files {
-        let project = crate::project_root_for(file, root);
-        let Some(built) = crate::build_input_with(&cache, file, None, Some(&project), None) else {
+        let project = lute_model::project_root_for(file, root);
+        let Some(built) = lute_model::build_input(file, None, Some(&project), None) else {
             continue;
         };
         for m in &built.project_diags {
@@ -821,7 +819,7 @@ fn slot_entry(slot: &str, domain: &Domain) -> String {
 fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // Directory readability is the sole gating condition. `find_lute_files`
     // surfaces the same walk I/O errors `check-project` does.
-    let lute_files = match crate::find_lute_files(dir) {
+    let lute_files = match lute_model::find_lute_files(dir) {
         Ok(files) => files,
         Err(_) => return None,
     };
@@ -898,13 +896,19 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // (`lute_manifest::project::project_providers`): the manifest's
     // `catalogDir:`, default `catalog/`. Its absence says nothing about
     // plugins — only that no provider id is pinned.
-    let catalog_dir =
-        manifest_dir
-            .as_deref()
-            .map(|root| match lute_manifest::project::load_project(root) {
-                Ok(Some(config)) => config.catalog_dir,
-                _ => root.join("catalog"),
-            });
+    let catalog_dir = manifest_dir.as_deref().map(|root| {
+        let opts = lute_model::ModelOptions {
+            providers: None,
+            permission_profile: None,
+            mode: lute_check::Mode::Ci,
+            compile: false,
+            wip: false,
+        };
+        lute_model::ProjectModel::build_single_root(root, &opts)
+            .ok()
+            .and_then(|model| model.manifest().map(|config| config.catalog_dir.clone()))
+            .unwrap_or_else(|| root.join("catalog"))
+    });
     match catalog_dir.filter(|d| d.is_dir()) {
         Some(catalog_dir) => {
             let set = ProviderSet::load(&catalog_dir);

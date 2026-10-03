@@ -836,13 +836,17 @@ struct Producers<'g> {
 
 impl<'g> Producers<'g> {
     fn of(root: &Path, group: &'g DocGroup) -> Self {
-        let project = lute_manifest::project::load_project(root).ok().flatten();
-        let snapshot = lute_manifest::project::resolve_document_snapshot(
-            project.as_ref(),
-            None,
-            &BTreeMap::new(),
-        )
-        .0;
+        let opts = lute_model::ModelOptions {
+            providers: None,
+            permission_profile: None,
+            mode: lute_check::Mode::Ci,
+            compile: false,
+            wip: false,
+        };
+        let project = lute_model::ProjectModel::build_single_root(root, &opts)
+            .ok()
+            .and_then(|model| model.manifest().cloned());
+        let snapshot = lute_model::resolve_snapshot(project.as_ref());
         let components = group
             .iter()
             .filter_map(|(_, d, f)| f.typed.component.clone().map(|n| (n, d)))
