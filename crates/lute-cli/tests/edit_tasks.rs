@@ -35,8 +35,10 @@ fn edit_tasks_conform() {
         } else { vec![json!({"error":"reference refused","report":r})] };
         let pc = if valid { preserved(changes(&r),&e["preserve"]) } else { vec!["reference refused".into()] };
         let mut tv = vec![];
-        for z in fs::read_dir(&t).unwrap() {
-            let q = z.unwrap().path();
+        // read_dir order is platform-dependent; the report must not be.
+        let mut traps: Vec<PathBuf> = fs::read_dir(&t).unwrap().map(|z| z.unwrap().path()).collect();
+        traps.sort();
+        for q in traps {
             if q.file_name().unwrap().to_string_lossy().starts_with("trap-") {
                 let mut x = readj(&q);
                 let ex = x.as_object_mut().unwrap().remove("trapExpect").unwrap();

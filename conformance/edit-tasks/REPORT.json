@@ -106,21 +106,21 @@
     "preservedIdChanges": [],
     "trapVerdicts": [
       {
-        "actualCode": "E-PATCH-CHECK",
-        "caught": true,
-        "expected": {
-          "code": "E-PATCH-CHECK"
-        },
-        "name": "trap-unknown-result.json",
-        "status": 2
-      },
-      {
         "actualCode": "E-PATCH-PRESERVE",
         "caught": true,
         "expected": {
           "code": "E-PATCH-PRESERVE"
         },
         "name": "trap-failure-effects.json",
+        "status": 2
+      },
+      {
+        "actualCode": "E-PATCH-CHECK",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-CHECK"
+        },
+        "name": "trap-unknown-result.json",
         "status": 2
       }
     ],
