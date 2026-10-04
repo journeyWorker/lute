@@ -34,7 +34,7 @@ fn dry_run_json_reports_diff_and_preserves_source() {
     let output = Command::new(env!("CARGO_BIN_EXE_lute")).args(["patch", root.to_str().unwrap(), patch.to_str().unwrap(), "--dry-run", "--json"]).output().unwrap();
     assert_eq!(output.status.code(), Some(1), "{}", String::from_utf8_lossy(&output.stderr));
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report["schemaVersion"], "0.35.0.patch");
+    assert_eq!(report["schemaVersion"], "0.36.0.patch");
     assert_eq!(report["writes"][0], "scene.lute");
     assert_eq!(std::fs::read(root.join("scene.lute")).unwrap(), original);
     let _ = std::fs::remove_dir_all(root);
@@ -79,7 +79,7 @@ fn accepted_json_has_shape_and_exit_review() {
     let output = Command::new(env!("CARGO_BIN_EXE_lute")).args(["patch", root.to_str().unwrap(), patch.to_str().unwrap(), "--json"]).output().unwrap();
     assert_eq!(output.status.code(), Some(1), "{}", String::from_utf8_lossy(&output.stderr));
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report["schemaVersion"], "0.35.0.patch");
+    assert_eq!(report["schemaVersion"], "0.36.0.patch");
     assert_eq!(report["ok"], true);
     assert!(report["before"]["sha256"].is_string());
     assert!(report["after"]["sha256"].is_string());
@@ -96,7 +96,7 @@ fn stale_json_refusal_has_code_and_exit_two() {
     let output = Command::new(env!("CARGO_BIN_EXE_lute")).args(["patch", root.to_str().unwrap(), patch.to_str().unwrap(), "--json"]).output().unwrap();
     assert_eq!(output.status.code(), Some(2));
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report["schemaVersion"], "0.35.0.patch");
+    assert_eq!(report["schemaVersion"], "0.36.0.patch");
     assert_eq!(report["ok"], false);
     assert_eq!(report["code"], "E-PATCH-STALE");
     assert!(report["message"].is_string());

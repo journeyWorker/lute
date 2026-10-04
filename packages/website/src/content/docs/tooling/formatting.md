@@ -3,7 +3,7 @@ title: Formatting rules
 description: What lute fmt changes and preserves.
 ---
 
-# Formatting rules (0.35.0)
+# Formatting rules (0.36.0)
 
 `lute fmt <path>…` canonicalizes source without changing its meaning. It is
 deterministic and idempotent. `--check` writes nothing: exit 0 means canonical,

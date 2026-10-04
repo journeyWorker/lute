@@ -314,13 +314,7 @@ impl ProjectModel {
                     if !ledger.is_empty() {
                         for document in &mut model.documents {
                             if let Some(artifact) = document.artifact.as_mut() {
-                                artifact.identity_renames = ledger.clone();
-                                artifact.required_semantics =
-                                    lute_compile::semantics::collect(artifact)
-                                        .ids
-                                        .into_iter()
-                                        .map(str::to_string)
-                                        .collect();
+                                lute_compile::stamp_identity_renames(artifact, &ledger);
                             }
                         }
                         let inputs: Vec<IndexInput<'_>> = model

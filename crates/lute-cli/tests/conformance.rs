@@ -415,6 +415,127 @@ fn invalid_engine_matrices_are_rejected() {
     }
 }
 
+/// A standalone compile must carry the same expanded ledger and semantic
+/// requirement as the project-wide artifact for the same document.
+#[test]
+fn identity_rename_stamps_match_single_and_all_compile_paths() {
+    let root = corpus_dir().join("identity/rename-ledger");
+    let out = scratch("identity-rename-stamps");
+    let single = out.join("single.json");
+    let single_result = Command::new(BIN)
+        .args([
+            "compile",
+            &path_arg(&root.join("source.lute")),
+            "--project",
+            &path_arg(&root),
+            "-o",
+            &path_arg(&single),
+        ])
+        .output()
+        .expect("spawn single-file compile");
+    assert_eq!(
+        single_result.status.code(),
+        Some(0),
+        "single stderr: {}",
+        String::from_utf8_lossy(&single_result.stderr)
+    );
+
+    let all_out = out.join("all");
+    let all_result = Command::new(BIN)
+        .args([
+            "compile",
+            "--all",
+            "--project",
+            &path_arg(&root),
+            "-o",
+            &path_arg(&all_out),
+        ])
+        .output()
+        .expect("spawn project compile");
+    assert_eq!(
+        all_result.status.code(),
+        Some(0),
+        "all stderr: {}",
+        String::from_utf8_lossy(&all_result.stderr)
+    );
+
+    let single_json = json_at(&single);
+    let all_json = json_at(&all_out.join("source.lute.json"));
+    assert_eq!(single_json["identityRenames"], all_json["identityRenames"]);
+    assert_eq!(
+        single_json["requiredSemantics"],
+        all_json["requiredSemantics"]
+    );
+}
+
+/// Identity fixtures pin the machine-visible joins and the save-migration
+/// refusal/coalescing contract separately from the replay transcript.
+#[test]
+fn identity_fixtures_pin_stable_scope_and_save_collision_contract() {
+    let explicit = json_at(&corpus_dir().join("identity/explicit-component/artifact.json"));
+    let ids: Vec<_> = explicit["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|command| command["lineId"].as_str())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "identity.explicit.spark#use-001.narrator_0010",
+            "identity.explicit.spark#use-002.narrator_0010",
+            "identity.explicit.nested#outer.spark#child.narrator_0010",
+        ]
+    );
+    let migration = json_at(&corpus_dir().join("identity/save-collision/migration-report.json"));
+    let cases = migration["cases"].as_array().unwrap();
+    assert_eq!(cases[0]["result"], "refused");
+    assert_eq!(cases[0]["mutated"], false);
+    assert_eq!(cases[1]["result"], "coalesced");
+    assert_eq!(cases[1]["mutated"], true);
+}
+
+/// The save format is engine-owned; this small reference applier pins the
+/// ledger contract represented by migration-report.json.
+#[test]
+fn identity_rename_and_save_report_match_artifact() {
+    let root = corpus_dir().join("identity");
+    let artifact = json_at(&root.join("rename-ledger/artifact.json"));
+    let ledger = artifact["identityRenames"].as_array().unwrap();
+    assert_eq!(artifact["requiredSemantics"][1], "lute.identity.renames/1");
+    assert_eq!(ledger.len(), 3);
+    assert_eq!(ledger[0]["from"], "objective:oldQuest.reach");
+    assert_eq!(ledger[1]["from"], "quest:oldQuest");
+    assert_eq!(ledger[2]["to"], "state:quest.newQuest.state");
+
+    let save = json_at(&root.join("save-collision/save-before.json"));
+    assert_eq!(save["quest:oldQuest"], "complete");
+    assert_eq!(save["quest:newQuest"], "active");
+    let report = json_at(&root.join("save-collision/migration-report.json"));
+    assert_eq!(report["ledger"], serde_json::Value::Array(ledger.clone()));
+    for case in report["cases"].as_array().unwrap() {
+        let before = case["save"].as_object().unwrap();
+        let mut after = before.clone();
+        let mut refused = false;
+        for pair in ledger {
+            let from = pair["from"].as_str().unwrap();
+            let to = pair["to"].as_str().unwrap();
+            if let (Some(old), Some(new)) = (before.get(from), before.get(to)) {
+                if old != new { refused = true; }
+            }
+            if !refused {
+                if let Some(value) = before.get(from) {
+                    after.remove(from);
+                    after.insert(to.to_string(), value.clone());
+                }
+            }
+        }
+        assert_eq!(case["result"], if refused { "refused" } else { "coalesced" });
+        assert_eq!(case["mutated"], !refused);
+        if !refused { assert_eq!(case["expected"], serde_json::Value::Object(after)); }
+    }
+}
+
 /// The major.minor line of a full `x.y.z` version — what the `--json`
 /// transcript's `irVersion` records.
 fn ir_line(full: &str) -> String {

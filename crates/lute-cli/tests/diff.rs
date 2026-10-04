@@ -30,7 +30,7 @@ fn diff_json_prints_revisions_and_semantic_changes() {
     let output = run(&before, &after);
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report["schemaVersion"], "0.35.0.diff");
+    assert_eq!(report["schemaVersion"], "0.36.0.diff");
     assert!(report["before"]["sha256"].as_str().is_some());
     assert!(report["after"]["sha256"].as_str().is_some());
     assert_eq!(report["changes"].as_array().unwrap().len(), 1);

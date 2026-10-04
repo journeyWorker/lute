@@ -336,7 +336,7 @@ def check_changelog_classes(lang_version: str) -> None:
     text = read(ROOT / "CHANGELOG.md")
     target = "[Unreleased]" if tuple(map(int, lang_version.split("."))) < (0, 36, 0) else f"[{lang_version}]"
     section = re.search(
-        rf"(?ms)^##\s+{re.escape(target)}\s*$([\s\S]*?)(?=^##\s+|\Z)",
+        rf"(?ms)^##\s+{re.escape(target)}(?:\s+-\s+\d{{4}}-\d{{2}}-\d{{2}})?\s*$([\s\S]*?)(?=^##\s+|\Z)",
         text,
     )
     if section is None:

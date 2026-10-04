@@ -1,0 +1,99 @@
+{
+  "kind": "quest",
+  "lute": "0.36.0",
+  "irVersion": "0.36.0",
+  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "identityRenames": [
+    {
+      "from": "objective:oldQuest.reach",
+      "to": "objective:newQuest.reach"
+    },
+    {
+      "from": "quest:oldQuest",
+      "to": "quest:newQuest"
+    },
+    {
+      "from": "state:quest.oldQuest.state",
+      "to": "state:quest.newQuest.state"
+    }
+  ],
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.identity.renames/1",
+    "lute.quest.lifecycle/1"
+  ],
+  "meta": {
+    "id": "rename-ledger"
+  },
+  "state": [
+    {
+      "path": "quest.newQuest.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:newQuest"
+    },
+    {
+      "path": "quest.newQuest.objectives.reach.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:newQuest"
+    },
+    {
+      "path": "quest.newQuest.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:newQuest"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "newQuest",
+      "title": "An old quest",
+      "titleLineId": "newQuest.title",
+      "start": {
+        "cel": "true",
+        "expr": {
+          "bool": true
+        }
+      },
+      "objectives": [
+        {
+          "id": "reach",
+          "title": "Reach the marker",
+          "titleLineId": "newQuest.reach",
+          "done": {
+            "cel": "quest.newQuest.state == 'complete'",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "quest.newQuest.state"
+              },
+              "r": {
+                "string": "complete"
+              }
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ],
+      "tier": "run"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "quest",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

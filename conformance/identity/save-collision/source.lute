@@ -1,0 +1,9 @@
+---
+kind: quest
+id: save-collision
+luteVersion: "0.36.0"
+---
+
+<quest id="newQuest" tier="run" title="Migrated quest" start="true">
+  <objective id="reach" title="Reach the marker" done="quest.newQuest.state == 'complete'"/>
+</quest>

@@ -1,0 +1,8 @@
+{
+  "quest:oldQuest": "complete",
+  "quest:newQuest": "active",
+  "objective:oldQuest.reach": true,
+  "objective:newQuest.reach": false,
+  "state:quest.oldQuest.state": "complete",
+  "state:quest.newQuest.state": "active"
+}

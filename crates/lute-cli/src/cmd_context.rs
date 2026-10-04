@@ -285,7 +285,7 @@ fn run_task_context(
         })
         .collect::<serde_json::Map<_, _>>();
     let output = serde_json::json!({
-        "schemaVersion": "0.35.0.context",
+        "schemaVersion": "0.36.0.context",
         "projectRevision": revision,
         "files": files,
         "target": target_value,
@@ -338,7 +338,7 @@ fn run_position_context(
         Err(error) => { eprintln!("lute: position query refused: {error:?}"); return ExitCode::from(1); }
     };
     let value = serde_json::json!({
-        "schemaVersion": "0.35.0.position",
+        "schemaVersion": "0.36.0.position",
         "expectedType": resolution.expected_type.as_ref().map(|ty| attr_type_str(ty).0),
         "visibleSymbols": resolution.visible_symbols.iter().map(symbol_json).collect::<Vec<_>>(),
         "cursor": resolution.cursor.map(|cursor| serde_json::json!({"kind":cursor.kind,"span":cursor.span})),

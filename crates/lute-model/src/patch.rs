@@ -689,7 +689,7 @@ mod tests {
         let line = NodeKey::new(NodeKind::Line, "line");
         let change = |node: NodeKey, kind: ChangeKind, before: Value, after: Value| SemanticChange { node, kind, before: Some(before), after: Some(after), locations: vec![], unmapped_identity: false };
         let revision = model.revisions().clone();
-        let make_diff = |change| crate::SemanticDiff { schema_version: "0.35.0.diff", before: revision.clone(), after: revision.clone(), changes: vec![change] };
+        let make_diff = |change| crate::SemanticDiff { schema_version: "0.36.0.diff", before: revision.clone(), after: revision.clone(), changes: vec![change] };
         let cases = vec![
             (Preserve::Ids(vec![NodeKey::new(NodeKind::Line, "missing")]), change(NodeKey::new(NodeKind::Line, "missing"), ChangeKind::Removed, serde_json::json!({}), Value::Null)),
             (Preserve::LineIds, change(line.clone(), ChangeKind::Field("lineId".into()), serde_json::json!({"command":{"lineId":"a"}}), serde_json::json!({"command":{"lineId":"b"}}))),
@@ -709,7 +709,7 @@ mod tests {
         std::fs::write(root.join("scene.lute"), "---\nkind: scene\nid: hall\n---\n\n## Opening\n@narrator: Hello\n").unwrap();
         let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
         let revision = model.revisions().clone();
-        let make = |node: NodeKey, field: &str| crate::SemanticDiff { schema_version: "0.35.0.diff", before: revision.clone(), after: revision.clone(), changes: vec![SemanticChange {
+        let make = |node: NodeKey, field: &str| crate::SemanticDiff { schema_version: "0.36.0.diff", before: revision.clone(), after: revision.clone(), changes: vec![SemanticChange {
             node, kind: ChangeKind::Field(field.into()), before: Some(serde_json::json!({})), after: Some(serde_json::json!({})), locations: vec![], unmapped_identity: false,
         }] };
         for (name, diff) in [
@@ -733,7 +733,7 @@ mod tests {
         let before = ProjectModel::build_single_root(&before_root, &ModelOptions::default()).unwrap();
         let after = ProjectModel::build_single_root(&after_root, &ModelOptions::default()).unwrap();
         let node = NodeKey::new(NodeKind::Scene, "hall");
-        let diff = crate::SemanticDiff { schema_version: "0.35.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes: vec![] };
+        let diff = crate::SemanticDiff { schema_version: "0.36.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes: vec![] };
         assert_ne!(reachability_value(&before, &node), reachability_value(&after, &node), "before={:?} after={:?} keys={:?}", reachability_value(&before, &node), reachability_value(&after, &node), before.reconciled().scenarios.values().map(|scenario| scenario.reach.keys().collect::<Vec<_>>()).collect::<Vec<_>>());
         assert!(!preserve_violations(&[Preserve::Reachability(vec![node])], &diff, &before, &after).is_empty());
         let _ = std::fs::remove_dir_all(before_root);
@@ -752,7 +752,7 @@ mod tests {
         let old = constraint_values(&before);
         assert!(before.manifest().is_some(), "manifest missing");
         assert_eq!(old.get("hall-reachable").and_then(|value| value.get("verdict")), Some(&Value::String("holds".into())));
-        let diff = crate::SemanticDiff { schema_version: "0.35.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes: vec![] };
+        let diff = crate::SemanticDiff { schema_version: "0.36.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes: vec![] };
         assert!(!preserve_violations(&[Preserve::Constraints], &diff, &before, &after).is_empty());
         let _ = std::fs::remove_dir_all(before_root);
         let _ = std::fs::remove_dir_all(after_root);

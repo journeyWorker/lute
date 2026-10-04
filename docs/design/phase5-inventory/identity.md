@@ -6,7 +6,7 @@ status: Accepted
 
 ## summary
 
-Identity inventory for 0.35.0/CI head: authored ids are generally stable under sibling insertion and formatting, but file moves and parent renames have mixed behavior; untagged line codes are positional/back-filled and component instance `{component}#{n}` is explicitly ordinal, so inserting an earlier use renumbers later component identities. `addr` is always build-local. `lute diff` compares canonical NodeKeys and reports path changes as `moved`, but does not infer parent/file rename when the key itself changes; changed keys become removed/added.
+Identity inventory for 0.36.0/CI head: authored ids are generally stable under sibling insertion and formatting, but file moves and parent renames have mixed behavior; untagged line codes are positional/back-filled and component instance `{component}#{n}` is explicitly ordinal, so inserting an earlier use renumbers later component identities. `addr` is always build-local. `lute diff` compares canonical NodeKeys and reports path changes as `moved`, but does not infer parent/file rename when the key itself changes; changed keys become removed/added.
 
 ## architecture
 

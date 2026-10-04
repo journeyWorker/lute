@@ -348,13 +348,13 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 context 위치 질의의 좌표가 잘못되었거나 소스 파일 범위를 벗어났습니다.
 
-명세: [dsl 0.35.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-CONTEXT-TARGET
 
 context 대상 키가 프로젝트 그래프에서 없거나 모호합니다.
 
-명세: [dsl 0.35.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-DATALOG-FUNCTION
 
@@ -450,13 +450,13 @@ context 대상 키가 프로젝트 그래프에서 없거나 모호합니다.
 
 diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프로젝트 모델로 만들 수 없습니다.
 
-명세: [dsl 0.35.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-DIFF-MODEL
 
 한쪽의 완전한 프로젝트 모델을 만들 수 없어 의미론적 diff를 수행할 수 없습니다.
 
-명세: [dsl 0.35.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-DOLLAR-OUTSIDE-MATCH
 
@@ -635,13 +635,13 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 포매터가 요청한 파일을 파싱하거나 보존할 수 없습니다.
 
-명세: [dsl 0.35.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-FMT-CHECK
 
 포매터 검사에서 요청한 파일의 비표준 바이트를 발견했습니다.
 
-명세: [dsl 0.35.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-FRONTMATTER-SCHEMA
 
@@ -885,31 +885,31 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 스테이징된 패치가 새로운 검사 또는 프로젝트 오류를 도입했습니다.
 
-명세: [dsl 0.35.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATCH-EDIT
 
 패치 편집이 잘못되었거나 대상 밖에 있거나 다른 편집과 겹치거나 escape-hatch 스팬 검사를 통과하지 못했습니다.
 
-명세: [dsl 0.35.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATCH-PRESERVE
 
 패치가 요청된 보존 조건을 위반했습니다. 모호한 보상 또는 컴포넌트 일치도 포함됩니다.
 
-명세: [dsl 0.35.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATCH-STALE
 
 패치의 기준 프로젝트 또는 지정 파일 리비전이 현재 리비전과 다릅니다.
 
-명세: [dsl 0.35.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATCH-TARGET
 
 패치 대상이 없거나 모호하거나 편집 가능한 소스 앵커가 없습니다.
 
-명세: [dsl 0.35.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATH-IDENT
 
@@ -1354,7 +1354,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 편집 작업 모음의 트랩이 패치를 예상대로 거부하거나 표시하지 못했습니다.
 
-명세: [dsl 0.35.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+명세: [dsl 0.36.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-TEMPLATE
 

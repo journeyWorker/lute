@@ -671,13 +671,19 @@ fn drowned_crown_target_context_golden() {
             "kind": "choice",
             "key": "last.crown:crownChoice.wear",
             "file": "scenes/last/crown.lute",
+            "identity": {
+                "computed": "last.crown:crownChoice.wear",
+                "kind": "choice",
+                "source": "computed",
+                "stable": true
+            },
             "span": {
                 "line": 12,
                 "column": 3,
                 "byteStart": 174,
-                "byteEnd": 431
+                "byteEnd": 456
             },
-            "excerpt": "<choice id=\"wear\" label=\"Put it on\">\n    @ilo{mono}: It's cold. It's so cold. It fits.\n    @narrator: Far above, the sea around the Gull's Mercy goes flat and bright, and stays that way.\n    ::set{user.crowned = true}\n    ::end{reason=\"crowned\"}\n  </choice>"
+            "excerpt": "<choice id=\"wear\" label=\"Put it on\">\n    @ilo{code=\"0010\" mono}: It's cold. It's so cold. It fits.\n    @narrator{code=\"0010\"}: Far above, the sea around the Gull's Mercy goes flat and bright, and stays that way.\n    ::set{user.crowned = true}\n    ::end{reason=\"crowned\"}\n  </choice>"
         })
     );
     assert_eq!(value["declared"]["writes"][0]["node"], "state:user.crowned");

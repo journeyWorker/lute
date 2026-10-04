@@ -687,7 +687,7 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
             .then_with(|| a.kind.rank().cmp(&b.kind.rank()))
             .then_with(|| location_key(a).cmp(&location_key(b)))
     });
-    Ok(SemanticDiff { schema_version: "0.35.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes })
+    Ok(SemanticDiff { schema_version: "0.36.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes })
 }
 
 pub fn human(diff: &SemanticDiff) -> String {

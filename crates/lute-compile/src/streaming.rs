@@ -9,12 +9,12 @@ use std::ops::Range;
 
 use lute_check::{check, CheckInput};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
-use lute_manifest::project::IdentityTemplates;
+use lute_manifest::project::{IdentityRename, IdentityTemplates};
 use lute_syntax::incremental::{ContinuationUnit, IncrementalContinuationParser};
 
 pub use lute_syntax::incremental::NeedMoreInput;
 
-use crate::{compile_with_check, ExecutionIr, Command, DocKind};
+use crate::{compile_with_check, stamp_identity_renames, ExecutionIr, Command, DocKind};
 
 pub const E_STREAM_TEMPLATE: &str = "E-STREAM-TEMPLATE";
 pub const E_STREAM_BODY: &str = "E-STREAM-BODY";
@@ -45,6 +45,7 @@ pub struct ContinuationCompilation {
 pub struct ContinuationCompiler {
     input: CheckInput,
     identity: IdentityTemplates,
+    identity_renames: Vec<IdentityRename>,
     parser: Option<IncrementalContinuationParser>,
     artifact: ExecutionIr,
     sequence: u64,
@@ -71,6 +72,7 @@ impl ContinuationCompiler {
         Ok(Self {
             input,
             identity,
+            identity_renames: Vec::new(),
             parser: Some(IncrementalContinuationParser::new()),
             artifact,
             sequence: 0,
@@ -82,6 +84,13 @@ impl ContinuationCompiler {
     pub fn artifact(&self) -> &ExecutionIr {
         &self.artifact
     }
+    /// Set the project ledger applied to the initial artifact and every later
+    /// cumulative snapshot emitted by this compiler.
+    pub fn set_identity_renames(&mut self, renames: &[IdentityRename]) {
+        self.identity_renames = renames.to_vec();
+        stamp_identity_renames(&mut self.artifact, renames);
+    }
+
 
     /// Append a UTF-8 text chunk and compile every newly completed unit.
     pub fn push(&mut self, chunk: &str) -> ContinuationCompilation {
@@ -228,7 +237,10 @@ impl ContinuationCompiler {
         let checked = check(&self.input);
         let checker_diagnostics = checked.diagnostics.clone();
         match compile_with_check(&self.input, checked, &self.identity) {
-            Ok(artifact) => Ok((artifact, checker_diagnostics)),
+            Ok(mut artifact) => {
+                stamp_identity_renames(&mut artifact, &self.identity_renames);
+                Ok((artifact, checker_diagnostics))
+            }
             Err(mut compile_diagnostics) => {
                 if checker_diagnostics
                     .iter()

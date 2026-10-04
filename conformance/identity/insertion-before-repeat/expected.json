@@ -1,0 +1,28 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "Spark"
+    },
+    {
+      "addr": "001-0200",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "Spark"
+    },
+    {
+      "addr": "001-0300",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "Spark"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.36",
+  "kind": "scene",
+  "quests": {},
+  "state": {}
+}

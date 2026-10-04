@@ -70,7 +70,7 @@ No `/usr/bin/time -p` command, `target/debug/lute` invocation, `npx`, or `sample
 | `lute play --script drowned-crown` | `target/debug/lute` present | unavailable | not run |
 | `lute play --script monster-league` | `target/debug/lute` present | unavailable | not run |
 | `lute play --script` tiny game | `target/debug/lute` present | unavailable | not run |
-| `~/.bun/bin/lute` / npm 0.35.0 | not inspected by executable search | unavailable | not run |
+| `~/.bun/bin/lute` / npm 0.36.0 | not inspected by executable search | unavailable | not run |
 
 The command surfaces are implemented in `crates/lute-cli/src/cmd_check_project.rs`, `compile_all.rs`, `cmd_impact.rs`, and `cmd_diff.rs`; compile-all explicitly builds one ProjectModel (`crates/lute-cli/src/compile_all.rs:116-124`), while diff builds two (`crates/lute-cli/src/cmd_diff.rs:110-114`).
 

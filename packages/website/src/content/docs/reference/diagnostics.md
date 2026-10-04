@@ -348,13 +348,13 @@ Spec: [dsl 0.5.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 A context position query has an invalid coordinate or falls outside the source file.
 
-Spec: [dsl 0.35.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-CONTEXT-TARGET
 
 A context target key is unknown or ambiguous in the project graph.
 
-Spec: [dsl 0.35.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-DATALOG-FUNCTION
 
@@ -450,13 +450,13 @@ Spec: [dsl 0.3.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/propo
 
 A diff side cannot be read, safely materialized, or built into a complete project model.
 
-Spec: [dsl 0.35.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-DIFF-MODEL
 
 A semantic diff cannot produce a complete project model for one side.
 
-Spec: [dsl 0.35.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-DOLLAR-OUTSIDE-MATCH
 
@@ -636,13 +636,13 @@ Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 The formatter cannot parse or preserve the requested file.
 
-Spec: [dsl 0.35.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-FMT-CHECK
 
 A formatter check found noncanonical bytes in the requested file.
 
-Spec: [dsl 0.35.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-FRONTMATTER-SCHEMA
 
@@ -886,31 +886,31 @@ Spec: [dsl 0.2.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 A staged patch introduces a new check or project error.
 
-Spec: [dsl 0.35.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATCH-EDIT
 
 A patch edit is malformed, outside its target, overlaps another edit, or fails its escape-hatch span assertion.
 
-Spec: [dsl 0.35.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATCH-PRESERVE
 
 A patch violates a requested preserve claim, including an ambiguous reward or component match.
 
-Spec: [dsl 0.35.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATCH-STALE
 
 A patch base project or asserted file revision differs from the current revision.
 
-Spec: [dsl 0.35.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATCH-TARGET
 
 A patch target is unknown, ambiguous, or has no editable source anchor.
 
-Spec: [dsl 0.35.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-PATH-IDENT
 
@@ -1358,7 +1358,7 @@ Spec: [dsl §2.3](/spec/)
 
 An edit-task suite trap did not refuse or flag the patch as expected.
 
-Spec: [dsl 0.35.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+Spec: [dsl 0.36.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### E-TEMPLATE
 

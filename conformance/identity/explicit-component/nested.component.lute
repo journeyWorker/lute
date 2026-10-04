@@ -1,0 +1,8 @@
+---
+component: nested
+components: [component.lute]
+---
+
+## Nested
+
+::use{component="spark" instance="child"}

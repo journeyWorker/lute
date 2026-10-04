@@ -58,13 +58,13 @@ fn fill(value: &mut Value, project: &str, files: &BTreeMap<String, String>) {
 fn refusal_json(refusal: &PatchRefusal) -> Value {
     if let PatchRefusal::Io { path, message } = refusal {
         return json!({
-            "schemaVersion": "0.35.0.patch",
+            "schemaVersion": "0.36.0.patch",
             "ok": false,
             "error": {"kind": "io", "path": path, "message": message},
         });
     }
     let mut value = json!({
-        "schemaVersion": "0.35.0.patch",
+        "schemaVersion": "0.36.0.patch",
         "ok": false,
         "code": refusal.code(),
         "message": refusal.message(),
@@ -102,7 +102,7 @@ fn apply(model: &ProjectModel, value: Value) -> (i32, Value) {
     match apply_patch_to(model, request, true) {
         Ok(report) => {
             let mut output = serde_json::to_value(report).unwrap();
-            output["schemaVersion"] = Value::String("0.35.0.patch".into());
+            output["schemaVersion"] = Value::String("0.36.0.patch".into());
             output["ok"] = Value::Bool(true);
             let status = if output["diff"]["changes"].as_array().is_some_and(|changes| changes.is_empty()) { 0 } else { 1 };
             (status, output)

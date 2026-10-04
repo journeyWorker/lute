@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.35.0`, the grammar and semantics the checker
+- **Language** — currently `0.36.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.35.0`) and gated on by consuming engines.
+  artifact (currently `0.36.0`) and gated on by consuming engines.
 
 
 
@@ -38,33 +38,45 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.36.0] - 2026-10-05
 
-### Changed
-
-- Faster tests and CI, no behavior change. The edit-task suite no longer keeps
-  copies of dogfood games (1,632 files removed): each task names its base in
-  `task.json`, the twelve tasks run as parallel tests against one model per
-  game, and two tests still run a reference patch for real through
-  `lute patch`. The trace-vs-run differential builds each project once and
-  skips `conformance/edit-tasks`. `ProjectModel::graph()` is cached per model.
-  `--dump-conditions` looks conditions up in an index built once instead of
-  walking every artifact per evaluation (monster-league play: 100 s → 30 s
-  with byte-identical dumps). The dev profile builds at `opt-level = 1`. CI
-  runs the Rust suites under cargo-nextest in parallel with a separate doc
-  and corpus gate job, and the conformance harness runs once per PR push.
+**Identity, migration, performance** (phase 5 of
+[`architecture-direction.md`](docs/design/architecture-direction.md); spec
+[`0.36.0.md`](docs/proposals/scenario-dsl/0.36.0.md)). A clean pre-1.0
+cutover: identities that engines persist no longer depend on position once a
+project is tagged, renames are declared instead of inferred, and performance is
+gated in CI.
 
 ### Syntax
 
-None.
+- `::use{component="…" instance="…"}` (and `<beat use="…" instance="…">`)
+  declares a component instance key: `[A-Za-z][A-Za-z0-9_-]{0,63}`, unique per
+  component within its immediate expansion owner. `instance` is an identity
+  attribute, never a component parameter.
+- Migration: `lute tag <project>` back-fills `instance="use-NNN"` on every
+  untagged use (per document and component) alongside missing line codes;
+  authored keys are never rewritten, a second run writes nothing. No `lute fix`
+  rule is needed: untagged uses still compile.
 
 ### Semantics
 
-None.
+- Component-expanded identities use `{component}#{instance}` instead of the
+  ordinal `{component}#{n}`: inserting a `::use` before another renumbers
+  nothing. An untagged use keeps the ordinal as a fallback marked
+  `stable: false`.
+- `lute.project.yaml` `identity.requireStable: true` makes untagged uses and
+  uncoded lines warnings; `identity.renames` declares old → new canonical node
+  keys. An entry renames the node and everything the semantic graph contains
+  under it; sources must be gone, destinations present, no chains or cycles.
 
 ### IR
 
-None.
+- `identityRenames` (expanded, sorted `{from, to}` pairs) on the execution IR
+  and the project index, omitted when empty; non-empty requires semantic id
+  `lute.identity.renames/1`. Engines apply it to saves before reading them and
+  refuse the whole migration on an unequal destination collision.
+- Component-expanded `lineId`/`voiceKey` and `Source.scope` carry the instance
+  key. Schema renamed to `schemas/lute-ir-0.36.schema.json`.
 
 ### Plugin
 
@@ -72,15 +84,52 @@ None.
 
 ### CLI
 
-None.
+- `lute diff` emits `renamed` rows (`from`, `to`, `declarationLocation`) for
+  ledger-mapped nodes and marks unmapped save-shaped removed/added pairs
+  `unmappedIdentity: true`; `lute patch` `preserve.ids` accepts either side of
+  a mapping.
+- `lute tag` back-fills component instances; `--force` still never rewrites an
+  explicit instance and, under `codesLocked`, refuses the line retag but writes
+  missing instances.
+- `lute context --target` and LSP hover show identity source, stability and
+  component scope.
 
 ### Diagnostics
 
-None.
+- New: `E-COMPONENT-INSTANCE-INVALID`, `E-COMPONENT-INSTANCE-DUPLICATE`,
+  `W-COMPONENT-INSTANCE-UNTAGGED`, `W-LINE-CODE-UNTAGGED` (both warnings only
+  under `identity.requireStable`), `E-RENAME-LEDGER`,
+  `E-RENAME-LEDGER-STALE`, `E-RENAME-LEDGER-CYCLE`.
 
 ### Identity
 
-None.
+- Every authorable node kind's identity source, stability and persistence is
+  tabulated in [`docs/handbook/core.md`](docs/handbook/core.md). All fourteen
+  dogfood games set `requireStable` and are fully tagged; host-line ids are
+  unchanged by the migration, component-expanded ids move `#n` → `#use-NNN`.
+
+### Tooling
+
+- `crates/lute-bench`: in-process benchmarks (cold load, project resolution,
+  analysis, serialization, playback) over ledger / drowned-crown /
+  monster-league; the `Benchmarks` workflow compares the PR against its merge
+  base on one runner (7 interleaved samples, fails on median ratio > 1.10;
+  `performance-approved` label + PR-body `tier/phase` note to accept).
+- Bounded, fixed-seed property tests: formatter idempotence, IR serialize/
+  deserialize round trip, parser never panics.
+- Every doc under `docs/proposals`, `docs/design`, `docs/superpowers` carries
+  a status (Draft/Accepted/Implemented/Superseded/Rejected), and release
+  sections carry the seven class headings; both enforced by
+  `scripts/check-docs-consistency.py`.
+- Faster tests and CI, no behavior change: the edit-task suite no longer keeps
+  copies of dogfood games (1,632 files removed) and runs its twelve tasks as
+  parallel tests against one model per game, with two tests still applying a
+  reference patch for real through `lute patch`; the trace-vs-run
+  differential builds each project once; `ProjectModel::graph()` is cached;
+  `--dump-conditions` uses a condition index built once (monster-league play
+  100 s → 30 s, byte-identical dumps); dev profile `opt-level = 1`; CI runs
+  the Rust suites under cargo-nextest beside a separate doc/corpus gate job
+  (60 min → under 7 min), and the conformance harness runs once per PR push.
 
 ## [0.35.0] - 2026-10-04
 

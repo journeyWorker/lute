@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "0.36.0.identity-migration",
+  "ledger": [
+    {"from":"objective:oldQuest.reach","to":"objective:newQuest.reach"},
+    {"from":"quest:oldQuest","to":"quest:newQuest"},
+    {"from":"state:quest.oldQuest.state","to":"state:quest.newQuest.state"}
+  ],
+  "cases": [
+    {
+      "name": "unequal-destination",
+      "save": {"quest:oldQuest":"complete","quest:newQuest":"active"},
+      "result": "refused", "mutated": false,
+      "reason": "destination state differs; refuse the complete ledger before mutation"
+    },
+    {
+      "name": "equal-destination",
+      "save": {"quest:oldQuest":"complete","quest:newQuest":"complete"},
+      "result": "coalesced", "mutated": true,
+      "expected": {"quest:newQuest":"complete"}
+    }
+  ]
+}

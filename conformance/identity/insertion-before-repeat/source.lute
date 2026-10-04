@@ -1,0 +1,12 @@
+---
+kind: scene
+id: identity.explicit
+luteVersion: "0.36.0"
+components: [../explicit-component/component.lute]
+---
+
+## Opening
+
+::use{component="spark" instance="inserted"}
+::use{component="spark" instance="use-001"}
+::use{component="spark" instance="use-002"}

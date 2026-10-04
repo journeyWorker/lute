@@ -1,0 +1,20 @@
+{
+  "commands": [
+    {
+      "kind": "quest",
+      "quest": "newQuest",
+      "state": "active"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.36",
+  "kind": "quest",
+  "quests": {
+    "newQuest": "active"
+  },
+  "state": {
+    "quest.newQuest.objectives.reach.done": false,
+    "quest.newQuest.state": "active"
+  }
+}
