@@ -269,6 +269,18 @@ pub(crate) enum Command {
     Context {
         /// Path to the `.lute` file whose project surface to resolve.
         file: PathBuf,
+        /// Target a project graph node using its canonical `kind:key`.
+        #[arg(long, conflicts_with = "at", value_name = "NODEKEY")]
+        target: Option<String>,
+        /// Resolve the source position `FILE:LINE:COLUMN`.
+        #[arg(long, conflicts_with = "target", value_name = "FILE:LINE:COLUMN")]
+        at: Option<String>,
+        /// Bound each context collection independently.
+        #[arg(long, default_value_t = 100)]
+        max_items: usize,
+        /// Execute the selected play/test script set to mark witnessed coverage.
+        #[arg(long, value_name = "FILE")]
+        run: Option<PathBuf>,
         /// Emit the machine-readable JSON surface instead of a human outline.
         #[arg(long)]
         json: bool,
@@ -285,6 +297,38 @@ pub(crate) enum Command {
         /// authoring surface without activating that profile's plugins.
         #[arg(long = "permission-profile", value_name = "NAME")]
         permission_profile: Option<String>,
+    },
+    /// Canonicalize one or more `.lute` or project declaration files.
+    Fmt {
+        /// File or directory to format (directory traversal is recursive).
+        #[arg(required = true, value_name = "PATH")]
+        paths: Vec<PathBuf>,
+        /// Check canonical form without writing; exits 1 when changes are needed.
+        #[arg(long)]
+        check: bool,
+    },
+    /// Compare two project directories (or `git:<rev>` sides) semantically.
+    Diff {
+        /// The before project directory or `git:<rev>` side.
+        before: PathBuf,
+        /// The after project directory or `git:<rev>` side.
+        after: PathBuf,
+        /// Emit the versioned semantic diff as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Apply an atomic, checked source patch.
+    Patch {
+        /// Project directory to patch.
+        dir: PathBuf,
+        /// JSON patch request.
+        patch: PathBuf,
+        /// Run every stage without writing files.
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit only the versioned machine-readable result.
+        #[arg(long)]
+        json: bool,
     },
     /// Preview a `.lute` document's behavior against author-supplied mocks —
     /// an authoring evaluator, not the runtime. Resolves the document

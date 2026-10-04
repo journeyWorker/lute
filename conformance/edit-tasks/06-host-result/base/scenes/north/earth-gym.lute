@@ -1,0 +1,29 @@
+---
+kind: scene
+id: north.earthGym
+title: Earth Gym
+on: challenge
+target: arena.earthGym
+once: false
+when: "!holds('defeated', ['vex'])"
+---
+
+// CONTRACT BEAT (seeded by the lead; owned by north): asserts hasBadge(earth)
+// and defeated(vex); the engine then raises battleEnd and the spine's
+// spine.eclipseFalls plays (priority 100 — north never answers battleEnd
+// above it). The engine keeps the gym shut until canPass(earthGymDoor) (the
+// other seven badges). The gym's grunts and Admin Selene are in
+// lore/north/earth-gym.lute.
+
+## The Director's office
+
+::bg{location="earth-gym" time="day"}
+::music{action="change" mood="tense" volume="down"}
+@narrator: At the back of the gym there is no arena, only an office: a desk, a map of Verdane stuck with black pins, and a tall man standing at the window with his back to the door.
+@narrator{when="holds('defeated', ['earthGymAdminSelene'])"}: Selene's voice crackles from a radio on the desk: "Director. The child is through. I could not hold them." He switches it off.
+@narrator: The leader of the Earth Gym turns around. It is the voice from the radio.
+
+## Director Vex
+
+::use{component="gymLeader" who="vex" badge="earth" intro="So. The child who has been taking my Team apart one lair at a time. I am Director Vex. I lead Team Eclipse, and on weekdays, this gym. Let us see whether the ground holds you up." win="Hm. The ground moved. I did not think it could. Take the Earth Badge. You have earned it more honestly than I earned this gym." lose="The ground does not move for children. Go home." prize="5000"}
+@vex{when="@wonFight" emotion="determined"}: Every pin on that map is a place you went before my people could finish. The dig, the tower, the Corner, the Tower again. I should have hired you.

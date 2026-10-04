@@ -20,8 +20,7 @@ uses: ../base.schema.yaml
 ---
 
 ## A Familiar Face
-
 /* `@who` is the param, bound to the `::use` arg at expansion time; it is legal
-   here only because `character` is a `string`-typed attr (dsl Appendix A). */
+here only because `character` is a `string`-typed attr (dsl Appendix A). */
 ::auto{character=@who action="fadeInUp"}
 @narrator: A familiar face steps into the light.

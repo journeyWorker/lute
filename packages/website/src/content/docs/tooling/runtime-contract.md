@@ -12,7 +12,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
 The machine-checkable shape is
-[`schemas/lute-ir-0.34.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.34.schema.json)
+[`schemas/lute-ir-0.35.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.35.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]

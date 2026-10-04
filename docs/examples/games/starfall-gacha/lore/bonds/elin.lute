@@ -3,9 +3,8 @@ kind: lore
 id: bonds.elin
 title: Elin of the Quiet Ward (SR)
 ---
-
 /* Elin has no custom duplicate line: duplicates fall to the generic
-   kind:sr summon beat in lore/summons.lute. */
+kind:sr summon beat in lore/summons.lute. */
 
 <beat id="elinIntro" on="summon" target="hero.elin" once="user" priority="10">
   @elin{emotion="surprised"}: Oh! Sorry! I didn't mean to land on your rug. Is anyone hurt? Are you hurt?

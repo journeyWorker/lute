@@ -1,0 +1,135 @@
+---
+kind: lore
+id: north.frostharbor
+title: Frostharbor
+---
+
+// Frostharbor: the sea town at the top of the Strait (Route 13), with the
+// ferry-less harbor, the lighthouse, and the caverns to the east.
+
+// ── arriving ────────────────────────────────────────────────────────────────
+
+<beat id="arrive" on="enterTown" target="town.frostharbor" title="Frostharbor" priority="10">
+  ::bg{location="frostharbor" time="day"}
+  ::music{action="change" mood="calm" volume="normal"}
+  @narrator: Frostharbor sits in a bowl of grey cliffs, every roof weighted down with stones against the wind. Fishing boats knock together in the harbor.
+  @narrator: A lighthouse stands on the point, dark in the daytime and, according to a hand-painted sign, dark at night too: LIGHT OUT. SORRY. — MAUD.
+  @narrator: East of town, a sea cave breathes cold air across the road.
+</beat>
+
+<entry id="northFrostharborMorning" on="enterTown" target="town.frostharbor" category="bark" once="day" when="@isMorning">
+  @narrator: The boats are already out. Gulls fight over the harbor steps.
+</entry>
+
+<entry id="northFrostharborDay" on="enterTown" target="town.frostharbor" category="bark" once="day" when="run.slot == 'day'">
+  @narrator: Nets hang drying on every railing in Frostharbor. The whole town smells of salt and tar.
+</entry>
+
+<entry id="northFrostharborNight" on="enterTown" target="town.frostharbor" category="bark" once="day" when="@isNight">
+  @narrator{when="quest.northLighthouse.state != 'complete'"}: Frostharbor at night is black water and a black lighthouse. The boats come in by feel.
+  @narrator{when="quest.northLighthouse.state == 'complete'"}: The lighthouse beam swings over the harbor, and the boats come home along it.
+</entry>
+
+// ── services ────────────────────────────────────────────────────────────────
+
+<beat id="center" on="heal" target="town.frostharbor" title="Monster Center" once="false">
+  ::use{component="nurse" town="frostharbor"}
+</beat>
+
+<beat id="mart" on="shop" target="town.frostharbor" title="Mart" once="false">
+  ::use{component="shop" stock="frostharborStock"}
+</beat>
+
+// ── Harbormaster Brine ──────────────────────────────────────────────────────
+
+<entry id="northBrineBark" on="talk" target="npc.frostharborHarbormaster" category="bark">
+  @frostharborHarbormaster: Frostharbor's a fishing town. No ferry, no casino, no nonsense. You surfed here? Hah. The Strait must like you.
+</entry>
+
+<entry id="northBrineMorning" on="talk" target="npc.frostharborHarbormaster" category="bark" priority="5" when="@isMorning">
+  @frostharborHarbormaster: Boats went out at four. You're late for a fisherman and early for anyone else.
+</entry>
+
+<entry id="northBrineNight" on="talk" target="npc.frostharborHarbormaster" category="bark" priority="5" when="@isNight">
+  @frostharborHarbormaster{when="quest.northLighthouse.state != 'complete'"}: Three boats still out and no light on the point. If you know anyone with a fire monster, send them to Maud.
+  @frostharborHarbormaster{when="quest.northLighthouse.state == 'complete'"}: All boats in. First time in a month. Tell Maud I owe her a drink.
+</entry>
+
+// ── Old Maud, the lighthouse keeper (northLighthouse) ───────────────────────
+
+<beat id="maudAsk" on="talk" target="npc.frostharborKeeper" title="The dark lighthouse" priority="20" when="quest.northLighthouse.state == 'unset'">
+  @frostharborKeeper{emotion="sad"}: Forty years I kept that light. My old Blazepup lit the wick every night, and last winter he went to sleep by the stove and didn't wake up.
+  @frostharborKeeper: The lamp won't take a match. It wants a monster's flame. That's how it was built.
+  @frostharborKeeper: If you ever carry a fire monster up those stairs, I'd be grateful. The boats would be too.
+  ::accept{quest="northLighthouse"}
+</beat>
+
+<beat id="maudRelight" on="talk" target="npc.frostharborKeeper" title="The lamp" priority="20" when="quest.northLighthouse.state == 'active' && holds('caughtType', ['fire'])">
+  ::bg{location="frostharbor-lighthouse" time="night"}
+  @narrator: Maud climbs the lighthouse stairs ahead of {{userName}}, one hand on the rail and one on her back.
+  @frostharborKeeper: There. The wick. Let your little one breathe on it. Gently, now.
+  ::sfx{sound="flame-whoosh"}
+  @narrator: The flame catches. The great lens turns, and a beam of white light swings out over the Strait.
+  @frostharborKeeper{emotion="happy"}: Oh. Oh, look at that. He'd have liked you.
+</beat>
+
+<entry id="northMaudWaiting" on="talk" target="npc.frostharborKeeper" category="bark" priority="10" when="quest.northLighthouse.state == 'active' && !holds('caughtType', ['fire'])">
+  @frostharborKeeper: No fire monster yet? The volcano island east of here is full of them. Mind the steam.
+</entry>
+
+<entry id="northMaudBark" on="talk" target="npc.frostharborKeeper" category="bark">
+  @frostharborKeeper: I climb up every evening and polish the lens. The light's still out, but the lens will be ready.
+</entry>
+
+<entry id="northMaudLit" on="talk" target="npc.frostharborKeeper" category="bark" priority="10" when="quest.northLighthouse.state == 'complete'">
+  @frostharborKeeper{emotion="happy"}: Every night since you came, the lamp's been burning. I sit up there and knit and watch the boats come home.
+</entry>
+
+// ── Netmender Ilse ──────────────────────────────────────────────────────────
+
+<entry id="northIlseBark" on="talk" target="npc.frostharborNetmender" category="bark">
+  @frostharborNetmender: Something big tore through three of my nets last Friday. Only on Fridays. I'm starting to take it personally.
+</entry>
+
+<entry id="northIlseMorning" on="talk" target="npc.frostharborNetmender" category="bark" priority="5" when="@isMorning">
+  @frostharborNetmender: Morning's the best light for mending. You can see every broken knot.
+</entry>
+
+// ── Pip ─────────────────────────────────────────────────────────────────────
+
+<entry id="northPipBark" on="talk" target="npc.frostharborKid" category="bark">
+  @frostharborKid: Are you a real trainer? How many have you caught? Let me see your Dex!
+  <match>
+    <when test="@dexCaught >= 80">
+      @frostharborKid: {{@dexCaught}}?! That's more monsters than there are people in Frostharbor!
+    </when>
+    <when test="@dexCaught >= 30">
+      @frostharborKid: {{@dexCaught}}! I've only got two. A Flopfish and a different Flopfish.
+    </when>
+    <otherwise>
+      @frostharborKid: {{@dexCaught}}? I thought trainers who got this far had loads more.
+    </otherwise>
+  </match>
+</entry>
+
+<entry id="northPipNight" on="talk" target="npc.frostharborKid" category="bark" priority="5" when="@isNight">
+  @frostharborKid: I'm not allowed out after dark. I'm not out. I'm on the step. The step counts as inside.
+</entry>
+
+// ── Guide Halvard: the caverns and the Friday swimmer ──────────────────────
+
+<entry id="northHalvardBark" on="talk" target="npc.frostharborCaveGuide" category="bark">
+  @frostharborCaveGuide: The Frostharbor caverns run under half the headland. On Fridays, something with a long neck comes up in the big pool. Nobody's ever caught it.
+</entry>
+
+<entry id="northHalvardFriday" on="talk" target="npc.frostharborCaveGuide" category="bark" priority="5" when="clock.weekday == 4 && !holds('caught', ['shellnessie'])">
+  @frostharborCaveGuide: It's Friday! The pool in the caverns is already rippling. If you want to see the swimmer, go now, and go quiet.
+</entry>
+
+<entry id="northHalvardCaught" on="talk" target="npc.frostharborCaveGuide" category="bark" priority="6" when="holds('caught', ['shellnessie'])">
+  @frostharborCaveGuide: You caught the Friday swimmer? Forty years of tours and I'll have to rewrite the whole script.
+</entry>
+
+<entry id="northHalvardDeep" on="talk" target="npc.frostharborCaveGuide" category="bark" priority="4" when="@isNight">
+  @frostharborCaveGuide: Past the big pool there's a passage where the ice never melts, even in summer. I don't take tours down there. Something down there is colder than ice.
+</entry>

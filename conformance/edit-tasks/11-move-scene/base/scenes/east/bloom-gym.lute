@@ -1,0 +1,33 @@
+---
+kind: scene
+id: east.bloomGym
+title: Bloom Gym
+on: challenge
+target: arena.bloomGym
+once: false
+when: "!holds('defeated', ['fern'])"
+---
+
+// CONTRACT BEAT (seeded by the lead; owned by east): asserts hasBadge(bloom)
+// and hands over hmFly.
+
+## The greenhouse
+
+::bg{location="bloom-gym" time="day"}
+::music{action="change" mood="calm" volume="down"}
+@narrator: The Bloom Gym is a greenhouse full of sleeping flowers. At the far end, in a wicker chair, a woman is also asleep.
+@narrator{when="holds('defeated', ['bloomGymLassRose']) && holds('defeated', ['bloomGymBeautyLily']) && holds('defeated', ['bloomGymPicnickerIvy'])"}: Her trainers cough, loudly and together. She wakes.
+
+## Fern
+
+::use{component="gymLeader" who="fern" badge="bloom" intro="Hello. Lovely weather, isn't it? It's so pleasant. Oh dear, I must have dozed off. Welcome. My name is Fern. I am the leader here." win="Oh! I concede defeat. You are remarkably strong. I must confer on you the Bloom Badge." lose="Oh, that was a pleasant battle. Do come again." prize="2900"}
+<match on="scene.battle.fight.won">
+  <when is="true">
+    @fern{emotion="happy"}: And take this too. My flying monsters carried me home from every town in Verdane, on the days I fell asleep somewhere else.
+    ::use{component="obtain" item="hmFly"}
+    @fern: A boy came through this morning, very loud. He beat me, and then he fell asleep on the bench. I let him. He looked like he needed it.
+  </when>
+  <otherwise>
+    @narrator: The scent of flowers follows you out of the gym.
+  </otherwise>
+</match>

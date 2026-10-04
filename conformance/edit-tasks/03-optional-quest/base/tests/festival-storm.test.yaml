@@ -1,0 +1,9 @@
+# The engine rolled a storm for Sunday night anyway.
+file: ../scenes/festival/night.lute
+quests: { forecast: complete, lantern: complete }
+state: { run.day: 7, run.slot: night, run.route: sol, run.weather: storm }
+expect:
+  transcriptContains:
+    - "the whole square runs for the hall laughing"
+    - "I came down the mountain."
+  end: terminal

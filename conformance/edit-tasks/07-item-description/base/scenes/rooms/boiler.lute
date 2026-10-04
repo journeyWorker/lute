@@ -1,0 +1,22 @@
+---
+kind: scene
+id: room.boiler
+title: The Boiler Room
+on: enter
+target: room.boiler
+priority: 10
+---
+
+## Boiler room
+
+::bg{location="boiler" time="night"}
+@narrator: The lantern finds the stairs one at a time. At the bottom: the boiler, the size of a bus, and beside it the furnace door, a mouth with a latch.
+@narrator: Three levers on a panel, numbered I, II, III in stencil. Behind the gauge glass, a needle twitches as if the thing were dreaming.
+<match on="run.power">
+  <when is="true">
+    @narrator: The boiler breathes. Pipes tick all through the building like knuckles cracking.
+  </when>
+  <otherwise>
+    @nell{mono}: If this lights, the whole ward wakes. The lifts. The surgery doors. Everything.
+  </otherwise>
+</match>

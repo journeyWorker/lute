@@ -1,0 +1,10 @@
+# The whole hideout in one go: three guards, then Admin Corvo; the lens and
+# the lair cleared.
+file: ../../scenes/mid/game-corner.lute
+bridges: { battle: [ { won: true }, { won: true }, { won: true }, { won: true } ] }
+expect:
+  end: complete
+  facts: [defeated(cornerGruntDoor), defeated(cornerGruntVault), defeated(cornerScientistLoy), defeated(gruntCorner), hasItem(spectralLens), canPass(ashTowerStairs)]
+  state: { run.lair.cornerHideout: cleared, run.money: 6400 }
+  transcriptContains: ["received the Spectral Lens!"]
+  transcriptLacks: ["Nobody noticed you were gone."]

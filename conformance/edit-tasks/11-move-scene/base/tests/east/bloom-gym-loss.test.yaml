@@ -1,0 +1,7 @@
+# Losing to Fern: no badge and no HM Fly.
+file: ../../scenes/east/bloom-gym.lute
+bridges: { battle: [ { won: false } ] }
+expect:
+  notFacts: [hasBadge(bloom), hasItem(hmFly), defeated(fern)]
+  transcriptContains: ["@fern: Oh, that was a pleasant battle. Do come again.", "The scent of flowers follows you out of the gym."]
+  transcriptLacks: ["received the HM Fly"]

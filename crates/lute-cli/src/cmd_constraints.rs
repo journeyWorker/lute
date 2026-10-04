@@ -183,6 +183,50 @@ fn script_witness(root: &Path, script: &Path, quest: &str) -> bool {
     };
     run.completed_quests.contains(quest)
 }
+
+/// Run one discovered script through the same in-process machinery used by
+/// `constraints --run`, and report whether it observed the target node.
+pub(crate) fn run_script_for_context(
+    root: &Path,
+    script: &Path,
+    target: &lute_model::NodeKey,
+) -> bool {
+    let Some(name) = script.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if name.ends_with(".test.yaml") {
+        return crate::testcmd::run_test_for_context(root, script, target);
+    }
+    if !name.ends_with(".play.yaml") {
+        return false;
+    }
+    let project = crate::play::PlayProject::compile(root);
+    let Ok(run) = crate::play::run_play_for_test(&project, script, true) else {
+        return false;
+    };
+    if target.kind == lute_model::NodeKind::Quest
+        && run.completed_quests.contains(&target.key)
+    {
+        return true;
+    }
+    if target.kind == lute_model::NodeKind::Choice {
+        let Some((document, tail)) = target.key.rsplit_once(':') else {
+            return false;
+        };
+        let Some((parent, option)) = tail.rsplit_once('.') else {
+            return false;
+        };
+        return run.choices.iter().any(|choice| {
+            choice.document == document
+                && choice.id == parent
+                && choice.chose.as_deref() == Some(option)
+        });
+    }
+    run.presented.iter().any(|(document, id)| {
+        format!("{document}:{id}") == target.key
+    })
+}
+
 fn collect_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;

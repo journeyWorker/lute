@@ -1,12 +1,12 @@
 ---
 kind: scene
 id: celFacts
-luteVersion: "0.34.0"
+luteVersion: "0.35.0"
 title: CEL Facts
 uses: ./schema.yaml
 ---
 ## Facts
-::assert{ seen(mira, map) }
+::assert{seen(mira, map)}
 @narrator{when="holds('seen', ['mira', 'map'])"}: holds
 @narrator{when="count('seen', ['_', '_']) == 2"}: count
 @narrator{when="countDistinct('seen', ['_', '_'], 0) == 2"}: distinct

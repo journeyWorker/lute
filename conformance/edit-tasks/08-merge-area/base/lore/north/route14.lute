@@ -1,0 +1,74 @@
+---
+kind: lore
+id: north.route14
+title: Route 14 — the Ember Channel
+---
+
+// Route 14 is the sea route from Frostharbor east to Cinder Isle. The water
+// warms as the volcano gets closer. Vera sunbathes on the rocks by day only;
+// Rex is a night swimmer.
+
+<beat id="enter" on="enterRoute" target="route.r14" title="Route 14" priority="10">
+  ::bg{location="route-14" time="day"}
+  ::music{action="change" mood="upbeat" volume="normal"}
+  @narrator: East of Frostharbor the sea gets warmer, then warmer still. Steam curls off the swell. On the horizon a cone of black rock smokes gently.
+  @narrator: A sign on a sea stack: ROUTE 14 — THE EMBER CHANNEL. CINDER ISLE AHEAD. DO NOT DRINK THE WATER. IT IS WARM FOR A REASON.
+</beat>
+
+<entry id="northR14Day" on="enterRoute" target="route.r14" category="bark" once="day" when="!@isNight">
+  @narrator: The channel is bright and steaming. Sunbathers have claimed every flat rock.
+</entry>
+
+<entry id="northR14Night" on="enterRoute" target="route.r14" category="bark" once="day" when="@isNight">
+  @narrator: At night the volcano glows red at the rim, and the whole channel is lit from underneath like a stove.
+</entry>
+
+// ── trainers ────────────────────────────────────────────────────────────────
+
+<beat use="trainerBattle" id="r14SwimmerCal" who="r14SwimmerCal" intro="Warm water, strong current, and a challenger. Best day ever!" win="Okay. Second best day ever." lose="Best day ever confirmed!" prize="1500"/>
+
+<entry id="northR14SwimmerCalAfter" on="talk" target="npc.r14SwimmerCal" category="bark" when="holds('defeated', ['r14SwimmerCal'])">
+  @r14SwimmerCal: The current here runs toward Cinder Isle. Just float and you'll arrive.
+</entry>
+
+<beat use="trainerBattle" id="r14SwimmerMae" who="r14SwimmerMae" intro="I'm training for the Frostharbor crossing! You're my warm-up!" win="Some warm-up. I'm exhausted." lose="Nice warm-up!" prize="1500"/>
+
+<entry id="northR14SwimmerMaeAfter" on="talk" target="npc.r14SwimmerMae" category="bark" when="holds('defeated', ['r14SwimmerMae'])">
+  @r14SwimmerMae: Channel water, then ice water. My coach says the shock builds character.
+</entry>
+
+<beat use="trainerBattle" id="r14FishermanOtto" who="r14FishermanOtto" intro="Everything I catch here comes up half cooked. Let's see what you're made of!" win="Well done. Like my fish." lose="Hooked, landed, and grilled!" prize="1600"/>
+
+<entry id="northR14FishermanOttoAfter" on="talk" target="npc.r14FishermanOtto" category="bark" when="holds('defeated', ['r14FishermanOtto'])">
+  @r14FishermanOtto: Old Maud at the Frostharbor lighthouse used to fish here. Ask her about the lamp sometime. Bring tissues.
+</entry>
+
+<beat use="trainerBattle" id="r14SailorJunn" who="r14SailorJunn" intro="I sail supplies to the island. Beat me and I'll tell you what the gym leader's afraid of!" win="Fine. He's afraid of wrong answers. That's all I know." lose="No secrets for losers!" prize="1800"/>
+
+<entry id="northR14SailorJunnAfter" on="talk" target="npc.r14SailorJunn" category="bark" when="holds('defeated', ['r14SailorJunn'])">
+  @r14SailorJunn: Ignatius locked his gym with a key he lost in the old mansion. On purpose, if you ask me.
+</entry>
+
+// Vera sunbathes: she is not out at night.
+<beat use="trainerBattle" id="r14BeautyVera" when="!@isNight" who="r14BeautyVera" intro="You're blocking my sun. You'll have to pay for that in a battle." win="Fine, take the sun. I'll take a nap." lose="Now move, please. You're casting a shadow." prize="2100"/>
+
+<entry id="northR14BeautyVeraAfter" on="talk" target="npc.r14BeautyVera" category="bark" when="holds('defeated', ['r14BeautyVera'])">
+  @r14BeautyVera: The volcano keeps this rock warm all year. I haven't been cold since I moved here.
+</entry>
+
+// Rex swims at night.
+<beat use="trainerBattle" id="r14SwimmerRex" when="@isNight" who="r14SwimmerRex" intro="The channel glows at night. So do my monsters. Let's go!" win="Lights out for me." lose="Glowing with pride!" prize="2000"/>
+
+<entry id="northR14SwimmerRexAfter" on="talk" target="npc.r14SwimmerRex" category="bark" when="holds('defeated', ['r14SwimmerRex'])">
+  @r14SwimmerRex: I swim at night because the Beauty on the rock yells at anyone who blocks her sun.
+</entry>
+
+// ── Hermit Oskar, on his sea stack ──────────────────────────────────────────
+
+<entry id="northOskarBark" on="talk" target="npc.r14Hermit" category="bark">
+  @r14Hermit: Thirty years on this rock. I left the mainland because it was too noisy. Then they built a gym on the volcano and put gas jets in it.
+</entry>
+
+<entry id="northOskarBadge" on="talk" target="npc.r14Hermit" category="bark" priority="5" when="holds('hasBadge', ['blaze'])">
+  @r14Hermit: You beat Ignatius? Then maybe he'll stop practicing his victory speech at the top of his lungs. I can hear it from here.
+</entry>

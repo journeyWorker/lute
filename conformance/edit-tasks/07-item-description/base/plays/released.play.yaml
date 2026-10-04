@@ -1,0 +1,166 @@
+# The best night: every door, the doctor's errand (burn the ledger, ring the
+# bell at three), Tobias lost to the Orderly once and found again, and the
+# ward put to sleep behind them. Sanity runs down to 2 on the way.
+#
+#   lute play . --script plays/released.play.yaml
+steps:
+  - include: steps/opening.steps.yaml
+
+  # ── 23:00: reception and records ──
+  - occasion: enter
+    target: room.reception
+  - occasion: read
+    target: note.roster
+  - occasion: pickup
+    engine: { facts: [holding(recordsKey)] }
+    target: item.recordsKey
+    expect: { facts: [canEnter(records)] }
+  - occasion: enter
+    target: room.records
+  - occasion: read
+    target: note.ledgerPage2
+  - occasion: pickup
+    engine: { facts: [holding(ledger)] }
+    target: item.ledger
+
+  # ── midnight: chapel, the bell too early, the boiler ──
+  - advance: slot
+  - occasion: enter
+    target: room.chapel
+  - occasion: pickup
+    engine: { facts: [holding(matches)] }
+    target: item.matches
+  - occasion: read
+    target: note.hymnBoard
+  - occasion: read
+    target: note.ledgerPage3
+  - occasion: examine
+    target: fixture.bellRope
+    label: the bell at midnight only calls him
+    expect: { winner: puzzle.bell, state: { run.bellRung: false } }
+  - occasion: enter
+    target: room.boiler
+  - occasion: examine
+    target: fixture.boilerLevers
+    choose: { order: twoOne }
+    expect: { winner: puzzle.boiler.levers, state: { run.power: true }, facts: [canEnter(surgery)] }
+  - occasion: examine
+    target: fixture.furnace
+    choose: { burn: burn }
+    expect: { winner: puzzle.boiler.furnace, facts: [burned(ledger)] }
+  - occasion: examine
+    target: fixture.boilerLevers
+    label: the levers are done with
+    expect: { winner: fixtureDone }
+
+  # ── one o'clock: surgery, and the valves twice ──
+  - advance: slot
+  - occasion: enter
+    target: room.lobby
+    expect: { winner: revisits.lobby }
+  - occasion: enter
+    target: room.surgery
+    expect: { state: { run.sanity: 8 } }
+  - occasion: read
+    target: note.orderlyFile
+  - occasion: enter
+    target: room.hydro
+  - occasion: examine
+    target: fixture.hydroValves
+    label: one wrong turn
+    choose: { first: blue, second: blue, third: drain }
+    expect: { notFacts: [solved(hydroValves)], state: { run.sanity: 6 } }
+  - occasion: read
+    target: note.drawing
+    label: (the drawing, fetched from the children's ward)
+  - occasion: examine
+    target: fixture.hydroValves
+    label: blue, red, let it go
+    choose: { first: blue, second: red, third: drain }
+    expect: { facts: [solved(hydroValves)] }
+  - occasion: pickup
+    target: item.brassKey
+
+  # ── two o'clock: the office, the pharmacy, the morgue ──
+  - advance: slot
+  - occasion: enter
+    target: room.office
+  - occasion: read
+    target: note.diary
+    expect: { quests: { quietWard: active } }
+  - occasion: examine
+    target: fixture.officeSafe
+    label: a guess
+    bridges: { keypad: [ { entered: 813 } ] }
+    expect: { notFacts: [solved(officeSafe)], state: { run.sanity: 5 } }
+  - occasion: examine
+    target: fixture.officeSafe
+    bridges: { keypad: [ { entered: 318 } ] }
+    expect: { facts: [solved(officeSafe)] }
+  - occasion: pickup
+    target: item.keycard
+  - occasion: examine
+    target: fixture.pharmacyPad
+    bridges: { keypad: [ { entered: 1947 } ] }
+  - occasion: enter
+    target: room.pharmacy
+  - occasion: pickup
+    engine: { facts: [holding(morgueKey)] }
+    target: item.morgueKey
+  - occasion: enter
+    target: room.childrensWard
+    choose: { answer: yes }
+  - occasion: read
+    target: note.bedCard
+  - occasion: read
+    target: note.ledgerPage1
+  - occasion: enter
+    target: room.morgue
+  - occasion: examine
+    target: fixture.freezer
+    choose: { drawer: thirteen }
+    expect: { facts: [following(tobias)] }
+  - occasion: encounter
+    engine: { state: { run.stalker: morgue } }
+    target: room.morgue
+    label: the lantern is not enough
+    choose: { react: lantern }
+    bridges: { evade: [ { outcome: hurt } ] }
+    expect: { winner: orderly.meet, facts: [taken(tobias)], notFacts: [following(tobias), solved(freezer)], state: { run.sanity: 2 } }
+  - engine: { state: { run.stalker: records } }
+  - occasion: examine
+    target: fixture.freezer
+    label: drawer 13 again
+    choose: { drawer: thirteen }
+    expect: { winner: puzzle.freezer, facts: [following(tobias)], notFacts: [taken(tobias)] }
+
+  # ── three o'clock: the round is called down ──
+  - advance: slot
+    expect: { presented: [hours.chime, hours.whispers] }
+  - occasion: enter
+    target: room.chapel
+    expect: { winner: revisits.chapel }
+  - occasion: examine
+    target: fixture.bellRope
+    expect: { winner: puzzle.bell, state: { run.bellRung: true }, quests: { quietWard: complete } }
+  - occasion: encounter
+    engine: { state: { run.stalker: chapel } }
+    target: room.chapel
+    expect: { winner: orderly.calledDown }
+
+  # ── four o'clock: the gate ──
+  - advance: slot
+  - occasion: enter
+    target: room.gate
+  - occasion: examine
+    target: fixture.gatePad
+    bridges: { keypad: [ { entered: 275 } ] }
+    expect: { winner: ending.gate, state: { run.fate: released } }
+expect:
+  state: { run.fate: released, run.sanity: 2, run.chases: 1, user.deaths: 0 }
+  quests: { findTobias: complete, beforeDawn: complete, quietWard: complete }
+  facts: [following(tobias), burned(ledger)]
+  transcriptContains:
+    - "@child: Night night, nurse."
+    - "@orderly: Round's called. Everybody down."
+    - "@child: Nurse? Nurse, there's someone in your bed."

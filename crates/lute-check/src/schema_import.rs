@@ -79,6 +79,9 @@ pub struct SchemaImports {
     /// — THAT is the actual merged vocabulary the checker consults for
     /// `Type::Domain` resolution.
     pub domains: BTreeMap<String, Domain>,
+    /// Every canonical file reached by this import graph, including files
+    /// whose declarations do not contribute a named origin.
+    pub files: BTreeSet<PathBuf>,
     pub diags: Vec<Diagnostic>,
     /// State paths whose resolved winner came from an `extends` base (composition
     /// depth >= 1). The importing scene's inline `state:` MAY refine such a path
@@ -965,11 +968,12 @@ pub fn resolve_imports(
         defs,
         def_origins,
         domains,
+        files: parsed.keys().cloned().collect(),
         diags,
         state_overridable,
         imported_quest_ids,
-        imported_entry_ids,
         cast,
+        imported_entry_ids,
         clock,
         terminal,
         seasons,

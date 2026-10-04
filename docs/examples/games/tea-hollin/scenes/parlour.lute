@@ -16,6 +16,6 @@ title: The Parlour
   </choice>
   <choice id="vicarPocket" label="Glance at the vicar's pocket" into="run.sawPocket">
     @pippa{mono}: Something bulges. Probably a hymn book.
-    ::set{ run.cluesFound += 1 }
+    ::set{run.cluesFound += 1}
   </choice>
 </branch>

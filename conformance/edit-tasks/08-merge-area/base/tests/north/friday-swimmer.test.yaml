@@ -1,0 +1,8 @@
+# The weekday event: the swimmer surfaces on day 5 (a Friday) only.
+file: ../../lore/north/frost-caverns.lute
+beat: fridaySwimmer
+state: { run.day: 5 }
+expect:
+  eligible: true
+  transcriptContains: ["A long neck rises out of the water"]
+  end: complete

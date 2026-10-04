@@ -1,0 +1,6 @@
+# A water monster does not count.
+file: ../../quests/north/side.lute
+accepts: [northLighthouse]
+facts: [caught(dewpup)]
+expect:
+  quests: { northLighthouse: active }

@@ -1,0 +1,8 @@
+# Sixty meteors on the roof beats the '98 page.
+file: ../lore/perseids.lute
+beat: record
+state: { occasion.payload.count: 63, run.day: 4, run.slot: night, run.aff.sol: 4 }
+expect:
+  eligible: true
+  state: { run.aff.sol: 5 }
+  transcriptContains: ["@sol: 63! That beats my father's page in the '98 log."]

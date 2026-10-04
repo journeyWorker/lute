@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.34.0"
+luteVersion: "0.35.0"
 uses: ./schema.yaml
 title: Quest Complete
 ---
@@ -12,7 +12,7 @@ title: Quest Complete
   </objective>
 
   <on event="questComplete">
-    ::set{ run.done += 1 }
+    ::set{run.done += 1}
     @narrator: The goal is reached.
   </on>
 </quest>

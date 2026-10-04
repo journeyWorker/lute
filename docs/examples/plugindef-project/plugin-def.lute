@@ -11,9 +11,9 @@ state:
 
 <match on="scene.flag">
   <when test="@warm">
-  @narrator: warm path
-</when>
+    @narrator: warm path
+  </when>
   <otherwise>
-  @narrator: cold path
-</otherwise>
+    @narrator: cold path
+  </otherwise>
 </match>

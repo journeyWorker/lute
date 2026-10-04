@@ -1,0 +1,56 @@
+---
+kind: lore
+id: days
+title: What each day brings
+---
+
+// slotStart is a sequence: the routine (priority 10) plays first, then
+// whichever of these the day holds. A storm outranks the routine.
+
+<beat id="storm" on="slotStart" title="The storm" priority="20" when="run.slot == 'morning' && run.weather == 'storm'">
+  ::bg{location="deck" time="morning"}
+  ::vfx{type="rain"}
+  ::sfx{sound="wind hammering the shutters"}
+  ::music{action="start" mood="tense" volume="normal"}
+  @narrator: You wake to the whole hut humming like a struck bell.
+  ::use{component="enter" who="ines"}
+  @ines{emotion="stern"}: Nobody goes down the path today. I mean it. The funicular's locked and the switchbacks are a river.
+  @ines{emotion="worried" when="run.day >= 4"}: And that's a day we didn't have to spare.
+</beat>
+
+<beat id="postHorn" on="slotStart" title="The postbus" priority="5" once="false" when="run.slot == 'morning' && @postDay && !holds('pathShut', ['village'])">
+  ::sfx{sound="a two-tone horn, far below"}
+  @narrator: The postbus horn floats up from the valley. Pell will be at the kitchen door within the hour, out of breath and full of news.
+</beat>
+
+<beat id="forecastCall" on="slotStart" title="A call from the village" priority="5" when="run.day == 5 && run.slot == 'morning' && quest.forecast.state == 'active' && !run.forecastDelivered">
+  ::bg{location="radio_room" time="morning"}
+  @elder{vo}: Station, station, this is the village hall. Maren here. Over.
+  @elder{vo}: We need that forecast today, love, or the committee hangs the lanterns on a guess. Over.
+  @ines{emotion="worried" when="!run.forecastWritten"}: We haven't even written it.
+  @ines{emotion="neutral" when="run.forecastWritten"}: It's on the desk. Someone has to walk it down.
+</beat>
+
+<beat id="meteorEve" on="slotStart" title="Thursday night" priority="5" when="run.day == 4 && run.slot == 'night' && quest.meteor.state == 'active'">
+  @narrator: At supper Sol eats standing up, one eye on the window. Twice he checks the roof hatch is unlatched.
+</beat>
+
+<beat id="lastMorning" on="slotStart" title="Sunday" priority="5" when="run.day == 7 && run.slot == 'morning'">
+  ::music{action="start" mood="festive" volume="down"}
+  @narrator: Down in the valley, someone is testing the festival bell. It is flat, and everyone loves it.
+</beat>
+
+// Sunday morning: a note under the door from each of them who got close this
+// week and was not the one the player chose on Saturday. Presented once per
+// suitor it holds for, in member order (Sol, then Wren).
+<beat id="note" on="slotStart" for="kind:suitor" title="A note under the door" priority="4" when="run.day == 7 && run.slot == 'morning' && run.aff[occasion.target] >= 3 && run.route != occasion.target">
+  @narrator: A folded page under your door, in {{occasion.target}}'s handwriting.
+  <match on="occasion.target">
+    <when is="sol">
+      @sol{vo}: Clear tonight. I checked four times. Whoever you're with, look up at eleven — that's for you.
+    </when>
+    <when is="wren">
+      @wren{vo}: The goats and I will be by the fountain. No pressure. Some pressure. Bring a jumper.
+    </when>
+  </match>
+</beat>

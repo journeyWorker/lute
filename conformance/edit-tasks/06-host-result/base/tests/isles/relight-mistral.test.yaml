@@ -1,0 +1,11 @@
+# Keeper Sorrel with the lens back: the thanks, the use's own line, the flame.
+file: ../../lore/isles/islands.lute
+beat: sorrelRelight
+facts: [islesLensBack(mistral), islesRelit(emberkey)]
+expect:
+  eligible: true
+  facts: [islesRelit(mistral)]
+  transcriptContains:
+    - "@mistralKeeper: Oh, thank the wind. Give it here, carefully."
+    - "@mistralKeeper: The sails are right again, too. You have a knack."
+    - "@narrator: 2 beacons burn over the Sunfall Isles."

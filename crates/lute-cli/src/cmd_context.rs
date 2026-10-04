@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_check::{fold_env, CheckInput, Namespace, RelVocab};
@@ -11,7 +11,7 @@ use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
 
 use crate::context;
-use lute_model::{build_input, BuiltInput};
+use lute_model::{build_input, BuiltInput, ModelOptions, ProjectModel};
 use crate::output::write_stdout;
 
 /// Emit the project-resolved AUTHORING SURFACE for `file`: everything an AI
@@ -28,6 +28,33 @@ use crate::output::write_stdout;
 /// document diagnostics (`fold_env` is pure/total). Exit `0` on success, `2` on
 /// an I/O failure (unreadable file), matching `run_check`.
 pub(crate) fn run_context(
+    file: &Path,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+    permission_profile: Option<&str>,
+    target: Option<&str>,
+    at: Option<&str>,
+    max_items: usize,
+    run: Option<&Path>,
+) -> ExitCode {
+    if target.is_some() || at.is_some() {
+        return run_task_context(
+            file,
+            json,
+            providers,
+            project,
+            permission_profile,
+            target,
+            at,
+            max_items,
+            run,
+        );
+    }
+    run_authoring_context(file, json, providers, project, permission_profile)
+}
+
+fn run_authoring_context(
     file: &Path,
     json: bool,
     providers: Option<&Path>,
@@ -99,6 +126,418 @@ pub(crate) fn run_context(
     }
     ExitCode::SUCCESS
 }
+fn run_task_context(
+    file: &Path,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+    permission_profile: Option<&str>,
+    target: Option<&str>,
+    at: Option<&str>,
+    max_items: usize,
+    run: Option<&Path>,
+) -> ExitCode {
+    if let Some(spec) = at {
+        return run_position_context(file, json, providers, project, permission_profile, spec);
+    }
+    let Some(raw_target) = target else {
+        return ExitCode::from(2);
+    };
+    let discovered = crate::project::discover_project(file, project);
+    let root = project
+        .map(Path::to_path_buf)
+        .or(discovered)
+        .unwrap_or_else(|| {
+            file.parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf()
+        });
+    let opts = ModelOptions {
+        providers: providers.map(Path::to_path_buf),
+        permission_profile: permission_profile.map(str::to_string),
+        mode: lute_check::Mode::Ci,
+        compile: true,
+        wip: false,
+    };
+    let model = match ProjectModel::build_single_root(&root, &opts) {
+        Ok(model) => model,
+        Err(error) => {
+            eprintln!("lute: cannot build context model: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let key = match lute_resolve::parse_node_key(raw_target) {
+        Ok(key) => key,
+        Err(error) => {
+            eprintln!("lute: context target refused: {error:?}");
+            return ExitCode::from(2);
+        }
+    };
+    let graph = model.graph();
+    let candidates = graph
+        .edges
+        .iter()
+        .filter(|edge| edge.target == key && edge.kind == "contains")
+        .filter_map(|edge| edge.file.as_ref().map(|path| path.display().to_string()))
+        .collect::<BTreeSet<_>>();
+    if graph.ambiguous.contains(&key) || candidates.len() > 1 {
+        eprintln!(
+            "lute: context target refused: E-CONTEXT-TARGET ambiguous `{raw_target}` candidates: {}",
+            candidates.into_iter().collect::<Vec<_>>().join(", ")
+        );
+        return ExitCode::from(2);
+    }
+    let Some(node) = graph.nodes.get(&key) else {
+        eprintln!("lute: context target refused: E-CONTEXT-TARGET unknown target `{raw_target}`");
+        return ExitCode::from(2);
+    };
+    let limit = max_items;
+    let mut not_included = Vec::new();
+    let mut outgoing = Vec::new();
+    let mut incoming = Vec::new();
+    let mut reads = Vec::new();
+    let mut writes = Vec::new();
+    let mut queries = Vec::new();
+    let mut asserts = Vec::new();
+    for edge in &graph.edges {
+        if edge.source == key {
+            let item = edge_json(edge, &model, &edge.target);
+            match edge.kind.as_str() {
+                "writes" => writes.push(item.clone()),
+                "asserts" => asserts.push(item.clone()),
+                _ => {}
+            }
+            outgoing.push(item);
+        }
+        if edge.target == key {
+            let item = edge_json(edge, &model, &edge.source);
+            match edge.kind.as_str() {
+                "reads" => reads.push(item.clone()),
+                "queries" => queries.push(item.clone()),
+                _ => {}
+            }
+            incoming.push(item);
+        }
+    }
+    sort_and_truncate(&mut outgoing, limit, "references.out", &mut not_included);
+    sort_and_truncate(&mut incoming, limit, "references.in", &mut not_included);
+    sort_and_truncate(&mut reads, limit, "declared.reads", &mut not_included);
+    sort_and_truncate(&mut writes, limit, "declared.writes", &mut not_included);
+    sort_and_truncate(&mut queries, limit, "declared.queries", &mut not_included);
+    sort_and_truncate(&mut asserts, limit, "declared.asserts", &mut not_included);
+    let impact_target = lute_model::impact::ImpactTarget {
+        kind: key.kind.as_str().to_string(),
+        relation: None,
+        args: None,
+        key: Some(key.key.clone()),
+    };
+    let impact = lute_model::impact::query(&model, &impact_target);
+    let mut affected = impact
+        .items
+        .values()
+        .flat_map(|items| items.iter())
+        .map(|item| serde_json::to_value(item).unwrap_or_default())
+        .collect::<Vec<_>>();
+    sort_and_truncate(&mut affected, limit, "affected", &mut not_included);
+    let scripts = related_scripts(&model, &key, limit, run, &mut not_included);
+    let vocabulary = vocabulary(&model, &graph, &key, limit, &mut not_included);
+    let excerpt = node
+        .file
+        .as_ref()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|source| node.span.map(|span| excerpt(&source, span)));
+    let target_value = serde_json::json!({
+        "kind": key.kind.as_str(),
+        "key": key.key,
+        "file": node.file.as_ref().map(|p| relative(&model, p)),
+        "span": node.span.map(|s| serde_json::json!({"line":s.line,"column":s.column,"byteStart":s.byte_start,"byteEnd":s.byte_end})),
+        "excerpt": excerpt,
+    });
+    let revision = format!("sha256:{}", model.revisions().sha256);
+    let files = model
+        .revisions()
+        .files
+        .iter()
+        .map(|(path, revision)| {
+            (
+                relative(&model, path),
+                serde_json::json!(format!("sha256:{}", revision.sha256)),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+    let output = serde_json::json!({
+        "schemaVersion": "0.35.0.context",
+        "projectRevision": revision,
+        "files": files,
+        "target": target_value,
+        "declared": {
+            "reads": reads,
+            "writes": writes,
+            "queries": queries,
+            "asserts": asserts,
+        },
+        "references": {"in": incoming, "out": outgoing},
+        "affected": affected,
+        "tests": scripts.tests,
+        "plays": scripts.plays,
+        "vocabulary": vocabulary,
+        "notIncluded": not_included,
+    });
+    emit_context(output, json)
+}
+
+fn run_position_context(
+    _file: &Path,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+    permission_profile: Option<&str>,
+    spec: &str,
+) -> ExitCode {
+    let (path, line, column) = match parse_position(spec) {
+        Ok(value) => value,
+        Err(error) => { eprintln!("lute: invalid --at: {error}"); return ExitCode::from(2); }
+    };
+    let source = match std::fs::read_to_string(&path) {
+        Ok(source) => source,
+        Err(error) => { eprintln!("lute: cannot read {}: {error}", path.display()); return ExitCode::from(2); }
+    };
+    let discovered = crate::project::discover_project(&path, None);
+    let root = project.or(discovered.as_deref());
+    let Some(built) = build_input(&path, providers, root, permission_profile) else { return ExitCode::from(2); };
+    let (doc, _) = lute_syntax::parse(&source);
+    let Some(offset) = line_column_offset(&source, line, column) else {
+        eprintln!("lute: --at coordinate is outside the source");
+        return ExitCode::from(2);
+    };
+    let resolution = match lute_resolve::resolve_position(
+        lute_resolve::PositionQuery { document: &doc, source: &source, byte_offset: offset },
+        &built.input.imports,
+        &built.input.snapshot,
+    ) {
+        Ok(resolution) => resolution,
+        Err(error) => { eprintln!("lute: position query refused: {error:?}"); return ExitCode::from(1); }
+    };
+    let value = serde_json::json!({
+        "schemaVersion": "0.35.0.position",
+        "expectedType": resolution.expected_type.as_ref().map(|ty| attr_type_str(ty).0),
+        "visibleSymbols": resolution.visible_symbols.iter().map(symbol_json).collect::<Vec<_>>(),
+        "cursor": resolution.cursor.map(|cursor| serde_json::json!({"kind":cursor.kind,"span":cursor.span})),
+    });
+    emit_context(value, json)
+}
+
+fn emit_context(value: serde_json::Value, json: bool) -> ExitCode {
+    let text = if json {
+        match serde_json::to_string_pretty(&value) { Ok(s) => format!("{s}\n"), Err(error) => { eprintln!("lute: failed to serialize context: {error}"); return ExitCode::from(2); } }
+    } else {
+        format!("{}\n", value)
+    };
+    write_stdout(&text).map(|_| ExitCode::SUCCESS).unwrap_or_else(|_| ExitCode::from(2))
+}
+
+fn symbol_json(symbol: &lute_resolve::Symbol) -> serde_json::Value {
+    let (ty, members) = symbol.ty.as_ref().map(attr_type_str).map_or((None, None), |(label, members)| (Some(label), members));
+    serde_json::json!({"name":symbol.name,"kind":symbol.kind,"type":ty,"members":members,"declaration":symbol.declaration.as_ref().map(|d| serde_json::json!({"file":d.file,"span":d.span}))})
+}
+
+fn parse_position(raw: &str) -> Result<(PathBuf, usize, usize), String> {
+    let mut fields = raw.rsplitn(3, ':');
+    let column = fields.next().ok_or("missing column")?.parse().map_err(|_| "column must be a positive integer")?;
+    let line = fields.next().ok_or("missing line")?.parse().map_err(|_| "line must be a positive integer")?;
+    let path = fields.next().ok_or("missing file")?;
+    if line == 0 || column == 0 { return Err("line and column are one-based".into()); }
+    Ok((PathBuf::from(path), line, column))
+}
+
+fn line_column_offset(source: &str, line: usize, column: usize) -> Option<usize> {
+    let mut start = 0usize;
+    let mut current = 1usize;
+    let mut line_text = None;
+    for segment in source.split_inclusive('\n') {
+        if current == line {
+            line_text = Some((start, segment.strip_suffix('\n').unwrap_or(segment)));
+            break;
+        }
+        start = start.checked_add(segment.len())?;
+        current = current.checked_add(1)?;
+    }
+    let (start, line_text) = match line_text {
+        Some(line) => line,
+        None if source.ends_with('\n') && current == line => (source.len(), ""),
+        None => return None,
+    };
+    let wanted = u32::try_from(column.checked_sub(1)?).ok()?;
+    let mut units = 0u32;
+    for (offset, character) in line_text.char_indices() {
+        if units >= wanted {
+            return Some(start + offset);
+        }
+        let next = units.checked_add(character.len_utf16() as u32)?;
+        if next > wanted {
+            return Some(start + offset + character.len_utf8());
+        }
+        units = next;
+    }
+    (units == wanted).then_some(start + line_text.len())
+
+}
+fn relative(model: &ProjectModel, path: &Path) -> String {
+    path.strip_prefix(model.root()).unwrap_or(path).to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")
+}
+
+fn excerpt(source: &str, span: lute_core_span::Span) -> String {
+    let start = span.byte_start.min(source.len());
+    let end = span.byte_end.min(source.len());
+    source.get(start..end).unwrap_or_default().chars().take(512).collect()
+}
+
+fn edge_json(edge: &lute_model::GraphEdge, model: &ProjectModel, neighbor: &lute_model::NodeKey) -> serde_json::Value {
+    serde_json::json!({"node":neighbor.canonical(),"kind":edge.kind,"reason":edge.reason,"evidence":edge.evidence,"file":edge.file.as_ref().map(|p|relative(model,p)),"span":edge.span})
+}
+
+fn sort_and_truncate(items: &mut Vec<serde_json::Value>, limit: usize, kind: &str, not_included: &mut Vec<serde_json::Value>) {
+    items.sort_by_key(|item| item.to_string());
+    let available = items.len();
+    if available > limit {
+        let omitted = available - limit;
+        items.truncate(limit);
+        not_included.push(serde_json::json!({"kind":kind,"limit":limit,"available":available,"omitted":omitted,"reason":"max-items"}));
+    }
+}
+
+struct Scripts { tests: Vec<serde_json::Value>, plays: Vec<serde_json::Value> }
+
+fn related_scripts(
+    model: &ProjectModel,
+    key: &lute_model::NodeKey,
+    limit: usize,
+    run: Option<&Path>,
+    not_included: &mut Vec<serde_json::Value>,
+) -> Scripts {
+    let mut tests = Vec::new();
+    let mut plays = Vec::new();
+    let needle = key.key.as_str();
+    let mut all = Vec::new();
+    let mut stack = vec![model.root().to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            if name.ends_with(".play.yaml") || name.ends_with(".test.yaml") {
+                all.push(path);
+            }
+        }
+    }
+    all.sort();
+    let mut omitted = 0usize;
+    for path in all {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let static_match = if name.ends_with(".test.yaml") {
+            crate::testcmd::static_context_references(&path)
+        } else {
+            crate::play::static_context_references(&path)
+        }
+        .ok()
+        .is_some_and(|references| references.iter().any(|reference| reference == needle));
+        let selected = run.is_some_and(|selector| {
+            selector == path || (selector.is_dir() && path.strip_prefix(selector).is_ok())
+        });
+        let witnessed = selected
+            && crate::cmd_constraints::run_script_for_context(model.root(), &path, key);
+        if !static_match && !witnessed {
+            omitted += 1;
+            continue;
+        }
+        let classification = if witnessed { "witnessed" } else { "static" };
+        let evidence = if witnessed { "witnessed" } else { "typed-id-or-lineId" };
+        let value = serde_json::json!({
+            "file": relative(model, &path),
+            "classification": classification,
+            "evidence": evidence,
+        });
+        if name.ends_with(".test.yaml") {
+            tests.push(value);
+        } else {
+            plays.push(value);
+        }
+    }
+    if omitted > 0 {
+        not_included.push(serde_json::json!({
+            "kind": "scripts",
+            "available": omitted,
+            "omitted": omitted,
+            "reason": if run.is_some() { "unrun-or-no-observable-target" } else { "unrun-or-no-static-target" }
+        }));
+    }
+    sort_and_truncate(&mut tests, limit, "tests", not_included);
+    sort_and_truncate(&mut plays, limit, "plays", not_included);
+    Scripts { tests, plays }
+}
+
+
+fn vocabulary(
+    model: &ProjectModel,
+    graph: &lute_model::SemanticGraph,
+    key: &lute_model::NodeKey,
+    limit: usize,
+    not_included: &mut Vec<serde_json::Value>,
+) -> serde_json::Value {
+    let mut relations = Vec::new();
+    let mut state = Vec::new();
+    let mut defs = Vec::new();
+    let mut state_paths = BTreeSet::new();
+    if key.kind == lute_model::NodeKind::State {
+        state.push(serde_json::json!(key.key));
+        state_paths.insert(key.key.clone());
+    }
+    for edge in &graph.edges {
+        if edge.source != *key && edge.target != *key {
+            continue;
+        }
+        let other = if edge.source == *key {
+            &edge.target
+        } else {
+            &edge.source
+        };
+        match other.kind {
+            lute_model::NodeKind::Relation => relations.push(serde_json::json!(other.key)),
+            lute_model::NodeKind::State => {
+                state.push(serde_json::json!(other.key));
+                state_paths.insert(other.key.clone());
+            }
+            lute_model::NodeKind::Def => defs.push(serde_json::json!(other.key)),
+            _ => {}
+        }
+    }
+    let mut enums = Vec::new();
+    for document in model.documents() {
+        for (path, declaration) in &document.folded.env.state.decls {
+            if !state_paths.contains(path) {
+                continue;
+            }
+            if let Type::Enum(members) = &declaration.ty {
+                enums.push(serde_json::json!({"path": path, "members": members}));
+            }
+        }
+    }
+    relations.sort_by_key(|value| value.to_string());
+    state.sort_by_key(|value| value.to_string());
+    defs.sort_by_key(|value| value.to_string());
+    enums.sort_by_key(|value| value.to_string());
+    sort_and_truncate(&mut relations, limit, "vocabulary.relations", not_included);
+    sort_and_truncate(&mut state, limit, "vocabulary.state", not_included);
+    sort_and_truncate(&mut defs, limit, "vocabulary.defs", not_included);
+    sort_and_truncate(&mut enums, limit, "vocabulary.enums", not_included);
+    serde_json::json!({"relations":relations,"state":state,"defs":defs,"enums":enums})
+}
+
 
 /// Assemble the deterministic JSON authoring surface: every map is a BTreeMap
 /// (key-sorted by construction) and every array is emitted in a stable order
@@ -1042,4 +1481,24 @@ single quotes are required inside double-quoted attributes\n");
     }
     context::outline_extras(&mut out, surface);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::line_column_offset;
+
+    #[test]
+    fn position_columns_use_utf16_units() {
+        let source = "x 😀 run.state";
+        let byte = source.find("run.state").unwrap();
+        let column = source[..byte].encode_utf16().count() + 1;
+        assert_eq!(line_column_offset(source, 1, column), Some(byte));
+    }
+
+    #[test]
+    fn position_columns_beyond_line_are_rejected() {
+        assert_eq!(line_column_offset("abc", 1, 5), None);
+        assert_eq!(line_column_offset("abc\n", 1, 4), Some(3));
+        assert_eq!(line_column_offset("abc", 2, 1), None);
+    }
 }

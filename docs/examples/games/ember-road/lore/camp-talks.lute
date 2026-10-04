@@ -4,7 +4,6 @@ id: camp.talks
 title: Camp conversations
 components: [../components/reaction.component.lute, ../components/idle.component.lute]
 ---
-
 /* ---------------------------------------------------------------- Isolde */
 
 <beat id="isoldeSold" on="talk" target="npc.isolde" title="Isolde, after the sale" priority="40" when="run.bridge == 'sold' && holds('inParty', ['isolde'])">
@@ -49,7 +48,6 @@ components: [../components/reaction.component.lute, ../components/idle.component
     </otherwise>
   </match>
 </beat>
-
 /* ---------------------------------------------------------------- Corvin */
 
 <beat id="corvinScheme" on="talk" target="npc.corvin" title="Corvin has an idea" priority="20" after="visited('bridge.arrival')" when="holds('inParty', ['corvin']) && run.bridge == 'held' && quest.toll.state == 'unset'">
@@ -79,7 +77,6 @@ components: [../components/reaction.component.lute, ../components/idle.component
     </otherwise>
   </match>
 </beat>
-
 /* ---------------------------------------------------------------- Wren */
 
 <beat id="wrenBrother" on="talk" target="npc.wren" title="What the river told Wren" priority="20" when="quest.wrenRoots.state == 'active' && @wrenWithUs">
@@ -101,22 +98,18 @@ components: [../components/reaction.component.lute, ../components/idle.component
     </otherwise>
   </match>
 </beat>
-
 /* ---------------------------------------------------------------- any companion */
-
 /* Walking up to a companion who has left the party (a kind target over the
-   member, dsl 0.27 §3: `departed` asked of `occasion.target`). The fallen are
-   out of reach altogether: the engine does not raise `talk` for them. */
+member, dsl 0.27 §3: `departed` asked of `occasion.target`). The fallen are
+out of reach altogether: the engine does not raise `talk` for them. */
 <beat id="companionGone" on="talk" target="kind:companion" title="Gone" once="false" priority="-10" when="holds('departed', [occasion.target])">
   @narrator: {{occasion.target}}'s bedroll is gone from the wagon. So is {{occasion.target}}.
 </beat>
-
 /* Each night, every companion who trusts the Warden takes a turn at the watch
-   unasked (`for`, dsl 0.27 §3: once per member, on the untargeted camp). */
+unasked (`for`, dsl 0.27 §3: once per member, on the untargeted camp). */
 <beat id="watch" on="camp" for="kind:companion" title="The watch" once="false" priority="10" when="holds('loyal', [occasion.target])">
   @narrator: {{occasion.target}} takes a turn at the watch without being asked.
 </beat>
-
 /* ---------------------------------------------------------------- the ford and the Company */
 
 <beat id="odaThanks" on="talk" target="npc.oda" title="Oda" priority="10" when="run.hostagesFreed">

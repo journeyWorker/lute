@@ -1,0 +1,22 @@
+---
+component: inesAt
+# Ines wherever the schedule puts her: the scene change, her entrance, then
+# the beat's own lines. One header for her three places.
+params:
+  where: { type: { entity: place } }
+  bg: string
+  time: { type: { enum: [morning, afternoon, night] } }
+  side: { type: { enum: [left, center, right] }, default: center }
+beat:
+  on: visit
+  target: "place.@where"
+  once: "false"
+  priority: 5
+  when: "holds('at', ['ines', @where])"
+---
+
+## Ines
+
+::bg{location=@bg time=@time}
+::use{component="enter" who="ines" side=@side}
+::body

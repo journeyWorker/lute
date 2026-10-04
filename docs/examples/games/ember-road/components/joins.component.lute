@@ -6,7 +6,6 @@ params:
 ---
 
 ## Joins
-
 /* A companion joins the party: the fact and the toast together (dsl 0.24 §4). */
 ::assert{recruited(@who)}
 @narrator: {{@who}} joins the party.

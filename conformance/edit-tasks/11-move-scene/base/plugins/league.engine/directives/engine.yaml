@@ -1,0 +1,28 @@
+# Fire-and-forget engine calls (generic passthrough records: no lower:). Ids
+# the engine owns are typed by the project kinds in schema/items.schema.yaml
+# and schema/species.schema.yaml.
+directives:
+  # a scripted wild battle (legendaries, the sleeping giant); the engine
+  # raises caught / battleEnd afterwards
+  - name: encounter
+    attrs:
+      - { name: species, required: true, type: { entity: species } }
+      - { name: level,   required: true, type: int }
+  # a monster handed over (a revived fossil, a gift): the engine adds it to the
+  # party or the PC and then raises caught@mon.<species>
+  - name: gift
+    attrs:
+      - { name: species, required: true, type: { entity: species } }
+      - { name: level,   required: true, type: int }
+  # the Monster Center heals the party
+  - name: heal
+    attrs: []
+  # the Mart opens its buy/sell menu with a stock list
+  - name: shop
+    attrs:
+      - { name: stock, required: true, type: { entity: martStock } }
+  # a bag item (not a key item: those are hasItem facts, see obtain)
+  - name: give
+    attrs:
+      - { name: item, required: true, type: { entity: bagItem } }
+      - { name: qty,  type: int, default: 1 }

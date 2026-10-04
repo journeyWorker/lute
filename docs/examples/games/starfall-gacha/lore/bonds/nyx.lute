@@ -3,7 +3,6 @@ kind: lore
 id: bonds.nyx
 title: Nyx, Keeper of the Frostlight (limited SSR)
 ---
-
 /* Limited: only on the Frostlight Vigil banner. */
 
 <beat id="nyxIntro" on="summon" target="hero.nyx" once="user" priority="10">

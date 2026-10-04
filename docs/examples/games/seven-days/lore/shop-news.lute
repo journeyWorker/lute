@@ -3,9 +3,8 @@ kind: lore
 id: news
 title: Pell's news at breakfast
 ---
-
 /* Side remarks after the morning card (`also`): they ride along after the
-   routine instead of replacing it. Each plays once per run. */
+routine instead of replacing it. Each plays once per run. */
 
 <beat id="lanternDone" on="dayStart" also priority="10" title="The lantern is done" when="quest.festivalLantern.state == 'complete' && run.day <= 5">
   ::auto{character="pell" anchor="left" action="fadeInUp"}

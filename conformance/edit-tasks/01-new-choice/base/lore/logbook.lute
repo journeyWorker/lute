@@ -1,0 +1,29 @@
+---
+kind: lore
+id: logbook
+title: The station logbook
+series: stationLog
+---
+
+// The logbook on the deck desk (occasion `logbook`, select: all): the player
+// picks a page. Older pages open up as the week goes on.
+
+<entry id="log1971" on="logbook" category="note" title="12 August 1971">
+  @narrator: "Perseids. Counted 71 before cloud. H. says she counted 74. H. is a liar. — A.V."
+</entry>
+
+<entry id="log1994" on="logbook" category="note" title="Festival, 1994" when="run.day >= 3">
+  @narrator: "Forecast clear for the festival. Front arrived Saturday 23:00. Forty lanterns lost to the Sella. Village has not spoken to the station since Tuesday. — I.H., intern"
+</entry>
+
+<entry id="log1998" on="logbook" category="note" title="The long blackout" when="run.day >= 4">
+  @narrator: "Mains down nine days. Storm candles last nine hours; timed one. Radio on the battery bank. Sol's father on the set all night talking to a tanker. — I.H."
+</entry>
+
+<entry id="logStorm" on="logbook" category="note" title="Your own page" priority="10" when="run.weather == 'storm'">
+  @narrator: Your own handwriting, from this morning: "Pressure 961 and falling. Path closed. Ines says this is nothing. Ines is lying."
+</entry>
+
+<entry id="logBatten" on="logbook" category="note" title="Storm watch" when="quest.battenDown.state == 'complete'">
+  @narrator: In Ines's hand, under your storm-morning page: "Mast lashed, shutters barred, intern did both without being asked. — I.H."
+</entry>

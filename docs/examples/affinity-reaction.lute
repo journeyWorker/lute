@@ -25,10 +25,9 @@ defs:
 ---
 
 ## Literal Tier Dispatch
-
 /* Every `tier` arg here is a literal, so each `::use` expands to exactly one
-   `@marina` line (§6.4 case 1) — the compiled artifact is indistinguishable
-   from hand-duplicating the block three times. */
+`@marina` line (§6.4 case 1) — the compiled artifact is indistinguishable
+from hand-duplicating the block three times. */
 <match on="scene.affect.marina">
   <when is="3..">
     ::use{component="reaction" tier="fond"}
@@ -42,9 +41,8 @@ defs:
 </match>
 
 ## Dynamic Tier Dispatch
-
 /* A non-literal binding like `@currentTier` cannot fold: the component's
-   `<match>` lowers to an ordinary residual match record on the substituted
-   subject (§6.4 case 2) — dynamic dispatch on a caller-supplied value, still
-   with no new IR. */
+`<match>` lowers to an ordinary residual match record on the substituted
+subject (§6.4 case 2) — dynamic dispatch on a caller-supplied value, still
+with no new IR. */
 ::use{component="reaction" tier=@currentTier}

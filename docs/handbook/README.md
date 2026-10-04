@@ -1,10 +1,10 @@
 # Lute current-rules handbook
 
-This is the normative, current-rules view of Lute as of 0.34.0. It includes
+This is the normative, current-rules view of Lute as of 0.35.0. It includes
 the phase-2 domain-module and semantic-negotiation contract; the 0.32
 execution-IR rules remain the base contract and are linked where relevant.
-The 0.34 project-model, evidence, impact, and constraints documentation is
-marked as the upcoming contract until the release stamps move.
+The 0.34 project-model, evidence, impact, and constraints documentation remains
+part of the historical stack; the 0.35 AI edit-loop contract is current.
 This handbook is intentionally not a release history. The versioned
 [scenario DSL proposals](../proposals/scenario-dsl/) explain why and when a
 rule was introduced; each page links only to proposal files present in this

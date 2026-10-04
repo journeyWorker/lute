@@ -1,0 +1,26 @@
+# OWNED BY AREA isles: the named NPCs of the Sunfall Isles (not generic
+# trainers). One id per line; the same id must also be in
+# schema/areas/isles.schema.yaml.
+cast:
+  # Sunport, the ferry town
+  sunportHarbormaster: { name: Harbormistress Coral }
+  sunportTowerClerk:   { name: Tower Clerk }
+  sunportSage:         { name: Old Tamsin, emotions: [neutral, happy, worried] }
+  sunportKid:          { name: Wick }
+  # the three beacon keepers
+  emberkeyKeeper:      { name: Keeper Brand, emotions: [neutral, happy, angry] }
+  mistralKeeper:       { name: Keeper Sorrel, emotions: [neutral, happy, worried] }
+  coralreachKeeper:    { name: Keeper Nerissa, emotions: [neutral, happy, sad] }
+  # the Dusk Remnant (what is left of Team Eclipse)
+  duskAdminNyx:        { name: Admin Nyx, emotions: [neutral, smug, angry] }
+  duskGruntCinder:     { name: Dusk Grunt, sharedName: true }
+  duskGruntGale:       { name: Dusk Grunt, sharedName: true }
+  duskGruntBrine:      { name: Dusk Grunt, sharedName: true }
+  # island trainers
+  emberkeyHikerRook:   { name: Hiker Rook }
+  emberkeyFirebreatherIda: { name: Firebreather Ida }
+  mistralBirdKeeperOwen: { name: Bird Keeper Owen }
+  mistralKiteFlyerJun: { name: Kite Flyer Jun }
+  coralreachSwimmerTess: { name: Swimmer Tess }
+  coralreachFishermanAbe: { name: Fisherman Abe }
+  sunportAceKestrel:   { name: Ace Trainer Kestrel }

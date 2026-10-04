@@ -1,0 +1,58 @@
+---
+kind: lore
+id: spine.obstacles
+title: Gate barks (fallbacks)
+---
+
+// The engine raises obstacle@gate.<gate> each time the player bumps into a
+// gate; it lets the player through whenever canPass(<gate>) holds, so these
+// answer only while it does not. Areas may answer a gate at priority 0 with
+// their own wording.
+
+<entry id="blockPebbletonEast" on="obstacle" target="gate.pebbletonEast" category="bark" priority="-10" when="!holds('canPass', ['pebbletonEast'])">
+  @narrator: A man blocks the east road. "Petra is looking for trainers. Nobody leaves Pebbleton without trying her gym."
+</entry>
+
+<entry id="blockFerryGangway" on="obstacle" target="gate.ferryGangway" category="bark" priority="-10" when="!holds('canPass', ['ferryGangway'])">
+  @narrator: A sailor blocks the gangway. "Ticket, please. No ticket, no Meridian."
+</entry>
+
+<entry id="blockPortvoltTree" on="obstacle" target="gate.portvoltTree" category="bark" priority="-10" when="!holds('canPass', ['portvoltTree'])">
+  @narrator: A thin tree blocks the way. A monster that knows Cut could clear it, with the Tide Badge to prove you can handle it.
+</entry>
+
+<entry id="blockRockTunnel" on="obstacle" target="gate.rockTunnel" category="bark" priority="-10" when="!holds('canPass', ['rockTunnel'])">
+  @narrator: The tunnel is pitch black. Without Flash you would never find the way through.
+</entry>
+
+<entry id="blockAshTowerStairs" on="obstacle" target="gate.ashTowerStairs" category="bark" priority="-10" when="!holds('canPass', ['ashTowerStairs'])">
+  @narrator: Something on the stairs moves when you look at it, and is gone when you look properly. You cannot see what is there.
+</entry>
+
+<entry id="blockSleepingGiant" on="obstacle" target="gate.sleepingGiant" category="bark" priority="-10" when="!holds('canPass', ['sleepingGiant'])">
+  @narrator: An enormous monster is asleep across the road. It does not wake up. It does not look like it ever will.
+</entry>
+
+<entry id="blockMindGymDoor" on="obstacle" target="gate.mindGymDoor" category="bark" priority="-10" when="!holds('canPass', ['mindGymDoor'])">
+  @narrator: The gym door is locked. A sign in Team Eclipse lettering reads: CLOSED BY ORDER OF THE DIRECTOR.
+</entry>
+
+<entry id="blockSeaRoute" on="obstacle" target="gate.seaRoute" category="bark" priority="-10" when="!holds('canPass', ['seaRoute'])">
+  @narrator: The sea stretches north. A monster that knows Surf could carry you, if you had the Venom Badge.
+</entry>
+
+<entry id="blockCinderGymDoor" on="obstacle" target="gate.cinderGymDoor" category="bark" priority="-10" when="!holds('canPass', ['cinderGymDoor'])">
+  @narrator: The gym door is locked. The keyhole is shaped like a flame.
+</entry>
+
+<entry id="blockEarthGymDoor" on="obstacle" target="gate.earthGymDoor" category="bark" priority="-10" when="!holds('canPass', ['earthGymDoor'])">
+  @narrator: The Earth Gym is locked. A notice says the leader accepts only challengers with seven badges.
+</entry>
+
+<entry id="blockVictoryRoadGate" on="obstacle" target="gate.victoryRoadGate" category="bark" priority="-10" when="!holds('canPass', ['victoryRoadGate'])">
+  @narrator: A guard stops you. "Victory Road is for trainers with all eight badges."
+</entry>
+
+<entry id="blockVictoryRoadBoulders" on="obstacle" target="gate.victoryRoadBoulders" category="bark" priority="-10" when="!holds('canPass', ['victoryRoadBoulders'])">
+  @narrator: Huge boulders fill the passage. A monster that knows Strength could move them.
+</entry>

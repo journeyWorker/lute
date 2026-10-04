@@ -1,0 +1,37 @@
+# The meter runs out: a tape, surgery, a hand in drawer 7, and a chase that
+# catches an ankle. The engine raises sanityBreak at zero.
+#
+#   lute play . --script plays/broken.play.yaml
+state: { run.power: true }
+facts: [holding(morgueKey)]
+steps:
+  - include: steps/opening.steps.yaml
+  - occasion: enter
+    target: room.reception
+  - occasion: read
+    target: note.tape
+  - occasion: enter
+    target: room.surgery
+  - occasion: enter
+    target: room.morgue
+  - occasion: examine
+    target: fixture.freezer
+    choose: { drawer: seven }
+    expect: { state: { run.sanity: 5 } }
+  - occasion: encounter
+    engine: { state: { run.stalker: morgue } }
+    target: room.morgue
+    choose: { react: freeze }
+    bridges: { evade: [ { outcome: hurt } ] }
+    expect: { state: { run.sanity: 2, run.fate: alive } }
+  - advance: slot
+    expect: { presented: [hours.chime, hours.whispers] }
+  - occasion: examine
+    target: fixture.freezer
+    label: drawer seven again
+    choose: { drawer: seven }
+  - occasion: sanityBreak
+    expect: { winner: ending.broken, state: { run.fate: broken, user.deaths: 1 }, quests: { beforeDawn: failed } }
+expect:
+  state: { run.sanity: 0 }
+  transcriptContains: ["@nell: I'm the new nurse. I'm the new nurse. I have to do the round at three."]

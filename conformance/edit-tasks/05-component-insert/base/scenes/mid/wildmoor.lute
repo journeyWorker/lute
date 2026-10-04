@@ -1,0 +1,27 @@
+---
+kind: scene
+id: mid.wildmoor
+title: The Wildmoor Preserve
+on: enterPlace
+target: place.wildmoorPreserve
+---
+
+// CONTRACT BEAT (owned by mid): hands over hmSurf and the goldTooth (for
+// Warden Holt's hmStrength). The first visit only; later visits and the
+// contest are in lore/mid/wildmoor.lute and lore/mid/bug-contest.lute.
+
+## The gates
+
+::bg{location="wildmoor-preserve" time="day"}
+::music{action="change" mood="calm" volume="normal"}
+@narrator: The Wildmoor Preserve: tall grass to the horizon, ponds like dropped coins, and old oaks full of bugs. A ranger at the gate waves you through with a net.
+@wildmoorRanger: First time? Stay on the paths, don't feed the Hornbeetles, and if you see the Warden's gold tooth, it's at the rest house. He's been looking for it for a month.
+@narrator{when="@midContestOpen"}: Outside the rest house the bug-catching contest is starting. You can hear the nets from here.
+
+## The rest house
+
+::bg{location="wildmoor-rest-house" time="day"}
+@narrator: At the far end of the Preserve, past the tall grass and the ponds, a rest house. On the table: a disc, a teapot, and a gold tooth in a saucer.
+@wildmoorRanger: The disc's Surf. Belonged to the last Warden, who swam the whole lake every morning. Take it; Kessler's badge will let you use it. The tooth's Holt's. Take that to him, please, before he whistles at me again.
+::use{component="obtain" item="hmSurf"}
+::use{component="obtain" item="goldTooth"}

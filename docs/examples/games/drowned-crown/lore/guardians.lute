@@ -13,9 +13,8 @@ title: The palace guardians
   @narrator: The choir's last note hangs in the water after the singers are gone.
   @ilo{mono}: I know that song. Mother sang it. Why do I know that song?
 </entry>
-
 /* A guardian that falls again gets one bark a dive, whichever it is; each
-   first kill above (and the Regent's own scene) outranks it. */
+first kill above (and the Regent's own scene) outranks it. */
 <entry id="guardianAgain" on="bossDefeated" target="kind:foe" category="bark" once="run">
   <match on="occasion.target">
     <when is="eel">
@@ -32,10 +31,9 @@ title: The palace guardians
     </when>
   </match>
 </entry>
-
 /* The fallback bark for any guardian: the repeat bark plays once per dive,
-   so a second repeat kill in one dive (the eel on the way back up) gets this
-   one. */
+so a second repeat kill in one dive (the eel on the way back up) gets this
+one. */
 <entry id="anyGuardian" on="bossDefeated" target="kind:foe" category="bark" priority="-5">
   @narrator: Ilo watches {{occasion.target}} sink out of sight. It will be back.
 </entry>

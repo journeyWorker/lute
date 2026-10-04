@@ -1,0 +1,559 @@
+# AREA north: a full Highlands & Isles playthrough from a save that has just
+# surfed out of the Midlands with six badges.
+#
+#   lute play . --script plays/north.play.yaml
+#
+# Clock: day 1 Monday morning. The play walks the week: day and night
+# trainers, the Tuesday quiz, back to Maud with a fire monster, the Wednesday
+# Earth Gym, and Friday's swimmer in the caverns; then both legends and
+# Victory Road. OWNED BY north.
+visited: [spine.lab, mid.helixTower]
+presented: { run: [spine.broadcast] }
+quests: { eclipseArc: active }
+facts:
+  - chose(dewpup)
+  - caught(dewpup)
+  - seen(dewpup)
+  - inParty(dewpup)
+  - hasItem(monDex)
+  - hasItem(hmFlash)
+  - hasItem(ferryTicket)
+  - hasItem(hmCut)
+  - hasItem(hmFly)
+  - hasItem(spectralLens)
+  - hasItem(wakingFlute)
+  - hasItem(cardKey)
+  - hasItem(hmSurf)
+  - hasItem(goldTooth)
+  - hasItem(hmStrength)
+  - hasBadge(stone)
+  - hasBadge(tide)
+  - hasBadge(spark)
+  - hasBadge(bloom)
+  - hasBadge(mind)
+  - hasBadge(venom)
+  - rivalFought(lab)
+  - rivalFought(bridge)
+  - rivalFought(ferry)
+  - rivalFought(tower)
+state:
+  run.lair.quarryDig: cleared
+  run.lair.towerSiege: cleared
+  run.lair.cornerHideout: cleared
+  run.lair.helixHQ: cleared
+choose:
+  northMansionDoor: lab
+  northQuizOne: water
+  northQuizTwo: gym
+  northQuizThree: eight
+  northWrenStories: [ice, fire, leave]
+steps:
+  # ═══ Monday morning: the Strait and Frostharbor ═══════════════════════════
+  - occasion: obstacle
+    target: gate.seaRoute
+    expect: { winner: none }
+  - occasion: enterRoute
+    target: route.r13
+    expect: { winner: north.route13.enter }
+  - occasion: trainerSpotted
+    target: trainer.r13SwimmerLena
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route13.r13SwimmerLena, state: { run.money: 4400 } }
+  - occasion: trainerSpotted
+    target: trainer.r13SwimmerTod
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route13.r13SwimmerTod }
+  - occasion: trainerSpotted
+    target: trainer.r13FishermanWade
+    label: Wade wins
+    bridges: { battle: [ { won: false } ] }
+    expect: { winner: north.route13.r13FishermanWade, notFacts: [defeated(r13FishermanWade)] }
+  - occasion: trainerSpotted
+    target: trainer.r13FishermanWade
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route13.r13FishermanWade, facts: [defeated(r13FishermanWade)] }
+  - occasion: trainerSpotted
+    target: trainer.r13SailorBrig
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route13.r13SailorBrig }
+  - occasion: trainerSpotted
+    target: trainer.r13BirdKeeperIsla
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route13.r13BirdKeeperIsla }
+  - occasion: trainerSpotted
+    target: trainer.r13SwimmerNoor
+    label: the night swimmer is not out by day
+    expect: { winner: none }
+  - occasion: talk
+    target: npc.r13FishermanWade
+    expect: { winner: northR13FishermanWadeAfter }
+  - occasion: talk
+    target: npc.r13Lifeguard
+    expect: { winner: northBeaBark }
+  - occasion: enterTown
+    target: town.frostharbor
+    expect: { winner: north.frostharbor.arrive }
+  - occasion: enterTown
+    target: town.frostharbor
+    label: back into town, same morning
+    expect: { winner: northFrostharborMorning }
+  - occasion: heal
+    target: town.frostharbor
+    expect: { winner: north.frostharbor.center }
+  - engine: { accept: [northFridaySwimmer] }
+    label: the Center board (the engine accepts a board quest)
+    expect: { quests: { northFridaySwimmer: active } }
+  - occasion: shop
+    target: town.frostharbor
+    expect: { winner: north.frostharbor.mart }
+  - occasion: talk
+    target: npc.frostharborHarbormaster
+    expect: { winner: northBrineMorning }
+  - occasion: talk
+    target: npc.frostharborNetmender
+    expect: { winner: northIlseMorning }
+  - occasion: talk
+    target: npc.frostharborKid
+    expect: { winner: northPipBark }
+  - occasion: talk
+    target: npc.frostharborCaveGuide
+    expect: { winner: northHalvardBark }
+  - occasion: talk
+    target: npc.frostharborKeeper
+    expect: { winner: north.frostharbor.maudAsk, quests: { northLighthouse: active } }
+  - occasion: talk
+    target: npc.frostharborKeeper
+    label: a water starter will not light the lamp
+    expect: { winner: northMaudWaiting, quests: { northLighthouse: active } }
+  - occasion: enterPlace
+    target: place.frostCaverns
+    expect: { winner: north.frostCaverns.enter }
+  - occasion: trainerSpotted
+    target: trainer.frostCavernsHikerOrm
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.frostCaverns.frostCavernsHikerOrm }
+  - occasion: trainerSpotted
+    target: trainer.frostCavernsScientistPym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.frostCaverns.frostCavernsScientistPym }
+  - occasion: enterPlace
+    target: place.frostCaverns
+    label: Monday, the pool is still
+    expect: { winner: northCavernsAgain }
+
+  # ═══ Monday night ═════════════════════════════════════════════════════════
+  - advance: { to: night }
+    label: Monday night
+    expect: { clock: { slot: night } }
+  - occasion: enterRoute
+    target: route.r13
+    expect: { winner: northR13Night }
+  - occasion: trainerSpotted
+    target: trainer.r13SwimmerNoor
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route13.r13SwimmerNoor }
+  - occasion: talk
+    target: npc.r13Lifeguard
+    expect: { winner: northBeaNight }
+  - occasion: talk
+    target: npc.frostharborHarbormaster
+    expect: { winner: northBrineNight }
+  - occasion: talk
+    target: npc.frostharborKid
+    expect: { winner: northPipNight }
+  - occasion: talk
+    target: npc.frostharborCaveGuide
+    expect: { winner: northHalvardDeep }
+
+  # ═══ Tuesday: the Ember Channel, Cinder Isle, the Blaze Gym ═══════════════
+  - advance: day
+    label: Tuesday morning
+  - occasion: enterRoute
+    target: route.r14
+    expect: { winner: north.route14.enter }
+  - occasion: trainerSpotted
+    target: trainer.r14SwimmerCal
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route14.r14SwimmerCal }
+  - occasion: trainerSpotted
+    target: trainer.r14SwimmerMae
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route14.r14SwimmerMae }
+  - occasion: trainerSpotted
+    target: trainer.r14FishermanOtto
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route14.r14FishermanOtto }
+  - occasion: trainerSpotted
+    target: trainer.r14SailorJunn
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route14.r14SailorJunn }
+  - occasion: trainerSpotted
+    target: trainer.r14BeautyVera
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route14.r14BeautyVera }
+  - occasion: enterTown
+    target: town.cinderisle
+    expect: { winner: north.cinderisle.arrive }
+  - occasion: heal
+    target: town.cinderisle
+    expect: { winner: north.cinderisle.center }
+  - occasion: talk
+    target: npc.cinderInnkeeper
+    expect: { winner: northSolMorning }
+  - occasion: talk
+    target: npc.cinderGranny
+    label: three out of three
+    expect: { winner: north.cinderisle.grannyQuiz, options: { northQuizOne: [water, grass] } }
+  - occasion: talk
+    target: npc.cinderGranny
+    label: one quiz a day
+    expect: { winner: northGrannyBark }
+  - occasion: talk
+    target: npc.cinderGymGuide
+    expect: { winner: northCinderGuideLocked }
+  - occasion: talk
+    target: npc.cinderVolcanologist
+    expect: { winner: northAshbyBark }
+  - occasion: obstacle
+    target: gate.cinderGymDoor
+    expect: { winner: northBlockCinderGymDoor }
+  - occasion: enterPlace
+    target: place.cinderMansion
+    label: the laboratory door
+    expect: { winner: north.cinderMansion, facts: [hasItem(volcanoKey), canPass(cinderGymDoor)] }
+  - occasion: trainerSpotted
+    target: trainer.cinderMansionBurglarSly
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.cinderMansionTrainers.cinderMansionBurglarSly }
+  - occasion: trainerSpotted
+    target: trainer.cinderMansionScientistHale
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.cinderMansionTrainers.cinderMansionScientistHale }
+  - label: a Magmaboar on the volcano slope
+    engine: { facts: [caught(magmaboar), seen(magmaboar), inParty(magmaboar)] }
+  - occasion: talk
+    target: npc.cinderVolcanologist
+    expect: { winner: northAshbyKey }
+  - occasion: talk
+    target: npc.cinderGymGuide
+    expect: { winner: northCinderGuideOpen }
+  - occasion: obstacle
+    target: gate.cinderGymDoor
+    expect: { winner: none }
+  - occasion: trainerSpotted
+    target: trainer.blazeGymSuperNerdQuill
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.blazeGymTrainers.blazeGymSuperNerdQuill }
+  - occasion: trainerSpotted
+    target: trainer.blazeGymBurglarFitch
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.blazeGymTrainers.blazeGymBurglarFitch }
+  - occasion: trainerSpotted
+    target: trainer.blazeGymSuperNerdOona
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.blazeGymTrainers.blazeGymSuperNerdOona }
+  - occasion: trainerSpotted
+    target: trainer.blazeGymBurglarRusk
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.blazeGymTrainers.blazeGymBurglarRusk }
+  - occasion: challenge
+    target: arena.blazeGym
+    label: Ignatius wins the first round
+    bridges: { battle: [ { won: false } ] }
+    expect: { winner: north.blazeGym, notFacts: [hasBadge(blaze)] }
+  - occasion: challenge
+    target: arena.blazeGym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.blazeGym, facts: [hasBadge(blaze), canPass(earthGymDoor)] }
+  - occasion: talk
+    target: npc.cinderGymGuide
+    expect: { winner: northCinderGuideWon }
+  - occasion: talk
+    target: npc.cinderVolcanologist
+    expect: { winner: northAshbyBadge }
+
+  # ═══ Tuesday night: the channel glows; back to Maud ═══════════════════════
+  - advance: { to: night }
+    label: Tuesday night
+    expect: { clock: { slot: night } }
+  - occasion: talk
+    target: npc.cinderInnkeeper
+    expect: { winner: northSolNight }
+  - occasion: enterPlace
+    target: place.cinderMansion
+    expect: { winner: northMansionAgain }
+  - occasion: trainerSpotted
+    target: trainer.cinderMansionBurglarNip
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.cinderMansionTrainers.cinderMansionBurglarNip }
+  - occasion: enterRoute
+    target: route.r14
+    expect: { winner: northR14Night }
+  - occasion: trainerSpotted
+    target: trainer.r14BeautyVera
+    label: already beaten, and off the rocks at night anyway
+    expect: { winner: none }
+  - occasion: trainerSpotted
+    target: trainer.r14SwimmerRex
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route14.r14SwimmerRex }
+  - occasion: talk
+    target: npc.r14Hermit
+    expect: { winner: northOskarBadge }
+  - occasion: talk
+    target: npc.frostharborKeeper
+    label: Magmaboar lights the lamp
+    expect: { winner: north.frostharbor.maudRelight, quests: { northLighthouse: complete } }
+  - occasion: enterTown
+    target: town.frostharbor
+    expect: { winner: northFrostharborNight }
+  - occasion: talk
+    target: npc.frostharborKeeper
+    expect: { winner: northMaudLit }
+
+  # ═══ Wednesday: the Cliff Road, Verdant City, the Earth Gym ═══════════════
+  - advance: day
+    label: Wednesday morning
+  - occasion: enterRoute
+    target: route.r15
+    expect: { winner: north.route15.enter }
+  - occasion: trainerSpotted
+    target: trainer.r15BikerDax
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route15.r15BikerDax }
+  - occasion: trainerSpotted
+    target: trainer.r15BikerJett
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route15.r15BikerJett }
+  - occasion: trainerSpotted
+    target: trainer.r15BirdKeeperPell
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route15.r15BirdKeeperPell }
+  - occasion: trainerSpotted
+    target: trainer.r15CamperRoy
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route15.r15CamperRoy }
+  - occasion: trainerSpotted
+    target: trainer.r15PicnickerTilly
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route15.r15PicnickerTilly }
+  - occasion: talk
+    target: npc.r15Ranger
+    expect: { winner: northTamsinMorning }
+  - occasion: enterTown
+    target: town.verdantcity
+    expect: { winner: north.verdantcity.arrive }
+  - occasion: shop
+    target: town.verdantcity
+    expect: { winner: north.verdantcity.mart }
+  - occasion: talk
+    target: npc.verdantGardener
+    expect: { winner: north.verdantcity.mossBerries }
+  - occasion: talk
+    target: npc.verdantFlorist
+    expect: { winner: northJuniperMorning }
+  - occasion: talk
+    target: npc.verdantGuard
+    expect: { winner: northDaleBark }
+  - occasion: talk
+    target: npc.verdantHistorian
+    label: both stories
+    expect:
+      winner: north.verdantcity.wrenLegends
+      options: { northWrenStories: [ice, fire, leave] }
+      quests: { northTwinLegends: active, northFrostwing: active, northBlazewing: active }
+  - occasion: talk
+    target: npc.verdantHistorian
+    label: the fire story again
+    choose: { northWrenStories: [fire, leave] }
+    expect:
+      winner: north.verdantcity.wrenLegends
+      quests: { northTwinLegends: active, northFrostwing: active, northBlazewing: active }
+  - occasion: enterPlace
+    target: place.verdantDojo
+    expect: { winner: north.dojo.enter }
+  - occasion: talk
+    target: npc.verdantDojoMaster
+    expect: { winner: north.dojo.hollisAsk, quests: { northDojo: active } }
+  - occasion: talk
+    target: npc.verdantDojoMaster
+    expect: { winner: northHollisWaiting }
+  - occasion: trainerSpotted
+    target: trainer.verdantDojoKarateKoji
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.dojo.verdantDojoKarateKoji }
+  - occasion: talk
+    target: npc.verdantDojoMaster
+    label: report to the master
+    expect: { winner: northHollisBark, quests: { northDojo: complete } }
+  - occasion: obstacle
+    target: gate.earthGymDoor
+    expect: { winner: none }
+  - occasion: trainerSpotted
+    target: trainer.earthGymGruntHask
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.earthGymTrainers.earthGymGruntHask }
+  - occasion: trainerSpotted
+    target: trainer.earthGymGruntMoll
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.earthGymTrainers.earthGymGruntMoll }
+  - occasion: trainerSpotted
+    target: trainer.earthGymGruntTeague
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.earthGymTrainers.earthGymGruntTeague }
+  - occasion: trainerSpotted
+    target: trainer.earthGymAdminSelene
+    label: Selene's second team wins
+    bridges: { battle: [ { won: true }, { won: false } ] }
+    expect: { winner: north.earthGymTrainers.earthGymAdminSelene, notFacts: [defeated(earthGymAdminSelene)] }
+  - occasion: trainerSpotted
+    target: trainer.earthGymAdminSelene
+    bridges: { battle: [ { won: true }, { won: true } ] }
+    expect: { winner: north.earthGymTrainers.earthGymAdminSelene, facts: [defeated(earthGymAdminSelene)] }
+  - occasion: talk
+    target: npc.earthGymAdminSelene
+    expect: { winner: northSeleneAfter }
+  - occasion: challenge
+    target: arena.earthGym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.earthGym, facts: [defeated(vex), hasBadge(earth)], quests: { badgeRoad: complete } }
+  - occasion: battleEnd
+    expect: { winner: spine.eclipseFalls, quests: { eclipseArc: complete } }
+  - occasion: talk
+    target: npc.earthGymGruntTeague
+    expect: { winner: northGruntsGone }
+  - occasion: talk
+    target: npc.verdantGuard
+    expect: { winner: northDaleAfter }
+
+  # ═══ Wednesday night ══════════════════════════════════════════════════════
+  - advance: { to: night }
+    label: Wednesday night
+    expect: { clock: { slot: night } }
+  - occasion: enterTown
+    target: town.verdantcity
+    expect: { winner: northVerdantNight }
+  - occasion: talk
+    target: npc.verdantGardener
+    expect: { winner: northMossNight }
+  - occasion: trainerSpotted
+    target: trainer.r15PsychicMira
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route15.r15PsychicMira }
+
+  # ═══ Friday: the swimmer, then the two birds ══════════════════════════════
+  - advance: { to: { weekday: Friday, slot: morning } }
+    label: Friday morning
+    expect: { clock: { weekday: Friday, slot: morning } }
+  - occasion: talk
+    target: npc.frostharborCaveGuide
+    expect: { winner: northHalvardFriday }
+  - occasion: enterPlace
+    target: place.frostCaverns
+    label: the Friday swimmer
+    expect: { winner: north.frostCaverns.fridaySwimmer }
+  - label: the engine's catch
+    engine: { facts: [caught(shellnessie), seen(shellnessie), inParty(shellnessie)] }
+  - occasion: caught
+    target: mon.shellnessie
+    expect: { winner: north.catches.shellnessie, quests: { northFridaySwimmer: complete } }
+  - occasion: enterPlace
+    target: place.frostCaverns
+    expect: { winner: northPoolFridayCaught }
+  - occasion: talk
+    target: npc.frostharborCaveGuide
+    expect: { winner: northHalvardCaught }
+  - occasion: enterPlace
+    target: place.frostDepths
+    expect: { winner: north.frostCaverns.frostwing }
+  - label: the engine's catch
+    engine: { facts: [caught(frostwing), seen(frostwing), inParty(frostwing)] }
+  - occasion: caught
+    target: mon.frostwing
+    label: one bird is enough for the book
+    expect: { winner: north.catches.frostwing, quests: { northTwinLegends: complete, northFrostwing: complete, northBlazewing: failed } }
+  - occasion: talk
+    target: npc.verdantHistorian
+    expect: { winner: northWrenDone }
+
+  # ═══ Friday: the League Road and Victory Road ═════════════════════════════
+  - occasion: enterRoute
+    target: route.r16
+    expect: { winner: north.route16.enter }
+  - occasion: trainerSpotted
+    target: trainer.r16CooltrainerAnya
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route16.r16CooltrainerAnya }
+  - occasion: trainerSpotted
+    target: trainer.r16CooltrainerBram
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route16.r16CooltrainerBram }
+  - occasion: trainerSpotted
+    target: trainer.r16HikerGus
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route16.r16HikerGus }
+  - occasion: trainerSpotted
+    target: trainer.r16BlackBeltKen
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route16.r16BlackBeltKen }
+  - occasion: trainerSpotted
+    target: trainer.r16BeautyLis
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.route16.r16BeautyLis }
+  - occasion: talk
+    target: npc.r16Veteran
+    expect: { winner: northHarlBark }
+  - occasion: obstacle
+    target: gate.victoryRoadGate
+    expect: { winner: none }
+  - occasion: enterPlace
+    target: place.victoryRoad
+    label: Kai wins this one
+    bridges: { battle: [ { won: false } ] }
+    expect: { winner: north.victoryRoad, facts: [rivalFought(road)], notFacts: [rivalBeaten(road)], state: { run.rivalStanding: -1 } }
+  - occasion: trainerSpotted
+    target: trainer.victoryRoadCooltrainerNaomi
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.victoryRoadTrainers.victoryRoadCooltrainerNaomi }
+  - occasion: trainerSpotted
+    target: trainer.victoryRoadCooltrainerElias
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.victoryRoadTrainers.victoryRoadCooltrainerElias }
+  - occasion: trainerSpotted
+    target: trainer.victoryRoadBlackBeltGrum
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.victoryRoadTrainers.victoryRoadBlackBeltGrum }
+  - occasion: trainerSpotted
+    target: trainer.victoryRoadTamerOsric
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: north.victoryRoadTrainers.victoryRoadTamerOsric }
+  - occasion: enterPlace
+    target: place.victoryRoad
+    expect: { winner: northVictoryRoadAgain }
+  - occasion: enterPlace
+    target: place.victoryRoadCrater
+    expect: { winner: north.victoryRoadTrainers.blazewing }
+  - label: the engine's catch
+    engine: { facts: [caught(blazewing), seen(blazewing), inParty(blazewing)] }
+  - occasion: caught
+    target: mon.blazewing
+    expect: { winner: north.catches.blazewing }
+  - occasion: enterPlace
+    target: place.victoryRoadCrater
+    expect: { winner: northCraterEmpty }
+expect:
+  end: complete
+  quests:
+    badgeRoad: complete
+    eclipseArc: complete
+    northLighthouse: complete
+    northFridaySwimmer: complete
+    northTwinLegends: complete
+    northDojo: complete
+  facts: [defeated(vex), hasBadge(blaze), hasBadge(earth), rivalFought(road), canPass(victoryRoadGate), canPass(victoryRoadBoulders), caughtLegend(frostwing), caughtLegend(blazewing)]
+  transcriptContains:
+    - "@cinderGranny: Three out of three! Here, a sweet for your strongest one."
+    - "@earthGymAdminSelene: ...Fine. The door is yours. He is expecting you. He has been expecting you since Moonstone Cave."
+    - "@rival: I'm going ahead. First to the Plateau buys dinner."
+  transcriptLacks:
+    - "Not even the warm-up."

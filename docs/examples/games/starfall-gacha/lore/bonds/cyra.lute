@@ -3,7 +3,6 @@ kind: lore
 id: bonds.cyra
 title: Cyra, Priestess of the Harvest Moon (limited SSR)
 ---
-
 /* Limited: only on the Harvest Moon banner (the festival and its rerun). */
 
 <beat id="cyraIntro" on="summon" target="hero.cyra" once="user" priority="10">

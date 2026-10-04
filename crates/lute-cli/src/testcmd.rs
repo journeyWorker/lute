@@ -364,6 +364,66 @@ fn closed_key_violations(map: &serde_yaml::Mapping, text: &str, file: &Path) -> 
     out
 }
 
+/// Return authored node ids named by a validated test's typed fields. Context
+/// discovery must not treat arbitrary YAML values as references.
+pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("cannot read test script {}: {error}", path.display()))?;
+    let value: serde_yaml::Value =
+        serde_yaml::from_str(&text).map_err(|error| format!("malformed test YAML: {error}"))?;
+    let Some(map) = value.as_mapping() else {
+        return Err("test script must be a YAML mapping".into());
+    };
+    if !closed_key_violations(map, &text, path).is_empty() {
+        return Err("test script has unknown keys".into());
+    }
+    let mut refs = BTreeSet::new();
+    if let Some(ids) = map.get("visited").and_then(serde_yaml::Value::as_sequence) {
+        refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+    }
+    if let Some(ids) = map.get("accepts").and_then(serde_yaml::Value::as_sequence) {
+        refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+    }
+    if let Some(quests) = map.get("quests").and_then(serde_yaml::Value::as_mapping) {
+        refs.extend(quests.keys().filter_map(|id| id.as_str().map(str::to_string)));
+    }
+    if let Some(id) = map.get("beat").and_then(serde_yaml::Value::as_str) {
+        refs.insert(id.to_string());
+    }
+    if let Some(id) = map.get("entry").and_then(serde_yaml::Value::as_str) {
+        refs.insert(id.to_string());
+    }
+    for key in ["entries"] {
+        if let Some(ids) = map.get(key).and_then(serde_yaml::Value::as_sequence) {
+            refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+        }
+    }
+    if let Some(expect) = map.get("expect") {
+        collect_test_expect_context_references(expect, &mut refs);
+    }
+    Ok(refs.into_iter().collect())
+}
+
+fn collect_test_expect_context_references(value: &serde_yaml::Value, refs: &mut BTreeSet<String>) {
+    let Some(map) = value.as_mapping() else { return };
+    for (key, value) in map {
+        let Some(key) = key.as_str() else { continue };
+        match key {
+            "offered" | "notOffered" | "presented" => {
+                if let Some(ids) = value.as_sequence() {
+                    refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+                }
+            }
+            "quests" => {
+                if let Some(quests) = value.as_mapping() {
+                    refs.extend(quests.keys().filter_map(|id| id.as_str().map(str::to_string)));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// How this report DISPLAYS a state path the walk never wrote. It is a
 /// RENDERING of "there is no value here", not a member of the value space —
 /// which is exactly what T9.9 got wrong: the sentinel was substituted for the
@@ -430,6 +490,10 @@ struct TestResult {
     /// incomplete`, hiding the one thing the author needs next.
     unresolved: Vec<UnresolvedEntry>,
     forced_unknown: Vec<UnresolvedEntry>,
+    /// Construct/id/outcome triples observed by the trace runner. This is
+    /// consumed by task context so a static script reference is not mistaken
+    /// for run evidence.
+    visited: BTreeSet<String>,
     /// Quest ids observed transitioning to complete during this test trace.
     completed_quests: BTreeSet<String>,
     /// A test: the trace's beat-`when` note, when the scene's own eligibility
@@ -455,6 +519,7 @@ impl TestResult {
             refusal: Some(lines),
             unresolved: Vec::new(),
             forced_unknown: Vec::new(),
+            visited: BTreeSet::new(),
             completed_quests: BTreeSet::new(),
             notes: Vec::new(),
         }
@@ -1178,6 +1243,62 @@ pub(crate) fn run_test_for_constraint(root: &Path, script: &Path, quest: &str) -
         return false;
     };
     result.completed_quests.contains(quest)
+}
+
+/// Execute one scenario test in-process and report whether its trace visited a
+/// graph target. This deliberately uses the same trace runner as
+/// `constraints --run`; static YAML mentions are never treated as witnesses.
+pub(crate) fn run_test_for_context(
+    root: &Path,
+    script: &Path,
+    target: &lute_model::NodeKey,
+) -> bool {
+    let files = [script.to_path_buf()];
+    let Ok(shared) = Shared::for_tests(&files, Some(root), None) else {
+        return false;
+    };
+    let Ok(result) = run_one_test(script, None, Some(root), false, &shared, None) else {
+        return false;
+    };
+    result_visits_target(&result, target)
+}
+
+fn result_visits_target(result: &TestResult, target: &lute_model::NodeKey) -> bool {
+    if target.kind == lute_model::NodeKind::Quest
+        && result.completed_quests.contains(&target.key)
+    {
+        return true;
+    }
+    if target.kind == lute_model::NodeKind::Choice {
+        let Some((document, tail)) = target.key.rsplit_once(':') else {
+            return false;
+        };
+        let Some((parent, option)) = tail.rsplit_once('.') else {
+            return false;
+        };
+        let Some(result_document) = traced_document_id(&result.lute_file) else {
+            return false;
+        };
+        if result_document != document {
+            return false;
+        }
+        let suffix = format!(":{parent}:{option}");
+        return result.visited.iter().any(|entry| entry.ends_with(&suffix));
+    }
+    let suffix = format!(":{}", target.key);
+    result.visited.iter().any(|entry| {
+        entry == &target.canonical() || entry.ends_with(&suffix)
+    })
+}
+
+fn traced_document_id(path: &str) -> Option<String> {
+    let source = std::fs::read_to_string(path).ok()?;
+    let (document, _) = lute_syntax::parse(&source);
+    serde_yaml::from_str::<serde_yaml::Value>(&document.meta.raw_yaml)
+        .ok()?
+        .get("id")
+        .and_then(serde_yaml::Value::as_str)
+        .map(str::to_string)
 }
 
 fn run_one_test(
@@ -2230,6 +2351,16 @@ fn run_one_test(
         refusal: None,
         unresolved: report.unresolved.clone(),
         forced_unknown: report.forced_unknown.clone(),
+        visited: report
+            .decisions
+            .iter()
+            .flat_map(|decision| {
+                [
+                    format!("{}:{}", decision.construct, decision.id),
+                    format!("{}:{}:{}", decision.construct, decision.id, decision.outcome),
+                ]
+            })
+            .collect(),
         completed_quests: report
             .decisions
             .iter()
@@ -2397,6 +2528,31 @@ fn run_one_play(
         refusal: None,
         unresolved: Vec::new(),
         forced_unknown: Vec::new(),
+        visited: run
+            .presented
+            .iter()
+            .flat_map(|(document, id)| {
+                [
+                    format!("document:{document}"),
+                    format!("branch:{document}:{id}"),
+                    format!("hub:{document}:{id}"),
+                ]
+            })
+            .chain(run.choices.iter().flat_map(|choice| {
+                choice
+                    .chose
+                    .as_ref()
+                    .map(|option| {
+                        [
+                            format!("choice:{}:{}.{}", choice.document, choice.id, option),
+                            format!("branch:{}:{}.{}", choice.document, choice.id, option),
+                            format!("hub:{}:{}.{}", choice.document, choice.id, option),
+                        ]
+                    })
+                    .into_iter()
+                    .flatten()
+            }))
+            .collect(),
         completed_quests: run.completed_quests,
         notes: run.notes,
     })

@@ -1,0 +1,11 @@
+# Losing to Kai on the bridge still counts as the meeting; the standing drops.
+file: ../../scenes/south/bridge-rival.lute
+visited: [spine.lab]
+bridges: { battle: [ { won: false } ] }
+expect:
+  end: complete
+  facts: [rivalFought(bridge)]
+  notFacts: [rivalBeaten(bridge)]
+  state: { run.rivalStanding: -1 }
+  transcriptContains: ["@rival: Heh. You're no match for my genius!", "@rival: Don't feel bad. Everybody loses to me. It's practically a region tradition."]
+  transcriptLacks: ["My monsters were tired from the cave."]

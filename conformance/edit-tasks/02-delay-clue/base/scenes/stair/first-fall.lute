@@ -1,0 +1,17 @@
+---
+kind: scene
+id: end.firstFall
+title: The first fall
+on: runEnd
+priority: 50
+once: user
+when: '@fellThisClimb && user.deaths == 1'
+---
+
+## Down
+
+::vfx{type="ashFall"}
+::music{action="fadeOut"}
+@narrator{code="0010"}: It does not hurt as much as she expected. It hurts exactly as much as she feared.
+@narrator{code="0020"}: Floor {{run.floor}}. The steps go by upward, very fast, and then there are no steps at all.
+@wren{code="0010" mono}: Warm stone. I remember warm stone.

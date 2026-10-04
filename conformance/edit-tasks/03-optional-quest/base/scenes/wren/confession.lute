@@ -1,0 +1,29 @@
+---
+kind: scene
+id: wren.confession
+title: A lantern on the deck
+on: visit
+target: place.deck
+priority: 50
+when: "run.day == 6 && run.slot == 'night' && holds('ready', ['wren'])"
+---
+
+## Saturday night
+
+::bg{location="deck" time="night"}
+::music{action="start" mood="romantic" volume="down"}
+@narrator: Someone is climbing the last switchback with a torch. Nobody climbs the path at night.
+::use{component="enter" who="wren"}
+@wren{emotion="shy"}: Don't say anything about the goats. I didn't bring the goats.
+@wren: I wanted to see where you are, when you're up here. The village only ever sees the station as a light.
+@wren{emotion="fond"}: It's a nice light. I've watched it every night this week.
+
+<branch id="wrenAnswer" prompt="Her torch makes a small warm room of the deck.">
+  <choice id="hold" label="Take her hand">
+    ::set{run.route = 'wren'}
+    @wren{emotion="laughing"}: Oh. Oh, good. I rehearsed a much longer thing.
+  </choice>
+  <choice id="walk" label="Offer to walk her back down, as a friend">
+    @wren{emotion="sad"}: Yeah. Of course. It's steep in the dark.
+  </choice>
+</branch>

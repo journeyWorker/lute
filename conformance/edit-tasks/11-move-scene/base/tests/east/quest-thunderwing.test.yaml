@@ -1,0 +1,7 @@
+# The storm bird, caught: Sol's quest closes and the legend counts.
+file: ../../quests/east/side-quests.lute
+accepts: [eastThunderwing]
+facts: [caught(thunderwing)]
+expect:
+  quests: { eastThunderwing: complete }
+  facts: [caughtLegend(thunderwing)]

@@ -1,0 +1,4 @@
+rewardKinds:
+  MONEY: { credits: run.money }   # a grant adds its amount to the purse
+  ITEM:  { target: { entity: bagItem, required: true } }  # a bag item, named by target
+  TM:    { target: { entity: tm, required: true } }       # a technical machine

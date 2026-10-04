@@ -1,0 +1,19 @@
+---
+kind: lore
+id: files
+title: Isolation case files
+series: isolationFiles
+---
+
+<entry id="fileEdith" on="read" target="note.fileEdith" category="note" title="Bed four" once="run">
+  @hale{vo}: Mrs. E. Moss. Admitted 1961. Asks for the time at every round. Tell her it is not three.
+</entry>
+
+<entry id="fileWalter" on="read" target="note.fileWalter" category="note" title="Chair by the window" once="run">
+  @hale{vo}: Mr. W. Pell. Will not lie down. His wife's visits were stopped in '74; he has not asked since.
+</entry>
+
+<entry id="fileJune" on="read" target="note.fileJune" category="note" title="The cot" once="run">
+  @hale{vo}: Child, female, name unrecorded. Staff call her June after the month she came.
+  @nell{mono}: Unrecorded. They didn't even write her name down.
+</entry>

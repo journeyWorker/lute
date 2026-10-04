@@ -17,10 +17,10 @@ uses: ../vocabulary.schema.yaml
 
 ## Interjection
 <match on="@pressure">
-<when is="rising">
-@purser{code="0020" emotion="level" os}: Draw exceeds projection. The schedule advances.
-</when>
-<otherwise>
-@purser{code="0010" emotion="level" os}: Allocation is nominal.
-</otherwise>
+  <when is="rising">
+    @purser{code="0020" emotion="level" os}: Draw exceeds projection. The schedule advances.
+  </when>
+  <otherwise>
+    @purser{code="0010" emotion="level" os}: Allocation is nominal.
+  </otherwise>
 </match>

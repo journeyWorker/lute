@@ -16,7 +16,7 @@ when: "run.slot != 'morning'"
   </choice>
   <choice id="scullery" label="Peek into the scullery" once>
     @narrator: A tray of washed spoons. Five of them.
-    ::set{ run.cluesFound += 1 }
+    ::set{run.cluesFound += 1}
   </choice>
   <choice id="leave" label="Thank her and go" exit>
     @cook: Mind the step.

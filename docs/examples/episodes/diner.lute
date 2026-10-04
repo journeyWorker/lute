@@ -9,19 +9,18 @@ state:
   scene.knowsMira: { type: bool, default: false }
   run.metMira: { type: bool }
 ---
-
 /*
-  `getting-started/first-scene` Part 5, file one of two. This is the scene the
-  tutorial builds across Parts 1-4 (frontmatter, one shot, three content lines,
-  the `orderChoice` branch) with Part 5's two additions: the `run.metMira`
-  declaration and the `::set` at the end of The Counter. Nothing here is
-  invented for the fixture -- every line is a block the page shows.
+`getting-started/first-scene` Part 5, file one of two. This is the scene the
+tutorial builds across Parts 1-4 (frontmatter, one shot, three content lines,
+the `orderChoice` branch) with Part 5's two additions: the `run.metMira`
+declaration and the `::set` at the end of The Counter. Nothing here is
+invented for the fixture -- every line is a block the page shows.
 
-  It is the prerequisite half of the pair: `booth.lute` declares
-  `after: 'visited("mira.s01ep01")'` and reads `run.metMira`, and the
-  unconditional `::set` below is what makes that read Guaranteed under the
-  project envelope. `lute check-project` proves it; single-file `lute check`
-  on booth.lute alone cannot, which is exactly the point Part 5 makes.
+It is the prerequisite half of the pair: `booth.lute` declares
+`after: 'visited("mira.s01ep01")'` and reads `run.metMira`, and the
+unconditional `::set` below is what makes that read Guaranteed under the
+project envelope. `lute check-project` proves it; single-file `lute check`
+on booth.lute alone cannot, which is exactly the point Part 5 makes.
 */
 
 ## The Counter

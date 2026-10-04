@@ -557,3 +557,203 @@ fn context_lists_every_beat_key_and_quest_attribute() {
         );
     }
 }
+
+#[test]
+fn task_context_refuses_unknown_and_reports_target() {
+    let proj = project();
+    let file = proj.join("scenes/mara.lute");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--project",
+            proj.to_str().unwrap(),
+            "--target",
+            "scene:mara.first",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["target"]["kind"], "scene");
+    assert_eq!(value["target"]["key"], "mara.first");
+
+    let refused = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--project",
+            proj.to_str().unwrap(),
+            "--target",
+            "scene:missing",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("E-CONTEXT-TARGET"));
+}
+
+#[test]
+fn position_context_resolves_imported_state_type() {
+    let proj = project();
+    let source = "---\nkind: scene\nid: query.scene\n---\n\n## Query\n\n::set{user.bond = 1}\n";
+    write_at(&proj, "scenes/query.lute", source);
+    let file = proj.join("scenes/query.lute");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--at",
+            &format!("{}:8:10", file.display()),
+            "--project",
+            proj.to_str().unwrap(),
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["expectedType"], "int");
+    assert_eq!(value["cursor"]["kind"], "state-path");
+    assert!(value["visibleSymbols"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|symbol| symbol["name"] == "user.bond" && symbol["type"] == "int"));
+}
+
+#[test]
+fn nested_duplicate_choice_key_is_ambiguous() {
+    let proj = project();
+    write_at(
+        &proj,
+        "scenes/mara.lute",
+        "---\nkind: scene\nid: mara.first\n---\n\n## Mara\n<branch id=\"outer\">\n<choice id=\"one\">\n<branch id=\"nested\">\n<choice id=\"coffee\" label=\"Coffee\">@mara: One.</choice>\n</branch>\n</choice>\n<choice id=\"two\">\n<branch id=\"nested\">\n<choice id=\"coffee\" label=\"Coffee\">@mara: Two.</choice>\n</branch>\n</choice>\n</branch>\n",
+    );
+    let file = proj.join("scenes/mara.lute");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--project",
+            proj.to_str().unwrap(),
+            "--target",
+            "choice:mara.first:nested.coffee",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("ambiguous"));
+}
+
+#[test]
+fn drowned_crown_target_context_golden() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/examples/games/drowned-crown");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            root.to_str().unwrap(),
+            "--target",
+            "choice:last.crown:crownChoice.wear",
+            "--json",
+            "--max-items",
+            "3",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        value["target"],
+        serde_json::json!({
+            "kind": "choice",
+            "key": "last.crown:crownChoice.wear",
+            "file": "scenes/last/crown.lute",
+            "span": {
+                "line": 12,
+                "column": 3,
+                "byteStart": 174,
+                "byteEnd": 431
+            },
+            "excerpt": "<choice id=\"wear\" label=\"Put it on\">\n    @ilo{mono}: It's cold. It's so cold. It fits.\n    @narrator: Far above, the sea around the Gull's Mercy goes flat and bright, and stays that way.\n    ::set{user.crowned = true}\n    ::end{reason=\"crowned\"}\n  </choice>"
+        })
+    );
+    assert_eq!(value["declared"]["writes"][0]["node"], "state:user.crowned");
+    assert_eq!(value["vocabulary"]["state"], serde_json::json!(["user.crowned"]));
+    assert_eq!(value["references"]["in"][0]["node"], "shot:last.crown:Throne");
+    assert_eq!(value["notIncluded"][0]["kind"], "scripts");
+}
+
+#[test]
+fn task_context_discovers_project_root_for_file_targets() {
+    let proj = project();
+    let file = proj.join("scenes/mara.lute");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--target",
+            "scene:mara.first",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["target"]["key"], "mara.first");
+    assert_eq!(value["target"]["file"], "scenes/mara.lute");
+}
+
+#[test]
+fn position_context_rejects_column_beyond_line() {
+    let proj = project();
+    let file = proj.join("scenes/mara.lute");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--at",
+            &format!("{}:1:999999", file.display()),
+            "--project",
+            proj.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("outside the source"));
+}
+
+#[test]
+fn related_scripts_use_typed_include_expansion() {
+    let proj = project();
+    write_at(
+        &proj,
+        "plays/linked.play.yaml",
+        "steps:\n  - include: steps.yaml\n",
+    );
+    write_at(
+        &proj,
+        "plays/steps.yaml",
+        "steps:\n  - occasion: talk\n    expect: { winner: 'mara.first:Mara' }\n",
+    );
+    let file = proj.join("scenes/mara.lute");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--project",
+            proj.to_str().unwrap(),
+            "--target",
+            "shot:mara.first:Mara",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(value["plays"].as_array().unwrap().iter().any(|play| {
+        play["file"] == "plays/linked.play.yaml" && play["classification"] == "static"
+    }));
+}

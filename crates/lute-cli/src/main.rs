@@ -63,6 +63,9 @@ mod engine_matrix;
 mod cmd_check;
 mod cmd_check_project;
 mod cmd_compile;
+mod cmd_diff;
+mod cmd_fmt;
+mod cmd_patch;
 mod cmd_context;
 mod cmd_scenario;
 mod cmd_trace;
@@ -230,8 +233,20 @@ fn main() -> ExitCode {
             project.as_deref(),
             permission_profile.as_deref(),
         ),
+        Command::Fmt { paths, check } => cmd_fmt::run(&paths, check),
+        Command::Diff { before, after, json } => cmd_diff::run(&before, &after, json),
+        Command::Patch {
+            dir,
+            patch,
+            dry_run,
+            json,
+        } => cmd_patch::run(&dir, &patch, dry_run, json),
         Command::Context {
             file,
+            target,
+            at,
+            max_items,
+            run,
             json,
             providers,
             project,
@@ -242,6 +257,10 @@ fn main() -> ExitCode {
             providers.as_deref(),
             project.as_deref(),
             permission_profile.as_deref(),
+            target.as_deref(),
+            at.as_deref(),
+            max_items,
+            run.as_deref(),
         ),
         Command::Trace { retired_on, .. } if !retired_on.is_empty() => {
             retired_on_flag("trace", &retired_on)

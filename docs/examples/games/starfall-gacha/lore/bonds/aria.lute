@@ -3,9 +3,8 @@ kind: lore
 id: bonds.aria
 title: Aria, the Starcaller (SSR)
 ---
-
 /* One file per hero: everything this character says outside the main story.
-   Summon intro and dupe line, home-screen tap, birthday, bond stories r1-r3. */
+Summon intro and dupe line, home-screen tap, birthday, bond stories r1-r3. */
 
 <beat id="ariaIntro" on="summon" target="hero.aria" once="user" priority="10">
   @aria{emotion="surprised"}: Oh! I fell. From up there. That was the sky, right?

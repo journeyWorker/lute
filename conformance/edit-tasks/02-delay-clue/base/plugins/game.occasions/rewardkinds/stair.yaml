@@ -1,0 +1,5 @@
+# What a quest can pay. The engine grants; EMBERS lands in the wallet the
+# forge spends from, so no quest handler ::sets user.embers by hand.
+rewardKinds:
+  EMBERS:   { credits: user.embers }
+  KEEPSAKE: { target: { entity: keepsake, required: true } }

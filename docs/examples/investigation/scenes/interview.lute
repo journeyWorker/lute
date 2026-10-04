@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.34.0"
+luteVersion: "0.35.0"
 id: detective.s01ep02
 title: The Interview Room
 # Comes after the crime scene.
@@ -15,13 +15,13 @@ uses: ../world.schema.yaml
 <hub id="interrogate">
   <choice id="pressLedger" label="Press them on the ledger">
     @detective: These numbers were bled dry. Explain them.
-    ::set{ run.suspectFocus = "blake" }
-    ::set{ run.leadStrength += 1 }
+    ::set{run.suspectFocus = "blake"}
+    ::set{run.leadStrength += 1}
   </choice>
   <choice id="pressLetter" label="Press them on the letter">
     @detective: You signed this, then you tried to unsign it.
-    ::set{ run.suspectFocus = "blake" }
-    ::set{ run.leadStrength += 1 }
+    ::set{run.suspectFocus = "blake"}
+    ::set{run.leadStrength += 1}
   </choice>
   <choice id="askAlibi" label="Ask for an alibi" once>
     @detective: Walk me through last night. Slowly.

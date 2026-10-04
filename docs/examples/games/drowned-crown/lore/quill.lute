@@ -3,9 +3,8 @@ kind: lore
 id: lore.quill
 title: Quill, at the figurehead
 ---
-
 /* Quill is a drowned ghost who haunts the figurehead and follows Ilo down.
-   Every piece of his memory is a bark you only ever hear once. */
+Every piece of his memory is a bark you only ever hear once. */
 
 <entry id="quillFirst" on="talk" target="npc.quill" category="bark" title="The ghost at the figurehead" priority="30" once="user">
   @quill: Oh. You can see me. Nobody on this ship can see me.

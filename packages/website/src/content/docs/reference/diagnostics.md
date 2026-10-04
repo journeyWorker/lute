@@ -332,6 +332,18 @@ A content-shaped line (`@speaker…`, `::directive`, a `<tag>`) appears before t
 
 Spec: [dsl 0.5.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.0.md), [dsl 0.6.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md)
 
+### E-CONTEXT-POSITION
+
+A context position query has an invalid coordinate or falls outside the source file.
+
+Spec: [dsl 0.35.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+
+### E-CONTEXT-TARGET
+
+A context target key is unknown or ambiguous in the project graph.
+
+Spec: [dsl 0.35.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+
 ### E-DATALOG-FUNCTION
 
 An `::assert`/`::retract` payload, a `facts:` entry, or a `rules:` term uses a compound/function term such as `f(g(x))`, but facts and rule terms admit only ground identifiers/booleans.
@@ -421,6 +433,18 @@ Spec: [dsl 0.3.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 Content asserts or retracts a relation declared `derive: true`, though a derived relation is computed by `rules:` and must not be written directly.
 
 Spec: [dsl 0.3.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
+
+### E-DIFF-INPUT
+
+A diff side cannot be read, safely materialized, or built into a complete project model.
+
+Spec: [dsl 0.35.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+
+### E-DIFF-MODEL
+
+A semantic diff cannot produce a complete project model for one side.
+
+Spec: [dsl 0.35.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
 
 ### E-DOLLAR-OUTSIDE-MATCH
 
@@ -595,6 +619,18 @@ Spec: [dsl 0.3.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/propo
 A flag attribute (`<choice once>`/`exit`, `<objective optional>`, `<beat also>`) is given a value other than `true`/`false`; a flag is written bare, and a beat/entry `once` period on a choice is refused.
 
 Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### E-FMT
+
+The formatter cannot parse or preserve the requested file.
+
+Spec: [dsl 0.35.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+
+### E-FMT-CHECK
+
+A formatter check found noncanonical bytes in the requested file.
+
+Spec: [dsl 0.35.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
 
 ### E-FRONTMATTER-SCHEMA
 
@@ -833,6 +869,36 @@ Spec: [dsl 0.21.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/prop
 An `<on>` has no `event` attribute — every `<on>` must be anchored to a discrete event.
 
 Spec: [dsl 0.2.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md)
+
+### E-PATCH-CHECK
+
+A staged patch introduces a new check or project error.
+
+Spec: [dsl 0.35.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+
+### E-PATCH-EDIT
+
+A patch edit is malformed, outside its target, overlaps another edit, or fails its escape-hatch span assertion.
+
+Spec: [dsl 0.35.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+
+### E-PATCH-PRESERVE
+
+A patch violates a requested preserve claim, including an ambiguous reward or component match.
+
+Spec: [dsl 0.35.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+
+### E-PATCH-STALE
+
+A patch base project or asserted file revision differs from the current revision.
+
+Spec: [dsl 0.35.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
+
+### E-PATCH-TARGET
+
+A patch target is unknown, ambiguous, or has no editable source anchor.
+
+Spec: [dsl 0.35.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
 
 ### E-PATH-IDENT
 
@@ -1257,6 +1323,12 @@ Spec: [dsl §2.3](/spec/)
 A `<tag …>` opener's attributes wrap past its own physical line instead of staying on one line as the grammar requires.
 
 Spec: [dsl §2.3](/spec/)
+
+### E-TASK-TRAP
+
+An edit-task suite trap did not refuse or flag the patch as expected.
+
+Spec: [dsl 0.35.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md), [dsl 0.35.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.35.0.md)
 
 ### E-TEMPLATE
 

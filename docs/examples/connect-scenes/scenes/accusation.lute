@@ -10,9 +10,9 @@ title: The Accusation
 
 <branch id="accuse">
   <choice id="ruben" label="Ruben, the baker">
-    ::set{ run.accused = "ruben" }
+    ::set{run.accused = "ruben"}
   </choice>
   <choice id="tilly" label="Tilly, the waitress">
-    ::set{ run.accused = "tilly" }
+    ::set{run.accused = "tilly"}
   </choice>
 </branch>

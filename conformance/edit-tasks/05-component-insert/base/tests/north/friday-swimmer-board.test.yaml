@@ -1,0 +1,7 @@
+# The board quest (accept="external": the engine's board accepts it; a test
+# takes it up with accepts:). Seen is half of it; caught finishes it.
+file: ../../quests/north/side.lute
+accepts: [northFridaySwimmer]
+facts: [seen(shellnessie)]
+expect:
+  quests: { northFridaySwimmer: active }

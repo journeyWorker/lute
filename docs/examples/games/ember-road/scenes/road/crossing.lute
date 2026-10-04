@@ -11,7 +11,7 @@ after: 'visited("bridge.arrival")'
 ::bg{location="far_bank" time="dawn"}
 ::music{action="change" mood="peaceful" volume="normal"}
 /* chapterEnd is `judge: before`: the quests are settled when this plays, so the
-   epilogue reads how they ended instead of re-deriving it from state. */
+epilogue reads how they ended instead of re-deriving it from state. */
 <match on="quest.emberRoad.failedBy">
   <when is="by">
     @narrator: The fourth night came and the chain did not. Brannoc turns the wagons for Ostwick. The Company does not pay for maybes.

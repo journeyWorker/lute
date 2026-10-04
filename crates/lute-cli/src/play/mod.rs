@@ -101,6 +101,94 @@ use run::execute;
 use script::{parse_script, parse_script_with, PlayScript, ScriptStep};
 pub(crate) use script::{SCRIPT_KEYS, STEP_KEYS};
 
+/// Return the authored node ids named by a validated play script. Parsing
+/// through the normal loader is important here: included step files are part
+/// of the script's typed view and must contribute the same references.
+pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("cannot read play script {}: {error}", path.display()))?;
+    let script = parse_script(&text, path)?;
+    let script::PlayScript {
+        surfaces,
+        save,
+        steps,
+        step_expects,
+        expect,
+        ..
+    } = script;
+    let mut refs = BTreeSet::new();
+    refs.extend(save.visited);
+    refs.extend(save.presented_user);
+    refs.extend(save.presented_run);
+    refs.extend(save.quests.into_iter().map(|(id, _)| id));
+    refs.extend(save.entries_run);
+    refs.extend(save.entries_user);
+    refs.extend(surfaces.visited);
+    refs.extend(surfaces.accepts);
+    for step in steps {
+        match step.action {
+            script::StepAction::Occasion { writes, .. } => {
+                if let Some(writes) = writes {
+                    refs.extend(writes.accept);
+                }
+            }
+            script::StepAction::NewRun(writes)
+            | script::StepAction::Engine(writes)
+            | script::StepAction::Advance { writes, .. } => refs.extend(writes.accept),
+            script::StepAction::Event(_) | script::StepAction::End => {}
+        }
+        if let Some(expect) = step_expects
+            .iter()
+            .find(|(n, _, _)| *n == step.n)
+            .map(|(_, _, expect)| expect)
+        {
+            collect_expect_context_references(expect, &mut refs);
+        }
+    }
+    if let Some(expect) = expect.as_ref() {
+        collect_expect_context_references(expect, &mut refs);
+    }
+    Ok(refs.into_iter().collect())
+}
+
+fn collect_expect_context_references(value: &serde_yaml::Value, refs: &mut BTreeSet<String>) {
+    let Some(map) = value.as_mapping() else { return };
+    for (key, value) in map {
+        let Some(key) = key.as_str() else { continue };
+        match key {
+            "winner" => {
+                if let Some(id) = value.as_str() {
+                    refs.insert(id.to_string());
+                }
+            }
+            "offered" | "notOffered" => {
+                if let Some(ids) = value.as_sequence() {
+                    refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+                }
+            }
+            "presented" => match value {
+                serde_yaml::Value::Sequence(ids) => {
+                    refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+                }
+                serde_yaml::Value::Mapping(occasions) => {
+                    for ids in occasions.values() {
+                        if let Some(ids) = ids.as_sequence() {
+                            refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+                        }
+                    }
+                }
+                _ => {}
+            },
+            "quests" => {
+                if let Some(quests) = value.as_mapping() {
+                    refs.extend(quests.keys().filter_map(|id| id.as_str().map(str::to_string)));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 // ===========================================================================
 // CLI entry point.
 // ===========================================================================

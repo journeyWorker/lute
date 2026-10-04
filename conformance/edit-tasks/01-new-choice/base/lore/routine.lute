@@ -1,0 +1,48 @@
+---
+kind: lore
+id: routine
+title: The station's routine
+---
+
+// The afternoon and night routines play first in every slotStart sequence
+// (priority 10); the day's events follow at lower priority.
+
+<beat id="afternoon" on="slotStart" title="One o'clock readings" priority="10" once="false" when="run.slot == 'afternoon'">
+  ::bg{location="deck" time="afternoon"}
+  ::use{component="reading" hour="One o'clock"}
+  <match on="run.weather">
+    <when is="storm">
+      @narrator: Nobody goes anywhere this afternoon. Ines has the kettle on and the charts out.
+    </when>
+    <otherwise>
+      @narrator: The afternoon is yours. Ines retreats to the radio room with her charts; the path down to the village glitters.
+    </otherwise>
+  </match>
+</beat>
+
+<beat id="night" on="slotStart" title="Seven o'clock, and supper" priority="10" once="false" when="run.slot == 'night' && !(run.day == 7)">
+  ::bg{location="kitchen" time="night"}
+  ::music{action="start" mood="peaceful" volume="down"}
+  @narrator: The seven o'clock readings, then supper: lentils, black bread, whatever Pell brought up last.
+  @ines{emotion="tired" when="run.weather == 'storm'"}: Eat. The wind will still be there after.
+  @ines{emotion="neutral" when="run.weather != 'storm'"}: Clear tonight. Sol will be insufferable about it.
+</beat>
+
+// The day closes. The engine raises dayEnd BEFORE it advances run.day.
+<beat id="dayClose" on="dayEnd" title="Lamps out" once="false">
+  ::bg{location="bunk" time="night"}
+  ::music{action="fadeOut"}
+  <match on="clock.weekday">
+    <when is="5">
+      @narrator: You lie awake listening to the village band practising, very far below, very badly.
+    </when>
+    <otherwise>
+      @narrator: You write the date at the top of tomorrow's page, so the morning has somewhere to start.
+    </otherwise>
+  </match>
+</beat>
+
+// Side remark on dayEnd: the day Wren waited at the goat pen for nobody.
+<beat id="missedWren" on="dayEnd" title="The path you didn't take" also when="run.day == 3 && !visited('wren.first')">
+  @narrator: From the bunk window you can see the village lights. Someone down there has been expecting a station intern since Monday.
+</beat>

@@ -1,0 +1,322 @@
+# East's own playthrough: a week in Eastmarch, from the Meridian to the storm
+# bird. Starts from a save at the end of south (two badges, the ticket, Flash,
+# Kai met on the bridge) on Monday morning, and walks every town, route and
+# weekday event east owns: the Wednesday market, Friday's lantern night, the
+# night-only trainers, the board quest, all five side quests, both gyms (one
+# lost first), the siege of Ash Tower (mid's lens arrives by engine step),
+# the power plant and thunderwing.
+#
+#   lute play . --script plays/east.play.yaml
+#
+# OWNED BY east.
+visited: [spine.lab, south.bridgeRival]
+facts: [chose(cindle), hasItem(monDex), hasBadge(stone), hasBadge(tide), hasItem(ferryTicket), hasItem(hmFlash), rivalFought(lab), rivalFought(bridge), rivalBeaten(bridge), caught(cindle), seen(cindle), inParty(cindle)]
+state: { run.rivalStanding: 2, run.money: 5000 }
+steps:
+  # ── Monday morning: the Meridian ──────────────────────────────────────
+  - occasion: obstacle
+    target: gate.ferryGangway
+    expect: { winner: none }
+  - occasion: enterPlace
+    target: place.ferryMeridian
+    label: this time Kai loses
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.ferryRival, facts: [rivalFought(ferry), rivalBeaten(ferry)], state: { run.rivalStanding: 3 }, quests: { eastMeridianPassengers: active, rivalry: active } }
+  - occasion: talk
+    target: npc.meridianSteward
+    expect: { winner: eastPellPassengers }
+  - occasion: trainerSpotted
+    target: trainer.meridianSailorBram
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersMeridian.meridianSailorBram }
+  - occasion: trainerSpotted
+    target: trainer.meridianSailorOona
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersMeridian.meridianSailorOona }
+  - occasion: trainerSpotted
+    target: trainer.meridianGentlemanHale
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersMeridian.meridianGentlemanHale }
+  - occasion: trainerSpotted
+    target: trainer.meridianLassPip
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersMeridian.meridianLassPip }
+  - occasion: trainerSpotted
+    target: trainer.meridianFisherTeo
+    label: the fisherman wins the first cast
+    bridges: { battle: [ { won: false } ] }
+    expect: { winner: east.trainersMeridian.meridianFisherTeo, notFacts: [defeated(meridianFisherTeo)] }
+  - occasion: trainerSpotted
+    target: trainer.meridianFisherTeo
+    label: and loses the second
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersMeridian.meridianFisherTeo, facts: [defeated(meridianFisherTeo)] }
+  - occasion: trainerSpotted
+    target: trainer.meridianBeautyCeline
+    label: the last passenger
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersMeridian.meridianBeautyCeline, quests: { eastMeridianPassengers: complete } }
+  - occasion: trainerSpotted
+    target: trainer.meridianBeautyCeline
+    label: a beaten trainer does not battle again
+    expect: { winner: none }
+  - occasion: talk
+    target: npc.meridianLassPip
+    expect: { winner: eastMeridianLassPipAfter }
+  - occasion: talk
+    target: npc.captainOrla
+    choose: { eastOrlaHelp: rub }
+    expect: { winner: east.captainOrla, facts: [canPass(portvoltTree)] }
+
+  # ── Monday morning: Portvolt ──────────────────────────────────────────
+  - occasion: enterTown
+    target: town.portvolt
+    expect: { winner: east.portvoltArrival }
+  - occasion: enterTown
+    target: town.portvolt
+    label: a second walk in, the same morning
+    expect: { winner: eastPortvoltMorning }
+  - occasion: enterTown
+    target: town.portvolt
+    label: the morning line is spent for the day
+    expect: { winner: none }
+  - occasion: shop
+    target: town.portvolt
+    expect: { winner: east.portvolt.mart }
+  - occasion: talk
+    target: npc.portvoltFisher
+    expect: { winner: east.portvolt.nedRod }
+  - occasion: talk
+    target: npc.portvoltFisher
+    expect: { winner: eastNedBark }
+  - occasion: talk
+    target: npc.portvoltVendor
+    expect: { winner: eastMartaBark }
+  - occasion: talk
+    target: npc.portvoltHarbormaster
+    expect: { winner: eastQuillMorning }
+  - occasion: trainerSpotted
+    target: trainer.sparkGymEngineerWatts
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersGyms.sparkGymEngineerWatts }
+  - occasion: trainerSpotted
+    target: trainer.sparkGymSailorFlint
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersGyms.sparkGymSailorFlint }
+  - occasion: trainerSpotted
+    target: trainer.sparkGymRockerJolt
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersGyms.sparkGymRockerJolt }
+  - occasion: challenge
+    target: arena.sparkGym
+    label: Volta wins the first time
+    bridges: { battle: [ { won: false } ] }
+    expect: { winner: east.sparkGym, notFacts: [hasBadge(spark)] }
+  - occasion: heal
+    target: town.portvolt
+    expect: { winner: east.portvolt.center }
+  - engine: { accept: [eastPowerOutage] }
+    label: the Center board (the engine accepts a board quest)
+    expect: { quests: { eastPowerOutage: active } }
+  - occasion: challenge
+    target: arena.sparkGym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.sparkGym, facts: [hasBadge(spark)] }
+  - occasion: talk
+    target: npc.portvoltHarbormaster
+    expect: { winner: eastQuillSpark }
+  - occasion: talk
+    target: npc.volta
+    expect: { winner: eastVoltaAfter }
+
+  # ── Monday afternoon: Route 8 and the power plant ─────────────────────
+  - advance: slot
+  - occasion: enterRoute
+    target: route.r8
+    expect: { winner: east.routes.r8First }
+  - occasion: trainerSpotted
+    target: trainer.r8SwimmerCora
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersRoutes.r8SwimmerCora }
+  - occasion: trainerSpotted
+    target: trainer.r8BurglarNix
+    label: the burglar waits for dark
+    expect: { winner: none }
+  - occasion: enterPlace
+    target: place.powerPlant
+    expect: { winner: east.powerPlant }
+  - occasion: trainerSpotted
+    target: trainer.powerPlantEngineerTamsin
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersRoutes.powerPlantEngineerTamsin, quests: { eastPowerOutage: complete } }
+
+  # ── Monday night: Sol's storm bird ────────────────────────────────────
+  - advance: slot
+  - occasion: enterTown
+    target: town.portvolt
+    expect: { winner: eastPortvoltNight }
+  - occasion: talk
+    target: npc.portvoltKeeper
+    expect: { winner: east.portvolt.solStormBird, quests: { eastThunderwing: active } }
+  - occasion: enterRoute
+    target: route.r8
+    expect: { winner: eastR8Night }
+  - occasion: trainerSpotted
+    target: trainer.r8BurglarNix
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersRoutes.r8BurglarNix }
+  - occasion: enterPlace
+    target: place.powerPlant
+    expect: { winner: east.powerPlantCore }
+  - label: the engine's catch
+    engine: { facts: [caught(thunderwing), seen(thunderwing), inParty(thunderwing)] }
+    expect: { quests: { eastThunderwing: complete }, facts: [caughtLegend(thunderwing)] }
+  - occasion: caught
+    target: mon.thunderwing
+    expect: { winner: east.thunderwingCaught }
+  - occasion: enterPlace
+    target: place.powerPlant
+    label: the chimney is empty now
+    expect: { winner: none }
+  - occasion: talk
+    target: npc.portvoltKeeper
+    expect: { winner: eastSolThunderwing }
+
+  # ── Tuesday: Route 5, the tunnel, Ashgrove, Route 6, Bloomfield ───────
+  - advance: day
+  - occasion: enterRoute
+    target: route.r5
+    expect: { winner: east.routes.r5First }
+  - occasion: trainerSpotted
+    target: trainer.r5BugCatcherMilo
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersRoutes.r5BugCatcherMilo }
+  - occasion: trainerSpotted
+    target: trainer.r5HikerGrant
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersRoutes.r5HikerGrant }
+  - occasion: enterPlace
+    target: place.lanternTunnel
+    expect: { winner: east.lanternTunnel }
+  - occasion: trainerSpotted
+    target: trainer.lanternTunnelCollectorVik
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersRoutes.lanternTunnelCollectorVik }
+  - occasion: enterTown
+    target: town.ashgrove
+    expect: { winner: east.ashgroveArrival }
+  - occasion: talk
+    target: npc.ashgroveLanternMaker
+    expect: { winner: east.ashgrove.yunLanterns, quests: { eastLanterns: active } }
+  - occasion: talk
+    target: npc.ashgroveCaretaker
+    expect: { winner: eastBeaWorried }
+  - occasion: enterPlace
+    target: place.ashTowerHall
+    expect: { winner: east.ashTowerHall, state: { run.lair.towerSiege: found } }
+  - occasion: obstacle
+    target: gate.ashTowerStairs
+    expect: { winner: eastGateAshTowerStairs }
+  - occasion: enterRoute
+    target: route.r6
+    expect: { winner: east.routes.r6First }
+  - occasion: trainerSpotted
+    target: trainer.r6JugglerNico
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersRoutes.r6JugglerNico }
+  - occasion: enterTown
+    target: town.bloomfield
+    expect: { winner: east.bloomfieldArrival }
+  - occasion: talk
+    target: npc.bloomfieldGranny
+    expect: { winner: east.bloomfield.sorrelTea }
+  - occasion: talk
+    target: npc.bloomfieldFlorist
+    expect: { winner: east.bloomfield.poppyGardens, quests: { eastGardens: active, eastGardensSeeds: active } }
+  - occasion: talk
+    target: npc.bloomfieldBeekeeper
+    expect: { winner: east.bloomfield.tomBees, quests: { eastGardensBees: active } }
+  - label: a waspire from Route 5
+    engine: { facts: [caught(waspire), seen(waspire)] }
+  - occasion: talk
+    target: npc.bloomfieldBeekeeper
+    expect: { winner: eastTomMorning, quests: { eastGardensBees: complete, eastGardens: active } }
+  - occasion: challenge
+    target: arena.bloomGym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.bloomGym, facts: [hasBadge(bloom), hasItem(hmFly), canUse(fly)] }
+  - occasion: talk
+    target: npc.fern
+    expect: { winner: eastFernAfter }
+
+  # ── Wednesday: Fly to Portvolt for the market ─────────────────────────
+  - advance: day
+    label: Wednesday; the purse is counted before the market
+    engine: { state: { run.money: 3000 } }
+  - occasion: enterTown
+    target: town.portvolt
+    choose: { eastMarketStalls: [stone, charm, leave] }
+    expect: { presented: [eastPortvoltMorning, east.portvoltMarket], state: { run.money: 400 } }
+  - occasion: talk
+    target: npc.portvoltVendor
+    label: Poppy's seeds reach the market
+    expect: { winner: eastMartaMarketDay, quests: { eastGardensSeeds: complete, eastGardens: complete } }
+
+  # ── Friday night: the lens arrives from mid; lantern night ─────────────
+  - advance: day
+  - advance: day
+  - advance: 2
+    label: Friday night
+    engine: { facts: [hasItem(spectralLens)] }
+  - occasion: enterTown
+    target: town.ashgrove
+    expect: { winner: eastAshgroveFridayNight }
+  - occasion: enterPlace
+    target: place.ashTowerHall
+    expect: { presented: [east.ashTowerLens, east.lanternNight], quests: { eastLanterns: complete } }
+  - occasion: trainerSpotted
+    target: trainer.ashTowerMediumHester
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersAshTower.ashTowerMediumHester }
+  - occasion: trainerSpotted
+    target: trainer.ashTowerGruntSlate
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersAshTower.ashTowerGruntSlate }
+  - occasion: trainerSpotted
+    target: trainer.ashTowerAdminCorvid
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersAshTower.ashTowerAdminCorvid }
+  - occasion: enterPlace
+    target: place.ashTower
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.ashTower, facts: [hasItem(wakingFlute)], state: { run.lair.towerSiege: cleared } }
+  - occasion: enterPlace
+    target: place.ashTower
+    label: the top floor is quiet now
+    expect: { winner: none }
+  - occasion: talk
+    target: npc.elderRook
+    expect: { winner: eastRookHome }
+  - occasion: talk
+    target: npc.ashgroveMourner
+    expect: { winner: eastNellAfter }
+  - occasion: enterRoute
+    target: route.r7
+    expect: { winner: east.routes.r7First }
+  - occasion: trainerSpotted
+    target: trainer.r7BikerRex
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: east.trainersRoutes.r7BikerRex }
+  - occasion: trainerSpotted
+    target: trainer.r7SuperNerdOtto
+    label: the nerd went home at dusk
+    expect: { winner: none }
+expect:
+  end: complete
+  quests: { eastMeridianPassengers: complete, eastLanterns: complete, eastGardens: complete, eastGardensSeeds: complete, eastGardensBees: complete, eastPowerOutage: complete, eastThunderwing: complete }
+  facts: [hasBadge(spark), hasBadge(bloom), hasItem(hmCut), hasItem(hmFly), hasItem(wakingFlute), rivalBeaten(ferry), caughtLegend(thunderwing), canPass(sleepingGiant)]
+  state: { run.lair.towerSiege: cleared, run.rivalStanding: 3 }
+  transcriptContains:
+    - "@portvoltVendor: Poppy's seeds! Finally something on my stall people want."
+    - "@ashgroveLanternMaker: There. Now there's a light up there that's yours."
+    - "@elderRook: Take this flute. Its note wakes anything, even the great sleeper on the Silvercrest road. I was keeping it from them. Now I am keeping it from nobody."

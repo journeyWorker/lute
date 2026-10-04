@@ -1,0 +1,76 @@
+---
+kind: lore
+id: mid.route12
+title: Route 12, the Lakeshore (Fairhaven to the sea gate)
+---
+
+// Route 12 runs along Lake Hush from Fairhaven to the sea gate that leads
+// north. Slumbear sleeps across it (gate sleepingGiant; the waking is
+// scenes/mid/giant-wakes.lute). Agathe the channeler walks it only at night.
+
+<beat id="arrive" on="enterRoute" target="route.r12" title="The Lakeshore" priority="10" once="run">
+  ::bg{location="route-12" time="day"}
+  ::music{action="change" mood="calm" volume="down"}
+  @narrator: Lake Hush lies flat as a mirror. The road hugs its shore all the way to the sea gate, where the north begins.
+  @narrator{when="!holds('hasItem', ['wakingFlute'])"}: Halfway along, the road simply stops, against a wall of fur that rises and falls. Something enormous is asleep across it, snoring gently.
+</beat>
+
+<entry id="midR12Morning" on="enterRoute" target="route.r12" category="bark" once="day" when="@isMorning">
+  @narrator: Mist rises off Lake Hush. Mirela is sitting on the jetty with her eyes closed, very deliberately not noticing you.
+</entry>
+
+<entry id="midR12Day" on="enterRoute" target="route.r12" category="bark" once="day" when="run.slot == 'day'">
+  @narrator: Sailboats on the lake, and a juggler practising on the shore with three very patient monsters.
+</entry>
+
+<entry id="midR12Night" on="enterRoute" target="route.r12" category="bark" once="day" when="@isNight">
+  @narrator: At night Lake Hush is so still it holds the whole sky. A woman in a veil walks the shore, talking to someone who is not there.
+</entry>
+
+<entry id="midR12Sign" on="talk" target="npc.r12Signpost" category="bark">
+  @narrator: ROUTE 12 — THE LAKESHORE. Sea gate ahead: the northern sea routes. Please keep your voice down. Something is sleeping.
+</entry>
+
+<entry id="midR12HermitAsleep" on="talk" target="npc.r12Hermit" category="bark" priority="10" when="!visited('mid.giantWakes')">
+  @r12Hermit: It's been asleep since my grandmother's time. Slumbear, the old books call it. Nothing wakes it but a flute. There used to be one at Ash Tower, before the Eclipse people came.
+</entry>
+
+<entry id="midR12HermitAwake" on="talk" target="npc.r12Hermit" category="bark" priority="10" when="visited('mid.giantWakes')">
+  @r12Hermit: You woke it. I felt the ground shake in my sleep and thought, well, that's the end of the quiet. And then it was quieter than ever. Funny.
+</entry>
+
+<entry id="midR12Hermit" on="talk" target="npc.r12Hermit" category="bark">
+  @r12Hermit: Hush.
+</entry>
+
+// ── trainers ─────────────────────────────────────────────────────────────
+
+<beat use="trainerBattle" id="r12PsychicMirela" who="r12PsychicMirela" intro="I knew you would come this way. I did not know you would be this short." win="I did not foresee this. I will pretend I did." lose="Exactly as I saw it. Well. Roughly." prize="880"/>
+
+<entry id="midR12PsychicMirelaAfter" on="talk" target="npc.r12PsychicMirela" category="bark" when="holds('defeated', ['r12PsychicMirela'])">
+  @r12PsychicMirela: I studied under Sabine at the Mind Gym. She could see the future. I can see about ten minutes of it, on a good day. Lunch is in ten minutes.
+</entry>
+
+<beat use="trainerBattle" id="r12BlackBeltKorin" who="r12BlackBeltKorin" intro="HWAAH! I train by the lake so the lake can see my form!" win="The lake saw that. The lake will never forget." lose="HWAAH! The lake approves!" prize="960"/>
+
+<entry id="midR12BlackBeltKorinAfter" on="talk" target="npc.r12BlackBeltKorin" category="bark" when="holds('defeated', ['r12BlackBeltKorin'])">
+  @r12BlackBeltKorin: I punched the sleeping giant once, to test my fists. It did not wake. My fists have not been the same.
+</entry>
+
+<beat use="trainerBattle" id="r12ChannelerAgathe" when="@isNight" who="r12ChannelerAgathe" intro="The spirits of the lake are restless tonight. They want to meet your monsters." win="The spirits say you may pass. The spirits are sulking." lose="The spirits thank you. Mostly for leaving." prize="760"/>
+
+<entry id="midR12ChannelerAgatheAfter" on="talk" target="npc.r12ChannelerAgathe" category="bark" when="holds('defeated', ['r12ChannelerAgathe']) && @isNight">
+  @r12ChannelerAgathe: Madame Oriel in Silvercrest collects ghost stories. Three of hers are true. She knows which three. She won't say, unless you ask her properly.
+</entry>
+
+<beat use="trainerBattle" id="r12SailorDunstan" who="r12SailorDunstan" intro="Ahoy! A lake's just a sea that gave up, but it's still water! Battle stations!" win="Abandon ship! It's a lake, I'll just walk." lose="Anchors aweigh! Whatever that means!" prize="720"/>
+
+<entry id="midR12SailorDunstanAfter" on="talk" target="npc.r12SailorDunstan" category="bark" when="holds('defeated', ['r12SailorDunstan'])">
+  @r12SailorDunstan: Past the sea gate, it's the real sea. You'll need Surf and the Venom Badge, and the nerve. The nerve's the hard part.
+</entry>
+
+<beat use="trainerBattle" id="r12JugglerFitz" who="r12JugglerFitz" intro="Three balls, three monsters! Watch closely, you might learn something!" win="I dropped everything. Everything!" lose="And the crowd goes wild! The crowd is my Smogball." prize="640"/>
+
+<entry id="midR12JugglerFitzAfter" on="talk" target="npc.r12JugglerFitz" category="bark" when="holds('defeated', ['r12JugglerFitz'])">
+  @r12JugglerFitz: My cousins juggle in Kessler's gym. They juggle AND hide behind invisible walls. I just juggle. It's a family of specialists.
+</entry>

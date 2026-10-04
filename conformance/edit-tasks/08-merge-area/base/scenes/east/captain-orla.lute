@@ -1,0 +1,40 @@
+---
+kind: scene
+id: east.captainOrla
+title: The captain's cabin
+on: talk
+target: npc.captainOrla
+after: 'visited("east.ferryRival")'
+when: "!holds('hasItem', ['hmCut'])"
+---
+
+// CONTRACT BEAT (seeded by the lead; owned by east): hands over hmCut
+// (portvoltTree gate, with the Tide Badge). Every way of helping the
+// captain ends with the disc.
+
+## The cabin
+
+::bg{location="captains-cabin" time="day"}
+::auto{character="captainOrla" anchor="center" action="enter"}
+@narrator: The captain's cabin smells of brass polish and misery. Captain Orla is green, and holding onto the desk with both hands.
+@captainOrla{emotion="sad"}: Ugh. Thirty years at sea, and the sea and I have never once agreed. Who let you in?
+
+<branch id="eastOrlaHelp" prompt="The captain looks terrible.">
+  <choice id="rub" label="Rub the captain's back">
+    @narrator: You rub the captain's back in small circles, the way Mom used to.
+    @captainOrla: Oh. Oh, that's... that's actually helping. Keep going. Left a bit.
+  </choice>
+  <choice id="water" label="Fetch a glass of water">
+    @narrator: You fetch a glass of water from the galley. The cook gives you a biscuit for the captain too.
+    @captainOrla: Dry biscuit. The only cure that ever worked. How did you know?
+  </choice>
+  <choice id="horizon" label="Tell the captain to look at the horizon">
+    @narrator: You open the porthole. The coast of Eastmarch is a steady grey line.
+    @captainOrla: Look at the horizon. Every cabin boy tells me that. It works every time, and I forget every time.
+  </choice>
+</branch>
+
+@captainOrla{emotion="happy"}: Ha! Better. You're a good kid.
+@captainOrla: Here. When I was your age I cut hedges for a living with my old monster, before I ran off to sea like a fool. Now yours can cut them.
+::use{component="obtain" item="hmCut"}
+@captainOrla: The Tide Badge lets you use it outside battle. There's a tree on the Portvolt road that the council has been meaning to cut for a year. Go and embarrass them.

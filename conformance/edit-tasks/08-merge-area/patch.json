@@ -1,0 +1,1 @@
+{"base":{"project":"@BASE@"},"targets":[],"edits":[{"op":"moveFile","from":"lore/south/route2.lute","to":"lore/merged/route2.lute"}],"preserve":[{"ids":["document:south.route2"]}]}

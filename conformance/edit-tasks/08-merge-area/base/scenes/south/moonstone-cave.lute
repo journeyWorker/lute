@@ -1,0 +1,28 @@
+---
+kind: scene
+id: south.moonstoneCave
+title: Moonstone Cave
+on: enterPlace
+target: place.moonstoneCave
+priority: 10
+---
+
+// The first time in: the cave, the miners' warning, and the lights of the
+// Team Eclipse dig below (run.lair.quarryDig hidden -> found). The dig
+// itself is the contract beat south.moonstoneDig, once the three grunts at
+// the ramps are beaten (@southDigOpen).
+
+## The cave mouth
+
+::bg{location="moonstone-cave" time="day"}
+::music{action="change" mood="eerie" volume="down"}
+@narrator: Moonstone Cave. The miners' ladders go down into the dark, and the dark smells of wet stone and lamp oil.
+@narrator: Chalked on the first beam: "DUSKBATS SLEEP HERE. BE NICE." Underneath, in a different hand: "BE QUICK."
+
+## The lights
+
+::sfx{sound="pickaxe-far"}
+@narrator: Far below, where no miner has worked in years, there are lights. White work lights, too many of them, and the tock-tock-tock of picks going all at once.
+::set{run.lair.quarryDig = "found"}
+@grunt: (echoing) Keep it moving! The Director wants the spiral beds cleared by the new moon!
+@narrator: Three ramps lead down towards the lights. Each one has somebody in black standing at the top of it.

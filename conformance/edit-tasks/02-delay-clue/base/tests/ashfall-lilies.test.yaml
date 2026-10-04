@@ -1,0 +1,8 @@
+# Two ash-lilies carried down at runEnd on top of one already in the pot:
+# the season quest completes and pays 15 embers.
+file: ../quests/ashfall.lute
+state: { user.ashfallOn: true, season.ashfall.lilies: 3 }
+expect:
+  quests: { lilies: complete }
+  state: { user.embers: 15, user.bond.maud: 1 }
+  transcriptContains: ["Three. You counted."]

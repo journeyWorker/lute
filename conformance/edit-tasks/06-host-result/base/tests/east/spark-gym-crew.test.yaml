@@ -1,0 +1,9 @@
+# With the whole crew beaten the switch room notices; the win pays the
+# prize and the badge.
+file: ../../scenes/east/spark-gym.lute
+facts: [defeated(sparkGymEngineerWatts), defeated(sparkGymSailorFlint), defeated(sparkGymRockerJolt), hasItem(hmFly)]
+bridges: { battle: [ { won: true } ] }
+expect:
+  facts: [hasBadge(spark), defeated(volta), canUse(fly)]
+  state: { run.money: 5400 }
+  transcriptContains: ["Volta's whole crew is watching from the switches", "Go and see Fern in Bloomfield. If she's awake."]

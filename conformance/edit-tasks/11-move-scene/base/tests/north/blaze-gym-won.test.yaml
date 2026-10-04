@@ -1,0 +1,8 @@
+# Beating Ignatius: badge, prize, and his after-battle lines.
+file: ../../scenes/north/blaze-gym.lute
+bridges: { battle: [ { won: true } ] }
+expect:
+  facts: [hasBadge(blaze), defeated(ignatius)]
+  state: { run.money: 7800 }
+  transcriptContains: ["@narrator: {{userName}} received the Blaze Badge!", "@ignatius: The last gym is in Verdant City. I have never met its leader. Nobody has. Be careful, eh?"]
+  end: complete

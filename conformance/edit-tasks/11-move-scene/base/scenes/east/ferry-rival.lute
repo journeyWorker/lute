@@ -1,0 +1,32 @@
+---
+kind: scene
+id: east.ferryRival
+title: Kai aboard the Meridian
+on: enterPlace
+target: place.ferryMeridian
+priority: 20
+after: 'visited("south.bridgeRival")'
+---
+
+// CONTRACT BEAT (seeded by the lead; owned by east): asserts rivalFought(ferry).
+// The Meridian sails from Tidewell to Portvolt; boarding needs the
+// ferryTicket (south, gate ferryGangway). Kai got on first, of course.
+
+## The gangway
+
+::bg{location="ferry-meridian" time="day"}
+::music{action="change" mood="upbeat" volume="normal"}
+::auto{character="meridianSteward" anchor="left" action="enter"}
+@meridianSteward: Ticket, please. Ah, one of Cassius's guests. Welcome aboard the Meridian. The ballroom is aft, the crew quarters forward, and the captain is... indisposed.
+::auto{character="meridianSteward" action="exit"}
+@narrator: The Meridian's deck is crowded with trainers in their best clothes. Somebody is playing a piano very badly below decks.
+
+## The deck
+
+::auto{character="rival" anchor="right" action="enter"}
+@rival{emotion="smug"}: Well, look who finally found the boat. I've been aboard since breakfast. I've beaten half the ballroom already.
+@rival: Cassius gave me a ticket too, you know. He said I had "remarkable drive". He didn't say what you had.
+::use{component="rivalBattle" meet="ferry" intro="Bonjour! That's what they say on ships. Let's see how your monsters handle the swell!" win="Humph! At least you're raising your monsters. Somebody has to." lose="Heh! I've got the right stuff, and you don't. Get some sea legs."}
+@rival{emotion="angry" when="@wonFight"}: Whatever. The ship rocked. That counts.
+@rival: The captain's seasick in his cabin. Go and hold his bucket. He teaches some cutting trick to anyone who helps. I'd do it, but I've got a gym to beat in Portvolt. Smell you later!
+::auto{character="rival" action="exit"}

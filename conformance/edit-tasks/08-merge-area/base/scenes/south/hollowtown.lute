@@ -1,0 +1,27 @@
+---
+kind: scene
+id: south.hollowtown
+title: Hollowtown
+on: enterTown
+target: town.hollowtown
+priority: 10
+after: 'visited("spine.lab")'
+---
+
+// Stepping out of the lab with a monster for the first time: the town
+// that has known the player since birth sees them off.
+
+## The square
+
+::bg{location="hollowtown" time="day"}
+::music{action="start" mood="upbeat" volume="normal"}
+@narrator: Hollowtown: eleven houses, one lab, one lighthouse that has not worked since your grandmother was small, and the sea on three sides.
+::auto{character="hollowtownWren" anchor="left" action="enter"}
+@hollowtownWren{emotion="happy"}: Well! Look who's got a monster. I remember when you were frightened of my Puffsong.
+@hollowtownWren: Kai went through here an hour ago like a gull after chips. Didn't say goodbye to anyone. Don't you be like that.
+::auto{character="hollowtownTeo" anchor="right" action="enter"}
+@hollowtownTeo{emotion="sad"}: You got one? Already? I'm nine. Nine and three quarters. The professor says ten.
+@hollowtownTeo{emotion="happy"}: When you come back, will you show me every single one you caught? Every single one?
+::auto{character="hollowtownTeo" action="exit"}
+@hollowtownWren: Route 1 is north, past the hay fields. Pebbleton is two days' walk for a grown-up and half a day for a child with a monster. Go on, then.
+::auto{character="hollowtownWren" action="exit"}

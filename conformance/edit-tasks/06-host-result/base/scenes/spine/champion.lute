@@ -1,0 +1,44 @@
+---
+kind: scene
+id: spine.champion
+title: The Champion
+on: challenge
+target: arena.championHall
+once: false
+when: "count('beatElite', ['_']) >= 4 && !@champion"
+---
+
+## The hall
+
+::bg{location="champion-hall" time="day"}
+::music{action="change" mood="tense" volume="normal"}
+@narrator: The last door opens on a hall of white stone. Someone is already standing on the Champion's dais.
+::auto{character="rival" anchor="right" action="enter"}
+<match on="run.rivalStanding">
+  <when is="1..">
+    @rival{emotion="determined"}: Hey. I beat the Four an hour before you did, so I'm the Champion. You've beaten me more times than I like to count. Not today.
+  </when>
+  <when is="..-1">
+    @rival{emotion="smug"}: Hey! I knew you'd make it. I beat the Four before you, which makes me the Champion. Like every other time we've battled, I'm going to win.
+  </when>
+  <otherwise>
+    @rival: Hey. I beat the Four first, so I'm the Champion. We're even, you and me. Let's settle it.
+  </otherwise>
+</match>
+@rival: Since Gramps gave us our monsters I've been everywhere. Every route, every cave, every tower. I'm the best there is!
+::use{component="rivalBattle" meet="champion" kind="champion" intro="Do you know what that means? It means you're facing the Champion!" win="NO! That can't be! You beat my best! After all that work, my reign is over already." lose="Hahaha! I'm the Champion! Get used to it!"}
+<match on="scene.battle.fight.won">
+  <when is="true">
+    ::auto{character="profAlder" anchor="left" action="enter"}
+    @profAlder{emotion="happy"}: {{userName}}! You did it. You beat Kai, and the Four, and all of Verdane's leaders.
+    @profAlder{emotion="worried"}: Kai. You lost because you forgot to love your monsters. Think about that.
+    @profAlder: {{userName}}, come with me. The Hall of Fame is waiting.
+  </when>
+  <otherwise>
+    @narrator: The Champion's hall goes quiet. The League sends challengers back to the start.
+    ::retract{defeated(frostine)}
+    ::retract{defeated(tarrok)}
+    ::retract{defeated(morwen)}
+    ::retract{defeated(drakon)}
+  </otherwise>
+</match>

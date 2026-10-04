@@ -150,9 +150,9 @@ diagnostics must include a non-empty scope). `trace`, `play`, `test`,
 calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
-The new impact and constraints sections are part of the 0.34.0 command
-contract; the repository's current version remains 0.34.0 until the release
-stamps move.
+The impact and constraints sections were introduced in the historical 0.34.0
+contract; the repository's current release is 0.35.0 and the AI edit-loop
+commands are documented below.
 
 ## compile
 
@@ -777,3 +777,48 @@ $ lute version [--json]
 ```
 
 Print the three independent version axes ([versioning](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)): the **toolchain** version (this CLI and the workspace crates), the **language** version (the grammar/semantics the checker enforces), and the **IR** schema version (stamped as `irVersion` in every compiled artifact). Distinct from clap's built-in `--version`, which prints only the toolchain version; the language server answers the same flag, `lute-lsp --version` printing `lute-lsp <version>` (which [`doctor`](#doctor) compares against this CLI). `--json` prints one object `{"toolchain":…,"language":…,"ir":…}`; human mode prints one labeled line each. Always exits **0**.
+
+## `lute fmt` (0.35.0)
+
+## `lute diff` (0.35.0)
+
+## `lute patch` (0.35.0)
+
+## `lute context` edit surface (0.35.0)
+
+```console
+$ lute fmt [--check] <path>…
+$ lute diff <before> <after> [--json]
+$ lute patch <dir> <patch.json> [--dry-run] [--json]
+$ lute context <dir> --target <kind:key> [--max-items N] [--run <FILE>] [--json]
+$ lute context <dir> --at <file>:<line>:<column> [--max-items N] [--run <FILE>] [--json]
+```
+
+`fmt` formats `.lute`, project/schema YAML, and configured plugin YAML in
+deterministic order. YAML values are opaque; it never reformats arbitrary YAML.
+Without `--check`, it writes canonical text; `--check` writes nothing and exits
+1 if any selected file differs, 0 when canonical, and 2 on I/O, UTF-8, or
+parse failure.
+
+`diff` compares directories or `git:<revision>` sides and emits
+`schemaVersion: "0.35.0.diff"`, `before`, `after`, and sorted semantic
+`changes`; formatting-only changes yield an empty array. Exit 0 means a
+comparison was produced; exit 2 means invalid input, materialization, parse,
+or I/O failure.
+
+`patch` accepts the strict request shape documented in the [AI harness guide](/tooling/ai-harness/).
+Operations are `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`,
+`removeNode`, `createFile`, `moveFile`, and revision-guarded `replaceText`.
+Preserve claims include `ids`, positional `lineIds`, `voiceKeys`,
+`choiceEffects`, `rewards`, `conditions`, `reachability`, `hostContracts`,
+and `constraints`. A successful JSON report has `schemaVersion`,
+`ok`, `before`, `after`, `diff`, and `writes`. An accepted patch exits 1 when
+it changes semantics (the diff is in the report for review) and 0 when it
+doesn't; `--dry-run` uses the same codes without writing. Refusals exit 2 and use
+`E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-CHECK`,
+`E-PATCH-PRESERVE`; I/O failures also exit 2, with `error.kind: "io"` and no code.
+
+`context` returns `schemaVersion`, `projectRevision`, `files`, `target`,
+`declared`, `references`, `affected`, `tests`, `plays`, `vocabulary`, and
+`notIncluded`; bounds are reported rather than silently dropped. `--run`
+requires a script path and marks executed evidence as `witnessed`.

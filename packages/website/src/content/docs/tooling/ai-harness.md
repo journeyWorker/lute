@@ -201,3 +201,21 @@ Diagnostics carry fixits with a `kind`. `kind: "migrate"` is machine-applicable 
 ## Close with `lute tag`
 
 Run `lute tag scene.lute` at the pipeline end to back-fill a stable `code` into every untagged line. Never let the model hand-write `code=` values — line identity is the tool's job, not the model's.
+
+## Inspect → Plan → Patch → Check → Replay → Review (0.35.0)
+
+```console
+$ lute tag /tmp/drowned-crown
+$ lute context /tmp/drowned-crown --target quest:libraryKey --max-items 20 --json > context.json
+$ lute patch /tmp/drowned-crown planned-patch.json --dry-run --json
+$ lute check-project /tmp/drowned-crown
+$ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
+```
+
+`lute tag` must run before editing when lines lack IDs: generated IDs are
+positional and must not be invented or renumbered. Copy `projectRevision` and
+file revisions from context into the patch base. Review `diff.changes`, then
+apply the same patch without `--dry-run`; replay with the project's own test,
+play, or trace scripts. `context --at <file>:<line>:<column>` accepts
+`--max-items N` and `--run <FILE>` (the latter requires a script file).
+Lute is a deterministic CLI boundary, not a chat application or MCP server.

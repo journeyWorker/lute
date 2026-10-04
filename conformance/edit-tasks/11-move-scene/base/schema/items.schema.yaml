@@ -1,0 +1,43 @@
+# Monster League — engine content ids content may name. LEAD-OWNED: the
+# engine must ship every member (a new one is an engine ask). The engine
+# plugin types its attributes and reward targets by these kinds, so a typo or
+# an item the engine does not have is an error at the line that names it
+# (dsl 0.26.0 §2.5). `lute refs . --attr give.item --reward ITEM` lists who
+# gives what.
+entities:
+  # a bag item (::give{item}, <reward kind="ITEM" target>). Key items are not
+  # bag items: they are hasItem(<keyItem>) facts (world.schema.yaml).
+  bagItem:
+    members:
+      # healing and berries
+      - potion
+      - superPotion
+      - freshWater
+      - oranBerry
+      - sitrusBerry
+      - rareCandy
+      # balls
+      - parkBall
+      # rods
+      - oldRod
+      - goodRod
+      - superRod
+      - luckyFloat
+      # evolution stones and held items
+      - sunStone
+      - thunderStone
+      - everstone
+      - silverPowder
+      - mysticWater
+      - miracleSeed
+      - spellTag
+      - luckyEgg
+      - shinyCharm
+      # sell-only
+      - nugget
+  # a technical machine (<reward kind="TM" target>)
+  tm: { members: [brickBreak, shadowBall, xScissor] }
+  # a Mart's stock list (::shop{stock}, the shop component's `stock`); named
+  # <town>Stock: an id belongs to one kind, and the towns are `town` members
+  martStock:
+    members: [basicStock, pebbletonStock, tidewellStock, portvoltStock, bloomfieldStock, ashgroveStock, silvercrestStock, silvercrestSaleStock, fairhavenStock, wardenmereStock, cinderisleStock, frostharborStock, verdantcityStock]

@@ -1,0 +1,7 @@
+# With 300 coins only the fish stall, the band and the way out are offered.
+file: ../../scenes/east/portvolt-market.lute
+state: { run.money: 300, run.day: 3, run.slot: morning }
+choose: { eastMarketStalls: [fish, leave] }
+expect:
+  options: { eastMarketStalls: [fish, band, leave] }
+  state: { run.money: 100 }

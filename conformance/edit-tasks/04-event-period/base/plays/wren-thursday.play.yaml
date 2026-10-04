@@ -1,0 +1,68 @@
+# The same Monday to Wednesday as the Sol route; on Thursday night the player
+# stays at supper instead of climbing to the roof, and the week turns to Wren.
+#   lute play . --script plays/wren-thursday.play.yaml
+choose:
+  village: ask
+  care: careful
+  solHello: log
+  lanternAsk: help
+  perseids: "yes"
+  post: paper
+  call: clear
+  supper: candle
+  sorry: apologise
+  wrenAnswer: hold
+steps:
+  - include: week/mon-wed.steps.yaml
+  # ── Thursday: the fork ─────────────────────────────────
+  - advance: { to: { weekday: Thursday, slot: afternoon } }
+  - occasion: visit
+    target: place.village
+    expect: { presented: [village.deliver, talks.wrenWarm], quests: { forecast: complete } }
+  - label: supper, not the roof
+    advance: { to: night }
+  - occasion: visit
+    target: place.kitchen
+    expect: { winner: talks.inesSupper, facts: ["carrying(candle)"] }
+  # ── Friday ─────────────────────────────────────────────
+  - label: the Perseids were last night
+    advance: { to: { weekday: Friday, slot: morning } }
+    expect: { quests: { meteor: failed } }
+  - occasion: visit
+    target: place.radio
+    expect: { winner: sol.missed }
+  - label: the lantern is built
+    advance: { to: afternoon }
+  - occasion: visit
+    target: place.village
+    expect: { presented: [talks.wrenLantern, talks.wrenWarm], quests: { lantern: complete } }
+  - advance: { to: night }
+  # ── Saturday ───────────────────────────────────────────
+  - advance: { to: { weekday: Saturday, slot: afternoon } }
+  - occasion: visit
+    target: place.village
+    expect: { presented: [talks.wrenLantern, talks.wrenWarm], state: { run.aff.wren: 4 } }
+  - advance: { to: night }
+  - occasion: visit
+    target: place.deck
+    expect: { winner: wren.confession, state: { run.route: wren } }
+  # ── Sunday ─────────────────────────────────────────────
+  - label: a note under the door from the one she didn't choose
+    advance: { to: { weekday: Sunday, slot: morning } }
+    expect: { presented: [routine.dayClose, routine.morning, days.lastMorning, "days.note for sol"] }
+  - advance: { to: afternoon }
+  - occasion: visit
+    target: place.deck
+    expect: { winner: wren.sunday }
+  - advance: { to: night }
+    expect: { presented: [festival.night] }
+expect:
+  end: terminal
+  quests: { forecast: complete, lantern: complete, meteor: failed, logkeeper: complete }
+  state: { run.route: wren, user.summers: 1 }
+  transcriptContains:
+    - "Stay till the last one's gone? That's the rule. I just made it the rule."
+    - "rises straight up, very steady, like it knows the way."
+    - "@narrator: A folded page under your door, in Sol's handwriting."
+  transcriptLacks:
+    - "I came down the mountain."

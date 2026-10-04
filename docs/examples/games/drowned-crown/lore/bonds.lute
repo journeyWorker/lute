@@ -3,7 +3,6 @@ kind: lore
 id: bonds
 title: Bond stories
 ---
-
 /* Each of the crew has two stories, told once ever when Ilo has earned them. */
 
 <beat use="bondStory" id="brann1" who="brann" need="3">

@@ -3,9 +3,8 @@ kind: lore
 id: home
 title: Home screen taps
 ---
-
 /* Each hero's once-a-day line lives in their own file. After it, taps fall
-   to these roster-wide lines. */
+to these roster-wide lines. */
 
 <beat id="festivalTap" on="homeTap" target="kind:hero" once="false" priority="-1" when="@anyEventLive">
   @narrator: {{occasion.target}} is wearing a paper festival crown. Somebody made it badly, with love.
@@ -18,9 +17,8 @@ title: Home screen taps
 <beat id="lateTap" on="homeTap" target="kind:hero" once="slot" priority="-1" when="@weekend && !@anyEventLive">
   @narrator: {{occasion.target}} is asleep on the couch. It's the weekend, after all.
 </beat>
-
 /* Bond tab, Story button, when the hero has no story ready: how far the
-   next rank is (the roster's rule table: 100 / 300 / 600). */
+next rank is (the roster's rule table: 100 / 300 / 600). */
 <beat id="bondNotYet" on="bondStory" target="kind:hero" once="false" priority="-10">
   @narrator: {{occasion.target}} smiles, but doesn't say anything else yet. Spend more time together.
   @narrator{when="!holds('bondRank', [occasion.target, 'r1'])"}: Bond {{user.bond[occasion.target]}} of 100 to the first story.

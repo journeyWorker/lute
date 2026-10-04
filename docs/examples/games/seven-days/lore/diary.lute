@@ -3,10 +3,9 @@ kind: lore
 id: diary
 title: Sol's diary
 ---
-
 /* The day is over (`dayEnd`, raised by the clock at the night slot before
-   midnight). A heading, then one line for each person Sol saw today
-   (`for="kind:person"`, 0.27), in member order. */
+midnight). A heading, then one line for each person Sol saw today
+(`for="kind:person"`, 0.27), in member order. */
 
 <beat id="day" on="dayEnd" title="Diary" priority="10" once="day">
   @sol{mono}: {{clock.weekdayLabel}}. {{run.postcards:plural(# postcard|# postcards)}} home so far.

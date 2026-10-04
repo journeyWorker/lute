@@ -1,0 +1,12 @@
+# The first return reads the climb that just ended through prev.run.
+file: ../scenes/hearth/first-return.lute
+state:
+  user.runs: 1
+  prev.run.outcome: fell
+  prev.run.floor: 3
+  prev.run.fellTo: cinderhound
+choose: { howAreYou: thanks }
+expect:
+  transcriptContains: ["The hounds, was it?", "Floor 3."]
+  transcriptLacks: ["A wraith.", "Whatever it was"]
+  state: { user.bond.maud: 1 }

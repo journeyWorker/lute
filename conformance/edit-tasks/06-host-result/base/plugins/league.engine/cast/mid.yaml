@@ -1,0 +1,71 @@
+# OWNED BY AREA mid: the named NPCs of the area (not generic trainers).
+# The same id must also be in schema/roster.schema.yaml (mid block).
+cast:
+  wardenHolt:              { name: Warden Holt, emotions: [neutral, happy, sad] }
+  # Silvercrest
+  silvercrestBusker:       { name: Busker Lio }
+  silvercrestGreeter:      { name: Greeter Ottilie }
+  silvercrestMedium:       { name: Madame Oriel, emotions: [neutral, worried, surprised] }
+  silvercrestReceptionist: { name: Receptionist Vera }
+  silvercrestGambler:      { name: Old Hesketh }
+  gameCornerClerk:         { name: Prize Clerk }
+  mindGymGuide:            { name: Gym Guide, sharedName: true }
+  # Wardenmere
+  wardenmereInnkeeper:     { name: Innkeeper Maud }
+  wardenmereKid:           { name: Little Teodor }
+  wardenmereFisher:        { name: Fisher Agnes }
+  venomGymGuide:           { name: Gym Guide, sharedName: true }
+  # Fairhaven
+  fairhavenDayCareMan:     { name: Grandpa Tobbe, emotions: [neutral, happy, worried] }
+  fairhavenDayCareLady:    { name: Grandma Ilse, emotions: [neutral, happy, worried] }
+  fairhavenDexRater:       { name: Dex Rater Quill }
+  fairhavenKeeper:         { name: Keeper Soren }
+  fairhavenPainter:        { name: Painter Yvaine }
+  # Wildmoor Preserve
+  wildmoorContestOfficer:  { name: Officer Brin, emotions: [neutral, happy, surprised] }
+  wildmoorRanger:          { name: Ranger Hollis }
+  # routes
+  r10Watchman:             { name: Night Watchman Elbert }
+  r11OldAngler:            { name: Old Angler Fenwick }
+  r12Hermit:               { name: Hermit Ashby }
+  # ── trainers: each speaks as itself (trainerBattle's `@@who`) ──
+  helixGruntSquareA:     { name: "Eclipse Grunt", sharedName: true }
+  helixGruntSquareB:     { name: "Eclipse Grunt", sharedName: true }
+  mindGymPsychicOren:    { name: "Psychic Oren" }
+  mindGymMediumSelke:    { name: "Medium Selke" }
+  mindGymPsychicTamsin:  { name: "Psychic Tamsin" }
+  r10GentlemanAubrey:    { name: "Gentleman Aubrey" }
+  r10BeautyCelestine:    { name: "Beauty Celestine" }
+  r10CyclistRuna:        { name: "Cyclist Runa" }
+  r10BikerGrit:          { name: "Biker Grit" }
+  r10BikerVanya:         { name: "Biker Vanya" }
+  r10RockerJolene:       { name: "Rocker Jolene" }
+  r11FishermanBram:      { name: "Fisherman Bram" }
+  r11FishermanWillem:    { name: "Fisherman Willem" }
+  r11SwimmerMaela:       { name: "Swimmer Maela" }
+  r11BugCatcherPip:      { name: "Bug Catcher Pip" }
+  r11BreederHilde:       { name: "Breeder Hilde" }
+  r12PsychicMirela:      { name: "Psychic Mirela" }
+  r12BlackBeltKorin:     { name: "Black Belt Korin" }
+  r12ChannelerAgathe:    { name: "Channeler Agathe" }
+  r12SailorDunstan:      { name: "Sailor Dunstan" }
+  r12JugglerFitz:        { name: "Juggler Fitz" }
+  r9HikerDorran:         { name: "Hiker Dorran" }
+  r9PicnickerLissy:      { name: "Picnicker Lissy" }
+  r9CamperTobias:        { name: "Camper Tobias" }
+  r9BugCatcherNils:      { name: "Bug Catcher Nils" }
+  r9LassPernille:        { name: "Lass Pernille" }
+  r9BirdKeeperOsric:     { name: "Bird Keeper Osric" }
+  venomGymJugglerKaspar: { name: "Juggler Kaspar" }
+  venomGymTamerOdile:    { name: "Tamer Odile" }
+  venomGymJugglerNell:   { name: "Juggler Nell" }
+  venomGymTamerBastien:  { name: "Tamer Bastien" }
+  cornerGruntDoor:       { name: "Eclipse Grunt", sharedName: true }
+  cornerGruntVault:      { name: "Eclipse Grunt", sharedName: true }
+  cornerScientistLoy:    { name: "Eclipse Scientist", sharedName: true }
+  gruntCorner:           { name: "Eclipse Admin Corvo" }
+  helixGruntLobby:       { name: "Eclipse Grunt", sharedName: true }
+  helixGruntF3:          { name: "Eclipse Grunt", sharedName: true }
+  helixScientistOrrin:   { name: "Eclipse Scientist", sharedName: true }
+  helixGruntF10:         { name: "Eclipse Grunt", sharedName: true }
+  gruntHelix:            { name: "Eclipse Admin Maelis" }

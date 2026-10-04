@@ -1,0 +1,32 @@
+---
+kind: scene
+id: east.portvoltArrival
+title: Portvolt
+on: enterTown
+target: town.portvolt
+priority: 20
+after: 'visited("east.ferryRival")'
+---
+
+// The first walk down the gangway into Portvolt. Later visits answer with
+// the slot entries in lore/east/portvolt.lute; on Wednesdays the market
+// (east.portvoltMarket) plays after whichever greeting wins.
+
+## The harbor
+
+::bg{location="portvolt-harbor" time="day"}
+::music{action="change" mood="upbeat" volume="normal"}
+@narrator: Portvolt. Cranes, gulls, a lighthouse on the point, and every roof strung with wires that hum in the salt wind.
+::auto{character="portvoltHarbormaster" anchor="left" action="enter"}
+@portvoltHarbormaster: Off the Meridian? Welcome to Portvolt. Monster Center's up the hill, Mart beside it, and Lt. Volta's gym is past the thin tree on the east road.
+@portvoltHarbormaster: The tree's the council's business. They've been "about to cut it" for a year. You'd need a monster that knows Cut, and a badge to say you're allowed.
+::auto{character="portvoltHarbormaster" action="exit"}
+
+## The east road
+
+@narrator: Halfway up the east road, a boy with spiky hair is kicking the thin tree.
+::auto{character="rival" anchor="right" action="enter"}
+@rival{emotion="angry"}: This tree is in my way. Trees shouldn't be allowed to be in people's way.
+@rival{emotion="smug"}: Doesn't matter. I heard the Bloom Gym leader is a pushover. I'll take the tunnel north and come back for the Lieutenant with two badges. You'll still be staring at this tree.
+::auto{character="rival" action="exit"}
+@narrator{when="holds('canPass', ['portvoltTree'])"}: You could cut it right now. Kai didn't wait to find that out.

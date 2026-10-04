@@ -1,0 +1,6 @@
+# Escaped state alone does nothing until runEnd is raised.
+file: ../quests/long-climb.lute
+facts: ["everSlew(gatekeeper)", "everSlew(warden)"]
+state: { run.outcome: escaped }
+expect:
+  quests: { longClimb: active }

@@ -1,0 +1,2 @@
+state:
+  run.job: { type: string, default: scout, owner: engine }

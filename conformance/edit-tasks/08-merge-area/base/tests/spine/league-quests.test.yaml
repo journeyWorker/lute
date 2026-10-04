@@ -1,0 +1,8 @@
+# The main line waits on every child: eight badges and the Four are not
+# enough without Team Eclipse stopped and Kai beaten.
+file: ../../quests/spine/league.lute
+facts: [chose(cindle), hasBadge(stone), hasBadge(tide), hasBadge(spark), hasBadge(bloom), hasBadge(mind), hasBadge(venom), hasBadge(blaze), hasBadge(earth), defeated(frostine), defeated(tarrok), defeated(morwen), defeated(drakon), defeated(vex)]
+state: { run.lair.quarryDig: cleared, run.lair.towerSiege: cleared, run.lair.cornerHideout: cleared }
+accepts: [eclipseArc]
+expect:
+  quests: { league: active, badgeRoad: complete, eliteFour: complete, eclipseArc: active, legacy: unset }

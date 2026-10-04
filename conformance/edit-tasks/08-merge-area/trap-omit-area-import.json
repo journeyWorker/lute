@@ -1,0 +1,1 @@
+{"base":{"project":"@BASE@"},"targets":[],"edits":[{"op":"createFile","path":"schema/areas/duplicate.schema.yaml","text":"state:\n  run.southFossil: { type: { enum: [none, dome, spiral] }, default: none }\n"}],"preserve":[{"hostContracts":true}],"trapExpect":{"code":"E-PATCH-CHECK","diagnostic":"E-USES-DUP-STATE"}}

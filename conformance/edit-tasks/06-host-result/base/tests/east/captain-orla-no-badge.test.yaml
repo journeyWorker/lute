@@ -1,0 +1,8 @@
+# Cut without the Tide Badge: the disc is in the bag, the tree stays.
+file: ../../scenes/east/captain-orla.lute
+visited: [east.ferryRival]
+choose: { eastOrlaHelp: rub }
+expect:
+  facts: [hasItem(hmCut)]
+  notFacts: [canUse(cut), canPass(portvoltTree)]
+  transcriptContains: ["@captainOrla: Oh. Oh, that's... that's actually helping. Keep going. Left a bit."]

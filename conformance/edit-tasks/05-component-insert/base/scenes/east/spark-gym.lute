@@ -1,0 +1,26 @@
+---
+kind: scene
+id: east.sparkGym
+title: Spark Gym
+on: challenge
+target: arena.sparkGym
+once: false
+when: "!holds('defeated', ['volta'])"
+---
+
+// CONTRACT BEAT (seeded by the lead; owned by east): asserts hasBadge(spark).
+// The engine keeps the gym behind portvoltTree until canPass(portvoltTree).
+// Volta's crew (lore/east/trainers-gyms.lute) stand by the switches.
+
+## The switch room
+
+::bg{location="spark-gym" time="day"}
+::music{action="change" mood="tense" volume="normal"}
+@narrator: The gym floor hums. Every lamp in the room is wired to a switch on the far wall, and the switches are wired to something that crackles.
+@narrator{when="holds('defeated', ['sparkGymEngineerWatts']) && holds('defeated', ['sparkGymSailorFlint']) && holds('defeated', ['sparkGymRockerJolt'])"}: Volta's whole crew is watching from the switches, rubbing their singed eyebrows.
+
+## Lt. Volta
+
+::use{component="gymLeader" who="volta" badge="spark" intro="Hey, kid! What do you think you're doing here? You won't live long in combat, not with your puny power! I tell you, kid, electric monsters saved me during the war!" win="Whoa! You're the real deal, kid! Fine then, take the Spark Badge!" lose="Ha! Zapped! That's what happens, kid." prize="2400"}
+@volta{emotion="laughing" when="@wonFight"}: Your spiky-haired pal came through yesterday, you know. Lost in three turns and tried to fight the switchboard. Ha! Kid's got spirit.
+@volta{when="@wonFight"}: With the Spark Badge your monsters will use Fly outside battle, once somebody teaches them. Go and see Fern in Bloomfield. If she's awake.

@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.34.0`, the grammar and semantics the checker
+- **Language** — currently `0.35.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.34.0`) and gated on by consuming engines.
+  artifact (currently `0.35.0`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,28 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.35.0] - 2026-10-04
+
+### Added
+
+- `lute fmt` provides deterministic, lossless formatting; revisions and
+  semantic `lute diff` make changes reviewable.
+- The resolver crate powers task context (`lute context --target/--at`) and
+  bounded AI authoring inspection.
+- `lute patch` applies revision-checked, atomic edits with preserve claims and
+  refusal codes. The 12-task `conformance/edit-tasks/` suite exercises the
+  edit loop.
+
+### Changed
+
+- The corpus is formatted and CI runs `lute fmt --check`.
+
+### Fixed
+
+- `impact` now lists component-expanded lines of affected beats with graph
+  owner attribution.
+- Improved semantic diff performance.
 
 ## [0.34.0] - 2026-10-03
 

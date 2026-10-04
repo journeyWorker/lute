@@ -25,9 +25,8 @@ title: Searching the ford
 <entry id="wagonsQuiet" on="explore" target="place.wagons" category="search" title="The wagons">
   @narrator: Eleven wagons, each one locked, each lock with a Company seal. The ninth rides a little low.
 </entry>
-
 /* Any site, searched again once nothing new is left there (a kind target,
-   dsl 0.26; the label names the place, dsl 0.27 §7). */
+dsl 0.26; the label names the place, dsl 0.27 §7). */
 <entry id="searchedOut" on="explore" target="kind:site" category="search" title="Nothing new" priority="-10">
   @narrator: You go over {{occasion.target}} again. Nothing you have not already seen.
 </entry>

@@ -1,0 +1,66 @@
+# A week of missed chances: skimmed readings, the forecast never written, Wren
+# met late and her lantern never finished, the Perseids slept through.
+#   lute play . --script plays/missed.play.yaml
+choose:
+  village: shrug
+  care: skim
+  solHello: work
+  perseids: maybe
+  lanternAsk: help
+  supper: chat
+  sorry: excuse
+steps:
+  # Mon: meet Sol, promise "maybe" on the roof.
+  - occasion: slotStart
+  - occasion: visit
+    target: place.radio
+  - advance: { to: afternoon }
+  - occasion: visit
+    target: place.radio
+    expect: { winner: talks.inesRadio }
+  - advance: { to: night }
+  - occasion: visit
+    target: place.roof
+    expect: { winner: sol.roof, quests: { meteor: active } }
+  # Tue, Wed: mornings and nights at the station; the player never goes down.
+  - advance: { to: { weekday: Tuesday, slot: morning } }
+  - advance: { to: night }
+  - advance: { to: { weekday: Wednesday, slot: morning } }
+  - advance: { to: night }
+  # Thu: meet Wren at last; at night, supper instead of the roof. The advance
+  # closes Wednesday first, and routine.missedWren rides along.
+  - label: Wednesday closes on the way
+    advance: { to: { weekday: Thursday, slot: afternoon } }
+    expect: { presented: [routine.dayClose, routine.missedWren, routine.afternoon] }
+  - occasion: visit
+    target: place.village
+    expect: { winner: wren.first, quests: { lantern: active } }
+  - label: the Perseids, missed
+    advance: { to: night }
+  - occasion: visit
+    target: place.kitchen
+    expect: { winner: talks.inesSupper }
+  - label: the meteor deadline passes
+    advance: { to: { weekday: Friday, slot: morning } }
+    expect:
+      quests: { meteor: failed, forecast: active }
+      presented: [routine.dayClose, routine.morning, days.postHorn, days.forecastCall]
+  - occasion: visit
+    target: place.radio
+    expect: { winner: sol.missed }
+  - advance: { to: night }
+  - label: the forecast deadline passes
+    advance: { to: { weekday: Saturday, slot: morning } }
+    expect: { quests: { forecast: failed } }
+  - advance: { to: night }
+  - label: the lantern was never built
+    advance: { to: { weekday: Sunday, slot: night } }
+    expect: { presented: [routine.dayClose, festival.night], quests: { lantern: failed } }
+expect:
+  end: terminal
+  quests: { forecast: failed, meteor: failed, lantern: failed, logkeeper: active }
+  state: { run.route: none, run.readings: 0 }
+  transcriptContains:
+    - "We waited for the station. The station was busy."
+    - "HAPPY BIRTHDAY"
+    - "Twenty-seven summers, then. Same time next year, intern?"

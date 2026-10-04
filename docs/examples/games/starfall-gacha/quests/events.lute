@@ -2,10 +2,9 @@
 kind: quest
 id: eventQuests
 ---
-
 /* Event missions belong to their festival's season: the rerun opening the
-   harvest season returns harvestMissions to unset, and its start activates
-   it again in the same settle. Starfall's outcome survives the harvest rerun. */
+harvest season returns harvestMissions to unset, and its start activates
+it again in the same settle. Starfall's outcome survives the harvest rerun. */
 
 <quest id="harvestMissions" title="Harvest Moon missions" tier="season:harvest" start="@harvestLive">
   <reward kind="GEMS" amount="200"/>

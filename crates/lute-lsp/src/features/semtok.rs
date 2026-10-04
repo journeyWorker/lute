@@ -40,7 +40,7 @@ use lute_core_span::TextIndex;
 use lute_syntax::ast::{Arm, ClipNode, Directive, Document, InterpKind, Line, Node, Quest, Set};
 use tower_lsp_server::ls_types::{SemanticToken, SemanticTokenType, SemanticTokensLegend};
 
-use super::{all_slots, interp_referent_span, is_state_path, path_tokens};
+use lute_resolve::cursor::{all_slots, interp_referent_span, is_state_path, path_tokens};
 
 /// The token types this server emits, in legend order. The index of a variant in
 /// this list is its wire `tokenType`.

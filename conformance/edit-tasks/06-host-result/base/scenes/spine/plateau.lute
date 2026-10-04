@@ -1,0 +1,22 @@
+---
+kind: scene
+id: spine.plateau
+title: The Summit Plateau
+on: enterPlace
+target: place.summitPlateau
+once: false
+---
+
+## The gate
+
+::bg{location="summit-plateau" time="day"}
+::auto{character="gatekeeper" anchor="center" action="enter"}
+<match>
+  <when test="@badgeCount >= 8">
+    @gatekeeper: Eight badges. The Summit League is ready for you. Beyond this door are the Elite Four, and past them, the Champion.
+    @gatekeeper: Once you step through, there is no leaving until you win or lose. Good luck.
+  </when>
+  <otherwise>
+    @gatekeeper: Only trainers with all eight of Verdane's badges may challenge the League. You have {{@badgeCount}}.
+  </otherwise>
+</match>

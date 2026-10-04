@@ -17,6 +17,7 @@ use rayon::prelude::*;
 
 use crate::cache::InputCache;
 use crate::input::{assemble_input_with_mode, read_document};
+use crate::revision::{project_revision, ProjectRevision};
 
 pub type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, FoldedEnv)>;
 pub type ByRoot = BTreeMap<PathBuf, DocGroup>;
@@ -85,6 +86,7 @@ pub struct ProjectModel {
     project_diagnostics: Vec<(PathBuf, Diagnostic)>,
     index: Option<ProjectIndex>,
     reconciled: ReconciledOutputs,
+    revisions: ProjectRevision,
 }
 
 impl ProjectModel {
@@ -262,6 +264,8 @@ impl ProjectModel {
             annotate_diagnostic(diagnostic);
         }
         let checks = documents.iter().map(|d| (d.path.clone(), d.check.clone())).collect();
+        let revisions = build_revisions(&root, &documents, manifest.as_ref(), opts)
+            .map_err(|error| ModelError::Io(error.to_string()))?;
         let reconciled = ReconciledOutputs {
             checks,
             diagnostics: project_diagnostics.clone(),
@@ -269,7 +273,7 @@ impl ProjectModel {
             fact_envs,
             scenarios,
         };
-        Ok(Self { root, manifest, documents, project_diagnostics, index, reconciled })
+        Ok(Self { root, manifest, documents, project_diagnostics, index, reconciled, revisions })
     }
     pub fn has_resolution_errors(&self) -> bool {
         self.documents.iter().any(|document| document.resolve_error)
@@ -288,7 +292,62 @@ impl ProjectModel {
     pub fn project_diagnostics(&self) -> &[(PathBuf, Diagnostic)] { &self.project_diagnostics }
     pub fn index(&self) -> Option<&ProjectIndex> { self.index.as_ref() }
     pub fn reconciled(&self) -> &ReconciledOutputs { &self.reconciled }
+    pub fn revisions(&self) -> &ProjectRevision { &self.revisions }
 }
+fn build_revisions(
+    root: &Path,
+    documents: &[ModelDocument],
+    manifest: Option<&lute_manifest::project::ProjectConfig>,
+    opts: &ModelOptions,
+) -> Result<ProjectRevision, crate::revision::RevisionError> {
+    let mut paths = BTreeSet::new();
+    for document in documents {
+        let imports = &document.input.imports;
+        paths.insert(document.path.clone());
+        paths.extend(imports.files.iter().cloned());
+        paths.extend(imports.def_origins.values().cloned());
+        paths.extend(imports.imported_quest_ids.values().cloned());
+        paths.extend(imports.imported_entry_ids.values().cloned());
+        paths.extend(imports.clock.iter().map(|(path, _, _)| path.clone()));
+        paths.extend(imports.seasons.iter().map(|(path, _, _)| path.clone()));
+    }
+    let manifest_path = root.join("lute.project.yaml");
+    if manifest_path.is_file() { paths.insert(manifest_path); }
+    if let Some(config) = manifest {
+        paths.extend(yaml_files(&config.plugins_dir));
+        paths.extend(yaml_files(&config.catalog_dir));
+    }
+    if let Some(providers) = opts.providers.as_deref() {
+        paths.extend(yaml_files(providers));
+    }
+    let mut inputs = Vec::new();
+    for path in paths {
+        if let Ok(bytes) = std::fs::read(&path) {
+            inputs.push((path, bytes));
+        }
+    }
+    project_revision(root, &inputs)
+}
+
+fn yaml_files(dir: &Path) -> Vec<PathBuf> {
+    if dir.is_file() { return vec![dir.to_path_buf()]; }
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(path) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(path) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                stack.push(path);
+            } else if matches!(path.extension().and_then(|ext| ext.to_str()), Some("yaml" | "yml")) {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 
 fn resolution_diagnostic(raw: &str) -> Diagnostic {
     let (code, message) = raw.split_once(": ").unwrap_or(("E-PROJECT-CONFIG", raw));

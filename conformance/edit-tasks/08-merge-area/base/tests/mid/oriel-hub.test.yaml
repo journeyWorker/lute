@@ -1,0 +1,11 @@
+# A second visit to Madame Oriel with one story already told: only the two
+# untold stories are offered.
+file: ../../lore/mid/ghosts.lute
+beat: oriel
+quests: { midGhostStories: active, midGhostTheater: complete }
+choose: { midOrielStories: [well, leave] }
+expect:
+  eligible: true
+  options: { midOrielStories: [well, lighthouse, leave] }
+  accepts: [midGhostWell]   # the stories quest is already active: its accept is skipped (when=)
+  transcriptLacks: ["I collect ghost stories, dear."]

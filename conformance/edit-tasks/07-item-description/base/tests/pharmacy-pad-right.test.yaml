@@ -1,0 +1,8 @@
+# The plaque's year opens the pharmacy, and the engine may now open its door.
+file: ../scenes/puzzles/pharmacy-pad.lute
+entriesRead: { run: [plaque] }
+bridges: { keypad: [ { entered: 1947 } ] }
+expect:
+  facts: [solved(pharmacyPad), canEnter(pharmacy)]
+  transcriptContains: ["@nell: The plaque in the lobby. The year they opened the doors."]
+  end: complete

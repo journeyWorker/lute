@@ -6,7 +6,7 @@ season: 1
 episode: 2
 title: Behold the Performance of All-Purpose Marina
 pov: fixer
-luteVersion: "0.34.0"
+luteVersion: "0.35.0"
 
 # The project's content vocabulary (dsl 0.9.0): `emotion`/`action`/`anchor`/
 # `mood`/`volume`/`musicAction`/`vfxType` are compiler-declared SLOTS with no
@@ -21,16 +21,15 @@ state:
 defs:
   fond: { type: bool, cel: "scene.affect.marina >= 1" }   # true if you asked her gently
 ---
-
 /*
-  Worked example of the Lute Scenario DSL (see ../proposals/scenario-dsl/0.0.1.md and ../architecture.md).
-  The spine, narration, dialogue, and assetIds are faithful to the real
-  content-repo S01EP02 (linear). Note the unified content node (§7.1): every content
-  line uses the @speaker: form — narration is @narrator, monologue is @fixer{mono}.
-  Three things are woven in to demonstrate the new surface, each marked NEW / demo:
-    - ::camera               (no camera in the legacy format)
-    - <timeline> + <track>   (the finger-beam "performance" as one multi-track beat)
-    - <branch>/<match>/state (canon EP02 has no player choice — shown illustratively)
+Worked example of the Lute Scenario DSL (see ../proposals/scenario-dsl/0.0.1.md and ../architecture.md).
+The spine, narration, dialogue, and assetIds are faithful to the real
+content-repo S01EP02 (linear). Note the unified content node (§7.1): every content
+line uses the @speaker: form — narration is @narrator, monologue is @fixer{mono}.
+Three things are woven in to demonstrate the new surface, each marked NEW / demo:
+- ::camera               (no camera in the legacy format)
+- <timeline> + <track>   (the finger-beam "performance" as one multi-track beat)
+- <branch>/<match>/state (canon EP02 has no player choice — shown illustratively)
 */
 
 # S01EP02 — Behold the Performance of All-Purpose Marina
@@ -77,10 +76,9 @@ defs:
 @marina{code="0070" emotion="content" variant="0"}: They do carry the bubonic plague, you know.
 
 @narrator: The line was delivered in her ordinary register, soft and precise, almost informational. I had not finished hearing it before her index finger came up.
-
 /*
-  NEW: the "performance" — one choreographed beat on a 1.4s local clock, four tracks.
-  Camera pushes in, then at 0.5 the beam cut-in + flash + sfx all land together, camera shakes.
+NEW: the "performance" — one choreographed beat on a 1.4s local clock, four tracks.
+Camera pushes in, then at 0.5 the beam cut-in + flash + sfx all land together, camera shakes.
 */
 <timeline duration="1.4">
   <track subject="camera">
@@ -119,7 +117,6 @@ defs:
 @fixer{mono}: If I do not handle this android properly, something is going to go very badly wrong.
 
 @narrator: The thought arrived fully formed. It did not ask permission. I reached for my phone.
-
 /* demo: a choice of TONE (canon always gets the number — both paths do; the gentle ask warms her). */
 <branch id="number">
   <choice id="blunt" label="Just ask, flatly">
@@ -162,10 +159,9 @@ defs:
 @narrator: She skipped back across the floor with a cloth in hand. I watched the manager file the smudge as some customer-side mishap and continue his perimeter walk.
 
 @fixer{code="0070"}: ...
-
 /*
-  NEW: state-driven callback — the inner monologue varies by how you asked.
-  on= names the subject once; @fond is a defs-backed guard; first-match-wins; <otherwise> mandatory (string domain).
+NEW: state-driven callback — the inner monologue varies by how you asked.
+on= names the subject once; @fond is a defs-backed guard; first-match-wins; <otherwise> mandatory (string domain).
 */
 <match on="scene.choices.number">
   <when test="@fond">
@@ -180,12 +176,11 @@ defs:
 </match>
 
 @narrator: The part of me that catalogues life events was already cataloguing.
-
 /*
-  An authored EXIT (dsl 0.9.0 D-D): `fadeOut` is in this project's declared
-  `action` `exits:` list, so the compiler marks the sprite record `exit: true`
-  and drops her from the stage — it reads the declared list rather than
-  inferring an exit from the member's name.
+An authored EXIT (dsl 0.9.0 D-D): `fadeOut` is in this project's declared
+`action` `exits:` list, so the compiler marks the sprite record `exit: true`
+and drops her from the stage — it reads the declared list rather than
+inferring an exit from the member's name.
 */
 ::auto{character="marina" action="fadeOut"}
 

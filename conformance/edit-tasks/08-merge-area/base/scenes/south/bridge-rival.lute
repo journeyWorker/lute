@@ -1,0 +1,31 @@
+---
+kind: scene
+id: south.bridgeRival
+title: Kai on the Tidewell bridge
+on: enterRoute
+target: route.r4
+after: 'visited("spine.lab")'
+when: "!holds('rivalFought', ['bridge'])"
+---
+
+// CONTRACT BEAT (seeded by the lead; owned by south): asserts rivalFought(bridge).
+// Kai waits at the near end of the Tidewell bridge; the five bridge
+// trainers and the Eclipse recruiter are in lore/south/route4.lute.
+
+## The bridge
+
+::bg{location="route-4-bridge" time="day"}
+::music{action="change" mood="upbeat" volume="normal"}
+@narrator: The Tidewell bridge is long and white and swings a little in the wind. Somebody is sitting on the railing at the near end, swinging their legs over the drop.
+::auto{character="rival" anchor="right" action="enter"}
+@rival{emotion="smug"}: There you are. I was about to send a search party. A search party of one. Me. Going the other way.
+@rival: I've been through the cave already. Did you see the guys in black? I didn't stop. Not my problem.
+
+## Kai
+
+::use{component="rivalBattle" meet="bridge" intro="Yo! You're still struggling along back here? I'm doing great! I caught a bunch of strong monsters. Here, let me see what you caught!" win="Hey! Take it easy! You won already!" lose="Heh. You're no match for my genius!"}
+@rival{when="@wonFight" emotion="angry"}: Fine. FINE. My monsters were tired from the cave. That's science.
+@rival{when="!@wonFight" emotion="laughing"}: Don't feel bad. Everybody loses to me. It's practically a region tradition.
+@rival: There's a guy called Cassius out on the cape who knows everything about ferries. Not that you'd need a ferry. I'm getting mine Thursday. Smell you later!
+::auto{character="rival" action="exit"}
+@narrator: Five trainers are spaced along the bridge, one every twenty paces, as if somebody had set them out like chess pieces.

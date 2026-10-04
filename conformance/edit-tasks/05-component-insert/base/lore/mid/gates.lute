@@ -1,0 +1,23 @@
+---
+kind: lore
+id: mid.gates
+title: The sleeping giant and the waking flute
+---
+
+// Gate sleepingGiant (Route 12) while it is shut, in mid's words (the spine's
+// fallback is at -10). East's wakingFlute opens it; walking onto Route 12
+// with the flute plays mid.giantWakes. Playing the flute anywhere else only
+// gets these.
+
+<entry id="midGateSleepingGiant" on="obstacle" target="gate.sleepingGiant" category="bark" when="!holds('canPass', ['sleepingGiant'])">
+  @narrator: A wall of fur blocks the lakeshore road from one side to the other. It rises, it falls, it snores. You push it. It snores louder.
+  @narrator: Hermit Ashby's voice comes from his hut: "Only music wakes it! There was a flute at Ash Tower, before the Eclipse lot came!"
+</entry>
+
+<entry id="midFluteElsewhere" on="useItem" target="item.wakingFlute" category="bark" when="!visited('mid.giantWakes')">
+  @narrator: You play one note on the flute. Somewhere south of Fairhaven, something enormous turns over in its sleep. Not here, though. Not yet.
+</entry>
+
+<entry id="midFluteAfter" on="useItem" target="item.wakingFlute" category="bark" when="visited('mid.giantWakes')">
+  @narrator: You play the flute. Every Duskbat within a mile wakes up and tells you about it.
+</entry>

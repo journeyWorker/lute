@@ -4,11 +4,10 @@ id: coldwater
 title: Coldwater
 components: [../components/reaction.component.lute]
 ---
-
 /* Coldwater, an hour off the road from the Tollbridge (`explore` raises it
-   only on that leg). The first visit is the village; the chapel search is a
-   roll the party may fail and come back to until the parish roll is found
-   (`spentBy`, dsl 0.27 §5). */
+only on that leg). The first visit is the village; the chapel search is a
+roll the party may fail and come back to until the parish roll is found
+(`spentBy`, dsl 0.27 §5). */
 
 <beat id="ruins" on="explore" target="place.coldwater" title="Coldwater" priority="20" after="visited('bridge.arrival')">
   @narrator: An hour off the road, where the Company map shows empty hill: chimneys without houses, a chapel without a roof, and twelve years of grass that has not quite managed to cover the lanes.

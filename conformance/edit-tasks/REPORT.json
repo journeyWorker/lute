@@ -1,0 +1,251 @@
+{
+  "01-new-choice": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": "E-PATCH-PRESERVE",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-PRESERVE",
+          "node": "choice:sol.first:solHello.coffee",
+          "preserve": "ids"
+        },
+        "name": "trap-regenerate-ids.json",
+        "status": 2
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "02-delay-clue": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": "E-PATCH-PRESERVE",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-PRESERVE",
+          "node": "entry:codexWraiths",
+          "preserve": "conditions"
+        },
+        "name": "trap-delete-knowledge-guard.json",
+        "status": 2
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "03-optional-quest": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": "E-PATCH-PRESERVE",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-PRESERVE",
+          "node": "objective:meteor.watch",
+          "preserve": "conditions"
+        },
+        "name": "trap-ambiguous-reward.json",
+        "status": 2
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "04-event-period": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": null,
+        "caught": true,
+        "expected": {
+          "diff": {
+            "kind": "scheduling",
+            "node": "beat:perseids.record"
+          }
+        },
+        "name": "trap-repeat-event.json",
+        "status": 1
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "05-component-insert": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": "E-PATCH-PRESERVE",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-PRESERVE",
+          "node": "beat:south.route3.r3YoungsterAda",
+          "preserve": "ids"
+        },
+        "name": "trap-duplicate-instance.json",
+        "status": 2
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "06-host-result": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": "E-PATCH-PRESERVE",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-PRESERVE"
+        },
+        "name": "trap-failure-effects.json",
+        "status": 2
+      },
+      {
+        "actualCode": "E-PATCH-CHECK",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-CHECK"
+        },
+        "name": "trap-unknown-result.json",
+        "status": 2
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "07-item-description": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": null,
+        "caught": true,
+        "expected": {
+          "diff": {
+            "kind": "scheduling",
+            "node": "entry:gotLantern"
+          }
+        },
+        "name": "trap-change-target.json",
+        "status": 1
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "08-merge-area": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": "E-PATCH-CHECK",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-CHECK",
+          "diagnostic": "E-USES-DUP-STATE"
+        },
+        "name": "trap-omit-area-import.json",
+        "status": 2
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "09-npc-death": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": "E-PATCH-PRESERVE",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-PRESERVE",
+          "node": "entry:codexWarden",
+          "preserve": "conditions"
+        },
+        "name": "trap-remove-downstream-guard.json",
+        "status": 2
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "10-job-restriction": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": "E-PATCH-PRESERVE",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-PRESERVE",
+          "node": "line:job.gate.narrator_0020",
+          "preserve": "lineIds"
+        },
+        "name": "trap-delete-rationale.json",
+        "status": 2
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "11-move-scene": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": "E-PATCH-PRESERVE",
+        "caught": true,
+        "expected": {
+          "code": "E-PATCH-PRESERVE",
+          "node": "scene:spine.elite.drakon",
+          "preserve": "ids"
+        },
+        "name": "trap-regenerate-id.json",
+        "status": 2
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  },
+  "12-schedule-action": {
+    "intendedPresent": true,
+    "ok": true,
+    "preservedIdChanges": [],
+    "trapVerdicts": [
+      {
+        "actualCode": null,
+        "caught": true,
+        "expected": {
+          "diff": {
+            "kind": "scheduling",
+            "node": "beat:perseids.tally"
+          }
+        },
+        "name": "trap-no-slot.json",
+        "status": 1
+      }
+    ],
+    "unintendedDiff": [],
+    "validity": true
+  }
+}

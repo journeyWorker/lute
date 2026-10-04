@@ -38,6 +38,7 @@ use tower_lsp_server::ls_types::{
     InitializeParams, InitializeResult, Location, MessageType, OneOf, Position, Range,
     ReferenceParams, SemanticTokens, SemanticTokensFullOptions, SemanticTokensOptions,
     SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+    DocumentFormattingParams, TextEdit as LspTextEdit,
     ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
     WorkDoneProgressOptions,
 };
@@ -723,6 +724,7 @@ impl LanguageServer for Backend {
                         },
                     ),
                 ),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 // Task 15 (D16): quick fixes over `Diagnostic.fixits` — the
                 // author surface for an `E-PERSIST-REMOVED` migrate remedy or
                 // a §8.1 T2 CEL rewrite (`lute fix` applies the former too,
@@ -747,6 +749,36 @@ impl LanguageServer for Backend {
             }),
             ..Default::default()
         })
+    }
+    /// Full-document formatting uses the same lossless formatter as `lute fmt`.
+    /// No range printer is exposed in 0.35; unsaved text comes from the open
+    /// document snapshot and is never written to disk.
+    async fn formatting(
+        &self,
+        params: DocumentFormattingParams,
+    ) -> Result<Option<Vec<LspTextEdit>>> {
+        let uri = params.text_document.uri;
+        let Some(text) = self.document_text(&uri) else {
+            return Ok(None);
+        };
+        let Ok(formatted) =
+            lute_syntax::format_source(&text, &lute_syntax::FormatOptions::default())
+        else {
+            return Ok(None);
+        };
+        let idx = TextIndex::new(&text);
+        let end = idx.position(text.len());
+        let full_range = Range {
+            start: Position { line: 0, character: 0 },
+            end: Position {
+                line: end.line.saturating_sub(1),
+                character: end.utf16_col,
+            },
+        };
+        Ok(Some(vec![LspTextEdit {
+            range: full_range,
+            new_text: formatted.text,
+        }]))
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -1528,6 +1560,26 @@ fn find_def_cel_value_span(text: &str, name: &str) -> Option<Span> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn formatting_edit_uses_cli_formatter_and_full_document_range() {
+        let text = "## S\r\n@narrator: hi  \r\n";
+        let cli = lute_syntax::format_source(text, &lute_syntax::FormatOptions::default())
+            .unwrap();
+        let idx = TextIndex::new(text);
+        let end = idx.position(text.len());
+        let edit = LspTextEdit {
+            range: Range {
+                start: Position { line: 0, character: 0 },
+                end: Position { line: end.line - 1, character: end.utf16_col },
+            },
+            new_text: cli.text.clone(),
+        };
+        assert_eq!(edit.new_text, cli.text);
+        assert_eq!(edit.range.start, Position { line: 0, character: 0 });
+        assert_eq!(edit.range.end.line, 2);
+        assert_eq!(edit.range.end.character, 0);
+    }
+
 
     /// `position_to_byte` is the exact inverse of `TextIndex::position` on a
     /// multibyte document: every byte offset round-trips through its own Position.
@@ -1606,6 +1658,54 @@ mod tests {
                 line: 0,
                 character: 4
             }
+        );
+    }
+
+    #[test]
+    fn cli_at_and_lsp_position_use_the_same_resolution_fixture() {
+        let text = "---\nkind: scene\nstate:\n  user.bond: { type: int }\n---\n\n## Query\n\n::set{user.bond = 1}\n";
+        let (doc, _) = lute_syntax::parse(text);
+        let byte = text.find("user.bond").unwrap();
+        let index = TextIndex::new(text);
+        let position = index.position(byte);
+        let lsp_byte = position_to_byte(
+            text,
+            Position {
+                line: position.line - 1,
+                character: position.utf16_col,
+            },
+        );
+        let snapshot = lute_manifest::core::load_core_snapshot();
+        let cli = lute_resolve::resolve_position(
+            lute_resolve::PositionQuery {
+                document: &doc,
+                source: text,
+                byte_offset: byte,
+            },
+            &lute_check::SchemaImports::default(),
+            &snapshot,
+        )
+        .unwrap();
+        let lsp = lute_resolve::resolve_position(
+            lute_resolve::PositionQuery {
+                document: &doc,
+                source: text,
+                byte_offset: lsp_byte,
+            },
+            &lute_check::SchemaImports::default(),
+            &snapshot,
+        )
+        .unwrap();
+        assert_eq!(cli.expected_type, lsp.expected_type);
+        assert_eq!(
+            cli.visible_symbols
+                .iter()
+                .map(|symbol| (&symbol.name, &symbol.ty))
+                .collect::<Vec<_>>(),
+            lsp.visible_symbols
+                .iter()
+                .map(|symbol| (&symbol.name, &symbol.ty))
+                .collect::<Vec<_>>()
         );
     }
 

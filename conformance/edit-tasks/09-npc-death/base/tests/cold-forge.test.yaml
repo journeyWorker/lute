@@ -1,0 +1,11 @@
+# Oskar's quest: the maul-head is taken when the Gatekeeper falls (a targeted
+# objective), then the reforge completes it.
+file: ../quests/bonds.lute
+accepts: [coldForge]
+facts: ["slew(gatekeeper)"]
+state: { user.hammerReforged: true }
+occasions: [bossDefeated@boss.gatekeeper]
+expect:
+  quests: { coldForge: complete, sableLost: unset, hammerTrial: unset }
+  state: { user.bond.oskar: 1 }
+  transcriptContains: ["Don't tell Maud I cried."]

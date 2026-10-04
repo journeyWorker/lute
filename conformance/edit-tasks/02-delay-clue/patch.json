@@ -1,0 +1,1 @@
+{"base":{"project":"@BASE@"},"targets":["entry:codexGatekeeper"],"edits":[{"op":"replaceAttr","node":"entry:codexGatekeeper","attr":"when","value":"holds('everSlew', ['gatekeeper']) && run.floor >= 5"}],"preserve":[{"ids":["entry:codexHounds","entry:codexWraiths"]}]}

@@ -3,9 +3,8 @@ kind: lore
 id: brann
 title: Captain Brannoch
 ---
-
 /* Brann's talk ladder. His everyday line moves with the run count; the story
-   beats outrank it when their moment comes. */
+beats outrank it when their moment comes. */
 
 <beat id="oath" on="talk" target="npc.brann" title="The captain's terms" priority="40" once="user">
   @brann{emotion="grim"}: Sit. No, sit. I've dragged four bodies out of that water this year and you're the only one that argued.

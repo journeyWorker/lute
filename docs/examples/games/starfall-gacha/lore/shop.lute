@@ -3,9 +3,8 @@ kind: lore
 id: shop
 title: Event shops
 ---
-
 /* Pim runs the event stall. The engine owns tokens and stock; ::purchase
-   is a blocking bridge that answers bought / remaining. */
+is a blocking bridge that answers bought / remaining. */
 
 <beat id="pimHarvest" on="shopVisit" target="shop.harvestShop" once="false" when="@harvestShopOpen">
   @pim{emotion="happy" when="@harvestLive"}: Welcome to the Harvest stall! The festival runs {{@harvestDaysLeft:plural(# more day|# more days)}} after today. You've got {{season.harvest.tokens:plural(# token|# tokens)}}.

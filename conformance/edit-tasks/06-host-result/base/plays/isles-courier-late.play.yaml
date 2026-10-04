@@ -1,0 +1,19 @@
+# AREA isles: the courier notice taken in the afternoon and carried into the
+# night: the objective's `by` fails it at nightfall.
+#
+#   lute play . --script plays/isles-courier-late.play.yaml
+facts: [rivalBeaten(champion)]
+state: { run.slot: day }
+steps:
+  - label: the player takes the courier notice
+    engine: { accept: [islesCourier] }
+    expect: { quests: { islesCourier: active } }
+  - advance: { to: night }
+    expect: { quests: { islesCourier: failed } }
+  - occasion: talk
+    target: npc.coralreachKeeper
+    expect: { winner: islesNerissaBark }
+expect:
+  quests: { islesCourier: failed }
+  state: { quest.islesCourier.failedBy: by }
+  transcriptContains: ["@narrator: Night falls over Coralreach."]

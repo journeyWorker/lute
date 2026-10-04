@@ -1,0 +1,10 @@
+# Pell only offers the waxed paper while the lantern quest is on.
+file: ../lore/talks.lute
+beat: pellPost
+quests: { lantern: active }
+state: { run.day: 2, run.slot: morning }
+choose: { post: paper }
+expect:
+  options: { post: [paper, tea] }
+  facts: ["carrying(paper)"]
+  eligible: true
