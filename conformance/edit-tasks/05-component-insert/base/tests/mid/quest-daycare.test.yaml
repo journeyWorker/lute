@@ -1,8 +1,0 @@
-# A Mothfuzz caught is only half of it: Ilse has to see it.
-file: ../../quests/mid/side-quests.lute
-accepts: [midDayCareRunaway]
-facts: [caught(mothfuzz)]
-occasions: [talk@npc.fairhavenDayCareLady]
-expect:
-  quests: { midDayCareRunaway: complete }
-  transcriptContains: ["That's not our Mothfuzz, dear."]

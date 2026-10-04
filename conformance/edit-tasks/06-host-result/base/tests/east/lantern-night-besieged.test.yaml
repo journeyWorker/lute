@@ -1,6 +1,0 @@
-# Lantern night during the siege: the procession stops in the hall.
-file: ../../scenes/east/lantern-night.lute
-state: { run.lair.towerSiege: found, run.day: 12, run.slot: night }
-expect:
-  transcriptContains: ["Nobody will go past the third step", "@ashgroveLanternMaker: Elder Rook always carries the first lantern."]
-  transcriptLacks: ["Carry one up for me"]

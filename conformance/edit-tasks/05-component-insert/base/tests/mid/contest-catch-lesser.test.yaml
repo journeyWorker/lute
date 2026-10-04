@@ -1,8 +1,0 @@
-# A common bug after a fine one keeps the fine score.
-file: ../../lore/mid/bug-contest.lute
-beat: catchCommon
-state: { run.midContest: entered, run.midContestScore: 2, occasion.target: inchlet }
-expect:
-  eligible: true
-  state: { run.midContestScore: 2 }
-  transcriptContains: ["@narrator: A inchlet. It counts, and the judges have seen plenty of them today."]

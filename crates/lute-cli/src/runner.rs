@@ -215,7 +215,7 @@ pub fn run_artifact(
                 }
             }
         }
-        let artifact_for_expr = art.clone();
+        let exprs = ExprIndex::new([&art]);
         {
             let header = json!({"kind": "env", "env": env});
             if let Ok(mut f) = file.try_borrow_mut() {
@@ -225,8 +225,11 @@ pub fn run_artifact(
             }
         }
         m = m.with_eval_observer(move |raw, value, _atoms, snapshot| {
-            let expr = find_expr(&artifact_for_expr, raw).unwrap_or(Json::Null);
-            let (_roots, relations, needs_visited) = condition_scope(&expr);
+            let condition = exprs.get(raw);
+            let expr = condition.map_or(Json::Null, |condition| condition.expr.clone());
+            let no_relations = BTreeSet::new();
+            let (relations, needs_visited) = condition
+                .map_or((&no_relations, false), |condition| (&condition.relations, condition.needs_visited));
             let paths: BTreeSet<String> = snapshot.reads.iter().map(|(p, _)| p.clone()).collect();
             let mut dump_state = snapshot.state.clone();
             for (path, read) in snapshot.reads {
@@ -256,10 +259,12 @@ pub fn run_artifact(
             if needs_visited {
                 line["visited"] = snapshot.visited.iter().cloned().collect::<Vec<_>>().into();
             }
-            if let Ok(mut f) = file.try_borrow_mut() {
-                let _ = serde_json::to_writer(&mut *f, &line);
+            // One write per line: the dump file is unbuffered, and serializing
+            // straight into it issues a syscall per JSON token.
+            if let (Ok(mut f), Ok(mut bytes)) = (file.try_borrow_mut(), serde_json::to_vec(&line)) {
                 use std::io::Write;
-                let _ = writeln!(f);
+                bytes.push(b'\n');
+                let _ = f.write_all(&bytes);
             }
         });
     }
@@ -448,11 +453,7 @@ pub(crate) fn activation_json_paths(
         let child = map.entry(parts[0].to_string()).or_insert_with(|| json!({"map": {}}));
         insert(child, &parts[1..], value);
     }
-    let wanted = |candidate: &str| selected_paths.iter().any(|selected| {
-        selected == candidate
-            || selected.starts_with(&format!("{candidate}."))
-            || candidate.starts_with(&format!("{selected}."))
-    });
+    let wanted = |candidate: &str| path_wanted(selected_paths, candidate);
     let mut out = json!({"map": {}});
     for selected in selected_paths {
         let root = selected.split('.').next().unwrap_or(selected);
@@ -477,6 +478,17 @@ pub(crate) fn activation_json_paths(
         }
     }
     out.get("map").cloned().unwrap_or_else(|| json!({}))
+}
+
+/// Whether `candidate` is a selected path, an ancestor of one, or below one —
+/// the only state entries a condition-dump activation can contain.
+pub(crate) fn path_wanted(selected_paths: &BTreeSet<String>, candidate: &str) -> bool {
+    fn below(path: &str, parent: &str) -> bool {
+        path.len() > parent.len() && path.starts_with(parent) && path.as_bytes()[parent.len()] == b'.'
+    }
+    selected_paths
+        .iter()
+        .any(|selected| selected == candidate || below(selected, candidate) || below(candidate, selected))
 }
 
 pub(crate) fn condition_facts(
@@ -578,16 +590,51 @@ mod dump_tests {
 
 }
 
-pub(crate) fn find_expr(value: &Json, cel: &str) -> Option<Json> {
-    match value {
-        Json::Object(map) => {
-            if map.get("cel").and_then(Json::as_str) == Some(cel) {
-                return map.get("expr").cloned();
+/// One condition's emitted `expr` tree and the scope the dump reads from it.
+pub(crate) struct DumpCondition {
+    pub expr: Json,
+    pub relations: BTreeSet<String>,
+    pub needs_visited: bool,
+}
+
+/// Emitted conditions keyed by raw CEL text, built once per condition dump so
+/// each evaluation is a lookup instead of a walk over every artifact. Within an
+/// artifact the first node carrying a `cel` decides (depth-first, node before
+/// children); across artifacts the first one whose deciding node has an
+/// `expr` wins.
+pub(crate) struct ExprIndex(std::collections::HashMap<String, DumpCondition>);
+
+impl ExprIndex {
+    pub(crate) fn new<'a>(artifacts: impl IntoIterator<Item = &'a Json>) -> Self {
+        fn collect<'a>(value: &'a Json, first: &mut std::collections::HashMap<&'a str, Option<&'a Json>>) {
+            match value {
+                Json::Object(map) => {
+                    if let Some(cel) = map.get("cel").and_then(Json::as_str) {
+                        first.entry(cel).or_insert(map.get("expr"));
+                    }
+                    map.values().for_each(|v| collect(v, first));
+                }
+                Json::Array(items) => items.iter().for_each(|v| collect(v, first)),
+                _ => {}
             }
-            map.values().find_map(|v| find_expr(v, cel))
         }
-        Json::Array(items) => items.iter().find_map(|v| find_expr(v, cel)),
-        _ => None,
+        let mut index = std::collections::HashMap::new();
+        for artifact in artifacts {
+            let mut first = std::collections::HashMap::new();
+            collect(artifact, &mut first);
+            for (cel, expr) in first {
+                let Some(expr) = expr else { continue };
+                index.entry(cel.to_owned()).or_insert_with(|| {
+                    let (_roots, relations, needs_visited) = condition_scope(expr);
+                    DumpCondition { expr: expr.clone(), relations, needs_visited }
+                });
+            }
+        }
+        Self(index)
+    }
+
+    pub(crate) fn get(&self, cel: &str) -> Option<&DumpCondition> {
+        self.0.get(cel)
     }
 }
 

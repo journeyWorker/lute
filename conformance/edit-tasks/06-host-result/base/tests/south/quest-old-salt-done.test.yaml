@@ -1,9 +1,0 @@
-# With both fish shown, both lessons and the parent close, and lesson two
-# pays a Mystic Water. (Lesson two accepted here directly: see S2.)
-file: ../../quests/south/side.lute
-accepts: [southOldSalt, southOldSaltBig]
-facts: [caught(goldfinn), caught(crownfinn)]
-occasions: [talk@npc.tidewellMorrow]
-expect:
-  quests: { southOldSalt: complete, southOldSaltFirst: complete, southOldSaltBig: complete }
-  transcriptContains: ["That's everything I know."]

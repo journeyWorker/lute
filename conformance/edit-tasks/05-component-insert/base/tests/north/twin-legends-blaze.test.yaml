@@ -1,6 +1,0 @@
-# complete="any": the fire bird alone completes the legends and supersedes the ice bird.
-file: ../../quests/north/side.lute
-accepts: [northTwinLegends, northFrostwing, northBlazewing]
-facts: [caught(blazewing)]
-expect:
-  quests: { northTwinLegends: complete, northBlazewing: complete, northFrostwing: failed }

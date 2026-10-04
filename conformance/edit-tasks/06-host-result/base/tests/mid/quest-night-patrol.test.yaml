@@ -1,7 +1,0 @@
-# The board's bounty: all three Riders, paid into the purse by the reward.
-file: ../../quests/mid/side-quests.lute
-accepts: [midNightPatrol]
-facts: [defeated(r10BikerGrit), defeated(r10BikerVanya), defeated(r10RockerJolene)]
-expect:
-  quests: { midNightPatrol: complete }
-  state: { run.money: 6000 }

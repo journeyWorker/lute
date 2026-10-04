@@ -1,9 +1,0 @@
-# Short of the fee, the only option is to decline; nothing changes.
-file: ../../lore/mid/bug-contest.lute
-beat: register
-state: { run.day: 4, run.slot: day, run.money: 300 }
-choose: { midContestEnter: decline }
-expect:
-  eligible: true
-  options: { midContestEnter: [decline] }
-  state: { run.midContest: closed, run.money: 300 }

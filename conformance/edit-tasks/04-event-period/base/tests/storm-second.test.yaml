@@ -1,9 +1,0 @@
-# The second storm of a summer: the mast chore is back (season:storm), and
-# the intern's hands remember the last storm's knot.
-file: ../lore/storm.lute
-beat: mast
-state: { run.weather: storm, run.slot: night, prev.season.storm.mast: true }
-expect:
-  eligible: true
-  state: { season.storm.mast: true }
-  transcriptContains: ["You tie the same bowline you tied last storm."]

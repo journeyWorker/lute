@@ -1,6 +1,0 @@
-# The loop: a third death and the gravel remembers.
-file: ../scenes/arrival.lute
-state: { user.deaths: 3 }
-choose: { goIn: quiet }
-expect:
-  transcriptContains: ["The ward keeps the night on a loop and me inside it."]

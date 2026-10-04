@@ -1,7 +1,0 @@
-# The desk takes entries only on contest days, before night, once a day.
-file: ../../lore/mid/bug-contest.lute
-entry: midContestDeskOff
-state: { run.day: 3, run.slot: morning, run.midContestDay: 2 }
-expect:
-  eligible: { register: false, midContestDeskOff: true, midContestDeskNight: false, midContestDeskDone: false }
-  transcriptContains: ["Today, I'm just a woman at a desk."]

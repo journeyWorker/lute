@@ -1,5 +1,0 @@
-file: ../../lore/mid/gates.lute
-entry: midGateSleepingGiant
-facts: [hasItem(wakingFlute)]
-expect:
-  eligible: { midGateSleepingGiant: false }

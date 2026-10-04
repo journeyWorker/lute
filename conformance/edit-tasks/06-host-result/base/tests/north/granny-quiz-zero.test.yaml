@@ -1,7 +1,0 @@
-# No right answers.
-file: ../../lore/north/cinderisle.lute
-beat: grannyQuiz
-choose: { northQuizOne: grass, northQuizTwo: volcano, northQuizThree: seven }
-expect:
-  transcriptContains: ["@cinderGranny: Not a single one! Oh, you remind me of Ignatius at your age."]
-  end: complete

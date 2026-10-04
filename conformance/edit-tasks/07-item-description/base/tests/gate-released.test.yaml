@@ -1,8 +1,0 @@
-# The ledger burned and the bell rung: the ward goes to sleep behind them.
-file: ../scenes/endings/gate.lute
-facts: [holding(keycard), following(tobias)]
-quests: { quietWard: complete }
-bridges: { keypad: [ { entered: 275 } ] }
-expect:
-  state: { run.fate: released }
-  transcriptContains: ["@child: Night night, nurse.", "@nell: I heard. Let them sleep."]

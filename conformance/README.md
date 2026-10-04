@@ -198,3 +198,18 @@ Invalid engine fixtures use `engine.yaml`, an artifact, and `expected-stderr`; t
 The 0.35.0 AI edit-loop conformance suite is in
 [`edit-tasks/`](edit-tasks/). It contains 12 inspect/plan/patch/check cases;
 `REPORT.json` records the expected outcomes.
+
+Each numbered task directory contains `task.json`, which names the canonical
+game directory used as its base:
+
+```json
+{"base":"docs/examples/games/summer-station"}
+```
+
+The base is never copied into the task fixture. The runner builds one model
+for each distinct base game, then applies the reference patch and every
+`trap-*.json` as a dry-run against that real directory. Dry-runs stage all
+edits and rebuild the staged model, but never write the game tree. The
+12 task tests run independently and may execute in parallel. The standalone
+job-restriction fixture is at
+`edit-tasks/_games/job-restriction/` and is selected by its `task.json`.

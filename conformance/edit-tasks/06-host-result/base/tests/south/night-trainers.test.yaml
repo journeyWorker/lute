@@ -1,8 +1,0 @@
-# Who is out at night on Route 1: Ben, not the bug catcher or Todd.
-file: ../../lore/south/route1.lute
-beat: r1YoungsterBen
-state: { run.slot: night }
-bridges: { battle: [ { won: true } ] }
-expect:
-  eligible: true
-  facts: [defeated(r1YoungsterBen)]

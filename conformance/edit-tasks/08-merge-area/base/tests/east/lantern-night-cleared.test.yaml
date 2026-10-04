@@ -1,6 +1,0 @@
-# Lantern night after the siege: the town climbs to the top with Elder Rook.
-file: ../../scenes/east/lantern-night.lute
-state: { run.lair.towerSiege: cleared, run.day: 5, run.slot: night }
-expect:
-  transcriptContains: ["This week they climb all the way to the top.", "@elderRook: There you are. Carry one up for me, would you?"]
-  transcriptLacks: ["Nobody will go past the third step"]

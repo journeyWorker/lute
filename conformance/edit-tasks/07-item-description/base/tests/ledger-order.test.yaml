@@ -1,5 +1,0 @@
-# Page three read after page one: Nell puts the digits together.
-file: ../lore/ledger.lute
-entries: [ledgerPage1, ledgerPage2, ledgerPage3]
-expect:
-  transcriptContains: ["@nell: Two. Seven. And five. Page by page."]

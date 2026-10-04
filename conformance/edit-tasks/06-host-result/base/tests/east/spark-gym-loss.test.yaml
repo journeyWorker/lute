@@ -1,8 +1,0 @@
-# Losing to Lt. Volta: no badge, no prize, and none of his winner's lines.
-file: ../../scenes/east/spark-gym.lute
-bridges: { battle: [ { won: false } ] }
-expect:
-  notFacts: [hasBadge(spark), defeated(volta), canUse(fly)]
-  state: { run.money: 3000 }
-  transcriptContains: ["@volta: Ha! Zapped! That's what happens, kid."]
-  transcriptLacks: ["received the Spark Badge", "Kid's got spirit."]

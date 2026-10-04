@@ -1,7 +1,0 @@
-# The tooth goes back in; Strength comes out.
-file: ../../scenes/mid/warden-holt.lute
-facts: [hasItem(goldTooth), hasBadge(bloom)]
-expect:
-  end: complete
-  facts: [hasItem(hmStrength), canUse(strength), canPass(victoryRoadBoulders)]
-  notFacts: [hasItem(goldTooth)]

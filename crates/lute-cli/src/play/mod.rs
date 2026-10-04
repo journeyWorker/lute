@@ -96,6 +96,8 @@ use json::render_json;
 use outcome::{judge, play_outcome, played_choices, PlayedChoice};
 use plan::{locate_step_error, plan_script, plan_steps, Step};
 use project::{compile_play_project, compile_project};
+#[cfg(test)]
+pub(crate) use project::{assemble_project_from_model, build_project_model, manifest_gate, PLAY};
 use provenance::fact_origins;
 use run::execute;
 use script::{parse_script, parse_script_with, PlayScript, ScriptStep};
@@ -278,25 +280,33 @@ fn install_condition_dump(
             entry.get("default").and_then(json_to_value).map(|v| (path.clone(), v))
         })
         .collect();
-    let artifacts: Vec<Json> = project.artifacts.values().cloned().collect();
+    let exprs = crate::runner::ExprIndex::new(project.artifacts.values());
     let observer: SessionEvalObserver = Rc::new(move |raw, value, _atoms, snapshot| {
-        let expr = artifacts
-            .iter()
-            .find_map(|artifact| crate::runner::find_expr(artifact, raw))
-            .unwrap_or(Json::Null);
-        let (_roots, relations, needs_visited) = crate::runner::condition_scope(&expr);
+        let condition = exprs.get(raw);
+        let expr = condition.map_or(Json::Null, |condition| condition.expr.clone());
+        let no_relations = BTreeSet::new();
+        let (relations, needs_visited) = condition
+            .map_or((&no_relations, false), |condition| (&condition.relations, condition.needs_visited));
         let paths: BTreeSet<String> = snapshot.reads.iter().map(|(p, _)| p.clone()).collect();
-        let mut dump_state = snapshot.state.clone();
+        // Only paths `activation_json_paths` can emit: cloning the whole state
+        // and every default per evaluation dominated large dumps.
+        let wanted = |path: &str| crate::runner::path_wanted(&paths, path);
+        let mut dump_state: std::collections::BTreeMap<String, lute_trace::Value> = snapshot
+            .state
+            .iter()
+            .filter(|(path, _)| wanted(path))
+            .map(|(path, value)| (path.clone(), value.clone()))
+            .collect();
         for (path, read) in snapshot.reads {
             if let lute_trace::Read::Value(value) = read {
                 dump_state.insert(path.clone(), value.clone());
             }
         }
         for (id, status) in snapshot.quest_status {
-            dump_state.insert(
-                format!("quest.{id}.state"),
-                lute_trace::Value::Str(status.clone()),
-            );
+            let path = format!("quest.{id}.state");
+            if wanted(&path) {
+                dump_state.insert(path, lute_trace::Value::Str(status.clone()));
+            }
         }
         if let Some(target) = snapshot.occasion_target {
             dump_state.insert(
@@ -305,7 +315,9 @@ fn install_condition_dump(
             );
         }
         for (path, default) in &defaults {
-            dump_state.entry(path.clone()).or_insert_with(|| default.clone());
+            if !dump_state.contains_key(path) && wanted(path) {
+                dump_state.insert(path.clone(), default.clone());
+            }
         }
         let mut line = json!({
             "cel": raw,
@@ -317,9 +329,11 @@ fn install_condition_dump(
         if needs_visited {
             line["visited"] = snapshot.visited.iter().cloned().collect::<Vec<_>>().into();
         }
-        if let Ok(mut f) = file.try_borrow_mut() {
-            let _ = serde_json::to_writer(&mut *f, &line);
-            let _ = writeln!(f);
+        // One write per line: the dump file is unbuffered, and serializing
+        // straight into it issues a syscall per JSON token.
+        if let (Ok(mut f), Ok(mut bytes)) = (file.try_borrow_mut(), serde_json::to_vec(&line)) {
+            bytes.push(b'\n');
+            let _ = f.write_all(&bytes);
         }
     });
     world.eval_observer = Some(observer);
@@ -638,7 +652,7 @@ pub(crate) struct PlayedBeat {
 /// and presents nothing.
 #[cfg(test)]
 pub(crate) fn presentations_for_diff(
-    dir: &Path,
+    project: &ExecProject,
     script_path: &Path,
 ) -> Result<Vec<PlayedBeat>, String> {
     let text = std::fs::read_to_string(script_path)
@@ -647,10 +661,9 @@ pub(crate) fn presentations_for_diff(
     if script.steps.is_empty() {
         return Ok(Vec::new());
     }
-    let project = compile_play_project(dir, project::PLAY, &crate::EngineMatrix::reference()).map_err(|(_, msg)| msg)?;
     let (plan, world) =
-        plan_script(&project, &script, script_path, false).map_err(|(_, msg)| msg)?;
-    let play = execute(&script, &plan, Session::resume(&project, world));
+        plan_script(project, &script, script_path, false).map_err(|(_, msg)| msg)?;
+    let play = execute(&script, &plan, Session::resume(project, world));
     let halt = play.outcome.as_ref().err().map(PlayHalt::exit_label);
     let mut out: Vec<PlayedBeat> = Vec::new();
     let steps = play.steps.len();

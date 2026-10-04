@@ -1,6 +1,0 @@
-file: ../../quests/north/side.lute
-accepts: [northFridaySwimmer]
-facts: [seen(shellnessie), caught(shellnessie)]
-expect:
-  quests: { northFridaySwimmer: complete }
-  transcriptContains: ["The board says you caught the Friday swimmer."]

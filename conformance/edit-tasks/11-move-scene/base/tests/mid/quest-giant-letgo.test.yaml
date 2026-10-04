@@ -1,8 +1,0 @@
-# The battle ends with Slumbear seen but not caught: it goes home.
-file: ../../quests/mid/side-quests.lute
-accepts: [midSleepingGiant]
-facts: [seen(slumbear)]
-occasions: [battleEnd]
-expect:
-  quests: { midSleepingGiant: complete }
-  transcriptContains: ["lumbers off toward the hills"]

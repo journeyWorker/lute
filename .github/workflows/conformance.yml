@@ -1,8 +1,20 @@
 name: conformance
 
+# On a PR branch the `pull_request` run covers each push; `push` is kept for
+# main only, so a PR push no longer runs the harness twice.
 on:
   push:
+    branches: [main]
   pull_request:
+
+# One in-flight run per ref; a new push cancels the previous run.
+concurrency:
+  group: conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   cel-equivalence:
@@ -35,7 +47,4 @@ jobs:
         working-directory: conformance/harness/js
         run: npm ci
       - name: Run Lute and both CEL harnesses
-        env:
-          CARGO_PROFILE_DEV_DEBUG: line-tables-only
-          CARGO_INCREMENTAL: '0'
         run: conformance/harness/run.sh

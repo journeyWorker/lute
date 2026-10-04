@@ -1,8 +1,0 @@
-# Beating Koji is not enough: the report objective is judged at the master.
-file: ../../quests/north/side.lute
-accepts: [northDojo]
-facts: [defeated(verdantDojoKarateKoji)]
-occasions: [talk@npc.verdantDojoMaster]
-expect:
-  quests: { northDojo: complete }
-  transcriptContains: ["@verdantDojoMaster: Hah! Koji will be sulking for a week. Take this. A dojo pays its debts."]

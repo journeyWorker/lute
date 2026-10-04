@@ -134,8 +134,7 @@ pub struct ImpactReport {
 
 /// Build an impact report from the model's semantic graph.
 pub fn query(model: &ProjectModel, target: &ImpactTarget) -> ImpactReport {
-    let graph = SemanticGraph::build(model);
-    query_graph(&graph, model.root().to_string_lossy().to_string(), target)
+    query_graph(model.graph(), model.root().to_string_lossy().to_string(), target)
 }
 /// Traverse a graph from `target`, retaining the strongest explanation paths.
 pub fn query_graph(graph: &SemanticGraph, root: String, target: &ImpactTarget) -> ImpactReport {

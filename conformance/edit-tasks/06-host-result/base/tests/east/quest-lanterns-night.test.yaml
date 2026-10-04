@@ -1,6 +1,0 @@
-# eastLanterns the other way: having walked on lantern night is enough.
-file: ../../quests/east/side-quests.lute
-accepts: [eastLanterns]
-visited: [east.lanternNight]
-expect:
-  quests: { eastLanterns: complete }

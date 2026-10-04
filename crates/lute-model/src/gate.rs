@@ -101,21 +101,28 @@ pub fn reconciled_project_results(
         eprintln!("lute: cannot build project {}: {error}", dir.display());
         ExitCode::from(2)
     })?;
-    let outputs = model.reconciled();
-    let mut cycle_degraded: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
-    for scenario in outputs.scenarios.values() {
-        for node in scenario.graph.nodes.keys() {
-            if node_cycle_degraded(scenario, node) {
-                cycle_degraded.insert(node.clone());
+    Ok(ReconciledProject::of(&model))
+}
+
+impl ReconciledProject {
+    /// The gate verdicts `model`'s reconciliation already computed.
+    pub fn of(model: &ProjectModel) -> Self {
+        let outputs = model.reconciled();
+        let mut cycle_degraded: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
+        for scenario in outputs.scenarios.values() {
+            for node in scenario.graph.nodes.keys() {
+                if node_cycle_degraded(scenario, node) {
+                    cycle_degraded.insert(node.clone());
+                }
             }
         }
+        ReconciledProject {
+            per_doc: outputs.checks.iter().cloned().collect(),
+            project_diagnostics: outputs.diagnostics.clone(),
+            cycle_degraded,
+            nodes_by_path: outputs.nodes_by_path.clone(),
+        }
     }
-    Ok(ReconciledProject {
-        per_doc: outputs.checks.iter().cloned().collect(),
-        project_diagnostics: outputs.diagnostics.clone(),
-        cycle_degraded,
-        nodes_by_path: outputs.nodes_by_path.clone(),
-    })
 }
 
 /// The project-aware gate verdict for one `file` compiled/traced under

@@ -1,5 +1,0 @@
-# The first listen: ::fright is the engine's own write, -1.
-file: ../lore/notes.lute
-entry: tape
-expect:
-  state: { run.sanity: 9 }

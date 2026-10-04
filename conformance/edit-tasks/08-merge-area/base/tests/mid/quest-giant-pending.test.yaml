@@ -1,6 +1,0 @@
-# Seen but no battleEnd yet (the battle is still going): still open.
-file: ../../quests/mid/side-quests.lute
-accepts: [midSleepingGiant]
-facts: [seen(slumbear)]
-expect:
-  quests: { midSleepingGiant: active }

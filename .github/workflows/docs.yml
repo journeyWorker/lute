@@ -38,6 +38,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   consistency:
@@ -82,7 +83,7 @@ jobs:
       # regression that turns any of them into an Error-severity failure
       # (exit 1) fails this job.
       - name: check-project docs/examples
-        run: cargo run -q -p lute-cli -- check-project docs/examples
+        run: ./target/debug/lute check-project docs/examples
 
       # docs/examples/games/<slug> holds the fourteen dogfood games, each its
       # own project (spec 0.29 §6). They are held to a stricter bar than the
@@ -94,7 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           for game in docs/examples/games/*/; do
-            cargo run -q -p lute-cli -- check-project --deny-warnings "${game%/}"
+            ./target/debug/lute check-project --deny-warnings "${game%/}"
           done
 
       # The 34 `*.test.yaml` scenario tests under docs/examples were reachable
@@ -123,7 +124,7 @@ jobs:
       # docs/superpowers/notes/2026-07-31-haven-drive-test-findings.md). This
       # step catches the former class and is honestly blind to the latter.
       - name: lute test docs/examples
-        run: cargo run -q -p lute-cli -- test docs/examples
+        run: ./target/debug/lute test docs/examples
 
       # A doc's ```lute blocks are source too, and until now nothing ever ran a
       # checker over them: the `website` job builds pages, not snippets, and

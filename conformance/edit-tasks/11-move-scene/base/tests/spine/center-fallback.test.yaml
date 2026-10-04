@@ -1,7 +1,0 @@
-# (0.27) The fallback Monster Center is a kind:town beat and names the town
-# by its label (it said "Verdane" everywhere before).
-file: ../../lore/spine/services.lute
-beat: centerFallback
-state: { occasion.target: hollowtown }
-expect:
-  transcriptContains: ["@nurse: Welcome to the Hollowtown Monster Center!"]

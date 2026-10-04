@@ -1,8 +1,0 @@
-# Before east lifts the siege of Ash Tower the tower's doors are chained, and
-# the contract beat is not eligible.
-file: ../../lore/mid/eclipse.lute
-beat: helixSealed
-state: { run.lair.towerSiege: found }
-expect:
-  eligible: true
-  transcriptContains: ["The Director's busy in Ashgrove"]

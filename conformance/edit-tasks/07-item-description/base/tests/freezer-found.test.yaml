@@ -1,9 +1,0 @@
-# The bed card said drawer 13. Tobias walks.
-file: ../scenes/puzzles/freezer.lute
-entriesRead: { run: [bedCard] }
-choose: { drawer: thirteen }
-expect:
-  options: { drawer: [seven, twentyOne, thirteen] }
-  facts: [following(tobias), solved(freezer)]
-  transcriptContains: ["@tobias: ...Nell? They said I had to be in bed by three."]
-  end: complete

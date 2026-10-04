@@ -1,9 +1,0 @@
-# Blue, red, drain: the tub empties and the engine hands over the brass key.
-file: ../scenes/puzzles/hydro-valves.lute
-entriesRead: { run: [drawing] }
-choose: { first: blue, second: red, third: drain }
-expect:
-  facts: [solved(hydroValves), holding(brassKey), canEnter(office)]
-  state: { run.fate: alive, run.sanity: 10 }
-  transcriptContains: ["It is warm, like it's been held."]
-  end: complete

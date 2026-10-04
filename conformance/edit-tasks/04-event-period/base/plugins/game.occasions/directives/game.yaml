@@ -1,8 +1,0 @@
-# The engine's inventory: a lantern part goes into the player's bag (the game
-# shows a keepsake toast) and the carrying fact holds from then on.
-directives:
-  - name: gather
-    attrs:
-      - { name: part, required: true, type: { entity: part } }
-    effects:
-      asserts: ["carrying(@part)"]

@@ -1,6 +1,0 @@
-# Surf (disc + Venom Badge) and Strength (disc + Bloom Badge): those two go quiet.
-file: ../../lore/north/gates.lute
-entries: [northBlockSeaRoute, northBlockVictoryRoadBoulders]
-facts: [hasItem(hmSurf), hasBadge(venom), hasItem(hmStrength), hasBadge(bloom)]
-expect:
-  eligible: { northBlockSeaRoute: false, northBlockVictoryRoadBoulders: false, northBlockCinderGymDoor: true }

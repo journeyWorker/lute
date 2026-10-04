@@ -1,9 +1,0 @@
-# II then I lights the boiler; surgery's electric doors can open.
-file: ../scenes/puzzles/boiler.lute
-beat: levers
-entriesRead: { run: [roster] }
-choose: { order: twoOne }
-expect:
-  state: { run.power: true }
-  facts: [canEnter(surgery)]
-  end: complete

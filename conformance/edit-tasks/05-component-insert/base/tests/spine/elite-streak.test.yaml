@@ -1,7 +1,0 @@
-# A loss to Morwen resets the whole Elite Four streak.
-file: ../../scenes/spine/elite-morwen.lute
-facts: [hasBadge(stone), hasBadge(tide), hasBadge(spark), hasBadge(bloom), hasBadge(mind), hasBadge(venom), hasBadge(blaze), hasBadge(earth), defeated(frostine), defeated(tarrok)]
-bridges: { battle: [ { won: false } ] }
-expect:
-  notFacts: [defeated(frostine), defeated(tarrok), defeated(morwen), beatElite(frostine)]
-  transcriptContains: ["@morwen: They saw a child who was not ready. Rest."]

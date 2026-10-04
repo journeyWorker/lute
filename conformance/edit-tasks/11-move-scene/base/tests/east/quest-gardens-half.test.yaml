@@ -1,8 +1,0 @@
-# Seeds delivered but Tom never asked: the bees errand is still unset and
-# the parent stays active.
-file: ../../quests/east/side-quests.lute
-accepts: [eastGardens, eastGardensSeeds]
-occasions: [talk@npc.portvoltVendor]
-expect:
-  quests: { eastGardens: active, eastGardensSeeds: complete, eastGardensBees: unset }
-  transcriptLacks: ["Seeds in Portvolt, a queen in the hive."]

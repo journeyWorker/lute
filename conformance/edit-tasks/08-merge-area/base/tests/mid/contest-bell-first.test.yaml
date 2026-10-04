@@ -1,7 +1,0 @@
-# The bell with a rare bug in the bag: first prize, a win, the desk closed.
-file: ../../lore/mid/bug-contest.lute
-beat: judgeFirst
-state: { run.midContest: entered, run.midContestScore: 3, run.midContestWins: 1 }
-expect:
-  eligible: { judgeFirst: true, judgeSecond: false, judgeThird: false, judgeNone: false }
-  state: { run.midContest: closed, run.midContestWins: 2 }

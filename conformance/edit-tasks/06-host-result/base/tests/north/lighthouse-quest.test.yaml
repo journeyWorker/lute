@@ -1,8 +1,0 @@
-# The lighthouse needs both: a fire monster caught and the lamp lit with Maud.
-file: ../../quests/north/side.lute
-accepts: [northLighthouse]
-facts: [caught(magmaboar)]
-visited: [north.frostharbor.maudRelight]
-expect:
-  quests: { northLighthouse: complete }
-  transcriptContains: ["@narrator: Down in the harbor, a boat sounds its horn at the light. Then another."]

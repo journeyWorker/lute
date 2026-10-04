@@ -1,7 +1,0 @@
-stateShapes:
-  - name: keypadResult
-    fields:
-      - { name: entered, type: int, default: 0 }
-  - name: evadeResult
-    fields:
-      - { name: outcome, type: { enum: [lost, hurt, taken] }, default: lost }

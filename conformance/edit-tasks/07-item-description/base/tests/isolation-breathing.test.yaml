@@ -1,8 +1,0 @@
-# One presentation per restless patient; this one is Mr. Pell's.
-file: ../lore/isolation.lute
-beat: breathing
-visited: [room.isolation]
-state: { occasion.target: walter }
-expect:
-  transcriptContains: ["@narrator: In the dark, Mr. Pell is sitting up in bed."]
-  end: complete

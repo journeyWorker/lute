@@ -1,7 +1,0 @@
-# Rung at one, it only tells him where you are.
-file: ../scenes/puzzles/bell.lute
-state: { run.hour: h01 }
-entriesRead: { run: [diary] }
-expect:
-  state: { run.bellRung: false }
-  transcriptContains: ["@nell: Three. The diary said three. Not now."]

@@ -1,7 +1,0 @@
-# Losing to Sabine: no badge, her lose line, the meditation advice.
-file: ../../scenes/mid/mind-gym.lute
-bridges: { battle: [ { won: false } ] }
-expect:
-  end: complete
-  notFacts: [hasBadge(mind), defeated(sabine)]
-  transcriptContains: ["@sabine: I saw that ending, too. I did not enjoy it any more the second time.", "Meditate on it."]

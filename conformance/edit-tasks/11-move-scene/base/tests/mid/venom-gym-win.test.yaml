@@ -1,9 +1,0 @@
-# Beating Kessler: the badge, and with the Surf disc, Surf.
-file: ../../scenes/mid/venom-gym.lute
-facts: [hasItem(hmSurf)]
-bridges: { battle: [ { won: true } ] }
-expect:
-  end: complete
-  facts: [hasBadge(venom), defeated(kessler), canUse(surf), canPass(seaRoute)]
-  state: { run.money: 7300 }
-  transcriptContains: ["Tell Holt I said so."]

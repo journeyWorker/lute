@@ -1,6 +1,0 @@
-# Once all three vanes face the wind the puzzle is spent (spentBy).
-file: ../../lore/isles/islands.lute
-beat: windmill
-state: { run.islesVanes: 3 }
-expect:
-  eligible: false
