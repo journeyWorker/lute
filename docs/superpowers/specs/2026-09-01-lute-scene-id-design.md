@@ -1,7 +1,10 @@
+---
+status: Implemented
+---
+
 # Scene `id:` — authored scene identity design
 
 Date: 2026-09-01
-Status: approved design, pre-implementation
 
 ## Problem
 

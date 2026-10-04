@@ -17,3 +17,4 @@ serde_json = { workspace = true }
 [dev-dependencies]
 insta = { workspace = true }
 lute-test-vocab = { path = "../lute-test-vocab" }
+proptest = "1"

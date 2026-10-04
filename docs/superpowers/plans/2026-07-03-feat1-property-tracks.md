@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # FEAT-1: `property=` Timeline Tracks — complete + validate + document
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.

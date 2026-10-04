@@ -1,6 +1,9 @@
+---
+status: Implemented
+---
+
 # Lute Connectivity Layer — Design Spec
 
-- **Status:** Approved design, ready for implementation.
 - **Scope:** scene↔scene and scene↔quest prerequisite/route declarations as a checkable
   authoring contract, plus a per-node available-state envelope analysis. Read-only static
   analysis and a new explain command — no engine/runtime behavior changes beyond an advisory

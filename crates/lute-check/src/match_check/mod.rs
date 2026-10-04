@@ -121,6 +121,7 @@ pub(crate) use exhaustive::{
 };
 pub(crate) use interval::{Interval, NumCoverage};
 pub use line_codes::check_line_codes;
+pub(crate) use line_codes::check_line_codes_with_policy;
 pub(crate) use line_codes::collect_lines;
 pub use pattern::is_pattern_literals;
 use pattern::{

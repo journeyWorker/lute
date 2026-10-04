@@ -1,7 +1,10 @@
+---
+status: Implemented
+---
+
 # Subquest support — `<objective quest=>` design
 
 Date: 2026-08-31
-Status: approved design, pre-implementation
 
 ## Problem
 

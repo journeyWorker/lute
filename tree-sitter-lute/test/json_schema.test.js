@@ -113,6 +113,21 @@ profiles:
     expect(ok, JSON.stringify(errors)).toBe(true);
   });
 
+  test("accepts identity stability and rename settings", () => {
+    const { ajv, projectSchema } = loadAjv();
+    const doc = Bun.YAML.parse(`
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+identity:
+  requireStable: true
+  renames:
+    "quest:old": "quest:new"
+`);
+    const { ok, errors } = validateAgainst(ajv, projectSchema.$id, doc);
+    expect(ok, JSON.stringify(errors)).toBe(true);
+  });
   for (const [name, yaml] of [
     ["unknown field", "defaultProfile: p\npermissions: { directive: [bg] }\n"],
     ["null set", "defaultProfile: p\npermissions: { directives: null }\n"],

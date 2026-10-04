@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Lute 0.1.0 Tooling Completeness Implementation Plan (Plan D of 6)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.

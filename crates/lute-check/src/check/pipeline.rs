@@ -687,7 +687,21 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     //     on. Whole-document, per-speaker; owns `E-DUP-LINE-CODE`. The ROOT
     //     document only: each imported component body gets its OWN isolated
     //     run of this same pass in `validate_components` (Task 7c).
-    let line_code_diags = check_line_codes(&doc);
+    let line_code_diags =
+        crate::match_check::check_line_codes_with_policy(&doc, input.snapshot.identity_require_stable);
+    let mut instance_diags = Vec::new();
+    for shot in &doc.shots {
+        super::use_site::check_instance_scope(&shot.body, &mut instance_diags);
+    }
+    for quest in &doc.quests {
+        super::use_site::check_instance_scope(&quest.body, &mut instance_diags);
+    }
+    for entry in &doc.entries {
+        super::use_site::check_instance_scope(&entry.body, &mut instance_diags);
+    }
+    for beat in &doc.beats {
+        super::use_site::check_instance_scope(&beat.body, &mut instance_diags);
+    }
     // 6b'. dsl 0.23.0 §7: speakers against the declared cast (plugins ∪
     //      imported schemas ∪ this schema's own `cast:`), root document only.
     let cast = &folded.cast;
@@ -829,6 +843,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         } else {
             &[]
         },
+        input.snapshot.identity_require_stable,
     );
     let component_body_diags = crate::component_import::merge_component_body_diags(
         &mut component_diags,
@@ -846,6 +861,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(line_code_diags);
+    diags.extend(instance_diags);
     diags.extend(cast_diags);
     // 6c. Connectivity layer (T2, dsl connectivity spec §2.1/§5): a scene's
     // `after:` frontmatter and each quest's `after` attribute share the SAME

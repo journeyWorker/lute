@@ -1,7 +1,10 @@
+---
+status: Implemented
+---
+
 # Lute — Data-Catalog Foundation: Closed Vocabularies as Data (approved design)
 
 - **Date:** 2026-07-10
-- **Status:** approved design; spec-first (documents/decisions before implementation)
 - **Version:** **0.2.2** — a **breaking** foundation minor (pre-1.0 allowance, dsl 0.1.0 §2). Ships
   the closed-vocabulary catalog **before/under** the relational-facts `0.3.0`, which layers relations
   on it. (Decision 2026-07-10: `0.2.2` keeps `0.3.0` = relational facts; the existing

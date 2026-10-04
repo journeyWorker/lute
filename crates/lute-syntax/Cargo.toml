@@ -7,3 +7,6 @@ rust-version.workspace = true
 [dependencies]
 lute-core-span = { path = "../lute-core-span" }
 lute-manifest = { path = "../lute-manifest" }
+
+[dev-dependencies]
+proptest = "1"

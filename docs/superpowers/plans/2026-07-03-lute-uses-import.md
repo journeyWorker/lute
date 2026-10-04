@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Lute `uses:` Schema Import Resolver (§9.2) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.

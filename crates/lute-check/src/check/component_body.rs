@@ -33,6 +33,7 @@ pub(super) fn validate_components(
     cast: &std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
     host: &Env,
     host_params: &[lute_manifest::schema::DefParam],
+    require_stable: bool,
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (name, def) in &components.table {
@@ -68,6 +69,9 @@ pub(super) fn validate_components(
         let mut arena = CelArena::default();
         let cel_errors = fill_document(&mut arena, &mut body);
         let mut body_diags: Vec<Diagnostic> = cel_parse_diagnostics(&body, cel_errors);
+        for shot in &body.shots {
+            super::use_site::check_instance_scope(&shot.body, &mut body_diags);
+        }
         for shot in &body.shots {
             walk_component_body(
                 &shot.body,
@@ -129,7 +133,10 @@ pub(super) fn validate_components(
         // question: since dsl 0.22.0 §11 each expansion is addressed under
         // its own `{prefix}.{component}#{n}` scope, so a component `::use`d
         // twice, or sharing a code with a host line, never shares a `lineId`.
-        body_diags.extend(check_line_codes(&body));
+        body_diags.extend(crate::match_check::check_line_codes_with_policy(
+            &body,
+            require_stable,
+        ));
         // Task 7e, the THIRD instance of the same class as Task 7b's
         // (content-line attrs) and Task 7c's (duplicate line codes):
         // `check_reachability` had exactly ONE callsite — `check()` step 8,
@@ -788,7 +795,14 @@ pub(super) fn walk_component_body(
                 }
             }
             Node::Directive(d) if d.tag == "use" => {
-                check_use(d, components, ctx, param_domains, diags);
+                check_use(
+                    d,
+                    components,
+                    ctx,
+                    param_domains,
+                    snapshot.identity_require_stable,
+                    diags,
+                );
                 check_use_typed_args(d, components, snapshot, providers, domains, diags);
                 check_speaker_args(d, components, scope.cast, scope.speakers, diags);
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, None, &scope.own, diags);

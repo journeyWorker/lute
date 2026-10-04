@@ -286,12 +286,13 @@ fn assign_identity(
 /// under `prefix`).
 ///
 /// A component-expanded line (dsl 0.22.0 §11) is minted under
-/// `{prefix}.{scope}` — `scope` being its `{component}#{n}` path
-/// ([`crate::ir::Source::scope`]) — and each expansion keeps its own code
-/// counters. So two uses of one component never share an id, a component
-/// line never shares one with a host line carrying the same code, and a
-/// component's untagged lines get the same codes at every use regardless of
-/// how many host lines precede it.
+/// `{prefix}.{scope}` — `scope` is the complete component instance path, with
+/// authored `{component}#{instance}` segments (or warning-bearing ordinal
+/// fallback segments) ([`crate::ir::Source::scope`]). Each expansion keeps its
+/// own code counters. So two uses of one component never share an id, a
+/// component line never shares one with a host line carrying the same code,
+/// and a component's untagged lines get the same codes at every use regardless
+/// of how many host lines precede it.
 fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &IdentityTemplates) {
     fn scope_of(l: &crate::ir::LineCmd) -> &str {
         l.stamp.source.as_ref().map_or("", |s| s.scope.as_str())

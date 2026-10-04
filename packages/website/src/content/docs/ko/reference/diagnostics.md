@@ -256,6 +256,18 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 서로 다른 두 컴포넌트 파일이 같은 `component:` 이름을 선언했습니다.
 
+### E-COMPONENT-INSTANCE-DUPLICATE
+
+같은 컴포넌트와 인스턴스 키가 하나의 직접 확장 소유자 안에서 두 번 나타납니다.
+
+명세: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-COMPONENT-INSTANCE-INVALID
+
+`instance`가 비어 있거나 64자를 초과하거나 ASCII가 아닌 토큰을 사용하거나, 하나의 `::use`에서 identity 속성으로 두 번 나타납니다.
+
+명세: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
 ### E-COMPONENT-PARSE
 
 컴포넌트 파일을 읽거나 해석하거나 깨끗하게 파싱할 수 없습니다. 해석할 수 없는 `components:` 임포트 경로, 없는 `component:` 이름, 또는 잘못된 `params:` 항목이 원인입니다.
@@ -1161,6 +1173,24 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 명세: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
+### E-RENAME-LEDGER
+
+이름 변경 항목이 잘못되었거나, 알 수 없는 종류/키를 사용하거나, 출발지 또는 목적지를 중복하거나, 정식 키 매핑이 아닙니다.
+
+명세: [dsl 0.36.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-RENAME-LEDGER-CYCLE
+
+이름 변경 항목이 체인, 자기 자신을 가리키는 고리, 또는 순환을 이룹니다.
+
+명세: [dsl 0.36.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-RENAME-LEDGER-STALE
+
+프로젝트 해석 후에도 원본 키가 남아 있거나 목적지 키가 없습니다.
+
+명세: [dsl 0.36.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
 ### E-RESERVED-NAME
 
 선언한 이름이 Lute가 스스로 쓰는 이름입니다. entity 멤버·def·시즌 이름이 state 루트이거나, 멤버 이름이 `unset`/`true`/`false`/`null`/`_`이거나, id가 `none`이나 CEL 리터럴이거나, state 경로(또는 경로가 되는 id)에 CEL 키워드가 있거나, 관계 이름이 CEL 호출이나 규칙 단어이거나, `cast:`에 `narrator`가 있거나, 멤버 목록에 숫자가 있습니다. 쓰는 곳에서 그 낱말로 읽히므로 선언에서 거부합니다. 메시지가 대신 쓸 이름을 제시하고, `lute --explain E-RESERVED-NAME`이 예약된 이름을 모두 보여 줍니다.
@@ -1644,6 +1674,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
+### W-COMPONENT-INSTANCE-UNTAGGED
+
+`::use`에 명시적인 `instance`가 없어 과도기 위치 기반 폴백을 사용합니다.
+
+명세: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
 ### W-COMPONENT-UNVERIFIED
 
 단독 컴포넌트 검사에 범위 안의 호출자가 없습니다. 프로젝트가 해석되지 않았거나, 해석된 프로젝트 안에 이 컴포넌트를 `::use`하는 문서가 없어서, 검사 결과가 컴포넌트 자신의 프런트매터와 본문만을 다룹니다.
@@ -1727,6 +1763,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 컴파일된 대사 레코드에 로케일라이제이션 번들이 선언한 로케일의 텍스트가 빠져 있습니다.
 
 명세: [dsl 0.8.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
+
+### W-LINE-CODE-UNTAGGED
+
+콘텐츠 라인에 명시적인 화자별 `code`가 없어 컴파일러 할당을 사용하고 있습니다.
+
+명세: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### W-LUTE-VERSION-STALE
 

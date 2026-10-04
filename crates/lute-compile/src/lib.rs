@@ -689,6 +689,7 @@ fn compile_inner(
         lute: LUTE_LANG_VERSION.to_string(),
         ir_version: LUTE_IR_VERSION.to_string(),
         capability_version: input.snapshot.version.clone(),
+        identity_renames: Vec::new(),
         required_semantics: Vec::new(),
         meta,
         state: state_entries(&folded.env.state, &branch_paths, &reserved, &folded.domains,

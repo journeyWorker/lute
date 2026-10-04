@@ -85,6 +85,8 @@ pub struct ProjectModel {
     documents: Vec<ModelDocument>,
     project_diagnostics: Vec<(PathBuf, Diagnostic)>,
     index: Option<ProjectIndex>,
+    /// Resolved and graph-validated project identity migrations.
+    identity_renames: crate::rename::ResolvedRenames,
     reconciled: ReconciledOutputs,
     revisions: ProjectRevision,
     /// Derived from the fields above and never invalidated: the model is
@@ -113,6 +115,7 @@ impl ProjectModel {
             files
         };
         let cache = InputCache::default();
+        let manifest = cache.project(&root).as_ref().as_ref().ok().and_then(|p| p.clone());
         let providers = opts.providers.as_deref();
         let permission_profile = opts.permission_profile.as_deref();
         let mut documents: Vec<ModelDocument> = files
@@ -155,6 +158,20 @@ impl ProjectModel {
         let (mut checks, mut project_diagnostics, nodes_by_path, fact_envs) =
             crate::reconcile::reconcile_collected(initial_checks, &by_root, opts.wip);
         crate::reconcile::rollup_component_body_diags(&mut checks);
+        if let Some(config) = manifest.as_ref() {
+            let manifest_path = root.join("lute.project.yaml");
+            let text = std::fs::read_to_string(&manifest_path).unwrap_or_default();
+            let idx = lute_core_span::TextIndex::new(&text);
+            for item in &config.identity_rename_diags {
+                let mut diagnostic =
+                    resolution_diagnostic(&format!("{}: {}", item.code, item.message));
+                if let Some(span) = &item.span {
+                    diagnostic.span =
+                        lute_core_span::Span::from_bytes(&idx, span.start, span.end);
+                }
+                project_diagnostics.push((manifest_path.clone(), diagnostic));
+            }
+        }
         let mut gate_checks = checks.clone();
         let mut gate_project_diagnostics = project_diagnostics.clone();
         crate::reconcile::relocate_imported_diags(
@@ -171,8 +188,7 @@ impl ProjectModel {
             }
         }
         if opts.compile {
-            let loaded = cache.project(&root);
-            let identity = loaded.as_ref().as_ref().ok().and_then(|p| p.as_ref()).map(|p| p.identity.clone()).unwrap_or_default();
+            let identity = manifest.as_ref().map(|p| p.identity.clone()).unwrap_or_default();
             for document in &mut documents {
                 let Some(raw_check) = checks
                     .iter()
@@ -245,7 +261,6 @@ impl ProjectModel {
         } else {
             None
         };
-        let manifest = lute_manifest::project::load_project(&root).ok().flatten();
         if let Some(config) = manifest.as_ref() {
             let manifest_path = root.join("lute.project.yaml");
             let text = std::fs::read_to_string(&manifest_path).unwrap_or_default();
@@ -276,7 +291,75 @@ impl ProjectModel {
             fact_envs,
             scenarios,
         };
-        Ok(Self { root, manifest, documents, project_diagnostics, index, reconciled, revisions, graph: std::sync::OnceLock::new() })
+        let mut model = Self {
+            root,
+            manifest,
+            documents,
+            project_diagnostics,
+            index,
+            identity_renames: Vec::new(),
+            reconciled,
+            revisions,
+            graph: std::sync::OnceLock::new(),
+        };
+        let ledger_entries = model
+            .manifest
+            .as_ref()
+            .map(|config| config.identity_renames.clone())
+            .unwrap_or_default();
+        if !ledger_entries.is_empty() {
+            match crate::rename::resolve_ledger(&ledger_entries, model.graph()) {
+                Ok(ledger) => {
+                    model.identity_renames = ledger.clone();
+                    if !ledger.is_empty() {
+                        for document in &mut model.documents {
+                            if let Some(artifact) = document.artifact.as_mut() {
+                                artifact.identity_renames = ledger.clone();
+                                artifact.required_semantics =
+                                    lute_compile::semantics::collect(artifact)
+                                        .ids
+                                        .into_iter()
+                                        .map(str::to_string)
+                                        .collect();
+                            }
+                        }
+                        let inputs: Vec<IndexInput<'_>> = model
+                            .documents
+                            .iter()
+                            .filter_map(|d| {
+                                let artifact = d.artifact.as_ref()?;
+                                Some(IndexInput {
+                                    path: relative_path(&model.root, &d.path),
+                                    artifact_path: relative_path(&model.root, &d.path),
+                                    artifact,
+                                })
+                            })
+                            .collect();
+                        model.index = build_index(lute_compile::LUTE_IR_VERSION, &inputs).ok();
+                    }
+                }
+                Err(errors) => {
+                    for error in errors {
+                        let mut diagnostic =
+                            resolution_diagnostic(&format!("{}: {}", error.code, error.message));
+                        if let Some(span) = error.span {
+                            diagnostic.span = span;
+                        }
+                        model.project_diagnostics.push((
+                            model.root.join("lute.project.yaml"),
+                            diagnostic,
+                        ));
+                    }
+                    model.index = None;
+                    for document in &mut model.documents {
+                        document.artifact = None;
+                        document.source_map = None;
+                    }
+                }
+            }
+        }
+        model.reconciled.diagnostics = model.project_diagnostics.clone();
+        Ok(model)
     }
     pub fn has_resolution_errors(&self) -> bool {
         self.documents.iter().any(|document| document.resolve_error)
@@ -294,6 +377,7 @@ impl ProjectModel {
     pub fn documents(&self) -> &[ModelDocument] { &self.documents }
     pub fn project_diagnostics(&self) -> &[(PathBuf, Diagnostic)] { &self.project_diagnostics }
     pub fn index(&self) -> Option<&ProjectIndex> { self.index.as_ref() }
+    pub fn identity_renames(&self) -> &[lute_manifest::project::IdentityRename] { &self.identity_renames }
     pub fn reconciled(&self) -> &ReconciledOutputs { &self.reconciled }
     pub fn revisions(&self) -> &ProjectRevision { &self.revisions }
     pub fn graph(&self) -> &crate::graph::SemanticGraph {

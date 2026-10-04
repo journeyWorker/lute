@@ -28,12 +28,23 @@
     },
     "identity": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "lineId": {
           "type": "string"
         },
         "voiceKey": {
           "type": "string"
+        },
+        "requireStable": {
+          "type": "boolean",
+          "default": false
+        },
+        "renames": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     },

@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Phase 4 inventory — context-patch-diff
 
 ## summary

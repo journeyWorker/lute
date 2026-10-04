@@ -1,6 +1,9 @@
+---
+status: Implemented
+---
+
 # Proposal (IMPLEMENTED — dsl §13): Reusable Content Components / Macros
 
-**Status:** IMPLEMENTED as **Option C** (directive-form, file-based, NO grammar change) — see DSL spec §13 and the FEAT-5 plan (`docs/superpowers/plans/2026-07-03-feat5-components.md`). Options A/B below are retained as design history; the shipped decision, its checker codes, and its v0.0.1 scope are recorded in the **Option C** section and resolve every open question.
 
 ## Why
 The language already has three reuse mechanisms, all shipped:

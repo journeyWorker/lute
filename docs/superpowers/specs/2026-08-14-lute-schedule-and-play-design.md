@@ -1,7 +1,9 @@
+---
+status: Implemented
+---
+
 # Lute schedule layer + `lute play` — tick-scheduled routes and reviewable playthroughs
 
-**Status:** design v2 — v1 reviewed (17 findings: 6 blocker, 9 major, 2 minor), all
-incorporated below. Implementation proceeds against THIS version.
 **Driver:** Stage onboarding (product `examples/onboarding/lute/`).
 
 ## 1. Problem

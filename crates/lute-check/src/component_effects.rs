@@ -71,11 +71,12 @@ pub fn host_param_types(
         .collect()
 }
 
-/// The `::use` arguments by name (every attr but `component`).
+/// The `::use` component arguments by name. `component` and the reserved
+/// identity attribute `instance` are invocation metadata, never parameters.
 pub fn use_args(d: &Directive) -> BTreeMap<String, AttrValue> {
     d.attrs
         .iter()
-        .filter(|a| a.key != "component")
+        .filter(|a| a.key != "component" && a.key != "instance")
         .map(|a| (a.key.clone(), a.value.clone()))
         .collect()
 }

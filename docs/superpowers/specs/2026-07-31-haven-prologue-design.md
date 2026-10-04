@@ -1,6 +1,9 @@
+---
+status: Implemented
+---
+
 # *Haven* prologue — a showcase-scale Lute example
 
-**Status:** design, approved for scale. Target: `docs/examples/haven/`.
 
 ## Why this exists
 

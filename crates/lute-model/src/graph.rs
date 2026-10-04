@@ -1,7 +1,7 @@
 //! Deterministic project semantic dependency graph.
-use crate::{ModelDocument, ProjectModel};
+use crate::{IdentityMetadata, ModelDocument, ProjectModel};
 use lute_core_span::{Evidence, Span};
-use lute_syntax::ast::Node;
+use lute_syntax::ast::{Arm, Node};
 use lute_syntax::datalog::FactTerm;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -84,6 +84,8 @@ pub struct GraphNode {
     pub span: Option<Span>,
     /// Source speaker for line nodes; absent for all other node kinds.
     pub speaker: Option<String>,
+    /// Canonical identity metadata. `addr` and byte spans are never stored.
+    pub identity: IdentityMetadata,
 }
 /// A directed dependency edge with source provenance.
 #[derive(Clone, Debug, PartialEq)]
@@ -131,7 +133,13 @@ impl SemanticGraph {
             }
             return;
         }
-        self.nodes.insert(id.clone(), GraphNode { id, file, span, speaker: None });
+        self.nodes.insert(id.clone(), GraphNode {
+            identity: IdentityMetadata::computed(id.kind.as_str(), id.key.clone()),
+            id,
+            file,
+            span,
+            speaker: None,
+        });
     }
     /// Add a dependency edge and register both endpoint nodes.
     pub fn edge(
@@ -147,13 +155,25 @@ impl SemanticGraph {
         if !self.nodes.contains_key(&source) {
             self.nodes.insert(
                 source.clone(),
-                GraphNode { id: source.clone(), file: file.clone(), span, speaker: None },
+                GraphNode {
+                    identity: IdentityMetadata::computed(source.kind.as_str(), source.key.clone()),
+                    id: source.clone(),
+                    file: file.clone(),
+                    span,
+                    speaker: None,
+                },
             );
         }
         if !self.nodes.contains_key(&target) {
             self.nodes.insert(
                 target.clone(),
-                GraphNode { id: target.clone(), file: file.clone(), span, speaker: None },
+                GraphNode {
+                    identity: IdentityMetadata::computed(target.kind.as_str(), target.key.clone()),
+                    id: target.clone(),
+                    file: file.clone(),
+                    span,
+                    speaker: None,
+                },
             );
         }
         self.edges.push(GraphEdge {
@@ -394,6 +414,9 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
         }
         owners.push((b.span, bk));
     }
+    // Compiler back-fills omitted host line codes, so source provenance is
+    // needed to distinguish a durable authored code from that fallback.
+    let authored_line_spans = authored_line_spans(&d.doc);
     // Expanded line spans belong to component files. Only authored line
     // spans may compete with host-document owners; expanded lines are anchored
     // at their outermost host use site for containment and source queries.
@@ -421,6 +444,20 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
                 g.node(lk.clone(), Some(d.path.clone()), host_span);
                 if let Some(node) = g.nodes.get_mut(&lk) {
                     node.speaker = Some(line.speaker.clone());
+                    node.identity = if let Some(source) = &line.stamp.source {
+                        if source.stable {
+                            IdentityMetadata::authored("line", line.line_id.clone())
+                        } else {
+                            IdentityMetadata::fallback("line", line.line_id.clone())
+                        }
+                    } else if authored_line_spans.contains(&(
+                        info.span.byte_start,
+                        info.span.byte_end,
+                    )) {
+                        IdentityMetadata::authored("line", line.line_id.clone())
+                    } else {
+                        IdentityMetadata::fallback("line", line.line_id.clone())
+                    };
                 }
                 if let Some(span) = host_span {
                     line_nodes.push((span, lk.clone()));
@@ -997,6 +1034,67 @@ fn add_project_dependencies(g: &mut SemanticGraph, model: &ProjectModel) {
             );
         }
     }
+}
+
+/// Return source spans of host lines carrying an authored `code` attribute.
+/// The compiler allocates omitted codes after lowering, so checking the
+/// preserved syntax tree is the only way to retain authored-vs-fallback
+/// provenance without changing the serialized IR.
+fn authored_line_spans(doc: &lute_syntax::ast::Document) -> BTreeSet<(usize, usize)> {
+    fn walk(nodes: &[Node], out: &mut BTreeSet<(usize, usize)>) {
+        for node in nodes {
+            match node {
+                Node::Line(line) => {
+                    if line.attrs.iter().any(|attr| attr.key == "code") {
+                        out.insert((line.span.byte_start, line.span.byte_end));
+                    }
+                }
+                Node::Branch(branch) => {
+                    for choice in &branch.choices {
+                        walk(&choice.body, out);
+                    }
+                }
+                Node::Hub(hub) => {
+                    for body in hub.bodies() {
+                        walk(body, out);
+                    }
+                    if let Some(on_return) = &hub.on_return {
+                        walk(&on_return.body, out);
+                    }
+                }
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        match arm {
+                            Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                                walk(body, out);
+                            }
+                        }
+                    }
+                }
+                Node::Objective(objective) => walk(&objective.body, out),
+                Node::On(on) => walk(&on.body, out),
+                Node::Directive(_)
+                | Node::Set(_)
+                | Node::Timeline(_)
+                | Node::Assert(_)
+                | Node::Retract(_) => {}
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    for shot in &doc.shots {
+        walk(&shot.body, &mut out);
+    }
+    for quest in &doc.quests {
+        walk(&quest.body, &mut out);
+    }
+    for entry in &doc.entries {
+        walk(&entry.body, &mut out);
+    }
+    for beat in &doc.beats {
+        walk(&beat.body, &mut out);
+    }
+    out
 }
 
 /// Resolve component-local source coordinates to the outer host use site.

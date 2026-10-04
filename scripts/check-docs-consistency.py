@@ -40,16 +40,28 @@ scripts/check-release-workflow-safety.py):
    appear anywhere under packages/website/ or docs/ (canonical is
    lute-lang.vercel.app).
 
-3. Example-check manifest: prints the one example root CI runs
+3. Documentation status inventory:
+   - every Markdown document under `docs/proposals`, `docs/design`, and
+     `docs/superpowers` carries exactly one machine-readable `status:` marker;
+   - marker values are limited to Draft, Accepted, Implemented, Superseded,
+     and Rejected; and
+   - the marker is reported with its file and line when malformed or absent.
+
+4. Current-release changelog classes:
+   - the current release section, or `[Unreleased]` while the current release
+     has not been cut, contains all seven breaking-change class headings;
+   - a class heading may contain `None`, but may not be omitted or renamed.
+
+5. Example-check manifest: prints the one example root CI runs
    `lute check-project` against (docs/examples). `conformance/` is NOT a root:
-   each fixture is an independent single-document contract test replayed on its
-   own (see conformance/README.md), and several deliberately reuse the same
+   each fixture is an independent single-document contract test replayed on
+   its own (see conformance/README.md), and several deliberately reuse the same
    scene identity, so unioning them into one project is `E-CONN-EPISODE-ID-DUP`
    by construction. The actual `lute` invocation lives in the workflow.
 
 Exit: 0 clean, 1 on a consistency violation, 2 on a missing/unreadable input.
 """
-
+ 
 from __future__ import annotations
 
 import pathlib
@@ -271,6 +283,73 @@ def extract_const(path: pathlib.Path, name: str) -> str:
     if not m:
         fail(f"could not find `pub const {name}` in {path.relative_to(ROOT)}")
     return m.group(1)
+STATUS_ROOTS = (
+    ROOT / "docs/proposals",
+    ROOT / "docs/design",
+    ROOT / "docs/superpowers",
+)
+ALLOWED_DOC_STATUSES = {"Draft", "Accepted", "Implemented", "Superseded", "Rejected"}
+STATUS_RE = re.compile(r"(?m)^\s*status:\s*([A-Za-z]+)\s*$")
+CHANGELOG_CLASSES = ("Syntax", "Semantics", "IR", "Plugin", "CLI", "Diagnostics", "Identity")
+
+
+def status_pages() -> list[pathlib.Path]:
+    return sorted(
+        path
+        for base in STATUS_ROOTS
+        if base.is_dir()
+        for path in base.rglob("*.md")
+    )
+
+
+def check_doc_statuses() -> int:
+    checked = 0
+    for path in status_pages():
+        rel = path.relative_to(ROOT)
+        text = read(path)
+        markers = list(STATUS_RE.finditer(text))
+        if len(markers) != 1:
+            ERRORS.append(
+                f"{rel}: expected exactly one `status: <value>` marker, "
+                f"found {len(markers)}"
+            )
+            continue
+        marker = markers[0]
+        value = marker.group(1)
+        line = text.count("\n", 0, marker.start()) + 1
+        if value not in ALLOWED_DOC_STATUSES:
+            ERRORS.append(
+                f"{rel}:{line}: unsupported document status {value!r}; "
+                f"expected one of {', '.join(sorted(ALLOWED_DOC_STATUSES))}"
+            )
+        checked += 1
+    return checked
+
+
+def check_changelog_classes(lang_version: str) -> None:
+    """Require the 0.36 breaking-change class headings.
+
+    Before 0.36 is cut, `[Unreleased]` is the current-release surface. Once
+    the language/toolchain constants reach 0.36, the matching version section
+    is used instead. Historical sections are never scanned.
+    """
+    text = read(ROOT / "CHANGELOG.md")
+    target = "[Unreleased]" if tuple(map(int, lang_version.split("."))) < (0, 36, 0) else f"[{lang_version}]"
+    section = re.search(
+        rf"(?ms)^##\s+{re.escape(target)}\s*$([\s\S]*?)(?=^##\s+|\Z)",
+        text,
+    )
+    if section is None:
+        ERRORS.append(f"CHANGELOG.md: missing current release section {target}")
+        return
+    body = section.group(1)
+    for heading in CHANGELOG_CLASSES:
+        if not re.search(rf"(?m)^###\s+{re.escape(heading)}\s*$", body):
+            ERRORS.append(
+                f"CHANGELOG.md: current release {target} missing class heading "
+                f"`### {heading}`"
+            )
+
 
 
 def check_version_claims(
@@ -396,6 +475,9 @@ def main() -> int:
 
     # 2. No stale canonical domain under the docs/website trees or the root.
     check_stale_domain()
+    status_count = check_doc_statuses()
+    check_changelog_classes(lang_version)
+
 
     # 3. Example-check manifest for the workflow.
     roots = example_roots()
@@ -413,7 +495,8 @@ def main() -> int:
         f"{claims} current-language-version claim(s) across llms.txt, "
         f"llms-full.txt and {len(pages)} docs page(s) all read "
         f"{lang_version}; {ir_schema_links} IR-schema link(s) checked; "
-        f"canonical domain is coherent."
+        f"canonical domain is coherent; {status_count} status-marked docs "
+        f"under proposals/design/superpowers."
     )
     print("check-docs-consistency: example roots for CI check-project:")
     for r in roots:

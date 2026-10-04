@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # lute-compile 0.1.0 Cutover Implementation Plan (Plan C of 6)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.

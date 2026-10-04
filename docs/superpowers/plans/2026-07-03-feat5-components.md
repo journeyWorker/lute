@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # FEAT-5: Reusable Content Components (`::use`) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.

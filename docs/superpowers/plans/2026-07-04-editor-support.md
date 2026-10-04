@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Editor Support — VS Code + Neovim + Oh My Pi — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.

@@ -54,6 +54,34 @@ table.
   runs the Rust suites under cargo-nextest in parallel with a separate doc
   and corpus gate job, and the conformance harness runs once per PR push.
 
+### Syntax
+
+None.
+
+### Semantics
+
+None.
+
+### IR
+
+None.
+
+### Plugin
+
+None.
+
+### CLI
+
+None.
+
+### Diagnostics
+
+None.
+
+### Identity
+
+None.
+
 ## [0.35.0] - 2026-10-04
 
 ### Added

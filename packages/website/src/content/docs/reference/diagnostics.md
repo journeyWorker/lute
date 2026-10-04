@@ -256,6 +256,18 @@ Spec: [dsl §13](/spec/)
 
 Two different component files declare the same `component:` name.
 
+### E-COMPONENT-INSTANCE-DUPLICATE
+
+The same component and instance key occur twice in one immediate expansion owner.
+
+Spec: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-COMPONENT-INSTANCE-INVALID
+
+`instance` is empty, exceeds 64 characters, uses a non-ASCII token, or appears more than once as an identity attribute on one `::use`.
+
+Spec: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
 ### E-COMPONENT-PARSE
 
 A component file cannot be read, resolved, or parsed cleanly — an unresolvable `components:` import path, a missing `component:` name, or a malformed `params:` entry.
@@ -1162,6 +1174,24 @@ A fact atom (a seed, rule, `::assert`/`::retract`, or CEL fact query) names a re
 
 Spec: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
+### E-RENAME-LEDGER
+
+A rename entry is malformed, has an unknown kind/key, duplicates a source or destination, or is not a canonical key mapping.
+
+Spec: [dsl 0.36.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-RENAME-LEDGER-CYCLE
+
+Rename entries form a chain, self-loop, or cycle.
+
+Spec: [dsl 0.36.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-RENAME-LEDGER-STALE
+
+A ledger source key is still present, or its destination key is absent after project resolution.
+
+Spec: [dsl 0.36.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
 ### E-RESERVED-NAME
 
 A declared name is one the language keeps for itself — a state root naming an entity member, def or season, `unset`/`true`/`false`/`null`/`_` naming a member, `none` or a CEL literal naming an id, a CEL keyword in a state path or id that becomes one, a CEL call or rule word naming a relation, `narrator` in `cast:`, or a number in a member list — so the name would be read as that word where it is used. The message names a replacement; `lute --explain E-RESERVED-NAME` lists every reserved name.
@@ -1648,6 +1678,12 @@ Content follows an unguarded `::next` directive in the same straight-line body, 
 
 Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
+### W-COMPONENT-INSTANCE-UNTAGGED
+
+A `::use` has no explicit `instance` and is using the transitional positional fallback.
+
+Spec: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
 ### W-COMPONENT-UNVERIFIED
 
 A standalone component check has no caller in scope — either no project was resolved, or the resolved project has no document that `::use`s the component — so the verdict covers only the component's own frontmatter and body.
@@ -1731,6 +1767,12 @@ Spec: [dsl 0.6.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/pro
 A compiled line record is missing text for a locale its localization bundle declares.
 
 Spec: [dsl 0.8.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
+
+### W-LINE-CODE-UNTAGGED
+
+A content line has no explicit per-speaker `code` and compiler allocation is being used.
+
+Spec: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### W-LUTE-VERSION-STALE
 

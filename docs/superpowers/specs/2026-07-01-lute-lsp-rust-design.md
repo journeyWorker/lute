@@ -1,6 +1,9 @@
+---
+status: Implemented
+---
+
 # Lute LSP (Rust) — Design
 
-- **Status:** Approved design; precursor to the implementation plan.
 - **Date:** 2026-07-01
 - **Sources of truth:** [`docs/proposals/scenario-dsl/0.0.1.md`](../../proposals/scenario-dsl/0.0.1.md),
   [`docs/proposals/plugin-system/0.0.1.md`](../../proposals/plugin-system/0.0.1.md),

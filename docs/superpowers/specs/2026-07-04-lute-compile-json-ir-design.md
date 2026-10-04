@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Lute Compiler — Typed JSON IR Codegen (v0.0.1)
 
 - **Date:** 2026-07-04 · **Status:** Draft (design, pre-implementation; revised after reviewer +

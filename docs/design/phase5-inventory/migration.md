@@ -1,3 +1,7 @@
+---
+status: Accepted
+---
+
 # Phase 5 inventory - migration
 
 ## summary

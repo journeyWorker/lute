@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Lute §6.9 assetKinds (checker/LSP) + Heavy Checker Precision — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.

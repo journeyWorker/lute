@@ -9,6 +9,9 @@ const E_COMPONENT_UNDECLARED: &str = "E-COMPONENT-UNDECLARED";
 pub(super) const E_COMPONENT_ARG: &str = "E-COMPONENT-ARG";
 pub(super) const E_COMPONENT_CYCLE: &str = "E-COMPONENT-CYCLE";
 pub(super) const E_COMPONENT_BODY: &str = "E-COMPONENT-BODY";
+pub(super) const E_COMPONENT_INSTANCE_INVALID: &str = "E-COMPONENT-INSTANCE-INVALID";
+pub(super) const E_COMPONENT_INSTANCE_DUPLICATE: &str = "E-COMPONENT-INSTANCE-DUPLICATE";
+pub(super) const W_COMPONENT_INSTANCE_UNTAGGED: &str = "W-COMPONENT-INSTANCE-UNTAGGED";
 
 /// dsl 0.4.0 §6.1/§6.2: a component-body position depends on or affects
 /// ambient state — a CEL reference to a state path, a fact query
@@ -25,7 +28,11 @@ pub(super) const E_COMPONENT_STATE: &str = "E-COMPONENT-STATE";
 pub(super) fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
-        severity: Severity::Error,
+        severity: if code.starts_with("W-") {
+            Severity::Warning
+        } else {
+            Severity::Error
+        },
         message,
         evidence: None,
         span,
@@ -35,6 +42,146 @@ pub(super) fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
         covered: Vec::new(),
         related: Vec::new(),
     }
+}
+fn valid_instance_token(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1..]
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'-')
+}
+
+/// Validate the reserved `instance` identity attribute on one invocation.
+fn check_instance_attr(
+    dir: &Directive,
+    component: &str,
+    require_stable: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let attrs: Vec<&Attr> = dir.attrs.iter().filter(|a| a.key == "instance").collect();
+    if attrs.is_empty() {
+        if require_stable {
+            diags.push(use_diag(
+                W_COMPONENT_INSTANCE_UNTAGGED,
+                format!(
+                    "`::use` of component `{component}` has no `instance`; run `lute tag` to assign one"
+                ),
+                dir.span,
+            ));
+        }
+        return;
+    }
+    if attrs.len() > 1 {
+        for attr in attrs.iter().skip(1) {
+            diags.push(use_diag(
+                E_COMPONENT_INSTANCE_INVALID,
+                format!(
+                    "`::use` has more than one `instance` identity attribute for component `{component}`"
+                ),
+                attr.span,
+            ));
+        }
+    }
+    let attr = attrs[0];
+    if !matches!(&attr.value, AttrValue::Str(value) if valid_instance_token(value)) {
+        diags.push(use_diag(
+            E_COMPONENT_INSTANCE_INVALID,
+            format!(
+                "component `{component}` instance must be a non-empty ASCII token matching \
+                 [A-Za-z][A-Za-z0-9_-]{{0,63}}"
+            ),
+            attr.value_span,
+        ));
+    }
+}
+
+/// Check explicit instance uniqueness in one immediate expansion owner. Branch
+/// bodies are traversed as one owner so mutually-exclusive alternatives cannot
+/// accidentally reuse a durable scope.
+pub(super) fn check_instance_scope(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
+    let mut seen = std::collections::BTreeSet::<(String, String)>::new();
+    fn walk(
+        nodes: &[Node],
+        seen: &mut std::collections::BTreeSet<(String, String)>,
+        diags: &mut Vec<Diagnostic>,
+    ) {
+        for node in nodes {
+            match node {
+                Node::Directive(d) if d.tag == "use" => {
+                    let component = d.attrs.iter().find_map(|a| {
+                        if a.key != "component" {
+                            return None;
+                        }
+                        match &a.value {
+                            AttrValue::Str(value) => Some(value.clone()),
+                            _ => None,
+                        }
+                    });
+                    let instance = d.attrs.iter().find_map(|a| {
+                        if a.key != "instance" {
+                            return None;
+                        }
+                        match &a.value {
+                            AttrValue::Str(value) if valid_instance_token(value) => {
+                                Some(value.clone())
+                            }
+                            _ => None,
+                        }
+                    });
+                    if let (Some(component), Some(instance)) = (component, instance) {
+                        if !seen.insert((component.clone(), instance.clone())) {
+                            let span = d
+                                .attrs
+                                .iter()
+                                .find(|a| a.key == "instance")
+                                .map_or(d.span, |a| a.span);
+                            diags.push(use_diag(
+                                E_COMPONENT_INSTANCE_DUPLICATE,
+                                format!(
+                                    "component `{component}` instance `{instance}` is duplicated \
+                                     in one expansion owner"
+                                ),
+                                span,
+                            ));
+                        }
+                    }
+                }
+                Node::Branch(branch) => {
+                    for choice in &branch.choices {
+                        walk(&choice.body, seen, diags);
+                    }
+                }
+                Node::Hub(hub) => {
+                    for body in hub.bodies() {
+                        walk(body, seen, diags);
+                    }
+                    if let Some(on_return) = &hub.on_return {
+                        walk(&on_return.body, seen, diags);
+                    }
+                }
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        match arm {
+                            Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                                walk(body, seen, diags)
+                            }
+                        }
+                    }
+                }
+                Node::On(on) => walk(&on.body, seen, diags),
+                Node::Objective(objective) => walk(&objective.body, seen, diags),
+                Node::Line(_)
+                | Node::Directive(_)
+                | Node::Set(_)
+                | Node::Timeline(_)
+                | Node::Assert(_)
+                | Node::Retract(_) => {}
+            }
+        }
+    }
+    walk(nodes, &mut seen, diags);
 }
 
 /// Validate a `::use{ component="name" <arg>=<value> … }` invocation (dsl §13)
@@ -54,6 +201,7 @@ pub(super) fn check_use(
     components: &ComponentSet,
     ctx: &Ctx<'_>,
     enclosing: &std::collections::BTreeMap<String, DomainInfo>,
+    require_stable: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
     // E-AT-CONTEXT (dsl §7.5): a reserved `at` on a `::use` OUTSIDE a <track>
@@ -79,6 +227,7 @@ pub(super) fn check_use(
         ));
         return;
     };
+    check_instance_attr(dir, name, require_stable, diags);
     let Some(def) = components.table.get(name) else {
         diags.push(use_diag(
             E_COMPONENT_UNDECLARED,
@@ -105,7 +254,7 @@ pub(super) fn check_use(
     for attr in dir
         .attrs
         .iter()
-        .filter(|a| a.key != "component" && a.key != "at")
+        .filter(|a| a.key != "component" && a.key != "at" && a.key != "instance")
     {
         match def.params.iter().find(|(p, _)| p == &attr.key) {
             None => {
@@ -155,7 +304,7 @@ pub(super) fn check_use(
                     let hint = match (pty, &attr.value) {
                         (Type::Enum(members), AttrValue::Str(s)) => {
                             lute_manifest::suggest::nearest(
-                                s,
+                                s.as_str(),
                                 members.iter().map(String::as_str),
                                 2,
                             )

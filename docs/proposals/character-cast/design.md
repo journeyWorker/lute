@@ -1,7 +1,10 @@
+---
+status: Implemented
+---
+
 # Design — Character identity, display label, costume, reveal & voice
 
 - **Date:** 2026-06-30
-- **Status:** Approved design (pre-implementation). Feeds `writing-plans`.
 - **Owner surface:** Lute Scenario DSL — a new **character/cast capability plugin** plus small
   amendments to the language proposal and the plugin-system proposal.
 - **Related specs:** [`../scenario-dsl/0.0.1.md`](../scenario-dsl/0.0.1.md)

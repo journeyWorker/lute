@@ -1,7 +1,10 @@
+---
+status: Implemented
+---
+
 # Streaming continuation compiler
 
 Date: 2026-09-14
-Status: implementation contract for Lute 0.17.0
 
 Companion documents: the
 [normative 0.17.0 proposal](../../proposals/scenario-dsl/0.17.0.md), the

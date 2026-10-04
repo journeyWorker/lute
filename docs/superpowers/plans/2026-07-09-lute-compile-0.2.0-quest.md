@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # lute-compile 0.2.0 — kind envelope + quest/on records (Plan D of 5)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

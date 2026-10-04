@@ -394,6 +394,16 @@ pub(crate) const CODES: &[Code] = &[
         spec: &[],
     },
     Code {
+        code: "E-COMPONENT-INSTANCE-DUPLICATE",
+        summary: "The same component and instance key occur twice in one immediate expansion owner.",
+        spec: &["dsl 0.36.0 §2.3"],
+    },
+    Code {
+        code: "E-COMPONENT-INSTANCE-INVALID",
+        summary: "`instance` is empty, exceeds 64 characters, uses a non-ASCII token, or appears more than once as an identity attribute on one `::use`.",
+        spec: &["dsl 0.36.0 §2.3"],
+    },
+    Code {
         code: "E-COMPONENT-PARSE",
         summary: "A component file cannot be read, resolved, or parsed cleanly — an unresolvable `components:` import path, a missing `component:` name, or a malformed `params:` entry.",
         spec: &[],
@@ -1214,6 +1224,21 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.3.0 §4"],
     },
     Code {
+        code: "E-RENAME-LEDGER",
+        summary: "A rename entry is malformed, has an unknown kind/key, duplicates a source or destination, or is not a canonical key mapping.",
+        spec: &["dsl 0.36.0 §3"],
+    },
+    Code {
+        code: "E-RENAME-LEDGER-CYCLE",
+        summary: "Rename entries form a chain, self-loop, or cycle.",
+        spec: &["dsl 0.36.0 §3"],
+    },
+    Code {
+        code: "E-RENAME-LEDGER-STALE",
+        summary: "A ledger source key is still present, or its destination key is absent after project resolution.",
+        spec: &["dsl 0.36.0 §3"],
+    },
+    Code {
         code: "E-RESERVED-NAME",
         summary: "A declared name is one the language keeps for itself — a state root naming an entity member, def or season, `unset`/`true`/`false`/`null`/`_` naming a member, `none` or a CEL literal naming an id, a CEL keyword in a state path or id that becomes one, a CEL call or rule word naming a relation, `narrator` in `cast:`, or a number in a member list — so the name would be read as that word where it is used. The message names a replacement; `lute --explain E-RESERVED-NAME` lists every reserved name.",
         spec: &["dsl 0.28.0 §1"],
@@ -1649,6 +1674,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.12.0"],
     },
     Code {
+        code: "W-COMPONENT-INSTANCE-UNTAGGED",
+        summary: "A `::use` has no explicit `instance` and is using the transitional positional fallback.",
+        spec: &["dsl 0.36.0 §2.3"],
+    },
+    Code {
         code: "W-COMPONENT-UNVERIFIED",
         summary: "A standalone component check has no caller in scope — either no project was resolved, or the resolved project has no document that `::use`s the component — so the verdict covers only the component's own frontmatter and body.",
         spec: &["dsl 0.10.0 §9"],
@@ -1717,6 +1747,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-L10N-MISSING",
         summary: "A compiled line record is missing text for a locale its localization bundle declares.",
         spec: &["dsl 0.8.0 §7"],
+    },
+    Code {
+        code: "W-LINE-CODE-UNTAGGED",
+        summary: "A content line has no explicit per-speaker `code` and compiler allocation is being used.",
+        spec: &["dsl 0.36.0 §2.3"],
     },
     Code {
         code: "W-LUTE-VERSION-STALE",

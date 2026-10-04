@@ -27,7 +27,7 @@ use crate::source_map::{ArmSource, ComponentBoundary, ComponentUse, SourceInfo, 
 pub struct WalkCx<'a> {
     pub snapshot: &'a CapabilitySnapshot,
     pub env: &'a Env,
-    pub components: Vec<(String, String)>,
+    pub components: Vec<(String, String, bool)>,
     pub timelines: u32,
 }
 
@@ -55,10 +55,14 @@ pub fn walk_seq(
             Node::Directive(d) if d.tag == COMPONENT_BEGIN => {
                 let name = component_attr(d);
                 em.marker(|| boundary_marker(d, &name));
-                cx.components.push((name, component_scope(d).to_string()));
+                cx.components.push((
+                    name,
+                    component_scope(d).to_string(),
+                    crate::normalize::component_stable(d),
+                ));
             }
             Node::Directive(d) if d.tag == COMPONENT_END => {
-                let name = cx.components.pop().map(|(name, _)| name);
+                let name = cx.components.pop().map(|(name, _, _)| name);
                 em.marker(|| boundary_marker(d, name.as_deref().unwrap_or_default()));
             }
             // dsl 0.12.0: `::mark{id}` emits NO record — bind the author's
@@ -780,28 +784,30 @@ fn arm_diag(code: &str, message: String, span: lute_core_span::Span) -> Diagnost
 /// `source { component }` from the sentinel-driven stack (§4.3, D8), plus
 /// the identity scope the addressing pass mints the record's ids under.
 fn apply_source(cmd: &mut Command, cx: &WalkCx<'_>) {
-    if let Some(ComponentUse { name, scope }) = component_use(cx) {
+    if let Some(ComponentUse { name, scope, stable }) = component_use(cx) {
         if let Some(stamp) = cmd.stamp_mut() {
             stamp.source = Some(Source {
                 component: name,
                 scope,
+                stable,
             });
         }
     }
 }
 
-/// The innermost open component expansion and its identity scope.
 fn component_use(cx: &WalkCx<'_>) -> Option<ComponentUse> {
-    let (name, _) = cx.components.last()?;
+    let (name, _, _) = cx.components.last()?;
     let scope = cx
         .components
         .iter()
-        .map(|(_, segment)| segment.as_str())
+        .map(|(_, segment, _)| segment.as_str())
         .collect::<Vec<_>>()
         .join(".");
+    let stable = cx.components.iter().all(|(_, _, stable)| *stable);
     Some(ComponentUse {
         name: name.clone(),
         scope,
+        stable,
     })
 }
 

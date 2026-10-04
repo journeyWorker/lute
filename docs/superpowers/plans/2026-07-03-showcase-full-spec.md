@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Full-Spec Showcase Example — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.

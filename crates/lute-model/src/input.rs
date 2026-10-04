@@ -84,7 +84,8 @@ pub fn assemble_input_with_mode(cache: &InputCache, file: &Path, text: String, p
     let meta_span = doc.meta.span;
     let resolved = cache.snapshot(root, project, meta0.profile.as_deref(), &meta0.plugins);
     let (mut snapshot, mut rdiags) = (resolved.0.clone(), resolved.1.clone());
-    lute_check::chapters::apply_chapters(&mut parsed.0, &defaults, &snapshot.occasions);
+    snapshot.identity_require_stable =
+        project.is_some_and(lute_manifest::project::ProjectConfig::identity_require_stable);
     if let Some(name) = permission_profile {
         match project.as_ref() {
             Some(config) => match resolve_permissions(config, name) {

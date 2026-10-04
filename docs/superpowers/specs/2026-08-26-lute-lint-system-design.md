@@ -1,6 +1,9 @@
+---
+status: Implemented
+---
+
 # Lute Lint System — Design
 
-**Status:** approved design, pre-implementation.
 **Scope:** a configurable, plugin-extensible lint layer (`lute lint`) for content/metric
 advisories — distinct from `lute check`'s semantic validation.
 **Prior art carried over:** upstream's `lute-core/scenario` validator + emotion-dist analyzer

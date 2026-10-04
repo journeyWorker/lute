@@ -1,7 +1,10 @@
+---
+status: Implemented
+---
+
 # Declarative rewards — `<reward/>` design
 
 Date: 2026-09-01
-Status: approved design, pre-implementation
 
 ## Problem
 

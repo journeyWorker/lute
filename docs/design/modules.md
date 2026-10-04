@@ -1,6 +1,10 @@
+---
+status: Implemented
+---
+
 # Domain modules and evaluation contract
 
-**Status: normative for phase 2 (0.33).** This map turns the four phase-2
+This map turns the four phase-2
 inventories into the official internal modules. A construct occurs in exactly
 one row below; a semicolon-separated list is still one row whose constructs
 are owned together. The inventories are research input, not authority: the
