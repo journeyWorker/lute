@@ -22,6 +22,16 @@ impl<D: Driver> Machine<D> {
     /// the seed's own `state`/`facts` on top via [`Machine::apply_seeds`] —
     /// the one place that override rule lives.
     fn blank(art: &Json, seed: Seed, driver: D) -> Self {
+        Self::blank_with_overrides(art, seed, driver, None, None)
+    }
+
+    fn blank_with_overrides(
+        art: &Json,
+        seed: Seed,
+        driver: D,
+        rules: Option<&Json>,
+        state: Option<&BTreeMap<String, Json>>,
+    ) -> Self {
         let kind = art
             .get("kind")
             .and_then(Json::as_str)
@@ -43,9 +53,14 @@ impl<D: Driver> Machine<D> {
         }
         addr_order.sort();
 
-        let mut store = Store::of_artifact(art, seed.derive);
+        let mut store = match (rules, state) {
+            (Some(rules), Some(state)) => {
+                Store::of_artifact_with_project(art, seed.derive, rules, state)
+            }
+            _ => Store::of_artifact(art, seed.derive),
+        };
         // dsl 0.21.0 §7a.1: the seed's `visited` seeds the presented set.
-        store.visited.extend(seed.visited.iter().cloned());
+        store.visit_all(&seed.visited);
 
         Machine {
             driver,
@@ -105,7 +120,32 @@ impl<D: Driver> Machine<D> {
     /// carry's `state`, `base_facts`, `quest_status` and quest instance
     /// counters are read.
     pub fn resume(art: &Json, seed: Seed, carry: Carry, driver: D) -> Self {
-        let mut m = Self::blank(art, seed, driver);
+        Self::resume_with_overrides(art, seed, carry, driver, None, None)
+    }
+
+    /// Resume a play machine over one document's command tree while reading
+    /// the project-wide rules and state declarations without widening/cloning
+    /// the complete artifact JSON.
+    pub fn resume_with_project(
+        art: &Json,
+        seed: Seed,
+        carry: Carry,
+        driver: D,
+        rules: &Json,
+        state: &BTreeMap<String, Json>,
+    ) -> Self {
+        Self::resume_with_overrides(art, seed, carry, driver, Some(rules), Some(state))
+    }
+
+    fn resume_with_overrides(
+        art: &Json,
+        seed: Seed,
+        carry: Carry,
+        driver: D,
+        rules: Option<&Json>,
+        state: Option<&BTreeMap<String, Json>>,
+    ) -> Self {
+        let mut m = Self::blank_with_overrides(art, seed, driver, rules, state);
         m.store.restore(carry.state, carry.base_facts);
         m.quest_status = carry.quest_status;
         m.quest_instances = carry.quest_instances;
@@ -162,7 +202,7 @@ impl<D: Driver> Machine<D> {
     /// joined to any seed `visited`, so `visited('<id>')` reads real
     /// presentation history.
     pub fn with_visited(mut self, visited: &BTreeSet<String>) -> Self {
-        self.store.visited.extend(visited.iter().cloned());
+        self.store.visit_all(visited);
         self
     }
 

@@ -29,6 +29,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use crate::output::pretty_json;
 use lute_check::{ProjectBeat, ProjectBeatKind};
 use lute_core_span::Diagnostic;
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
@@ -339,8 +340,7 @@ pub(crate) fn run_beats(
         return ExitCode::from(2);
     }
     let out = if json_out {
-        let mut s =
-            serde_json::to_string_pretty(&json!({ "roots": roots_json })).unwrap_or_default();
+        let mut s = pretty_json(&json!({ "roots": roots_json })).unwrap_or_default();
         s.push('\n');
         s
     } else if by_root.is_empty() {

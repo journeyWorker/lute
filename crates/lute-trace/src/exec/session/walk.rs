@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, VecDeque};
 
 use serde_json::Value as Json;
 
-use super::project::{decision_options, play_artifact_json, state_entry_type, ExecProject};
+use super::project::{decision_options, state_entry_type, ExecProject};
 use super::world::World;
 use crate::exec::{
     BridgeCall, BridgeQueues, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown,
@@ -330,11 +330,13 @@ pub fn play_machine(
     carry: Carry,
     choose: &BTreeMap<String, Vec<String>>,
 ) -> Machine<PlayDriver> {
-    let machine = Machine::resume(
-        &play_artifact_json(doc_json, p),
+    let machine = Machine::resume_with_project(
+        doc_json,
         seed,
         carry,
         PlayDriver::new(choose, w),
+        &p.rules,
+        &p.state_table,
     )
     .with_visited(&w.visited)
     .with_bridge_reads(p.bridge_reads.clone());

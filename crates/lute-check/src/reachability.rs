@@ -716,6 +716,9 @@ impl Assumption {
             def_types,
             preceded: false,
             components: None,
+            parse_cache: std::rc::Rc::new(std::cell::RefCell::new(
+                std::collections::HashMap::new(),
+            )),
         };
         let present = crate::defassign::assumed_present(Some(when), &scope);
         (!conjuncts.is_empty() || !present.is_empty()).then(|| Self {

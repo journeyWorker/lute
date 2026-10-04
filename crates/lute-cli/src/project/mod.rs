@@ -231,6 +231,23 @@ pub(crate) fn discover_project(file: &Path, project: Option<&Path>) -> Option<Pa
     Some(dir)
 }
 
+/// Resolve a command's project using an explicit `--project` first and the
+/// nearest manifest otherwise. Explicit paths stay byte-for-byte as supplied;
+/// discovery emits the existing informational note exactly once.
+pub(crate) fn resolve_project(file: &Path, project: Option<&Path>) -> Option<PathBuf> {
+    project
+        .map(Path::to_path_buf)
+        .or_else(|| discover_project(file, None))
+}
+
+/// Return the canonical identity of an existing path. Callers that need to
+/// preserve the old best-effort fallback can use the original path when this
+/// returns `None`; keeping the policy in one helper avoids subtly different
+/// canonicalization at CLI boundaries.
+pub(crate) fn canonical_path(path: &Path) -> Option<PathBuf> {
+    std::fs::canonicalize(path).ok()
+}
+
 /// T1-14: the project's May producer set — `check-project`'s own
 /// reachability-gated [`lute_check::connectivity::live_assert_relations`] —
 /// for the root at `root`, the set `W-TRACE-MOCK-UNPRODUCIBLE` must judge a

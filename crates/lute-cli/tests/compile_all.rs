@@ -8,9 +8,9 @@
 //! and the usage gate (exit 2 when `--all` is missing `--project` or `-o`).
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-const BIN: &str = env!("CARGO_BIN_EXE_lute");
+mod support;
+use support::BIN;
 
 /// A fresh unique temp dir (matches `check_project.rs`'s own helper — each
 /// integration test binary is compiled separately, so this is intentionally
@@ -36,7 +36,7 @@ fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
 }
 
 fn run(args: &[&str]) -> std::process::Output {
-    Command::new(BIN).args(args).output().unwrap()
+    support::run_cli(args)
 }
 
 /// A minimal core-only `lute.project.yaml` (mirrors `docs/examples`').

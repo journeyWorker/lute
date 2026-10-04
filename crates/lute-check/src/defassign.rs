@@ -80,7 +80,9 @@
 //!   proven present, every `prev.run.<q>` whose `run.<q>` has a `default` is
 //!   present too (a defaulted `run.*` path always holds a value at run end).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::rc::Rc;
 
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
@@ -117,6 +119,14 @@ pub struct Scope<'a> {
     /// is read at the call like the argument it stands for (dsl 0.27.0 §2,
     /// T1-10). `None` outside a full document check.
     pub components: Option<&'a crate::component_import::ComponentSet>,
+    /// Parsed path uses are immutable for a scope. Share this cache with
+    /// `with_schema` scopes so one CEL fragment is parsed once even when the
+    /// document is checked through several nested environments.
+    pub(crate) parse_cache: Rc<RefCell<HashMap<String, Vec<crate::cel_paths::PathUse>>>>,
+}
+
+fn new_parse_cache() -> Rc<RefCell<HashMap<String, Vec<crate::cel_paths::PathUse>>>> {
+    Rc::new(RefCell::new(HashMap::new()))
 }
 
 static NO_BODIES: BTreeMap<String, String> = BTreeMap::new();
@@ -135,6 +145,7 @@ impl<'a> Scope<'a> {
             def_types: &folded.env.def_types,
             preceded: folded.typed.after.is_some() || folded.typed.beat.is_some(),
             components: None,
+            parse_cache: new_parse_cache(),
         }
     }
 
@@ -149,9 +160,9 @@ impl<'a> Scope<'a> {
             def_types: &NO_TYPES,
             preceded: false,
             components: None,
+            parse_cache: new_parse_cache(),
         }
     }
-
     /// This scope over `schema` — a kind beat's own environment
     /// ([`crate::check::FoldedEnv::env_at`]).
     pub fn with_schema(&self, schema: &'a StateSchema) -> Self {
@@ -164,6 +175,7 @@ impl<'a> Scope<'a> {
             def_types: self.def_types,
             preceded: self.preceded,
             components: self.components,
+            parse_cache: Rc::clone(&self.parse_cache),
         }
     }
 }
@@ -1141,9 +1153,9 @@ fn slot_uses(slot: &CelSlot, cx: &Scope<'_>) -> Vec<Use> {
 /// bodiless component param) is read as written; that failure is another
 /// pass's diagnostic.
 ///
-/// Re-parses into a fresh arena: the check entrypoint takes no arena, and per
-/// T4.3 the AST is structure-only, so a throwaway parse yields identical
-/// `Select`/`Ident` chains.
+/// Each distinct expanded fragment is parsed at most once per scope. The cache
+/// is structure-only: source spans still come from the enclosing slot because
+/// successful CEL ASTs do not retain source positions.
 fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
     let refs: Vec<lute_cel::RefUse> = lute_cel::scan_refs(raw)
         .into_iter()
@@ -1155,7 +1167,7 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
         expand_cel(raw, &cx.defs, Some("$"), &mut Vec::new()).ok()
     };
     let Some(expanded) = expanded else {
-        return parse_uses(raw)
+        return parse_uses_cached(raw, cx)
             .into_iter()
             .map(|u| Use {
                 path: u.path,
@@ -1166,7 +1178,7 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
             })
             .collect();
     };
-    let own: Vec<String> = parse_uses(raw).into_iter().map(|u| u.path).collect();
+    let own: Vec<String> = parse_uses_cached(raw, cx).into_iter().map(|u| u.path).collect();
     // Top-level refs only: a ref nested in another's `(args)` expands with it.
     let calls: Vec<(usize, usize)> = refs
         .iter()
@@ -1188,12 +1200,12 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
                 Some("$"),
                 &mut Vec::new(),
             )
-            .map(|text| parse_uses(&text).into_iter().map(|u| u.path).collect())
+            .map(|text| parse_uses_cached(&text, cx).into_iter().map(|u| u.path).collect())
             .unwrap_or_default();
             (r.name.as_str(), paths)
         })
         .collect();
-    parse_uses(&expanded)
+    parse_uses_cached(&expanded, cx)
         .into_iter()
         .map(|u| {
             let via = (u.role == PathRole::Read && !own.contains(&u.path))
@@ -1202,7 +1214,7 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
                         .find(|(_, paths)| paths.contains(&u.path))
                         .map(|(name, _)| {
                             let reads =
-                                |body: &str| parse_uses(body).iter().any(|own| own.path == u.path);
+                                |body: &str| parse_uses_cached(body, cx).iter().any(|own| own.path == u.path);
                             let chain = crate::cel_expand::def_chain_where(name, &cx.defs, &reads)
                                 .unwrap_or_else(|| vec![(*name).to_string()]);
                             crate::cel_expand::def_chain_label(&chain)
@@ -1222,7 +1234,18 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
 
 /// The path uses of CEL text, or none when it does not parse (malformed CEL
 /// is already reported in Phase 3).
-fn parse_uses(text: &str) -> Vec<crate::cel_paths::PathUse> {
+fn parse_uses_cached(text: &str, cx: &Scope<'_>) -> Vec<crate::cel_paths::PathUse> {
+    if let Some(cached) = cx.parse_cache.borrow().get(text) {
+        return cached.clone();
+    }
+    let parsed = parse_uses_uncached(text);
+    cx.parse_cache
+        .borrow_mut()
+        .insert(text.to_owned(), parsed.clone());
+    parsed
+}
+
+fn parse_uses_uncached(text: &str) -> Vec<crate::cel_paths::PathUse> {
     if text.trim().is_empty() {
         return Vec::new();
     }

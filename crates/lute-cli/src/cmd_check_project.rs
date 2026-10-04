@@ -11,9 +11,8 @@ use lute_model::relocate_imported_diags;
 use crate::cmd_check::{engine_semantic_diags, merge_gate_diags};
 use crate::manifests;
 use crate::mockcheck;
-use crate::output::{apply_deny_json, print_human, severity_str, DenyPolicy};
-use crate::project::{collect_project_inputs, normalize_span_from_text};
-
+use crate::output::{pretty_json, print_human, project_report_json, severity_str, DenyPolicy};
+use crate::project::{canonical_path, collect_project_inputs, normalize_span_from_text};
 /// Recursively `check` every `*.lute` under `dir` ([`collect_project_docs`],
 /// nested per-file root resolution — each file resolves against its OWN
 /// nearest ancestor `lute.project.yaml`, bounded below by `dir`), reconcile
@@ -175,7 +174,7 @@ pub(crate) fn run_check_project(
             .iter()
             .map(|(p, r)| (p.clone(), &r.domain_use))
             .collect();
-        let canon_dir = std::fs::canonicalize(dir).ok();
+        let canon_dir = canonical_path(dir);
         for (path, mut d) in lute_check::check_project_domain_reads(&per_file) {
             let text = std::fs::read_to_string(&path).unwrap_or_default();
             d.span = normalize_span_from_text(&text, d.span);
@@ -216,7 +215,7 @@ pub(crate) fn run_check_project(
         let extra: Vec<&str> = schema_texts.iter().map(String::as_str).collect();
         // An origin is the canonical schema path; print it walk-relative like
         // every other check-project diagnostic (`./world.schema.yaml:73:3`).
-        let canon_dir = std::fs::canonicalize(dir).ok();
+        let canon_dir = canonical_path(dir);
         for (path, mut d) in lute_check::check_project_usage(&docs, &extra) {
             let text = std::fs::read_to_string(&path).unwrap_or_default();
             d.span = normalize_span_from_text(&text, d.span);
@@ -269,49 +268,17 @@ pub(crate) fn run_check_project(
     let ok = project_ok && file_results.iter().all(|(_, r)| file_ok(r));
 
     if json {
-        // Reuse each type's own `Serialize` impl (`CheckResult`/`Diagnostic`,
-        // both defined — and derived — in lute-check/lute-core-span) and
-        // merge in the file path as a sibling key, rather than declaring a
-        // new wrapper type (would need `serde`'s derive macro as a direct
-        // dependency this crate doesn't otherwise need). The §5 deny promotion
-        // is overlaid at this CLI layer (`apply_deny_json` + a promoted `ok`),
-        // never in lute-check's shape.
-        let files_json: Vec<serde_json::Value> = file_results
-            .iter()
-            .map(|(path, result)| {
-                let mut v = serde_json::to_value(result).unwrap_or_else(|_| serde_json::json!({}));
-                if let Some(arr) = v.get_mut("diagnostics").and_then(|x| x.as_array_mut()) {
-                    for (d, jd) in result.diagnostics.iter().zip(arr.iter_mut()) {
-                        apply_deny_json(d, policy, jd);
-                    }
-                }
-                if let serde_json::Value::Object(map) = &mut v {
-                    map.insert("ok".into(), serde_json::json!(file_ok(result)));
-                    map.insert("path".into(), path.display().to_string().into());
-                }
-                v
-            })
-            .collect();
-        let project_json: Vec<serde_json::Value> = project_diags
-            .iter()
-            .map(|(path, d)| {
-                let mut v = serde_json::to_value(d).unwrap_or_else(|_| serde_json::json!({}));
-                apply_deny_json(d, policy, &mut v);
-                if let serde_json::Value::Object(map) = &mut v {
-                    map.insert("path".into(), path.display().to_string().into());
-                }
-                v
-            })
-            .collect();
-        let report = serde_json::json!({
-            "ok": ok,
-            "files": files_json,
-            "project_diagnostics": project_json,
-        });
-        match serde_json::to_string_pretty(&report) {
+        let report = match project_report_json(&file_results, &project_diags, ok, policy) {
+            Ok(report) => report,
+            Err(error) => {
+                eprintln!("lute: failed to serialize result: {error}");
+                return ExitCode::from(2);
+            }
+        };
+        match pretty_json(&report) {
             Ok(s) => println!("{s}"),
-            Err(e) => {
-                eprintln!("lute: failed to serialize result: {e}");
+            Err(error) => {
+                eprintln!("lute: failed to serialize result: {error}");
                 return ExitCode::from(2);
             }
         }

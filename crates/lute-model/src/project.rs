@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::borrow::Cow;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ fn annotate_diagnostic(diagnostic: &mut Diagnostic) {
 
 use lute_check::{fold_env, CheckInput, CheckResult, FoldedEnv, Mode};
 use lute_compile::index::{build_index, IndexInput, ProjectIndex};
-use lute_compile::{compile_mapped, ExecutionIr, SourceMap};
+use lute_compile::{compile_mapped_parsed, ExecutionIr, SourceMap};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use rayon::prelude::*;
 
@@ -61,6 +61,10 @@ pub struct ModelDocument {
     pub path: PathBuf,
     pub input: CheckInput,
     pub doc: lute_syntax::ast::Document,
+    /// Desugared document before project-only component effects are spliced.
+    /// Compilation starts from this boundary; codegen reparses raw CEL only
+    /// where it needs expression trees, so no check-arena handles are needed.
+    compile_doc: Option<lute_syntax::ast::Document>,
     pub folded: FoldedEnv,
     pub check: CheckResult,
     pub artifact: Option<ExecutionIr>,
@@ -130,6 +134,7 @@ impl ProjectModel {
             let input = built.input;
             let mut doc = parsed.0.clone();
             let _ = lute_check::desugar_document(&mut doc, &input);
+            let compile_doc = opts.compile.then(|| doc.clone());
             lute_check::splice_component_effects(&mut doc, &input.components, &input.snapshot);
             let (folded, _, _) = fold_env(&doc, &input);
             let check = lute_check::check_parsed(&input, parsed);
@@ -137,6 +142,7 @@ impl ProjectModel {
                 path,
                 input,
                 doc,
+                compile_doc,
                 folded,
                 check,
                 artifact: None,
@@ -182,22 +188,31 @@ impl ProjectModel {
         let project_blocked = gate_project_diagnostics
             .iter()
             .any(|(_, diagnostic)| diagnostic.severity == Severity::Error);
+        let mut document_ix = HashMap::with_capacity(documents.len());
+        for (index, document) in documents.iter().enumerate() {
+            document_ix.insert(document.path.clone(), index);
+        }
         for (path, check) in &checks {
-            if let Some(document) = documents.iter_mut().find(|document| document.path == *path) {
-                document.check = check.clone();
+            if let Some(&index) = document_ix.get(path) {
+                documents[index].check = check.clone();
             }
+        }
+        let mut check_indices = HashMap::with_capacity(checks.len());
+        for (index, (path, _)) in checks.iter().enumerate() {
+            check_indices.insert(path.as_path(), index);
         }
         if opts.compile {
             let identity = manifest.as_ref().map(|p| p.identity.clone()).unwrap_or_default();
             for document in &mut documents {
-                let Some(raw_check) = checks
-                    .iter()
-                    .find(|(path, _)| path == &document.path)
-                    .map(|(_, check)| check)
-                else {
+                let Some(&check_index) = check_indices.get(document.path.as_path()) else {
                     continue;
                 };
-                if project_blocked || !raw_check.ok || document.resolve_error || document.folded.typed.component.is_some() {
+                let raw_check = &checks[check_index].1;
+                if project_blocked
+                    || !raw_check.ok
+                    || document.resolve_error
+                    || document.folded.typed.component.is_some()
+                {
                     continue;
                 }
                 let gate_diags = compile_gate_diags(&document.input);
@@ -209,8 +224,22 @@ impl ProjectModel {
                 let mut gate = raw_check.clone();
                 gate.diagnostics.extend(project_diagnostics.iter().filter(|(path, _)| path == &document.path).map(|(_, d)| d.clone()));
                 gate.ok = !gate.diagnostics.iter().any(|d| d.severity == Severity::Error);
-                if !gate.ok { continue; }
-                match compile_mapped(&document.input, gate, &identity) {
+                if !gate.ok {
+                    continue;
+                }
+                let compile_doc = document.compile_doc.take().ok_or_else(|| {
+                    ModelError::Input(format!(
+                        "missing pre-splice compile document for {}",
+                        document.path.display()
+                    ))
+                })?;
+                match compile_mapped_parsed(
+                    &document.input,
+                    gate,
+                    &identity,
+                    compile_doc,
+                    document.folded.clone(),
+                ) {
                     Ok((artifact, source_map)) => {
                         document.artifact = Some(artifact);
                         document.source_map = Some(source_map);
@@ -544,4 +573,102 @@ pub fn discover_project(file: &Path, project: Option<&Path>) -> Option<PathBuf> 
     let dir = nearest_manifest_dir(file)?;
     eprintln!("lute: note: using project {} (nearest lute.project.yaml); pass --project to choose another", dir.display());
     Some(dir)
+}
+
+#[cfg(test)]
+mod compile_equivalence_tests {
+    use super::*;
+
+    fn manifest_roots(root: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.join("lute.project.yaml").is_file() {
+                out.push(path.clone());
+            }
+            manifest_roots(&path, out);
+        }
+    }
+
+    fn project_roots() -> Vec<PathBuf> {
+        let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let workspace = crate_root
+            .parent()
+            .and_then(Path::parent)
+            .expect("lute-model is nested under the workspace");
+        let games = workspace.join("docs/examples/games");
+        let mut roots = std::fs::read_dir(&games)
+            .expect("docs/examples/games must exist for compile equivalence")
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                path.is_dir().then_some(path)
+            })
+            .collect::<Vec<_>>();
+        let mut conformance = Vec::new();
+        manifest_roots(&workspace.join("conformance"), &mut conformance);
+        roots.extend(conformance);
+        roots.sort();
+        roots.dedup();
+        roots
+    }
+
+    #[test]
+    fn precompiled_project_artifacts_match_standalone_compile() {
+        let roots = project_roots();
+        assert!(!roots.is_empty(), "compile equivalence corpus must not be empty");
+        let options = ModelOptions {
+            compile: true,
+            ..ModelOptions::default()
+        };
+        for root in roots {
+            let model = ProjectModel::build_single_root(&root, &options)
+                .unwrap_or_else(|error| panic!("cannot build {}: {error}", root.display()));
+            let identity = model
+                .manifest()
+                .map(|config| config.identity.clone())
+                .unwrap_or_default();
+            for document in model.documents() {
+                let Some(actual) = document.artifact.as_ref() else {
+                    assert!(
+                        document.folded.typed.component.is_some() || !document.check.ok,
+                        "compile-equivalence document unexpectedly has no artifact: {}",
+                        document.path.display()
+                    );
+                    continue;
+                };
+                let (mut expected, _) = lute_compile::compile_mapped(
+                    &document.input,
+                    document.check.clone(),
+                    &identity,
+                )
+                .unwrap_or_else(|diagnostics| {
+                    panic!(
+                        "standalone compile failed for {}: {diagnostics:?}",
+                        document.path.display()
+                    )
+                });
+                if !model.identity_renames().is_empty() {
+                    lute_compile::stamp_identity_renames(
+                        &mut expected,
+                        model.identity_renames(),
+                    );
+                }
+                let actual_json = serde_json::to_value(actual)
+                    .expect("ExecutionIr must serialize in equivalence test");
+                let expected_json = serde_json::to_value(expected)
+                    .expect("ExecutionIr must serialize in equivalence test");
+                assert_eq!(
+                    actual_json,
+                    expected_json,
+                    "project/standalone artifact mismatch for {}",
+                    document.path.display()
+                );
+            }
+        }
+    }
 }

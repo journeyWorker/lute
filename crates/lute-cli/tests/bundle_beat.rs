@@ -8,7 +8,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const BIN: &str = env!("CARGO_BIN_EXE_lute");
+mod support;
+use support::BIN;
 const SCENE_ARTIFACT: &str = "../../conformance/end-reason/artifact.json";
 
 const SOURCE: &str = r#"---

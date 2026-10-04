@@ -61,6 +61,7 @@ use lute_trace::exec::{
     Forced, Machine, Menu, OnUnknown, Pick, ScriptedChoices, Seed, UnknownSite, Verdict,
     LINE_DELIVERY_KEYS, MENU_MARK_KEYS,
 };
+use serde::Serialize;
 use serde_json::{json, Value as Json};
 
 /// The IR major.minor line this reference runner implements, derived from
@@ -217,7 +218,7 @@ pub fn run_artifact(
         }
         let exprs = ExprIndex::new([&art]);
         {
-            let header = json!({"kind": "env", "env": env});
+            let header = ConditionDumpHeader { kind: "env", env };
             if let Ok(mut f) = file.try_borrow_mut() {
                 let _ = serde_json::to_writer(&mut *f, &header);
                 use std::io::Write;
@@ -249,16 +250,14 @@ pub fn run_artifact(
                     lute_trace::Value::Str(target.to_string()),
                 );
             }
-            let mut line = json!({
-                "cel": raw,
-                "expr": expr,
-                "activation": activation_json_paths(&dump_state, snapshot.state_types, &paths),
-                "facts": condition_facts(&snapshot.facts, &relations),
-                "result": typed_value(value),
-            });
-            if needs_visited {
-                line["visited"] = snapshot.visited.iter().cloned().collect::<Vec<_>>().into();
-            }
+            let line = ConditionDumpRecord {
+                cel: raw.to_owned(),
+                expr,
+                activation: activation_json_paths(&dump_state, snapshot.state_types, &paths),
+                facts: condition_facts(&snapshot.facts, &relations),
+                result: typed_value(value),
+                visited: needs_visited.then(|| snapshot.visited.iter().cloned().collect()),
+            };
             // One write per line: the dump file is unbuffered, and serializing
             // straight into it issues a syscall per JSON token.
             if let (Ok(mut f), Ok(mut bytes)) = (file.try_borrow_mut(), serde_json::to_vec(&line)) {
@@ -282,7 +281,7 @@ pub fn run_artifact(
             if json_out {
                 println!(
                     "{}",
-                    serde_json::to_string_pretty(&output_value(&m, &art)).unwrap_or_default()
+                    crate::output::pretty_json(&output_value(&m, &art)).unwrap_or_default()
                 );
             } else {
                 print_human(&m, &art, artifact);
@@ -595,6 +594,23 @@ pub(crate) struct DumpCondition {
     pub expr: Json,
     pub relations: BTreeSet<String>,
     pub needs_visited: bool,
+}
+
+#[derive(Serialize)]
+struct ConditionDumpHeader {
+    env: Json,
+    kind: &'static str,
+}
+
+#[derive(Serialize)]
+struct ConditionDumpRecord {
+    activation: Json,
+    cel: String,
+    expr: Json,
+    facts: Json,
+    result: Json,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    visited: Option<Vec<String>>,
 }
 
 /// Emitted conditions keyed by raw CEL text, built once per condition dump so

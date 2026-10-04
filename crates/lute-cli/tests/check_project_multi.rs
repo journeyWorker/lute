@@ -7,22 +7,13 @@
 //! declaring the same quest id is NOT a collision; the same id declared
 //! twice within ONE resolved root still is.
 
+mod support;
+use support::TempProject;
+
 use std::path::PathBuf;
-use std::process::Command;
 
-const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-/// A fresh unique temp dir (matches `check_project.rs`'s own helper — each
-/// integration test binary is compiled separately, so this is intentionally
-/// duplicated rather than shared).
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp_dir(tag: &str) -> TempProject {
+    TempProject::new(tag)
 }
 
 fn write(dir: &std::path::Path, rel: &str, text: &str) -> PathBuf {
@@ -35,7 +26,7 @@ fn write(dir: &std::path::Path, rel: &str, text: &str) -> PathBuf {
 }
 
 fn run(args: &[&str]) -> std::process::Output {
-    Command::new(BIN).args(args).output().unwrap()
+    support::run_cli(args)
 }
 
 /// A minimal valid core-only `lute.project.yaml` (mirrors

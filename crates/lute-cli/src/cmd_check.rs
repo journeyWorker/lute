@@ -10,8 +10,8 @@ use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
 use lute_model::{build_input, manifest_context, BuiltInput};
-use crate::output::{apply_deny_json, print_human, DenyPolicy};
-use crate::project::{discover_project, find_lute_files};
+use crate::output::{check_result_json, pretty_json, print_human, DenyPolicy};
+use crate::project::{canonical_path, find_lute_files, resolve_project};
 use lute_model::nearest_manifest_dir;
 
 /// Every document under `root` whose `::use` names component `name`
@@ -274,7 +274,7 @@ fn caller_resolved_common(
     // whatever the user typed on the command line. Without this the intersection
     // is always empty and rule 4 silently does nothing.
     let component_file =
-        std::fs::canonicalize(component_file).unwrap_or_else(|_| component_file.to_path_buf());
+        canonical_path(component_file).unwrap_or_else(|| component_file.to_path_buf());
 
     let mut per_caller: Vec<BTreeSet<(String, String)>> = Vec::new();
     let mut sample: BTreeMap<(String, String), Diagnostic> = BTreeMap::new();
@@ -483,7 +483,7 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
 /// entry in this file) is kept, at the schema's own line. The schema's
 /// frontmatter diagnostics (`E-USES-PARSE`) are the caller's already.
 fn schema_as_imported_diags(file: &Path) -> Vec<Diagnostic> {
-    let Ok(canon) = std::fs::canonicalize(file) else {
+    let Some(canon) = canonical_path(file) else {
         return Vec::new();
     };
     let (Some(base), Some(name)) = (canon.parent(), canon.file_name()) else {
@@ -554,9 +554,8 @@ pub(crate) fn run_check(
     // project. Without the manifest there is no `uses:` schema, no `defaults:`
     // and no profile, so the check reported `E-UNDECLARED`/`E-DOMAIN-UNKNOWN`
     // for paths the project declares, and advice that would have broken it.
-    let discovered = discover_project(file, project);
-    let project = project.or(discovered.as_deref());
-    let Some(built) = build_input(file, providers, project, permission_profile) else {
+    let project = resolve_project(file, project);
+    let Some(built) = build_input(file, providers, project.as_deref(), permission_profile) else {
         return ExitCode::from(2);
     };
     // `build_input` no longer prints these itself (`lute doctor` folds them into
@@ -624,7 +623,7 @@ pub(crate) fn run_check(
     // and found nothing. The next step differs — supply a project, versus
     // discover the component is unused — so the verdict names which one it is.
     if let Some((component, at)) = component_name_of(file) {
-        match project.map(|root| (root, callers_of_component(root, &component))) {
+        match project.as_deref().map(|root| (root, callers_of_component(root, &component))) {
             // Report only what holds at EVERY call site: a diagnostic holding at
             // some but not all callers is caller-specific and stays with
             // `check-project`, where the caller is visible. Anchored inside the
@@ -683,28 +682,17 @@ fn render_check_result(
     let ok = result.ok && !policy.any_denied(&result.diagnostics);
 
     if json {
-        // Wrap the promotion at the CLI layer (spec §5): serialize lute-check's
-        // own `CheckResult` shape, then overlay `severity: "error"` +
-        // `denied: true` on each promoted diagnostic and the promoted `ok`.
-        let mut value = match serde_json::to_value(result) {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("lute: failed to serialize result: {e}");
+        let value = match check_result_json(result, ok, policy) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("lute: failed to serialize result: {error}");
                 return ExitCode::from(2);
             }
         };
-        if let Some(arr) = value.get_mut("diagnostics").and_then(|v| v.as_array_mut()) {
-            for (d, jd) in result.diagnostics.iter().zip(arr.iter_mut()) {
-                apply_deny_json(d, policy, jd);
-            }
-        }
-        if let serde_json::Value::Object(map) = &mut value {
-            map.insert("ok".into(), serde_json::json!(ok));
-        }
-        match serde_json::to_string_pretty(&value) {
+        match pretty_json(&value) {
             Ok(s) => println!("{s}"),
-            Err(e) => {
-                eprintln!("lute: failed to serialize result: {e}");
+            Err(error) => {
+                eprintln!("lute: failed to serialize result: {error}");
                 return ExitCode::from(2);
             }
         }
