@@ -1,0 +1,7 @@
+# With one bridge trainer still standing, the recruiter does not appear.
+file: ../../lore/south/route4.lute
+beat: r4GruntRecruiter
+facts: [defeated(r4YoungsterPip), defeated(r4LassEvie), defeated(r4CamperShane), defeated(r4LassMei)]
+bridges: { battle: [ { won: true } ] }
+expect:
+  eligible: false

@@ -1,0 +1,9 @@
+# Beating the first team and losing to the second: still no defeated().
+file: ../../lore/north/earth-gym.lute
+beat: earthGymAdminSelene
+bridges: { battle: [ { won: true }, { won: false } ] }
+expect:
+  notFacts: [defeated(earthGymAdminSelene)]
+  state: { run.money: 3000 }
+  transcriptContains: ["Rhinotitan! Out!", "@earthGymAdminSelene: Two teams. You were ready for one. Come back when you can count."]
+  end: complete

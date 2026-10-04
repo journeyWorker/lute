@@ -1,0 +1,63 @@
+---
+kind: quest
+id: north.quests
+title: Highlands & Isles side quests
+---
+
+// AREA north. Every quest is tier="run" (FINDINGS-lead F10).
+
+// ── Frostharbor: the dark lighthouse ────────────────────────────────────────
+// Accepted from Old Maud (lore/north/frostharbor.lute maudAsk). Done when a
+// fire monster has lit the lamp (maudRelight, which needs caughtType(fire)).
+<quest id="northLighthouse" title="The dark lighthouse">
+  <objective id="fire" title="Catch a fire monster" done="holds('caughtType', ['fire'])"/>
+  <objective id="light" title="Light the Frostharbor lamp with Old Maud" done="visited('north.frostharbor.maudRelight')"/>
+  <reward kind="MONEY" amount="3000"/>
+  <on event="questComplete">
+    @narrator: Down in the harbor, a boat sounds its horn at the light. Then another.
+  </on>
+</quest>
+
+// ── Frostharbor board: the Friday swimmer ───────────────────────────────────
+// Accepted from the Monster Center board by the engine. Shellnessie surfaces
+// in the Frostharbor caverns on Fridays only (lore/north/frost-caverns.lute).
+<quest id="northFridaySwimmer" title="Board: the Friday swimmer" accept="external">
+  <objective id="see" title="See the swimmer in the Frostharbor caverns" done="holds('seen', ['shellnessie'])"/>
+  <objective id="catch" title="Catch it" done="holds('caught', ['shellnessie'])"/>
+  <reward kind="MONEY" amount="6000"/>
+  <on event="questComplete">
+    @frostharborCaveGuide{vo}: The board says you caught the Friday swimmer. The tour script's ruined. Come by, I'll buy you a chowder.
+  </on>
+</quest>
+
+// ── Verdant City: the twin legends ──────────────────────────────────────────
+// Historian Wren tells two stories (lore/north/verdantcity.lute); each is an
+// activate="accept" child. Finding either bird completes the parent, and the
+// other story is superseded.
+<quest id="northTwinLegends" title="The ice bird and the fire bird" complete="any">
+  <objective id="frost" title="Find the ice bird" quest="northFrostwing"/>
+  <objective id="blaze" title="Find the fire bird" quest="northBlazewing"/>
+  <reward kind="MONEY" amount="8000"/>
+  <on event="questComplete">
+    @verdantHistorian{vo}: You found one of them! My book needs a new last chapter, and you are in it.
+  </on>
+</quest>
+
+<quest id="northFrostwing" title="The ice bird" activate="accept">
+  <objective id="catch" title="Catch the bird in the ice below the Frostharbor caverns" done="holds('caught', ['frostwing'])"/>
+</quest>
+
+<quest id="northBlazewing" title="The fire bird" activate="accept">
+  <objective id="catch" title="Catch the bird in the Victory Road crater" done="holds('caught', ['blazewing'])"/>
+</quest>
+
+// ── Verdant Dojo ────────────────────────────────────────────────────────────
+// Accepted from Master Hollis. Beat his top student, then report back.
+<quest id="northDojo" title="The Verdant Dojo">
+  <objective id="koji" title="Defeat Koji, the dojo's top student" done="holds('defeated', ['verdantDojoKarateKoji'])"/>
+  <objective id="report" title="Report to Master Hollis" on="talk" target="npc.verdantDojoMaster" done="holds('defeated', ['verdantDojoKarateKoji'])"/>
+  <reward kind="TM" amount="1" target="brickBreak"/>
+  <on event="questComplete">
+    @verdantDojoMaster{emotion="laughing"}: Hah! Koji will be sulking for a week. Take this. A dojo pays its debts.
+  </on>
+</quest>

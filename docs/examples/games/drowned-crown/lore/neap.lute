@@ -3,7 +3,6 @@ kind: lore
 id: neap
 title: The neap tide
 ---
-
 /* Two dives in every six the tide runs low. Tavi notices first. */
 
 <entry id="neapTavi" on="talk" target="npc.tavi" category="bark" title="Low water" priority="25" once="season:neap" when="@neapLive">

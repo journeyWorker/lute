@@ -1,0 +1,45 @@
+---
+kind: lore
+id: spine.professor
+title: Professor Alder
+---
+
+// The Dex goals: each next goal is handed out when the previous one is
+// reported (activate="accept" children of dexProject).
+<beat id="giveForty" on="talk" target="npc.profAlder" title="Forty kinds" priority="30" when="quest.dex10.state == 'complete' && quest.dex40.state == 'unset'">
+  @profAlder{emotion="happy"}: Ten kinds already! Then here is a real goal: forty. Bring me forty and I'll make it worth your while.
+  ::accept{quest="dex40"}
+</beat>
+
+<beat id="giveEighty" on="talk" target="npc.profAlder" title="Eighty kinds" priority="31" when="quest.dex40.state == 'complete' && quest.dex80.state == 'unset'">
+  @profAlder{emotion="surprised"}: Forty! You are a better field researcher than any of my students. Eighty, then. Can you do eighty?
+  ::accept{quest="dex80"}
+</beat>
+
+<beat id="giveFull" on="talk" target="npc.profAlder" title="Every kind" priority="32" when="quest.dex80.state == 'complete' && quest.dexFull.state == 'unset'">
+  @profAlder: Eighty. I never finished my own Dex, you know. I am too old to walk Victory Road. Finish it for me. All of them.
+  ::accept{quest="dexFull"}
+</beat>
+
+// The evaluation, every visit.
+<beat id="evaluate" on="talk" target="npc.profAlder" title="Dex evaluation" once="false">
+  @profAlder: Let me see your Dex. You have seen {{@dexSeen}} kinds and caught {{@dexCaught}}.
+  <match>
+    <when test="@dexCaught >= 150">
+      @profAlder{emotion="laughing"}: Complete! Completely complete! I could weep.
+    </when>
+    <when test="@dexCaught >= 80">
+      @profAlder{emotion="surprised"}: Remarkable. The sea routes and the old places are all that is left.
+    </when>
+    <when test="@dexCaught >= 40">
+      @profAlder{emotion="happy"}: Good, good. Try the routes at night: different monsters come out.
+    </when>
+    <when test="@dexCaught >= 10">
+      @profAlder: A fine start. Every route has something you have not caught yet.
+    </when>
+    <otherwise>
+      @profAlder: Go into the tall grass. Monsters live there. Catch them!
+    </otherwise>
+  </match>
+  @profAlder{when="@typesCaught >= 15"}: And one of every type. Kai will be furious.
+</beat>

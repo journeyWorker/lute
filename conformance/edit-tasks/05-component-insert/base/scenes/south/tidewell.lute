@@ -1,0 +1,23 @@
+---
+kind: scene
+id: south.tidewell
+title: Tidewell
+on: enterTown
+target: town.tidewell
+priority: 10
+after: 'visited("spine.lab")'
+---
+
+// The first time in Tidewell: the harbour town at the end of the south,
+// the lighthouse, and Noor, who knows everybody's business.
+
+## The harbour
+
+::bg{location="tidewell" time="day"}
+::music{action="start" mood="upbeat" volume="normal"}
+@narrator: Tidewell: blue shutters, wet cobbles, nets drying on every railing, and the lighthouse on its rock at the mouth of the harbour, turning even in daylight.
+::auto{character="tidewellNoor" anchor="center" action="enter"}
+@tidewellNoor{emotion="smug"}: You came over the bridge? Then you beat all five and turned down the nice man at the end. Everybody does. He's been there a month.
+@tidewellNoor: I'm Noor. My sister runs the gym. She'll be in the pool. She's always in the pool. You'll know her; she's the one going faster than the water.
+@tidewellNoor: The fishing pier is south, the lighthouse is Isla's, and the cape is past the cliffs, where the weird researcher lives. Don't touch his boats.
+::auto{character="tidewellNoor" action="exit"}

@@ -1,0 +1,1 @@
+{"intended":[{"node":"choice:job.gate:approach.enter","kind":"guard"},{"node":"state:run.job","kind":"removed"}],"forbidden":["choice:job.gate:approach.ask","rationale"],"preserve":{"ids":["choice:job.gate:approach.enter","choice:job.gate:approach.ask"]}}

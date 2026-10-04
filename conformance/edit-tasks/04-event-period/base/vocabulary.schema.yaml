@@ -1,0 +1,13 @@
+# Staging vocabulary for the station.
+enums:
+  emotion: [neutral, happy, shy, tired, worried, laughing, sad, surprised, fond, stern]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fadeInUp, fadeIn, sway, lean, turnAway, fadeOut, hide]
+    exits: [fadeOut, hide]
+  mood: [peaceful, tense, romantic, sad, upbeat, festive, lonely]
+  volume: [silent, down, normal, up, full]
+  musicAction: [start, change, stop, resume, fadeOut]
+  vfxType: [whiteOut, blackOut, rain, fog, lightning, meteors, lanterns]

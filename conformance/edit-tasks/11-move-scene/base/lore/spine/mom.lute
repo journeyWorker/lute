@@ -1,0 +1,31 @@
+---
+kind: lore
+id: spine.mom
+title: Mom
+---
+
+<entry id="momMorning" on="talk" target="npc.mom" category="bark" priority="10" once="day" when="@isMorning">
+  @mom: Morning! There's toast. Don't let your monsters eat all of it.
+</entry>
+
+<entry id="momNight" on="talk" target="npc.mom" category="bark" priority="10" once="day" when="@isNight">
+  @mom: It's late. Stay the night; the routes are no place to be in the dark.
+</entry>
+
+<entry id="momWeekend" on="talk" target="npc.mom" category="bark" priority="5" when="@weekend">
+  @mom: A weekend! Your father always took you fishing on weekends. Well. Rest, at least.
+</entry>
+
+<entry id="momBadges" on="talk" target="npc.mom" category="bark">
+  <match>
+    <when test="@badgeCount >= 8">
+      @mom: Eight badges. I keep your badge case on the mantelpiece when you're home. Is that silly?
+    </when>
+    <when test="@badgeCount >= 1">
+      @mom: The neighbours say you've got {{@badgeCount}} badges now. I told them I'm not surprised.
+    </when>
+    <otherwise>
+      @mom: Right. All kids leave home someday. It said so on TV.
+    </otherwise>
+  </match>
+</entry>

@@ -1,0 +1,33 @@
+---
+kind: quest
+id: quests.station
+title: Station life
+---
+
+// Accepted on the roof when Sol invites the player to the Perseids.
+<quest id="meteor" title="The Perseids with Sol" tier="run">
+  <objective id="watch" title="Be on the roof on Thursday night" done="visited('sol.meteor')" by="run.day >= 5"/>
+  <on event="questFailed">
+    @narrator: Thursday night the roof hatch stays shut on your side. The sky does what it does without you.
+  </on>
+</quest>
+
+// Always on: the job itself.
+<quest id="logkeeper" title="Keep the log" start="true" tier="run">
+  <objective id="readings" title="Log five careful morning readings" done="run.readings >= 5"/>
+  <objective id="sonde" title="Send up the radiosonde" done="run.balloonUp" optional/>
+  <reward kind="KEEPSAKE" amount="1"/>
+  <on event="questComplete">
+    @ines{emotion="fond"}: Five clean mornings in a row. I've had interns who never managed two.
+  </on>
+</quest>
+
+// Every storm: tie down the mast, bar the shutters. Season-tier, so each new
+// storm hands it back unset, and `start` takes it up again.
+<quest id="battenDown" title="Batten down the station" tier="season:storm" start="@stormLive">
+  <objective id="mast" title="Lash the anemometer mast" done="season.storm.mast"/>
+  <objective id="shutters" title="Bar the kitchen shutters" done="season.storm.shutters"/>
+  <on event="questComplete">
+    @ines{emotion="fond"}: Mast lashed, shutters barred. Now we let it blow.
+  </on>
+</quest>

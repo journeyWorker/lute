@@ -1,0 +1,47 @@
+---
+kind: lore
+id: east.trainersGyms
+title: Spark Gym and Bloom Gym trainers
+---
+
+// ── Spark Gym, Portvolt: Lt. Volta's crew. The gym floor is wired; the
+//    trainers stand by the switches. ─────────────────────────────────────
+
+<beat use="trainerBattle" id="sparkGymEngineerWatts" who="sparkGymEngineerWatts" intro="Mind the cables! Every one of them is live, and so am I!" win="Short circuit! Total short circuit!" lose="Grounded! Mind the cables next time." prize="700"/>
+
+<entry id="eastSparkGymEngineerWattsAfter" on="talk" target="npc.sparkGymEngineerWatts" category="bark" when="holds('defeated', ['sparkGymEngineerWatts'])">
+  @sparkGymEngineerWatts: The Lieutenant wired this gym himself. Twice. The first time the lights went out in half of Portvolt.
+</entry>
+
+<beat use="trainerBattle" id="sparkGymSailorFlint" who="sparkGymSailorFlint" intro="I served under the Lieutenant! You'll salute before you pass!" win="At ease! At ease! I surrender!" lose="Dismissed, recruit!" prize="560"/>
+
+<entry id="eastSparkGymSailorFlintAfter" on="talk" target="npc.sparkGymSailorFlint" category="bark" when="holds('defeated', ['sparkGymSailorFlint'])">
+  @sparkGymSailorFlint: Ground types shrug off electricity. Don't tell the Lieutenant I told you.
+</entry>
+
+<beat use="trainerBattle" id="sparkGymRockerJolt" who="sparkGymRockerJolt" intro="One, two, one two three FOUR! Electric monsters rock!" win="Aw, you blew my amp." lose="Encore! Encore for me!" prize="620"/>
+
+<entry id="eastSparkGymRockerJoltAfter" on="talk" target="npc.sparkGymRockerJolt" category="bark" when="holds('defeated', ['sparkGymRockerJolt'])">
+  @sparkGymRockerJolt: My band plays the Portvolt market on Wednesdays. We're called Static. You've probably heard of us.
+</entry>
+
+// ── Bloom Gym, Bloomfield: Fern's garden. The trainers tend the beds
+//    between battles. ─────────────────────────────────────────────────────
+
+<beat use="trainerBattle" id="bloomGymLassRose" who="bloomGymLassRose" intro="Please don't step on the beds! Oh, you want to battle? Then mind the beds while we battle!" win="Oh, the petunias!" lose="Thank you for minding the beds." prize="480"/>
+
+<entry id="eastBloomGymLassRoseAfter" on="talk" target="npc.bloomGymLassRose" category="bark" when="holds('defeated', ['bloomGymLassRose'])">
+  @bloomGymLassRose: Fern falls asleep in the greenhouse most afternoons. We just work around her.
+</entry>
+
+<beat use="trainerBattle" id="bloomGymBeautyLily" who="bloomGymBeautyLily" intro="Grass monsters are beautiful AND tough. Like me." win="Only one of those was true today." lose="Beautiful AND tough. As promised." prize="720"/>
+
+<entry id="eastBloomGymBeautyLilyAfter" on="talk" target="npc.bloomGymBeautyLily" category="bark" when="holds('defeated', ['bloomGymBeautyLily'])">
+  @bloomGymBeautyLily: Fire burns, bugs bite, birds peck. Grass has a lot of enemies. That's why we're so polite.
+</entry>
+
+<beat use="trainerBattle" id="bloomGymPicnickerIvy" who="bloomGymPicnickerIvy" intro="I brought sandwiches for after. Only winners get sandwiches." win="Fine. Have a sandwich." lose="More sandwiches for me!" prize="400"/>
+
+<entry id="eastBloomGymPicnickerIvyAfter" on="talk" target="npc.bloomGymPicnickerIvy" category="bark" when="holds('defeated', ['bloomGymPicnickerIvy'])">
+  @bloomGymPicnickerIvy: Cucumber. It's always cucumber. Fern says it's good for the complexion.
+</entry>

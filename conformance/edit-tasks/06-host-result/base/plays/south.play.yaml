@@ -1,0 +1,474 @@
+# Southshore, the long way round: every town, every route by day and by
+# night, the Moonstone dig, both gyms, Kai (lost, this time), the bridge and
+# its recruiter, the museum's revivals, Old Salt's two lessons, the board
+# parcel and a Sunday derby.
+#
+#   lute play . --script plays/south.play.yaml
+#
+# OWNED BY south. The parcel is a board quest: the engine accepts it at the
+# Pebbleton Center (an engine step).
+choose:
+  homeWake: late
+  starter: dewpup
+  southDigFossil: spiral
+steps:
+  # ── day 1 (Monday), morning: Hollowtown to Pebbleton ───────────────────
+  - occasion: newGame
+    expect: { presented: [spine.opening, spine.home] }
+  - occasion: enterPlace
+    target: place.profLab
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: spine.lab, facts: [chose(dewpup), rivalChose(sproutle)], state: { run.rivalStanding: 1 } }
+  - engine: { facts: [caught(dewpup), seen(dewpup), inParty(dewpup)] }
+  - occasion: enterTown
+    target: town.hollowtown
+    expect: { winner: south.hollowtown }
+  - occasion: talk
+    target: npc.hollowtownHale
+    expect: { winner: southHaleMorning }
+  - occasion: enterRoute
+    target: route.r1
+    expect: { winner: south.route1.enter }
+  - occasion: trainerSpotted
+    target: trainer.r1YoungsterTodd
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route1.r1YoungsterTodd }
+  - occasion: trainerSpotted
+    target: trainer.r1LassMina
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route1.r1LassMina }
+  - occasion: trainerSpotted
+    target: trainer.r1BugCatcherRene
+    label: Rene wins
+    bridges: { battle: [ { won: false } ] }
+    expect: { winner: south.route1.r1BugCatcherRene, notFacts: [defeated(r1BugCatcherRene)] }
+  - occasion: trainerSpotted
+    target: trainer.r1BugCatcherRene
+    label: the rematch
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route1.r1BugCatcherRene, facts: [defeated(r1BugCatcherRene)], state: { run.money: 3296 } }
+  - occasion: talk
+    target: npc.r1BugCatcherRene
+    expect: { winner: southR1BugCatcherReneAfter }
+  - occasion: talk
+    target: npc.r1Joss
+    expect: { winner: southR1JossMorning }
+  - occasion: enterRoute
+    target: route.r2
+    expect: { winner: south.route2.enter }
+  - occasion: trainerSpotted
+    target: trainer.r2BugCatcherSid
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route2.r2BugCatcherSid }
+  - occasion: trainerSpotted
+    target: trainer.r2BugCatcherAnnie
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route2.r2BugCatcherAnnie }
+  - occasion: trainerSpotted
+    target: trainer.r2LassFaye
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route2.r2LassFaye }
+  - occasion: trainerSpotted
+    target: trainer.r2PicnickerHana
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route2.r2PicnickerHana }
+  - occasion: trainerSpotted
+    target: trainer.r2HexManiacOona
+    label: Oona only walks the Hushwood at night
+    expect: { winner: none }
+  - occasion: enterPlace
+    target: place.r2Gatehouse
+    expect: { winner: south.route2.gatehouse }
+  - occasion: enterTown
+    target: town.pebbleton
+    expect: { winner: south.pebbleton }
+  - occasion: obstacle
+    target: gate.pebbletonEast
+    expect: { winner: southPebbletonEastShut }
+  - occasion: talk
+    target: npc.pebbletonDobbs
+    expect: { winner: southDobbsShut }
+  - occasion: enterPlace
+    target: place.pebbletonMuseum
+    expect: { winner: south.museum, quests: { southFossil: active } }
+  - occasion: talk
+    target: npc.pebbletonKell
+    expect: { winner: southKellWaiting }
+  - occasion: trainerSpotted
+    target: trainer.stoneGymHikerBo
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.stoneGymHall.stoneGymHikerBo }
+  - occasion: trainerSpotted
+    target: trainer.stoneGymCamperLiam
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.stoneGymHall.stoneGymCamperLiam }
+  - occasion: trainerSpotted
+    target: trainer.stoneGymHikerDara
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.stoneGymHall.stoneGymHikerDara }
+  - occasion: talk
+    target: npc.stoneGymGuide
+    expect: { winner: southStoneGuide }
+  - occasion: challenge
+    target: arena.stoneGym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.stoneGym, facts: [hasBadge(stone), canPass(pebbletonEast)] }
+  - occasion: talk
+    target: npc.petra
+    expect: { winner: southPetraMorning }
+  - occasion: obstacle
+    target: gate.pebbletonEast
+    label: the east road is open
+    expect: { winner: none }
+  - occasion: talk
+    target: npc.pebbletonDobbs
+    expect: { winner: southDobbsOpen }
+  - occasion: heal
+    target: town.pebbleton
+    expect: { winner: south.pebbletonTown.center }
+  - engine: { accept: [southParcel] }
+    label: the Center board (the engine accepts a board quest)
+    expect: { quests: { southParcel: active } }
+  - occasion: shop
+    target: town.pebbleton
+    label: the parcel from the board
+    expect: { presented: [south.pebbletonTown.mart, south.pebbletonTown.parcel], quests: { southParcel: active } }
+  - occasion: talk
+    target: npc.pebbletonJuniper
+    expect: { winner: southJuniper }
+
+  # ── day 1, night: back down to Hollowtown ──────────────────────────────
+  - advance: { to: night }
+    label: night falls
+    expect: { clock: { slot: night } }
+  - occasion: enterRoute
+    target: route.r2
+    expect: { winner: southR2Night }
+  - occasion: trainerSpotted
+    target: trainer.r2HexManiacOona
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route2.r2HexManiacOona }
+  - occasion: talk
+    target: npc.r2HexManiacOona
+    expect: { winner: southR2HexManiacOonaAfter }
+  - occasion: trainerSpotted
+    target: trainer.r1BugCatcherRene
+    label: already beaten, and home in bed
+    expect: { winner: none }
+  - occasion: trainerSpotted
+    target: trainer.r1YoungsterBen
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route1.r1YoungsterBen }
+  - occasion: enterTown
+    target: town.hollowtown
+    expect: { winner: southHollowtownNight }
+  - occasion: talk
+    target: npc.hollowtownWren
+    label: the parcel delivered
+    expect: { winner: south.hollowtownTown.wrenParcel, quests: { southParcel: complete } }
+  - occasion: talk
+    target: npc.hollowtownWren
+    expect: { winner: southWrenNight }
+  - occasion: talk
+    target: npc.hollowtownTeo
+    expect: { winner: southTeoNight }
+
+  # ── day 2 (Tuesday): Route 3 and Moonstone Cave ────────────────────────
+  - advance: day
+    label: Vex takes over the radio
+    expect: { quests: { eclipseArc: active } }
+  - occasion: enterRoute
+    target: route.r3
+    expect: { winner: south.route3.enter }
+  - occasion: trainerSpotted
+    target: trainer.r3YoungsterAda
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route3.r3YoungsterAda }
+  - occasion: trainerSpotted
+    target: trainer.r3LassRobin
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route3.r3LassRobin }
+  - occasion: trainerSpotted
+    target: trainer.r3HikerGus
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route3.r3HikerGus }
+  - occasion: trainerSpotted
+    target: trainer.r3BugCatcherKeiko
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route3.r3BugCatcherKeiko }
+  - occasion: trainerSpotted
+    target: trainer.r3SuperNerdLyle
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route3.r3SuperNerdLyle }
+  - occasion: trainerSpotted
+    target: trainer.r3YoungsterJosh
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route3.r3YoungsterJosh }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneGruntSable
+    label: no grunts before the dig is found
+    expect: { winner: none }
+  - occasion: enterPlace
+    target: place.moonstoneCave
+    expect: { winner: south.moonstoneCave, state: { run.lair.quarryDig: found } }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneHikerBrom
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstone.moonstoneHikerBrom }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneSuperNerdPell
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstone.moonstoneSuperNerdPell }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneLassTilly
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstone.moonstoneLassTilly }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneGruntSable
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstone.moonstoneGruntSable }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneGruntFlint
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstone.moonstoneGruntFlint }
+  - occasion: enterPlace
+    target: place.moonstoneCave
+    label: two ramps down, one to go
+    expect: { winner: southMoonstoneDigLights }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneGruntMarl
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstone.moonstoneGruntMarl }
+  - occasion: enterPlace
+    target: place.moonstoneCave
+    label: the Digmaster wins the first round
+    bridges: { battle: [ { won: false } ] }
+    expect: { winner: south.moonstoneDig, state: { run.lair.quarryDig: found, run.southFossil: none }, notFacts: [defeated(gruntDig)] }
+  - occasion: enterPlace
+    target: place.moonstoneCave
+    label: and loses the second
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstoneDig, state: { run.lair.quarryDig: cleared, run.southFossil: spiral }, facts: [defeated(gruntDig)] }
+  - occasion: enterPlace
+    target: place.moonstoneCave
+    expect: { winner: southMoonstoneQuiet }
+  - occasion: talk
+    target: npc.moonstoneSuperNerdPell
+    expect: { winner: southMoonstoneSuperNerdPellAfter }
+  - engine: { facts: [caught(lunafae), seen(lunafae)] }
+  - occasion: caught
+    target: mon.lunafae
+    label: the first wild catch, in the cave
+    expect: { presented: [spine.firstCatch, south.catches.lunafae] }
+  - advance: { to: night }
+    label: night on the ridge
+    expect: { clock: { slot: night } }
+  - occasion: trainerSpotted
+    target: trainer.r3CamperDoran
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route3.r3CamperDoran }
+
+  # ── day 3 (Wednesday): Kai, the bridge, Tidewell ───────────────────────
+  - advance: day
+  - occasion: enterRoute
+    target: route.r4
+    label: Kai wins this one
+    bridges: { battle: [ { won: false } ] }
+    expect: { presented: [south.bridgeRival, south.route4.sign], facts: [rivalFought(bridge)], notFacts: [rivalBeaten(bridge)], state: { run.rivalStanding: 0 } }
+  - occasion: enterRoute
+    target: route.r4
+    expect: { winner: southR4Morning }
+  - occasion: trainerSpotted
+    target: trainer.r4GruntRecruiter
+    label: the man at the end waits for all five
+    expect: { winner: none }
+  - occasion: trainerSpotted
+    target: trainer.r4YoungsterPip
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route4.r4YoungsterPip }
+  - occasion: trainerSpotted
+    target: trainer.r4LassEvie
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route4.r4LassEvie }
+  - occasion: trainerSpotted
+    target: trainer.r4CamperShane
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route4.r4CamperShane }
+  - occasion: trainerSpotted
+    target: trainer.r4LassMei
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route4.r4LassMei }
+  - occasion: trainerSpotted
+    target: trainer.r4BugCatcherCal
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route4.r4BugCatcherCal }
+  - occasion: trainerSpotted
+    target: trainer.r4GruntRecruiter
+    label: the recruiter wins the first time
+    bridges: { battle: [ { won: false } ] }
+    expect: { winner: south.route4.r4GruntRecruiter, notFacts: [defeated(r4GruntRecruiter)] }
+  - occasion: trainerSpotted
+    target: trainer.r4GruntRecruiter
+    label: no second nugget
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route4.r4GruntRecruiter, facts: [defeated(r4GruntRecruiter)] }
+  - occasion: enterTown
+    target: town.tidewell
+    expect: { winner: south.tidewell }
+  - occasion: trainerSpotted
+    target: trainer.tideGymSwimmerLuis
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tideGymPool.tideGymSwimmerLuis }
+  - occasion: trainerSpotted
+    target: trainer.tideGymPicnickerDiana
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tideGymPool.tideGymPicnickerDiana }
+  - occasion: trainerSpotted
+    target: trainer.tideGymSwimmerCora
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tideGymPool.tideGymSwimmerCora }
+  - occasion: challenge
+    target: arena.tideGym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tideGym, facts: [hasBadge(tide)] }
+  - occasion: talk
+    target: npc.tideGymGuide
+    expect: { winner: southTideGuideAfter }
+  - occasion: heal
+    target: town.tidewell
+    expect: { winner: south.tidewellTown.center }
+  - occasion: shop
+    target: town.tidewell
+    expect: { winner: south.tidewellTown.mart }
+  - occasion: talk
+    target: npc.tidewellNoor
+    expect: { winner: southNoor }
+  - occasion: talk
+    target: npc.tidewellPim
+    label: not a Sunday
+    expect: { winner: southPim }
+  - occasion: enterPlace
+    target: place.tidewellPier
+    expect: { winner: south.tidewellTown.pier }
+  - occasion: trainerSpotted
+    target: trainer.tidewellFishermanNed
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tidewellTown.tidewellFishermanNed }
+  - occasion: trainerSpotted
+    target: trainer.tidewellFishermanOskar
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tidewellTown.tidewellFishermanOskar }
+  - occasion: trainerSpotted
+    target: trainer.tidewellSailorBrett
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tidewellTown.tidewellSailorBrett }
+  - occasion: talk
+    target: npc.tidewellMorrow
+    expect: { winner: south.oldSalt, quests: { southOldSalt: active, southOldSaltFirst: active, southOldSaltBig: unset } }
+  - engine: { facts: [caught(goldfinn), seen(goldfinn)] }
+  - occasion: caught
+    target: mon.goldfinn
+    expect: { presented: [south.catches.goldfinn] }
+  - occasion: talk
+    target: npc.tidewellMorrow
+    label: lesson one reported; lesson two handed out
+    expect: { winner: southMorrow, quests: { southOldSaltFirst: complete, southOldSaltBig: active } }
+  - occasion: enterPlace
+    target: place.tidewellLighthouse
+    expect: { winner: south.tidewellTown.lighthouse }
+  - occasion: enterPlace
+    target: place.tidewellCape
+    expect: { winner: south.cape }
+  - occasion: trainerSpotted
+    target: trainer.capeBirdKeeperWyn
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tidewellTown.capeBirdKeeperWyn }
+  - occasion: talk
+    target: npc.cassius
+    expect: { winner: south.cassius, facts: [hasItem(ferryTicket), canPass(ferryGangway)] }
+  - occasion: talk
+    target: npc.cassius
+    expect: { winner: southCassiusAfter }
+  - advance: { to: night }
+    label: night under the bridge
+    expect: { clock: { slot: night } }
+  - occasion: trainerSpotted
+    target: trainer.r4SwimmerNell
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route4.r4SwimmerNell }
+  - occasion: talk
+    target: npc.marin
+    expect: { winner: southMarinNight }
+  - occasion: talk
+    target: npc.tidewellIsla
+    expect: { winner: southIslaNight }
+
+  # ── day 4 (Thursday): the museum's revivals ────────────────────────────
+  - advance: day
+  - occasion: talk
+    target: npc.pebbletonKell
+    expect: { winner: south.museumRevive }
+  - engine: { facts: [caught(spiralfossil), seen(spiralfossil)] }
+  - occasion: caught
+    target: mon.spiralfossil
+    expect: { presented: [south.catches.spiralfossil], quests: { southFossil: complete } }
+  - occasion: talk
+    target: npc.pebbletonKell
+    label: the wing fossil, for two badges
+    expect: { winner: south.museumWing }
+  - engine: { facts: [caught(wingfossil), seen(wingfossil)] }
+  - occasion: caught
+    target: mon.wingfossil
+    expect: { presented: [south.catches.wingfossil] }
+  - occasion: talk
+    target: npc.pebbletonKell
+    expect: { winner: southKellDone }
+  - occasion: talk
+    target: npc.pebbletonCurator
+    expect: { winner: southCuratorDone }
+
+  # ── day 7 (Sunday): the derby ──────────────────────────────────────────
+  - advance: day
+    repeat: 3
+    label: to Sunday
+  - occasion: enterTown
+    target: town.tidewell
+    expect: { winner: southTidewellDerbyDay }
+  - occasion: talk
+    target: npc.tidewellPim
+    expect: { winner: south.derby, quests: { southDerby: active } }
+  - occasion: talk
+    target: npc.tidewellPim
+    expect: { winner: southPimDerby }
+  - engine: { facts: [caught(seahorsling), seen(seahorsling)] }
+  - occasion: caught
+    target: mon.seahorsling
+    expect: { presented: [south.catches.seahorsling], quests: { southDerby: complete } }
+  - engine: { facts: [caught(crownfinn), seen(crownfinn)] }
+  - occasion: talk
+    target: npc.tidewellMorrow
+    label: lesson two
+    expect: { quests: { southOldSaltBig: complete, southOldSalt: complete } }
+
+  # ── the aide, and the hand-off ─────────────────────────────────────────
+  - label: three more kinds from the Route 1 and 3 grass
+    engine: { facts: [caught(pidgeling), seen(pidgeling), caught(scurrat), seen(scurrat), caught(pebblet), seen(pebblet)] }
+    expect: { quests: { dex10: complete } }
+  - occasion: talk
+    target: npc.aide
+    expect: { winner: south.aideFlash, facts: [hasItem(hmFlash), canUse(flash), canPass(rockTunnel)] }
+  - occasion: talk
+    target: npc.aide
+    expect: { winner: southAideAfter }
+expect:
+  end: complete
+  quests: { southFossil: complete, southOldSalt: complete, southOldSaltFirst: complete, southOldSaltBig: complete, southParcel: complete, southDerby: complete, dex10: complete, eclipseArc: active, badgeRoad: active }
+  facts: [hasBadge(stone), hasBadge(tide), hasItem(ferryTicket), hasItem(hmFlash), rivalFought(bridge), defeated(gruntDig), defeated(r4GruntRecruiter), caughtType(rock)]
+  notFacts: [rivalBeaten(bridge)]
+  state: { run.lair.quarryDig: cleared, run.southFossil: spiral, run.rivalStanding: 0 }
+  transcriptContains:
+    - "@announcer: And it's Sunday, which means one thing on the south coast: the Tidewell Derby!"
+    - "@tidewellPim: A SEAHORSLING! On derby day! Somebody fetch the trophy! Somebody fetch my great-great-grandmother!"
+    - "@pebbletonKell: It moved! It's a Spiralfossil! Hello, little one. Hello. Don't bite the doctor."
+    - "@grunt: Congratulations! You beat all five! Here's your prize, with the compliments of a certain organization."
+    - "@r4GruntRecruiter: Back for more? The offer's still open. So is my fist."

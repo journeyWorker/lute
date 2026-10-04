@@ -1,0 +1,9 @@
+# The departure send-off, for one member: Sable, who gave Wren the cistern
+# glass and trusts her.
+file: ../lore/departure.lute
+entry: sendOff
+state: { occasion.target: sable, user.bond.sable: 3 }
+facts: ["gave(sable, cisternGlass)"]
+expect:
+  transcriptContains: ["Sable looks up as she passes.", "Come back with your shadow."]
+  transcriptLacks: ["Kettle'll be on."]

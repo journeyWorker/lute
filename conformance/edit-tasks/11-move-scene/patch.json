@@ -1,0 +1,1 @@
+{"base":{"project":"@BASE@"},"targets":[],"edits":[{"op":"moveFile","from":"scenes/spine/elite-drakon.lute","to":"scenes/archive/elite-drakon.lute"}],"preserve":[{"ids":["scene:spine.elite.drakon"]},{"lineIds":[]},{"voiceKeys":[]}]}

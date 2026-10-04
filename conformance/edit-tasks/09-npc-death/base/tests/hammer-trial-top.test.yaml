@@ -1,0 +1,9 @@
+# Reaching floor 9 and THEN falling still counts: done is judged before by.
+# 0.23.1+: trace applies the EMBERS credit, so the payout is asserted here.
+file: ../quests/bonds.lute
+facts: ["wields(hammer)"]
+state: { run.floor: 9, run.outcome: fell }
+expect:
+  quests: { hammerTrial: complete }
+  state: { user.embers: 20 }
+  transcriptContains: ["I heard that."]

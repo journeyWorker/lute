@@ -1,0 +1,1 @@
+{"base":{"project":"@BASE@"},"targets":["beat:perseids.record"],"edits":[{"op":"replaceAttr","node":"beat:perseids.record","attr":"when","value":"occasion.payload.count >= 60 && holds('at', ['sol', 'roof']) && run.day >= 3"}],"preserve":[{"ids":["beat:perseids.record"]}]}

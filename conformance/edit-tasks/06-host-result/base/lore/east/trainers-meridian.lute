@@ -1,0 +1,44 @@
+---
+kind: lore
+id: east.trainersMeridian
+title: Trainers aboard the Meridian
+---
+
+// The Meridian sails from Tidewell to Portvolt. Its passengers are the
+// region's well-dressed and well-bored; the crew battle to pass the time.
+
+<beat use="trainerBattle" id="meridianSailorBram" who="meridianSailorBram" intro="Landlubber on deck! Let's see if your monsters have sea legs!" win="Capsized! Clean over!" lose="Ha! Swab the deck on your way out." prize="320"/>
+
+<entry id="eastMeridianSailorBramAfter" on="talk" target="npc.meridianSailorBram" category="bark" when="holds('defeated', ['meridianSailorBram'])">
+  @meridianSailorBram: Thirty years at sea and I still get seasick in the bath. Don't tell the captain.
+</entry>
+
+<beat use="trainerBattle" id="meridianGentlemanHale" who="meridianGentlemanHale" intro="A young trainer aboard the Meridian? How delightfully unexpected. Shall we?" win="Splendid. Simply splendid. I shall need a sherry." lose="There, there. Breeding tells, you know." prize="1200"/>
+
+<entry id="eastMeridianGentlemanHaleAfter" on="talk" target="npc.meridianGentlemanHale" category="bark" when="holds('defeated', ['meridianGentlemanHale'])">
+  @meridianGentlemanHale: I summer in Bloomfield. The gardens are exquisite, if one can bear the bees.
+</entry>
+
+<beat use="trainerBattle" id="meridianLassPip" who="meridianLassPip" intro="Mummy says I'm not to talk to strangers. Battling isn't talking!" win="I'm telling Mummy!" lose="I won! Mummy, I won!" prize="240"/>
+
+<entry id="eastMeridianLassPipAfter" on="talk" target="npc.meridianLassPip" category="bark" when="holds('defeated', ['meridianLassPip'])">
+  @meridianLassPip: Mummy's in the ballroom. She's been in the ballroom since Tidewell.
+</entry>
+
+<beat use="trainerBattle" id="meridianSailorOona" who="meridianSailorOona" intro="Crew quarters! Passengers need a pass. Or a battle. Battle's quicker." win="Aye, fair and square. Go on through." lose="Back to the ballroom with you, passenger." prize="330"/>
+
+<entry id="eastMeridianSailorOonaAfter" on="talk" target="npc.meridianSailorOona" category="bark" when="holds('defeated', ['meridianSailorOona'])">
+  @meridianSailorOona: The captain hasn't left the cabin since we cast off. Somebody should check on the old sea dog.
+</entry>
+
+<beat use="trainerBattle" id="meridianFisherTeo" who="meridianFisherTeo" intro="Hush! You'll scare the fish. Well, now they're scared. Might as well battle." win="Lost the battle AND the fish." lose="Ha! That one I landed." prize="400"/>
+
+<entry id="eastMeridianFisherTeoAfter" on="talk" target="npc.meridianFisherTeo" category="bark" when="holds('defeated', ['meridianFisherTeo'])">
+  @meridianFisherTeo: You can't fish off a moving ship, they tell me. Nobody's told the fish.
+</entry>
+
+<beat use="trainerBattle" id="meridianBeautyCeline" who="meridianBeautyCeline" intro="Careful, darling. My monsters bruise, but they never forget." win="Oh! You've scuffed my shoes." lose="Mm. Try again when you've grown into it." prize="840"/>
+
+<entry id="eastMeridianBeautyCelineAfter" on="talk" target="npc.meridianBeautyCeline" category="bark" when="holds('defeated', ['meridianBeautyCeline'])">
+  @meridianBeautyCeline: That spiky-haired boy? He beat me in two turns and asked if I was done. Rude. Talented. Rude.
+</entry>

@@ -3,9 +3,8 @@ kind: lore
 id: sendoff
 title: At the rail
 ---
-
 /* runStart is a sequence: after the routine, everyone whose regard Ilo has
-   earned says a word as he goes over, one after another, once a dive. */
+earned says a word as he goes over, one after another, once a dive. */
 
 <beat id="word" on="runStart" for="kind:bonded" once="run" priority="5" when="user.bond[occasion.target] >= 3 && (occasion.target != 'quill' || entry.quillFirst.everRead)">
   <match on="occasion.target">

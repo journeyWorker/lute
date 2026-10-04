@@ -3,7 +3,6 @@ kind: quest
 id: quests.companions
 title: Companion quests
 ---
-
 /* Isolde's oath. Offered at camp once she trusts you (camp.talks.isoldeOath). */
 <quest id="isoldeOath" title="The Oath Unbroken" fail="run.bridge == 'sold' || holds('fell', ['isolde'])">
   <reward kind="XP" amount="100"/>
@@ -19,7 +18,6 @@ title: Companion quests
     @narrator: Isolde takes off the Company clasp she still wore at her collar, and does not put it back on.
   </on>
 </quest>
-
 /* Wren's river. It opens by itself once she is with the party and warm to you. */
 <quest id="wrenRoots" title="What the River Keeps" follows="visited('road.ford')" start="holds('inParty', ['wren']) && run.approval.wren >= 2" fail="holds('departed', ['wren']) || holds('fell', ['wren'])">
   <reward kind="XP" amount="100"/>

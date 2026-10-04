@@ -685,3 +685,75 @@ fn drowned_crown_target_context_golden() {
     assert_eq!(value["references"]["in"][0]["node"], "shot:last.crown:Throne");
     assert_eq!(value["notIncluded"][0]["kind"], "scripts");
 }
+
+#[test]
+fn task_context_discovers_project_root_for_file_targets() {
+    let proj = project();
+    let file = proj.join("scenes/mara.lute");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--target",
+            "scene:mara.first",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["target"]["key"], "mara.first");
+    assert_eq!(value["target"]["file"], "scenes/mara.lute");
+}
+
+#[test]
+fn position_context_rejects_column_beyond_line() {
+    let proj = project();
+    let file = proj.join("scenes/mara.lute");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--at",
+            &format!("{}:1:999999", file.display()),
+            "--project",
+            proj.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("outside the source"));
+}
+
+#[test]
+fn related_scripts_use_typed_include_expansion() {
+    let proj = project();
+    write_at(
+        &proj,
+        "plays/linked.play.yaml",
+        "steps:\n  - include: steps.yaml\n",
+    );
+    write_at(
+        &proj,
+        "plays/steps.yaml",
+        "steps:\n  - occasion: talk\n    expect: { winner: 'mara.first:Mara' }\n",
+    );
+    let file = proj.join("scenes/mara.lute");
+    let output = Command::new(BIN)
+        .args([
+            "context",
+            file.to_str().unwrap(),
+            "--project",
+            proj.to_str().unwrap(),
+            "--target",
+            "shot:mara.first:Mara",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(value["plays"].as_array().unwrap().iter().any(|play| {
+        play["file"] == "plays/linked.play.yaml" && play["classification"] == "static"
+    }));
+}

@@ -84,11 +84,36 @@ pub fn source_stream(source: &str) -> SourceStream<'_> {
     let mut in_block_comment = false;
     while line_start < source.len() {
         let line_end = source[line_start..].find('\n').map_or(source.len(), |n| line_start + n);
-        let content_end = line_end;
+        let full_content_end = line_end;
+        let line = &source[line_start..full_content_end];
+        let indent = line.len() - line.trim_start_matches([' ', '\t']).len();
+        push(&mut tokens, &idx, TokenKind::Whitespace, line_start, line_start + indent);
+        let body_start = line_start + indent;
+        let body = &source[body_start..full_content_end];
+        // Comments following a directive or payload are separate trivia tokens.
+        // Ignore comment markers inside quoted attribute values.
+        let mut quote = None;
+        let mut comment_at = None;
+        let bytes = body.as_bytes();
+        let mut p = 0;
+        while p + 1 < bytes.len() {
+            let c = bytes[p] as char;
+            if c == '"' || c == '\'' {
+                if quote == Some(c) { quote = None; } else if quote.is_none() { quote = Some(c); }
+                p += 1;
+                continue;
+            }
+            if quote.is_none() && ((bytes[p] == b'/' && bytes[p + 1] == b'/') ||
+                (bytes[p] == b'/' && bytes[p + 1] == b'*')) {
+                comment_at = Some(p);
+                break;
+            }
+            p += 1;
+        }
+        let content_end = body_start + comment_at.unwrap_or(body.len());
         let line = &source[line_start..content_end];
         let kind = line_kind(line);
         let indent = line.len() - line.trim_start_matches([' ', '\t']).len();
-        push(&mut tokens, &idx, TokenKind::Whitespace, line_start, line_start + indent);
         if in_block_comment || kind == TokenKind::Comment {
             push(&mut tokens, &idx, TokenKind::Comment, line_start + indent, content_end);
             if in_block_comment || line.trim_start_matches([' ', '\t']).starts_with("/*") {
@@ -98,8 +123,6 @@ pub fn source_stream(source: &str) -> SourceStream<'_> {
             push(&mut tokens, &idx, TokenKind::Whitespace, line_start + indent, content_end);
         } else {
             let body_start = line_start + indent;
-            // Preserve a leading structural prefix separately from opaque
-            // attribute/CEL/prose payloads where it is easy to identify one.
             let body = &source[body_start..content_end];
             if kind == TokenKind::Structure {
                 if let Some(open) = body.find('{') {
@@ -120,6 +143,10 @@ pub fn source_stream(source: &str) -> SourceStream<'_> {
             } else {
                 push(&mut tokens, &idx, kind, body_start, content_end);
             }
+        }
+        if let Some(offset) = comment_at {
+            push(&mut tokens, &idx, TokenKind::Comment, body_start + offset, full_content_end);
+            if body[offset..].starts_with("/*") && !body[offset..].contains("*/") { in_block_comment = true; }
         }
         if line_end < source.len() {
             push(&mut tokens, &idx, TokenKind::Whitespace, line_end, line_end + 1);

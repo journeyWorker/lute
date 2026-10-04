@@ -1,0 +1,21 @@
+---
+component: keepsake
+effects: true
+params:
+  who: speaker
+  item: { type: { entity: keepsake } }
+  need: int
+beat:
+  on: talk
+  target: "npc.@who"
+  title: "Something to keep"
+  priority: 45
+  once: user
+  when: "user.bond[@who] >= @need"
+---
+
+## Keepsake
+
+::body
+::gift{from=@who item=@item}
+@narrator{code="0010"}: {{@who}} presses {{@item}} into her hands and will not take it back.

@@ -1,0 +1,13 @@
+# Content vocabulary for The Ashen Stair.
+enums:
+  emotion: [neutral, weary, wry, warm, grim, stricken, fond, guarded]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fadeInUp, idle, lean, fadeOut, hide]
+    exits: [fadeOut, hide]
+  mood: [hearth, stair, dread, triumph, elegy]
+  volume: [silent, down, normal, up]
+  musicAction: [start, change, stop, fadeOut]
+  vfxType: [emberBurst, ashFall, whiteOut, blackOut]

@@ -3,7 +3,6 @@ kind: quest
 id: quests.dive
 title: This dive
 ---
-
 /* Run-tier quests: they start over with every dive. */
 
 <quest id="regentHunt" title="Take the throne" start="true" tier="run">
@@ -16,11 +15,10 @@ title: This dive
     @quill{os when="entry.quillFirst.everRead"}: Not this time. The throne keeps.
   </on>
 </quest>
-
 /* Tavi offers the bounty on deck, between dives: the hub belongs to the run
-   that just ended, so the offer is accepted for the NEXT dive
-   (`::accept{… at="nextRun"}`). A bounty lasts one dive: bring the eel home,
-   or it lapses when he drowns. */
+that just ended, so the offer is accepted for the NEXT dive
+(`::accept{… at="nextRun"}`). A bounty lasts one dive: bring the eel home,
+or it lapses when he drowns. */
 <quest id="eelBounty" title="Tavi's bounty" tier="run">
   <reward kind="PEARLS" amount="5..10"/>
   <objective id="eel" title="Kill the Long Eel, then come home" on="runEnd" done="holds('slew', ['eel']) && @surfaced" until="@died"/>

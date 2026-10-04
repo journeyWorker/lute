@@ -9,5 +9,5 @@ state:
 ---
 
 <quest id="overlookReturn" tier="run" title="Return to the Overlook" follows="visited('kestrel.s01ep01')" start="true">
-<objective id="returned" title="Return to the overlook" done="run.returnedToOverlook"/>
+  <objective id="returned" title="Return to the overlook" done="run.returnedToOverlook"/>
 </quest>

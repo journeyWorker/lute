@@ -1,0 +1,1 @@
+{"intended":[{"node":"shot:spine.elite.morwen:The chamber","kind":"semantic"},{"node":"line:spine.elite.morwen.narrator_0010","kind":"added"},{"node":"state:scene.battle.fight.fainted","kind":"added"}],"forbidden":["requiredSemantics","enginePath","bridge","scene.battle.fight.won"],"preserve":{"ids":["scene:spine.elite.morwen"],"hostContracts":true}}

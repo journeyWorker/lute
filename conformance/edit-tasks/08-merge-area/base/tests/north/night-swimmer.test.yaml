@@ -1,0 +1,8 @@
+# Noor swims at night only: by day her beat is not eligible.
+file: ../../lore/north/route13.lute
+beat: r13SwimmerNoor
+state: { run.slot: day }
+bridges: { battle: [ { won: true } ] }
+expect:
+  eligible: false
+  end: complete

@@ -1,0 +1,20 @@
+---
+kind: scene
+id: east.powerPlant
+title: The old power plant
+on: enterPlace
+target: place.powerPlant
+priority: 20
+---
+
+// The abandoned plant at the end of Route 8. The first visit; the storm bird
+// itself is east.powerPlantCore. The council's engineer (Tamsin) is a trainer
+// in lore/east/trainers-routes.lute. Feeds the board quest eastPowerOutage.
+
+## The turbine hall
+
+::bg{location="power-plant" time="night"}
+::music{action="change" mood="tense" volume="down"}
+@narrator: The plant has been shut for ten years. Nobody has told the machines. Every turbine is turning, slowly, and every bulb in the hall is lit.
+@narrator: Magnetick drift between the pylons like dust in a sunbeam. The floor tingles through your shoes.
+@narrator: At the far end of the hall, a stair goes up toward the chimney. The air on it smells like a storm.

@@ -1,0 +1,1 @@
+{"intended":[{"node":"choice:sol.first:solHello.weather","kind":"added"}],"forbidden":["choiceEffects:sol.first:solHello.coffee","choiceEffects:sol.first:solHello.log","choiceEffects:sol.first:solHello.work"],"preserve":{"ids":["choice:sol.first:solHello.coffee","choice:sol.first:solHello.log","choice:sol.first:solHello.work"]}}

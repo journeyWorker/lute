@@ -1,0 +1,9 @@
+# One wrong turn: out alive, shaken, no key.
+file: ../scenes/puzzles/hydro-valves.lute
+choose: { first: blue, second: blue, third: drain }
+# lute test applies ::fright's effects.writes (the plugin declares its write to run.sanity).
+expect:
+  notFacts: [solved(hydroValves)]
+  state: { run.fate: alive, run.sanity: 8 }
+  transcriptContains: ["The key is still down there."]
+  end: complete

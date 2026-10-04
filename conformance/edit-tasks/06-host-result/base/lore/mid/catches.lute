@@ -1,0 +1,20 @@
+---
+kind: lore
+id: mid.catches
+title: Midlands catch reactions
+---
+
+// Catch reactions for the Midlands' own monsters. The contest catches are in
+// lore/mid/bug-contest.lute (priority 20); these sit below them.
+
+<beat id="slumbear" on="caught" target="mon.slumbear" title="Slumbear caught" priority="10" once="run">
+  @profAlder{vo}: {{userName}}? The Dex just showed me a Slumbear. A SLUMBEAR. In your party. I have to sit down. I am sitting down. Do you know how long it's been since anyone saw one awake?
+</beat>
+
+<beat id="wraithling" on="caught" target="mon.wraithling" title="Wraithling caught" priority="10" once="run" when="holds('midGhostSeen', ['silvercrestTheater'])">
+  @narrator: The Wraithling in the ball is wearing something silver. It will not say where it got it.
+</beat>
+
+<beat id="mothfuzz" on="caught" target="mon.mothfuzz" title="Mothfuzz caught" priority="10" once="run" when="quest.midDayCareRunaway.state == 'active'">
+  @narrator: A Mothfuzz! Fluffy, round, and already trying to get to the nearest lamp. Grandma Ilse at the Fairhaven day care will want to see this.
+</beat>

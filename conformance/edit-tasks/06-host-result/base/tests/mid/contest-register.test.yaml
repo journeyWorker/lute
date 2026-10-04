@@ -1,0 +1,9 @@
+# Tuesday morning at the desk: the player pays and enters.
+file: ../../lore/mid/bug-contest.lute
+beat: register
+state: { run.day: 2, run.slot: morning, run.money: 3000 }
+choose: { midContestEnter: enter }
+expect:
+  eligible: true
+  options: { midContestEnter: [enter, decline] }
+  state: { run.midContest: entered, run.midContestScore: 0, run.midContestDay: 2, run.money: 2500 }

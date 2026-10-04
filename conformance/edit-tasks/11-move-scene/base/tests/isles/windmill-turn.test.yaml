@@ -1,0 +1,8 @@
+# Two vanes turned; the third turn into the wind.
+file: ../../lore/isles/islands.lute
+beat: windmill
+state: { run.islesVanes: 2 }
+choose: { islesVane: west }
+expect:
+  state: { run.islesVanes: 3 }
+  transcriptContains: ["The wind is coming off the sea, from the west. 2 vanes face it."]

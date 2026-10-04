@@ -1,0 +1,8 @@
+# The bell with nothing caught: the consolation berry, no win.
+file: ../../lore/mid/bug-contest.lute
+beat: judgeNone
+state: { run.midContest: entered, run.midContestScore: 0 }
+expect:
+  eligible: { judgeFirst: false, judgeNone: true }
+  state: { run.midContest: closed, run.midContestWins: 0 }
+  transcriptContains: ["a consolation berry, and our deepest sympathy"]

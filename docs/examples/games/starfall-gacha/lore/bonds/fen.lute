@@ -3,7 +3,6 @@ kind: lore
 id: bonds.fen
 title: Fen, the Last Arrow (SR)
 ---
-
 /* Fen talks in as few words as possible. That's the joke and the point. */
 
 <beat id="fenIntro" on="summon" target="hero.fen" once="user" priority="10">

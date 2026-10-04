@@ -1,0 +1,11 @@
+# Taken: the gurney is warm.
+file: ../lore/orderly.lute
+beat: meet
+state: { occasion.target: morgue, run.stalker: morgue }
+choose: { react: run }
+bridges: { evade: [ { outcome: taken } ] }
+expect:
+  state: { run.fate: taken, user.deaths: 1 }
+  transcriptContains: ["@orderly: Lights out, love. Back to bed."]
+  transcriptLacks: ["When you can hear again"]
+  end: terminal

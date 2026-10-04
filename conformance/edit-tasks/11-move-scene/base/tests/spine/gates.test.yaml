@@ -1,0 +1,8 @@
+# Surf needs both the disc (mid) and the Venom Badge (mid): with the disc
+# alone the sea route still barks.
+file: ../../lore/spine/obstacles.lute
+entries: [blockSeaRoute]
+facts: [hasItem(hmSurf)]
+expect:
+  eligible: { blockSeaRoute: true, blockVictoryRoadBoulders: true, blockPebbletonEast: true }
+  transcriptContains: ["A monster that knows Surf could carry you, if you had the Venom Badge."]

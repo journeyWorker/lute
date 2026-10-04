@@ -1,0 +1,46 @@
+---
+kind: scene
+id: days.arrival
+title: The funicular
+on: slotStart
+priority: 30
+when: "run.day == 1 && run.slot == 'morning'"
+---
+
+## The top station
+
+::bg{location="funicular_top" time="morning"}
+::music{action="start" mood="peaceful" volume="down"}
+@narrator: The funicular car shudders the last ten metres and stops against the buffers with a sound like a dropped drawer.
+@narrator: Hallen Ridge Weather Station: two stone huts, a mast, a white louvred box on legs, and more sky than you have ever been under.
+@narrator{when="has(prev.run.route)"}: It looks exactly as you left it last summer. The door still sticks.
+
+::use{component="enter" who="ines"}
+@ines{emotion="stern"}: You're the intern. You're early. Good.
+@ines{emotion="neutral"}: Ines Halvorsen. I run this place, which mostly means I write down what the sky did and apologise to it.
+@player: The brochure said "a quiet summer of observation."
+@ines{emotion="happy"}: The brochure is also forty years old.
+
+## The job
+
+::bg{location="deck" time="morning"}
+::use{component="enter" who="ines" side="left"}
+@ines: Readings at seven, one, and seven. Temperature, humidity, pressure, wind, cloud. You write them in the log and you do not round.
+@ines: Sol keeps the radio. Nights, mostly. You'll meet him or you won't; he's a rumour until noon.
+@ines{emotion="worried"}: And the village wants something from us this year.
+
+<branch id="village" prompt="Ines taps a letter pinned by the barometer.">
+  <choice id="ask" label="Ask what the village wants">
+    @ines: The Lantern Festival is Sunday night. Maren wants a forecast by Friday, so they know whether to hang the lanterns or cancel.
+    @ines{emotion="stern"}: A real forecast. Signed. That means you and I, with a week of your readings.
+    ::accept{quest="forecast"}
+  </choice>
+  <choice id="shrug" label="Say you're only here for the readings">
+    @ines{emotion="neutral"}: That's the job. The forecast is mine, then.
+    @ines: If you change your mind, it's due Friday. The village doesn't forgive a wet festival.
+    ::accept{quest="forecast"}
+  </choice>
+</branch>
+
+@ines: Go and look around. The station is small. You'll run out of it by lunch.
+::auto{character="ines" action="fadeOut"}

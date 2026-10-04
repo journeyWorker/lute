@@ -1,0 +1,11 @@
+# Showing Old Salt a Goldfinn completes lesson one; its questComplete handler
+# takes up lesson two. `lute test` does not apply an ::accept made inside a
+# quest handler (FINDINGS-south S2), so lesson two's activation is proven by
+# plays/south.play.yaml; here only the handler's lines.
+file: ../../quests/south/side.lute
+accepts: [southOldSalt]
+facts: [caught(goldfinn)]
+occasions: [talk@npc.tidewellMorrow]
+expect:
+  quests: { southOldSalt: active, southOldSaltFirst: complete }
+  transcriptContains: ["Lesson two. A Goldfinn that grew up."]

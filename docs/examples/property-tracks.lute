@@ -7,14 +7,13 @@ episode: 1
 # against the `enums:` block this import reaches.
 uses: base.schema.yaml
 ---
-
 /*
-  Property tracks (dsl §11.4): split ONE subject across property-scoped
-  concurrent tracks. Here `marina` is animated on two tracks at once — her
-  position (`pos`) and her opacity (`opacity`) — plus an independent camera
-  subject track. Each track key is distinct (`marina.pos`, `marina.opacity`,
-  `camera`), so the checker accepts them; a track with no usable key would be
-  flagged E-TRACK-KEY.
+Property tracks (dsl §11.4): split ONE subject across property-scoped
+concurrent tracks. Here `marina` is animated on two tracks at once — her
+position (`pos`) and her opacity (`opacity`) — plus an independent camera
+subject track. Each track key is distinct (`marina.pos`, `marina.opacity`,
+`camera`), so the checker accepts them; a track with no usable key would be
+flagged E-TRACK-KEY.
 */
 
 ## The Split Performance

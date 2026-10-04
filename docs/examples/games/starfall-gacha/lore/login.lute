@@ -3,9 +3,8 @@ kind: lore
 id: login
 title: Login bonus
 ---
-
 /* Raised every time the app opens (select: sequence). The stamp cards are
-   once a day; the engine pays the gift the ::stamp animation shows. */
+once a day; the engine pays the gift the ::stamp animation shows. */
 
 <beat id="welcomeBack" on="login" once="day" priority="30" when="user.daysAway >= 7">
   @lumi{emotion="surprised"}: You're back! {{user.daysAway:plural(# day|# days)}}! I kept your seat warm. Mostly by sitting on it.
@@ -42,9 +41,8 @@ title: Login bonus
 <beat id="frostCard" on="login" once="day" priority="10" when="@frostLive">
   ::use{component="loginStamp" card="frost" who="nyx" line="A frost card. I breathed on it so the stamp would stick."}
 </beat>
-
 /* The last day of the vigil is told once, wherever the player hears it
-   first: at login on the last day, or at the day's close. */
+first: at login on the last day, or at the day's close. */
 <beat id="frostLastDay" on="login" once="season:frost" share="frostLastCall" priority="8" when="@frostLive && @frostDaysLeft == 0">
   @nyx{emotion="sad"}: It's the last night of the vigil. The ice goes out tomorrow. Come light one more?
 </beat>

@@ -1,0 +1,7 @@
+# Friday arrives and the Perseids were never watched.
+file: ../quests/station.lute
+accepts: [meteor]
+state: { run.day: 5 }
+expect:
+  quests: { meteor: failed, logkeeper: active }
+  transcriptContains: ["The sky does what it does without you."]

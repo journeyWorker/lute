@@ -4,10 +4,9 @@ id: codex
 title: The Archive (codex pages)
 series: frostCodex
 ---
-
 /* The Archive tab. Each page answers codexOpen for its topic and teaches
-   it for good (learned is user tier). Pages unlock as the story reaches
-   them; the order below is the series order the Archive lists them in. */
+it for good (learned is user tier). Pages unlock as the story reaches
+them; the order below is the series order the Archive lists them in. */
 
 <entry id="lanternSeaPage" on="codexOpen" target="topic.lanternSea" title="The Lantern Sea" when="visited('main.c3s8')">
   @narrator: Every wish the Hollow King swallowed and could not keep, he let go. They drift west, lit, forever.
@@ -28,9 +27,8 @@ series: frostCodex
   @narrator: Once a year the sea freezes for seven nights, and the lanterns can be reached on foot.
   @narrator{when="@frostLive"}: The ice is thick tonight. {{@frostDaysLeft:plural(# night|# nights)}} of vigil left after this one.
 </entry>
-
 /* A page whose topic the story has not reached yet: the title, and nothing
-   else. The kind target renders the topic's label. */
+else. The kind target renders the topic's label. */
 <entry id="blankPage" on="codexOpen" target="kind:topic" title="(locked)" priority="-1">
   @narrator: "{{occasion.target}}". The rest of the page is still blank.
 </entry>

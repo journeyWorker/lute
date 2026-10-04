@@ -1,0 +1,70 @@
+---
+kind: lore
+id: orderly
+title: The Orderly
+---
+
+<beat id="meet" on="encounter" target="kind:room" once="false">
+  ::vfx{type="redout"}
+  @narrator: The squeaking stops. In the doorway, stooped under the frame: a man in a grey orderly's coat, one hand on the rail of a gurney. His face is a lamp that has been switched off.
+  @orderly: Round's at three. You're out of bed.
+  <branch id="react" prompt="He hasn't moved yet.">
+    <choice id="hide" label="Hide">
+      ::use{component="chase" tactic="hide" flavor="You fold yourself into the nearest shadow and stop breathing."}
+    </choice>
+    <choice id="run" label="Run">
+      ::use{component="chase" tactic="run" flavor="You run. Behind you the wheels start up again, unhurried."}
+    </choice>
+    <choice id="freeze" label="Don't move">
+      ::use{component="chase" tactic="freeze" flavor="You stand as still as a patient at inspection."}
+    </choice>
+    <choice id="lantern" label="Turn the lantern up in his face" when="holds('holding', ['lantern']) && entry.orderlyFile.read">
+      ::use{component="chase" tactic="lantern" flavor="You wind the wick all the way up and hold the light out like a cross."}
+    </choice>
+    <choice id="needle" label="Use the syringe" when="holds('holding', ['sedative'])">
+      @narrator: You get the needle into the back of his hand. He looks at it, then at you, and sits down on the floor like a man who has been waiting forty years for permission.
+      @orderly: Thank you, Sister. I'm ever so tired.
+      ::consume{item="sedative"}
+      ::set{run.chases += 1}
+    </choice>
+  </branch>
+  <match on="run.fate">
+    <when is="taken">
+      ::end{reason="taken"}
+    </when>
+    <otherwise>
+      @narrator: When you can hear again, the corridor is empty.
+    </otherwise>
+  </match>
+  <match on="scene.evade.chase.outcome">
+    <when is="hurt" test="@withToby">
+      ::retract{following(tobias)}
+      ::assert{taken(tobias)}
+      ::retract{solved(freezer)}
+      @nell{emotion="afraid"}: Toby? TOBY!
+      @narrator: Far off, the gurney squeaks, heavier now, going down. Towards the cold.
+    </when>
+    <otherwise>
+      @tobias{when="@withToby"}: Is he gone? Nell, is he gone?
+    </otherwise>
+  </match>
+</beat>
+
+<beat id="calledDown" on="encounter" target="kind:room" priority="20" once="false" when="run.bellRung">
+  @narrator: He fills the doorway, and he does not look at you. His head is tilted, listening to a bell that stopped ringing hours ago.
+  @orderly: Round's called. Everybody down.
+  @narrator: He turns the gurney round and wheels it away, towards the stairs, and you hear it go down and down, further than the building goes.
+</beat>
+
+<beat id="wheels" on="footsteps" target="kind:room" once="false">
+  <match on="run.sanity">
+    <when is="..3">
+      @narrator: The wheels are in the next room. The wheels are in the walls. The wheels are in your teeth.
+      @orderly{os}: Bed. Bed. Bed.
+    </when>
+    <otherwise>
+      @narrator: Somewhere very near, a gurney wheel squeaks, stops, squeaks. Someone is humming a lullaby, flat.
+    </otherwise>
+  </match>
+  @tobias{when="@withToby"}: That's the song. That's the song from the tape.
+</beat>

@@ -1,0 +1,9 @@
+# The codex fills in as Wren learns the Stair: wraiths only after the hounds'
+# page, and the Warden's page names Sable once Wren knows her name.
+file: ../lore/codex.lute
+entries: [codexHounds, codexWraiths, codexWarden]
+facts: ["everSlew(warden)"]
+state: { user.knowsSableName: true }
+expect:
+  transcriptContains: ["Maud was right about the ankles.", "Wren does not look at their faces.", "took Sable forty years ago"]
+  transcriptLacks: ["The quiet one by the water will not say its name."]

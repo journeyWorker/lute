@@ -1,0 +1,5 @@
+file: ../scenes/endings/dawn.lute
+facts: [following(tobias)]
+expect:
+  state: { run.fate: lost, user.deaths: 1 }
+  transcriptContains: ["@tobias: Nell? Nell, why are you getting in? Nell!"]

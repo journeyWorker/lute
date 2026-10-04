@@ -3,7 +3,6 @@ kind: quest
 id: quests.crew
 title: The crew of the Gull's Mercy
 ---
-
 /* Relationship quests. Default tier: user — they span every dive. */
 
 <quest id="sefaChart" title="A chart of the drowned palace">

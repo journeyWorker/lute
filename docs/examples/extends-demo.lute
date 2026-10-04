@@ -10,9 +10,9 @@ uses: child.schema.yaml
 
 <match on="run.blessed">
   <when test="@wealthy">
-  @elena: Fortune smiles on me today.
-</when>
+    @elena: Fortune smiles on me today.
+  </when>
   <otherwise>
-  @elena: Still waiting on my luck to turn.
-</otherwise>
+    @elena: Still waiting on my luck to turn.
+  </otherwise>
 </match>

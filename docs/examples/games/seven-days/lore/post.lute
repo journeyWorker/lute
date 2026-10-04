@@ -4,10 +4,9 @@ id: post
 title: The post office
 components: [../components/postcard.component.lute]
 ---
-
 /* The franking machine is a puzzle you can fail and retry: it stays until it
-   is fixed (`spentBy`, 0.27). Then one postcard a day (`once: day` + one
-   `share` key across the three template uses). */
+is fixed (`spentBy`, 0.27). Then one postcard a day (`once: day` + one
+`share` key across the three template uses). */
 
 <beat id="machine" on="placeVisit" target="place.post" title="The franking machine" priority="20" after="visited('post.mira.meet')" when="holds('present', ['mira', 'post'])" spentBy="run.machineFixed">
   ::auto{character="mira" anchor="left" action="fadeInUp"}

@@ -1,0 +1,8 @@
+# Out, and alone.
+file: ../scenes/endings/gate.lute
+facts: [holding(keycard)]
+bridges: { keypad: [ { entered: 275 } ] }
+expect:
+  state: { run.fate: escaped }
+  transcriptContains: ["I don't have him."]
+  transcriptLacks: ["Nell, the wheels. Hurry."]

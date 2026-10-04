@@ -1,0 +1,36 @@
+---
+kind: scene
+id: sol.roof
+title: The roof at night
+on: visit
+target: place.roof
+priority: 20
+after: 'visited("sol.first")'
+when: "holds('at', ['sol', 'roof']) && run.day <= 3"
+---
+
+## The roof
+
+::bg{location="roof" time="night"}
+::music{action="start" mood="romantic" volume="down"}
+@narrator: The hatch lets out onto flat tar and a guard rail nobody trusts. Sol is lying on his back on an army blanket, a star chart weighted with a torch.
+::use{component="enter" who="sol"}
+@sol{emotion="happy"}: You came. Lie down. The trick is you have to stop trying to see anything.
+@narrator: For a while, neither of you says a word. The mast ticks as it cools.
+@sol{emotion="fond"}: Thursday night the Perseids peak. Clearest sky in forty years of this log, if Ines's charts are right. They're always right.
+@sol{emotion="shy"}: I watch every year. Alone, usually. It's not a big deal.
+
+<branch id="perseids" prompt="He isn't looking at you, very deliberately.">
+  <choice id="yes" label="Promise you'll be here Thursday">
+    ::set{run.aff.sol += 1}
+    ::accept{quest="meteor"}
+    @sol{emotion="surprised"}: Yeah? Okay. Okay. Bring a jumper. I'll bring the good blanket.
+  </choice>
+  <choice id="maybe" label="Say you'll try">
+    ::accept{quest="meteor"}
+    @sol{emotion="neutral"}: Sure. If you're up. No pressure.
+  </choice>
+  <choice id="no" label="Say you'll probably be asleep">
+    @sol{emotion="sad"}: Fair. The readings don't take themselves.
+  </choice>
+</branch>

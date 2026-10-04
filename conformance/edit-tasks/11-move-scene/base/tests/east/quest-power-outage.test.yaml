@@ -1,0 +1,9 @@
+# The board quest: the engine accepts it from the Center board; the plant
+# visited and Tamsin beaten close it.
+file: ../../quests/east/side-quests.lute
+accepts: [eastPowerOutage]
+visited: [east.powerPlant]
+facts: [defeated(powerPlantEngineerTamsin)]
+expect:
+  quests: { eastPowerOutage: complete }
+  state: { run.money: 6000 }

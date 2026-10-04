@@ -1,0 +1,30 @@
+# LEAD-OWNED cast: the spine, the leaders, the Elite Four, and the generic
+# speakers every area shares. Areas declare their own named NPCs in
+# cast/<area>.yaml (a speaker id may be declared once: E-PLUGIN-DUP-ID).
+cast:
+  mom:        { name: Mom, emotions: [neutral, happy, worried, sad] }
+  profAlder:  { name: Professor Alder, emotions: [neutral, happy, surprised, worried, laughing] }
+  aide:       { name: Aide }
+  rival:      { name: Kai, emotions: [neutral, smug, angry, sad, surprised, determined, laughing] }
+  gatekeeper: { name: Plateau Guard }
+  announcer:  { name: Radio Verdane }
+  nurse:      { name: Nurse }
+  clerk:      { name: Clerk }
+  # generic battlers: route trainers and Team Eclipse grunts speak through
+  # these with as="<Class Name>" (a component cannot speak as its param)
+  trainer:    { name: Trainer }
+  grunt:      { name: Eclipse Grunt, sharedName: true }
+  # gym leaders
+  petra:      { name: Petra, emotions: [neutral, smug, determined, happy] }
+  marin:      { name: Marin, emotions: [neutral, happy, angry, laughing] }
+  volta:      { name: Lt. Volta, emotions: [neutral, smug, laughing, surprised] }
+  fern:       { name: Fern, emotions: [neutral, happy, sad] }
+  sabine:     { name: Sabine, emotions: [neutral, determined, surprised] }
+  kessler:    { name: Kessler, emotions: [neutral, smug, angry] }
+  ignatius:   { name: Ignatius, emotions: [neutral, laughing, determined] }
+  vex:        { name: Director Vex, emotions: [neutral, smug, angry, determined] }
+  # the Elite Four
+  frostine:   { name: Frostine, emotions: [neutral, smug] }
+  tarrok:     { name: Tarrok, emotions: [neutral, determined, laughing] }
+  morwen:     { name: Morwen, emotions: [neutral, smug, sad] }
+  drakon:     { name: Drakon, emotions: [neutral, determined, surprised] }

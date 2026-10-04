@@ -1,0 +1,6 @@
+# Quill rates the Dex by caught kinds.
+file: ../../lore/mid/fairhaven.lute
+entry: midDexRater
+facts: [caught(sproutle), caught(inchlet)]
+expect:
+  transcriptContains: ["Only 2 kinds? Chin up."]

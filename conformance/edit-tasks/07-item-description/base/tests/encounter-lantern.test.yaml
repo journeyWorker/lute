@@ -1,0 +1,11 @@
+# The lantern is only a weapon once you have read his file.
+file: ../lore/orderly.lute
+beat: meet
+state: { occasion.target: surgery, run.stalker: surgery }
+facts: [holding(lantern)]
+entriesRead: { run: [orderlyFile] }
+choose: { react: lantern }
+bridges: { evade: [ { outcome: lost } ] }
+expect:
+  options: { react: [hide, run, freeze, lantern] }
+  state: { run.chases: 1 }

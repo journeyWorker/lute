@@ -1,0 +1,41 @@
+# The isolation wing (0.27 chapter): under the boiler room, the old
+# tuberculosis cells. The lift only runs with the boiler lit; three patients
+# still wait in their beds for the round that never came.
+
+state:
+  run.hush: { type: int, default: 0 }       # patients settled tonight
+  run.sawCopper: { type: bool, default: false }
+  run.unrest: { type: int, default: 0, per: patient }   # dark spells each patient sat through
+
+entities:
+  room:
+    add: [lift, isolation, laundry]
+    labels: { lift: "the service lift", isolation: "the isolation ward", laundry: "the laundry" }
+  fixture: { add: [bedFour, pellChair, juneCot, chute] }
+  note: { add: [fileEdith, fileWalter, fileJune] }
+  item: { add: [wardKey] }
+  patient:
+    members: [edith, walter, june]
+
+relations:
+  calmed:   { args: [patient], tier: run }
+  restless: { args: [patient], derive: true }
+
+facts:
+  - "openAtNight(laundry)"
+  - "door(boiler, lift)"
+  - "door(lift, isolation)"
+  - "door(isolation, laundry)"
+
+rules:
+  - "canEnter(lift) :- cel(\"run.power\")"
+  - "canEnter(isolation) :- holding(wardKey)"
+  - "restless(P) :- patient(P), not calmed(P)"
+
+defs:
+  wingQuiet: "count('calmed', ['_']) >= 3"
+
+cast:
+  edith:  { name: Edith }
+  walter: { name: "Mr. Pell" }
+  june:   { name: June }

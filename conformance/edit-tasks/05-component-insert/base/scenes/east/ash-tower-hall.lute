@@ -1,0 +1,26 @@
+---
+kind: scene
+id: east.ashTowerHall
+title: Ash Tower, the ground floor
+on: enterPlace
+target: place.ashTowerHall
+priority: 20
+when: "!holds('hasItem', ['spectralLens'])"
+---
+
+// The ground floor of Ash Tower, below the ashTowerStairs gate. The first
+// visit (without mid's spectralLens) finds Team Eclipse's siege: the lair
+// towerSiege moves hidden -> found here. With the lens, east.ashTowerLens
+// plays instead; the top floor is the contract beat east.ashTower.
+
+## The hall of candles
+
+::bg{location="ash-tower-hall" time="night"}
+::music{action="change" mood="eerie" volume="down"}
+@narrator: Inside, Ash Tower is candles: hundreds of them, on every ledge, for every monster whose name is carved into the walls.
+::set{run.lair.towerSiege = "found" when="run.lair.towerSiege == 'hidden'"}
+::auto{character="ashgroveMourner" anchor="left" action="enter"}
+@ashgroveMourner: Are you going up? Don't go up. The men in black went up. My puffsong's candle is up there and I can't reach it.
+::auto{character="ashgroveMourner" action="exit"}
+@narrator: At the foot of the stairs the air goes cold. Something is standing on the third step. When you look at it, it is not there.
+@narrator: Scratched into the banister, fresh: EYES THAT SEE THE DEAD ARE SOLD IN SILVERCREST. ASK AT THE GAME CORNER.

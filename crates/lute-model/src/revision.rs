@@ -39,40 +39,44 @@ fn digest(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn canonical_path(root: &Path, input: &Path) -> Result<PathBuf, RevisionError> {
-    let root_abs = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-    let rel = if input.is_absolute() {
-        // Keep the spelling used by the directory walk when possible. On
-        // macOS `/var` and `/private/var` can be equivalent paths, so relying
-        // only on canonicalized prefixes incorrectly rejects valid inputs.
-        if let Ok(rel) = input.strip_prefix(root) {
-            rel.to_path_buf()
-        } else if let Ok(rel) = input.strip_prefix(&root_abs) {
-            rel.to_path_buf()
-        } else if let Ok(path) = std::fs::canonicalize(input) {
-            path.strip_prefix(&root_abs)
-                .map(Path::to_path_buf)
-                .map_err(|_| RevisionError::InvalidPath(input.to_path_buf()))?
-        } else {
-            return Err(RevisionError::InvalidPath(input.to_path_buf()));
-        }
-    } else if let Ok(rel) = input.strip_prefix(root) {
-        rel.to_path_buf()
-    } else {
-        input.to_path_buf()
-    };
+fn normalized(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
-    for component in rel.components() {
+    for component in path.components() {
         match component {
             Component::CurDir => {}
-            Component::Normal(part) => out.push(part),
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err(RevisionError::InvalidPath(input.to_path_buf()))
-            }
+            Component::ParentDir => { out.pop(); }
+            _ => out.push(component.as_os_str()),
         }
     }
-    if out.as_os_str().is_empty() { return Err(RevisionError::InvalidPath(input.to_path_buf())); }
-    Ok(PathBuf::from(out.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")))
+    out
+}
+
+fn canonical_path(root: &Path, input: &Path) -> Result<PathBuf, RevisionError> {
+    let cwd = std::env::current_dir().map_err(|error| RevisionError::Io {
+        path: root.to_path_buf(), message: error.to_string(),
+    })?;
+    let root_abs = std::fs::canonicalize(root).unwrap_or_else(|_| normalized(&cwd.join(root)));
+    // Directory-walk paths can already carry a relative root prefix; bare
+    // relative inputs are resolved against the project root instead.
+    let path = if input.is_absolute() {
+        input.to_path_buf()
+    } else if input.starts_with(root) {
+        cwd.join(input)
+    } else {
+        root_abs.join(input)
+    };
+    let path = std::fs::canonicalize(&path).unwrap_or_else(|_| normalized(&path));
+    let root_parts: Vec<_> = root_abs.components().collect();
+    let path_parts: Vec<_> = path.components().collect();
+    if root_parts.first() != path_parts.first() {
+        return Ok(PathBuf::from(format!("abs:{}", path.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/"))));
+    }
+    let common = root_parts.iter().zip(&path_parts).take_while(|(a, b)| a == b).count();
+    let mut relative = PathBuf::new();
+    for _ in common..root_parts.len() { relative.push(".."); }
+    for part in &path_parts[common..] { relative.push(part.as_os_str()); }
+    if relative.as_os_str().is_empty() { return Err(RevisionError::InvalidPath(input.to_path_buf())); }
+    Ok(PathBuf::from(relative.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")))
 }
 
 /// Hash an explicit closure of exact input bytes. `inputs` is intentionally
@@ -116,7 +120,12 @@ mod tests {
         assert_eq!(a.files[Path::new("a.lute")].sha256, "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb");
     }
     #[test]
-    fn rejects_escape() {
-        assert!(matches!(project_revision(Path::new("/tmp/p"), &[(PathBuf::from("../x"), vec![])]), Err(RevisionError::InvalidPath(_))));
+    fn normalizes_external_inputs() {
+        let a = project_revision(Path::new("/tmp/p"), &[(PathBuf::from("../shared/./schema.yaml"), b"a".to_vec())]).unwrap();
+        let b = project_revision(Path::new("/tmp/p"), &[(PathBuf::from("/tmp/shared/schema.yaml"), b"a".to_vec())]).unwrap();
+        assert_eq!(a, b);
+        assert!(a.files.contains_key(Path::new("../shared/schema.yaml")));
+        let changed = project_revision(Path::new("/tmp/p"), &[(PathBuf::from("../shared/schema.yaml"), b"b".to_vec())]).unwrap();
+        assert_ne!(a.sha256, changed.sha256);
     }
 }

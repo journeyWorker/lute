@@ -143,9 +143,16 @@ fn run_task_context(
     let Some(raw_target) = target else {
         return ExitCode::from(2);
     };
+    let discovered = crate::project::discover_project(file, project);
     let root = project
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| file.to_path_buf());
+        .or(discovered)
+        .unwrap_or_else(|| {
+            file.parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf()
+        });
     let opts = ModelOptions {
         providers: providers.map(Path::to_path_buf),
         permission_profile: permission_profile.map(str::to_string),
@@ -345,27 +352,37 @@ fn parse_position(raw: &str) -> Result<(PathBuf, usize, usize), String> {
 }
 
 fn line_column_offset(source: &str, line: usize, column: usize) -> Option<usize> {
-    let start = source
-        .split_inclusive('\n')
-        .take(line.checked_sub(1)?)
-        .map(str::len)
-        .sum::<usize>();
-    let line_text = source
-        .get(start..)?
-        .split_once('\n')
-        .map(|(line, _)| line)
-        .unwrap_or(source.get(start..)?);
+    let mut start = 0usize;
+    let mut current = 1usize;
+    let mut line_text = None;
+    for segment in source.split_inclusive('\n') {
+        if current == line {
+            line_text = Some((start, segment.strip_suffix('\n').unwrap_or(segment)));
+            break;
+        }
+        start = start.checked_add(segment.len())?;
+        current = current.checked_add(1)?;
+    }
+    let (start, line_text) = match line_text {
+        Some(line) => line,
+        None if source.ends_with('\n') && current == line => (source.len(), ""),
+        None => return None,
+    };
     let wanted = u32::try_from(column.checked_sub(1)?).ok()?;
     let mut units = 0u32;
     for (offset, character) in line_text.char_indices() {
         if units >= wanted {
             return Some(start + offset);
         }
-        units = units.checked_add(character.len_utf16() as u32)?;
+        let next = units.checked_add(character.len_utf16() as u32)?;
+        if next > wanted {
+            return Some(start + offset + character.len_utf8());
+        }
+        units = next;
     }
-    Some(start + line_text.len())
-}
+    (units == wanted).then_some(start + line_text.len())
 
+}
 fn relative(model: &ProjectModel, path: &Path) -> String {
     path.strip_prefix(model.root()).unwrap_or(path).to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")
 }
@@ -422,16 +439,15 @@ fn related_scripts(
     let mut omitted = 0usize;
     for path in all {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-        let text = std::fs::read_to_string(&path).unwrap_or_default();
-        let static_match = serde_yaml::from_str::<serde_yaml::Value>(&text)
-            .ok()
-            .is_some_and(|value| yaml_mentions_id(&value, needle));
+        let static_match = if name.ends_with(".test.yaml") {
+            crate::testcmd::static_context_references(&path)
+        } else {
+            crate::play::static_context_references(&path)
+        }
+        .ok()
+        .is_some_and(|references| references.iter().any(|reference| reference == needle));
         let selected = run.is_some_and(|selector| {
-            selector == path
-                || (selector.is_dir()
-                    && path
-                        .strip_prefix(selector)
-                        .is_ok())
+            selector == path || (selector.is_dir() && path.strip_prefix(selector).is_ok())
         });
         let witnessed = selected
             && crate::cmd_constraints::run_script_for_context(model.root(), &path, key);
@@ -440,11 +456,7 @@ fn related_scripts(
             continue;
         }
         let classification = if witnessed { "witnessed" } else { "static" };
-        let evidence = if witnessed {
-            "witnessed"
-        } else {
-            "typed-id-or-lineId"
-        };
+        let evidence = if witnessed { "witnessed" } else { "typed-id-or-lineId" };
         let value = serde_json::json!({
             "file": relative(model, &path),
             "classification": classification,
@@ -469,31 +481,6 @@ fn related_scripts(
     Scripts { tests, plays }
 }
 
-fn yaml_mentions_id(value: &serde_yaml::Value, needle: &str) -> bool {
-    const REFERENCE_FIELDS: &[&str] = &[
-        "file", "scene", "quest", "entry", "entries", "beat", "lineId", "line_id",
-    ];
-    const CONTAINER_FIELDS: &[&str] = &["steps", "step", "expect", "include"];
-    match value {
-        serde_yaml::Value::Sequence(values) => {
-            values.iter().any(|value| yaml_mentions_id(value, needle))
-        }
-        serde_yaml::Value::Mapping(values) => values.iter().any(|(key, value)| {
-            let Some(key) = key.as_str() else { return false };
-            if REFERENCE_FIELDS.contains(&key) {
-                return match value {
-                    serde_yaml::Value::String(value) => value == needle,
-                    serde_yaml::Value::Sequence(values) => values.iter().any(|value| {
-                        value.as_str().is_some_and(|value| value == needle)
-                    }),
-                    _ => false,
-                };
-            }
-            CONTAINER_FIELDS.contains(&key) && yaml_mentions_id(value, needle)
-        }),
-        _ => false,
-    }
-}
 
 fn vocabulary(
     model: &ProjectModel,
@@ -1506,5 +1493,12 @@ mod tests {
         let byte = source.find("run.state").unwrap();
         let column = source[..byte].encode_utf16().count() + 1;
         assert_eq!(line_column_offset(source, 1, column), Some(byte));
+    }
+
+    #[test]
+    fn position_columns_beyond_line_are_rejected() {
+        assert_eq!(line_column_offset("abc", 1, 5), None);
+        assert_eq!(line_column_offset("abc\n", 1, 4), Some(3));
+        assert_eq!(line_column_offset("abc", 2, 1), None);
     }
 }

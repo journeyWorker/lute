@@ -83,9 +83,11 @@ expose YAML spans and are editable via `replaceText`. The patch stages all
 edits, formats touched regions, rebuilds/checks the model, computes semantic
 diff, enforces preserve, then writes all files or none.
 
-Refusal codes are `E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`,
-`E-PATCH-CHECK`, and `E-PATCH-PRESERVE`; each refusal exits 2 and includes
-structured details. `--dry-run` performs every stage except writing.
+An accepted patch exits 1 when it changes semantics (review the reported diff)
+and 0 when it doesn't. Refusal codes are `E-PATCH-STALE`, `E-PATCH-TARGET`,
+`E-PATCH-EDIT`, `E-PATCH-CHECK`, and `E-PATCH-PRESERVE`; each refusal exits 2
+and includes structured details. I/O failures exit 2 with `error.kind: "io"`
+and no code. `--dry-run` performs every stage except writing.
 
 ## Diff JSON
 
@@ -105,3 +107,46 @@ Consumers MUST pin the returned JSON `schemaVersion`, treat refusal as a
 failure rather than retrying with a new base, and retain the diff/diagnostics
 for human review. Unknown fields are not silently interpreted in this pre-1.0
 internal surface.
+
+## Complete worked loop
+
+First snapshot the source (and do this before composing any edit):
+
+```console
+$ lute tag /tmp/drowned-crown
+$ lute context /tmp/drowned-crown --target quest:libraryKey --max-items 20 --json > context.json
+```
+
+`lute tag` is an editing prerequisite when a line has no explicit `lineId`.
+It writes stable positional line IDs (the position is part of the identity);
+do not invent IDs in a patch or renumber existing lines.
+
+Inspect `context.json`, then plan a request whose `base.project` and
+`base.files` are copied exactly from it. Preview it without writing:
+
+```console
+$ lute patch /tmp/drowned-crown planned-patch.json --dry-run --json
+```
+
+The successful patch JSON has `schemaVersion: "0.35.0.patch"`, `ok: true`,
+`before`, `after`, `diff`, and `writes`. `diff.changes` is the semantic
+review surface; formatting-only edits have no changes. Apply the identical
+request only after review:
+
+```console
+$ lute patch /tmp/drowned-crown planned-patch.json --json
+$ lute check-project /tmp/drowned-crown
+```
+
+Replay with the project's own `lute test`, `lute play`, or trace scripts; static
+checking is not runtime proof. Finally compare the resulting revision and
+semantic diff:
+
+```console
+$ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
+```
+
+For cursor-oriented inspection use `lute context <dir> --at <file>:<line>:<column>
+--max-items N [--run <FILE>] --json`. `--run` requires a script file; its
+executed scripts are reported as `witnessed`, while omitted scripts are
+explicitly reported in `notIncluded`.

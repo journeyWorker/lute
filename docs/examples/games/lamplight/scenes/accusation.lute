@@ -74,5 +74,5 @@ components: [../components/lamps-out.component.lute]
   </when>
 </match>
 /* Any name said here ends the night: the schema's `terminal:` (`run.accused != 'nobody'`) holds from
-   this scene on, and the engine raises nothing more until it starts a new run (the loop). `::end` only
-   ends this presentation; the solved arm keeps it as the reason an engine can show. */
+this scene on, and the engine raises nothing more until it starts a new run (the loop). `::end` only
+ends this presentation; the solved arm keeps it as the reason an engine can show. */

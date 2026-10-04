@@ -1,0 +1,16 @@
+---
+kind: scene
+id: ending.broken
+title: Admitted
+on: sanityBreak
+---
+
+## Admission
+
+::vfx{type="flicker"}
+@narrator: You sit down on the floor because the floor is the only thing that isn't moving.
+@nell{emotion="numb"}: I'm the new nurse. I'm the new nurse. I have to do the round at three.
+@maud: Of course you do. Up you get. Arm out. That's it.
+@narrator: The needle is gentle. The bed is warm. The ledger in the records room gains a line, in wet ink: ARDEN, E. Bed 14.
+::set{run.fate = "broken"}
+::set{user.deaths += 1}

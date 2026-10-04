@@ -72,6 +72,10 @@ jobs:
 
       - name: Build lute-cli
         run: cargo build -q -p lute-cli
+      # Formatting is a source-preservation contract for both the dogfood corpus and
+      # runtime conformance fixtures; check mode must not rewrite the checkout.
+      - name: Check formatted corpus
+        run: ./target/debug/lute fmt --check docs/examples conformance
 
       # docs/examples checks cleanly end-to-end (warnings only, exit 0). The
       # bundled example roots are authored to pass `check-project`; a

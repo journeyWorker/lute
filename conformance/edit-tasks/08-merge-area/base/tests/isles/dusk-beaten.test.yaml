@@ -1,0 +1,8 @@
+# A beaten Dusk grunt answers talk with the shared kind beat.
+file: ../../lore/isles/sunport.lute
+beat: duskBeaten
+state: { occasion.target: duskGruntGale }
+facts: [defeated(duskGruntGale)]
+expect:
+  eligible: true
+  transcriptContains: ["@narrator: The grunt pulls up the collar of a grey coat"]

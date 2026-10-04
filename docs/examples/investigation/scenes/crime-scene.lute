@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.34.0"
+luteVersion: "0.35.0"
 id: detective.s01ep01
 title: The Study
 # No `after:`, so this scene is where the case starts.
@@ -12,12 +12,12 @@ uses: ../world.schema.yaml
 @narrator: The victim's study, untouched since the coroner left.
 @detective{mono}: Two things in here don't belong. Log them.
 
-::assert{ foundClue(ledger) }
-::set{ run.cluesLogged += 1 }
+::assert{foundClue(ledger)}
+::set{run.cluesLogged += 1}
 @detective: A ledger — the balances scratched out in red ink.
 
-::assert{ foundClue(letter) }
-::set{ run.cluesLogged += 1 }
+::assert{foundClue(letter)}
+::set{run.cluesLogged += 1}
 @detective: And a letter, signed once and then unsigned.
 
 // No `when=`: both clues above are logged on every playthrough, so the

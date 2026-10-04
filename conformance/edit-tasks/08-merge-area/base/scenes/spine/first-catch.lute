@@ -1,0 +1,13 @@
+---
+kind: scene
+id: spine.firstCatch
+title: The first catch
+on: caught
+priority: -10
+when: "@dexCaught >= 2"
+after: 'visited("spine.lab")'
+---
+
+## The call
+
+@profAlder{vo}: {{userName}}! The Dex just pinged. Your first wild catch! Every one you catch teaches me something. Keep going.

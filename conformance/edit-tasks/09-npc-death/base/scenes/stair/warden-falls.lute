@@ -1,0 +1,22 @@
+---
+kind: scene
+id: boss.wardenFalls
+title: The Warden falls
+on: bossDefeated
+target: boss.warden
+priority: 50
+once: user
+---
+
+## The top
+
+::bg{location="summit" time="dawn"}
+::music{action="change" mood="elegy" volume="normal"}
+@narrator{code="0010"}: The Warden does not fall so much as come undone — a coat of ash with nobody inside it, folding onto the top step.
+@narrator{code="0020"}: Past it: a door with no lock, and grey light under the door.
+::auto{character="sable" anchor="right" action="fadeInUp"}
+@sable{code="0010" emotion="stricken"}: I watched it take me. Forty years I've watched it take everyone. I wanted to see it once from this side.
+::assert{saw(sable, wardenFall)}
+::set{user.bond.sable += 1}
+@sable{code="0020" emotion="fond" when="run.carriesFeather"}: You brought my feather up here. Of course you did.
+::auto{character="sable" action="fadeOut"}

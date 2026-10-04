@@ -1,0 +1,9 @@
+# Day 3 is a Wednesday: the same catch does not count, and the quest waits.
+file: ../../quests/south/side.lute
+accepts: [southDerby]
+state: { run.day: 3 }
+facts: [caught(seahorsling)]
+occasions: [caught@mon.seahorsling]
+expect:
+  quests: { southDerby: active }
+  state: { run.money: 3000 }

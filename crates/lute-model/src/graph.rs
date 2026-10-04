@@ -122,9 +122,16 @@ impl SemanticGraph {
         g
     }
     pub fn node(&mut self, id: NodeKey, file: Option<PathBuf>, span: Option<Span>) {
-        self.nodes
-            .entry(id.clone())
-            .or_insert(GraphNode { id, file, span, speaker: None });
+        if let Some(existing) = self.nodes.get(&id) {
+            if existing.file.is_some()
+                && file.is_some()
+                && (existing.file != file || existing.span != span)
+            {
+                self.ambiguous.insert(id);
+            }
+            return;
+        }
+        self.nodes.insert(id.clone(), GraphNode { id, file, span, speaker: None });
     }
     /// Add a dependency edge and register both endpoint nodes.
     pub fn edge(
@@ -137,8 +144,18 @@ impl SemanticGraph {
         span: Option<Span>,
         evidence: Evidence,
     ) {
-        self.node(source.clone(), file.clone(), span);
-        self.node(target.clone(), file.clone(), span);
+        if !self.nodes.contains_key(&source) {
+            self.nodes.insert(
+                source.clone(),
+                GraphNode { id: source.clone(), file: file.clone(), span, speaker: None },
+            );
+        }
+        if !self.nodes.contains_key(&target) {
+            self.nodes.insert(
+                target.clone(),
+                GraphNode { id: target.clone(), file: file.clone(), span, speaker: None },
+            );
+        }
         self.edges.push(GraphEdge {
             source,
             target,
@@ -377,6 +394,10 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
         }
         owners.push((b.span, bk));
     }
+    // Expanded line spans belong to component files. Only authored line
+    // spans may compete with host-document owners; expanded lines are anchored
+    // at their outermost host use site for containment and source queries.
+    let expansion_sites = component_use_sites(d.source_map.as_ref());
     for command in d
         .artifact
         .as_ref()
@@ -391,12 +412,22 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
                 .and_then(|m| m.by_addr.get(&line.addr))
             {
                 let lk = NodeKey::new(NodeKind::Line, line.line_id.clone());
-                g.node(lk.clone(), Some(d.path.clone()), Some(info.span));
+                let expanded = line.stamp.source.is_some();
+                let host_span = if expanded {
+                    expansion_sites.get(&line.addr).copied()
+                } else {
+                    Some(info.span)
+                };
+                g.node(lk.clone(), Some(d.path.clone()), host_span);
                 if let Some(node) = g.nodes.get_mut(&lk) {
                     node.speaker = Some(line.speaker.clone());
                 }
-                line_nodes.push((info.span, lk.clone()));
-                owners.push((info.span, lk));
+                if let Some(span) = host_span {
+                    line_nodes.push((span, lk.clone()));
+                }
+                if !expanded {
+                    owners.push((info.span, lk));
+                }
             }
         }
     }
@@ -967,11 +998,96 @@ fn add_project_dependencies(g: &mut SemanticGraph, model: &ProjectModel) {
         }
     }
 }
+
+/// Resolve component-local source coordinates to the outer host use site.
+/// Begin/end/body markers are compile provenance, not inferred span overlap.
+fn component_use_sites(
+    map: Option<&lute_compile::source_map::SourceMap>,
+) -> BTreeMap<String, Span> {
+    use lute_compile::source_map::ComponentBoundary;
+    let mut sites = BTreeMap::new();
+    let Some(map) = map else { return sites };
+    let mut stack: Vec<(Span, bool)> = Vec::new();
+    let mut unit = "";
+    for (addr, info) in &map.by_addr {
+        let current_unit = addr.split('.').next().unwrap_or(addr);
+        if current_unit != unit {
+            stack.clear();
+            unit = current_unit;
+        }
+        for marker in &info.before {
+            match marker.component {
+                Some(ComponentBoundary::Begin) => {
+                    let host = stack.first().map_or(marker.span, |(span, _)| *span);
+                    stack.push((host, false));
+                }
+                Some(ComponentBoundary::End) => { stack.pop(); }
+                Some(ComponentBoundary::Body) => {
+                    if let Some((_, body)) = stack.last_mut() { *body = true; }
+                }
+                Some(ComponentBoundary::BodyEnd) => {
+                    if let Some((_, body)) = stack.last_mut() { *body = false; }
+                }
+                None => {}
+            }
+        }
+        if let Some((span, false)) = stack.last() {
+            sites.insert(addr.clone(), *span);
+        }
+    }
+    sites
+}
  
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn component_source_offsets_do_not_steal_host_dependency_owners() {
+        fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+            std::fs::create_dir_all(to).unwrap();
+            for entry in std::fs::read_dir(from).unwrap() {
+                let entry = entry.unwrap();
+                let target = to.join(entry.file_name());
+                if entry.file_type().unwrap().is_dir() {
+                    copy_tree(&entry.path(), &target);
+                } else {
+                    std::fs::copy(entry.path(), target).unwrap();
+                }
+            }
+        }
+        let root = std::env::temp_dir().join(format!("lute-component-owners-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        copy_tree(
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/games/seven-days"),
+            &root,
+        );
+        let before = ProjectModel::build_single_root(&root, &crate::ModelOptions::default()).unwrap();
+        let file = root.join("lore/post.lute");
+        let source = std::fs::read_to_string(&file).unwrap();
+        let shifted = source.replacen("\n<beat ", &format!("\n// {}\n<beat ", "layout".repeat(64)), 1);
+        std::fs::write(&file, shifted).unwrap();
+        let after = ProjectModel::build_single_root(&root, &crate::ModelOptions::default()).unwrap();
+        let projection = |model: &ProjectModel| {
+            model.graph().edges.iter().map(|edge| {
+                (edge.source.clone(), edge.target.clone(), edge.kind.clone(), edge.reason.clone())
+            }).collect::<BTreeSet<_>>()
+        };
+        assert_eq!(projection(&before), projection(&after));
+        let graph = after.graph();
+        assert!(graph.edges.iter().any(|edge| {
+            edge.kind == "queries"
+                && edge.source == NodeKey::new(NodeKind::Relation, "present")
+                && edge.target == NodeKey::new(NodeKind::Beat, "post.machine")
+        }));
+        assert!(graph.edges.iter().any(|edge| {
+            edge.kind == "contains"
+                && edge.source == NodeKey::new(NodeKind::Beat, "post.mum")
+                && edge.target == NodeKey::new(NodeKind::Line, "post.mum.postcard#1.narrator_0010")
+        }));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn fact_overlap_distinguishes_ground_and_parameterized_terms() {
@@ -1055,7 +1171,7 @@ mod tests {
     }
  
     #[test]
-    fn duplicate_choice_key_is_marked_ambiguous() {
+    fn duplicate_authored_key_is_marked_ambiguous() {
         let key = NodeKey::new(NodeKind::Choice, "scene:branch.coffee");
         let span = |start| Span {
             byte_start: start,
@@ -1066,13 +1182,7 @@ mod tests {
         };
         let mut graph = SemanticGraph::default();
         graph.node(key.clone(), Some("scene.lute".into()), Some(span(1)));
-        if graph
-            .nodes
-            .get(&key)
-            .is_some_and(|node| node.span != Some(span(9)))
-        {
-            graph.ambiguous.insert(key.clone());
-        }
+        graph.node(key.clone(), Some("scene.lute".into()), Some(span(9)));
         assert!(graph.ambiguous.contains(&key));
     }
 }

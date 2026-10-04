@@ -1,0 +1,19 @@
+---
+kind: scene
+id: spine.hallOfFame
+title: The Hall of Fame
+on: hallOfFame
+when: "quest.league.state == 'complete'"
+---
+
+## The records room
+
+::bg{location="hall-of-fame" time="day"}
+::music{action="change" mood="triumphant" volume="up"}
+::set{user.hallOfFame += 1}
+@profAlder: This is where the League keeps its Champions. Every team that ever won is recorded here.
+@narrator: The Hall of Fame records {{userName}} and team. Hall of Fame entry number {{user.hallOfFame}}.
+@narrator{when="user.hallOfFame >= 2"}: It is the {{user.hallOfFame:ordinalWord}} time this trainer's name has gone on the wall.
+@narrator{when="@dexCaught >= 150"}: Beside the entry, a note in the professor's hand: Dex complete.
+@narrator: {{@dexCaught}} kinds caught. {{@dexSeen}} seen. {{@badgeCount}} badges.
+::vfx{type="sparkle"}

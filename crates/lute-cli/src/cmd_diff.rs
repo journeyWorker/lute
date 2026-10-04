@@ -15,6 +15,13 @@ impl Drop for Materialized {
         if self.cleanup { let _ = std::fs::remove_dir_all(&self.root); }
     }
 }
+struct ArchiveCleanup(PathBuf);
+impl Drop for ArchiveCleanup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 
 fn validate_archive_entries(listing: &[u8], detailed: &[u8]) -> Result<(), String> {
     for raw in String::from_utf8_lossy(listing).lines() {
@@ -43,7 +50,8 @@ fn materialize(side: &Path) -> Result<Materialized, String> {
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos();
     let root = std::env::temp_dir().join(format!("lute-diff-{}-{stamp}", std::process::id()));
     std::fs::create_dir_all(&root).map_err(|e| format!("cannot create temporary directory: {e}"))?;
-    let archive = root.join("snapshot.tar");
+    let archive = root.with_extension("tar");
+    let _archive_cleanup = ArchiveCleanup(archive.clone());
     let status = Command::new("git")
         .args(["archive", "--format=tar", revision])
         .output()
@@ -64,6 +72,24 @@ fn materialize(side: &Path) -> Result<Materialized, String> {
     let status = Command::new("tar").args(["-xf"]).arg(&archive).args(["-C"]).arg(&root).status().map_err(|e| e.to_string())?;
     if !status.success() { let _ = std::fs::remove_dir_all(&root); return Err("cannot extract git archive".into()); }
     let _ = std::fs::remove_file(&archive);
+    let mut expected = String::from_utf8_lossy(&listing.stdout).lines().map(|s| s.trim_end_matches('/').to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>();
+    expected.sort();
+    let mut actual = Vec::new();
+    let mut verify = vec![root.clone()];
+    while let Some(dir) = verify.pop() {
+        for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+            let path = entry.path();
+            let relative = path.strip_prefix(&root).map_err(|e| e.to_string())?.to_string_lossy().to_string();
+            actual.push(relative);
+            if entry.file_type().map_err(|e| e.to_string())?.is_dir() { verify.push(path); }
+        }
+    }
+    actual.sort();
+    if expected != actual {
+        let _ = std::fs::remove_dir_all(&root);
+        return Err("materialized git archive does not match validated input set".into());
+    }
+    // The archive itself is not a materialized project entry.
     let mut stack = vec![root.clone()];
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {

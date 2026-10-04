@@ -41,6 +41,34 @@ fn revisions_are_length_delimited_and_traversal_order_independent() {
 }
 
 #[test]
+fn revisions_include_external_import_bytes() {
+    let root = temp_dir("external-revision-root");
+    let shared = temp_dir("external-revision-shared");
+    std::fs::write(shared.join("world.schema.yaml"), "state:\n  run.flag: { type: bool, default: false }\n").unwrap();
+    std::fs::write(
+        root.join("scene.lute"),
+        "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: ../lute-s2-external-revision-shared-".to_string()
+            + &std::process::id().to_string()
+            + "/world.schema.yaml\n---\n\n## Opening\n\n@hero{when=\"run.flag == true\"}: Hello\n",
+    )
+    .unwrap();
+    let first = model(&root);
+    let key = first
+        .revisions()
+        .files
+        .keys()
+        .find(|path| path.to_string_lossy().contains("external-revision-shared"))
+        .cloned()
+        .expect("external schema revision");
+    std::fs::write(shared.join("world.schema.yaml"), "state:\n  run.flag: { type: bool, default: true }\n").unwrap();
+    let second = model(&root);
+    assert_ne!(first.revisions().sha256, second.revisions().sha256);
+    assert_ne!(first.revisions().files[&key].sha256, second.revisions().files[&key].sha256);
+    let _ = std::fs::remove_dir_all(root);
+    let _ = std::fs::remove_dir_all(shared);
+}
+
+#[test]
 fn trailing_whitespace_and_final_newline_are_semantically_empty() {
     let before = temp_dir("trivia-before");
     let after = temp_dir("trivia-after");
@@ -132,27 +160,28 @@ fn guard_change_is_one_guard_change() {
 }
 
 #[test]
-fn speaker_and_line_id_changes_are_paired_not_added_removed() {
+fn speaker_and_line_id_changes_are_removed_and_added() {
     let before = temp_dir("identity-before");
     let after = temp_dir("identity-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n";
     std::fs::write(before.join("scene.lute"), format!("{prefix}@hero{{code=\"0010\"}}: Hello\n")).unwrap();
     std::fs::write(after.join("scene.lute"), format!("{prefix}@villain{{code=\"0020\"}}: Hello\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
-    assert!(diff.changes.iter().any(|change| matches!(&change.kind, lute_model::ChangeKind::Field(name) if name == "speaker")));
-    assert!(!diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Added | lute_model::ChangeKind::Removed)));
+    assert_eq!(diff.changes.iter().filter(|c| matches!(c.kind, lute_model::ChangeKind::Removed)).count(), 1);
+    assert_eq!(diff.changes.iter().filter(|c| matches!(c.kind, lute_model::ChangeKind::Added)).count(), 1);
     cleanup(before, after);
 }
 
 #[test]
-fn authored_line_id_change_is_one_line_id_change() {
+fn authored_line_id_change_is_removed_and_added() {
     let before = temp_dir("line-id-before");
     let after = temp_dir("line-id-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n";
     std::fs::write(before.join("scene.lute"), format!("{prefix}@hero{{code=\"0010\"}}: Hello\n")).unwrap();
     std::fs::write(after.join("scene.lute"), format!("{prefix}@hero{{code=\"0020\"}}: Hello\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
-    assert_one(&diff, "lineId", "line:hall.hero_0010");
+    assert!(diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Removed) && c.node.canonical() == "line:hall.hero_0010"));
+    assert!(diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Added) && c.node.canonical() == "line:hall.hero_0020"));
     cleanup(before, after);
 }
 
@@ -262,5 +291,37 @@ fn document_id_change_is_removed_and_added() {
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Removed)));
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Added)));
+    cleanup(before, after);
+}
+
+#[test]
+fn identical_project_copies_with_schema_inputs_have_no_moves() {
+    let before = temp_dir("copy-before");
+    let after = temp_dir("copy-after");
+    let schema = "state:\n  run.flag: { type: bool, default: false }\ndefs:\n  helped: { cel: \"run.flag\", type: bool }\n";
+    let text = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n@hero: Hello\n";
+    std::fs::write(before.join("world.schema.yaml"), schema).unwrap();
+    std::fs::write(after.join("world.schema.yaml"), schema).unwrap();
+    std::fs::write(before.join("scene.lute"), text).unwrap();
+    std::fs::write(after.join("scene.lute"), text).unwrap();
+    let diff = diff_models(&model(&before), &model(&after)).unwrap();
+    assert!(diff.changes.is_empty(), "unexpected changes: {:?}", diff.changes);
+    cleanup(before, after);
+}
+
+#[test]
+fn moved_schema_file_with_same_identity_is_moved() {
+    let before = temp_dir("schema-move-before");
+    let after = temp_dir("schema-move-after");
+    let schema = "state:\n  run.flag: { type: bool, default: false }\ndefs:\n  helped: { cel: \"run.flag\", type: bool }\n";
+    let scene_before = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n@hero: Hello\n";
+    let scene_after = scene_before.replace("uses: world.schema.yaml", "uses: nested/world.schema.yaml");
+    std::fs::write(before.join("world.schema.yaml"), schema).unwrap();
+    std::fs::create_dir_all(after.join("nested")).unwrap();
+    std::fs::write(after.join("nested/world.schema.yaml"), schema).unwrap();
+    std::fs::write(before.join("scene.lute"), scene_before).unwrap();
+    std::fs::write(after.join("scene.lute"), scene_after).unwrap();
+    let diff = diff_models(&model(&before), &model(&after)).unwrap();
+    assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Moved)));
     cleanup(before, after);
 }

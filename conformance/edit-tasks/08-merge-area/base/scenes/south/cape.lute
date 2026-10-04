@@ -1,0 +1,18 @@
+---
+kind: scene
+id: south.cape
+title: Tidewell Cape
+on: enterPlace
+target: place.tidewellCape
+priority: 10
+---
+
+// The first time out on the cape: the cliffs, the wing fossils, the
+// cottage (Cassius's hand-off is the contract beat south.cassius).
+
+## The cliff path
+
+::bg{location="tidewell-cape" time="day"}
+::music{action="start" mood="calm" volume="down"}
+@narrator: Tidewell Cape. The path runs along the top of the cliffs, and the cliffs are striped like a cake: grey, yellow, grey. In the yellow stripe, if you look, there are bones. Stone bones. Wings.
+@narrator: At the very end of the cape stands a cottage with three boats pulled up beside it and a weathervane shaped like a Galewing.

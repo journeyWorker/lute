@@ -1,0 +1,51 @@
+# AREA mid, second visit: the sleeping giant, Helix Tower, the Mind Gym, the
+# Wildmoor Preserve, Warden Holt.
+# OWNED BY mid. Keep the last step's expect (the hand-off) green.
+# Slot-independent beats only (see mid-city.steps.yaml); how the giant's
+# battle ends (caught or let go) is played in plays/mid.play.yaml.
+steps:
+  - occasion: obstacle
+    target: gate.sleepingGiant
+    label: east's flute opens the giant's gate
+    expect: { winner: none }
+  - occasion: enterRoute
+    target: route.r11
+    expect: { winner: mid.route11.arrive }
+  - occasion: trainerSpotted
+    target: trainer.r11FishermanBram
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: mid.route11.r11FishermanBram }
+  - occasion: enterTown
+    target: town.fairhaven
+    expect: { winner: mid.fairhaven.arrive }
+  - occasion: enterRoute
+    target: route.r12
+    label: the flute wakes Slumbear
+    expect: { winner: mid.giantWakes, quests: { midSleepingGiant: active } }
+  - occasion: trainerSpotted
+    target: trainer.helixGruntSquareA
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: mid.eclipse.helixGruntSquareA }
+  - occasion: enterPlace
+    target: place.helixTower
+    label: the lobby, three floors, Kai, the boardroom
+    bridges: { battle: [ { won: true }, { won: true }, { won: true }, { won: true }, { won: true }, { won: true } ] }
+    expect: { winner: mid.helixTower, facts: [rivalFought(tower), rivalBeaten(tower), hasItem(cardKey), canPass(mindGymDoor), defeated(gruntHelix)], state: { run.lair.helixHQ: cleared, run.rivalStanding: 2 } }
+  - occasion: trainerSpotted
+    target: trainer.mindGymPsychicOren
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: mid.mindGymTrainers.mindGymPsychicOren }
+  - occasion: challenge
+    target: arena.mindGym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: mid.mindGym }
+  - occasion: enterPlace
+    target: place.wildmoorPreserve
+    expect: { winner: mid.wildmoor, facts: [hasItem(hmSurf), hasItem(goldTooth)] }
+  - occasion: talk
+    target: npc.wardenHolt
+    label: mid hand-off (second visit)
+    expect:
+      winner: mid.wardenHolt
+      facts: [hasBadge(mind), hasItem(hmSurf), hasItem(hmStrength), canUse(surf), canUse(strength), canPass(seaRoute), canPass(victoryRoadBoulders)]
+      state: { run.lair.helixHQ: cleared }

@@ -3,10 +3,9 @@ kind: lore
 id: farewell
 title: The last two nights
 ---
-
 /* The end of the week, side by side: Saturday night, then the three Sunday
-   endings at the bus shelter. One bundle so the ending conditions read as one
-   table (FINDINGS-0.23 N6 on what a bundle costs). */
+endings at the bus shelter. One bundle so the ending conditions read as one
+table (FINDINGS-0.23 N6 on what a bundle costs). */
 
 <beat id="packing" on="slotStart" title="Saturday — Packing" priority="20" when="run.day == 6 && @night">
   ::bg{location="lantern_shop" time="night"}

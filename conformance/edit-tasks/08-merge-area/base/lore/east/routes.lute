@@ -1,0 +1,101 @@
+---
+kind: lore
+id: east.routes
+title: Eastmarch routes 5-8
+---
+
+// Route 5: Portvolt north through the meadows to the Lantern Tunnel.
+// Route 6: Ashgrove down the river to Bloomfield.
+// Route 7: Bloomfield west over the hill to Silvercrest (mid), the cycling road.
+// Route 8: Portvolt down the coast to the old power plant.
+// A route's first visit is a bundle beat; later walks get one line per slot.
+// Who battles when is in lore/east/trainers-routes.lute.
+
+// ── Route 5 ──────────────────────────────────────────────────────────────
+
+<beat id="r5First" on="enterRoute" target="route.r5" title="Route 5" priority="20">
+  @narrator: Route 5 climbs out of Portvolt through long meadow grass. Far ahead, a dark mouth in the hillside: the Lantern Tunnel.
+  @narrator{when="!holds('canPass', ['rockTunnel'])"}: Even from here the tunnel looks black all the way through.
+</beat>
+
+<entry id="eastR5Morning" on="enterRoute" target="route.r5" category="ambient" priority="5" once="day" when="@isMorning">
+  @narrator: Cocoonix hang from every fence post, still asleep. A bug catcher is creeping up on one with enormous care.
+</entry>
+
+<entry id="eastR5Day" on="enterRoute" target="route.r5" category="ambient" priority="5" once="day" when="run.slot == 'day'">
+  @narrator: The meadow is loud with bugs and picnics. Somebody has made a daisy chain long enough to trip over.
+</entry>
+
+<entry id="eastR5Night" on="enterRoute" target="route.r5" category="ambient" priority="5" once="day" when="@isNight">
+  @narrator: At night the long grass glows: voltmouse tails, dozens of them, like a field of tiny streetlamps.
+</entry>
+
+<entry id="eastR5SignText" on="talk" target="npc.r5Sign" category="bark">
+  @narrator: ROUTE 5. North: LANTERN TUNNEL, then ASHGROVE. South: PORTVOLT. "Tunnel unlit. Bring a light or a friend."
+</entry>
+
+// ── Route 6 ──────────────────────────────────────────────────────────────
+
+<beat id="r6First" on="enterRoute" target="route.r6" title="Route 6" priority="20">
+  @narrator: Route 6 follows the river from Ashgrove's grey roofs down toward the color of Bloomfield. The water is quick and very clear.
+</beat>
+
+<entry id="eastR6Morning" on="enterRoute" target="route.r6" category="ambient" priority="5" once="day" when="@isMorning">
+  @narrator: Mist on the river. A bird keeper is counting her flock as it lands on the bridge: forty-one, forty-two, forty... no, that's a leaf.
+</entry>
+
+<entry id="eastR6Day" on="enterRoute" target="route.r6" category="ambient" priority="5" once="day" when="run.slot == 'day'">
+  @narrator: Picnic blankets all down the riverbank. The juggler by the bridge has an audience of one bored magikarp.
+</entry>
+
+<entry id="eastR6Night" on="enterRoute" target="route.r6" category="ambient" priority="5" once="day" when="@isNight">
+  @narrator: Under the bridge, a lantern and the slap of playing cards. Somebody down there laughs like they're winning.
+</entry>
+
+<entry id="eastR6SignText" on="talk" target="npc.r6Sign" category="bark">
+  @narrator: ROUTE 6. Upriver: ASHGROVE. Downriver: BLOOMFIELD. "No swimming. The river is faster than it looks."
+</entry>
+
+// ── Route 7 ──────────────────────────────────────────────────────────────
+
+<beat id="r7First" on="enterRoute" target="route.r7" title="Route 7" priority="20">
+  @narrator: Route 7 goes up and over the hill toward Silvercrest. The road is smooth, wide and painted with bicycle lanes that nobody respects.
+</beat>
+
+<entry id="eastR7Morning" on="enterRoute" target="route.r7" category="ambient" priority="5" once="day" when="@isMorning">
+  @narrator: A blackbelt is running up the hill. Then down. Then up again. He has been doing this since before dawn.
+</entry>
+
+<entry id="eastR7Day" on="enterRoute" target="route.r7" category="ambient" priority="5" once="day" when="run.slot == 'day'">
+  @narrator: From the top of the hill you can see Silvercrest's glass tower flashing in the sun, and the Game Corner's sign flashing louder.
+</entry>
+
+<entry id="eastR7Night" on="enterRoute" target="route.r7" category="ambient" priority="5" once="day" when="@isNight">
+  @narrator: Headlamps on the hill. Engines. After dark, Route 7 belongs to the cycling club, and the cycling club would like you to know it.
+</entry>
+
+<entry id="eastR7SignText" on="talk" target="npc.r7Sign" category="bark">
+  @narrator: ROUTE 7, THE CYCLING ROAD. West: SILVERCREST. East: BLOOMFIELD. "Cyclists have right of way. Cyclists have always had right of way."
+</entry>
+
+// ── Route 8 ──────────────────────────────────────────────────────────────
+
+<beat id="r8First" on="enterRoute" target="route.r8" title="Route 8" priority="20">
+  @narrator: Route 8 runs south from Portvolt along the cliffs. Rusted pylons march beside it toward a building with one tall chimney.
+</beat>
+
+<entry id="eastR8Morning" on="enterRoute" target="route.r8" category="ambient" priority="5" once="day" when="@isMorning">
+  @narrator: A swimmer waves from the water below the cliffs. Or she might be drowning. No, waving. Definitely waving.
+</entry>
+
+<entry id="eastR8Day" on="enterRoute" target="route.r8" category="ambient" priority="5" once="day" when="run.slot == 'day'">
+  @narrator: The pylons hum. Gulls won't land on them. Fishermen won't fish under them. The humming does not seem to mind.
+</entry>
+
+<entry id="eastR8Night" on="enterRoute" target="route.r8" category="ambient" priority="5" once="day" when="@isNight">
+  @narrator: Every few minutes the chimney at the end of the road lights up from inside, yellow-white, as if something up there had opened its eyes.
+</entry>
+
+<entry id="eastR8SignText" on="talk" target="npc.r8Sign" category="bark">
+  @narrator: ROUTE 8. South: POWER PLANT (CLOSED). North: PORTVOLT. Underneath, in marker: "NOT CLOSED ENOUGH."
+</entry>

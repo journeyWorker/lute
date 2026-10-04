@@ -3,7 +3,6 @@ kind: lore
 id: bonds.vesper
 title: Vesper, the Knight Who Left (limited SSR)
 ---
-
 /* Limited: only on the Starfall Night banner. Formerly the Hollow King's. */
 
 <beat id="vesperIntro" on="summon" target="hero.vesper" once="user" priority="10">

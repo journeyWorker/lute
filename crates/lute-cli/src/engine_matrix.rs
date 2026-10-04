@@ -106,9 +106,9 @@ mod tests {
     #[test]
     fn exact_minor_pre_one() {
         // Pre-1.0 the gate is exact major.minor; the patch may differ.
-        assert!(major_minor_match("0.34.0", "0.34.9"));
-        assert!(!major_minor_match("0.34.0", "0.33.9"));
-        assert!(!major_minor_match("0.34.0", "1.34.0"));
+        assert!(major_minor_match("0.35.0", "0.35.9"));
+        assert!(!major_minor_match("0.35.0", "0.33.9"));
+        assert!(!major_minor_match("0.35.0", "1.34.0"));
     }
 
     #[test]

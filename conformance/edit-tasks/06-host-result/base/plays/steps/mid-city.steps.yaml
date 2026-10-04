@@ -1,0 +1,70 @@
+# AREA mid, first visit: Route 9, Silvercrest (the Game Corner hideout), Route
+# 10, Wardenmere and the Venom Gym.
+# OWNED BY mid. Keep the last step's expect (the hand-off) green.
+# Only slot-independent beats are expected here: the clock at this point is
+# whatever the areas before mid left it at (spine.play.yaml includes south
+# and east-coast first). Night trainers and the contest are in
+# plays/mid.play.yaml.
+steps:
+  - occasion: enterRoute
+    target: route.r9
+    expect: { winner: mid.route9.arrive }
+  - occasion: trainerSpotted
+    target: trainer.r9HikerDorran
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: mid.route9.r9HikerDorran, facts: [defeated(r9HikerDorran)] }
+  - occasion: trainerSpotted
+    target: trainer.r9LassPernille
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: mid.route9.r9LassPernille, facts: [defeated(r9LassPernille)] }
+  - occasion: enterTown
+    target: town.silvercrest
+    label: Kai is a step ahead
+    expect: { winner: mid.silvercrest.arrive }
+  - occasion: heal
+    target: town.silvercrest
+    expect: { winner: mid.silvercrest.center }
+  - occasion: talk
+    target: npc.silvercrestGambler
+    expect: { winner: midGamblerHint }
+  - occasion: enterPlace
+    target: place.gameCorner
+    label: the hideout, all four fights
+    bridges: { battle: [ { won: true }, { won: true }, { won: true }, { won: true } ] }
+    expect:
+      winner: mid.gameCorner
+      facts: [defeated(cornerGruntDoor), defeated(cornerGruntVault), defeated(cornerScientistLoy), defeated(gruntCorner), hasItem(spectralLens)]
+      state: { run.lair.cornerHideout: cleared }
+  - occasion: obstacle
+    target: gate.mindGymDoor
+    expect: { winner: midGateMindGymDoor }
+  - occasion: enterPlace
+    target: place.helixTower
+    label: Helix Tower is sealed while Eclipse holds Ash Tower
+    expect: { winner: mid.eclipse.helixSealed, state: { run.lair.helixHQ: hidden } }
+  - occasion: enterRoute
+    target: route.r10
+    expect: { winner: mid.route10.arrive }
+  - occasion: enterTown
+    target: town.wardenmere
+    expect: { winner: mid.wardenmere.arrive }
+  - occasion: talk
+    target: npc.wardenHolt
+    label: no tooth yet
+    expect: { winner: midHoltToothless }
+  - occasion: trainerSpotted
+    target: trainer.venomGymJugglerKaspar
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: mid.venomGymTrainers.venomGymJugglerKaspar }
+  - occasion: trainerSpotted
+    target: trainer.venomGymTamerBastien
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: mid.venomGymTrainers.venomGymTamerBastien }
+  - occasion: challenge
+    target: arena.venomGym
+    label: mid hand-off (first visit)
+    bridges: { battle: [ { won: true } ] }
+    expect:
+      winner: mid.venomGym
+      facts: [hasBadge(venom), hasItem(spectralLens), canPass(ashTowerStairs)]
+      state: { run.lair.cornerHideout: cleared }

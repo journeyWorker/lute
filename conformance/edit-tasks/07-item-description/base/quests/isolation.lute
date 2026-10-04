@@ -1,0 +1,19 @@
+---
+kind: quest
+id: isolationQuests
+---
+
+<quest id="hushWing" title="Let the wing sleep" start="visited('room.isolation')" fail="@dead">
+  <objective id="edith" title="Tell Edith it is not three" done="holds('calmed', ['edith'])"/>
+  <objective id="walter" title="Give Mr. Pell his visiting day" done="holds('calmed', ['walter'])"/>
+  <objective id="june" title="Call June by her name" done="holds('calmed', ['june'])" by="@lateNight"/>
+  <on event="questActive">
+    @nell{mono}: Three beds. Three people who never got the round they were promised.
+  </on>
+  <on event="questComplete">
+    @narrator: Down in the wing, three sets of breathing stop, one after the other, like lamps going out along a street.
+  </on>
+  <on event="questFailed">
+    @june{os when="quest.hushWing.objectives.june.failed"}: It's three. You said you'd come before three.
+  </on>
+</quest>

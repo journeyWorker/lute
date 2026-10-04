@@ -1,0 +1,78 @@
+# OWNED BY AREA north: area-private state, enums, relations, defs.
+# Every name declared here starts with the area: run.northX, user.northX,
+# enum/kind/relation/def northX. Other areas never read it; anything another
+# area needs goes into the world contract (ask the lead).
+state: {}
+
+# the area's people, trainers and places (the kinds are the lead's, in
+# schema/roster.schema.yaml; a trainer is a person already)
+entities:
+  person:
+    add:
+      - frostharborHarbormaster
+      - frostharborKeeper
+      - frostharborNetmender
+      - frostharborKid
+      - frostharborCaveGuide
+      - cinderInnkeeper
+      - cinderVolcanologist
+      - cinderGymGuide
+      - cinderGranny
+      - verdantHistorian
+      - verdantGardener
+      - verdantDojoMaster
+      - verdantGuard
+      - verdantFlorist
+      - r13Lifeguard
+      - r14Hermit
+      - r15Ranger
+      - r16Veteran
+  trainer:
+    add:
+      - r13SwimmerLena
+      - r13SwimmerTod
+      - r13FishermanWade
+      - r13SailorBrig
+      - r13SwimmerNoor
+      - r13BirdKeeperIsla
+      - r14SwimmerCal
+      - r14SwimmerMae
+      - r14FishermanOtto
+      - r14BeautyVera
+      - r14SailorJunn
+      - r14SwimmerRex
+      - r15BikerDax
+      - r15BikerJett
+      - r15BirdKeeperPell
+      - r15PicnickerTilly
+      - r15CamperRoy
+      - r15PsychicMira
+      - r16CooltrainerAnya
+      - r16CooltrainerBram
+      - r16HikerGus
+      - r16BlackBeltKen
+      - r16BeautyLis
+      - frostCavernsHikerOrm
+      - frostCavernsScientistPym
+      - cinderMansionBurglarSly
+      - cinderMansionScientistHale
+      - cinderMansionBurglarNip
+      - blazeGymSuperNerdQuill
+      - blazeGymBurglarFitch
+      - blazeGymSuperNerdOona
+      - blazeGymBurglarRusk
+      - earthGymGruntHask
+      - earthGymGruntMoll
+      - earthGymGruntTeague
+      - earthGymAdminSelene
+      - victoryRoadCooltrainerNaomi
+      - victoryRoadCooltrainerElias
+      - victoryRoadBlackBeltGrum
+      - victoryRoadTamerOsric
+      - verdantDojoKarateKoji
+  place:
+    add:
+      - frostCaverns
+      - frostDepths
+      - victoryRoadCrater
+      - verdantDojo

@@ -70,7 +70,7 @@ lute beats docs/examples/games/drowned-crown --occasion talk --target npc.sefa
 lute calendar docs/examples/games/drowned-crown --axis user.runs=1..6 --occasion talk --target npc.tavi
 ```
 
-The project also demonstrates the 0.34.0 analysis surfaces:
+The project also demonstrates the 0.35.0 analysis surfaces:
 
 ```sh
 lute impact docs/examples/games/drowned-crown fact:felled(regent)

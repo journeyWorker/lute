@@ -1,0 +1,11 @@
+---
+component: shop
+params:
+  stock: string    # the engine's stock list id for this Mart
+---
+
+## Mart
+
+@clerk: Hi there! May I help you?
+::shop{stock=@stock}
+@clerk: Please come again!

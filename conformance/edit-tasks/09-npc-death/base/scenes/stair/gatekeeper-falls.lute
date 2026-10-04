@@ -1,0 +1,18 @@
+---
+kind: scene
+id: boss.gatekeeperFalls
+title: The Gatekeeper falls
+on: bossDefeated
+target: boss.gatekeeper
+priority: 50
+once: user
+---
+
+## The door
+
+::music{action="change" mood="triumph" volume="up"}
+@narrator{code="0010"}: The Gatekeeper goes down the way a building does: slowly, and then all at once, and then for a long time afterward.
+@narrator{code="0020"}: The maul skids across the landing. Its head has a smith's mark on the cheek — a small hammer inside a circle.
+@wren{code="0010" mono}: Oskar's.
+::assert{saw(sable, gatekeeperFall)}
+@sable{code="0010" os}: ...Oh. Somebody finally knocked.

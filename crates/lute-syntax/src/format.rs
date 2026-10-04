@@ -201,7 +201,7 @@ fn format_yaml_like(source: &str) -> String {
 /// Canonicalize one Lute source document while retaining opaque payload bytes.
 /// The parser is consulted only as a validity gate; it is never used as a
 /// printer and no AST values are serialized back into source.
-pub fn format_source(source: &str, _options: &FormatOptions) -> Result<FormatResult, FormatError> {
+pub fn format_source(source: &str, options: &FormatOptions) -> Result<FormatResult, FormatError> {
     let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
     let has_bom = normalized.starts_with('\u{feff}');
     let parse_source = normalized.strip_prefix('\u{feff}').unwrap_or(&normalized);
@@ -224,12 +224,27 @@ pub fn format_source(source: &str, _options: &FormatOptions) -> Result<FormatRes
         let mut depth = 0usize;
         let mut in_block_comment = false;
         let mut blank_pending = false;
+        let mut cursor = 0usize;
         for raw in body.split('\n') {
+            let raw_start = cursor;
+            cursor += raw.len() + 1;
+            let touched = options.regions.is_empty() || options.regions.iter().any(|r| {
+                raw_start < r.byte_end && raw_start + raw.len() > r.byte_start
+            });
+            if !touched {
+                out.push_str(raw);
+                out.push('\n');
+                continue;
+            }
             let line = trim_horizontal(raw);
             let trimmed = line.trim_start_matches([' ', '\t']);
             if in_block_comment || trimmed.starts_with("/*") {
-                out.push_str(&"  ".repeat(depth));
-                out.push_str(trimmed);
+                if blank_pending && !out.is_empty() && !out.ends_with("\n\n") {
+                    out.push('\n');
+                }
+                // Indentation within a multiline comment is authored payload,
+                // not block layout. Keep it exactly, apart from trailing space.
+                out.push_str(line);
                 out.push('\n');
                 in_block_comment = !trimmed.contains("*/");
                 blank_pending = false;
@@ -353,8 +368,39 @@ mod tests {
         assert_eq!(result.text, "\u{feff}## S\n@narrator: hi\n");
         assert_eq!(format_source(&result.text, &FormatOptions::default()).unwrap().text, result.text);
     }
+    fn ast_without_spans(doc: &crate::ast::Document) -> String {
+        let debug = format!("{doc:?}");
+        let marker = "Span {";
+        let mut out = String::with_capacity(debug.len());
+        let mut rest = debug.as_str();
+        while let Some(start) = rest.find(marker) {
+            out.push_str(&rest[..start]);
+            let bytes = rest[start..].as_bytes();
+            let mut depth = 0usize;
+            let mut end = None;
+            for (offset, byte) in bytes.iter().enumerate() {
+                match byte {
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            end = Some(start + offset + 1);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            out.push_str("Span");
+            let Some(end) = end else { break };
+            rest = &rest[end..];
+        }
+        out.push_str(rest);
+        out
+    }
+
     #[test]
-    fn corpus_idempotence_and_losslessness() {
+    fn corpus_idempotence_and_ast_preservation() {
         fn walk(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for entry in entries.flatten() {
@@ -371,6 +417,11 @@ mod tests {
             assert_eq!(concat(&source_stream(&source)), source, "lossless {}", path.display());
             let first = format_source(&source, &FormatOptions::default())
                 .unwrap_or_else(|err| panic!("{}: {err:?}", path.display())).text;
+            let (before_doc, before_diags) = crate::parse(&source);
+            assert!(before_diags.iter().all(|d| d.severity != Severity::Error), "parse {}", path.display());
+            let (after_doc, after_diags) = crate::parse(&first);
+            assert!(after_diags.iter().all(|d| d.severity != Severity::Error), "formatted parse {}", path.display());
+            assert_eq!(ast_without_spans(&before_doc), ast_without_spans(&after_doc), "AST changed {}", path.display());
             let second = format_source(&first, &FormatOptions::default())
                 .unwrap_or_else(|err| panic!("{} second pass: {err:?}", path.display())).text;
             assert_eq!(first, second, "not idempotent {}", path.display());

@@ -364,6 +364,66 @@ fn closed_key_violations(map: &serde_yaml::Mapping, text: &str, file: &Path) -> 
     out
 }
 
+/// Return authored node ids named by a validated test's typed fields. Context
+/// discovery must not treat arbitrary YAML values as references.
+pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("cannot read test script {}: {error}", path.display()))?;
+    let value: serde_yaml::Value =
+        serde_yaml::from_str(&text).map_err(|error| format!("malformed test YAML: {error}"))?;
+    let Some(map) = value.as_mapping() else {
+        return Err("test script must be a YAML mapping".into());
+    };
+    if !closed_key_violations(map, &text, path).is_empty() {
+        return Err("test script has unknown keys".into());
+    }
+    let mut refs = BTreeSet::new();
+    if let Some(ids) = map.get("visited").and_then(serde_yaml::Value::as_sequence) {
+        refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+    }
+    if let Some(ids) = map.get("accepts").and_then(serde_yaml::Value::as_sequence) {
+        refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+    }
+    if let Some(quests) = map.get("quests").and_then(serde_yaml::Value::as_mapping) {
+        refs.extend(quests.keys().filter_map(|id| id.as_str().map(str::to_string)));
+    }
+    if let Some(id) = map.get("beat").and_then(serde_yaml::Value::as_str) {
+        refs.insert(id.to_string());
+    }
+    if let Some(id) = map.get("entry").and_then(serde_yaml::Value::as_str) {
+        refs.insert(id.to_string());
+    }
+    for key in ["entries"] {
+        if let Some(ids) = map.get(key).and_then(serde_yaml::Value::as_sequence) {
+            refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+        }
+    }
+    if let Some(expect) = map.get("expect") {
+        collect_test_expect_context_references(expect, &mut refs);
+    }
+    Ok(refs.into_iter().collect())
+}
+
+fn collect_test_expect_context_references(value: &serde_yaml::Value, refs: &mut BTreeSet<String>) {
+    let Some(map) = value.as_mapping() else { return };
+    for (key, value) in map {
+        let Some(key) = key.as_str() else { continue };
+        match key {
+            "offered" | "notOffered" | "presented" => {
+                if let Some(ids) = value.as_sequence() {
+                    refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+                }
+            }
+            "quests" => {
+                if let Some(quests) = value.as_mapping() {
+                    refs.extend(quests.keys().filter_map(|id| id.as_str().map(str::to_string)));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// How this report DISPLAYS a state path the walk never wrote. It is a
 /// RENDERING of "there is no value here", not a member of the value space —
 /// which is exactly what T9.9 got wrong: the sentinel was substituted for the

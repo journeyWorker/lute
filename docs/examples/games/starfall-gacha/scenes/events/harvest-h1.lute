@@ -7,9 +7,8 @@ target: estage.h1
 once: user
 when: "@harvestLive"
 ---
-
 /* Event story: once: user, so a player who read it in the original run is
-   not shown it again in the rerun, and a newcomer in the rerun is. */
+not shown it again in the rerun, and a newcomer in the rerun is. */
 
 ## The empty festival
 

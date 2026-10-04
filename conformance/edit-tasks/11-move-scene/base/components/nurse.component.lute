@@ -1,0 +1,13 @@
+---
+component: nurse
+params:
+  town: { domain: town }  # the town member; its label is shown (0.27)
+---
+
+## Monster Center
+
+@nurse: Welcome to the {{@town}} Monster Center!
+@nurse: We restore tired monsters to full health. I'll take yours for a moment.
+::heal
+::sfx{sound="center-jingle"}
+@nurse: Thank you for waiting. Your monsters are fighting fit! We hope to see you again.

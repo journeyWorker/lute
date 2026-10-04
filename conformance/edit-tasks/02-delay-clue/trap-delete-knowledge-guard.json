@@ -1,0 +1,1 @@
+{"base":{"project":"@BASE@"},"targets":["entry:codexWraiths"],"edits":[{"op":"replaceAttr","node":"entry:codexWraiths","attr":"when","value":"true"}],"preserve":[{"conditions":["entry:codexWraiths"]}],"trapExpect":{"code":"E-PATCH-PRESERVE","preserve":"conditions","node":"entry:codexWraiths"}}

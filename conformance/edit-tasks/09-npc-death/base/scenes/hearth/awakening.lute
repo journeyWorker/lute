@@ -1,0 +1,35 @@
+---
+kind: scene
+id: hearth.awakening
+title: The Hearth, the first time
+components: [../../components/hearth-fire.component.lute]
+on: hubVisit
+priority: 100
+once: user
+when: 'user.runs == 0'
+---
+
+## Ash on the tongue
+
+::bg{location="hearth" time="night"}
+::music{action="start" mood="hearth" volume="down"}
+@narrator{code="0010"}: Wren wakes on warm stone with ash in her mouth and no memory of lying down.
+@narrator{code="0020"}: Above her, the Stair goes up into the dark, one step at a time, forever.
+::use{component="hearthFire" flare="high"}
+::auto{character="maud" anchor="center" action="fadeInUp"}
+@maud{code="0010" emotion="warm"}: There you are. Don't sit up too fast — the first time, everyone throws up.
+@wren{code="0010"}: Where is this?
+@maud{code="0020" emotion="wry"}: The bottom. The Hearth. The only warm place between here and the top.
+@maud{code="0030"}: You'll climb. You'll fall. You'll wake up right where you're lying now, and I'll have the kettle on.
+
+<branch id="firstWords" prompt="Maud holds out a chipped cup.">
+  <choice id="take" label="Take the cup">
+    ::set{user.bond.maud += 1}
+    @maud{code="0040" emotion="fond"}: Good. Manners survive the ash. That's a start.
+  </choice>
+  <choice id="refuse" label="I'm not staying.">
+    @maud{code="0050" emotion="wry"}: Nobody is, love. That's rather the point of the Stair.
+  </choice>
+</branch>
+
+@maud{code="0060"}: Go on, then. The smith is by the anvil and the quiet one is by the water. Mind them both.

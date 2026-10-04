@@ -5,7 +5,7 @@ use lute_core_span::{Diagnostic, Span};
 use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
 
-use crate::{NodeKey, NodeKind, ProjectModel};
+use crate::{NodeKey, NodeKind, ProjectModel, SemanticGraph};
 use crate::revision::{ProjectRevision, RevisionError};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -114,96 +114,162 @@ fn strip_positional(value: &mut Value) {
     }
 }
 
-fn command_object(model: &ProjectModel, key: &NodeKey) -> Option<Value> {
-    if key.kind == NodeKind::Document { return None; }
-    let graph = model.graph();
-    let document = model.documents().iter().find(|d| {
-        let relative = d.path.strip_prefix(model.root()).unwrap_or(&d.path)
-            .to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/");
-        graph.nodes.get(key).and_then(|n| n.file.as_ref()).is_some_and(|f| f == &d.path)
-            || (key.kind == NodeKind::Document && key.key == relative)
-    })?;
-    let ir = document.artifact.as_ref()?;
-    let wanted = key.key.rsplit(':').next().unwrap_or(&key.key);
-    let suffix = wanted.rsplit('.').next().unwrap_or(wanted);
-    for command in &ir.commands {
-        let mut value = serde_json::to_value(command).ok()?;
-        strip_positional(&mut value);
-        let found = match key.kind {
-            NodeKind::Objective => find_object_with_id(&value, suffix, true),
-            NodeKind::Quest | NodeKind::Entry | NodeKind::Beat => {
-                find_command_object(&value, wanted, suffix)
-            }
-            _ => find_command_object(&value, wanted, suffix),
-        };
-        if let Some(mut found) = found {
-            // Child declarations have their own graph nodes. A parent value
-            // must not change merely because a child was inserted or edited.
-            if key.kind == NodeKind::Quest {
-                if let Value::Object(map) = &mut found {
-                    map.remove("objectives");
-                    map.remove("rewards");
-                }
-            }
-            return Some(found);
-        }
-    }
-    None
+#[derive(Clone, Debug)]
+enum CommandPath {
+    Key(String),
+    Index(usize),
 }
 
-fn find_object_with_id(value: &Value, id: &str, require_objective_shape: bool) -> Option<Value> {
+#[derive(Clone, Debug)]
+struct CommandHit {
+    command: usize,
+    order: usize,
+    path: Vec<CommandPath>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct DocumentCommandIndex {
+    commands: Vec<Value>,
+    generic: BTreeMap<String, Vec<CommandHit>>,
+    objectives: BTreeMap<String, Vec<CommandHit>>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct CommandIndex {
+    documents: BTreeMap<PathBuf, DocumentCommandIndex>,
+    choices: BTreeMap<PathBuf, BTreeMap<(usize, usize), Value>>,
+    parse_errors: BTreeMap<PathBuf, Vec<lute_core_span::Span>>,
+}
+
+fn index_command(value: &Value, command: usize, path: &mut Vec<CommandPath>, index: &mut DocumentCommandIndex, order: &mut usize) {
     if let Value::Object(map) = value {
-        if map.get("id").and_then(Value::as_str) == Some(id)
-            && (!require_objective_shape || map.contains_key("done"))
-        {
-            return Some(value.clone());
-        }
-        for child in map.values() {
-            if let Some(found) = find_object_with_id(child, id, require_objective_shape) {
-                return Some(found);
+        let hit = CommandHit { command, order: *order, path: path.clone() };
+        *order += 1;
+        if let Some(id) = map.get("id").and_then(Value::as_str) {
+            index.generic.entry(id.to_string()).or_default().push(hit.clone());
+            if map.contains_key("done") {
+                index.objectives.entry(id.to_string()).or_default().push(hit.clone());
             }
+        }
+        for field in ["lineId", "key"] {
+            if let Some(id) = map.get(field).and_then(Value::as_str) {
+                index.generic.entry(id.to_string()).or_default().push(hit.clone());
+            }
+        }
+        for (key, child) in map {
+            path.push(CommandPath::Key(key.clone()));
+            index_command(child, command, path, index, order);
+            path.pop();
         }
     } else if let Value::Array(items) = value {
-        for child in items {
-            if let Some(found) = find_object_with_id(child, id, require_objective_shape) {
-                return Some(found);
-            }
+        for (item, child) in items.iter().enumerate() {
+            path.push(CommandPath::Index(item));
+            index_command(child, command, path, index, order);
+            path.pop();
         }
     }
-    None
 }
 
-fn reward_value(model: &ProjectModel, key: &NodeKey) -> Option<Value> {
-    let graph = model.graph();
+fn command_index(model: &ProjectModel) -> CommandIndex {
+    let mut index = CommandIndex::default();
+    for document in model.documents() {
+        index.parse_errors.insert(
+            document.path.clone(),
+            document.check.diagnostics.iter()
+                .filter(|diagnostic| diagnostic.code == "E-CEL-PARSE")
+                .map(|diagnostic| diagnostic.span)
+                .collect(),
+        );
+        let Some(artifact) = document.artifact.as_ref() else { continue };
+        if let Some(source_map) = document.source_map.as_ref() {
+            for command in &artifact.commands {
+                let lute_compile::Command::Choice(choice) = command else { continue };
+                let Some(info) = source_map.by_addr.get(&choice.addr) else { continue };
+                let Ok(value) = serde_json::to_value(choice) else { continue };
+                let Some(options) = value.get("options").and_then(Value::as_array) else { continue };
+                for (number, arm) in info.arms.iter().enumerate() {
+                    let Some(mut option) = options.get(number).cloned() else { continue };
+                    strip_positional(&mut option);
+                    if let Value::Object(map) = &mut option { map.remove("target"); }
+                    index.choices.entry(document.path.clone()).or_default()
+                        .insert((arm.span.byte_start, arm.span.byte_end), option);
+                }
+            }
+        }
+        let mut command_index = DocumentCommandIndex::default();
+        let mut order = 0;
+        for command in &artifact.commands {
+            let Ok(value) = serde_json::to_value(command) else { continue };
+            let mut value = value;
+            strip_positional(&mut value);
+            let command_number = command_index.commands.len();
+            index_command(&value, command_number, &mut Vec::new(), &mut command_index, &mut order);
+            command_index.commands.push(value);
+        }
+        index.documents.insert(document.path.clone(), command_index);
+    }
+    index
+}
+
+fn hit_value(document: &DocumentCommandIndex, hit: &CommandHit) -> Option<Value> {
+    let mut value = document.commands.get(hit.command)?.clone();
+    for segment in &hit.path {
+        value = match segment {
+            CommandPath::Key(key) => value.get(key)?.clone(),
+            CommandPath::Index(index) => value.get(*index)?.clone(),
+        };
+    }
+    Some(value)
+}
+
+fn first_hit<'a>(hits: impl Iterator<Item = &'a CommandHit>) -> Option<&'a CommandHit> {
+    hits.min_by_key(|hit| hit.order)
+}
+
+fn command_object(index: &CommandIndex, graph: &SemanticGraph, key: &NodeKey) -> Option<Value> {
+    if key.kind == NodeKind::Document { return None; }
+    let file = graph.nodes.get(key)?.file.as_ref()?;
+    let document = index.documents.get(file)?;
+    let wanted = key.key.rsplit(':').next().unwrap_or(&key.key);
+    let suffix = wanted.rsplit('.').next().unwrap_or(wanted);
+    let hit = if key.kind == NodeKind::Objective {
+        first_hit(document.objectives.get(suffix)?.iter())
+    } else {
+        first_hit(document.generic.get(wanted).into_iter().flatten().chain(document.generic.get(suffix).into_iter().flatten()))
+    }?;
+    let mut found = hit_value(document, hit)?;
+    if key.kind == NodeKind::Quest {
+        if let Value::Object(map) = &mut found {
+            map.remove("objectives");
+            map.remove("rewards");
+        }
+    }
+    Some(found)
+}
+
+fn reward_value(model: &ProjectModel, index: &CommandIndex, graph: &SemanticGraph, key: &NodeKey) -> Option<Value> {
     let node = graph.nodes.get(key)?;
     let file = node.file.as_ref()?;
     let document = model.documents().iter().find(|d| &d.path == file)?;
     let map = document.source_map.as_ref()?;
     let source = map.rewards.get(&key.key)
         .or_else(|| map.rewards.get(&format!("quest:{}", key.key)))?;
-    let ir = document.artifact.as_ref()?;
+    let command_document = index.documents.get(file)?;
     let owner = source.owner.strip_prefix("quest:").unwrap_or(&source.owner);
-    for command in &ir.commands {
-        let mut value = serde_json::to_value(command).ok()?;
-        strip_positional(&mut value);
-        if let Some(object) = find_object_with_id(&value, owner.rsplit('.').next().unwrap_or(owner), false) {
-            if let Some(rewards) = object.get("rewards").and_then(Value::as_array) {
-                if let Some(reward) = rewards.get(source.declaration_index) {
-                    return Some(reward.clone());
-                }
-            }
-        }
-    }
-    None
+    let owner = owner.rsplit('.').next().unwrap_or(owner);
+    let hit = first_hit(command_document.generic.get(owner)?.iter())?;
+    let object = hit_value(command_document, hit)?;
+    object.get("rewards").and_then(Value::as_array)?.get(source.declaration_index).cloned()
 }
 
-fn command_value(model: &ProjectModel, key: &NodeKey) -> Option<Value> {
+fn command_value(model: &ProjectModel, index: &CommandIndex, graph: &SemanticGraph, key: &NodeKey) -> Option<Value> {
     if key.kind == NodeKind::Reward {
-        reward_value(model, key)
+        reward_value(model, index, graph, key)
     } else {
-        command_object(model, key)
+        command_object(index, graph, key)
     }
 }
+
 
 fn canonical_cel_text(raw: &str) -> String {
     let mut compact = String::with_capacity(raw.len());
@@ -242,15 +308,15 @@ fn canonical_cel_text(raw: &str) -> String {
     compact
 }
 
-fn edge_value(model: &ProjectModel, key: &NodeKey) -> Value {
-    let graph = model.graph();
+fn edge_value(model: &ProjectModel, index: &CommandIndex, edge_index: &BTreeMap<NodeKey, Vec<usize>>, graph: &SemanticGraph, key: &NodeKey) -> Value {
     let mut map = Map::new();
     map.insert("node".into(), Value::String(canonical_key(key)));
     // Containment is structural and positional. Dependency edges are semantic
     // and are retained so writes/asserts/reads and guards remain observable.
     let mut edges = Vec::new();
-    for edge in &graph.edges {
-        if (edge.source == *key || edge.target == *key) && edge.kind != "contains" {
+    for edge_number in edge_index.get(key).into_iter().flatten() {
+        let edge = &graph.edges[*edge_number];
+        if edge.kind != "contains" {
             let reason = (!matches!(key.kind, NodeKind::State | NodeKind::Fact | NodeKind::Relation | NodeKind::Engine | NodeKind::Occasion))
                 .then(|| canonical_cel_text(&edge.reason));
             edges.push(serde_json::json!({
@@ -270,28 +336,23 @@ fn edge_value(model: &ProjectModel, key: &NodeKey) -> Value {
             }
         }
     } else if key.kind != NodeKind::Choice {
-        if let Some(command) = command_value(model, key) {
+        if let Some(command) = command_value(model, index, graph, key) {
             map.insert("command".into(), command);
         }
     }
     if let Some(node) = graph.nodes.get(key) {
         if let Some(speaker) = &node.speaker { map.insert("speaker".into(), Value::String(speaker.clone())); }
         if key.kind == NodeKind::Choice {
-            if let Some(choice) = choice_value(model, node.file.as_ref(), node.span) {
+            if let Some(choice) = choice_value(index, node.file.as_ref(), node.span) {
                 map.insert("choice".into(), choice);
             }
         }
     }
     if let Some(node) = graph.nodes.get(key) {
         if let (Some(file), Some(span)) = (&node.file, node.span) {
-            if model.documents().iter().any(|document| {
-                &document.path == file
-                    && document.check.diagnostics.iter().any(|diagnostic| {
-                        diagnostic.code == "E-CEL-PARSE"
-                            && diagnostic.span.byte_start < span.byte_end
-                            && span.byte_start < diagnostic.span.byte_end
-                    })
-            }) {
+            if index.parse_errors.get(file).is_some_and(|diagnostics| diagnostics.iter().any(|diagnostic| {
+                diagnostic.byte_start < span.byte_end && span.byte_start < diagnostic.byte_end
+            })) {
                 map.insert("conditionUnparsable".into(), Value::Bool(true));
             }
         }
@@ -300,48 +361,23 @@ fn edge_value(model: &ProjectModel, key: &NodeKey) -> Value {
 }
 
 
-fn find_command_object(value: &Value, wanted: &str, suffix: &str) -> Option<Value> {
-    if let Value::Object(map) = value {
-        let matches = map.get("lineId").and_then(Value::as_str).is_some_and(|v| v == wanted)
-            || map.get("id").and_then(Value::as_str).is_some_and(|v| v == wanted || v == suffix)
-            || map.get("key").and_then(Value::as_str).is_some_and(|v| v == wanted);
-        if matches { return Some(value.clone()); }
-        for child in map.values() {
-            if let Some(found) = find_command_object(child, wanted, suffix) { return Some(found); }
-        }
-    } else if let Value::Array(items) = value {
-        for child in items {
-            if let Some(found) = find_command_object(child, wanted, suffix) { return Some(found); }
-        }
-    }
-    None
-}
 
 fn canonical_key(key: &NodeKey) -> String {
     if key.kind == NodeKind::Project { "project:root".to_string() } else { key.canonical() }
 }
 
 
-fn choice_value(model: &ProjectModel, file: Option<&PathBuf>, span: Option<lute_core_span::Span>) -> Option<Value> {
+fn choice_value(index: &CommandIndex, file: Option<&PathBuf>, span: Option<lute_core_span::Span>) -> Option<Value> {
     let (file, span) = (file?, span?);
-    let document = model.documents().iter().find(|document| &document.path == file)?;
-    let artifact = document.artifact.as_ref()?;
-    let source_map = document.source_map.as_ref()?;
-    for command in &artifact.commands {
-        let lute_compile::Command::Choice(choice) = command else { continue };
-        let info = source_map.by_addr.get(&choice.addr)?;
-        let index = info.arms.iter().position(|arm| arm.span == span)?;
-        let value = serde_json::to_value(choice).ok()?;
-        let mut option = value.get("options").and_then(Value::as_array).and_then(|options| options.get(index)).cloned()?;
-        strip_positional(&mut option);
-        if let Value::Object(map) = &mut option { map.remove("target"); }
-        return Some(option);
-    }
-    None
+    index.choices.get(file)?.get(&(span.byte_start, span.byte_end)).cloned()
 }
 
-fn model_values(model: &ProjectModel) -> BTreeMap<NodeKey, Value> {
-    let graph = model.graph();
+fn model_values(model: &ProjectModel, index: &CommandIndex, graph: &SemanticGraph) -> BTreeMap<NodeKey, Value> {
+    let mut edge_index = BTreeMap::<NodeKey, Vec<usize>>::new();
+    for (number, edge) in graph.edges.iter().enumerate() {
+        edge_index.entry(edge.source.clone()).or_default().push(number);
+        edge_index.entry(edge.target.clone()).or_default().push(number);
+    }
     let mut values = BTreeMap::new();
     for key in graph.nodes.keys() {
         if key.kind == NodeKind::Reward && !key.key.starts_with("quest:")
@@ -350,17 +386,22 @@ fn model_values(model: &ProjectModel) -> BTreeMap<NodeKey, Value> {
             continue;
         }
         let normalized = if key.kind == NodeKind::Project { NodeKey::new(NodeKind::Project, "root") } else { key.clone() };
-        values.insert(normalized, edge_value(model, key));
+        values.insert(normalized, edge_value(model, index, &edge_index, graph, key));
     }
     values
 }
-fn locations(model: &ProjectModel, key: &NodeKey) -> Vec<SourceLocation> {
-
-    let graph = model.graph();
+fn locations(model: &ProjectModel, graph: &SemanticGraph, key: &NodeKey) -> Vec<SourceLocation> {
     let Some(node) = graph.nodes.get(key) else { return Vec::new() };
     let Some(file) = node.file.as_ref() else { return Vec::new() };
-    let file = file.strip_prefix(model.root()).unwrap_or(file).to_path_buf();
+    let file = relative_node_path(model.root(), file);
     node.span.map(|span| vec![SourceLocation { file, span }]).unwrap_or_default()
+}
+fn relative_node_path(root: &std::path::Path, path: &std::path::Path) -> PathBuf {
+    let canonical_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let canonical_path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    canonical_path.strip_prefix(&canonical_root)
+        .map(PathBuf::from)
+        .unwrap_or(canonical_path)
 }
 fn semantic_node_value(value: &Value) -> String {
     let mut value = value.clone();
@@ -416,13 +457,16 @@ fn field_name(node: &NodeKey, before: &Value, after: &Value) -> ChangeKind {
         before.get("command").and_then(|v| v.get(name))
             != after.get("command").and_then(|v| v.get(name))
     };
-    let edge_has = |kind: &str| {
-        [before, after].iter().any(|value| {
-            value.get("edges").and_then(Value::as_array).is_some_and(|edges| {
-                edges.iter().any(|edge| edge.get("kind").and_then(Value::as_str) == Some(kind))
-            })
-        })
+    let edge_changed = |kinds: &[&str]| {
+        let edges = |value: &Value| value.get("edges").cloned().unwrap_or(Value::Array(Vec::new()));
+        let filter = |value: Value| match value {
+            Value::Array(items) => Value::Array(items.into_iter().filter(|edge| kinds.contains(&edge.get("kind").and_then(Value::as_str).unwrap_or(""))).collect()),
+            _ => Value::Array(Vec::new()),
+        };
+        filter(edges(before)) != filter(edges(after))
     };
+    let guard_changed = command_changed("when") || command_changed("condition") || changed("guard");
+    let effect_changed = edge_changed(&["writes", "asserts", "retracts"]);
     let name = match node.kind {
         NodeKind::Project => {
             if before.get("index").and_then(|v| v.get("requiredSemantics"))
@@ -432,7 +476,9 @@ fn field_name(node: &NodeKey, before: &Value, after: &Value) -> ChangeKind {
         NodeKind::Line => {
             if command_changed("text") { "lineText" }
             else if changed("speaker") { "speaker" }
-            else if edge_has("writes") || edge_has("asserts") || edge_has("retracts") { "effects" }
+            else if guard_changed && effect_changed { "guard" }
+            else if guard_changed { "guard" }
+            else if effect_changed { "effects" }
             else { "guard" }
         }
         NodeKind::Choice => {
@@ -452,41 +498,23 @@ fn field_name(node: &NodeKey, before: &Value, after: &Value) -> ChangeKind {
 /// Compare two fully-built model snapshots by canonical NodeKey. Compiler
 /// addresses and source spans never participate in semantic equality.
 pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<SemanticDiff, DiffError> {
-    let before_values = model_values(before);
-    let after_values = model_values(after);
     let before_graph = before.graph();
     let after_graph = after.graph();
+    let before_index = command_index(before);
+    let after_index = command_index(after);
+    let before_values = model_values(before, &before_index, &before_graph);
+    let after_values = model_values(after, &after_index, &after_graph);
     let mut keys = BTreeSet::new();
     keys.extend(before_values.keys().cloned());
     keys.extend(after_values.keys().cloned());
     let ambiguous_rewards = reward_ambiguities(&before_values, &after_values);
     let mut changes = Vec::new();
-    let mut paired_lines = BTreeMap::new();
-    let removed_lines: Vec<_> = before_values.keys()
-        .filter(|key| key.kind == NodeKind::Line && !after_values.contains_key(*key))
-        .cloned().collect();
-    let added_lines: Vec<_> = after_values.keys()
-        .filter(|key| key.kind == NodeKind::Line && !before_values.contains_key(*key))
-        .cloned().collect();
-    for old in removed_lines {
-        let old_locations = locations(before, &old);
-        let Some(old_loc) = old_locations.first() else { continue };
-        let Some(new) = added_lines.iter().find(|candidate| {
-            let candidate_locations = locations(after, candidate);
-            candidate_locations.first().is_some_and(|location| {
-                location.file == old_loc.file && location.span.line == old_loc.span.line
-            })
-        }) else { continue };
-        paired_lines.insert(old, new.clone());
-    }
-    let paired_new: BTreeSet<_> = paired_lines.values().cloned().collect();
     for key in keys {
-        if paired_lines.contains_key(&key) || paired_new.contains(&key)
-            || (key.kind == NodeKind::Reward && ambiguous_rewards.iter().any(|ambiguous| {
-                let owner = |reward: &NodeKey| reward.key.rsplit_once('#').map_or_else(|| reward.key.clone(), |(owner, _)| owner.to_string());
-                owner(&key) == owner(ambiguous)
-                    && after_values.get(&key).map(semantic_node_value) == after_values.get(ambiguous).map(semantic_node_value)
-            })) { continue; }
+        if key.kind == NodeKind::Reward && ambiguous_rewards.iter().any(|ambiguous| {
+            let owner = |reward: &NodeKey| reward.key.rsplit_once('#').map_or_else(|| reward.key.clone(), |(owner, _)| owner.to_string());
+            owner(&key) == owner(ambiguous)
+                && after_values.get(&key).map(semantic_node_value) == after_values.get(ambiguous).map(semantic_node_value)
+        }) { continue; }
         let b = before_values.get(&key);
         let a = after_values.get(&key);
         let mut kind = match (b, a) {
@@ -508,18 +536,20 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
             }
         }
         if let Some(kind) = kind {
-            let before_loc = locations(before, &key);
-            let mut after_loc = locations(after, &key);
+            let before_loc = locations(before, &before_graph, &key);
+            let mut after_loc = locations(after, &after_graph, &key);
             after_loc.extend(parse_locs);
             let mut locs = before_loc.clone();
             locs.extend(after_loc);
             changes.push(SemanticChange { kind, node: key, before: b.cloned(), after: after_value, locations: locs });
         } else if b.is_some() && a.is_some() {
-            let bl = before_graph.nodes.get(&key).and_then(|n| n.file.as_ref()).map(|p| p.strip_prefix(before.root()).unwrap_or(p).to_path_buf());
-            let al = after_graph.nodes.get(&key).and_then(|n| n.file.as_ref()).map(|p| p.strip_prefix(after.root()).unwrap_or(p).to_path_buf());
+            let bl = before_graph.nodes.get(&key).and_then(|node| node.file.as_ref())
+                .map(|path| relative_node_path(before.root(), path));
+            let al = after_graph.nodes.get(&key).and_then(|node| node.file.as_ref())
+                .map(|path| relative_node_path(after.root(), path));
             if bl != al {
-                let mut locs = locations(before, &key);
-                locs.extend(locations(after, &key));
+                let mut locs = locations(before, &before_graph, &key);
+                locs.extend(locations(after, &after_graph, &key));
                 changes.push(SemanticChange { kind: ChangeKind::Moved, node: key, before: b.cloned(), after: a.cloned(), locations: locs });
             }
         }
@@ -527,34 +557,12 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
     for key in &ambiguous_rewards {
         let Some(after_value) = after_values.get(key) else { continue };
         let before_value = before_values.get(key).cloned();
-        let mut locs = locations(before, key);
-        locs.extend(locations(after, key));
+        let mut locs = locations(before, &before_graph, key);
+        locs.extend(locations(after, &after_graph, key));
         changes.push(SemanticChange {
             kind: ChangeKind::Field("rewardAmbiguous".into()),
             node: key.clone(),
             before: before_value,
-            after: Some(after_value.clone()),
-            locations: locs,
-        });
-    }
-    for (old, new) in paired_lines {
-        let (Some(before_value), Some(after_value)) = (before_values.get(&old), after_values.get(&new)) else { continue };
-        let kind = if before_value.get("command").and_then(|value| value.get("lineId"))
-            != after_value.get("command").and_then(|value| value.get("lineId"))
-            && before_value.get("command").and_then(|value| value.get("text"))
-                == after_value.get("command").and_then(|value| value.get("text"))
-            && before_value.get("speaker") == after_value.get("speaker")
-        {
-            ChangeKind::Field("lineId".into())
-        } else {
-            field_name(&old, before_value, after_value)
-        };
-        let mut locs = locations(before, &old);
-        locs.extend(locations(after, &new));
-        changes.push(SemanticChange {
-            kind,
-            node: old,
-            before: Some(before_value.clone()),
             after: Some(after_value.clone()),
             locations: locs,
         });

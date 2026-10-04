@@ -1,0 +1,130 @@
+---
+kind: quest
+id: spine.quests
+title: The League spine
+---
+
+// LEAD-OWNED. The main line and the quests every area feeds. Areas never
+// edit this file: they satisfy objectives through the shared facts and state
+// (hasBadge, run.lair.*, rivalFought, defeated) — see AREAS.md §Interfaces.
+
+// ── The main line ─────────────────────────────────────────────────────────
+<quest id="league" title="Become the Champion" start="true">
+  <objective id="starter" title="Choose your first monster" done="count('chose', ['_']) >= 1"/>
+  <objective id="badges" title="Earn the eight badges" quest="badgeRoad"/>
+  <objective id="eclipse" title="Stop Team Eclipse" quest="eclipseArc"/>
+  <objective id="elite" title="Defeat the Elite Four" quest="eliteFour"/>
+  <objective id="crown" title="Defeat the Champion" done="@champion"/>
+  <on event="questComplete">
+    @narrator: The Summit League records a new Champion: {{userName}} of Hollowtown.
+  </on>
+</quest>
+
+// Free order inside the map's gates (world.schema.yaml canPass rules):
+// Stone and Tide first (south), then Spark / Bloom (east) and Mind / Venom
+// (mid) in either order, Blaze (north) once surf opens the sea, Earth last.
+<quest id="badgeRoad" title="The eight badges">
+  <objective id="stone" title="Stone Badge: Petra, Pebbleton" done="holds('hasBadge', ['stone'])"/>
+  <objective id="tide" title="Tide Badge: Marin, Tidewell" done="holds('hasBadge', ['tide'])"/>
+  <objective id="spark" title="Spark Badge: Lt. Volta, Portvolt" done="holds('hasBadge', ['spark'])"/>
+  <objective id="bloom" title="Bloom Badge: Fern, Bloomfield" done="holds('hasBadge', ['bloom'])"/>
+  <objective id="mind" title="Mind Badge: Sabine, Silvercrest" done="holds('hasBadge', ['mind'])"/>
+  <objective id="venom" title="Venom Badge: Kessler, Wardenmere" done="holds('hasBadge', ['venom'])"/>
+  <objective id="blaze" title="Blaze Badge: Ignatius, Cinder Isle" done="holds('hasBadge', ['blaze'])"/>
+  <objective id="earth" title="Earth Badge: Verdant City" done="holds('hasBadge', ['earth'])"/>
+  <on event="questComplete">
+    @profAlder{vo}: Eight badges! Then Victory Road will let you through. The Summit Plateau is at the top of it.
+  </on>
+</quest>
+
+// Taken up when Director Vex takes over the radio (spine.broadcast). Each
+// lair is one area's story; the last objective is the Earth Gym (north).
+<quest id="eclipseArc" title="Team Eclipse" activate="accept">
+  <objective id="dig" title="Stop the fossil dig under Moonstone Cave" done="run.lair.quarryDig == 'cleared'"/>
+  <objective id="siege" title="Lift the siege of Ash Tower" done="run.lair.towerSiege == 'cleared'"/>
+  <objective id="hideout" title="Raid the hideout under the Game Corner" done="run.lair.cornerHideout == 'cleared'"/>
+  <objective id="hq" title="Free Helix Tower" done="run.lair.helixHQ == 'cleared'"/>
+  <objective id="vex" title="Face Director Vex" done="holds('defeated', ['vex'])"/>
+  <on event="questComplete">
+    @announcer: Radio Verdane, with the news: Team Eclipse has disbanded. Helix Tower has reopened to the public.
+  </on>
+</quest>
+
+// The Elite Four must be beaten in one run: a loss in any chamber or in the
+// Champion's hall retracts every defeated(<elite>). An objective, once done,
+// stays done, so the streak is one count over the derived beatElite.
+<quest id="eliteFour" title="The Elite Four">
+  <objective id="streak" title="Beat all four in a row" done="count('beatElite', ['_']) >= 4"/>
+</quest>
+
+// ── Kai ───────────────────────────────────────────────────────────────────
+// One objective per meeting: lab (spine), bridge (south), ferry (east),
+// tower (mid), road (north), champion (spine). Win or lose, a meeting counts.
+<quest id="rivalry" title="Kai" start="visited('spine.lab')">
+  <objective id="lab" title="Kai, in the lab" done="holds('rivalFought', ['lab'])"/>
+  <objective id="bridge" title="Kai, on the Tidewell bridge" done="holds('rivalFought', ['bridge'])"/>
+  <objective id="ferry" title="Kai, aboard the Meridian" done="holds('rivalFought', ['ferry'])"/>
+  <objective id="tower" title="Kai, in Helix Tower" done="holds('rivalFought', ['tower'])"/>
+  <objective id="road" title="Kai, on Victory Road" done="holds('rivalFought', ['road'])"/>
+  <objective id="champion" title="Kai, in the Champion's hall" done="holds('rivalFought', ['champion'])"/>
+  <on event="questComplete">
+    <match on="run.rivalStanding">
+      <when is="3..">
+        @narrator: Six battles with Kai. He won so few of them that he has started keeping count himself.
+      </when>
+      <when is="..-1">
+        @narrator: Six battles with Kai. He won more than he lost, and he will tell anyone who asks.
+      </when>
+      <otherwise>
+        @narrator: Six battles with Kai, and nobody could say who was ahead.
+      </otherwise>
+    </match>
+  </on>
+</quest>
+
+// ── The professor's Dex ───────────────────────────────────────────────────
+// Accepted in the lab. The first goal comes with the Dex; each later goal is
+// handed out by the professor when the previous one is reported
+// (lore/spine/professor.lute).
+<quest id="dexProject" title="The Professor's Dex">
+  <objective id="ten" title="Ten kinds" quest="dex10"/>
+  <objective id="forty" title="Forty kinds" quest="dex40"/>
+  <objective id="eighty" title="Eighty kinds" quest="dex80"/>
+  <objective id="full" title="Every kind in Verdane" quest="dexFull"/>
+</quest>
+
+<quest id="dex10" title="Ten kinds">
+  <objective id="catch" title="Catch ten different monsters" done="@dexCaught >= 10"/>
+</quest>
+
+<quest id="dex40" title="Forty kinds" activate="accept">
+  <objective id="catch" title="Show the professor forty caught" on="talk" target="npc.profAlder" done="@dexCaught >= 40"/>
+  <reward kind="MONEY" amount="5000"/>
+</quest>
+
+<quest id="dex80" title="Eighty kinds" activate="accept">
+  <objective id="catch" title="Show the professor eighty caught" on="talk" target="npc.profAlder" done="@dexCaught >= 80"/>
+  <reward kind="MONEY" amount="10000"/>
+</quest>
+
+<quest id="dexFull" title="Every kind in Verdane" activate="accept">
+  <objective id="catch" title="Show the professor one hundred and fifty caught" on="talk" target="npc.profAlder" done="@dexCaught >= 150"/>
+  <reward kind="ITEM" target="shinyCharm" amount="1"/>
+</quest>
+
+// ── After the League (postgame) ───────────────────────────────────────────
+// Opens with the crown; any one of these closes it.
+<quest id="legacy" title="After the League" start="@champion" complete="any">
+  <objective id="rift" title="Meet what sleeps in the Rift Cavern" on="caught" target="mon.aethon" done="holds('caught', ['aethon'])"/>
+  <objective id="legends" title="Catch three of Verdane's legends" done="count('caughtLegend', ['_']) >= 3"/>
+  <objective id="dex" title="Complete the Dex" done="@dexCaught >= 150"/>
+  <on event="questComplete">
+    @profAlder{vo}: {{userName}}, I have been a professor for forty years and I have never seen a Dex like yours. Come by the lab. Kai is here, and he wants a rematch.
+  </on>
+</quest>
+
+// ── Monster Center board (the engine accepts these from the board menu) ────
+<quest id="typeMaster" title="Board: a monster of every type" accept="external">
+  <objective id="all" title="Catch a monster of each of the fifteen types" done="@typesCaught >= 15"/>
+  <reward kind="MONEY" amount="15000"/>
+</quest>

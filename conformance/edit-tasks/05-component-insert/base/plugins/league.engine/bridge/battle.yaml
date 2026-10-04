@@ -1,0 +1,11 @@
+# The battle system. A trainer, gym, rival, Elite Four or champion battle is
+# one call; the engine plays it to the end and answers with the outcome.
+bridgeCapabilities:
+  - service: battle
+    operation: fight
+    replay: recorded
+    result:
+      - { name: won,     type: bool }     # the only field content reads (via @wonFight)
+      - { name: prize,   type: int }      # prize money the engine computed
+      - { name: turns,   type: int }
+      - { name: fainted, type: int }      # player monsters that fainted

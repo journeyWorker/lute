@@ -1,0 +1,7 @@
+defaultProfile: default
+profiles:
+  default: {}
+defaults:
+  luteVersion: "0.35.0"
+  uses:
+    - world.schema.yaml

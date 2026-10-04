@@ -1,0 +1,23 @@
+---
+kind: scene
+id: isles.tower
+title: The Battle Tower
+on: challenge
+target: arena.sunportTower
+once: false
+when: "@champion && @islesTowerOpen"
+---
+
+// AREA isles: the Sunport Battle Tower, open at the weekend. Every win adds
+// to this week's streak; a loss ends it. The weekly quest islesTowerWeek asks
+// for three in a row.
+
+## The tower floor
+
+::bg{location="sunport-tower" time="day"}
+@sunportTowerClerk: Challenger {{userName}}, win streak {{run.islesTowerStreak}}. Your opponent is ready.
+::use{component="trainerBattle" who="sunportAceKestrel" intro="Another Champion. The tower has had a few." win="Good. Again next week." lose="The tower keeps its record." prize="1200"}
+::set{run.islesTowerStreak += 1 when="@wonFight"}
+::set{run.islesTowerStreak = 0 when="!@wonFight"}
+@sunportTowerClerk{when="@wonFight"}: Streak: {{run.islesTowerStreak:plural(# win|# wins)}}.
+@sunportTowerClerk{when="!@wonFight"}: The streak ends there. Come back and start another.

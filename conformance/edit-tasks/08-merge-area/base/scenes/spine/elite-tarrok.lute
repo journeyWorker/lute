@@ -1,0 +1,31 @@
+---
+kind: scene
+id: spine.elite.tarrok
+title: The Elite Four — Tarrok
+on: challenge
+target: arena.fistChamber
+once: false
+when: "@badgeCount >= 8 && holds('defeated', ['frostine']) && !holds('defeated', ['tarrok'])"
+---
+
+## The chamber
+
+::bg{location="fistChamber" time="day"}
+::auto{character="tarrok" anchor="center" action="enter"}
+@tarrok: I am Tarrok. I trained on a mountain until the mountain gave up. Show me your strongest!
+::music{action="change" mood="battle" volume="up"}
+::battle{foe="tarrok" kind="elite" resultKey="fight"}
+<match on="scene.battle.fight.won">
+  <when is="true">
+    @tarrok: Ha! A good fight. My fists are ringing. Go!
+    ::assert{defeated(tarrok)}
+  </when>
+  <otherwise>
+    @tarrok: Discipline wins. Back to the start with you.
+    // the streak breaks: the whole Four must be beaten again
+    ::retract{defeated(frostine)}
+    ::retract{defeated(tarrok)}
+    ::retract{defeated(morwen)}
+    ::retract{defeated(drakon)}
+  </otherwise>
+</match>

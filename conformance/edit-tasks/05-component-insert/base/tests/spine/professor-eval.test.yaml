@@ -1,0 +1,9 @@
+# The evaluation reads the caught count: 40..79 kinds.
+file: ../../lore/spine/professor.lute
+beat: evaluate
+facts: [caught(sproutle), caught(thornlet), caught(bramblord), caught(cindle), caught(emberoo), caught(pyrodrake), caught(dewpup), caught(tidehound), caught(maelwolf), caught(inchlet), caught(cocoonix), caught(papillume), caught(stingle), caught(husklet), caught(waspire), caught(pidgeling), caught(galewing), caught(tempestral), caught(scurrat), caught(gnawbeast), caught(sparrowl), caught(raptorix), caught(slitherin), caught(hoodra), caught(voltmouse), caught(stormouse), caught(sandrill), caught(sandclaw), caught(spikelet), caught(spikeline), caught(spikequeen), caught(hornlet), caught(hornrake), caught(hornking), caught(lunafae), caught(lunaglow), caught(foxember), caught(ninefyre), caught(puffsong), caught(puffaria)]
+quests: { dex10: complete, dex40: active }
+expect:
+  eligible: true
+  transcriptContains: ["@profAlder: Good, good. Try the routes at night: different monsters come out."]
+  transcriptLacks: ["Kai will be furious."]

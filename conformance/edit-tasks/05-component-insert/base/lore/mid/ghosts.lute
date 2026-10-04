@@ -1,0 +1,97 @@
+---
+kind: lore
+id: mid.ghosts
+title: Madame Oriel's ghost stories and the three haunts
+---
+
+// Madame Oriel (Silvercrest) tells three ghost stories; each accepts one child
+// of midGhostStories. The Spectral Lens (the Game Corner hideout, mid.gameCorner)
+// shows each ghost at its haunt: a wild Wisplet-line encounter and the
+// midGhostSeen fact. Without the lens the haunts are only cold rooms.
+
+<beat id="oriel" on="talk" target="npc.silvercrestMedium" title="Madame Oriel" once="false" when="quest.midGhostStories.state != 'complete'">
+  ::bg{location="oriel-parlour" time="night"}
+  ::auto{character="silvercrestMedium" anchor="center" action="enter"}
+  @silvercrestMedium{when="quest.midGhostStories.state == 'unset'"}: Come in, come in, mind the cat, it isn't there. I collect ghost stories, dear. Hundreds of them. Three are true.
+  @silvercrestMedium{when="quest.midGhostStories.state == 'unset'"}: Nobody believes me, of course. But you have the look of someone who has seen things through the wrong end of a lens.
+  ::accept{quest="midGhostStories" when="quest.midGhostStories.state == 'unset'"}
+  <hub id="midOrielStories" prompt="Madame Oriel shuffles a deck of very old cards.">
+    <choice id="theater" label="The theater ghost" once when="quest.midGhostTheater.state == 'unset'">
+      @silvercrestMedium: The old theater on the square closed after the last night of "The Silver Queen". The leading lady took her bow and never came off stage. They say she's still waiting for the curtain.
+      ::accept{quest="midGhostTheater"}
+    </choice>
+    <choice id="well" label="The well ghost" once when="quest.midGhostWell.state == 'unset'">
+      @silvercrestMedium{emotion="worried"}: In Wardenmere there is a well at the end of the boardwalk. A girl used to sing into it for the echo. One night the echo sang back first.
+      ::accept{quest="midGhostWell"}
+    </choice>
+    <choice id="lighthouse" label="The lighthouse ghost" once when="quest.midGhostLighthouse.state == 'unset'">
+      @silvercrestMedium: The Fairhaven lighthouse went dark thirty years ago, the night its keeper climbed up to fix the lamp. The lamp has been trying to light itself ever since. Or someone has.
+      ::accept{quest="midGhostLighthouse"}
+    </choice>
+    <choice id="leave" label="Leave" exit>
+      @silvercrestMedium{when="!holds('hasItem', ['spectralLens'])"}: You'll need to see them, of course, not just hear about them. There's a lens for that, somewhere in this city. Somewhere underground.
+      @silvercrestMedium{when="holds('hasItem', ['spectralLens'])"}: Take that lens of yours and go and look. Then come back and tell me I was right.
+    </choice>
+  </hub>
+</beat>
+
+<entry id="midOrielDone" on="talk" target="npc.silvercrestMedium" category="bark" when="quest.midGhostStories.state == 'complete'">
+  @silvercrestMedium{emotion="surprised"}: All three! I'm writing a book. You're in chapter four. Chapter three is about the cat.
+</entry>
+
+// ── the old theater (Silvercrest) ─────────────────────────────────────────
+
+<beat id="theaterGhost" on="enterPlace" target="place.silvercrestTheater" title="The theater ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['silvercrestTheater'])">
+  ::bg{location="silvercrest-theater" time="night"}
+  ::music{action="change" mood="eerie" volume="down"}
+  @narrator: Dust sheets over the seats, and a spotlight that nobody switched on. On the stage, through the lens, a woman in a silver gown is bowing to an empty house.
+  @narrator: She straightens up, sees you, and smiles as if you were the whole audience. Then she comes down the steps.
+  ::assert{midGhostSeen(silvercrestTheater)}
+  ::encounter{species="wraithling" level="30"}
+</beat>
+
+<entry id="midTheaterAfter" on="enterPlace" target="place.silvercrestTheater" category="bark" priority="-5" when="holds('midGhostSeen', ['silvercrestTheater'])">
+  @narrator: The theater is only a theater now. Somebody has lowered the curtain.
+</entry>
+
+<entry id="midTheaterEmpty" on="enterPlace" target="place.silvercrestTheater" category="bark" priority="-10" when="!holds('hasItem', ['spectralLens'])">
+  @narrator: Rows of dusty seats, a bare stage and a draught that smells of greasepaint. For a moment you are sure somebody is clapping.
+</entry>
+
+// ── the well (Wardenmere) ─────────────────────────────────────────────────
+
+<beat id="wellGhost" on="enterPlace" target="place.wardenmereWell" title="The well ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['wardenmereWell'])">
+  ::bg{location="wardenmere-well" time="night"}
+  ::music{action="change" mood="eerie" volume="down"}
+  @narrator: You lean over the well and look down through the lens. Far below, a girl looks up and sings the first line of a song you almost know.
+  @narrator: The echo sings the second line. Then something climbs out of the well to hear the rest.
+  ::assert{midGhostSeen(wardenmereWell)}
+  ::encounter{species="wisplet" level="28"}
+</beat>
+
+<entry id="midWellAfter" on="enterPlace" target="place.wardenmereWell" category="bark" priority="-5" when="holds('midGhostSeen', ['wardenmereWell'])">
+  @narrator: You drop a pebble down the well. It lands with a plop, and then, very softly, a hum finishes the tune.
+</entry>
+
+<entry id="midWellEmpty" on="enterPlace" target="place.wardenmereWell" category="bark" priority="-10" when="!holds('hasItem', ['spectralLens'])">
+  @narrator: An old stone well with a bucket and no rope. The water at the bottom is very still, and your reflection takes a moment too long to wave back.
+</entry>
+
+// ── the lighthouse (Fairhaven) ────────────────────────────────────────────
+
+<beat id="lighthouseGhost" on="enterPlace" target="place.fairhavenLighthouse" title="The lighthouse ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['fairhavenLighthouse'])">
+  ::bg{location="fairhaven-lighthouse" time="night"}
+  ::music{action="change" mood="eerie" volume="down"}
+  @narrator: A hundred and twelve steps to the lamp room. At the top, through the lens, an old man in oilskins is striking match after match against the dead lamp.
+  @narrator: He looks round at you, holds out the matchbox, and when you don't take it, he gets angry.
+  ::assert{midGhostSeen(fairhavenLighthouse)}
+  ::encounter{species="phantomaw" level="34"}
+</beat>
+
+<entry id="midLighthouseAfter" on="enterPlace" target="place.fairhavenLighthouse" category="bark" priority="-5" when="holds('midGhostSeen', ['fairhavenLighthouse'])">
+  @narrator: The lamp room is quiet. On the rail, a matchbox with one match left in it. You leave it where it is.
+</entry>
+
+<entry id="midLighthouseEmpty" on="enterPlace" target="place.fairhavenLighthouse" category="bark" priority="-10" when="!holds('hasItem', ['spectralLens'])">
+  @narrator: A hundred and twelve steps up to a dead lamp and a smell of matches. There are burnt matches all over the floor. Some of them are new.
+</entry>

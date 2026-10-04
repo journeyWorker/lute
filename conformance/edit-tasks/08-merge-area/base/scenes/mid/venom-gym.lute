@@ -1,0 +1,26 @@
+---
+kind: scene
+id: mid.venomGym
+title: Venom Gym
+on: challenge
+target: arena.venomGym
+once: false
+when: "!holds('defeated', ['kessler'])"
+---
+
+// CONTRACT BEAT (owned by mid): asserts hasBadge(venom). Kessler's four
+// trainers stand among the invisible walls (lore/mid/venom-gym-trainers.lute).
+
+## The invisible walls
+
+::bg{location="venom-gym" time="night"}
+::music{action="change" mood="tense" volume="normal"}
+@narrator: The Venom Gym is lit like a stage. The floor looks empty. It is not: you walk into three invisible walls before you learn to watch the jugglers' feet.
+
+## Kessler
+
+::auto{character="kessler" anchor="center" action="enter"}
+@kessler{emotion="smug"}: You found the way through my walls. Most challengers find their noses first.
+::use{component="gymLeader" who="kessler" badge="venom" intro="Fwahahaha! A mere child like you dares to challenge me? Very well, I shall show you true terror as a master of poison!" win="Humph! You have proven your worth! Here, the Venom Badge! With it your monsters can Surf, should you ever find the disc." lose="Poison is patient. So am I." prize="4300"}
+@kessler{when="@wonFight"}: The Wildmoor rangers keep an old Surf disc at the rest house. Tell Holt I said so. And tell him to find his teeth.
+@kessler{when="!@wonFight" emotion="angry"}: Walk out through the walls. Mind your nose.

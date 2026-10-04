@@ -6,7 +6,7 @@ season: 1
 episode: 5
 title: The Service Rhythm
 pov: fixer
-luteVersion: "0.34.0"
+luteVersion: "0.35.0"
 # Illustrative plugin-system demo (see ../../proposals/plugin-system/0.0.1.md) — NOT catalog content.
 # It selects a capability `profile`, layers scene-local plugin options, runs a bridge
 # `::minigame` directive that writes a declared state slot, and branches on the result.
@@ -22,11 +22,10 @@ uses: vocabulary.schema.yaml
 state:
   scene.affect.marina: { type: int, default: 0 }
 ---
-
 /*
-  Companion to the plugin system spec (../../proposals/plugin-system/0.0.1.md) and the language spec
-  (../../proposals/scenario-dsl/0.1.0.md). Everything here still reduces to flat command
-  records + CEL strings; the `::minigame` bridge call is data, not an arbitrary tool call.
+Companion to the plugin system spec (../../proposals/plugin-system/0.0.1.md) and the language spec
+(../../proposals/scenario-dsl/0.1.0.md). Everything here still reduces to flat command
+records + CEL strings; the `::minigame` bridge call is data, not an arbitrary tool call.
 */
 
 # S01EP05 — The Service Rhythm
@@ -39,20 +38,18 @@ state:
 
 @marina{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
 @marina{code="0020" emotion="content" variant="0"}: Let me show you how I take an order. Watch the rhythm.
-
 /*
-  The `::minigame` directive is provided by the arcia.minigame plugin, activated by the
-  date-minigame profile. `kind` is gated by the profile's allowedKinds; `resultKey` opens a
-  typed slot scene.minigame.service01.* (shape minigameResult). sync="true" holds the script
-  until the game finishes, so the write dominates the read below.
+The `::minigame` directive is provided by the arcia.minigame plugin, activated by the
+date-minigame profile. `kind` is gated by the profile's allowedKinds; `resultKey` opens a
+typed slot scene.minigame.service01.* (shape minigameResult). sync="true" holds the script
+until the game finishes, so the write dominates the read below.
 */
 ::minigame{kind="rhythm" id="marina_service_01" resultKey="service01" sync="true"}
 
 ## Reading the Result
-
 /*
-  Story logic observes only the declared state the bridge wrote — never raw tool output.
-  rank is a finite enum [fail, bronze, silver, gold]: first-match-wins, <otherwise> covers fail.
+Story logic observes only the declared state the bridge wrote — never raw tool output.
+rank is a finite enum [fail, bronze, silver, gold]: first-match-wins, <otherwise> covers fail.
 */
 <match on="scene.minigame.service01.rank">
   <when is="gold">

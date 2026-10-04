@@ -1,0 +1,23 @@
+---
+kind: scene
+id: east.ashgroveArrival
+title: Ashgrove
+on: enterTown
+target: town.ashgrove
+priority: 20
+---
+
+// The first walk into Ashgrove, out of the Lantern Tunnel. The town is in
+// mourning for its tower: Team Eclipse has taken it and Elder Rook with it.
+
+## The quiet town
+
+::bg{location="ashgrove" time="day"}
+::music{action="change" mood="sad" volume="down"}
+@narrator: Ashgrove. Grey roofs, grey smoke, and above them all the old tower, taller than anything should be in a town this small.
+@narrator: Paper lanterns hang unlit from every eave. Nobody is in the street.
+::auto{character="ashgroveCaretaker" anchor="center" action="enter"}
+@ashgroveCaretaker: A trainer? Oh, thank goodness. No, don't thank goodness, you're a child. Listen.
+@ashgroveCaretaker: Men in black went up the tower three days ago. Team Eclipse, they call themselves. Elder Rook went up after them to tell them off. He hasn't come down.
+@ashgroveCaretaker{emotion="worried"}: And the stairs. Something on the stairs won't let anyone else up. You can feel it looking at you.
+::auto{character="ashgroveCaretaker" action="exit"}

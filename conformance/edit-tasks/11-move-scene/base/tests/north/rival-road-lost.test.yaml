@@ -1,0 +1,11 @@
+# Losing to Kai on Victory Road still counts as the meeting.
+file: ../../scenes/north/victory-road.lute
+visited: [mid.helixTower]
+bridges: { battle: [ { won: false } ] }
+expect:
+  facts: [rivalFought(road)]
+  notFacts: [rivalBeaten(road)]
+  state: { run.rivalStanding: -1 }
+  transcriptContains: ["@rival: Don't take too long getting up there. I hate waiting almost as much as I hate losing."]
+  transcriptLacks: ["Next time there's a crowd watching"]
+  end: complete

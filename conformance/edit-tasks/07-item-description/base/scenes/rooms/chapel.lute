@@ -1,0 +1,17 @@
+---
+kind: scene
+id: room.chapel
+title: The Chapel
+on: enter
+target: room.chapel
+priority: 10
+---
+
+## Chapel
+
+::bg{location="chapel" time="night"}
+::music{action="start" mood="hush" volume="low"}
+@narrator: Six pews, all facing the wrong way: towards the door, towards you.
+@narrator: The hymn board still holds three numbers. A bell rope hangs through a hole in the ceiling, frayed to a ponytail at the end. A box of altar matches sits on the lectern.
+@nell{mono when="@shaken"}: The pews were turned so the patients could watch the door. So they would see him coming.
+@nell{mono}: Mum made us go to chapel at Christmas. Toby used to count the organ pipes. Thirty-one.

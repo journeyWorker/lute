@@ -1,0 +1,118 @@
+---
+kind: lore
+id: north.verdantcity
+title: Verdant City
+---
+
+// Verdant City: the garden city at the foot of the Plateau, and the Earth Gym,
+// whose leader nobody has seen. Team Eclipse is in town until Vex falls; Kai
+// gets here first, of course.
+
+// ── arriving ────────────────────────────────────────────────────────────────
+
+<beat id="arrive" on="enterTown" target="town.verdantcity" title="Verdant City" priority="10">
+  ::bg{location="verdant-city" time="day"}
+  ::music{action="change" mood="calm" volume="normal"}
+  @narrator: Verdant City is all hedges, fountains and flowerbeds, laid out in rings around a gym with no sign and no windows.
+  @narrator: Two figures in black stand by the gym doors, arms folded. The letters on their jackets catch the light: ECLIPSE.
+  ::auto{character="rival" anchor="right" action="enter"}
+  @rival{emotion="smug"}: Took your time, didn't you? I've been here since breakfast.
+  @rival: The Earth Gym's locked. Seven badges or no entry, says the notice. I have seven. The door says I don't. I think the door is lying.
+  @rival{emotion="determined"}: Those two by the door are Eclipse. Whoever runs this gym, they're working for them. Or the other way round.
+  @rival: I'm going to Victory Road to warm up. Try to be less slow.
+  ::auto{character="rival" action="exit"}
+</beat>
+
+<entry id="northVerdantMorning" on="enterTown" target="town.verdantcity" category="bark" once="day" when="@isMorning">
+  @narrator{when="!holds('defeated', ['vex'])"}: The sprinklers hiss across the lawns. Somebody in black is watching the gardeners work.
+  @narrator{when="holds('defeated', ['vex'])"}: The sprinklers hiss across the lawns. The gardeners are singing.
+</entry>
+
+<entry id="northVerdantDay" on="enterTown" target="town.verdantcity" category="bark" once="day" when="run.slot == 'day'">
+  @narrator: Bees work the flowerbeds. Verdant City smells like a greenhouse with the door open.
+</entry>
+
+<entry id="northVerdantNight" on="enterTown" target="town.verdantcity" category="bark" once="day" when="@isNight">
+  @narrator{when="!holds('defeated', ['vex'])"}: At night the fountains are lit from below, and a single light burns high up in the windowless gym.
+  @narrator{when="holds('defeated', ['vex'])"}: At night the fountains are lit from below. The gym is dark now, and the doors stand open.
+</entry>
+
+// ── services ────────────────────────────────────────────────────────────────
+
+<beat id="center" on="heal" target="town.verdantcity" title="Monster Center" once="false">
+  ::use{component="nurse" town="verdantcity"}
+</beat>
+
+<beat id="mart" on="shop" target="town.verdantcity" title="Mart" once="false">
+  ::use{component="shop" stock="verdantcityStock"}
+</beat>
+
+// ── Historian Wren: the twin legends (northTwinLegends) ────────────────────
+
+<beat id="wrenLegends" on="talk" target="npc.verdantHistorian" title="The twin legends" priority="20" once="false" when="quest.northTwinLegends.state != 'complete'">
+  ::auto{character="verdantHistorian" anchor="center" action="enter"}
+  @verdantHistorian{when="quest.northTwinLegends.state != 'unset'"}: Back again? The stories don't change, but I tell them better every time.
+  @verdantHistorian{when="quest.northTwinLegends.state == 'unset'"}: Ah, a trainer with a Dex. I am writing a history of the two birds of the north. Would you like to hear the stories?
+  ::accept{quest="northTwinLegends" when="quest.northTwinLegends.state == 'unset'"}
+  <hub id="northWrenStories" prompt="Which story?">
+    <choice id="ice" label="The ice bird" once>
+      @verdantHistorian: Below the Frostharbor caverns there is a passage that never thaws. The fishers say a bird of ice sleeps there, and that its breath makes the winters.
+      ::accept{quest="northFrostwing"}
+    </choice>
+    <choice id="fire" label="The fire bird" once>
+      @verdantHistorian: Victory Road has a crater near its summit that is always hot. The miners who dug the road swore a bird of fire nested there, and moved the road around it rather than argue.
+      ::accept{quest="northBlazewing"}
+    </choice>
+    <choice id="leave" label="That's enough for now" exit>
+      @verdantHistorian{emotion="happy"}: Come back if you see either one. Bring your Dex. I want every detail.
+    </choice>
+  </hub>
+</beat>
+
+<entry id="northWrenDone" on="talk" target="npc.verdantHistorian" category="bark" when="quest.northTwinLegends.state == 'complete'">
+  @verdantHistorian{emotion="surprised"}: I still can't believe it. A living legend, in a trainer's bag. Please don't tell the other historians. They'll be unbearable.
+</entry>
+
+// ── Gardener Moss ───────────────────────────────────────────────────────────
+
+<beat id="mossBerries" on="talk" target="npc.verdantGardener" title="Berries" once="day" priority="10" when="@isMorning">
+  @verdantGardener: Morning! The berry bushes are heavy today. Here, take a few before the birds do.
+  ::give{item="sitrusBerry" qty="3"}
+</beat>
+
+<entry id="northMossBark" on="talk" target="npc.verdantGardener" category="bark">
+  @verdantGardener: I pick berries in the mornings, when the dew's still on them. Come by early and I'll share.
+</entry>
+
+<entry id="northMossNight" on="talk" target="npc.verdantGardener" category="bark" priority="5" when="@isNight">
+  @verdantGardener{when="!holds('defeated', ['vex'])"}: I stay out late to keep an eye on the beds. The Eclipse lot stamp through them after dark.
+  @verdantGardener{when="holds('defeated', ['vex'])"}: Nobody stamps on my beds any more. I just stay out late because the fountains are pretty.
+</entry>
+
+// ── Officer Dale ────────────────────────────────────────────────────────────
+
+<entry id="northDaleBark" on="talk" target="npc.verdantGuard" category="bark" when="!holds('defeated', ['vex'])">
+  @verdantGuard{emotion="worried"}: The gym leader's permits are all in order. That's what worries me. Nobody gets their permits in order that fast.
+</entry>
+
+<entry id="northDaleAfter" on="talk" target="npc.verdantGuard" category="bark" when="holds('defeated', ['vex'])">
+  @verdantGuard: The Director cleared out his office and walked out of town. No forwarding address. My paperwork is going to be enormous.
+</entry>
+
+<entry id="northDaleNight" on="talk" target="npc.verdantGuard" category="bark" priority="5" when="@isNight && !holds('defeated', ['vex'])">
+  @verdantGuard: Night shift. Those two by the gym door never go home either. I'm starting to think they don't have homes.
+</entry>
+
+// ── Florist Juniper ─────────────────────────────────────────────────────────
+
+<entry id="northJuniperBark" on="talk" target="npc.verdantFlorist" category="bark">
+  @verdantFlorist: Every flower in this shop was grown in Verdant City. The Champions order their bouquets from me, you know.
+</entry>
+
+<entry id="northJuniperMorning" on="talk" target="npc.verdantFlorist" category="bark" priority="5" when="@isMorning">
+  @verdantFlorist: The morning delivery's just in. Smell that? That's Plateau heather. It only grows by Victory Road.
+</entry>
+
+<entry id="northJuniperChampion" on="talk" target="npc.verdantFlorist" category="bark" priority="6" when="@champion">
+  @verdantFlorist: The Champion! In my shop! Please, take a flower. Take all of them.
+</entry>

@@ -2,9 +2,8 @@
 kind: quest
 id: accountQuests
 ---
-
 /* Account quests that come back. They are user tier (the account never
-   starts over) and rearm on their own condition instead of a run or season. */
+starts over) and rearm on their own condition instead of a run or season. */
 
 <quest id="towerWeekly" title="Hollow Tower: this week's climb" tier="user" start="user.day > 7" rearm="@newWeek">
   <reward kind="GEMS" amount="100"/>

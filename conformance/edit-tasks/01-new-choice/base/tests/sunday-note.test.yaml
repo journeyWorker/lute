@@ -1,0 +1,9 @@
+# Sunday morning after choosing Sol: Wren's note still comes, once, for her.
+file: ../lore/days.lute
+beat: note
+state: { occasion.target: wren, run.day: 7, run.slot: morning, run.aff.wren: 3, run.route: sol }
+expect:
+  eligible: true
+  transcriptContains:
+    - "@narrator: A folded page under your door, in Wren's handwriting."
+    - "The goats and I will be by the fountain."

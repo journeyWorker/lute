@@ -1,0 +1,1 @@
+{"base":{"project":"@BASE@"},"targets":["choice:job.gate:approach.enter"],"edits":[{"op":"replaceNode","node":"choice:job.gate:approach.enter","text":"  <choice id=\"enter\" label=\"Enter as a scout\">\n    @narrator: Your scout badge opens the gate.\n  </choice>"}],"preserve":[{"ids":["choice:job.gate:approach.enter","choice:job.gate:approach.ask"]}]}

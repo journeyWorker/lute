@@ -1,0 +1,107 @@
+# Hallen Ridge Weather Station — one summer week.
+#
+# The ENGINE owns the clock (day, slot), the weather it rolls each morning,
+# and where the player currently stands. Content only reads them.
+state:
+  run.day:     { type: int, default: 1, owner: engine }
+  run.slot:    { type: { enum: [morning, afternoon, night] }, default: morning, owner: engine }
+  run.weather: { type: { enum: [clear, fog, storm] }, default: clear, owner: engine }
+
+  # Affection, per run (a new summer starts from zero): run.aff.sol, run.aff.wren.
+  run.aff: { type: int, default: 0, per: suitor }
+  # Set by the day-6 confession; the festival reads it.
+  run.route:    { type: { enum: [none, sol, wren] }, default: none }
+
+  # The festival forecast the village asked for.
+  run.forecastWritten:   { type: bool, default: false }
+  run.forecastDelivered: { type: bool, default: false }
+  # Careful morning readings logged this week.
+  run.readings: { type: int, default: 0 }
+
+  # How many summers the player has finished at the station.
+  user.summers: { type: int, default: 0 }
+
+  # The radiosonde: Ines lets the intern launch the afternoon balloon.
+  run.balloonUp: { type: bool, default: false }
+  run.balloonTries: { type: int, default: 0 }
+  # Set by the festival: the summer is over.
+  run.summerOver: { type: bool, default: false }
+
+  # Storm watch: each storm is a season of its own (see seasons: below).
+  season.storm.mast:     { type: bool, default: false }
+  season.storm.shutters: { type: bool, default: false }
+
+# The clock: day 1 is a Monday. An advance closes every day it crosses
+# (dayEnd, before run.day moves), then raises slotStart where it stops.
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [morning, afternoon, night]
+  raise: { slot: slotStart, dayEnd: dayEnd }
+  # The engine opens a run by raising slotStart at Monday morning itself:
+  # that raise brings the funicular up (days.arrival).
+  raiseAtStart: true
+  week:
+    length: 7
+    first: 0
+    labels: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+  # One summer week: the clock ends on Sunday night, after the festival.
+  days: 7
+
+# Every storm opens a fresh storm watch (season.storm.* reset, the storm
+# chores and the batten-down quest come back).
+seasons:
+  storm: { live: "@stormLive" }
+
+# The summer is over once the festival has been and gone.
+terminal: "run.summerOver"
+
+entities:
+  # Sol and Wren are persons through `suitor` (a sub-kind's members belong to its parent).
+  person: { members: [ines, pell] }
+  # The two people the week can end with.
+  suitor: { subsetOf: person, members: [sol, wren] }
+  place:
+    members: [deck, radio, kitchen, roof, village]
+    labels: { deck: the deck, radio: the radio room, kitchen: the kitchen, roof: the roof, village: the village }
+  part:   { members: [paper, wire, candle] }
+
+relations:
+  # Who is where, derived from the clock.
+  at:       { args: [person, place], derive: true }
+  # Lantern parts the player has gathered.
+  carrying: { args: [part], tier: run }
+  # Ready to confess (Saturday night, where the player chooses to be).
+  ready:    { args: [suitor], derive: true }
+  # The engine closes the mountain path in a storm.
+  pathShut: { args: [place], tier: run, reserved: true }
+
+rules:
+  - "at(ines, deck)    :- cel(\"run.slot == 'morning'\")"
+  - "at(ines, radio)   :- cel(\"run.slot == 'afternoon'\")"
+  - "at(ines, kitchen) :- cel(\"run.slot == 'night' && run.day != 7\")"
+  - "at(sol, radio)    :- cel(\"run.slot == 'morning'\")"
+  - "at(sol, roof)     :- cel(\"run.slot == 'night' && run.weather != 'storm' && !(@festivalNight && run.route == 'sol')\")"
+  # Festival night on his route, Sol comes down the mountain. He never comes down the mountain.
+  - "at(sol, village)  :- cel(\"@festivalNight && run.route == 'sol'\")"
+  - "at(wren, village) :- not pathShut(village), cel(\"run.slot == 'afternoon' && run.day != 7\")"
+  # Sunday the village rests; Wren walks her goats up to the station instead.
+  - "at(wren, deck)    :- cel(\"run.slot == 'afternoon' && run.day == 7\")"
+  - "at(pell, kitchen) :- not pathShut(village), cel(\"run.slot == 'morning' && @postDay\")"
+  # Either confession can happen Saturday night; where the player goes decides.
+  - "ready(P) :- suitor(P), cel(\"run.aff[P] >= 3 && run.route == 'none'\")"
+
+defs:
+  sky: "run.weather"
+  # The postbus comes up on Tuesdays and Fridays (clock.weekday: 0 = Monday).
+  postDay: "clock.weekday == 1 || clock.weekday == 4"
+  festivalNight: "run.day == 7 && run.slot == 'night'"
+  stormLive: "run.weather == 'storm'"
+
+cast:
+  player: { name: You }
+  ines:   { name: Dr. Ines Halvorsen, emotions: [neutral, happy, stern, worried, tired, fond] }
+  sol:    { name: Sol, emotions: [neutral, happy, shy, tired, laughing, sad, surprised, fond], present: "holds('at', ['sol', 'radio']) || holds('at', ['sol', 'roof']) || holds('at', ['sol', 'village'])" }
+  wren:   { name: Wren, emotions: [neutral, happy, shy, worried, laughing, sad, surprised, fond], present: "holds('at', ['wren', 'village']) || holds('at', ['wren', 'deck']) || @festivalNight || (run.day == 6 && run.slot == 'night')" }
+  pell:   { name: Pell, emotions: [happy, laughing, tired], present: "holds('at', ['pell', 'kitchen'])" }
+  elder:  { name: Elder Maren, emotions: [stern, happy] }

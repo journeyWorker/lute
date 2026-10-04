@@ -1,0 +1,6 @@
+# The Battle Tower floor is shut on weekdays.
+file: ../../scenes/isles/tower.lute
+facts: [rivalBeaten(champion)]
+state: { run.day: 3 }   # a Wednesday
+expect:
+  eligible: false

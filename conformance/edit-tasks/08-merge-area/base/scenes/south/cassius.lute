@@ -1,0 +1,22 @@
+---
+kind: scene
+id: south.cassius
+title: Cassius on the cape
+on: talk
+target: npc.cassius
+priority: 10
+---
+
+// CONTRACT BEAT (seeded by the lead; owned by south): hands over ferryTicket
+// (east's ferryGangway gate).
+
+## The cottage
+
+::bg{location="tidewell-cape" time="day"}
+::auto{character="cassius" anchor="center" action="enter"}
+@cassius{emotion="surprised"}: A visitor! Nobody comes out to the cape. Mind the charts; they're in order. It's a very particular order.
+@cassius: I'm Cassius. I study monster migrations, mostly from boats. The Galewings go north in spring, the Sealpups go south in autumn, and I go wherever they're going.
+@cassius: Except this year. The Meridian docks in Portvolt this week, and I have a ticket I will never use. Eclipse has boats in the strait; the Galewings won't go near them, and neither will I.
+@cassius{emotion="happy"}: Take it. Go and see the sea. And if you see a flock going the wrong way, write it down for me.
+::use{component="obtain" item="ferryTicket"}
+@cassius: The gangway's at Portvolt. Show that to the sailor at the bottom. He'll pretend to read it. He can't read. Be kind.

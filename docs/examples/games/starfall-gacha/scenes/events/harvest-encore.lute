@@ -8,10 +8,9 @@ once: user
 after: visited('harvest.h3')
 when: "@harvestRerun"
 ---
-
 /* Rerun-only epilogue for players who finished the original story. A
-   newcomer in the rerun reads harvest.h3 first; this becomes eligible the
-   next time they clear the stage. */
+newcomer in the rerun reads harvest.h3 first; this becomes eligible the
+next time they clear the stage. */
 
 ## A year older
 

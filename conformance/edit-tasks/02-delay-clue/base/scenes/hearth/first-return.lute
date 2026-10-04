@@ -1,0 +1,43 @@
+---
+kind: scene
+id: hearth.firstReturn
+title: The Hearth, after the first fall
+components: [../../components/hearth-fire.component.lute]
+on: hubVisit
+priority: 90
+once: user
+when: 'user.runs == 1 && @cameBackFromFall'
+---
+
+## Warm stone again
+
+::bg{location="hearth" time="night"}
+@narrator{code="0010"}: Warm stone. Ash. The same crack in the ceiling she counted before she climbed.
+::use{component="hearthFire" flare="low"}
+@maud{code="0010" emotion="warm"}: Told you. Right where you started, and the kettle's hardly cooled.
+@wren{code="0010" mono}: I felt it. I felt all of it.
+<match on="prev.run.fellTo">
+  <when is="cinderhound">
+    @maud{code="0020" emotion="guarded"}: The hounds, was it? They go for the ankles. Everyone forgets the ankles.
+  </when>
+  <when is="ashwraith">
+    @maud{code="0030" emotion="guarded"}: A wraith. You've got that grey look. It fades.
+  </when>
+  <when is="gatekeeper">
+    @maud{code="0040" emotion="grim"}: The Gatekeeper, on your first climb? Brave, or lost. Same thing down here.
+  </when>
+  <otherwise>
+    @maud{code="0080"}: Whatever it was, it's behind you now. Below you, I mean.
+  </otherwise>
+</match>
+@maud{code="0050"}: Floor {{prev.run.floor}}. Not bad for someone who didn't know which way was up.
+
+<branch id="howAreYou" prompt="Maud waits.">
+  <choice id="angry" label="Why does it keep me?">
+    @maud{code="0060" emotion="wry"}: If I knew that, love, I'd have left years ago.
+  </choice>
+  <choice id="thanks" label="Thank you for waiting.">
+    ::set{user.bond.maud += 1}
+    @maud{code="0070" emotion="fond"}: Waiting's the one thing I'm good at. Go and be good at something else.
+  </choice>
+</branch>

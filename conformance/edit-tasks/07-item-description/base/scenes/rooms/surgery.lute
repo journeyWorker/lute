@@ -1,0 +1,17 @@
+---
+kind: scene
+id: room.surgery
+title: Surgery
+on: enter
+target: room.surgery
+priority: 10
+---
+
+## Surgery
+
+::bg{location="surgery" time="night"}
+::vfx{type="whiteout"}
+@narrator: The doors hiss open onto the brightest room in the building. The operating lamp is on, trained on an empty table.
+@narrator: On the instrument tray, laid out where the scalpels should be: a staff file, a wedding ring, and a name badge. A. CRANE, ORDERLY.
+::fright{amount=2}
+@nell{mono}: A.C. The syringe in the pharmacy. They were keeping him quiet. Then they stopped.

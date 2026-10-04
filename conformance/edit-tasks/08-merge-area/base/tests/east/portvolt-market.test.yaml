@@ -1,0 +1,10 @@
+# The Wednesday market: buying spends run.money; a stall you have taken is
+# gone from the hub (once), and the dear stall is on offer only while you can
+# afford it.
+file: ../../scenes/east/portvolt-market.lute
+state: { run.money: 2500, run.day: 3, run.slot: day }
+choose: { eastMarketStalls: [fish, charm, band, leave] }
+expect:
+  options: { eastMarketStalls: [fish, stone, charm, band, leave] }
+  state: { run.money: 1800 }
+  transcriptContains: ["@portvoltVendor: My first customer today! Hang it on your bag.", "Static plays the same four chords"]

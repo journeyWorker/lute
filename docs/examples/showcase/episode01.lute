@@ -6,7 +6,7 @@ season: 1
 episode: 1
 title: The Full Showcase
 pov: fixer
-luteVersion: "0.34.0"
+luteVersion: "0.35.0"
 # Root capability profile (project lute.project.yaml) — activates showcase.pack.
 profile: showcase
 # Scene-local plugin activation/options layered on top of the profile (§6.1.1):
@@ -29,17 +29,15 @@ state:
 defs:
   fond: { type: bool, cel: "scene.affect.marina >= 1" }
 ---
-
 /*
-  Full-spec showcase episode. Every implemented Lute feature is exercised here
-  and checks exit 0 against `--project docs/examples/showcase`. See README.md for
-  the feature -> line map.
+Full-spec showcase episode. Every implemented Lute feature is exercised here
+and checks exit 0 against `--project docs/examples/showcase`. See README.md for
+the feature -> line map.
 */
 
 # S01EP01 — The Full Showcase
 
 ## Venny's Again
-
 /* Core staging directives with attrs (Appendix A vocabulary). */
 ::bg{location="family_restaurant" time="evening" assetId="BG.space.family_restaurant.interior.evening"}
 ::music{action="start" mood="bright" assetId="sound-bgm-common-vn-mood-bright-0.mp3" volume="normal"}
@@ -51,12 +49,11 @@ defs:
 @fixer{code="0010"}: I did.
 
 ## The Rehearsed Entrance
-
 /*
-  Timeline (§11.4): one choreographed beat on a 1.4s local clock across four
-  tracks with distinct keys — a pure `subject` track (camera), a `channel` track
-  (fg), and TWO `property` tracks driving ONE subject concurrently
-  (marina.pos + marina.opacity). Clips carry absolute `at` offsets.
+Timeline (§11.4): one choreographed beat on a 1.4s local clock across four
+tracks with distinct keys — a pure `subject` track (camera), a `channel` track
+(fg), and TWO `property` tracks driving ONE subject concurrently
+(marina.pos + marina.opacity). Clips carry absolute `at` offsets.
 */
 <timeline duration="1.4">
   <track subject="marina" property="pos">
@@ -80,20 +77,18 @@ defs:
 @fixer{mono}: A rehearsed entrance. She has been practising.
 
 ## The Service Bridge
-
 /*
-  Plugin bridge directive (::serve). ONE directive whose attrs use BOTH a
-  `providerRef` id (`performer` -> castId catalog) AND an `assetKind` id
-  (`poster` -> decomposed PT.<actor>.<variant>). `resultKey` opens a typed
-  scene.serve.debut.* slot; sync="true" makes the bridge write dominate the read.
+Plugin bridge directive (::serve). ONE directive whose attrs use BOTH a
+`providerRef` id (`performer` -> castId catalog) AND an `assetKind` id
+(`poster` -> decomposed PT.<actor>.<variant>). `resultKey` opens a typed
+scene.serve.debut.* slot; sync="true" makes the bridge write dominate the read.
 */
 ::serve{kind="rhythm" performer="marina_star" poster="PT.marina_star.0" resultKey="debut" sync="true"}
-
 /*
-  Story logic reads only the declared slot state the bridge wrote (§11.2). rank
-  is a finite enum [fail, bronze, silver, gold]: first-match-wins; `$` is the
-  match subject; `<otherwise>` covers fail. A `+=` compound write reads-then-
-  writes (only legal because the path is definitely assigned).
+Story logic reads only the declared slot state the bridge wrote (§11.2). rank
+is a finite enum [fail, bronze, silver, gold]: first-match-wins; `$` is the
+match subject; `<otherwise>` covers fail. A `+=` compound write reads-then-
+writes (only legal because the path is definitely assigned).
 */
 <match on="scene.serve.debut.rank">
   <when is="gold">
@@ -112,12 +107,11 @@ defs:
 ## The Approach
 
 @fixer{mono}: I should ask for her number before the shift swallows her.
-
 /*
-  <branch> + <choice> with `when` guards AND the `into=` run-record sugar (§11.1.1):
-  - `soft` records a bool run fact (value defaults to true);
-  - `linger` records an enum run fact (value required);
-  guards use an inline @ref, a plugin-exported @ref, and a parameterized def call.
+<branch> + <choice> with `when` guards AND the `into=` run-record sugar (§11.1.1):
+- `soft` records a bool run fact (value defaults to true);
+- `linger` records an enum run fact (value required);
+guards use an inline @ref, a plugin-exported @ref, and a parameterized def call.
 */
 <branch id="approach">
   <choice id="blunt" label="Just ask, flatly">
@@ -137,11 +131,10 @@ defs:
 ::sfx{sound="phone_chime" assetId="sound-sfx-common-phone-0.mp3"}
 
 ## What Was Recorded
-
 /*
-  Intra-episode reaction reads the recorded choice key (scene.choices.approach,
-  domain = the branch's choice ids + unset). `@fond` is the inline def; `$` is
-  the subject; `<otherwise>` is mandatory (a @ref guard proves no coverage).
+Intra-episode reaction reads the recorded choice key (scene.choices.approach,
+domain = the branch's choice ids + unset). `@fond` is the inline def; `$` is
+the subject; `<otherwise>` is mandatory (a @ref guard proves no coverage).
 */
 <match on="scene.choices.approach">
   <when test="@fond">
@@ -154,12 +147,11 @@ defs:
     @fixer{mono}: Whatever it was, it is done.
   </otherwise>
 </match>
-
 /*
-  Named run facts (§11.1.1) — the cross-episode-durable outcomes the sugar wrote.
-  run.metHelpfully has a default (bool, finite -> no <otherwise> needed here since
-  both members are covered); run.sofaOutcome has NO default, so it is maybe-unset
-  and its `unset` case MUST be covered by <otherwise>.
+Named run facts (§11.1.1) — the cross-episode-durable outcomes the sugar wrote.
+run.metHelpfully has a default (bool, finite -> no <otherwise> needed here since
+both members are covered); run.sofaOutcome has NO default, so it is maybe-unset
+and its `unset` case MUST be covered by <otherwise>.
 */
 <match on="run.metHelpfully">
   <when is="true">
@@ -180,11 +172,10 @@ defs:
 </match>
 
 ## Content Gates
-
 /*
-  app.* is read-only content gating (§9.5). An age-gated <match on="app.rating">
-  MUST cover `teen` or carry <otherwise> (release-build hard gate, §11.2). No
-  ::set targets app.* anywhere — the write policy is respected.
+app.* is read-only content gating (§9.5). An age-gated <match on="app.rating">
+MUST cover `teen` or carry <otherwise> (release-build hard gate, §11.2). No
+::set targets app.* anywhere — the write policy is respected.
 */
 <match on="app.rating">
   <when is="teen">
@@ -194,11 +185,10 @@ defs:
     @narrator: The night deepens.
   </otherwise>
 </match>
-
 /*
-  Parameterized def call `@atLeast(3)` (base schema def, cel `user.level >= n`,
-  reads the user tier) and `@veteran` (child schema def added by the `extends`
-  refinement). Subject scene.affect.marina; <otherwise> mandatory.
+Parameterized def call `@atLeast(3)` (base schema def, cel `user.level >= n`,
+reads the user tier) and `@veteran` (child schema def added by the `extends`
+refinement). Subject scene.affect.marina; <otherwise> mandatory.
 */
 <match on="scene.affect.marina">
   <when test="@atLeast(3)">
@@ -211,22 +201,20 @@ defs:
     @fixer{mono}: Early days yet.
   </otherwise>
 </match>
-
 /*
-  Reusable content component (dsl §13): `::use` expands the imported `stinger`
-  component's presentational body inline, binding its `@cue` param to the named
-  arg `cue="tense"` (count + type checked, §13.3). `use` is a reserved built-in
-  directive (§10) — never `E-UNKNOWN-DIRECTIVE`.
+Reusable content component (dsl §13): `::use` expands the imported `stinger`
+component's presentational body inline, binding its `@cue` param to the named
+arg `cue="tense"` (count + type checked, §13.3). `use` is a reserved built-in
+directive (§10) — never `E-UNKNOWN-DIRECTIVE`.
 */
 ::use{component="stinger" cue="tense"}
 
 ::vfx{type="petals" transition="fade"}
 ::music{action="stop"}
-
 /*
-  app.lang is a maybe-unset enum ([ko, en], no default), so this read-only app.*
-  gate MUST carry <otherwise> (§11.2). app.* is never ::set — read-only content
-  gating, same policy as the app.rating gate above.
+app.lang is a maybe-unset enum ([ko, en], no default), so this read-only app.*
+gate MUST carry <otherwise> (§11.2). app.* is never ::set — read-only content
+gating, same policy as the app.rating gate above.
 */
 <match on="app.lang">
   <when is="ko">

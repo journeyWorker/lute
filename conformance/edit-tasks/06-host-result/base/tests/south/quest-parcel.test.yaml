@@ -1,0 +1,8 @@
+# The board parcel: collected at the Pebbleton Mart, delivered to Granny Wren.
+file: ../../quests/south/side.lute
+accepts: [southParcel]
+visited: [south.pebbletonTown.parcel]
+occasions: [talk@npc.hollowtownWren]
+expect:
+  quests: { southParcel: complete }
+  state: { run.money: 3800 }

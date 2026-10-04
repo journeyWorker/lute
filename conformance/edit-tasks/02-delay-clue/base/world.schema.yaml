@@ -1,0 +1,86 @@
+# The Ashen Stair — shared world schema.
+#
+# RUN BOUNDARY. A "run" begins the moment Wren wakes at the Hearth and ends
+# when she falls or gets out. So the Hearth (hubVisit / talk / hearthBoard)
+# is the START of a run: anything the NPCs give her there (a blessing, the
+# feather) is run-tier and lasts exactly one climb. The Hearth reacts to the
+# climb that just ended through `prev.run.*` — the engine's snapshot of every
+# `run.*` path at the moment that climb ended.
+#
+# ENGINE-OWNED (`owner: engine`). At the end of a climb the engine sets
+# run.outcome / run.fellTo, bumps user.runs and user.deaths | user.escapes,
+# THEN raises runEnd. Content only reads these (E-ENGINE-OWNED-WRITE).
+state:
+  # --- ENGINE-OWNED ---------------------------------------------------------
+  user.runs:    { type: int, default: 0, owner: engine }   # climbs finished, ever
+  user.deaths:  { type: int, default: 0, owner: engine }   # climbs that ended in a fall
+  user.escapes: { type: int, default: 0, owner: engine }   # climbs that ended outside
+  run.floor:    { type: int, default: 0, owner: engine }   # highest floor reached this climb (1..9)
+  run.outcome:  { type: { enum: [climbing, fell, escaped] }, default: climbing, owner: engine }
+  # What killed Wren this climb (unset: nothing did). A state path rather than
+  # a fact: prev.run.* snapshots state only, and the Hearth needs it after the
+  # reset. Typed by the foe kind, so {{prev.run.fellTo}} renders its label.
+  run.fellTo:   { type: { domain: foe }, owner: engine }
+  # --- CONTENT-WRITTEN ------------------------------------------------------
+  user.embers:     { type: int, default: 0 }    # credited by EMBERS rewards; spent at Oskar's forge
+  user.bond:       { type: int, default: 0, per: npc }   # user.bond.maud / .oskar / .sable
+  user.knowsSableName: { type: bool, default: false }
+  user.hammerReforged: { type: bool, default: false }
+  run.carriesFeather:  { type: bool, default: false }
+  # --- THE ASHFALL (a live event) --------------------------------------------
+  # The studio switches the Ashfall on and off (engine-owned). Each time it
+  # comes back, season.ashfall.* starts over and prev.season.ashfall.* keeps
+  # how the last one ended.
+  user.ashfallOn:          { type: bool, default: false, owner: engine }
+  season.ashfall.lilies:   { type: int, default: 0 }   # ash-lilies brought down this Ashfall
+
+entities:
+  npc:   { members: [maud, oskar, sable] }
+  foe:
+    members: [cinderhound, ashwraith, gatekeeper, warden]
+    labels: { cinderhound: the cinderhounds, ashwraith: an ashwraith, gatekeeper: the Gatekeeper, warden: the Warden }
+  sight: { members: [gatekeeperFall, wardenFall, featherOut] }
+  # What Wren carries up the Stair. The engine applies ::arm (plugin directive).
+  weapon:
+    members: [blade, hammer]
+    labels: { blade: the old blade, hammer: "Oskar's hammer" }
+  # What the Hearth gives her to keep. Rewards of kind KEEPSAKE name one.
+  keepsake:
+    members: [kettleLid, anvilSpark, cisternGlass, greyFeather, skyStone, oskarHammer]
+    labels: { kettleLid: a chipped kettle lid, anvilSpark: a spark in a jar, cisternGlass: a glass of cistern water, greyFeather: a grey feather, skyStone: a stone from outside, oskarHammer: the reforged hammer }
+
+relations:
+  # ENGINE-POPULATED (reserved): the combat layer asserts these.
+  slew:       { args: [foe], tier: run, reserved: true }    # felled this climb
+  everSlew:   { args: [foe], tier: user, reserved: true }   # felled in any climb
+  # CONTENT-WRITTEN: who at the Hearth has seen what. Relationships remember.
+  saw:        { args: [npc, sight], tier: user }
+  # ENGINE-APPLIED through ::arm (retracts wields(_), asserts the new one).
+  wields:     { args: [weapon], tier: run, reserved: true }
+  # CONTENT-WRITTEN through ::gift: who at the Hearth gave her what.
+  gave:       { args: [npc, keepsake], tier: user }
+  # DERIVED: someone at the Hearth has given her something to keep.
+  keepsakeFrom: { args: [npc], derive: true }
+  # DERIVED: Sable opens up once she has seen the Warden fall AND trusts Wren.
+  confides:   { args: [npc], derive: true }
+
+rules:
+  - 'confides(sable) :- saw(sable, wardenFall), cel("user.bond.sable >= 2")'
+  - 'keepsakeFrom(N) :- gave(N, _)'
+
+defs:
+  cameBackFromFall: "has(prev.run.outcome) && prev.run.outcome == 'fell'"
+  cameBackFromEscape: "has(prev.run.outcome) && prev.run.outcome == 'escaped'"
+  veteran: "user.runs >= 3"
+  fireFlare: "has(prev.run.outcome) && prev.run.outcome == 'escaped' ? 'high' : 'low'"
+  escapedThisClimb: "run.outcome == 'escaped'"
+  fellThisClimb: "run.outcome == 'fell'"
+
+seasons:
+  ashfall: { live: "user.ashfallOn" }
+
+cast:
+  wren:  { name: Wren }
+  maud:  { name: Maud }
+  oskar: { name: Oskar }
+  sable: { name: Sable }

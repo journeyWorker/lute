@@ -1,0 +1,39 @@
+# Affection is earned once a day, not once a visit. Wren: the first visit of
+# the day to her pen brings `talks.wrenWarm` (once: day) along. Sol: his radio
+# room and his roof are one `target="kind:place"` beat with one daily spend.
+visited: [wren.first, sol.first, sol.roof]
+presented: { run: [days.arrival, wren.first, sol.first, sol.roof] }
+quests: { lantern: complete }
+state: { run.day: 2, run.slot: morning }
+choose: { radioHub: [listen, leave] }
+steps:
+  - label: tue morning, the radio room
+    occasion: visit
+    target: place.radio
+    expect: { presented: [talks.solRadio, talks.solWarm], state: { run.aff.sol: 1 } }
+  - label: and again
+    occasion: visit
+    target: place.radio
+    expect: { presented: [talks.solRadio] }
+  - advance: { to: afternoon }
+  - label: first visit to the pen today
+    occasion: visit
+    target: place.village
+    expect: { presented: [talks.wrenLantern, talks.wrenWarm], state: { run.aff.wren: 1 } }
+  - label: back again, four more times
+    occasion: visit
+    target: place.village
+    repeat: 4
+    expect: { presented: [talks.wrenLantern], state: { run.aff.wren: 1 } }
+  - label: the roof; Sol's warmth was spent this morning
+    advance: { to: night }
+  - occasion: visit
+    target: place.roof
+    expect: { presented: [talks.solRoofIdle], state: { run.aff.sol: 1 } }
+  - label: a new day, the roof counts
+    advance: { to: night }
+  - occasion: visit
+    target: place.roof
+    expect: { presented: [talks.solRoofIdle, talks.solWarm], state: { run.aff.sol: 2 } }
+expect:
+  state: { run.aff.wren: 1, run.aff.sol: 2 }

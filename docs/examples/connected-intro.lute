@@ -9,12 +9,11 @@ title: Arrival at the Overlook
 state:
   run.sawOverlook: { type: bool }
 ---
-
 /*
-  This entry scene has NO `after` (an unconditional graph root) and
-  unconditionally `::set`s `run.sawOverlook` -- the write connected-outro
-  routes through to make its own read GUARANTEED, project-wide, without a
-  schema `default:` doing the work trivially.
+This entry scene has NO `after` (an unconditional graph root) and
+unconditionally `::set`s `run.sawOverlook` -- the write connected-outro
+routes through to make its own read GUARANTEED, project-wide, without a
+schema `default:` doing the work trivially.
 */
 
 ## Salt from the Harbor

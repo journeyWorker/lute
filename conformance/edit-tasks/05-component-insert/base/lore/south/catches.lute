@@ -1,0 +1,40 @@
+---
+kind: lore
+id: south.catches
+title: Southshore catch reactions
+---
+
+// Reactions to catches that belong to the south. All `also`: the spine's
+// first-catch call (spine.firstCatch) and any other area's winner stay the
+// winner; these play after it, or alone.
+
+<beat id="lunafae" on="caught" target="mon.lunafae" title="A Lunafae" also>
+  @narrator: The Lunafae hums in its capsule, a sad, high, wind-chime note. Somewhere in Moonstone Cave, the others hum back.
+</beat>
+
+<beat id="domefossil" on="caught" target="mon.domefossil" title="A living Domefossil" also>
+  @pebbletonKell{vo}: Remember: it has never seen a sky before. It will want to look at it for a very long time. Let it.
+</beat>
+
+<beat id="spiralfossil" on="caught" target="mon.spiralfossil" title="A living Spiralfossil" also>
+  @pebbletonKell{vo}: Spiralfossils eat seaweed and rock salt and, if you let them, sandwiches. Don't let them.
+</beat>
+
+<beat id="wingfossil" on="caught" target="mon.wingfossil" title="A living Wingfossil" also>
+  @narrator: The Wingfossil unfolds its stone wings in the museum's back room, knocks over three display stands, and looks enormously pleased with itself.
+</beat>
+
+<beat id="goldfinn" on="caught" target="mon.goldfinn" title="A Goldfinn" also when="quest.southOldSaltFirst.state == 'active'">
+  @narrator: A Goldfinn, flapping. Old Salt Morrow asked for exactly this. He's on the end of the Tidewell pier, not moving.
+</beat>
+
+<beat id="seahorsling" on="caught" target="mon.seahorsling" title="A Seahorsling" also when="quest.southDerby.state == 'active'">
+  <match on="clock.weekday">
+    <when is="6">
+      @narrator: A Seahorsling! On derby day! The whole pier turns round to look.
+    </when>
+    <otherwise>
+      @narrator: A Seahorsling. Pim's derby is on Sunday; this one won't count, but the next one might.
+    </otherwise>
+  </match>
+</beat>

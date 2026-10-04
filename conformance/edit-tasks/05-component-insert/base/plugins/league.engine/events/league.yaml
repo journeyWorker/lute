@@ -1,0 +1,5 @@
+# World events active quests hear with <on event>. Both are also occasions:
+# raising the occasion runs these handlers first.
+events:
+  - { name: battleEnd }
+  - { name: caught }

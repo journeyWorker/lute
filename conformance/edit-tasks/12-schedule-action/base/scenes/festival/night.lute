@@ -1,0 +1,84 @@
+---
+kind: scene
+id: festival.night
+title: The Lantern Festival
+on: slotStart
+priority: 30
+when: "@festivalNight"
+---
+
+## The square
+
+::bg{location="village_square" time="night"}
+::music{action="start" mood="festive" volume="normal"}
+@narrator: The whole mountain has come down to the square. The flat bell rings. Somebody's uncle is selling burnt almonds out of a wheelbarrow.
+
+<match on="quest.forecast.state">
+  <when is="complete">
+    @narrator: Your forecast is still pinned to the notice board, four drawing pins, one per corner. Every string across the square is hung with lanterns.
+    ::use{component="enter" who="elder" side="left"}
+    @elder{emotion="happy"}: There she is — there's the forecast. Clear, you said. Look at it.
+    ::vfx{type="lanterns"}
+  </when>
+  <when is="failed">
+    @narrator: Only half the strings are hung. The committee hedged: lanterns on the east side, tarpaulins on the west, and a lot of people looking up.
+    ::use{component="enter" who="elder" side="left"}
+    @elder{emotion="stern"}: We waited for the station. The station was busy.
+  </when>
+  <otherwise>
+    @narrator: Nobody quite knows whose job the forecast was. The lanterns go up anyway.
+  </otherwise>
+</match>
+
+<match on="run.weather">
+  <when is="storm">
+    ::vfx{type="rain"}
+    @narrator: And then it rains — a hard, sideways mountain rain — and the whole square runs for the hall laughing.
+  </when>
+  <otherwise>
+    @narrator: The sky stays clear all night, hard and black and full of stars.
+  </otherwise>
+</match>
+
+## The lanterns
+
+<match on="quest.lantern.state">
+  <when is="complete">
+    ::clear
+    ::use{component="enter" who="wren" side="right"}
+    @wren{emotion="laughing"}: It's going! It's actually going!
+    @narrator: Wren's lantern lifts off her palms — waxed paper, copper wire from a radio room, a storm candle from 1998 — and rises straight up, very steady, like it knows the way.
+  </when>
+  <when is="failed">
+    @narrator: Wren stands at the edge of the square holding a shop lantern that says HAPPY BIRTHDAY on it. She lets it go anyway. It drifts sideways into a tree.
+  </when>
+  <otherwise>
+    @narrator: A hundred lanterns go up from a hundred pairs of hands. None of them is yours.
+  </otherwise>
+</match>
+
+## After
+
+<match on="run.route">
+  <when is="sol">
+    ::clear
+    ::use{component="enter" who="sol"}
+    @sol{emotion="shy"}: I came down the mountain. I never come down the mountain. Don't tell the sky.
+    @narrator: He counts the lanterns for you, out loud, and loses count at forty on purpose.
+  </when>
+  <when is="wren">
+    ::clear
+    ::use{component="enter" who="wren"}
+    @wren{emotion="fond"}: Stay till the last one's gone? That's the rule. I just made it the rule.
+  </when>
+  <when is="none">
+    ::clear
+    ::use{component="enter" who="ines"}
+    @ines{emotion="fond"}: Twenty-seven summers, then. Same time next year, intern?
+  </when>
+</match>
+
+::set{user.summers += 1}
+::set{run.summerOver = true}
+::music{action="fadeOut"}
+::end{reason="festivalOver"}

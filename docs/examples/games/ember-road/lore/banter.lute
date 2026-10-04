@@ -3,9 +3,8 @@ kind: lore
 id: lore.banter
 title: Road banter
 ---
-
 /* One bark per lull on the road (`banter`, select: first). Party-dependent
-   barks outrank the generic ones; the sharpest reactions outrank everything. */
+barks outrank the generic ones; the sharpest reactions outrank everything. */
 
 <entry id="banterGrief" on="banter" category="bark" title="Corvin, alone" priority="60" once="run" when="holds('fell', ['isolde']) && holds('inParty', ['corvin'])">
   @corvin: Nobody's told me to stop talking in two days. I don't like it.

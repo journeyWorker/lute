@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.34.0"
+luteVersion: "0.35.0"
 title: Act 1 — Save the Grove (subquest tree)
 state:
   run.act:               { type: int, default: 0 }
@@ -11,24 +11,23 @@ state:
   run.perimeter.mapped:   { type: bool,   default: false }
   run.spokeRath:          { type: bool,   default: false }
 ---
-
 /*
-  Worked example of the 2026-08-31 subquest design
-  (docs/superpowers/specs/2026-08-31-lute-subquest-design.md). Exercises
-  every synthesis path the design pins in ONE compilable artifact so the
-  snapshot double-locks the wire text `lute-trace` reads:
+Worked example of the 2026-08-31 subquest design
+(docs/superpowers/specs/2026-08-31-lute-subquest-design.md). Exercises
+every synthesis path the design pins in ONE compilable artifact so the
+snapshot double-locks the wire text `lute-trace` reads:
 
-    - parent has an AUTHORED `fail` (`run.npc.halsin.dead`) — §2.2 wraps
-      that in parens and APPENDS one `failed` disjunct per REQUIRED
-      subquest child, in document order (halsin, ritual); the OPTIONAL
-      child (scout) contributes nothing;
-    - three `<objective quest=…>` slots start with EMPTY `done` — §2.1
-      synthesizes `quest.<child>.state == 'complete'` into each;
-    - one plain `<objective done=…>` (talkRath) mixes freely alongside
-      the subquest objectives (design §1 mix-freely rule);
-    - every child quest is declared in the SAME file so the artifact is
-      self-contained under check + compile (no cross-file resolution
-      needed to golden the synthesis output).
+- parent has an AUTHORED `fail` (`run.npc.halsin.dead`) — §2.2 wraps
+that in parens and APPENDS one `failed` disjunct per REQUIRED
+subquest child, in document order (halsin, ritual); the OPTIONAL
+child (scout) contributes nothing;
+- three `<objective quest=…>` slots start with EMPTY `done` — §2.1
+synthesizes `quest.<child>.state == 'complete'` into each;
+- one plain `<objective done=…>` (talkRath) mixes freely alongside
+the subquest objectives (design §1 mix-freely rule);
+- every child quest is declared in the SAME file so the artifact is
+self-contained under check + compile (no cross-file resolution
+needed to golden the synthesis output).
 */
 
 <quest id="saveTheGrove" tier="run" title="Save the Grove" start="run.act == 1" fail="run.npc.halsin.dead">

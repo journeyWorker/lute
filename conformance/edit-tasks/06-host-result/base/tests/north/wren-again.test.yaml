@@ -1,0 +1,11 @@
+# Wren tells the stories again once the legends are taken up: the parent is
+# not accepted a second time; the story picked is accepted (again).
+file: ../../lore/north/verdantcity.lute
+beat: wrenLegends
+quests: { northTwinLegends: active }
+choose: { northWrenStories: [ice, leave] }
+expect:
+  options: { northWrenStories: [ice, fire, leave] }
+  accepts: [northFrostwing]
+  transcriptContains: ["@verdantHistorian: Back again? The stories don't change, but I tell them better every time."]
+  end: complete

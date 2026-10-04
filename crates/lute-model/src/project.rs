@@ -302,14 +302,14 @@ fn build_revisions(
 ) -> Result<ProjectRevision, crate::revision::RevisionError> {
     let mut paths = BTreeSet::new();
     for document in documents {
-        paths.insert(document.path.clone());
         let imports = &document.input.imports;
+        paths.insert(document.path.clone());
+        paths.extend(imports.files.iter().cloned());
         paths.extend(imports.def_origins.values().cloned());
         paths.extend(imports.imported_quest_ids.values().cloned());
         paths.extend(imports.imported_entry_ids.values().cloned());
         paths.extend(imports.clock.iter().map(|(path, _, _)| path.clone()));
         paths.extend(imports.seasons.iter().map(|(path, _, _)| path.clone()));
-        paths.extend(document.input.components.table.values().map(|component| component.src.clone()));
     }
     let manifest_path = root.join("lute.project.yaml");
     if manifest_path.is_file() { paths.insert(manifest_path); }

@@ -1,0 +1,1 @@
+{"base":{"project":"@BASE@"},"targets":["entry:codexWarden"],"edits":[{"op":"replaceAttr","node":"entry:codexWarden","attr":"when","value":"true"}],"preserve":[{"conditions":["entry:codexWarden"]}],"trapExpect":{"code":"E-PATCH-PRESERVE","preserve":"conditions","node":"entry:codexWarden"}}

@@ -1,0 +1,44 @@
+---
+kind: lore
+id: puzzle.boiler
+title: The boiler and the furnace
+---
+
+<beat id="levers" on="examine" target="fixture.boilerLevers" priority="10" spentBy="run.power">
+  @narrator: Three levers. Stencilled under the panel, half scraped away: ORDER OF FIRING.
+  @nell{mono when="entry.roster.read"}: The roster. Two before one, and never three with the pressure up.
+  <branch id="order" prompt="Which order?">
+    <choice id="twoOne" label="II, then I">
+      @narrator: A thump, a roar, and the boiler catches. Upstairs, all at once, the ward's lights come on in a long stutter, corridor by corridor, like someone running through the building flicking switches.
+      ::set{run.power = true}
+      @nell{mono}: Everything's awake now. Everything.
+      ::lure{room="boiler"}
+    </choice>
+    <choice id="oneTwo" label="I, then II">
+      @narrator: The boiler coughs, shudders, and goes quiet. The needle drops to nothing.
+      ::fright
+    </choice>
+    <choice id="three" label="III first">
+      @narrator: The pressure valve does not open. The gauge glass does.
+      @narrator: The last thing you see is steam coming for you like a white sheet thrown over a bed.
+      ::set{run.fate = "burned"}
+      ::set{user.deaths += 1}
+      ::end{reason="burned"}
+    </choice>
+  </branch>
+</beat>
+
+<beat id="furnace" on="examine" target="fixture.furnace" priority="10" spentBy="holds('burned', ['ledger'])" when="holds('holding', ['ledger']) && holds('holding', ['matches'])">
+  @narrator: The furnace latch is cold. Inside, a grate and forty years of ash.
+  <branch id="burn" prompt="The admissions ledger is heavy in your bag.">
+    <choice id="burn" label="Burn the ledger">
+      @narrator: The first match goes out. The second takes. The pages curl one by one and every name on them blackens and lifts and goes up the flue.
+      @child{os}: Thank you, nurse.
+      ::consume{item="ledger"}
+      ::assert{burned(ledger)}
+    </choice>
+    <choice id="keep" label="Not yet">
+      @nell{mono}: Not yet. If I burn it I can't read it.
+    </choice>
+  </branch>
+</beat>

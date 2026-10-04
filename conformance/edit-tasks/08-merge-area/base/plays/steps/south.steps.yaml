@@ -1,0 +1,144 @@
+# AREA south: Hollowtown -> Route 1 -> Route 2 (the gatehouse) -> Pebbleton
+# (museum, Stone Gym) -> Route 3 -> Moonstone Cave (the Eclipse dig) ->
+# Route 4 (Kai, the bridge) -> Tidewell (Tide Gym) -> Tidewell Cape.
+# OWNED BY south. Keep the last step's expect (the hand-off) green.
+# The whole walk is day 1 (Monday) morning until the broadcast advance.
+steps:
+  # ── Hollowtown and the road north ──────────────────────────────────────
+  - occasion: enterTown
+    target: town.hollowtown
+    expect: { winner: south.hollowtown, clock: { weekday: Monday, slot: morning } }
+  - occasion: enterRoute
+    target: route.r1
+    expect: { winner: south.route1.enter }
+  - occasion: trainerSpotted
+    target: trainer.r1YoungsterTodd
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route1.r1YoungsterTodd, facts: [defeated(r1YoungsterTodd)], state: { run.money: 3096 } }
+  - occasion: enterRoute
+    target: route.r2
+    expect: { winner: south.route2.enter }
+  - occasion: trainerSpotted
+    target: trainer.r2BugCatcherSid
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route2.r2BugCatcherSid, state: { run.money: 3156 } }
+  - occasion: enterPlace
+    target: place.r2Gatehouse
+    expect: { winner: south.route2.gatehouse }
+  - occasion: talk
+    target: npc.aide
+    expect: { winner: southAideCounting }
+
+  # ── Pebbleton ──────────────────────────────────────────────────────────
+  - occasion: enterTown
+    target: town.pebbleton
+    expect: { winner: south.pebbleton }
+  - occasion: obstacle
+    target: gate.pebbletonEast
+    expect: { winner: southPebbletonEastShut }
+  - occasion: enterPlace
+    target: place.pebbletonMuseum
+    expect: { winner: south.museum, quests: { southFossil: active } }
+  - occasion: trainerSpotted
+    target: trainer.stoneGymHikerBo
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.stoneGymHall.stoneGymHikerBo, state: { run.money: 3356 } }
+  - occasion: challenge
+    target: arena.stoneGym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.stoneGym, facts: [hasBadge(stone), defeated(petra), canPass(pebbletonEast)], state: { run.money: 4756 } }
+  - occasion: heal
+    target: town.pebbleton
+    expect: { winner: south.pebbletonTown.center }
+  - occasion: shop
+    target: town.pebbleton
+    expect: { winner: south.pebbletonTown.mart }
+  - advance: day
+    label: Vex takes over the radio
+    expect: { quests: { eclipseArc: active }, clock: { weekday: Tuesday, slot: morning } }
+
+  # ── Route 3 and Moonstone Cave ─────────────────────────────────────────
+  - occasion: enterRoute
+    target: route.r3
+    expect: { winner: south.route3.enter }
+  - occasion: trainerSpotted
+    target: trainer.r3HikerGus
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route3.r3HikerGus, state: { run.money: 5036 } }
+  - occasion: enterPlace
+    target: place.moonstoneCave
+    label: the lights of the dig
+    expect: { winner: south.moonstoneCave, state: { run.lair.quarryDig: found } }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneGruntSable
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstone.moonstoneGruntSable }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneGruntFlint
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstone.moonstoneGruntFlint }
+  - occasion: trainerSpotted
+    target: trainer.moonstoneGruntMarl
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstone.moonstoneGruntMarl, state: { run.money: 6276 } }
+  - occasion: enterPlace
+    target: place.moonstoneCave
+    label: the Digmaster
+    choose: { southDigFossil: dome }
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.moonstoneDig, state: { run.lair.quarryDig: cleared, run.southFossil: dome, run.money: 6876 }, facts: [defeated(gruntDig)] }
+  - label: the first wild catch
+    engine: { facts: [caught(pidgeling), seen(pidgeling), inParty(pidgeling), seen(scurrat)] }
+  - occasion: caught
+    target: mon.pidgeling
+    expect: { winner: spine.firstCatch }
+
+  # ── Route 4: Kai and the bridge ────────────────────────────────────────
+  - occasion: enterRoute
+    target: route.r4
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.bridgeRival, presented: [south.bridgeRival, south.route4.sign], facts: [rivalFought(bridge)] }
+  - occasion: trainerSpotted
+    target: trainer.r4YoungsterPip
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.route4.r4YoungsterPip, state: { run.money: 7016 } }
+
+  # ── Tidewell ───────────────────────────────────────────────────────────
+  - occasion: enterTown
+    target: town.tidewell
+    expect: { winner: south.tidewell }
+  - occasion: trainerSpotted
+    target: trainer.tideGymSwimmerLuis
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tideGymPool.tideGymSwimmerLuis, state: { run.money: 7316 } }
+  - occasion: challenge
+    target: arena.tideGym
+    bridges: { battle: [ { won: true } ] }
+    expect: { winner: south.tideGym, facts: [hasBadge(tide)], state: { run.money: 9416 } }
+  - occasion: heal
+    target: town.tidewell
+    expect: { winner: south.tidewellTown.center }
+  - occasion: enterPlace
+    target: place.tidewellCape
+    expect: { winner: south.cape }
+  - occasion: talk
+    target: npc.cassius
+    expect: { winner: south.cassius }
+  - label: eight more kinds on the south routes
+    engine:
+      facts: [caught(inchlet), seen(inchlet), caught(stingle), seen(stingle), caught(scurrat), caught(sparrowl), seen(sparrowl), caught(voltmouse), seen(voltmouse), caught(spikelet), seen(spikelet), caught(hornlet), seen(hornlet), caught(pebblet), seen(pebblet), seen(duskbat), seen(sandrill)]
+    expect: { quests: { dex10: complete } }
+  - occasion: talk
+    target: npc.aide
+    expect: { winner: south.aideFlash }
+  - occasion: talk
+    target: npc.profAlder
+    label: the professor hands out the next Dex goal
+    expect: { winner: spine.professor.giveForty, quests: { dex40: active } }
+  - occasion: talk
+    target: npc.profAlder
+    label: south hand-off
+    expect:
+      winner: spine.professor.evaluate
+      facts: [hasBadge(stone), hasBadge(tide), hasItem(ferryTicket), hasItem(hmFlash), canUse(flash), rivalFought(bridge), canPass(ferryGangway), canPass(rockTunnel)]
+      state: { run.lair.quarryDig: cleared }
