@@ -1,9 +1,0 @@
-# She saw the Warden fall but does not trust Wren yet (bond 1): the rule does
-# not derive confides(sable), so the quest stays open.
-file: ../quests/bonds.lute
-state: { user.knowsSableName: true, user.bond.sable: 1, run.carriesFeather: true, run.outcome: escaped }
-facts: ["saw(sable, wardenFall)"]
-occasions: [runEnd]
-expect:
-  quests: { sableLost: active }
-  transcriptLacks: ["I felt the wind."]

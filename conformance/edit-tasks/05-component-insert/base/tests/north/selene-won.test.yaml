@@ -1,8 +1,0 @@
-# Both teams beaten: defeated(), the prize.
-file: ../../lore/north/earth-gym.lute
-beat: earthGymAdminSelene
-bridges: { battle: [ { won: true }, { won: true } ] }
-expect:
-  facts: [defeated(earthGymAdminSelene)]
-  state: { run.money: 6600 }
-  end: complete

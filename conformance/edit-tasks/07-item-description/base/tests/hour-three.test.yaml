@@ -1,7 +1,0 @@
-# At three, having read the diary and not rung the bell, Nell remembers.
-file: ../lore/hours.lute
-beat: chime
-state: { run.hour: h03 }
-entriesRead: { run: [diary] }
-expect:
-  transcriptContains: ["@maud: Three o'clock. The round.", "@nell: The bell. Ring him down at three."]

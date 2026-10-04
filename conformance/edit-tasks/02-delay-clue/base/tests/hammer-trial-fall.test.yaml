@@ -1,8 +1,0 @@
-# Oskar's run challenge: falling before floor 9 fails it (the `by` deadline).
-file: ../quests/bonds.lute
-facts: ["wields(hammer)"]
-state: { run.floor: 5, run.outcome: fell }
-expect:
-  quests: { hammerTrial: failed }
-  state: { user.embers: 0 }
-  transcriptContains: ["an anvil rings once"]

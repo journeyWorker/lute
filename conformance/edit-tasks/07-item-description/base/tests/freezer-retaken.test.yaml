@@ -1,8 +1,0 @@
-# After the Orderly took him back, drawer 13 holds him again.
-file: ../scenes/puzzles/freezer.lute
-entriesRead: { run: [bedCard] }
-facts: [taken(tobias)]
-choose: { drawer: thirteen }
-expect:
-  facts: [following(tobias)]
-  notFacts: [taken(tobias)]

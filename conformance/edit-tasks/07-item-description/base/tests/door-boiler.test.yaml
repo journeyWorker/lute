@@ -1,4 +1,0 @@
-file: ../lore/doors.lute
-entry: doorBoiler
-expect:
-  transcriptContains: ["@nell: Not without a light. Not a chance."]

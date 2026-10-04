@@ -52,17 +52,25 @@ pub(crate) const TEST: Gate = Gate {
 /// project that does not wholly compile — and build its index. `Err`
 /// carries the exit code after the diagnostics are printed.
 pub(super) fn compile_project(project_dir: &Path, gate: Gate, matrix: &crate::EngineMatrix) -> Result<ExecProject, ExitCode> {
-    let Gate { cmd, refuses } = gate;
     let project_dir = lute_model::nearest_manifest_dir(project_dir)
         .unwrap_or_else(|| project_dir.to_path_buf());
-    match crate::manifests::validate_manifests_under(&project_dir) {
+    manifest_gate(&project_dir, gate.cmd)?;
+    let source_model = build_model(&project_dir, gate.cmd)?;
+    assemble_project_from_model(&project_dir, gate, matrix, &source_model)
+}
+
+/// Refuse a project whose manifests are invalid or whose chapters do not
+/// gate, printing the verdicts. `Err` carries the exit code.
+pub(crate) fn manifest_gate(project_dir: &Path, cmd: &str) -> Result<(), ExitCode> {
+    match crate::manifests::validate_manifests_under(project_dir) {
         Ok(mut verdicts) => {
-            crate::manifests::mark_inert_under(&mut verdicts, &project_dir);
+            crate::manifests::mark_inert_under(&mut verdicts, project_dir);
             if crate::manifests::report_and_gate(&verdicts)
                 | crate::manifests::gate_chapters(&verdicts)
             {
                 return Err(ExitCode::from(1));
             }
+            Ok(())
         }
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
@@ -70,13 +78,23 @@ pub(super) fn compile_project(project_dir: &Path, gate: Gate, matrix: &crate::En
                 "{cmd}: cannot walk {} for manifests: {e}",
                 project_dir.display()
             );
-            return Err(ExitCode::from(2));
+            Err(ExitCode::from(2))
         }
     }
-    let policy = crate::DenyPolicy::default();
+}
 
-    let source_model = ProjectModel::build_single_root(
-        &project_dir,
+/// Build the source model of the project nearest `project_dir` without the
+/// manifest gate, for the differential oracle that drives the gates itself.
+#[cfg(test)]
+pub(crate) fn build_project_model(project_dir: &Path) -> Result<ProjectModel, ExitCode> {
+    let project_dir = lute_model::nearest_manifest_dir(project_dir)
+        .unwrap_or_else(|| project_dir.to_path_buf());
+    build_model(&project_dir, "lute")
+}
+
+fn build_model(project_dir: &Path, cmd: &str) -> Result<ProjectModel, ExitCode> {
+    ProjectModel::build_single_root(
+        project_dir,
         &ModelOptions {
             providers: None,
             permission_profile: None,
@@ -88,7 +106,17 @@ pub(super) fn compile_project(project_dir: &Path, gate: Gate, matrix: &crate::En
     .map_err(|error| {
         eprintln!("{cmd}: cannot build {}: {error}", project_dir.display());
         ExitCode::from(1)
-    })?;
+    })
+}
+
+pub(crate) fn assemble_project_from_model(
+    project_dir: &Path,
+    gate: Gate,
+    matrix: &crate::EngineMatrix,
+    source_model: &ProjectModel,
+) -> Result<ExecProject, ExitCode> {
+    let Gate { cmd, refuses } = gate;
+    let policy = crate::DenyPolicy::default();
     if source_model.has_resolution_errors() {
         for document in source_model.documents() {
             for diagnostic in &document.resolve_diags {

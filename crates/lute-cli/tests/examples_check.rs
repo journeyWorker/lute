@@ -1,7 +1,9 @@
 // crates/lute-cli/tests/examples_check.rs
 // Mirrors the harness in crates/lute-cli/tests/cli.rs (assert_cmd style).
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{LazyLock, OnceLock};
 
 fn check(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_lute"))
@@ -149,13 +151,39 @@ fn gated_line_checks_clean_under_project() {
 // merely asserted.
 // ---------------------------------------------------------------------
 
-fn check_project(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_lute"))
-        .arg("check-project")
-        .args(args)
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
-        .unwrap()
+/// `lute check-project <dir> --json`: exit code and parsed output.
+struct ProjectRun {
+    status: Option<i32>,
+    json: serde_json::Value,
+}
+
+/// Run `check-project <dir> --json` once per project root for the whole test
+/// binary. Every corpus test below asks the same question of the same tree, and
+/// the `docs/examples` root alone covers all fourteen games, so re-running it
+/// per test repeated the most expensive check in the suite several times. The
+/// roots are the fixed set `shipped_scene_files` resolves to.
+fn check_project(dir: &Path) -> &'static ProjectRun {
+    static RUNS: LazyLock<HashMap<PathBuf, OnceLock<ProjectRun>>> = LazyLock::new(|| {
+        shipped_scene_files()
+            .into_iter()
+            .map(|(_, root)| (root, OnceLock::new()))
+            .collect()
+    });
+    let slot = RUNS
+        .get(dir)
+        .unwrap_or_else(|| panic!("{} is not a shipped project root", dir.display()));
+    slot.get_or_init(|| {
+        let out = Command::new(env!("CARGO_BIN_EXE_lute"))
+            .arg("check-project")
+            .arg(dir)
+            .arg("--json")
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+            .unwrap();
+        let json = serde_json::from_slice(&out.stdout)
+            .unwrap_or_else(|e| panic!("{}: invalid JSON from `check-project`: {e}", dir.display()));
+        ProjectRun { status: out.status.code(), json }
+    })
 }
 
 /// Every diagnostic code appearing ANYWHERE in a `check-project --json`
@@ -186,10 +214,10 @@ fn corpus_check_project_is_clean_end_to_end() {
     // each scoped independently by `main.rs`'s `by_root` grouping) must
     // exit 0 clean -- the corpus this repo ships as worked examples must
     // actually check clean under the tool it demonstrates.
-    let out = check_project(&[examples_dir().to_str().unwrap(), "--json"]);
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let run = check_project(&examples_dir());
+    let v = &run.json;
     assert_eq!(
-        out.status.code(),
+        run.status,
         Some(0),
         "the whole shipped corpus must check-project clean: {v}"
     );
@@ -224,9 +252,9 @@ fn corpus_no_false_positive_episode_dup_across_or_within_project_roots() {
     // compile goldens (`e2e__components_scene.snap`/`e2e__gated_line.snap`)
     // drifting ONLY on the identity-derived `episode`/`episodeId`/`lineId`
     // fields, never on emitted commands.
-    let out = check_project(&[examples_dir().to_str().unwrap(), "--json"]);
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let codes = all_codes(&v);
+    let run = check_project(&examples_dir());
+    let v = &run.json;
+    let codes = all_codes(v);
     assert!(
         !codes.iter().any(|c| c == "E-CONN-EPISODE-ID-DUP"),
         "corpus must be free of scene-identity collisions: {v}"
@@ -242,9 +270,9 @@ fn corpus_halsin_relational_objective_not_dead() {
     // so it is producible from load regardless of any episode's own
     // reachability (spec §4.2's own worked counterexample against a naive
     // assert-site-only search).
-    let out = check_project(&[examples_dir().to_str().unwrap(), "--json"]);
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let codes = all_codes(&v);
+    let run = check_project(&examples_dir());
+    let v = &run.json;
+    let codes = all_codes(v);
     assert!(
         !codes.iter().any(|c| c == "E-OBJECTIVE-UNSATISFIABLE"),
         "quest-rescue-halsin's relational objective must stay live: {v}"
@@ -319,9 +347,8 @@ fn envelope_never_newly_errors_a_clean_standalone_scene() {
             continue;
         }
         clean_scenes_checked += 1;
-        let proj_out = check_project(&[project.to_str().unwrap(), "--json"]);
-        let pv: serde_json::Value = serde_json::from_slice(&proj_out.stdout)
-            .unwrap_or_else(|e| panic!("{rel}: invalid JSON from `check-project`: {e}"));
+        let proj_run = check_project(&project);
+        let pv = &proj_run.json;
         let path_ends_with_rel =
             |v: &serde_json::Value| v["path"].as_str().is_some_and(|p| p.ends_with(rel));
         // The envelope diagnostic (`E-STATE-MAYBE-UNAVAILABLE`, error grade)

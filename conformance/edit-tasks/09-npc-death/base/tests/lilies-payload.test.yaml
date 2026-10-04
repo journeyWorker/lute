@@ -1,6 +1,0 @@
-# The runEnd side-beat reads the occasion payload and banks the lilies.
-file: ../scenes/stair/lilies.lute
-state: { user.ashfallOn: true, occasion.payload.lilies: 2, season.ashfall.lilies: 1 }
-expect:
-  transcriptContains: ["it left her 2 ash-lilies, pressed flat"]
-  state: { season.ashfall.lilies: 3 }

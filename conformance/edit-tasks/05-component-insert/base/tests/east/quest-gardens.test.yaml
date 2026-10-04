@@ -1,9 +1,0 @@
-# eastGardens: both errands are taken up separately (activate="accept");
-# with the seeds delivered and a waspire shown to Tom, the parent completes.
-file: ../../quests/east/side-quests.lute
-accepts: [eastGardens, eastGardensSeeds, eastGardensBees]
-facts: [caught(waspire)]
-occasions: [talk@npc.portvoltVendor, talk@npc.bloomfieldBeekeeper]
-expect:
-  quests: { eastGardens: complete, eastGardensSeeds: complete, eastGardensBees: complete }
-  transcriptContains: ["@bloomfieldFlorist: Seeds in Portvolt, a queen in the hive."]

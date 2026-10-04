@@ -1,7 +1,0 @@
-# Keeper Sol hands out the storm-bird quest at night.
-file: ../../lore/east/portvolt.lute
-beat: solStormBird
-state: { run.slot: night }
-expect:
-  eligible: true
-  accepts: [eastThunderwing]

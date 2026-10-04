@@ -1,8 +1,0 @@
-# The museum's fossil completes with either revival (complete="any").
-file: ../../quests/south/side.lute
-accepts: [southFossil]
-facts: [caught(spiralfossil)]
-expect:
-  quests: { southFossil: complete }
-  state: { run.money: 4500 }
-  transcriptContains: ["The museum thanks you."]

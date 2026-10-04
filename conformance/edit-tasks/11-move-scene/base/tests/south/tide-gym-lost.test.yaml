@@ -1,8 +1,0 @@
-# Losing to Marin: no badge, no prize, her parting advice.
-file: ../../scenes/south/tide-gym.lute
-bridges: { battle: [ { won: false } ] }
-expect:
-  end: complete
-  notFacts: [hasBadge(tide), defeated(marin), canUse(cut)]
-  state: { run.money: 3000 }
-  transcriptContains: ["@marin: The tide always comes back in. So can you.", "@marin: Go and dry off. Come back wetter. That's not a riddle, it's advice."]

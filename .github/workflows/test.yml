@@ -1,14 +1,14 @@
 name: Test
 
-# `offline` is the baseline `cargo test --workspace` gate — zero network,
-# runs on every PR touching Rust sources. It also owns the `schemas/**`
+# `offline` is the baseline Rust test gate — zero network, runs on every PR
+# touching Rust sources. Its sibling `gates` job owns the `schemas/**`
 # drift gate: `tree-sitter-lute/test/json_schema.test.js` asserts that both
 # shipped JSON Schemas accept every shape the Rust deserializers in
 # `crates/lute-manifest/src/{schema.rs,types.rs,entities.rs}` accept, and
 # some of its cases scaffold real projects with `lute init`. That needs a
-# built `lute` AND bun; this job already pays for the cargo build, so the
-# harness rides along instead of cold-building the workspace in a second
-# job. Drift originates in the Rust source, which is why `crates/**` (and
+# built `lute` AND bun; `gates` already builds the binary for the doc gates,
+# so the harness rides along instead of building it again. Drift originates
+# in the Rust source, which is why `crates/**` (and
 # therefore `crates/lute-manifest/**`) must stay in the trigger set below.
 # The same job also owns the nvim query mirror gate:
 # `tree-sitter-lute/test/nvim_query_sync.test.js` asserts that every
@@ -25,7 +25,7 @@ name: Test
 # platform-detection / binary-resolution logic is caught without a native
 # build.
 #
-# `offline` also owns the CRATES-SIDE half of the documentation contract. The
+# `gates` also owns the CRATES-SIDE half of the documentation contract. The
 # docs quote real CLI output — capability hashes, `lute context` transcripts,
 # diagnostic text — and the `*.test.yaml` scenario suites under `docs/examples`
 # are executed BY the binary rather than merely quoted from it.
@@ -48,7 +48,7 @@ name: Test
 # `packages/website/**`, or the two script paths. Those are the doc-side
 # inputs, `docs.yml` already triggers on all of them and runs the same two
 # scripts and the same scenario suites, and firing a full
-# `cargo test --workspace` for a prose edit would be pure cost. The one input
+# Rust test run for a prose edit would be pure cost. The one input
 # this job uniquely covers is `crates/**`.
 
 on:
@@ -71,10 +71,52 @@ on:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  # Line tables keep backtraces useful at a fraction of the link time and
+  # cache size of full debuginfo.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
+# One in-flight run per ref; a new push cancels the previous run.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+# `offline` (the Rust suites) and `gates` (the binary-driven doc and corpus
+# gates) are independent and run in parallel; each builds what it needs. The
+# suites run under cargo-nextest, which runs every test binary concurrently —
+# `cargo test` runs the ~260 binaries one after another, so a single slow
+# corpus test serialised the whole job behind it.
 jobs:
   offline:
-    name: cargo test --workspace + JS harnesses + doc gates (offline)
+    name: cargo nextest --workspace (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: lute-test-offline-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: cargo nextest run --workspace
+        run: cargo nextest run --workspace --no-fail-fast
+
+      # nextest does not run doctests.
+      - name: cargo test --doc --workspace
+        run: cargo test --workspace --doc
+
+  gates:
+    name: JS harnesses + doc gates (offline)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -90,16 +132,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: lute-test-offline-cargo-${{ hashFiles('Cargo.lock') }}
-
-      - name: cargo test --workspace
-        run: cargo test --workspace
+          key: lute-test-gates-cargo-${{ hashFiles('Cargo.lock') }}
 
       # The harness resolves `lute` via `target/debug/lute` first
       # (tree-sitter-lute/test/json_schema.test.js::luteBin), so build the
-      # dev-profile binary explicitly. After `cargo test --workspace` this is
-      # a cache hit, not a second compile.
-      - name: Build lute (dev profile, for `lute init` scaffold cases)
+      # dev-profile binary explicitly; every gate below reuses it.
+      - name: Build lute (dev profile)
         run: cargo build -q -p lute-cli
 
       - name: Setup Bun
@@ -149,7 +187,7 @@ jobs:
       # docs/superpowers/notes/2026-07-31-haven-drive-test-findings.md). This
       # step catches the former class and is honestly blind to the latter.
       - name: Scenario suite gate (docs/examples tests vs this binary)
-        run: cargo run -q -p lute-cli -- test docs/examples
+        run: ./target/debug/lute test docs/examples
 
       # The crates-side half of `docs.yml`'s per-game `--deny-warnings` step:
       # a checker change that adds a warning to any of the fourteen games
@@ -159,7 +197,7 @@ jobs:
         run: |
           set -euo pipefail
           for game in docs/examples/games/*/; do
-            cargo run -q -p lute-cli -- check-project --deny-warnings "${game%/}"
+            ./target/debug/lute check-project --deny-warnings "${game%/}"
           done
 
       # Its crate inputs today are only the two version consts `docs.yml`

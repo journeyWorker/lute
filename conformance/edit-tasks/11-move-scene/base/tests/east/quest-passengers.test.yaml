@@ -1,7 +1,0 @@
-# Five of six passengers beaten: the Meridian quest stays open.
-file: ../../quests/east/side-quests.lute
-visited: [east.ferryRival]
-facts: [defeated(meridianSailorBram), defeated(meridianSailorOona), defeated(meridianGentlemanHale), defeated(meridianLassPip), defeated(meridianFisherTeo)]
-expect:
-  quests: { eastMeridianPassengers: active }
-  transcriptLacks: ["the ship's compliments"]

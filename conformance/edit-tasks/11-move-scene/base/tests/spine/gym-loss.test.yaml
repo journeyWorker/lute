@@ -1,9 +1,0 @@
-# Losing to a leader: her lose line, no badge, no prize, no defeated().
-file: ../../scenes/south/stone-gym.lute
-bridges: { battle: [ { won: false } ] }
-expect:
-  facts: []
-  notFacts: [hasBadge(stone), defeated(petra), canPass(pebbletonEast)]
-  state: { run.money: 3000 }
-  transcriptContains: ["@petra: Rock doesn't bend. Come back when you've learned that."]
-  transcriptLacks: ["received the Stone Badge"]

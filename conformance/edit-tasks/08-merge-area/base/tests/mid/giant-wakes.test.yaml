@@ -1,7 +1,0 @@
-# The flute wakes Slumbear: the quest is taken and the encounter starts.
-file: ../../scenes/mid/giant-wakes.lute
-facts: [hasItem(wakingFlute)]
-expect:
-  end: complete
-  accepts: [midSleepingGiant]
-  transcriptContains: ["Slumbear gets up. It is not happy about it."]

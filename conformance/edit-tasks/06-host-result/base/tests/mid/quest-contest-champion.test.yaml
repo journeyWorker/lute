@@ -1,6 +1,0 @@
-# One first prize completes the champion quest; three is optional.
-file: ../../quests/mid/side-quests.lute
-visited: [mid.bugContest.register]
-state: { run.midContestWins: 1 }
-expect:
-  quests: { midContestChampion: complete }

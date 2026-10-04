@@ -1,8 +1,0 @@
-# A wrong code sets off a siren with no wires.
-file: ../scenes/endings/gate.lute
-facts: [holding(keycard)]
-bridges: { keypad: [ { entered: 572 } ] }
-expect:
-  state: { run.fate: alive }
-  transcriptContains: ["@nell: Shut up. Shut up, shut up!"]
-  end: complete

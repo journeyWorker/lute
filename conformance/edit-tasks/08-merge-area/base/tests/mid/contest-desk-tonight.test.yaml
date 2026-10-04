@@ -1,6 +1,0 @@
-# Tuesday night: the contest is over, entered or not.
-file: ../../lore/mid/bug-contest.lute
-entry: midContestDeskNight
-state: { run.day: 2, run.slot: night }
-expect:
-  eligible: { register: false, midContestDeskNight: true }

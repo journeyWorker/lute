@@ -1,8 +1,0 @@
-# With six badges and no key or HM discs, every north gate barks in north's
-# own words (the spine's fallbacks at -10 lose to them).
-file: ../../lore/north/gates.lute
-entries: [northBlockSeaRoute, northBlockCinderGymDoor, northBlockEarthGymDoor, northBlockVictoryRoadGate, northBlockVictoryRoadBoulders]
-facts: [hasBadge(stone), hasBadge(tide), hasBadge(spark), hasBadge(bloom), hasBadge(mind), hasBadge(venom)]
-expect:
-  eligible: { northBlockSeaRoute: true, northBlockCinderGymDoor: true, northBlockEarthGymDoor: true, northBlockVictoryRoadGate: true, northBlockVictoryRoadBoulders: true }
-  transcriptContains: ["CHALLENGERS WITH SEVEN BADGES WILL BE ADMITTED. You have 6.", "Count them for me. 6? Then turn around"]

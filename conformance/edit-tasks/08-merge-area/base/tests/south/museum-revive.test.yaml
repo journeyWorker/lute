@@ -1,7 +1,0 @@
-# Dr. Kell revives whichever fossil came out of the dig.
-file: ../../scenes/south/museum-revive.lute
-state: { run.southFossil: spiral }
-expect:
-  end: complete
-  transcriptContains: ["@pebbletonKell: It moved! It's a Spiralfossil! Hello, little one. Hello. Don't bite the doctor."]
-  transcriptLacks: ["It's a Domefossil!"]

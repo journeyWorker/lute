@@ -1,9 +1,0 @@
-# Day 7 is a Sunday: a Seahorsling landed that day wins the derby.
-file: ../../quests/south/side.lute
-accepts: [southDerby]
-state: { run.day: 7 }
-facts: [caught(seahorsling)]
-occasions: [caught@mon.seahorsling]
-expect:
-  quests: { southDerby: complete }
-  state: { run.money: 6000 }

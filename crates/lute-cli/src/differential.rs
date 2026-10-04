@@ -758,7 +758,9 @@ fn walk(dir: &Path, files: &mut Files) {
     for path in entries {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if path.is_dir() {
-            if !name.starts_with('.') && name != "node_modules" && name != "target" {
+            let excluded_edit_tasks =
+                name == "edit-tasks" && path.parent().and_then(Path::file_name) == Some("conformance".as_ref());
+            if !excluded_edit_tasks && !name.starts_with('.') && name != "node_modules" && name != "target" {
                 walk(&path, files);
             }
         } else if name.ends_with(".lute") && !crate::compile_all::is_component_file(&path) {
@@ -812,23 +814,58 @@ fn display_name(root: &Root, doc: &Path) -> Option<String> {
     }
 }
 
-/// Per project root, the reconciled project analysis (`None` when it
-/// failed). Filled up front, outside any parallel section: the analysis runs
-/// its own rayon work, and a lock held across it would deadlock a worker.
+/// One project root assembled once: its model, the reconciled gate verdicts
+/// derived from it, and the execution project `lute play` would run (`None`
+/// when play assembly refuses the root).
+struct ProjectData {
+    model: lute_model::ProjectModel,
+    /// Canonical document path -> index into `model.documents()`.
+    documents: HashMap<PathBuf, usize>,
+    exec: Option<lute_trace::exec::session::ExecProject>,
+    gate: crate::ReconciledProject,
+}
+
+/// Per project root, the model and execution project assembled from it once.
+/// Filled up front, outside any parallel section: model construction runs its
+/// own rayon work, and a lock held across it would deadlock a worker.
 #[derive(Default)]
 struct Gates {
-    projects: HashMap<PathBuf, Option<crate::ReconciledProject>>,
+    projects: HashMap<PathBuf, Option<ProjectData>>,
 }
 
 impl Gates {
     fn add(&mut self, dir: &Path) {
-        if !self.projects.contains_key(dir) {
-            let rec = crate::reconciled_project_results(dir, None).ok();
-            self.projects.insert(dir.to_path_buf(), rec);
+        if self.projects.contains_key(dir) {
+            return;
         }
+        let data = crate::play::build_project_model(dir).ok().map(|model| {
+            // Exactly `lute play`'s refusals: the manifest gate, then assembly.
+            let exec = crate::play::manifest_gate(dir, crate::play::PLAY.cmd)
+                .ok()
+                .and_then(|()| {
+                    crate::play::assemble_project_from_model(
+                        dir,
+                        crate::play::PLAY,
+                        &crate::EngineMatrix::reference(),
+                        &model,
+                    )
+                    .ok()
+                });
+            let documents = model
+                .documents()
+                .iter()
+                .enumerate()
+                .map(|(index, document)| {
+                    (std::fs::canonicalize(&document.path).unwrap_or_else(|_| document.path.clone()), index)
+                })
+                .collect();
+            let gate = lute_model::ReconciledProject::of(&model);
+            ProjectData { model, documents, exec, gate }
+        });
+        self.projects.insert(dir.to_path_buf(), data);
     }
 
-    fn project(&self, dir: &Path) -> Option<&crate::ReconciledProject> {
+    fn project(&self, dir: &Path) -> Option<&ProjectData> {
         self.projects.get(dir)?.as_ref()
     }
 
@@ -838,12 +875,37 @@ impl Gates {
     fn gate(&self, file: &Path, project: Option<&Path>, input: &CheckInput) -> CheckResult {
         project
             .and_then(|p| self.project(p))
-            .and_then(|rec| rec.gate(file))
+            .and_then(|data| data.gate.gate(file))
             .unwrap_or_else(|| lute_check::check(input))
     }
 }
 
+/// The project's model document for `file`, when its root assembles for play.
+/// A root play refuses keeps the per-document path below, as `lute trace`
+/// and `lute run` see it.
+fn model_document<'a>(file: &Path, project: Option<&Path>, gates: &'a Gates) -> Option<(&'a ProjectData, &'a lute_model::ModelDocument)> {
+    let data = gates.project(project?)?;
+    data.exec.as_ref()?;
+    let canon = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let index = *data.documents.get(&canon)?;
+    Some((data, &data.model.documents()[index]))
+}
+
 fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> Option<Subject> {
+    if let Some((data, document)) = model_document(file, project, gates) {
+        let input = document.input.clone();
+        let gate = data.gate.gate(file).unwrap_or_else(|| lute_check::check(&input));
+        let artifact = if gate.ok {
+            document
+                .artifact
+                .as_ref()
+                .map(|artifact| serde_json::to_value(artifact).expect("an artifact serializes"))
+                .ok_or_else(|| first_error(&gate.diagnostics))
+        } else {
+            Err(first_error(&gate.diagnostics))
+        };
+        return Some(subject(rel, &document.doc, &document.folded, input, gate, artifact));
+    }
     let built = lute_model::build_input(file, None, project, None)?;
     let crate::BuiltInput {
         input, identity, ..
@@ -859,6 +921,17 @@ fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> O
     };
     let (doc, _) = lute_syntax::parse(&input.text);
     let folded = lute_check::fold_env(&doc, &input).0;
+    Some(subject(rel, &doc, &folded, input, gate, artifact))
+}
+
+fn subject(
+    rel: String,
+    doc: &lute_syntax::ast::Document,
+    folded: &lute_check::FoldedEnv,
+    input: CheckInput,
+    gate: CheckResult,
+    artifact: Result<Json, String>,
+) -> Subject {
     let lore = folded.doc_kind == lute_check::DocKind::Lore;
     // The cast's display names, as `lute trace` and `lute play` pass them.
     let names = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast)
@@ -878,7 +951,7 @@ fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> O
             Some((path, d))
         })
         .collect();
-    Some(Subject {
+    Subject {
         rel,
         entries: doc.entries.iter().map(|e| e.id.clone()).collect(),
         beats: doc.beats.iter().map(|b| b.id.clone()).collect(),
@@ -888,7 +961,7 @@ fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> O
         lore,
         defaults,
         names,
-    })
+    }
 }
 
 /// One input read from a `*.test.yaml` / mock file.
@@ -1073,7 +1146,10 @@ fn presentation_cases(
     gates: &Gates,
 ) -> Result<Vec<Case>, String> {
     let project = project_root(play, &root.dir).ok_or("no lute.project.yaml above the play")?;
-    let played = crate::play::presentations_for_diff(&project, play)?;
+    // A root `lute play` refuses refuses every play under it, with
+    // `compile_play_project`'s empty message.
+    let exec = gates.project(&project).and_then(|data| data.exec.as_ref()).ok_or("")?;
+    let played = crate::play::presentations_for_diff(exec, play)?;
     let stem = play
         .file_name()
         .and_then(|n| n.to_str())

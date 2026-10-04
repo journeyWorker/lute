@@ -1,7 +1,0 @@
-file: ../lore/isolation.lute
-beat: dark
-visited: [room.isolation]
-state: { occasion.payload.seconds: 1 }
-expect:
-  transcriptContains: ["The bulbs tick and die. One second of dark."]
-  end: complete

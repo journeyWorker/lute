@@ -1,7 +1,0 @@
-# Turning Grandpa Tobbe down accepts nothing.
-file: ../../lore/mid/fairhaven.lute
-beat: tobbeAsks
-choose: { midDayCareAsk: busy }
-expect:
-  accepts: []
-  transcriptContains: ["It'll come home. It usually does."]

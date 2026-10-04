@@ -1,8 +1,0 @@
-# Three right answers: the Rare Candy.
-file: ../../lore/north/cinderisle.lute
-beat: grannyQuiz
-choose: { northQuizOne: water, northQuizTwo: gym, northQuizThree: eight }
-expect:
-  transcriptContains: ["@cinderGranny: Three out of three! Here, a sweet for your strongest one."]
-  transcriptLacks: ["out of three. Come back tomorrow"]
-  end: complete

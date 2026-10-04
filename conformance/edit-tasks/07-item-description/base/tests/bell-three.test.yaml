@@ -1,6 +1,0 @@
-# Rung at three, the bell calls the round down.
-file: ../scenes/puzzles/bell.lute
-state: { run.hour: h03 }
-expect:
-  state: { run.bellRung: true }
-  transcriptContains: ["@maud: Three o'clock. The round. Everybody down."]

@@ -1,7 +1,0 @@
-# Two of three Riders is no bounty.
-file: ../../quests/mid/side-quests.lute
-accepts: [midNightPatrol]
-facts: [defeated(r10BikerGrit), defeated(r10RockerJolene)]
-expect:
-  quests: { midNightPatrol: active }
-  state: { run.money: 3000 }

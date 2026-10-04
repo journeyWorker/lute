@@ -1,6 +1,0 @@
-# Bond 3 is not enough for Oskar's keepsake (the template's need="4").
-file: ../lore/keepsakes.lute
-beat: keepsakes.oskar
-state: { user.bond.oskar: 3 }
-expect:
-  eligible: false

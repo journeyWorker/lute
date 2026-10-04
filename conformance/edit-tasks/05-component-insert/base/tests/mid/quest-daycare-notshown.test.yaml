@@ -1,7 +1,0 @@
-# Caught, but never shown to Ilse.
-file: ../../quests/mid/side-quests.lute
-accepts: [midDayCareRunaway]
-facts: [caught(mothfuzz)]
-occasions: [talk@npc.fairhavenDayCareMan]
-expect:
-  quests: { midDayCareRunaway: active }

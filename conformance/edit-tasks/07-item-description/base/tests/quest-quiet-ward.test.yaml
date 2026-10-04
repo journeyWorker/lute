@@ -1,8 +1,0 @@
-# Reading the diary takes up the doctor's last errand; burning and ringing finish it.
-file: ../quests/night.lute
-entriesRead: { run: [diary] }
-facts: [burned(ledger)]
-state: { run.bellRung: true }
-expect:
-  quests: { quietWard: complete }
-  transcriptContains: ["All through the building, very quietly, beds stop creaking."]

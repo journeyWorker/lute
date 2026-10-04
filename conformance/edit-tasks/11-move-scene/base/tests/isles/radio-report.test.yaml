@@ -1,7 +1,0 @@
-# The morning report for one lit island, by its label.
-file: ../../lore/isles/radio.lute
-entry: islesBeaconReport
-state: { occasion.target: mistral }
-facts: [islesRelit(mistral)]
-expect:
-  transcriptContains: ["@announcer: The Mistral Isle beacon burned all night."]

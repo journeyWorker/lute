@@ -87,6 +87,9 @@ pub struct ProjectModel {
     index: Option<ProjectIndex>,
     reconciled: ReconciledOutputs,
     revisions: ProjectRevision,
+    /// Derived from the fields above and never invalidated: the model is
+    /// immutable once built, so the graph is built at most once per model.
+    graph: std::sync::OnceLock<crate::graph::SemanticGraph>,
 }
 
 impl ProjectModel {
@@ -273,7 +276,7 @@ impl ProjectModel {
             fact_envs,
             scenarios,
         };
-        Ok(Self { root, manifest, documents, project_diagnostics, index, reconciled, revisions })
+        Ok(Self { root, manifest, documents, project_diagnostics, index, reconciled, revisions, graph: std::sync::OnceLock::new() })
     }
     pub fn has_resolution_errors(&self) -> bool {
         self.documents.iter().any(|document| document.resolve_error)
@@ -293,6 +296,9 @@ impl ProjectModel {
     pub fn index(&self) -> Option<&ProjectIndex> { self.index.as_ref() }
     pub fn reconciled(&self) -> &ReconciledOutputs { &self.reconciled }
     pub fn revisions(&self) -> &ProjectRevision { &self.revisions }
+    pub fn graph(&self) -> &crate::graph::SemanticGraph {
+        self.graph.get_or_init(|| crate::graph::SemanticGraph::build(self))
+    }
 }
 fn build_revisions(
     root: &Path,

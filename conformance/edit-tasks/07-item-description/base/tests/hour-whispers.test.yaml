@@ -1,6 +1,0 @@
-# Whispers only come when the meter is low.
-file: ../lore/hours.lute
-beat: whispers
-state: { run.sanity: 5 }
-expect:
-  eligible: { whispers: false }

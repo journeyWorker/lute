@@ -1,7 +1,0 @@
-# Two ghosts seen: two stories done, the collection still open; the third
-# story was never told, so its child is still waiting.
-file: ../../quests/mid/side-quests.lute
-accepts: [midGhostStories, midGhostTheater, midGhostWell]
-facts: [midGhostSeen(silvercrestTheater), midGhostSeen(wardenmereWell), midGhostSeen(fairhavenLighthouse)]
-expect:
-  quests: { midGhostStories: active, midGhostTheater: complete, midGhostWell: complete, midGhostLighthouse: unset }

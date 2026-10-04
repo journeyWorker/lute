@@ -1,9 +1,0 @@
-# The mansion's library door: the journal about the crater bird, then the key.
-file: ../../scenes/north/cinder-mansion.lute
-choose: { northMansionDoor: library }
-expect:
-  options: { northMansionDoor: [library, lab] }
-  facts: [hasItem(volcanoKey), canPass(cinderGymDoor)]
-  transcriptContains: ["\"Day 4. The miners say the bird in the crater is real. They moved the road for it.\""]
-  transcriptLacks: ["IGNATIUS, ASSISTANT"]
-  end: complete

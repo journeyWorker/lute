@@ -38,6 +38,22 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Changed
+
+- Faster tests and CI, no behavior change. The edit-task suite no longer keeps
+  copies of dogfood games (1,632 files removed): each task names its base in
+  `task.json`, the twelve tasks run as parallel tests against one model per
+  game, and two tests still run a reference patch for real through
+  `lute patch`. The trace-vs-run differential builds each project once and
+  skips `conformance/edit-tasks`. `ProjectModel::graph()` is cached per model.
+  `--dump-conditions` looks conditions up in an index built once instead of
+  walking every artifact per evaluation (monster-league play: 100 s → 30 s
+  with byte-identical dumps). The dev profile builds at `opt-level = 1`. CI
+  runs the Rust suites under cargo-nextest in parallel with a separate doc
+  and corpus gate job, and the conformance harness runs once per PR push.
+
 ## [0.35.0] - 2026-10-04
 
 ### Added

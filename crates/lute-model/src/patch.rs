@@ -299,8 +299,18 @@ fn duplicate_authored_target(model: &ProjectModel, node: &NodeKey) -> bool {
     count > 1
 }
 pub fn apply_patch(root: &Path, patch: PatchRequest, dry_run: bool) -> Result<PatchReport, PatchRefusal> {
+    let before_model = ProjectModel::build_single_root(root, &ModelOptions::default()).map_err(|e| PatchRefusal::Io { path: root.to_path_buf(), message: e.to_string() })?;
+    apply_patch_to(&before_model, patch, dry_run)
+}
+
+/// Apply a patch against an already-built model.
+///
+/// The model is the authoritative snapshot used for base validation, target
+/// lookup, and the before side of the semantic diff. The source tree is still
+/// staged and rebuilt once for the after side.
+pub fn apply_patch_to(before_model: &ProjectModel, patch: PatchRequest, dry_run: bool) -> Result<PatchReport, PatchRefusal> {
+    let root = before_model.root();
     let opts = ModelOptions::default();
-    let before_model = ProjectModel::build_single_root(root, &opts).map_err(|e| PatchRefusal::Io { path: root.to_path_buf(), message: e.to_string() })?;
     let before = before_model.revisions().clone();
     if !digest_equal(&patch.base.project, &before.sha256) { return Err(PatchRefusal::Stale { expected: patch.base.project, actual: format!("sha256:{}", before.sha256) }); }
     for (path, expected) in &patch.base.files {
@@ -555,14 +565,18 @@ fn preserve_node_matches(claim: &NodeKey, changed: &NodeKey) -> bool {
 }
 fn component_fingerprints(model: &ProjectModel) -> BTreeMap<NodeKey, String> {
     let mut instances = BTreeMap::new();
+    // Beat nodes by (file, local beat id): the lookup each template beat needs.
+    // The first node in key order wins, as the per-beat linear search did.
+    let mut beats: BTreeMap<(&Path, &str), &crate::graph::GraphNode> = BTreeMap::new();
+    for node in model.graph().nodes.values().filter(|node| node.id.kind == NodeKind::Beat) {
+        let (Some(file), Some(local)) = (node.file.as_deref(), node.id.key.rsplit('.').next()) else { continue };
+        beats.entry((file, local)).or_insert(node);
+    }
     for document in model.documents() {
         let (authored, _) = lute_syntax::parse(&document.input.text);
         for beat in &authored.beats {
             let Some(template) = &beat.template else { continue };
-            let graph = model.graph();
-            let Some(node) = graph.nodes.values().find(|node|
-                node.id.kind == NodeKind::Beat && node.file.as_ref() == Some(&document.path)
-                    && node.id.key.rsplit('.').next() == Some(beat.id.as_str())) else { continue };
+            let Some(node) = beats.get(&(document.path.as_path(), beat.id.as_str())) else { continue };
             let enclosing = node.id.key.rsplit_once('.').map_or("", |(owner, _)| owner);
             let mut bindings: Vec<(String, String)> = vec![
                 ("on", beat.on.as_ref().map(|v| v.0.clone())),
@@ -600,21 +614,27 @@ fn preserve_violations(items: &[Preserve], diff: &crate::SemanticDiff, before: &
     let mut out = Vec::new();
     for item in items {
         match item {
-            Preserve::Ids(nodes) => for node in nodes {
-                if !after.graph().nodes.contains_key(node) {
-                    out.extend(diff.changes.iter().filter(|c| preserve_node_matches(node, &c.node)).cloned());
-                } else if let Some(fingerprint) = component_fingerprints(before).get(node) {
-                    let instances = component_fingerprints(after);
-                    if instances.values().filter(|candidate| *candidate == fingerprint).count() > 1 {
-                        out.push(SemanticChange {
-                            kind: ChangeKind::Field("componentAmbiguous".into()),
-                            node: node.clone(), before: Some(serde_json::json!({"fingerprint": fingerprint})),
-                            after: Some(serde_json::json!({"ambiguous": true, "fingerprint": fingerprint})),
-                            locations: vec![],
-                        });
+            Preserve::Ids(nodes) => {
+                let mut fingerprints = None;
+                for node in nodes {
+                    if !after.graph().nodes.contains_key(node) {
+                        out.extend(diff.changes.iter().filter(|c| preserve_node_matches(node, &c.node)).cloned());
+                        continue;
+                    }
+                    let (before_prints, after_prints) = fingerprints
+                        .get_or_insert_with(|| (component_fingerprints(before), component_fingerprints(after)));
+                    if let Some(fingerprint) = before_prints.get(node) {
+                        if after_prints.values().filter(|candidate| *candidate == fingerprint).count() > 1 {
+                            out.push(SemanticChange {
+                                kind: ChangeKind::Field("componentAmbiguous".into()),
+                                node: node.clone(), before: Some(serde_json::json!({"fingerprint": fingerprint})),
+                                after: Some(serde_json::json!({"ambiguous": true, "fingerprint": fingerprint})),
+                                locations: vec![],
+                            });
+                        }
                     }
                 }
-            },
+            }
             Preserve::LineIds => out.extend(diff.changes.iter().filter(|c| c.before.as_ref().is_some_and(|v| v.get("command").and_then(|v| v.get("lineId")).is_some()) && c.before.as_ref().and_then(|v| v.get("command")).and_then(|v| v.get("lineId")) != c.after.as_ref().and_then(|v| v.get("command")).and_then(|v| v.get("lineId"))).cloned()),
             Preserve::VoiceKeys => out.extend(diff.changes.iter().filter(|c| c.before.as_ref().is_some_and(|v| v.get("command").and_then(|v| v.get("voiceKey")).is_some()) && c.before.as_ref().and_then(|v| v.get("command")).and_then(|v| v.get("voiceKey")) != c.after.as_ref().and_then(|v| v.get("command")).and_then(|v| v.get("voiceKey"))).cloned()),
             Preserve::ChoiceEffects(nodes) => out.extend(diff.changes.iter().filter(|c| nodes.iter().any(|node| preserve_node_matches(node, &c.node)) && matches!(&c.kind, ChangeKind::Field(f) if ["effects", "writes", "asserts", "grants", "choiceEffects"].iter().any(|x| f.contains(x)))).cloned()),

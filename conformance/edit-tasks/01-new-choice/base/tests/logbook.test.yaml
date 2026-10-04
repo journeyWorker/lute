@@ -1,8 +1,0 @@
-# The logbook on a storm morning: your own page, then the '71 Perseids. The
-# blackout page only opens on Thursday.
-file: ../lore/logbook.lute
-entries: [logStorm, log1971]
-state: { run.weather: storm, run.day: 3 }
-expect:
-  transcriptContains: ["Pressure 961 and falling.", "H. is a liar."]
-  eligible: { logStorm: true, log1971: true, log1998: false }

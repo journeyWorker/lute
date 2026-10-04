@@ -1,8 +1,0 @@
-# A second summer: the station remembers the first, and the forecast is taken
-# up whichever way the player answers Ines.
-file: ../scenes/days/arrival.lute
-state: { prev.run.route: wren }
-choose: { village: ask }
-expect:
-  transcriptContains: ["It looks exactly as you left it last summer."]
-  accepts: [forecast]

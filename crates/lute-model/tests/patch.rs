@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use lute_model::{apply_patch, ModelOptions, NodeKind, PatchBase, PatchEdit, PatchRequest, ProjectModel};
+use lute_model::{apply_patch, apply_patch_to, ModelOptions, NodeKind, PatchBase, PatchEdit, PatchRequest, ProjectModel};
 
 /// A fresh directory per fixture. Tests run in parallel, so the name carries
 /// the process id and a per-process counter, not only a timestamp.
@@ -88,6 +88,16 @@ fn dry_run_stages_diff_without_writing() {
     assert_eq!(std::fs::read_to_string(root.join("scene.lute")).unwrap(), original);
     assert_eq!(report.writes, vec![PathBuf::from("scene.lute")]);
     assert_eq!(report.diff.changes.len(), 1);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn prebuilt_model_is_accepted_as_patch_before_snapshot() {
+    let root = project();
+    let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
+    let report = apply_patch_to(&model, request(&root), true).unwrap();
+    assert_eq!(report.before, *model.revisions());
+    assert!(!std::fs::read_to_string(root.join("scene.lute")).unwrap().contains("Goodbye"));
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -405,7 +415,7 @@ fn copy_tree_for_patch_test(src: &Path, dst: &Path) {
 
 fn plugin_scene_project() -> PathBuf {
     let root = unique_root("lute-model-patch-plugin");
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../conformance/edit-tasks/06-host-result/base");
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/games/monster-league");
     std::fs::create_dir_all(&root).unwrap();
     std::fs::copy(fixture.join("lute.project.yaml"), root.join("lute.project.yaml")).unwrap();
     copy_tree_for_patch_test(&fixture.join("plugins"), &root.join("plugins"));

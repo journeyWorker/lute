@@ -1,8 +1,0 @@
-# The laboratory door: the cracked tank and young Ignatius, then the same key.
-file: ../../scenes/north/cinder-mansion.lute
-choose: { northMansionDoor: lab }
-expect:
-  facts: [hasItem(volcanoKey), canPass(cinderGymDoor)]
-  transcriptContains: ["IGNATIUS, ASSISTANT. DO NOT LET HIM NEAR THE BURNERS."]
-  transcriptLacks: ["The miners say the bird in the crater is real."]
-  end: complete

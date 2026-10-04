@@ -39,12 +39,8 @@ pub use gate::{
     gate_for_doc, project_gate_result, reconciled_project_results, ReconciledProject,
 };
 
-impl ProjectModel {
-    pub fn graph(&self) -> graph::SemanticGraph { graph::SemanticGraph::build(self) }
-}
-
 pub use graph::{GraphEdge, GraphNode, NodeKey, NodeKind, SemanticGraph};
 pub use impact::{ImpactItem, ImpactReport, ImpactTarget};
 pub use revision::{project_revision, FileRevision, ProjectRevision, RevisionError};
 pub use diff::{diff_models, ChangeKind, DiffError, SemanticChange, SemanticDiff, SourceLocation};
-pub use patch::{apply_patch, PatchBase, PatchEdit, PatchRefusal, PatchReport, PatchRequest, Preserve};
+pub use patch::{apply_patch, apply_patch_to, PatchBase, PatchEdit, PatchRefusal, PatchReport, PatchRequest, Preserve};
