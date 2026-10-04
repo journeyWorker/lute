@@ -8,6 +8,6 @@ once: user
 
 ## At the gate
 
-@narrator: The Hollow Keep has no windows. It doesn't need them. It has never wanted to see out.
-@lumi{emotion="sad"}: I can hear them in there. All of them. Still blinking.
-@aria: Then we go in and turn the lights on.
+@narrator{code="0010"}: The Hollow Keep has no windows. It doesn't need them. It has never wanted to see out.
+@lumi{code="0010" emotion="sad"}: I can hear them in there. All of them. Still blinking.
+@aria{code="0010"}: Then we go in and turn the lights on.

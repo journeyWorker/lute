@@ -7,19 +7,19 @@ params:
 
 ## Readings
 
-@narrator: {{@hour}}. You unlatch the white louvred box and read down the column, the way Ines taught you.
+@narrator{code="0010"}: {{@hour}}. You unlatch the white louvred box and read down the column, the way Ines taught you.
 
 <match on="@sky">
   <when is="clear">
-    @narrator: Dry bulb seventeen point two. Wet bulb thirteen. Pressure steady, a hair above yesterday.
-    @narrator: The sky is the hard blue it only is at altitude.
+    @narrator{code="0020"}: Dry bulb seventeen point two. Wet bulb thirteen. Pressure steady, a hair above yesterday.
+    @narrator{code="0030"}: The sky is the hard blue it only is at altitude.
   </when>
   <when is="fog">
-    @narrator: The louvres drip. Visibility, you guess, forty metres; you cannot see the funicular mast.
-    @narrator: Humidity pinned at the top of the dial. The fog tastes of iron.
+    @narrator{code="0040"}: The louvres drip. Visibility, you guess, forty metres; you cannot see the funicular mast.
+    @narrator{code="0050"}: Humidity pinned at the top of the dial. The fog tastes of iron.
   </when>
   <when is="storm">
-    @narrator: The barograph pen has dropped off the bottom of the drum.
-    @narrator: Rain drives sideways under the eaves and into the box before you can shut it.
+    @narrator{code="0060"}: The barograph pen has dropped off the bottom of the drum.
+    @narrator{code="0070"}: Rain drives sideways under the eaves and into the box before you can shut it.
   </when>
 </match>

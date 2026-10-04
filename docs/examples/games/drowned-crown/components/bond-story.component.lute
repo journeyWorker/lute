@@ -19,5 +19,5 @@ beat:
 
 ## Bond
 
-@narrator: {{@who}} makes room for Ilo without being asked.
+@narrator{code="0010"}: {{@who}} makes room for Ilo without being asked.
 ::body

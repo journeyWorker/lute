@@ -11,14 +11,14 @@ when: "@harvestLive"
 
 ## Silver wheat
 
-@narrator: In the middle of the last unharvested field, someone is fast asleep, curled around a lantern the size of a barrel.
-@cyra{emotion="sleepy"}: Mm. Five more winters.
+@narrator{code="0010"}: In the middle of the last unharvested field, someone is fast asleep, curled around a lantern the size of a barrel.
+@cyra{code="0010" emotion="sleepy"}: Mm. Five more winters.
 <branch id="h2Wake" prompt="The lantern is glowing faintly. So is she.">
   <choice id="gentle" label="Wake her gently.">
-    @cyra{emotion="sleepy"}: Oh. A kind one. The moon likes kind ones.
+    @cyra{code="0020" emotion="sleepy"}: Oh. A kind one. The moon likes kind ones.
   </choice>
   <choice id="pim" label="Let Pim do it.">
-    @pim: RISE AND SHINE, PRIESTESS! PAYING CUSTOMERS!
-    @cyra{emotion="sleepy"}: ...The moon does not like Pim.
+    @pim{code="0010"}: RISE AND SHINE, PRIESTESS! PAYING CUSTOMERS!
+    @cyra{code="0030" emotion="sleepy"}: ...The moon does not like Pim.
   </choice>
 </branch>

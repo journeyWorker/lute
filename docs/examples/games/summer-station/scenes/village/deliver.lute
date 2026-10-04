@@ -11,8 +11,8 @@ when: "run.slot == 'afternoon' && run.forecastWritten && !run.forecastDelivered 
 ## The village hall
 
 ::bg{location="village_hall" time="afternoon"}
-::use{component="enter" who="elder"}
-@elder{emotion="stern"}: The intern. With paper. Let's see it.
-@narrator: Maren reads it twice, holding it at arm's length, then close, as if the weather might be in the small print.
-@elder{emotion="happy"}: Clear. Clear! Then we hang them. All of them.
+::use{component="enter" who="elder" instance="use-001"}
+@elder{code="0010" emotion="stern"}: The intern. With paper. Let's see it.
+@narrator{code="0010"}: Maren reads it twice, holding it at arm's length, then close, as if the weather might be in the small print.
+@elder{code="0020" emotion="happy"}: Clear. Clear! Then we hang them. All of them.
 ::set{run.forecastDelivered = true}

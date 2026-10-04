@@ -10,6 +10,6 @@ priority: 20
 
 ## Lanterns
 
-@mara: Here, hang this one on the mast.
+@mara{code="0010"}: Here, hang this one on the mast.
 ::hangLantern{n=2}
-@narrator{when="has(prev.season.lanterns.hung)"}: Last festival the harbor hung {{prev.season.lanterns.hung}} lanterns.
+@narrator{code="0010" when="has(prev.season.lanterns.hung)"}: Last festival the harbor hung {{prev.season.lanterns.hung}} lanterns.

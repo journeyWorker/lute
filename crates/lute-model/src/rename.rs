@@ -55,6 +55,53 @@ fn error(code: &'static str, message: impl Into<String>, span: Option<Span>) -> 
     RenameError { code, message: message.into(), span }
 }
 
+fn descendants(graph: &SemanticGraph, root: &NodeKey) -> Vec<NodeKey> {
+    let mut out = Vec::new();
+    let mut queue = vec![root.clone()];
+    let mut seen = BTreeSet::new();
+    while let Some(current) = queue.pop() {
+        for edge in &graph.edges {
+            if !(edge.kind == "contains"
+                || (edge.kind == "writes" && edge.target.kind == NodeKind::State))
+                || edge.source != current
+                || !seen.insert(edge.target.clone())
+            {
+                continue;
+            }
+            out.push(edge.target.clone());
+            queue.push(edge.target.clone());
+        }
+    }
+    out.sort();
+    out
+}
+/// Rewrite an exact ownership token. Separators are part of the graph key
+/// constructors (`.`, `#`, `:`); a raw substring replacement would migrate
+/// unrelated identities such as `oldTown`.
+fn rewrite_descendant(from: &NodeKey, to: &NodeKey, descendant: &NodeKey) -> Option<NodeKey> {
+    if from.kind != to.kind {
+        return None;
+    }
+    let key = &descendant.key;
+    let mut position = None;
+    for (start, _) in key.match_indices(&to.key) {
+        let before = key[..start].chars().next_back();
+        let end = start + to.key.len();
+        let after = key[end..].chars().next();
+        let boundary = |c: Option<char>| c.is_none_or(|c| matches!(c, '.' | '#' | ':'));
+        if boundary(before) && boundary(after) {
+            position = Some((start, end));
+            break;
+        }
+    }
+    let (start, end) = position?;
+    let mut rewritten = String::with_capacity(key.len() + from.key.len().saturating_sub(to.key.len()));
+    rewritten.push_str(&key[..start]);
+    rewritten.push_str(&from.key);
+    rewritten.push_str(&key[end..]);
+    (rewritten != *key).then(|| NodeKey::new(descendant.kind, rewritten))
+}
+
 /// Validate and resolve the manifest ledger after the project graph exists.
 /// The output is sorted by source key and contains no source/destination aliases.
 pub fn resolve_ledger(
@@ -105,7 +152,6 @@ pub fn resolve_ledger(
     }
 
     let source_keys: BTreeSet<_> = parsed.iter().map(|(_, from, _, _)| from).collect();
-    let destination_keys: BTreeSet<_> = parsed.iter().map(|(_, _, to, _)| to).collect();
     for (rename, from, to, span) in &parsed {
         if source_keys.contains(to) || from == to {
             errors.push(error(
@@ -129,15 +175,64 @@ pub fn resolve_ledger(
             ));
         }
     }
-    // Keep this explicit: it documents the endpoint invariant and protects
-    // against future changes that separate cycle detection from overlap.
-    let _ = destination_keys;
+    // Expand each authored mapping over the destination subtree. The graph's
+    // contains edges, rather than key prefixes, define ownership.
+    let mut expanded = Vec::<(IdentityRename, Option<Span>)>::new();
+    let mut covered_sources = BTreeMap::<String, Option<Span>>::new();
+    for (rename, from, to, span) in &parsed {
+        expanded.push((rename.clone(), *span));
+        for descendant in descendants(graph, to) {
+            let Some(source) = rewrite_descendant(from, to, &descendant) else {
+                errors.push(error(
+                    "E-RENAME-LEDGER-STALE",
+                    format!("cannot expand `{}` → `{}` to contained descendant `{}`", rename.from, rename.to, descendant.canonical()),
+                    *span,
+                ));
+                continue;
+            };
+            covered_sources.insert(source.canonical(), *span);
+            expanded.push((
+                IdentityRename { from: source.canonical(), to: descendant.canonical() },
+                *span,
+            ));
+        }
+    }
+    for (rename, _, _, span) in &parsed {
+        if covered_sources.contains_key(&rename.from) {
+            errors.push(error(
+                "E-RENAME-LEDGER",
+                format!("rename `{}` is already covered by an ancestor expansion", rename.from),
+                *span,
+            ));
+        }
+    }
+    let mut expanded_sources = BTreeMap::<String, Option<Span>>::new();
+    let mut expanded_destinations = BTreeMap::<String, Option<Span>>::new();
+    for (rename, span) in &expanded {
+        let Some(from) = parse_key(&rename.from) else { continue };
+        let Some(to) = parse_key(&rename.to) else { continue };
+        if graph.nodes.contains_key(&from) || !graph.nodes.contains_key(&to) {
+            errors.push(error(
+                "E-RENAME-LEDGER-STALE",
+                format!("expanded rename `{}` → `{}` is stale", rename.from, rename.to),
+                *span,
+            ));
+        }
+        if expanded_sources.insert(rename.from.clone(), *span).is_some()
+            || expanded_destinations.insert(rename.to.clone(), *span).is_some()
+        {
+            errors.push(error(
+                "E-RENAME-LEDGER",
+                format!("expanded rename `{}` → `{}` duplicates an endpoint", rename.from, rename.to),
+                *span,
+            ));
+        }
+    }
     if !errors.is_empty() {
         return Err(errors);
     }
-
-    parsed.sort_by(|a, b| a.0.from.cmp(&b.0.from));
-    Ok(parsed.into_iter().map(|(rename, _, _, _)| rename).collect())
+    expanded.sort_by(|a, b| a.0.from.cmp(&b.0.from));
+    Ok(expanded.into_iter().map(|(rename, _)| rename).collect())
 }
 
 #[cfg(test)]
@@ -203,5 +298,43 @@ mod tests {
         ];
         let errors = resolve_ledger(&entries, &graph).expect_err("chain");
         assert!(errors.iter().any(|e| e.code == "E-RENAME-LEDGER-CYCLE"));
+    }
+
+    #[test]
+    fn expands_containment_and_rejects_covered_descendant() {
+        let mut graph = SemanticGraph::default();
+        let quest = NodeKey::new(NodeKind::Quest, "new");
+        let objective = NodeKey::new(NodeKind::Objective, "new.reach");
+        let state = NodeKey::new(NodeKind::State, "quest.new.state");
+        graph.node(quest.clone(), None, None);
+        graph.node(objective.clone(), None, None);
+        graph.node(state.clone(), None, None);
+        graph.edge(quest.clone(), objective, "contains", "quest owns objective", None, None, lute_core_span::Evidence::Proven);
+        graph.edge(quest, state, "contains", "quest owns state", None, None, lute_core_span::Evidence::Proven);
+        let root = IdentityRenameDecl {
+            rename: IdentityRename { from: "quest:old".into(), to: "quest:new".into() },
+            span: None,
+        };
+        let expanded = resolve_ledger(std::slice::from_ref(&root), &graph).expect("expanded ledger");
+        assert_eq!(expanded.iter().map(|r| r.from.as_str()).collect::<Vec<_>>(), vec!["objective:old.reach", "quest:old", "state:quest.old.state"]);
+        assert!(expanded.iter().any(|r| r.to == "objective:new.reach"));
+        let duplicate = IdentityRenameDecl {
+            rename: IdentityRename { from: "objective:old.reach".into(), to: "objective:new.reach".into() },
+            span: None,
+        };
+        let errors = resolve_ledger(&[root, duplicate], &graph).expect_err("covered descendant");
+        assert!(errors.iter().any(|error| error.code == "E-RENAME-LEDGER"));
+    }
+
+    #[test]
+    fn explicit_stale_descendant_is_reported_on_its_entry() {
+        let mut graph = SemanticGraph::default();
+        graph.node(NodeKey::new(NodeKind::Objective, "new.reach"), None, None);
+        let entry = IdentityRenameDecl {
+            rename: IdentityRename { from: "objective:old.missing".into(), to: "objective:new.missing".into() },
+            span: None,
+        };
+        let errors = resolve_ledger(&[entry], &graph).expect_err("stale descendant");
+        assert!(errors.iter().any(|error| error.code == "E-RENAME-LEDGER-STALE"));
     }
 }

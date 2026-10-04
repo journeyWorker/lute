@@ -14,6 +14,6 @@ when: "@islesLowTide && !holds('islesLensBack', ['coralreach'])"
 ## The tide pools
 
 ::bg{location="coral-cave" time="morning"}
-@narrator: At low tide the cave floor is a path of wet coral. At the far end a grunt is up to her knees in a pool, the Coralreach lens under one arm.
-::use{component="trainerBattle" who="duskGruntBrine" intro="The tide comes back in an hour. So do you, if you stay." win="Take it, before we both drown." lose="Tide's turning!" prize="1800"}
+@narrator{code="0010"}: At low tide the cave floor is a path of wet coral. At the far end a grunt is up to her knees in a pool, the Coralreach lens under one arm.
+::use{component="trainerBattle" who="duskGruntBrine" intro="The tide comes back in an hour. So do you, if you stay." win="Take it, before we both drown." lose="Tide's turning!" prize="1800" instance="use-001"}
 ::assert{islesLensBack(coralreach) when="@wonFight"}

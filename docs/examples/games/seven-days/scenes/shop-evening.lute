@@ -16,50 +16,50 @@ once: false
 
 <match on="run.lantern.frame">
   <when is="true">
-    @narrator: The reed frame sits on the workbench, curved like a ribcage.
+    @narrator{code="0010"}: The reed frame sits on the workbench, curved like a ribcage.
   </when>
   <otherwise>
-    @narrator: The workbench is bare except for a pot of glue and Pell's reading glasses.
-    @pell{emotion="teasing"}: No frame yet? Theo Maddox is at the pier every morning. He doesn't bite. Much.
+    @narrator{code="0020"}: The workbench is bare except for a pot of glue and Pell's reading glasses.
+    @pell{code="0010" emotion="teasing"}: No frame yet? Theo Maddox is at the pier every morning. He doesn't bite. Much.
   </otherwise>
 </match>
 
 <match on="run.lantern.paper">
   <when is="true">
-    @narrator: Beside it, the kozo sheets, weighted flat under a dictionary.
+    @narrator{code="0030"}: Beside it, the kozo sheets, weighted flat under a dictionary.
   </when>
   <otherwise>
-    @pell: And paper. Ines at the library. Afternoons.
+    @pell{code="0020"}: And paper. Ines at the library. Afternoons.
   </otherwise>
 </match>
 
 <match on="run.lantern.wish">
   <when is="unset" test="@lanternDone">
-    @narrator: The paper is on. It is, unmistakably, a lantern — lopsided at the seam, but a lantern.
-    @pell{emotion="happy"}: Every lantern gets a wish on the inside of the paper. Where the candle can read it.
-    @pell: Go on. I won't look. I'll look a bit.
+    @narrator{code="0040"}: The paper is on. It is, unmistakably, a lantern — lopsided at the seam, but a lantern.
+    @pell{code="0030" emotion="happy"}: Every lantern gets a wish on the inside of the paper. Where the candle can read it.
+    @pell{code="0040"}: Go on. I won't look. I'll look a bit.
     <branch id="wish" prompt="Pell holds out the brush.">
       <choice id="sea" label="Something for the sea." into="run.lantern.wish" value="sea">
-        @sol{mono}: Keep them safe. Whoever's out there tonight.
+        @sol{code="0010" mono}: Keep them safe. Whoever's out there tonight.
       </choice>
       <choice id="home" label="Something for home." into="run.lantern.wish" value="home">
-        @sol{mono}: Let the shop stay open one more year.
+        @sol{code="0020" mono}: Let the shop stay open one more year.
       </choice>
       <choice id="someone" label="Something for someone." into="run.lantern.wish" value="someone">
-        @sol{mono}: I'm not writing their name. The lantern will know.
-        @pell{emotion="teasing"}: I didn't see a thing.
+        @sol{code="0030" mono}: I'm not writing their name. The lantern will know.
+        @pell{code="0050" emotion="teasing"}: I didn't see a thing.
       </choice>
       <choice id="later" label="Not tonight.">
-        @pell: It'll keep. Wishes do.
+        @pell{code="0060"}: It'll keep. Wishes do.
       </choice>
     </branch>
   </when>
   <otherwise>
-    @pell{when="has(run.lantern.wish)"}: Don't read your wish back. It's bad luck. I made that up, but still.
+    @pell{code="0070" when="has(run.lantern.wish)"}: Don't read your wish back. It's bad luck. I made that up, but still.
   </otherwise>
 </match>
 
-@pell: Bed, then. Tomorrow's another day of this.
+@pell{code="0080"}: Bed, then. Tomorrow's another day of this.
 
 ::auto{character="pell" action="fadeOut"}
 ::music{action="fadeOut"}

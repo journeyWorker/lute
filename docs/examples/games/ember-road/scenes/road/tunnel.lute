@@ -14,43 +14,43 @@ components: [../../components/reaction.component.lute]
 
 ::bg{location="mill_tunnel" time="night"}
 ::music{action="change" mood="tense" volume="down"}
-@narrator: The cut runs under the river, brick-lined and sweating. Two Duskbound sit at a plank table with a lantern and a pot of something that was once a stew. Behind them, a door with a bar across it.
-@narrator: One of the guards is barely older than the twins.
+@narrator{code="0010"}: The cut runs under the river, brick-lined and sweating. Two Duskbound sit at a plank table with a lantern and a pot of something that was once a stew. Behind them, a door with a bar across it.
+@narrator{code="0020"}: One of the guards is barely older than the twins.
 
 <branch id="tunnel" prompt="The guards haven't seen you yet.">
   <choice id="talk" label="[Persuasion] Step into the light, hands open." when="holds('inParty', ['isolde']) && run.approval.isolde >= 1">
-    @isolde: Isolde Vane, of no company now. Put the crossbow down, lad. Nobody here is getting paid enough to die.
+    @isolde{code="0010"}: Isolde Vane, of no company now. Put the crossbow down, lad. Nobody here is getting paid enough to die.
     ::check{skill="persuasion" dc="12" resultKey="guards" sync="true"}
     <match on="scene.check.guards.passed">
       <when is="true">
-        @narrator: The boy looks at the older guard. The older guard looks at Isolde's sword, and at the door, and at his stew. He puts the crossbow down.
-        ::use{component="reaction" who="isolde" feel="approves"}
+        @narrator{code="0030"}: The boy looks at the older guard. The older guard looks at Isolde's sword, and at the door, and at his stew. He puts the crossbow down.
+        ::use{component="reaction" who="isolde" feel="approves" instance="use-001"}
         ::set{run.rep.dusk += 1}
       </when>
       <when is="false">
-        @narrator: The boy's crossbow goes off. The bolt takes Isolde's pauldron and spins her halfway round. After that it is short and loud.
+        @narrator{code="0040"}: The boy's crossbow goes off. The bolt takes Isolde's pauldron and spins her halfway round. After that it is short and loud.
         ::set{run.rep.dusk -= 1}
       </when>
     </match>
   </choice>
   <choice id="river" label="Let Wren call the river in." when="@wrenWithUs">
-    @wren: Hold your breath. Not you. Them.
-    @narrator: The sacking dam upstream gives with a sound like a sigh. Water comes down the cut ankle-deep, then knee-deep, then the lantern is out and the guards are shouting and running for the far end.
-    ::use{component="reaction" who="wren" feel="adores"}
+    @wren{code="0010"}: Hold your breath. Not you. Them.
+    @narrator{code="0050"}: The sacking dam upstream gives with a sound like a sigh. Water comes down the cut ankle-deep, then knee-deep, then the lantern is out and the guards are shouting and running for the far end.
+    ::use{component="reaction" who="wren" feel="adores" instance="use-002"}
   </choice>
   <choice id="knife" label="Signal Corvin. Quietly." when="holds('inParty', ['corvin'])">
-    @narrator: Corvin is behind the older guard before the stew spoon reaches his mouth. The boy runs. Nobody chases him.
-    @corvin: He'll tell Maelis. Good. Let her count what she's lost.
-    ::use{component="reaction" who="corvin" feel="approves"}
-    ::use{component="reaction" who="isolde" feel="disapproves"}
+    @narrator{code="0060"}: Corvin is behind the older guard before the stew spoon reaches his mouth. The boy runs. Nobody chases him.
+    @corvin{code="0010"}: He'll tell Maelis. Good. Let her count what she's lost.
+    ::use{component="reaction" who="corvin" feel="approves" instance="use-003"}
+    ::use{component="reaction" who="isolde" feel="disapproves" instance="use-004"}
     ::set{run.rep.dusk -= 1}
   </choice>
   <choice id="rush" label="Rush them.">
-    @narrator: It is short and loud and nobody who matters dies. The boy has a cut over his eye he'll brag about for years.
+    @narrator{code="0070"}: It is short and loud and nobody who matters dies. The boy has a cut over his eye he'll brag about for years.
     ::set{run.rep.dusk -= 1}
   </choice>
 </branch>
 
-@narrator: Behind the barred door: two children, filthy, furious, and alive. Hanne has bitten someone. She is very proud of it.
+@narrator{code="0080"}: Behind the barred door: two children, filthy, furious, and alive. Hanne has bitten someone. She is very proud of it.
 ::set{run.hostagesFreed = true}
-@wren{when="@wrenWithUs"}: Come on, little fish. Your mother is going to shout at everybody.
+@wren{code="0020" when="@wrenWithUs"}: Come on, little fish. Your mother is going to shout at everybody.

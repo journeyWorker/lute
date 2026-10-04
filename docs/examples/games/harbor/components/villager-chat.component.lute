@@ -14,5 +14,5 @@ beat:
 
 ## Chat
 
-@@who: Oh, it's you.
+@@who{code="0010"}: Oh, it's you.
 ::body

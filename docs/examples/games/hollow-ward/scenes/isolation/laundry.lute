@@ -10,19 +10,19 @@ priority: 10
 ## Laundry
 
 ::bg{location="laundry" time="night"}
-@narrator: Mangles and a copper, and a chute in the wall with a hatch that is still warm.
+@narrator{code="0010"}: Mangles and a copper, and a chute in the wall with a hatch that is still warm.
 <hub id="search" prompt="The laundry is very quiet.">
   <choice id="mangle" label="Look under the mangle" once>
-    @narrator: A child's sock, grey with age, folded very small.
+    @narrator{code="0020"}: A child's sock, grey with age, folded very small.
   </choice>
   <choice id="copper" label="Lift the copper lid" once into="run.sawCopper">
-    @narrator: The water inside is warm. Something turns over in it, slowly, and sinks.
+    @narrator{code="0030"}: The water inside is warm. Something turns over in it, slowly, and sinks.
     ::fright
   </choice>
   <choice id="hatch" label="Listen at the chute" once>
-    @june{os}: Is somebody coming down? Nobody comes down.
+    @june{code="0010" os}: Is somebody coming down? Nobody comes down.
   </choice>
   <choice id="leave" label="Leave the laundry" exit>
-    @nell{mono}: Enough.
+    @nell{code="0010" mono}: Enough.
   </choice>
 </hub>

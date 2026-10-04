@@ -7,87 +7,87 @@ title: Pebbleton — services, the east road, and its people
 // ── Monster Center and Mart ──────────────────────────────────────────────
 
 <beat id="center" on="heal" target="town.pebbleton" title="Monster Center" once="false">
-  ::use{component="nurse" town="pebbleton"}
+  ::use{component="nurse" town="pebbleton" instance="use-001"}
 </beat>
 
 <beat id="mart" on="shop" target="town.pebbleton" title="Mart" once="false">
-  ::use{component="shop" stock="pebbletonStock"}
+  ::use{component="shop" stock="pebbletonStock" instance="use-001"}
 </beat>
 
 // the Center board's delivery (quests/south/side.lute southParcel): the
 // clerk hands it over after the sale
 <beat id="parcel" on="shop" target="town.pebbleton" title="The parcel for Granny Wren" also when="quest.southParcel.state == 'active'">
-  @clerk: Oh! You're the one from the board? The Hollowtown parcel. It's seeds, I think. It rattles. Mind it in the wood.
-  @narrator: {{userName}} took the parcel for Granny Wren.
+  @clerk{code="0010"}: Oh! You're the one from the board? The Hollowtown parcel. It's seeds, I think. It rattles. Mind it in the wood.
+  @narrator{code="0010"}: {{userName}} took the parcel for Granny Wren.
 </beat>
 
 // ── The town, by slot (the first visit is south.pebbleton) ──────────────
 
 <entry id="southPebbletonMorning" on="enterTown" target="town.pebbleton" category="bark" once="day" when="@isMorning">
-  @narrator: Morning in Pebbleton: the miners going up the hill with their lamps unlit, the Stone Gym's doors already open.
+  @narrator{code="0010"}: Morning in Pebbleton: the miners going up the hill with their lamps unlit, the Stone Gym's doors already open.
 </entry>
 
 <entry id="southPebbletonDay" on="enterTown" target="town.pebbleton" category="bark" once="day" when="run.slot == 'day'">
-  @narrator: Somebody in Pebbleton is always hammering something. Today it is the museum's red door, which somebody else keeps painting grey.
+  @narrator{code="0010"}: Somebody in Pebbleton is always hammering something. Today it is the museum's red door, which somebody else keeps painting grey.
 </entry>
 
 <entry id="southPebbletonNight" on="enterTown" target="town.pebbleton" category="bark" once="day" when="@isNight">
-  @narrator: At night the whole grey town turns silver, and you can see the moonlight on the mountain where the cave mouth is.
+  @narrator{code="0010"}: At night the whole grey town turns silver, and you can see the moonlight on the mountain where the cave mouth is.
 </entry>
 
 // ── The east road (gate pebbletonEast opens with the Stone Badge) ────────
 
 <entry id="southPebbletonEastShut" on="obstacle" target="gate.pebbletonEast" category="bark" when="!holds('canPass', ['pebbletonEast'])">
-  @pebbletonDobbs: Hold it. East road's for trainers who've seen Petra. Not beaten, necessarily. Seen. Well. Beaten. That's the rule.
+  @pebbletonDobbs{code="0010"}: Hold it. East road's for trainers who've seen Petra. Not beaten, necessarily. Seen. Well. Beaten. That's the rule.
 </entry>
 
 <entry id="southDobbsShut" on="talk" target="npc.pebbletonDobbs" category="bark" when="!holds('canPass', ['pebbletonEast'])">
-  @pebbletonDobbs: Nobody goes east without the Stone Badge. That boy Kai tried to tell me he had it in his other trousers.
+  @pebbletonDobbs{code="0010"}: Nobody goes east without the Stone Badge. That boy Kai tried to tell me he had it in his other trousers.
 </entry>
 
 <entry id="southDobbsOpen" on="talk" target="npc.pebbletonDobbs" category="bark" priority="5" when="holds('canPass', ['pebbletonEast'])">
-  @pebbletonDobbs: The Stone Badge! Go on through, then. Moonstone Cave's up the ridge. Mind the Eclipse lot, if they're still there.
+  @pebbletonDobbs{code="0010"}: The Stone Badge! Go on through, then. Moonstone Cave's up the ridge. Mind the Eclipse lot, if they're still there.
 </entry>
 
 // ── Curator Ottoline and Dr. Kell (museum) ──────────────────────────────
 
 <entry id="southCuratorDone" on="talk" target="npc.pebbletonCurator" category="bark" priority="5" when="quest.southFossil.state == 'complete'">
-  @pebbletonCurator{emotion="happy"}: A living fossil walked out of my back room! On legs! I've had to write a whole new placard.
+  @pebbletonCurator{code="0010" emotion="happy"}: A living fossil walked out of my back room! On legs! I've had to write a whole new placard.
 </entry>
 
 <entry id="southCurator" on="talk" target="npc.pebbletonCurator" category="bark">
-  @pebbletonCurator: The wing fossil came out of the cliffs at Tidewell Cape, a hundred years ago. There are more in the cliffs, I'm sure of it. And more in Moonstone, if Eclipse leaves any.
+  @pebbletonCurator{code="0010"}: The wing fossil came out of the cliffs at Tidewell Cape, a hundred years ago. There are more in the cliffs, I'm sure of it. And more in Moonstone, if Eclipse leaves any.
 </entry>
 
 <entry id="southKellWaiting" on="talk" target="npc.pebbletonKell" category="bark" when="run.southFossil == 'none'">
-  @pebbletonKell: Moonstone. Deep beds. Dome or spiral. Bring me one and I'll show you something your grandchildren won't believe.
+  @pebbletonKell{code="0010"}: Moonstone. Deep beds. Dome or spiral. Bring me one and I'll show you something your grandchildren won't believe.
 </entry>
 
 <entry id="southKellRest" on="talk" target="npc.pebbletonKell" category="bark" priority="-5" when="!visited('south.museumWing')">
-  @pebbletonKell: The machine needs a rest. So do I. Come back when you've got both Southshore badges; the curator and I have an argument to finish.
+  @pebbletonKell{code="0010"}: The machine needs a rest. So do I. Come back when you've got both Southshore badges; the curator and I have an argument to finish.
 </entry>
 
 <entry id="southKellDone" on="talk" target="npc.pebbletonKell" category="bark" priority="-5" when="visited('south.museumWing')">
-  @pebbletonKell{emotion="happy"}: Three revivals in one lifetime. My old professor managed one, and he fainted. Go and show them the sea.
+  @pebbletonKell{code="0010" emotion="happy"}: Three revivals in one lifetime. My old professor managed one, and he fainted. Go and show them the sea.
 </entry>
 
 // ── Old Brask, the miner ─────────────────────────────────────────────────
 
 <entry id="southBraskMorning" on="talk" target="npc.pebbletonBrask" category="bark" priority="10" when="@isMorning">
-  @pebbletonBrask: Morning. Going up to the cave? Take a lamp. Take two. The dark in Moonstone eats lamps.
+  @pebbletonBrask{code="0010"}: Morning. Going up to the cave? Take a lamp. Take two. The dark in Moonstone eats lamps.
 </entry>
 
 <entry id="southBraskNight" on="talk" target="npc.pebbletonBrask" category="bark" priority="10" when="@isNight && run.lair.quarryDig != 'cleared'">
-  @pebbletonBrask: Hear that? Picks. At this hour. Forty years I worked that mountain and I never once worked it at night.
+  @pebbletonBrask{code="0010"}: Hear that? Picks. At this hour. Forty years I worked that mountain and I never once worked it at night.
 </entry>
 
 <entry id="southBrask" on="talk" target="npc.pebbletonBrask" category="bark">
   <match on="run.lair.quarryDig">
     <when is="cleared">
-      @pebbletonBrask: You ran them off? The lot in black? Then I'll buy you a lemonade, and I'll tell everyone I'd have done it myself if my knees were younger.
+      @pebbletonBrask{code="0010"}: You ran them off? The lot in black? Then I'll buy you a lemonade, and I'll tell everyone I'd have done it myself if my knees were younger.
     </when>
     <otherwise>
-      @pebbletonBrask: Somebody's cut new steps into the deep workings. Neat steps. Not miners' steps. Miners cut steps like they're angry at the stairs.
+      @pebbletonBrask{code="0020"}: Somebody's cut new steps into the deep workings. Neat steps. Not miners' steps. Miners cut steps like they're angry at the stairs.
     </otherwise>
   </match>
 </entry>
@@ -95,16 +95,16 @@ title: Pebbleton — services, the east road, and its people
 // ── Juniper, Petra's biggest fan ─────────────────────────────────────────
 
 <entry id="southJuniperNight" on="talk" target="npc.pebbletonJuniper" category="bark" priority="10" when="@isNight">
-  @pebbletonJuniper: Petra trains on the ridge at night, where nobody watches. Except me. I watch. From a respectful distance.
+  @pebbletonJuniper{code="0010"}: Petra trains on the ridge at night, where nobody watches. Except me. I watch. From a respectful distance.
 </entry>
 
 <entry id="southJuniper" on="talk" target="npc.pebbletonJuniper" category="bark">
   <match>
     <when test="@badgeCount >= 1">
-      @pebbletonJuniper{emotion="sad"}: You beat her. I'm happy for you. I'm devastated. I'm both. Petra says both is allowed.
+      @pebbletonJuniper{code="0010" emotion="sad"}: You beat her. I'm happy for you. I'm devastated. I'm both. Petra says both is allowed.
     </when>
     <otherwise>
-      @pebbletonJuniper: Petra's first monster was a Pebblet she found in a boot. She still has the boot.
+      @pebbletonJuniper{code="0020"}: Petra's first monster was a Pebblet she found in a boot. She still has the boot.
     </otherwise>
   </match>
 </entry>

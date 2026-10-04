@@ -191,11 +191,26 @@ what you key localization and voice assets on. Under the default templates
 (dsl 0.22.0 §11) a line's `lineId` is `{prefix}.{speaker}_{code}` and its
 `voiceKey` `{prefix}.{speaker}-{code}`, with `{prefix}` = `meta.id`; a line
 expanded from a component `::use` is minted under
-`{prefix}.{component}#{n}` (`n` = the host's 1-based use of that component,
-one more segment per nested use), so two uses never share an id. A project may
-re-template both (`identity:` in `lute.project.yaml` — a pinned
+`{prefix}.{component}#{instance}`, where `instance` is the authored key from
+`instance="…"`, not a sibling ordinal. Missing keys are warning-bearing
+positional fallbacks until `lute tag` writes them. A project may re-template
+both (`identity:` in `lute.project.yaml` — a pinned
 `voiceKey: "{speaker}-{code}"` restores the 0.21 keys), so treat them as
 opaque keys and never parse them.
+
+Artifacts may carry `identityRenames`, an optional sorted list of
+`{from, to}` canonical `NodeKey` pairs. Engines apply these authored migrations
+when loading save-shaped identity; they MUST NOT infer renames from position,
+text, spans, or `addr`. The same list is exposed by `project.index.json`.
+
+```lute check
+---
+kind: scene
+id: identity-runtime
+---
+## Opening
+@narrator{code="intro"}: Stable content.
+```
 
 **Field width (IR 0.8.0, dsl 0.8.0 §2).** Both segments are zero-padded to a
 width computed from the document — at least `3` for the shot and `4` for the

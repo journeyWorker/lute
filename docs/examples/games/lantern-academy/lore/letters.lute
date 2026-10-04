@@ -9,19 +9,19 @@ title: Notes under the door
 // once for each suitor whose `when` holds, in member order, with that suitor
 // as occasion.target (slotStart is an untargeted select: sequence occasion).
 <beat id="note" on="slotStart" for="kind:suitor" title="A note under the door" when="run.day == 8 && run.slot == 'evening' && run.route != occasion.target && run.aff[occasion.target] >= 3 && !holds('locked', [occasion.target])">
-  @narrator: A folded note under the door, in {{occasion.target}}'s handwriting.
+  @narrator{code="0010"}: A folded note under the door, in {{occasion.target}}'s handwriting.
   <match on="occasion.target">
     <when is="ren">
-      @ren{vo emotion="stern"}: For the record: I was not waiting on the jetty. I was supervising it. — R.A.
+      @ren{code="0010" vo emotion="stern"}: For the record: I was not waiting on the jetty. I was supervising it. — R.A.
     </when>
     <when is="mika">
-      @mika{vo emotion="happy"}: Ran past your window this morning. It was dark. Light it, okay? For me. — M
+      @mika{code="0010" vo emotion="happy"}: Ran past your window this morning. It was dark. Light it, okay? For me. — M
     </when>
     <when is="soren">
-      @soren{vo emotion="shy"}: I drew the corner of the book anyway. It's you, from the back. I hope that's allowed.
+      @soren{code="0010" vo emotion="shy"}: I drew the corner of the book anyway. It's you, from the back. I hope that's allowed.
     </when>
     <when is="kai">
-      @kai{vo emotion="smirk"}: The piano's got five notes now. Don't make it weird.
+      @kai{code="0010" vo emotion="smirk"}: The piano's got five notes now. Don't make it weird.
     </when>
   </match>
 </beat>

@@ -5,37 +5,37 @@ title: Around the rock
 ---
 
 <beat id="lanternAgain" on="explore" target="place.lantern" once="false">
-  @narrator: The lens turns on its bed of mercury, patient, enormous. The log waits on the desk.
+  @narrator{code="0010"}: The lens turns on its bed of mercury, patient, enormous. The log waits on the desk.
 </beat>
 
 <beat id="galleryAgain" on="explore" target="place.gallery" once="false">
-  @narrator: Wind, iron, and the gap where the rail should be. You keep one hand on the lantern glass.
+  @narrator{code="0010"}: Wind, iron, and the gap where the rail should be. You keep one hand on the lantern glass.
 </beat>
 
 <beat id="landingAgain" on="explore" target="place.landing" once="false">
-  @narrator: The tide has turned. The chain groans in its ring.
+  @narrator{code="0010"}: The tide has turned. The chain groans in its ring.
 </beat>
 
 <beat id="cottageAgain" on="explore" target="place.cottage" once="false">
-  @narrator: The stove has gone cold again.
+  @narrator{code="0010"}: The stove has gone cold again.
 </beat>
 
 <beat id="villageAgain" on="explore" target="place.village" once="false">
-  @narrator: Curtains move as you pass. Nobody comes out.
+  @narrator{code="0010"}: Curtains move as you pass. Nobody comes out.
 </beat>
 
 <beat id="thoughtsAlibi" on="nightfall" title="Thinking it over" when="holds('liar', ['maren']) && !holds('onRock', ['ada', 'midnight'])">
-  @inspector{mono}: Maren lied for someone. People lie for family.
+  @inspector{code="0010" mono}: Maren lied for someone. People lie for family.
 </beat>
 
 <beat id="thoughtsFigure" on="nightfall" title="Thinking it over" when="holds('misidentified', ['tobias', 'elias', 'dawn'])">
-  @inspector{mono}: Tobias did not lie. He saw a coat on the landing and put a dead man inside it.
+  @inspector{code="0010" mono}: Tobias did not lie. He saw a coat on the landing and put a dead man inside it.
 </beat>
 
 <beat id="thoughtsSuspect" on="nightfall" for="kind:person" title="Thinking it over" once="false" when="holds('suspect', [occasion.target])">
-  @inspector{mono}: {{occasion.target}}. The island has already hanged them in its mind. I have not, yet.
+  @inspector{code="0010" mono}: {{occasion.target}}. The island has already hanged them in its mind. I have not, yet.
 </beat>
 
 <beat id="fogOver" on="explore" target="kind:place" also once="false" when="run.weather == 'fog'">
-  @narrator: Fog stands in {{occasion.target}} like wet wool. The foghorn groans somewhere below.
+  @narrator{code="0010"}: Fog stands in {{occasion.target}} like wet wool. The foghorn groans somewhere below.
 </beat>

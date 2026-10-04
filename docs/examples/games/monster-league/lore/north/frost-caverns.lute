@@ -12,25 +12,25 @@ title: The Frostharbor caverns
 <beat id="fridaySwimmer" on="enterPlace" target="place.frostCaverns" title="The Friday swimmer" priority="20" once="day" when="clock.weekday == 4 && !holds('caught', ['shellnessie'])">
   ::bg{location="frost-caverns-pool" time="night"}
   ::music{action="change" mood="eerie" volume="down"}
-  @narrator: The big pool is not still today. Rings spread across it from the middle, one after another, as if something underneath is breathing.
-  @narrator: A long neck rises out of the water, then a head like a smooth grey stone. It looks at {{userName}} for a long moment.
+  @narrator{code="0010"}: The big pool is not still today. Rings spread across it from the middle, one after another, as if something underneath is breathing.
+  @narrator{code="0020"}: A long neck rises out of the water, then a head like a smooth grey stone. It looks at {{userName}} for a long moment.
   ::encounter{species="shellnessie" level="40"}
 </beat>
 
 <entry id="northPoolFridayCaught" on="enterPlace" target="place.frostCaverns" category="bark" priority="15" when="clock.weekday == 4 && holds('caught', ['shellnessie'])">
-  @narrator: It's Friday, and the big pool is perfectly still. Whatever used to come up here is travelling with you now.
+  @narrator{code="0010"}: It's Friday, and the big pool is perfectly still. Whatever used to come up here is travelling with you now.
 </entry>
 
 <beat id="enter" on="enterPlace" target="place.frostCaverns" title="The Frostharbor caverns" priority="10">
   ::bg{location="frost-caverns" time="night"}
   ::music{action="change" mood="eerie" volume="down"}
-  @narrator: The caverns open under the headland like a cathedral. Icicles as long as ladders hang over a black pool, and the sea booms somewhere below.
-  @narrator: A rope barrier and a sign: TOURS END HERE. BEYOND THIS POINT THE ICE DOES NOT MELT. — HALVARD.
+  @narrator{code="0010"}: The caverns open under the headland like a cathedral. Icicles as long as ladders hang over a black pool, and the sea booms somewhere below.
+  @narrator{code="0020"}: A rope barrier and a sign: TOURS END HERE. BEYOND THIS POINT THE ICE DOES NOT MELT. — HALVARD.
 </beat>
 
 <entry id="northCavernsAgain" on="enterPlace" target="place.frostCaverns" category="bark">
-  @narrator{when="clock.weekday != 4"}: The big pool lies flat and black. Guide Halvard's sign says the swimmer only comes up on Fridays.
-  @narrator{when="clock.weekday == 4"}: Drips fall from the icicles into the still pool.
+  @narrator{code="0010" when="clock.weekday != 4"}: The big pool lies flat and black. Guide Halvard's sign says the swimmer only comes up on Fridays.
+  @narrator{code="0020" when="clock.weekday == 4"}: Drips fall from the icicles into the still pool.
 </entry>
 
 // ── the ice below: frostwing ────────────────────────────────────────────────
@@ -38,25 +38,25 @@ title: The Frostharbor caverns
 <beat id="frostwing" on="enterPlace" target="place.frostDepths" title="The ice bird" once="false" when="!holds('caught', ['frostwing'])">
   ::bg{location="frost-depths" time="night"}
   ::music{action="change" mood="eerie" volume="down"}
-  @narrator: Past the rope the air hurts to breathe. The passage opens into a chamber of blue ice, and in the middle of it, folded like a sleeping swan, is a bird made of frost.
-  @narrator: It opens one eye. The temperature drops again.
+  @narrator{code="0010"}: Past the rope the air hurts to breathe. The passage opens into a chamber of blue ice, and in the middle of it, folded like a sleeping swan, is a bird made of frost.
+  @narrator{code="0020"}: It opens one eye. The temperature drops again.
   ::encounter{species="frostwing" level="50"}
 </beat>
 
 <entry id="northDepthsEmpty" on="enterPlace" target="place.frostDepths" category="bark" when="holds('caught', ['frostwing'])">
-  @narrator: The blue chamber is empty. For the first time in a long time, a drop of water runs down the ice.
+  @narrator{code="0010"}: The blue chamber is empty. For the first time in a long time, a drop of water runs down the ice.
 </entry>
 
 // ── trainers ────────────────────────────────────────────────────────────────
 
-<beat use="trainerBattle" id="frostCavernsHikerOrm" who="frostCavernsHikerOrm" intro="Brr! I came in for the view and I can't feel my beard. Warm me up with a battle!" win="Still cold. Still beaten." lose="Toasty!" prize="1800"/>
+<beat use="trainerBattle" id="frostCavernsHikerOrm" who="frostCavernsHikerOrm" intro="Brr! I came in for the view and I can't feel my beard. Warm me up with a battle!" win="Still cold. Still beaten." lose="Toasty!" prize="1800" instance="use-001"/>
 
 <entry id="northOrmAfter" on="talk" target="npc.frostCavernsHikerOrm" category="bark" when="holds('defeated', ['frostCavernsHikerOrm'])">
-  @frostCavernsHikerOrm: I went past the rope once. Came back with frost in my eyebrows and no memory of the last ten minutes.
+  @frostCavernsHikerOrm{code="0010"}: I went past the rope once. Came back with frost in my eyebrows and no memory of the last ten minutes.
 </entry>
 
-<beat use="trainerBattle" id="frostCavernsScientistPym" who="frostCavernsScientistPym" intro="The ice here is older than the town! And you are interrupting my measurements!" win="Measurement: you are strong. Unit: very." lose="Results inconclusive. For you." prize="2000"/>
+<beat use="trainerBattle" id="frostCavernsScientistPym" who="frostCavernsScientistPym" intro="The ice here is older than the town! And you are interrupting my measurements!" win="Measurement: you are strong. Unit: very." lose="Results inconclusive. For you." prize="2000" instance="use-002"/>
 
 <entry id="northPymAfter" on="talk" target="npc.frostCavernsScientistPym" category="bark" when="holds('defeated', ['frostCavernsScientistPym'])">
-  @frostCavernsScientistPym: The pool's temperature drops two degrees every Friday before noon. Something big displaces the warm water. My grant committee does not believe me.
+  @frostCavernsScientistPym{code="0010"}: The pool's temperature drops two degrees every Friday before noon. Something big displaces the warm water. My grant committee does not believe me.
 </entry>

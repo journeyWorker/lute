@@ -5,35 +5,35 @@ title: Dax, Seven-Fingers (SR)
 ---
 
 <beat id="daxIntro" on="summon" target="hero.dax" once="user" priority="10">
-  @dax{emotion="smug"}: Summoned, huh? Lucky you. I already took your coin purse. Kidding. Mostly.
-  @dax: Dax. Seven fingers, zero regrets. Point me at something locked.
+  @dax{code="0010" emotion="smug"}: Summoned, huh? Lucky you. I already took your coin purse. Kidding. Mostly.
+  @dax{code="0020"}: Dax. Seven fingers, zero regrets. Point me at something locked.
 </beat>
 
 <beat id="daxDupe" on="summon" target="hero.dax" once="false" priority="3" when="holds('owned', ['dax']) && occasion.payload.copies <= 6">
-  @dax{emotion="surprised"}: There's two of me now? Great. Now I've got an alibi.
+  @dax{code="0010" emotion="surprised"}: There's two of me now? Great. Now I've got an alibi.
 </beat>
 
 <beat id="daxTap" on="homeTap" target="hero.dax" once="day">
-  @dax{emotion="smug"}: Looking for your snacks? Weird. No idea. Try under my coat. No, don't.
+  @dax{code="0010" emotion="smug"}: Looking for your snacks? Weird. No idea. Try under my coat. No, don't.
 </beat>
 
 <beat id="daxBirthday" on="dailyReset" once="day" when="holds('celebrate', ['dax'])">
-  @dax{emotion="surprised"}: You got me a present? You didn't steal it? That's... new.
+  @dax{code="0010" emotion="surprised"}: You got me a present? You didn't steal it? That's... new.
 </beat>
 
-<beat use="bondStory" id="daxR1" who="dax" rank="r1" vow="You didn't lecture me. I noticed. I'm keeping that.">
-  @dax: You keep asking where the money goes. Fine.
-  @dax{emotion="sad"}: My sister. She's sick, the kind the Hollow King leaves behind. Medicine costs.
-  @dax{emotion="smug"}: So I steal from people who deserve it. Mostly nobles. Once, a goose.
+<beat use="bondStory" id="daxR1" who="dax" rank="r1" vow="You didn't lecture me. I noticed. I'm keeping that." instance="use-001">
+  @dax{code="0010"}: You keep asking where the money goes. Fine.
+  @dax{code="0020" emotion="sad"}: My sister. She's sick, the kind the Hollow King leaves behind. Medicine costs.
+  @dax{code="0030" emotion="smug"}: So I steal from people who deserve it. Mostly nobles. Once, a goose.
 </beat>
 
-<beat use="bondStory" id="daxR2" who="dax" rank="r2" prev="bonds.dax.daxR1" vow="Anything you lose, I'll find. Anything you want, I'll ask first.">
-  @dax: Mira asked about you. My sister. I told her you're the one who pays me.
-  @dax{emotion="smug"}: She said, "Pays you? Voluntarily?" She's sharp. Sharper than me.
+<beat use="bondStory" id="daxR2" who="dax" rank="r2" prev="bonds.dax.daxR1" vow="Anything you lose, I'll find. Anything you want, I'll ask first." instance="use-002">
+  @dax{code="0010"}: Mira asked about you. My sister. I told her you're the one who pays me.
+  @dax{code="0020" emotion="smug"}: She said, "Pays you? Voluntarily?" She's sharp. Sharper than me.
 </beat>
 
-<beat use="bondStory" id="daxR3" who="dax" rank="r3" prev="bonds.dax.daxR2" vow="Seven fingers. All of them on your side.">
-  @dax: Mira's better. Walking, laughing, stealing my socks. Your gem stipend covered the last of it.
-  @dax{emotion="sad"}: I don't know how to say thank you without a punchline.
-  @dax: So. No punchline. Thank you.
+<beat use="bondStory" id="daxR3" who="dax" rank="r3" prev="bonds.dax.daxR2" vow="Seven fingers. All of them on your side." instance="use-003">
+  @dax{code="0010"}: Mira's better. Walking, laughing, stealing my socks. Your gem stipend covered the last of it.
+  @dax{code="0020" emotion="sad"}: I don't know how to say thank you without a punchline.
+  @dax{code="0030"}: So. No punchline. Thank you.
 </beat>

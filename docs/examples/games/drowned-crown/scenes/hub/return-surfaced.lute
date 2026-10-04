@@ -11,6 +11,6 @@ when: "@surfaced"
 ## Rail
 
 ::bg{location="deck" time="dawn"}
-@narrator: For once, Ilo climbs the ladder on his own.
-@sefa{emotion="delighted"}: He swam! Brann, he swam up!
-@brann{emotion="wry"}: So he did. {{@fathoms}} fathoms and back. Don't make a habit of surprising me.
+@narrator{code="0010"}: For once, Ilo climbs the ladder on his own.
+@sefa{code="0010" emotion="delighted"}: He swam! Brann, he swam up!
+@brann{code="0010" emotion="wry"}: So he did. {{@fathoms}} fathoms and back. Don't make a habit of surprising me.

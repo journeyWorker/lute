@@ -6,6 +6,6 @@ title: First nets
 
 ## Nets
 
-@tomas: Grab an end. Pull when I say.
+@tomas{code="0010"}: Grab an end. Pull when I say.
 ::haul{fish="cod"}
-@tomas: A cod! Not bad for a first try.
+@tomas{code="0020"}: A cod! Not bad for a first try.

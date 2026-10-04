@@ -6,43 +6,43 @@ title: Hollowtown — the town and its people
 
 // Coming home: one line a day, by slot (the first visit is south.hollowtown).
 <entry id="southHollowtownMorning" on="enterTown" target="town.hollowtown" category="bark" once="day" when="@isMorning">
-  @narrator: Hollowtown in the morning: the fishing boats already out, the lab's windows already lit, and bread from somewhere.
+  @narrator{code="0010"}: Hollowtown in the morning: the fishing boats already out, the lab's windows already lit, and bread from somewhere.
 </entry>
 
 <entry id="southHollowtownDay" on="enterTown" target="town.hollowtown" category="bark" once="day" when="run.slot == 'day'">
-  @narrator: Nothing happens in Hollowtown in the afternoon. It is one of the things Hollowtown is proud of.
+  @narrator{code="0010"}: Nothing happens in Hollowtown in the afternoon. It is one of the things Hollowtown is proud of.
 </entry>
 
 <entry id="southHollowtownNight" on="enterTown" target="town.hollowtown" category="bark" once="day" when="@isNight">
-  @narrator: Home. Every window is dark except yours, where someone has left a lamp on for you.
+  @narrator{code="0010"}: Home. Every window is dark except yours, where someone has left a lamp on for you.
 </entry>
 
 // ── Granny Wren: the garden by the square; the parcel on the board ────────
 
 <beat id="wrenParcel" on="talk" target="npc.hollowtownWren" title="The parcel" priority="20" when="quest.southParcel.state == 'active' && visited('south.pebbletonTown.parcel')">
-  @hollowtownWren{emotion="happy"}: My seeds! From Pebbleton! Hale said it would be a week and you did it in a day. Don't tell Hale.
-  @hollowtownWren: Now I can plant the Bellsprout bed before the equinox. Take this for your trouble.
+  @hollowtownWren{code="0010" emotion="happy"}: My seeds! From Pebbleton! Hale said it would be a week and you did it in a day. Don't tell Hale.
+  @hollowtownWren{code="0020"}: Now I can plant the Bellsprout bed before the equinox. Take this for your trouble.
   ::give{item="oranBerry" qty="5"}
 </beat>
 
 <entry id="southWrenMorning" on="talk" target="npc.hollowtownWren" category="bark" priority="10" when="@isMorning">
-  @hollowtownWren: Up early! Good. The Bulbroots come out to drink the dew, and they don't mind being watched if you're quiet.
+  @hollowtownWren{code="0010"}: Up early! Good. The Bulbroots come out to drink the dew, and they don't mind being watched if you're quiet.
 </entry>
 
 <entry id="southWrenNight" on="talk" target="npc.hollowtownWren" category="bark" priority="10" when="@isNight">
-  @hollowtownWren{emotion="worried"}: You're out late. Your mother's lamp is still on. Go and let her see you.
+  @hollowtownWren{code="0010" emotion="worried"}: You're out late. Your mother's lamp is still on. Go and let her see you.
 </entry>
 
 <entry id="southWrenBadges" on="talk" target="npc.hollowtownWren" category="bark">
   <match>
     <when test="@badgeCount >= 2">
-      @hollowtownWren: Two badges, and all of Southshore talking about you. I told them I taught you to tie your shoes. I did, you know.
+      @hollowtownWren{code="0010"}: Two badges, and all of Southshore talking about you. I told them I taught you to tie your shoes. I did, you know.
     </when>
     <when test="@badgeCount == 1">
-      @hollowtownWren: A badge from Petra! She used to buy radishes from me when she was your size. Hard as a rock even then.
+      @hollowtownWren{code="0020"}: A badge from Petra! She used to buy radishes from me when she was your size. Hard as a rock even then.
     </when>
     <otherwise>
-      @hollowtownWren: Mind the tall grass, and mind your manners, and mind your monster. In that order.
+      @hollowtownWren{code="0030"}: Mind the tall grass, and mind your manners, and mind your monster. In that order.
     </otherwise>
   </match>
 </entry>
@@ -50,16 +50,16 @@ title: Hollowtown — the town and its people
 // ── Teo: nine and three quarters ─────────────────────────────────────────
 
 <entry id="southTeoNight" on="talk" target="npc.hollowtownTeo" category="bark" priority="10" when="@isNight">
-  @hollowtownTeo: I'm not out late. I'm looking at the Duskbats. That's educational.
+  @hollowtownTeo{code="0010"}: I'm not out late. I'm looking at the Duskbats. That's educational.
 </entry>
 
 <entry id="southTeoDex" on="talk" target="npc.hollowtownTeo" category="bark">
   <match>
     <when test="@dexCaught >= 10">
-      @hollowtownTeo{emotion="happy"}: {{@dexCaught}} kinds?! Show me the fossil ones! Show me the ones that bite! Show me all of them twice!
+      @hollowtownTeo{code="0010" emotion="happy"}: {{@dexCaught}} kinds?! Show me the fossil ones! Show me the ones that bite! Show me all of them twice!
     </when>
     <otherwise>
-      @hollowtownTeo: How many have you caught? {{@dexCaught}}? Kai says he's got twenty. Kai says a lot of things.
+      @hollowtownTeo{code="0020"}: How many have you caught? {{@dexCaught}}? Kai says he's got twenty. Kai says a lot of things.
     </otherwise>
   </match>
 </entry>
@@ -67,13 +67,13 @@ title: Hollowtown — the town and its people
 // ── Postman Hale ─────────────────────────────────────────────────────────
 
 <entry id="southHaleMorning" on="talk" target="npc.hollowtownHale" category="bark" priority="10" when="@isMorning">
-  @hollowtownHale: Morning post! Nothing for you. There's never anything for you. You don't know anyone who writes letters.
+  @hollowtownHale{code="0010"}: Morning post! Nothing for you. There's never anything for you. You don't know anyone who writes letters.
 </entry>
 
 <entry id="southHaleParcel" on="talk" target="npc.hollowtownHale" category="bark" priority="5" when="quest.southParcel.state == 'active'">
-  @hollowtownHale: You took the Wren parcel off the board? Bless you. My knees don't do the Hushwood any more. It's at the Pebbleton Mart, behind the counter.
+  @hollowtownHale{code="0010"}: You took the Wren parcel off the board? Bless you. My knees don't do the Hushwood any more. It's at the Pebbleton Mart, behind the counter.
 </entry>
 
 <entry id="southHale" on="talk" target="npc.hollowtownHale" category="bark">
-  @hollowtownHale: Letters for Tidewell go by boat, letters for Pebbleton go by me, and letters for Kai go straight back to the professor. Unopened. Every one.
+  @hollowtownHale{code="0010"}: Letters for Tidewell go by boat, letters for Pebbleton go by me, and letters for Kai go straight back to the professor. Unopened. Every one.
 </entry>

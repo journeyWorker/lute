@@ -10,4 +10,4 @@ after: 'visited("spine.lab")'
 
 ## The call
 
-@profAlder{vo}: {{userName}}! The Dex just pinged. Your first wild catch! Every one you catch teaches me something. Keep going.
+@profAlder{code="0010" vo}: {{userName}}! The Dex just pinged. Your first wild catch! Every one you catch teaches me something. Keep going.

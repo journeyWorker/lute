@@ -12,8 +12,8 @@ after: 'visited("spine.hallOfFame")'
 ::bg{location="player-house" time="morning"}
 ::music{action="start" mood="calm" volume="down"}
 ::auto{character="mom" anchor="right" action="enter"}
-@mom{emotion="happy"}: The Champion, sleeping in my spare room. The neighbours won't stop knocking.
-@mom: Kai came by. He said to tell you he's training on Route 1 and you'd better not get lazy.
-@mom{emotion="worried"}: And the professor called. Something about a cave north of Frostharbor that nobody has come back from. He said you'd know what that means.
+@mom{code="0010" emotion="happy"}: The Champion, sleeping in my spare room. The neighbours won't stop knocking.
+@mom{code="0020"}: Kai came by. He said to tell you he's training on Route 1 and you'd better not get lazy.
+@mom{code="0030" emotion="worried"}: And the professor called. Something about a cave north of Frostharbor that nobody has come back from. He said you'd know what that means.
 ::auto{character="mom" action="exit"}
-@narrator: The Rift Cavern is open. Somewhere under Verdane, something very old is awake.
+@narrator{code="0010"}: The Rift Cavern is open. Somewhere under Verdane, something very old is awake.

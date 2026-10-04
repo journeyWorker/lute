@@ -12,52 +12,52 @@ state:
 
 ## Valves
 
-@narrator: The key turns on the bottom of the black tub. The valves are stiff with forty years of lime.
-@nell{mono when="entry.drawing.read"}: Blue first, then red, then let it go. A child drew that. A child who had watched.
+@narrator{code="0010"}: The key turns on the bottom of the black tub. The valves are stiff with forty years of lime.
+@nell{code="0010" mono when="entry.drawing.read"}: Blue first, then red, then let it go. A child drew that. A child who had watched.
 <branch id="first" prompt="Which valve first?">
   <choice id="blue" label="The blue valve">
-    @narrator: Cold water coughs into the tub. The surface trembles; the key rolls over once.
+    @narrator{code="0020"}: Cold water coughs into the tub. The surface trembles; the key rolls over once.
   </choice>
   <choice id="red" label="The red valve">
-    @narrator: The pipe screams. Steam comes off the black water and the canvas lid of the next tub flaps like something is breathing under it.
+    @narrator{code="0030"}: The pipe screams. Steam comes off the black water and the canvas lid of the next tub flaps like something is breathing under it.
     ::set{scene.wrong += 1}
   </choice>
 </branch>
 <branch id="second" prompt="Then?">
   <choice id="red" label="The red valve">
-    @narrator: Hot meets cold. The black water begins, very slowly, to turn clear.
+    @narrator{code="0040"}: Hot meets cold. The black water begins, very slowly, to turn clear.
   </choice>
   <choice id="blue" label="More cold">
-    @narrator: The water rises over the lip of the tub and across the tiles, towards the drain in the floor, which is plugged with hair.
+    @narrator{code="0050"}: The water rises over the lip of the tub and across the tiles, towards the drain in the floor, which is plugged with hair.
     ::set{scene.wrong += 1}
   </choice>
 </branch>
 ::next{to="flooded" when="scene.wrong >= 2"}
 <branch id="third" prompt="And then?">
   <choice id="drain" label="Pull the chain">
-    @narrator: A gulp from deep in the building, and the tub empties in one long swallow.
+    @narrator{code="0060"}: A gulp from deep in the building, and the tub empties in one long swallow.
   </choice>
   <choice id="wait" label="Wait and watch">
-    @narrator: You wait. The water waits with you. Then the canvas lid of the next tub lifts, a finger's width.
+    @narrator{code="0070"}: You wait. The water waits with you. Then the canvas lid of the next tub lifts, a finger's width.
     ::set{scene.wrong += 1}
   </choice>
 </branch>
 ::next{to="flooded" when="scene.wrong >= 2"}
 <match on="scene.wrong">
   <when is="0">
-    @narrator: The brass key lies in the empty tub in a ring of grey silt. It is warm, like it's been held.
+    @narrator{code="0080"}: The brass key lies in the empty tub in a ring of grey silt. It is warm, like it's been held.
     ::give{item="brassKey"}
     ::assert{solved(hydroValves)}
   </when>
   <otherwise>
-    @narrator: The water rises to your waist before you get the door open and fall out onto the corridor floor. The key is still down there.
+    @narrator{code="0090"}: The water rises to your waist before you get the door open and fall out onto the corridor floor. The key is still down there.
     ::fright{amount=2}
   </otherwise>
 </match>
 ::end{reason="valves"}
 ::mark{id="flooded"}
-@narrator: The door behind you is shut. You do not remember it shutting. The water is at your chest, then your chin, and the canvas lids are all open now.
-@maud{vo}: In you go, dear. It's only water. It's only the night.
+@narrator{code="0100"}: The door behind you is shut. You do not remember it shutting. The water is at your chest, then your chin, and the canvas lids are all open now.
+@maud{code="0010" vo}: In you go, dear. It's only water. It's only the night.
 ::set{run.fate = "drowned"}
 ::set{user.deaths += 1}
 ::end{reason="drowned"}

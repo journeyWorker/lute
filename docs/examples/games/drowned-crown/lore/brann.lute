@@ -7,38 +7,38 @@ title: Captain Brannoch
 beats outrank it when their moment comes. */
 
 <beat id="oath" on="talk" target="npc.brann" title="The captain's terms" priority="40" once="user">
-  @brann{emotion="grim"}: Sit. No, sit. I've dragged four bodies out of that water this year and you're the only one that argued.
-  @brann: I don't know what you are, boy. I know what I want. Come up on your own, once. Then we'll talk about the crown.
+  @brann{code="0010" emotion="grim"}: Sit. No, sit. I've dragged four bodies out of that water this year and you're the only one that argued.
+  @brann{code="0020"}: I don't know what you are, boy. I know what I want. Come up on your own, once. Then we'll talk about the crown.
   <branch id="oathAnswer" prompt="Brann waits.">
     <choice id="swear" label="\"I'll come up on my own.\"">
-      @ilo: I'll come up on my own.
-      @brann{emotion="wry"}: Everyone swears that. Go on, then.
+      @ilo{code="0010"}: I'll come up on my own.
+      @brann{code="0030" emotion="wry"}: Everyone swears that. Go on, then.
       ::set{user.bond.brann += 1}
       ::accept{quest="brannOath"}
     </choice>
     <choice id="shrug" label="Say nothing">
-      @brann: Suit yourself. The rope's there when you want it.
+      @brann{code="0040"}: Suit yourself. The rope's there when you want it.
     </choice>
   </branch>
 </beat>
 
 <beat id="regentTold" on="talk" target="npc.brann" title="Telling Brann" priority="50" once="user" after="visited('hub.regentFell')" when="holds('felled', ['regent']) && !holds('told', ['brann', 'regent'])">
-  @ilo: The Regent is dead. I killed it.
-  @brann{emotion="surprised"}: ...Say that again, slower.
-  @ilo: It came apart in the current. It said the crown would drown me slower than the sea did.
-  @brann{emotion="grim"}: Your father wore it eleven years. It drowned him in nine.
+  @ilo{code="0010"}: The Regent is dead. I killed it.
+  @brann{code="0010" emotion="surprised"}: ...Say that again, slower.
+  @ilo{code="0020"}: It came apart in the current. It said the crown would drown me slower than the sea did.
+  @brann{code="0020" emotion="grim"}: Your father wore it eleven years. It drowned him in nine.
   ::assert{told(brann, regent)}
   ::set{user.bond.brann += 1}
 </beat>
 
 <beat id="early" on="talk" target="npc.brann" title="Brann, early days" priority="10" once="false" when="user.runs <= 2">
-  @brann: Eat something. Then go down and die less.
+  @brann{code="0010"}: Eat something. Then go down and die less.
 </beat>
 
 <beat id="middling" on="talk" target="npc.brann" title="Brann, getting used to it" priority="10" once="false" when="user.runs >= 3 && user.runs <= 5">
-  @brann{emotion="wry"}: {{user.runs}} dives. The crew has a betting pool on you. I'm not in it. Yet.
+  @brann{code="0010" emotion="wry"}: {{user.runs}} dives. The crew has a betting pool on you. I'm not in it. Yet.
 </beat>
 
 <beat id="veteranTalk" on="talk" target="npc.brann" title="Brann, an old hand" priority="10" once="false" when="@veteran">
-  @brann: You go over that rail like a man going to work. I don't like it, and I can't stop you.
+  @brann{code="0010"}: You go over that rail like a man going to work. I don't like it, and I can't stop you.
 </beat>

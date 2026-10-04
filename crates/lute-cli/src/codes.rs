@@ -1675,8 +1675,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-COMPONENT-INSTANCE-UNTAGGED",
-        summary: "A `::use` has no explicit `instance` and is using the transitional positional fallback.",
-        spec: &["dsl 0.36.0 §2.3"],
+        summary: "With `identity.requireStable`, a `::use` has no explicit `instance` and is using the positional fallback; run `lute tag` to write one.",
+        spec: &["dsl 0.36.0 §2.2"],
     },
     Code {
         code: "W-COMPONENT-UNVERIFIED",
@@ -1750,8 +1750,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-LINE-CODE-UNTAGGED",
-        summary: "A content line has no explicit per-speaker `code` and compiler allocation is being used.",
-        spec: &["dsl 0.36.0 §2.3"],
+        summary: "With `identity.requireStable`, a content line has no explicit per-speaker `code` and compiler allocation is being used; run `lute tag` to write one.",
+        spec: &["dsl 0.36.0 §2.2"],
     },
     Code {
         code: "W-LUTE-VERSION-STALE",

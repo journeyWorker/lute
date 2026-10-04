@@ -20,4 +20,4 @@ beat:
 ::body
 ::set{run.aff[@who] += 1}
 ::set{run.lanterns += 1}
-@narrator: Before the bell, {{@who}} folds a paper lantern with you and writes a wish on it, hiding the words with one hand.
+@narrator{code="0010"}: Before the bell, {{@who}} folds a paper lantern with you and writes a wish on it, hiding the words with one hand.

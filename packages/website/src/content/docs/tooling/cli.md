@@ -791,9 +791,31 @@ $ lute fmt [--check] <path>…
 $ lute diff <before> <after> [--json]
 $ lute patch <dir> <patch.json> [--dry-run] [--json]
 $ lute context <dir> --target <kind:key> [--max-items N] [--run <FILE>] [--json]
+
 $ lute context <dir> --at <file>:<line>:<column> [--max-items N] [--run <FILE>] [--json]
 ```
+### Identity migration in `tag` and `diff` (0.36.0)
 
+`lute tag <path>` now back-fills missing line `code` values and missing
+component invocation keys. It preserves every authored value, writes
+`instance="use-001"`, `use-002`, … in source order within each owner and
+component, and is idempotent. `--force` still retags line codes only; it never
+rewrites an explicit `instance`.
+With `identity.requireStable: true`, projects diagnose untagged lines and
+`::use` calls until tagging completes. In JSON diff output, an authored
+`identity.renames` ledger produces a row shaped
+`{kind:"renamed", node:<to>, from:<old>, to:<new>, before, after, locations:[old,new], declarationLocation:{file,span}}`.
+A removed or added save-shaped identity without a matching ledger entry carries
+`unmappedIdentity: true`; Lute never infers a rename from position or text.
+
+```lute check
+---
+kind: scene
+id: cli-identity
+---
+## Opening
+@narrator{code="intro"}: Ready.
+```
 `fmt` formats `.lute`, project/schema YAML, and configured plugin YAML in
 deterministic order. YAML values are opaque; it never reformats arbitrary YAML.
 Without `--check`, it writes canonical text; `--check` writes nothing and exits

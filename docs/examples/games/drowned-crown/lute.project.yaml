@@ -8,6 +8,8 @@ profiles:
     plugins: { game.occasions: true }
 # Frontmatter every document inherits (dsl 0.10.0 §6): no document repeats
 # its language version or its schema imports.
+identity:
+  requireStable: true
 defaults:
   luteVersion: "0.35.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]

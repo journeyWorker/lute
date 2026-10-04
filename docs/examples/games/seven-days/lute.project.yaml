@@ -6,6 +6,8 @@ defaultProfile: vn
 profiles:
   vn:
     plugins: { sevendays.clock: true }
+identity:
+  requireStable: true
 defaults:
   luteVersion: "0.35.0"
   contentLang: en-US

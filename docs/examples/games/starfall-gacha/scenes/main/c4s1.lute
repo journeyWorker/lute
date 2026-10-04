@@ -9,16 +9,16 @@ once: user
 
 ## The shore
 
-@narrator: Past the Hollow Keep the ground stops. What comes after it is water, and every wave carries a lantern.
-@lumi{emotion="surprised"}: Those are the lanterns from the throne room. They floated all the way out here.
-@lumi{when="holds('learned', ['lanternSea'])"}: You read the codex page, didn't you? Then you know: every lantern is a wish somebody gave up on.
-@lumi{when="!holds('learned', ['lanternSea'])"}: I don't know what they are. There's a page about it in the Archive, if you're the reading type.
+@narrator{code="0010"}: Past the Hollow Keep the ground stops. What comes after it is water, and every wave carries a lantern.
+@lumi{code="0010" emotion="surprised"}: Those are the lanterns from the throne room. They floated all the way out here.
+@lumi{code="0020" when="holds('learned', ['lanternSea'])"}: You read the codex page, didn't you? Then you know: every lantern is a wish somebody gave up on.
+@lumi{code="0030" when="!holds('learned', ['lanternSea'])"}: I don't know what they are. There's a page about it in the Archive, if you're the reading type.
 ::assert{learned(lanternSea)}
 <branch id="c4s1Boat" prompt="A boat is tied to the last post.">
   <choice id="row" label="Row out.">
-    @lumi: I'll steer. You row. That's how partnerships work.
+    @lumi{code="0040"}: I'll steer. You row. That's how partnerships work.
   </choice>
   <choice id="wait" label="Wait for the tide.">
-    @lumi: Fine by me. The tide's never late. That's the one thing it's good at.
+    @lumi{code="0050"}: Fine by me. The tide's never late. That's the one thing it's good at.
   </choice>
 </branch>

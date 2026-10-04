@@ -8,21 +8,21 @@ once: user
 
 ## The throne room
 
-@hollow{emotion="angry"}: You. The Wishkeeper. Do you know what it is to be hungry for a thousand years?
-@hollow: Every star I swallowed, I stayed hungry. Every one. Nothing fills the dark.
-@narrator{when="count('bondRank', ['_', 'r3']) >= 1"}: Someone who is sworn to you steps up at your shoulder, without being asked.
-@narrator{when="count('bondRank', ['_', 'r3']) == 0"}: Your heroes hang back. They've come this far for the stars. Maybe not yet for you.
+@hollow{code="0010" emotion="angry"}: You. The Wishkeeper. Do you know what it is to be hungry for a thousand years?
+@hollow{code="0020"}: Every star I swallowed, I stayed hungry. Every one. Nothing fills the dark.
+@narrator{code="0010" when="count('bondRank', ['_', 'r3']) >= 1"}: Someone who is sworn to you steps up at your shoulder, without being asked.
+@narrator{code="0020" when="count('bondRank', ['_', 'r3']) == 0"}: Your heroes hang back. They've come this far for the stars. Maybe not yet for you.
 <branch id="c3s8Choice" prompt="The Hollow King is between you and the lanterns.">
   <choice id="strike" label="Strike him down.">
-    @hollow{emotion="angry"}: Then I'll be hungry in the ground instead.
+    @hollow{code="0030" emotion="angry"}: Then I'll be hungry in the ground instead.
   </choice>
   <choice id="offer" label="Offer him a star.">
-    @hollow{emotion="smug"}: A gift? To me? That's... not how this goes.
-    @lumi{emotion="surprised"}: That's MY star! That's... okay, fine, give it to him. See what happens.
+    @hollow{code="0040" emotion="smug"}: A gift? To me? That's... not how this goes.
+    @lumi{code="0010" emotion="surprised"}: That's MY star! That's... okay, fine, give it to him. See what happens.
   </choice>
 </branch>
 
 ## To be continued
 
-@narrator: The lanterns crack open, a thousand at once. The sky fills in, not all the way, but enough.
-@lumi{emotion="happy"}: We did it! Mostly! Chapter 4 when the stars are ready!
+@narrator{code="0030"}: The lanterns crack open, a thousand at once. The sky fills in, not all the way, but enough.
+@lumi{code="0020" emotion="happy"}: We did it! Mostly! Chapter 4 when the stars are ready!

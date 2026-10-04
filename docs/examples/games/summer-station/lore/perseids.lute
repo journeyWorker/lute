@@ -10,11 +10,11 @@ title: Counting meteors on the roof
 // without them W-CAST-ABSENT fires on every Sol line.
 
 <beat id="record" on="shower" title="A record count" priority="10" once="run" when="occasion.payload.count >= 60 && holds('at', ['sol', 'roof'])">
-  @sol{emotion="laughing"}: {{occasion.payload.count}}! That beats my father's page in the '98 log. Write it down. No — I'll write it down. You'll round.
+  @sol{code="0010" emotion="laughing"}: {{occasion.payload.count}}! That beats my father's page in the '98 log. Write it down. No — I'll write it down. You'll round.
   ::set{run.aff.sol += 1}
 </beat>
 
 <beat id="tally" on="shower" title="Another one" once="false" when="holds('at', ['sol', 'roof'])">
-  @sol{emotion="fond" when="occasion.payload.count == 1"}: That's one. Say a number every time.
-  @sol{emotion="happy" when="occasion.payload.count > 1"}: {{occasion.payload.count:plural(# meteor|# meteors)}}. Keep going.
+  @sol{code="0010" emotion="fond" when="occasion.payload.count == 1"}: That's one. Say a number every time.
+  @sol{code="0020" emotion="happy" when="occasion.payload.count > 1"}: {{occasion.payload.count:plural(# meteor|# meteors)}}. Keep going.
 </beat>

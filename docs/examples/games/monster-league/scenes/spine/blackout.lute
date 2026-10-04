@@ -10,5 +10,5 @@ priority: -10
 ## The Center
 
 ::bg{location="monster-center" time="day"}
-@narrator: {{userName}} blacked out, and woke up at the last Monster Center with a lighter purse.
-@nurse: Your monsters are fine now. Please be careful out there.
+@narrator{code="0010"}: {{userName}} blacked out, and woke up at the last Monster Center with a lighter purse.
+@nurse{code="0010"}: Your monsters are fine now. Please be careful out there.

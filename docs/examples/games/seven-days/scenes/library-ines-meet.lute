@@ -12,25 +12,25 @@ priority: 20
 
 ::bg{location="library_reading_room" time="afternoon"}
 ::music{action="start" mood="peaceful" volume="down"}
-@narrator: The library used to be a customs house. The counters where men weighed contraband now hold returned paperbacks, swollen with sea air.
+@narrator{code="0010"}: The library used to be a customs house. The counters where men weighed contraband now hold returned paperbacks, swollen with sea air.
 ::auto{character="ines" anchor="center" action="fadeInUp"}
 ::set{run.seen.ines = run.day}
-@ines{emotion="neutral"}: We close at five. And you're dripping on the atlas.
-@sol: Sorry. Pell sent me. She said you know about paper?
-@ines{emotion="surprised"}: Pell Arden sent someone to me? On purpose?
-@ines{emotion="shy"}: I mean. Yes. I know about paper. I know too much about paper, according to everyone.
+@ines{code="0010" emotion="neutral"}: We close at five. And you're dripping on the atlas.
+@sol{code="0010"}: Sorry. Pell sent me. She said you know about paper?
+@ines{code="0020" emotion="surprised"}: Pell Arden sent someone to me? On purpose?
+@ines{code="0030" emotion="shy"}: I mean. Yes. I know about paper. I know too much about paper, according to everyone.
 
 <branch id="inesFirst" prompt="Ines is holding a book to her chest like a shield.">
   <choice id="ask" label="“Then tell me everything.”">
     ::set{run.aff.ines += 1}
-    @ines{emotion="happy"}: Mulberry. Kozo, if you can get it. It's long-fibred, so it holds when it's wet — the water gets in between the fibres instead of breaking them.
-    @ines{emotion="shy"}: …That was a lot. Sorry.
+    @ines{code="0040" emotion="happy"}: Mulberry. Kozo, if you can get it. It's long-fibred, so it holds when it's wet — the water gets in between the fibres instead of breaking them.
+    @ines{code="0050" emotion="shy"}: …That was a lot. Sorry.
   </choice>
   <choice id="brief" label="“Just the short version.”">
-    @ines{emotion="neutral"}: Don't use printer paper. It dies in the sea.
+    @ines{code="0060" emotion="neutral"}: Don't use printer paper. It dies in the sea.
   </choice>
 </branch>
 
-@ines: The good sheets come with the Wednesday delivery. Come back Wednesday afternoon and I'll put some aside.
+@ines{code="0070"}: The good sheets come with the Wednesday delivery. Come back Wednesday afternoon and I'll put some aside.
 ::auto{character="ines" action="fadeOut"}
-@sol{mono}: Wednesday afternoon. I should write that down.
+@sol{code="0020" mono}: Wednesday afternoon. I should write that down.

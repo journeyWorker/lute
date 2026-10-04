@@ -14,18 +14,18 @@ when: "@runsAtLeast(2)"
 
 ::bg{location="chartroom" time="day"}
 ::auto{character="sefa" anchor="center" action="fadeInUp"}
-@sefa{emotion="shy"}: You've been down twice now. Twice more than anyone I've ever drawn a map for.
-@sefa: Every time you come up, tell me what you saw. Halls, doors, what lives in them. I'll draw it.
-@ilo: And when the map is done?
-@sefa{emotion="content"}: Then the next person who goes down doesn't have to die to learn it.
+@sefa{code="0010" emotion="shy"}: You've been down twice now. Twice more than anyone I've ever drawn a map for.
+@sefa{code="0020"}: Every time you come up, tell me what you saw. Halls, doors, what lives in them. I'll draw it.
+@ilo{code="0010"}: And when the map is done?
+@sefa{code="0030" emotion="content"}: Then the next person who goes down doesn't have to die to learn it.
 
 <branch id="chartAnswer" prompt="Sefa holds out a blank sheet.">
   <choice id="yes" label="Take the sheet">
-    @ilo: The long hall first. I know the long hall.
+    @ilo{code="0020"}: The long hall first. I know the long hall.
     ::set{user.bond.sefa += 1}
     ::accept{quest="sefaChart"}
   </choice>
   <choice id="later" label="Not yet">
-    @sefa{emotion="sad"}: Oh. Well. The sheet will keep.
+    @sefa{code="0040" emotion="sad"}: Oh. Well. The sheet will keep.
   </choice>
 </branch>

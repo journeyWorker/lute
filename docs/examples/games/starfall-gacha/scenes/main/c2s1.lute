@@ -8,7 +8,7 @@ once: user
 
 ## Cold forges
 
-@narrator: Every forge in town is cold. Every one but the last.
-@bram{emotion="happy"}: CUSTOMERS! Finally! Sit! Sharpen! Doris hasn't had a visitor in a month!
-@aria: Why is your forge the only one burning?
-@bram{emotion="sad"}: Because I don't let it go out. Not for a second. Not since the dark came.
+@narrator{code="0010"}: Every forge in town is cold. Every one but the last.
+@bram{code="0010" emotion="happy"}: CUSTOMERS! Finally! Sit! Sharpen! Doris hasn't had a visitor in a month!
+@aria{code="0010"}: Why is your forge the only one burning?
+@bram{code="0020" emotion="sad"}: Because I don't let it go out. Not for a second. Not since the dark came.

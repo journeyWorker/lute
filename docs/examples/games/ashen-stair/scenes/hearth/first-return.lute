@@ -13,7 +13,7 @@ when: 'user.runs == 1 && @cameBackFromFall'
 
 ::bg{location="hearth" time="night"}
 @narrator{code="0010"}: Warm stone. Ash. The same crack in the ceiling she counted before she climbed.
-::use{component="hearthFire" flare="low"}
+::use{component="hearthFire" flare="low" instance="use-001"}
 @maud{code="0010" emotion="warm"}: Told you. Right where you started, and the kettle's hardly cooled.
 @wren{code="0010" mono}: I felt it. I felt all of it.
 <match on="prev.run.fellTo">

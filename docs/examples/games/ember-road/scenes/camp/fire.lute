@@ -13,14 +13,14 @@ priority: 100
 ::music{action="change" mood="peaceful" volume="down"}
 <match on="run.night">
   <when is="..1">
-    @narrator: The first night out of Ostwick. The wagons circle, the mules complain, and somebody burns the beans.
+    @narrator{code="0010"}: The first night out of Ostwick. The wagons circle, the mules complain, and somebody burns the beans.
   </when>
   <when is="2">
-    @narrator: The mill green at Harrow's Ford. The Marrow folk watch the Company fires from behind their shutters.
+    @narrator{code="0020"}: The mill green at Harrow's Ford. The Marrow folk watch the Company fires from behind their shutters.
   </when>
   <otherwise>
-    @narrator: The {{run.night:ordinalWord}} night, within sight of the Tollbridge. Nobody sings.
+    @narrator{code="0030"}: The {{run.night:ordinalWord}} night, within sight of the Tollbridge. Nobody sings.
   </otherwise>
 </match>
-@narrator{when="count('inParty', ['_']) <= 1"}: The fire is too big for the people left around it.
-@narrator{when="count('inParty', ['_']) >= 3"}: Three companions, one fire, and at least four opinions about everything.
+@narrator{code="0040" when="count('inParty', ['_']) <= 1"}: The fire is too big for the people left around it.
+@narrator{code="0050" when="count('inParty', ['_']) >= 3"}: Three companions, one fire, and at least four opinions about everything.

@@ -11,4 +11,4 @@ when: "@runsAtLeast(2)"
 
 ## Rigging
 
-@narrator: The gulls have learned his face. They wait on the yard-arm for scraps.
+@narrator{code="0010"}: The gulls have learned his face. They wait on the yard-arm for scraps.

@@ -9,10 +9,10 @@ title: This term's errands
 <quest id="festivalPrep" title="Fold three lanterns for the festival" start="true">
   <objective id="fold" title="Fold three lanterns before the festival" done="run.lanterns >= 3" by="clock.index >= 17"/>
   <on event="questComplete">
-    @nana{emotion="happy"}: Three! That's three! Our window won't be the dark one this year.
+    @nana{code="0010" emotion="happy"}: Three! That's three! Our window won't be the dark one this year.
   </on>
   <on event="questFailed">
-    @nana{emotion="sad"}: The festival's tonight and we've got two sad lanterns and a paper crane. It's fine. It's — it's fine.
+    @nana{code="0020" emotion="sad"}: The festival's tonight and we've got two sad lanterns and a paper crane. It's fine. It's — it's fine.
   </on>
 </quest>
 
@@ -21,10 +21,10 @@ title: This term's errands
 <quest id="studyGroup" title="Study with Soren before the midterm">
   <objective id="sessions" title="Study twice in the library before the exam" done="run.study >= 2" by="clock.index >= 9"/>
   <on event="questComplete">
-    @soren{emotion="happy"}: You'll be fine. Better than fine. Don't tell anyone I said so; they'll all want sessions.
+    @soren{code="0010" emotion="happy"}: You'll be fine. Better than fine. Don't tell anyone I said so; they'll all want sessions.
   </on>
   <on event="questFailed">
-    @soren{emotion="sad" when="!holds('locked', ['soren'])"}: We ran out of evenings. You'll still be fine. Probably.
+    @soren{code="0020" emotion="sad" when="!holds('locked', ['soren'])"}: We ran out of evenings. You'll still be fine. Probably.
   </on>
 </quest>
 
@@ -35,9 +35,9 @@ title: This term's errands
 <quest id="lampDuty" title="Light the dorm window this week" start="true" rearm="clock.weekday == 0">
   <objective id="light" title="Light the dorm lanterns before Sunday night" done="run.lampDay >= run.day - clock.weekday" by="clock.weekday == 6 && run.slot == 'evening'"/>
   <on event="questComplete">
-    @nana{emotion="happy"}: Look at that. A lit window, and I didn't even have to nag.
+    @nana{code="0010" emotion="happy"}: Look at that. A lit window, and I didn't even have to nag.
   </on>
   <on event="questFailed">
-    @nana{emotion="sad"}: Sunday night, dark window. The seniors are going to talk.
+    @nana{code="0020" emotion="sad"}: Sunday night, dark window. The seniors are going to talk.
   </on>
 </quest>

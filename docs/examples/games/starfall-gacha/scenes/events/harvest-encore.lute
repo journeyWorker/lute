@@ -14,6 +14,6 @@ next time they clear the stage. */
 
 ## A year older
 
-@cyra{emotion="sleepy"}: You came back. The moon remembers you. So do I, vaguely. I was asleep for part of it.
-@pim{emotion="smug"}: Same moon cakes, same moth. New prices.
-@cyra{emotion="happy"}: Stay for the moonrise. It's better the second time. You know what's coming, so you can watch the faces instead.
+@cyra{code="0010" emotion="sleepy"}: You came back. The moon remembers you. So do I, vaguely. I was asleep for part of it.
+@pim{code="0010" emotion="smug"}: Same moon cakes, same moth. New prices.
+@cyra{code="0020" emotion="happy"}: Stay for the moonrise. It's better the second time. You know what's coming, so you can watch the faces instead.

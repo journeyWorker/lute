@@ -1182,7 +1182,7 @@ mod tests {
         assert!(graph.edges.iter().any(|edge| {
             edge.kind == "contains"
                 && edge.source == NodeKey::new(NodeKind::Beat, "post.mum")
-                && edge.target == NodeKey::new(NodeKind::Line, "post.mum.postcard#1.narrator_0010")
+                && edge.target == NodeKey::new(NodeKind::Line, "post.mum.postcard#use-001.narrator_0010")
         }));
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -1680,9 +1680,9 @@ Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposal
 
 ### W-COMPONENT-INSTANCE-UNTAGGED
 
-A `::use` has no explicit `instance` and is using the transitional positional fallback.
+With `identity.requireStable`, a `::use` has no explicit `instance` and is using the positional fallback; run `lute tag` to write one.
 
-Spec: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+Spec: [dsl 0.36.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### W-COMPONENT-UNVERIFIED
 
@@ -1770,9 +1770,9 @@ Spec: [dsl 0.8.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/propo
 
 ### W-LINE-CODE-UNTAGGED
 
-A content line has no explicit per-speaker `code` and compiler allocation is being used.
+With `identity.requireStable`, a content line has no explicit per-speaker `code` and compiler allocation is being used; run `lute tag` to write one.
 
-Spec: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+Spec: [dsl 0.36.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### W-LUTE-VERSION-STALE
 

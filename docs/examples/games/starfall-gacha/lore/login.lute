@@ -7,42 +7,42 @@ title: Login bonus
 once a day; the engine pays the gift the ::stamp animation shows. */
 
 <beat id="welcomeBack" on="login" once="day" priority="30" when="user.daysAway >= 7">
-  @lumi{emotion="surprised"}: You're back! {{user.daysAway:plural(# day|# days)}}! I kept your seat warm. Mostly by sitting on it.
-  @lumi{when="@anyEventLive"}: And you're just in time. There's a festival on!
+  @lumi{code="0010" emotion="surprised"}: You're back! {{user.daysAway:plural(# day|# days)}}! I kept your seat warm. Mostly by sitting on it.
+  @lumi{code="0020" when="@anyEventLive"}: And you're just in time. There's a festival on!
 </beat>
 
 <beat id="standardCard" on="login" once="day" priority="20">
   <match on="user.loginStreak">
     <when is="7..">
-      ::use{component="loginStamp" card="standard" line="Seven days straight! The big gift, as promised. Don't spend it all on one pull. Or do."}
+      ::use{component="loginStamp" card="standard" line="Seven days straight! The big gift, as promised. Don't spend it all on one pull. Or do." instance="use-001"}
     </when>
     <when is="2..6">
-      ::use{component="loginStamp" card="standard" line="Day {{user.loginStreak}} of your streak. Keep it going, Wishkeeper!"}
+      ::use{component="loginStamp" card="standard" line="Day {{user.loginStreak}} of your streak. Keep it going, Wishkeeper!" instance="use-002"}
     </when>
     <otherwise>
-      ::use{component="loginStamp" card="standard" line="Welcome in! Here's today's stamp."}
+      ::use{component="loginStamp" card="standard" line="Welcome in! Here's today's stamp." instance="use-003"}
     </otherwise>
   </match>
 </beat>
 
 <beat id="harvestCard" on="login" once="day" priority="10" when="@harvestLive">
-  ::use{component="loginStamp" card="harvest" who="pim" line="Harvest card! One moon cake per stamp. Don't eat the stamp."}
-  @pim{emotion="smug" when="@harvestRerun"}: Back for the encore? The moon cakes are the same. The moon's a little older.
+  ::use{component="loginStamp" card="harvest" who="pim" line="Harvest card! One moon cake per stamp. Don't eat the stamp." instance="use-004"}
+  @pim{code="0010" emotion="smug" when="@harvestRerun"}: Back for the encore? The moon cakes are the same. The moon's a little older.
 </beat>
 
 <beat id="starfallCard" on="login" once="day" priority="10" when="@starfallLive">
-  ::use{component="loginStamp" card="starfall" who="pim" line="Starfall card! Catch a comet, get a stamp. Well. I catch it. You get the stamp."}
+  ::use{component="loginStamp" card="starfall" who="pim" line="Starfall card! Catch a comet, get a stamp. Well. I catch it. You get the stamp." instance="use-005"}
 </beat>
 
 <beat id="milestone" on="login" once="user" priority="5" when="user.loginTotal >= 30">
-  @lumi{emotion="happy"}: Thirty days together! I made you a badge. It says "Wishkeeper." I spelled it right this time.
+  @lumi{code="0010" emotion="happy"}: Thirty days together! I made you a badge. It says "Wishkeeper." I spelled it right this time.
 </beat>
 
 <beat id="frostCard" on="login" once="day" priority="10" when="@frostLive">
-  ::use{component="loginStamp" card="frost" who="nyx" line="A frost card. I breathed on it so the stamp would stick."}
+  ::use{component="loginStamp" card="frost" who="nyx" line="A frost card. I breathed on it so the stamp would stick." instance="use-006"}
 </beat>
 /* The last day of the vigil is told once, wherever the player hears it
 first: at login on the last day, or at the day's close. */
 <beat id="frostLastDay" on="login" once="season:frost" share="frostLastCall" priority="8" when="@frostLive && @frostDaysLeft == 0">
-  @nyx{emotion="sad"}: It's the last night of the vigil. The ice goes out tomorrow. Come light one more?
+  @nyx{code="0010" emotion="sad"}: It's the last night of the vigil. The ice goes out tomorrow. Come light one more?
 </beat>

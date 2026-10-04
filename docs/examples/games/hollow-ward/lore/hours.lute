@@ -7,35 +7,35 @@ title: The hours
 <beat id="chime" on="hourStrikes" once="false">
   <match on="run.hour">
     <when is="h00">
-      @narrator: Midnight. Every clock in the building is stopped at half past four, and yet somewhere a clock strikes twelve.
+      @narrator{code="0010"}: Midnight. Every clock in the building is stopped at half past four, and yet somewhere a clock strikes twelve.
     </when>
     <when is="h01">
-      @maud{vo}: One o'clock. Temperatures, please. Lights low.
-      @narrator: The intercom has no power. The intercom speaks anyway.
+      @maud{code="0010" vo}: One o'clock. Temperatures, please. Lights low.
+      @narrator{code="0020"}: The intercom has no power. The intercom speaks anyway.
     </when>
     <when is="h02">
-      @maud{vo}: Two o'clock. Nurses, prepare your beds. The round is at three.
+      @maud{code="0020" vo}: Two o'clock. Nurses, prepare your beds. The round is at three.
     </when>
     <when is="h03">
-      @maud{vo}: Three o'clock. The round.
-      @narrator: The wheels start everywhere at once.
-      @nell{mono when="entry.diary.read && !run.bellRung"}: The bell. Ring him down at three.
+      @maud{code="0030" vo}: Three o'clock. The round.
+      @narrator{code="0030"}: The wheels start everywhere at once.
+      @nell{code="0010" mono when="entry.diary.read && !run.bellRung"}: The bell. Ring him down at three.
     </when>
     <when is="h04">
-      @maud{vo}: Four o'clock. Any empty beds will be filled.
-      @nell{mono}: Two hours to light. Two hours.
+      @maud{code="0040" vo}: Four o'clock. Any empty beds will be filled.
+      @nell{code="0020" mono}: Two hours to light. Two hours.
     </when>
     <when is="h05">
-      @narrator: Five. The windows at the end of the corridors have gone the grey of dishwater. The ward is holding its breath, the way a house does just before the family wakes up.
-      @nell{mono}: Last hour. Whatever I'm doing, I'm doing it now.
+      @narrator{code="0040"}: Five. The windows at the end of the corridors have gone the grey of dishwater. The ward is holding its breath, the way a house does just before the family wakes up.
+      @nell{code="0030" mono}: Last hour. Whatever I'm doing, I'm doing it now.
     </when>
     <otherwise>
-      @narrator: Eleven. The first hour. The building settles around you with a long wooden sigh.
+      @narrator{code="0050"}: Eleven. The first hour. The building settles around you with a long wooden sigh.
     </otherwise>
   </match>
 </beat>
 
 <beat id="whispers" on="hourStrikes" once="false" when="@fraying">
-  @child{os}: Nurse? Nurse, there's someone in your bed.
-  @nell{mono emotion="numb"}: I haven't got a bed. I haven't. I haven't got a bed here.
+  @child{code="0010" os}: Nurse? Nurse, there's someone in your bed.
+  @nell{code="0010" mono emotion="numb"}: I haven't got a bed. I haven't. I haven't got a bed here.
 </beat>

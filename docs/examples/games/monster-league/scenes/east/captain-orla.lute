@@ -16,25 +16,25 @@ when: "!holds('hasItem', ['hmCut'])"
 
 ::bg{location="captains-cabin" time="day"}
 ::auto{character="captainOrla" anchor="center" action="enter"}
-@narrator: The captain's cabin smells of brass polish and misery. Captain Orla is green, and holding onto the desk with both hands.
-@captainOrla{emotion="sad"}: Ugh. Thirty years at sea, and the sea and I have never once agreed. Who let you in?
+@narrator{code="0010"}: The captain's cabin smells of brass polish and misery. Captain Orla is green, and holding onto the desk with both hands.
+@captainOrla{code="0010" emotion="sad"}: Ugh. Thirty years at sea, and the sea and I have never once agreed. Who let you in?
 
 <branch id="eastOrlaHelp" prompt="The captain looks terrible.">
   <choice id="rub" label="Rub the captain's back">
-    @narrator: You rub the captain's back in small circles, the way Mom used to.
-    @captainOrla: Oh. Oh, that's... that's actually helping. Keep going. Left a bit.
+    @narrator{code="0020"}: You rub the captain's back in small circles, the way Mom used to.
+    @captainOrla{code="0020"}: Oh. Oh, that's... that's actually helping. Keep going. Left a bit.
   </choice>
   <choice id="water" label="Fetch a glass of water">
-    @narrator: You fetch a glass of water from the galley. The cook gives you a biscuit for the captain too.
-    @captainOrla: Dry biscuit. The only cure that ever worked. How did you know?
+    @narrator{code="0030"}: You fetch a glass of water from the galley. The cook gives you a biscuit for the captain too.
+    @captainOrla{code="0030"}: Dry biscuit. The only cure that ever worked. How did you know?
   </choice>
   <choice id="horizon" label="Tell the captain to look at the horizon">
-    @narrator: You open the porthole. The coast of Eastmarch is a steady grey line.
-    @captainOrla: Look at the horizon. Every cabin boy tells me that. It works every time, and I forget every time.
+    @narrator{code="0040"}: You open the porthole. The coast of Eastmarch is a steady grey line.
+    @captainOrla{code="0040"}: Look at the horizon. Every cabin boy tells me that. It works every time, and I forget every time.
   </choice>
 </branch>
 
-@captainOrla{emotion="happy"}: Ha! Better. You're a good kid.
-@captainOrla: Here. When I was your age I cut hedges for a living with my old monster, before I ran off to sea like a fool. Now yours can cut them.
-::use{component="obtain" item="hmCut"}
-@captainOrla: The Tide Badge lets you use it outside battle. There's a tree on the Portvolt road that the council has been meaning to cut for a year. Go and embarrass them.
+@captainOrla{code="0050" emotion="happy"}: Ha! Better. You're a good kid.
+@captainOrla{code="0060"}: Here. When I was your age I cut hedges for a living with my old monster, before I ran off to sea like a fool. Now yours can cut them.
+::use{component="obtain" item="hmCut" instance="use-001"}
+@captainOrla{code="0070"}: The Tide Badge lets you use it outside battle. There's a tree on the Portvolt road that the council has been meaning to cut for a year. Go and embarrass them.

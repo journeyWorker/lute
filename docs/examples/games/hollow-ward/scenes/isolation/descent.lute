@@ -7,4 +7,4 @@ after: 'visited("room.lift")'
 
 ## First stop
 
-@narrator: The lift drops a floor and stops dead. Through the gate: a brick wall, painted with a number that has been painted over.
+@narrator{code="0010"}: The lift drops a floor and stops dead. Through the gate: a brick wall, painted with a number that has been painted over.

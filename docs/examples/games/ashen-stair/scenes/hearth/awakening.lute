@@ -15,7 +15,7 @@ when: 'user.runs == 0'
 ::music{action="start" mood="hearth" volume="down"}
 @narrator{code="0010"}: Wren wakes on warm stone with ash in her mouth and no memory of lying down.
 @narrator{code="0020"}: Above her, the Stair goes up into the dark, one step at a time, forever.
-::use{component="hearthFire" flare="high"}
+::use{component="hearthFire" flare="high" instance="use-001"}
 ::auto{character="maud" anchor="center" action="fadeInUp"}
 @maud{code="0010" emotion="warm"}: There you are. Don't sit up too fast — the first time, everyone throws up.
 @wren{code="0010"}: Where is this?

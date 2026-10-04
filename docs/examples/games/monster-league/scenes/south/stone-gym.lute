@@ -16,11 +16,11 @@ when: "!holds('defeated', ['petra'])"
 
 ::bg{location="stone-gym" time="day"}
 ::music{action="change" mood="tense" volume="normal"}
-@narrator: The Stone Gym is one long hall floored with raked gravel. At the far end, on a slab of granite, a woman sits with her eyes closed and a Craghold asleep at her feet.
-@petra{emotion="neutral"}: I heard you coming from the door. Gravel tells me everything. It says you walk like someone who hasn't lost yet.
+@narrator{code="0010"}: The Stone Gym is one long hall floored with raked gravel. At the far end, on a slab of granite, a woman sits with her eyes closed and a Craghold asleep at her feet.
+@petra{code="0010" emotion="neutral"}: I heard you coming from the door. Gravel tells me everything. It says you walk like someone who hasn't lost yet.
 
 ## Petra
 
-::use{component="gymLeader" who="petra" badge="stone" intro="So you're here. I'm Petra, Pebbleton's leader. My rock-hard will shows in my monsters. Show me what you've got!" win="I took you for granted. As proof of your victory, here is the Stone Badge." lose="Rock doesn't bend. Come back when you've learned that." prize="1400"}
-@petra{when="@wonFight" emotion="happy"}: The Stone Badge lets your monsters use Flash outside battle, if you have the disc. And Dobbs will let you through the east road. Tell him I said so. Loudly; he's deaf in the left ear.
-@petra{when="!@wonFight" emotion="determined"}: Water wears stone down, and so does patience. Bring either.
+::use{component="gymLeader" who="petra" badge="stone" intro="So you're here. I'm Petra, Pebbleton's leader. My rock-hard will shows in my monsters. Show me what you've got!" win="I took you for granted. As proof of your victory, here is the Stone Badge." lose="Rock doesn't bend. Come back when you've learned that." prize="1400" instance="use-001"}
+@petra{code="0020" when="@wonFight" emotion="happy"}: The Stone Badge lets your monsters use Flash outside battle, if you have the disc. And Dobbs will let you through the east road. Tell him I said so. Loudly; he's deaf in the left ear.
+@petra{code="0030" when="!@wonFight" emotion="determined"}: Water wears stone down, and so does patience. Bring either.

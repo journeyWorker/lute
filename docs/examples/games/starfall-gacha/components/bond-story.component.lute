@@ -20,6 +20,6 @@ beat:
 ## Bond story
 
 ::body
-@@who: {{@vow}}
+@@who{code="0010"}: {{@vow}}
 ::bondReward{hero=@who rank=@rank}
-@narrator: The crest on {{@who}}'s card glows a little brighter. Bond rank: {{@rank}}.
+@narrator{code="0010"}: The crest on {{@who}}'s card glows a little brighter. Bond rank: {{@rank}}.

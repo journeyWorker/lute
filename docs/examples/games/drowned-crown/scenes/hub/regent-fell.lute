@@ -13,8 +13,8 @@ when: "holds('slew', ['regent'])"
 
 ::bg{location="deck" time="dawn"}
 ::music{action="start" mood="upbeat" volume="normal"}
-@narrator: The sea around the Gull's Mercy has gone flat and bright as a coin.
-@sefa{emotion="surprised"}: The current's stopped. Brann, the current has stopped.
-@brann: Then the thing on the throne is dead. Or it's waiting.
-@ilo: It's dead. I watched it come apart.
-@brann{emotion="grim"}: Things down there come apart and put themselves back together, boy. Tell me all of it. Later.
+@narrator{code="0010"}: The sea around the Gull's Mercy has gone flat and bright as a coin.
+@sefa{code="0010" emotion="surprised"}: The current's stopped. Brann, the current has stopped.
+@brann{code="0010"}: Then the thing on the throne is dead. Or it's waiting.
+@ilo{code="0010"}: It's dead. I watched it come apart.
+@brann{code="0020" emotion="grim"}: Things down there come apart and put themselves back together, boy. Tell me all of it. Later.

@@ -18,4 +18,4 @@ beat:
 // The beat's own line first; then the place, rendered through the place kind's
 // `labels:` (0.27: an entity-typed param renders its label).
 ::body
-@narrator: You leave {{@place}} the way you came.
+@narrator{code="0010"}: You leave {{@place}} the way you came.

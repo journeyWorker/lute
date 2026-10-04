@@ -11,25 +11,25 @@ components: [../components/day-card.component.lute]
 
 <match on="run.day">
   <when is="1">
-    ::use{component="dayCard" day=@today weather="grey, gulls arguing on the roof"}
+    ::use{component="dayCard" day=@today weather="grey, gulls arguing on the roof" instance="use-001"}
   </when>
   <when is="2">
-    ::use{component="dayCard" day=@today weather="windy; the shop sign squeaks on its hinge"}
+    ::use{component="dayCard" day=@today weather="windy; the shop sign squeaks on its hinge" instance="use-002"}
   </when>
   <when is="3">
-    ::use{component="dayCard" day=@today weather="still, the bay flat as a plate"}
+    ::use{component="dayCard" day=@today weather="still, the bay flat as a plate" instance="use-003"}
   </when>
   <when is="4">
-    ::use{component="dayCard" day=@today weather="rain, the kind that means it"}
+    ::use{component="dayCard" day=@today weather="rain, the kind that means it" instance="use-004"}
   </when>
   <when is="5">
-    ::use{component="dayCard" day=@today weather="clear all the way to the lighthouse"}
+    ::use{component="dayCard" day=@today weather="clear all the way to the lighthouse" instance="use-005"}
   </when>
   <when is="6">
-    ::use{component="dayCard" day=@today weather="hot already, and it is not yet eight"}
+    ::use{component="dayCard" day=@today weather="hot already, and it is not yet eight" instance="use-006"}
   </when>
   <when is="7">
-    ::use{component="dayCard" day=@today weather="overcast; the bus timetable flaps in the shelter"}
+    ::use{component="dayCard" day=@today weather="overcast; the bus timetable flaps in the shelter" instance="use-007"}
   </when>
 </match>
 
@@ -37,22 +37,22 @@ components: [../components/day-card.component.lute]
 ::set{run.seen.pell = run.day}
 <match on="run.day">
   <when is="..2">
-    @pell: Toast's on the side. The frame won't make itself.
+    @pell{code="0010"}: Toast's on the side. The frame won't make itself.
   </when>
   <when is="3">
-    @pell{emotion="teasing"}: Wednesday. Library delivery day, if anyone's keeping track.
+    @pell{code="0020" emotion="teasing"}: Wednesday. Library delivery day, if anyone's keeping track.
   </when>
   <when is="4">
-    @pell: One more day. Don't panic. Panic later.
+    @pell{code="0030"}: One more day. Don't panic. Panic later.
   </when>
   <when is="5">
-    @pell{emotion="happy"}: Walk's at dusk. Wear the blue shirt, not that thing.
+    @pell{code="0040" emotion="happy"}: Walk's at dusk. Wear the blue shirt, not that thing.
   </when>
   <when is="6">
-    @pell: Market's on. Take a basket, bring back peaches, keep the change.
+    @pell{code="0050"}: Market's on. Take a basket, bring back peaches, keep the change.
   </when>
   <otherwise>
-    @pell{emotion="sad"}: Last day. Pack tonight and I'll pretend not to watch.
+    @pell{code="0060" emotion="sad"}: Last day. Pack tonight and I'll pretend not to watch.
   </otherwise>
 </match>
 ::auto{character="pell" action="fadeOut"}

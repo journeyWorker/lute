@@ -14,4 +14,4 @@ params:
 ::set{run.ending = @kind}
 ::set{user.terms += 1}
 ::assert{cleared(@who, @kind)}
-@narrator: ~ {{@title}} ~
+@narrator{code="0010"}: ~ {{@title}} ~

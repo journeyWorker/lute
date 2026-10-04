@@ -8,6 +8,6 @@ after: 'visited("rock.report")'
 
 ## The Hearing Room
 
-@chair: The inspector further finds that the seaward rail was reported unsafe by the keeper himself, on the thirtieth of August.
-@chair: And he has put before us a letter on this Board's own paper, refusing the money to mend it.
-@chair: The Board will consider its own conduct in private session.
+@chair{code="0010"}: The inspector further finds that the seaward rail was reported unsafe by the keeper himself, on the thirtieth of August.
+@chair{code="0020"}: And he has put before us a letter on this Board's own paper, refusing the money to mend it.
+@chair{code="0030"}: The Board will consider its own conduct in private session.

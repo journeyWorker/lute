@@ -12,28 +12,28 @@ after: 'visited("common.injury")'
 
 ::bg{location="hall" time="morning"}
 ::music{action="start" mood="tense" volume="down"}
-@headmistress: Pens down when the bell goes, not after. Anyone failing today spends every afternoon until the festival in remedial study.
-@you{mono when="quest.studyGroup.state == 'complete'"}: Soren's handwriting is still on my notes. Dates in blue, kings in green.
+@headmistress{code="0010"}: Pens down when the bell goes, not after. Anyone failing today spends every afternoon until the festival in remedial study.
+@you{code="0010" mono when="quest.studyGroup.state == 'complete'"}: Soren's handwriting is still on my notes. Dates in blue, kings in green.
 
 ::exam{subject="history" resultKey="midterm"}
 
 <match on="scene.exam.midterm.grade">
   <when is="top">
     ::set{run.exam = 'top'}
-    @headmistress: Top of the year. From a transfer. Well.
-    @soren{os emotion="surprised"}: That's — that's my rank you took. I don't mind. I don't mind at all.
+    @headmistress{code="0020"}: Top of the year. From a transfer. Well.
+    @soren{code="0010" os emotion="surprised"}: That's — that's my rank you took. I don't mind. I don't mind at all.
     ::set{run.aff.soren += 1}
   </when>
   <when is="pass">
     ::set{run.exam = 'pass'}
-    @headmistress: A pass. Adequate.
+    @headmistress{code="0030"}: A pass. Adequate.
   </when>
   <when is="fail">
     ::set{run.exam = 'fail'}
-    @headmistress: Remedial study. The annex, every afternoon. The library is not the annex.
-    @you{mono}: The library is where Soren is. Was. Will be, without me.
+    @headmistress{code="0040"}: Remedial study. The annex, every afternoon. The library is not the annex.
+    @you{code="0020" mono}: The library is where Soren is. Was. Will be, without me.
     ::assert{locked(soren)}
   </when>
 </match>
 
-@narrator{when="scene.exam.midterm.score >= 95"}: The score is pinned to the board by lunch. Somebody has drawn a small lantern next to it.
+@narrator{code="0010" when="scene.exam.midterm.score >= 95"}: The score is pinned to the board by lunch. Somebody has drawn a small lantern next to it.

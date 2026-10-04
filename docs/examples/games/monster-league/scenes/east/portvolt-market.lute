@@ -18,30 +18,30 @@ when: "clock.weekday == 2 && !@isNight"
 
 ::bg{location="portvolt-market" time="day"}
 ::music{action="change" mood="festive" volume="normal"}
-@narrator: It's Wednesday, and the harbor road is all awnings: fish, fruit, bolts of cloth, and a band called Static playing too loud outside the Mart.
+@narrator{code="0010"}: It's Wednesday, and the harbor road is all awnings: fish, fruit, bolts of cloth, and a band called Static playing too loud outside the Mart.
 ::auto{character="portvoltVendor" anchor="center" action="enter"}
-@portvoltVendor: Market day! Come and look, love. Looking's free. Buying isn't.
+@portvoltVendor{code="0010"}: Market day! Come and look, love. Looking's free. Buying isn't.
 
 <hub id="eastMarketStalls" prompt="Which stall?">
   <choice id="fish" label="The fish stall: a Fresh Water bundle (200)" when="run.money >= 200" once>
     ::set{run.money -= 200}
     ::give{item="freshWater" qty="3"}
-    @portvoltVendor: Three bottles, fresh from the spring behind the lighthouse. Your monsters will thank you.
+    @portvoltVendor{code="0020"}: Three bottles, fresh from the spring behind the lighthouse. Your monsters will thank you.
   </choice>
   <choice id="stone" label="The curio stall: a Thunder Stone (2100)" when="run.money >= 2100" once>
     ::set{run.money -= 2100}
     ::give{item="thunderStone"}
-    @narrator: The curio seller wraps the stone in three layers of rubber and still flinches handing it over.
+    @narrator{code="0020"}: The curio seller wraps the stone in three layers of rubber and still flinches handing it over.
   </choice>
   <choice id="charm" label="Marta's stall: a lucky net float (500)" when="run.money >= 500" once>
     ::set{run.money -= 500}
     ::give{item="luckyFloat"}
-    @portvoltVendor: My first customer today! Hang it on your bag. Fishermen swear by them. Fishermen swear by everything, mind.
+    @portvoltVendor{code="0030"}: My first customer today! Hang it on your bag. Fishermen swear by them. Fishermen swear by everything, mind.
   </choice>
   <choice id="band" label="Listen to the band">
-    @narrator: Static plays the same four chords, very loudly, with great conviction. The rocker from the Spark Gym is on guitar.
+    @narrator{code="0030"}: Static plays the same four chords, very loudly, with great conviction. The rocker from the Spark Gym is on guitar.
   </choice>
   <choice id="leave" label="Head on" exit>
-    @portvoltVendor: Come back next Wednesday!
+    @portvoltVendor{code="0040"}: Come back next Wednesday!
   </choice>
 </hub>

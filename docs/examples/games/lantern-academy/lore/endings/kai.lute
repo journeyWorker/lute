@@ -5,14 +5,14 @@ title: Kai's endings
 ---
 
 <beat id="lantern" on="termEnd" after="visited('kai.confession')" title="Kai — the lantern ending" priority="10" when="run.route == 'kai' && @devoted(run.aff.kai)">
-  @narrator: The closing ceremony ends with a recital nobody put on the programme. A battered upright has been wheeled onto the stage, with a padlock hanging off its lid like an earring.
-  @kai{emotion="fond"}: Five bars. All five. Stand where I can see you, or I'll lose count.
-  ::use{component="cg" id="cgKaiEnd"}
-  ::use{component="ending" who="kai" kind="good" title="Kai — the lantern ending"}
+  @narrator{code="0010"}: The closing ceremony ends with a recital nobody put on the programme. A battered upright has been wheeled onto the stage, with a padlock hanging off its lid like an earring.
+  @kai{code="0010" emotion="fond"}: Five bars. All five. Stand where I can see you, or I'll lose count.
+  ::use{component="cg" id="cgKaiEnd" instance="use-001"}
+  ::use{component="ending" who="kai" kind="good" title="Kai — the lantern ending" instance="use-001"}
 </beat>
 
 <beat id="ember" on="termEnd" after="visited('kai.confession')" title="Kai — the ember ending" priority="5" when="run.route == 'kai'">
-  @narrator: The old music room is a store cupboard now. Someone has scratched five lines of music into the door frame.
-  @kai{vo emotion="sad"}: I kept the song. I just don't play it where people can hear.
-  ::use{component="ending" who="kai" kind="bittersweet" title="Kai — the ember ending"}
+  @narrator{code="0010"}: The old music room is a store cupboard now. Someone has scratched five lines of music into the door frame.
+  @kai{code="0010" vo emotion="sad"}: I kept the song. I just don't play it where people can hear.
+  ::use{component="ending" who="kai" kind="bittersweet" title="Kai — the ember ending" instance="use-002"}
 </beat>

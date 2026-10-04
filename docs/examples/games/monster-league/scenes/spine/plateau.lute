@@ -13,10 +13,10 @@ once: false
 ::auto{character="gatekeeper" anchor="center" action="enter"}
 <match>
   <when test="@badgeCount >= 8">
-    @gatekeeper: Eight badges. The Summit League is ready for you. Beyond this door are the Elite Four, and past them, the Champion.
-    @gatekeeper: Once you step through, there is no leaving until you win or lose. Good luck.
+    @gatekeeper{code="0010"}: Eight badges. The Summit League is ready for you. Beyond this door are the Elite Four, and past them, the Champion.
+    @gatekeeper{code="0020"}: Once you step through, there is no leaving until you win or lose. Good luck.
   </when>
   <otherwise>
-    @gatekeeper: Only trainers with all eight of Verdane's badges may challenge the League. You have {{@badgeCount}}.
+    @gatekeeper{code="0030"}: Only trainers with all eight of Verdane's badges may challenge the League. You have {{@badgeCount}}.
   </otherwise>
 </match>

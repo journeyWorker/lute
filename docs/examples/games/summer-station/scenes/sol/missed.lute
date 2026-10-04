@@ -11,16 +11,16 @@ when: "run.day >= 5 && holds('at', ['sol', 'radio']) && quest.meteor.state == 'f
 ## The radio room, after
 
 ::bg{location="radio_room" time="morning"}
-::use{component="enter" who="sol" side="right"}
-@sol{emotion="neutral"}: Hey. Sixty-eight, if you were wondering. The count.
-@sol{emotion="sad"}: It's fine. I said it wasn't a big deal. I say a lot of things.
+::use{component="enter" who="sol" side="right" instance="use-001"}
+@sol{code="0010" emotion="neutral"}: Hey. Sixty-eight, if you were wondering. The count.
+@sol{code="0020" emotion="sad"}: It's fine. I said it wasn't a big deal. I say a lot of things.
 
 <branch id="sorry" prompt="He's winding the same cable around his hand.">
   <choice id="apologise" label="Apologise, properly">
     ::set{run.aff.sol += 1}
-    @sol{emotion="shy"}: ...Okay. Thanks. Next time wake me if I'm asleep, and I'll do the same.
+    @sol{code="0030" emotion="shy"}: ...Okay. Thanks. Next time wake me if I'm asleep, and I'll do the same.
   </choice>
   <choice id="excuse" label="Say you fell asleep over the log">
-    @sol{emotion="neutral"}: The log. Right. It is a very good log.
+    @sol{code="0040" emotion="neutral"}: The log. Right. It is a very good log.
   </choice>
 </branch>

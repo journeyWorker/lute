@@ -14,22 +14,22 @@ priority: 50
 ::music{action="start" mood="tender" volume="down"}
 ::auto{character="theo" anchor="left" action="slideInLeft"}
 ::set{run.seen.theo = run.day}
-@theo{emotion="surprised"}: You came. You actually — okay. Okay. Look down. Don't look at me, look down.
+@theo{code="0010" emotion="surprised"}: You came. You actually — okay. Okay. Look down. Don't look at me, look down.
 ::vfx{type="dawn"}
-@narrator: Below the rail, every wave that breaks on the rocks breaks blue. Not moonlight blue. Blue like something alive is switching on.
-@sol: What is it?
-@theo: Tiny things. Plankton. They light up when they're scared.
-@theo{emotion="shy"}: My dad used to say it's the sea blushing.
+@narrator{code="0010"}: Below the rail, every wave that breaks on the rocks breaks blue. Not moonlight blue. Blue like something alive is switching on.
+@sol{code="0010"}: What is it?
+@theo{code="0020"}: Tiny things. Plankton. They light up when they're scared.
+@theo{code="0030" emotion="shy"}: My dad used to say it's the sea blushing.
 ::assert{confided(theo)}
 
 <branch id="glow" prompt="The water flares, fades, flares.">
   <choice id="blush" label="“Then it's blushing a lot tonight.”">
     ::set{run.aff.theo += 2}
-    @theo{emotion="shy"}: …Yeah. It is.
+    @theo{code="0040" emotion="shy"}: …Yeah. It is.
   </choice>
   <choice id="quiet" label="Say nothing. Watch.">
     ::set{run.aff.theo += 1}
-    @narrator: You watch until the tide turns and the glow goes out, one wave at a time.
+    @narrator{code="0020"}: You watch until the tide turns and the glow goes out, one wave at a time.
   </choice>
 </branch>
 

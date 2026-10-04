@@ -8,7 +8,7 @@ params:
   win: string      # the player won: the trainer's defeat line
   lose: string     # the player lost: the trainer's gloat
   prize: int         # prize money on a win
-# A beat template (0.27): `<beat use="trainerBattle" id="<who>" who="<who>" …/>`
+# A beat template (0.27): `<beat use="trainerBattle" id="<who>" who="<who>" … instance="use-001"/>`
 # is the whole trainer. It answers trainerSpotted@trainer.<who> and stays
 # repeatable until the trainer is beaten (spentBy). The defeat check is the
 # spend condition, not the `when`, so a use may write its own `when=` (a
@@ -25,16 +25,16 @@ speaks as itself (`@@who`, its cast name on the box), and the outcome is
 this component's own ::battle result. A beat use's own lines (a grunt's
 shout before the sight line) play first. */
 ::body
-@@who: {{@intro}}
+@@who{code="0010"}: {{@intro}}
 ::battle{foe=@who kind="trainer" resultKey="fight"}
 <match on="scene.battle.fight.won">
   <when is="true">
-    @@who: {{@win}}
+    @@who{code="0020"}: {{@win}}
     ::assert{defeated(@who)}
     ::set{run.money += @prize}
-    @narrator: {{userName}} got {{@prize}} coins for winning!
+    @narrator{code="0010"}: {{userName}} got {{@prize}} coins for winning!
   </when>
   <otherwise>
-    @@who: {{@lose}}
+    @@who{code="0030"}: {{@lose}}
   </otherwise>
 </match>

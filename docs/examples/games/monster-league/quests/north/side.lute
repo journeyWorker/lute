@@ -14,7 +14,7 @@ title: Highlands & Isles side quests
   <objective id="light" title="Light the Frostharbor lamp with Old Maud" done="visited('north.frostharbor.maudRelight')"/>
   <reward kind="MONEY" amount="3000"/>
   <on event="questComplete">
-    @narrator: Down in the harbor, a boat sounds its horn at the light. Then another.
+    @narrator{code="0010"}: Down in the harbor, a boat sounds its horn at the light. Then another.
   </on>
 </quest>
 
@@ -26,7 +26,7 @@ title: Highlands & Isles side quests
   <objective id="catch" title="Catch it" done="holds('caught', ['shellnessie'])"/>
   <reward kind="MONEY" amount="6000"/>
   <on event="questComplete">
-    @frostharborCaveGuide{vo}: The board says you caught the Friday swimmer. The tour script's ruined. Come by, I'll buy you a chowder.
+    @frostharborCaveGuide{code="0010" vo}: The board says you caught the Friday swimmer. The tour script's ruined. Come by, I'll buy you a chowder.
   </on>
 </quest>
 
@@ -39,7 +39,7 @@ title: Highlands & Isles side quests
   <objective id="blaze" title="Find the fire bird" quest="northBlazewing"/>
   <reward kind="MONEY" amount="8000"/>
   <on event="questComplete">
-    @verdantHistorian{vo}: You found one of them! My book needs a new last chapter, and you are in it.
+    @verdantHistorian{code="0010" vo}: You found one of them! My book needs a new last chapter, and you are in it.
   </on>
 </quest>
 
@@ -58,6 +58,6 @@ title: Highlands & Isles side quests
   <objective id="report" title="Report to Master Hollis" on="talk" target="npc.verdantDojoMaster" done="holds('defeated', ['verdantDojoKarateKoji'])"/>
   <reward kind="TM" amount="1" target="brickBreak"/>
   <on event="questComplete">
-    @verdantDojoMaster{emotion="laughing"}: Hah! Koji will be sulking for a week. Take this. A dojo pays its debts.
+    @verdantDojoMaster{code="0010" emotion="laughing"}: Hah! Koji will be sulking for a week. Take this. A dojo pays its debts.
   </on>
 </quest>

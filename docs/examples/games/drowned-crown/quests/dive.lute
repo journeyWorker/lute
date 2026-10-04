@@ -9,10 +9,10 @@ title: This dive
   <reward kind="PEARLS" amount="20"/>
   <objective id="slay" title="Slay the Tide Regent" done="holds('slew', ['regent'])" by="run.outcome != 'diving'"/>
   <on event="questComplete">
-    @quill{os when="entry.quillFirst.everRead"}: I saw that. I'll tell them. They'll never believe me, but I'll tell them.
+    @quill{code="0010" os when="entry.quillFirst.everRead"}: I saw that. I'll tell them. They'll never believe me, but I'll tell them.
   </on>
   <on event="questFailed">
-    @quill{os when="entry.quillFirst.everRead"}: Not this time. The throne keeps.
+    @quill{code="0020" os when="entry.quillFirst.everRead"}: Not this time. The throne keeps.
   </on>
 </quest>
 /* Tavi offers the bounty on deck, between dives: the hub belongs to the run
@@ -23,6 +23,6 @@ or it lapses when he drowns. */
   <reward kind="PEARLS" amount="5..10"/>
   <objective id="eel" title="Kill the Long Eel, then come home" on="runEnd" done="holds('slew', ['eel']) && @surfaced" until="@died"/>
   <on event="questComplete">
-    @tavi{emotion="delighted"}: Eel steaks! Tonight we eat like kings. Kings who live on a boat.
+    @tavi{code="0010" emotion="delighted"}: Eel steaks! Tonight we eat like kings. Kings who live on a boat.
   </on>
 </quest>

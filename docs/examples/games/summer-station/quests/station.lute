@@ -8,7 +8,7 @@ title: Station life
 <quest id="meteor" title="The Perseids with Sol" tier="run">
   <objective id="watch" title="Be on the roof on Thursday night" done="visited('sol.meteor')" by="run.day >= 5"/>
   <on event="questFailed">
-    @narrator: Thursday night the roof hatch stays shut on your side. The sky does what it does without you.
+    @narrator{code="0010"}: Thursday night the roof hatch stays shut on your side. The sky does what it does without you.
   </on>
 </quest>
 
@@ -18,7 +18,7 @@ title: Station life
   <objective id="sonde" title="Send up the radiosonde" done="run.balloonUp" optional/>
   <reward kind="KEEPSAKE" amount="1"/>
   <on event="questComplete">
-    @ines{emotion="fond"}: Five clean mornings in a row. I've had interns who never managed two.
+    @ines{code="0010" emotion="fond"}: Five clean mornings in a row. I've had interns who never managed two.
   </on>
 </quest>
 
@@ -28,6 +28,6 @@ title: Station life
   <objective id="mast" title="Lash the anemometer mast" done="season.storm.mast"/>
   <objective id="shutters" title="Bar the kitchen shutters" done="season.storm.shutters"/>
   <on event="questComplete">
-    @ines{emotion="fond"}: Mast lashed, shutters barred. Now we let it blow.
+    @ines{code="0010" emotion="fond"}: Mast lashed, shutters barred. Now we let it blow.
   </on>
 </quest>

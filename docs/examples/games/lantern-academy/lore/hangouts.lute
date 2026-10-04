@@ -10,87 +10,87 @@ title: After school, days 1 to 5
 // (`afterSchool`: once a day, days 1-5, route open, then the hangout component)
 // and components/shut-beat.component.lute (`shutOut`: priority 10, repeatable).
 
-<beat use="afterSchool" id="council" who="ren" place="council" title="The council room">
-  @ren{emotion="stern"}: If you're going to loiter, loiter usefully. Staple these.
-  @ren{emotion="flustered"}: ...You staple very straight. That isn't a compliment. It's an observation. It's a compliment.
+<beat use="afterSchool" id="council" who="ren" place="council" title="The council room" instance="use-001">
+  @ren{code="0010" emotion="stern"}: If you're going to loiter, loiter usefully. Staple these.
+  @ren{code="0020" emotion="flustered"}: ...You staple very straight. That isn't a compliment. It's an observation. It's a compliment.
   <match on="run.day">
     <when is="..2">
-      @ren: The festival budget is due Friday. It is always due Friday. Nobody has ever filed it on a Thursday.
+      @ren{code="0030"}: The festival budget is due Friday. It is always due Friday. Nobody has ever filed it on a Thursday.
     </when>
     <when is="3..4">
-      @ren{emotion="flustered"}: I've started leaving the second chair out. For efficiency. People keep sitting on the floor.
+      @ren{code="0040" emotion="flustered"}: I've started leaving the second chair out. For efficiency. People keep sitting on the floor.
     </when>
     <otherwise>
-      @ren{emotion="fond"}: Tomorrow is the festival. I've read the safety rules four times. I'm going to read them to you. It's romantic. It's not. Sit down.
+      @ren{code="0050" emotion="fond"}: Tomorrow is the festival. I've read the safety rules four times. I'm going to read them to you. It's romantic. It's not. Sit down.
     </otherwise>
   </match>
 </beat>
 
-<beat use="shutOut" id="councilShut" who="ren" place="council" title="The council room">
-  @ren{emotion="stern"}: The council room is for council business. You have made it very clear you are not council business.
+<beat use="shutOut" id="councilShut" who="ren" place="council" title="The council room" instance="use-001">
+  @ren{code="0010" emotion="stern"}: The council room is for council business. You have made it very clear you are not council business.
 </beat>
 
-<beat use="afterSchool" id="track" who="mika" place="track" title="The track">
-  @mika{emotion="laughing"}: You came to watch? Nobody comes to watch practice. Okay, now I have to look cool. Watch this. Don't watch this.
+<beat use="afterSchool" id="track" who="mika" place="track" title="The track" instance="use-002">
+  @mika{code="0010" emotion="laughing"}: You came to watch? Nobody comes to watch practice. Okay, now I have to look cool. Watch this. Don't watch this.
   <match on="run.day">
     <when is="..2">
-      @mika: Coach says I run like I'm late for something. I say I'm early for everything.
+      @mika{code="0020"}: Coach says I run like I'm late for something. I say I'm early for everything.
     </when>
     <when is="3..4">
-      @mika{emotion="hurt"}: It's fine. It's the grass. The grass is uneven. Don't look at my ankle, look at my form.
+      @mika{code="0030" emotion="hurt"}: It's fine. It's the grass. The grass is uneven. Don't look at my ankle, look at my form.
     </when>
     <otherwise>
-      @mika{emotion="fond"}: Relay tomorrow, lanterns after. If I win, I'm floating mine with somebody. Guess who. Don't guess. I'll tell you.
+      @mika{code="0040" emotion="fond"}: Relay tomorrow, lanterns after. If I win, I'm floating mine with somebody. Guess who. Don't guess. I'll tell you.
     </otherwise>
   </match>
 </beat>
 
-<beat use="shutOut" id="trackShut" who="mika" place="track" title="The track">
-  @mika{emotion="hurt"}: Bench, ice, favour. I've got it memorised. You can go now.
+<beat use="shutOut" id="trackShut" who="mika" place="track" title="The track" instance="use-002">
+  @mika{code="0010" emotion="hurt"}: Bench, ice, favour. I've got it memorised. You can go now.
 </beat>
 
-<beat use="afterSchool" id="library" who="soren" place="library" title="The library">
-  @soren{emotion="shy"}: You're in my chair. No — keep it. I'll sit on the ladder. I like the ladder.
+<beat use="afterSchool" id="library" who="soren" place="library" title="The library" instance="use-003">
+  @soren{code="0010" emotion="shy"}: You're in my chair. No — keep it. I'll sit on the ladder. I like the ladder.
   <match on="run.day">
     <when is="..2">
-      @soren: This one is a book of lanterns. Every festival since 1890, drawn by whoever was bored enough. I'm the most recent bored one.
+      @soren{code="0020"}: This one is a book of lanterns. Every festival since 1890, drawn by whoever was bored enough. I'm the most recent bored one.
     </when>
     <when is="3..4">
-      @soren{emotion="happy"}: You underline in pencil. Softly. The books forgive you.
+      @soren{code="0030" emotion="happy"}: You underline in pencil. Softly. The books forgive you.
     </when>
     <otherwise>
-      @soren{emotion="fond"}: I finished drawing this year's lanterns early. There's a space left in the corner. I didn't know who to draw in it. I know now.
+      @soren{code="0040" emotion="fond"}: I finished drawing this year's lanterns early. There's a space left in the corner. I didn't know who to draw in it. I know now.
     </otherwise>
   </match>
-  @soren{emotion="happy" when="run.day < 4 && quest.studyGroup.state == 'unset'"}: The midterm's on Thursday. I could... we could study. Together. For academic reasons.
+  @soren{code="0050" emotion="happy" when="run.day < 4 && quest.studyGroup.state == 'unset'"}: The midterm's on Thursday. I could... we could study. Together. For academic reasons.
   ::accept{quest="studyGroup" when="run.day < 4 && quest.studyGroup.state == 'unset'"}
   ::set{run.study += 1 when="quest.studyGroup.state == 'active'"}
 </beat>
 
-<beat use="shutOut" id="annex" who="soren" place="library" title="The library">
-  @narrator: Remedial study, in the annex, every afternoon. Through the window you can see the library's lamps, and someone on a ladder, not looking up.
+<beat use="shutOut" id="annex" who="soren" place="library" title="The library" instance="use-003">
+  @narrator{code="0010"}: Remedial study, in the annex, every afternoon. Through the window you can see the library's lamps, and someone on a ladder, not looking up.
 </beat>
 
-<beat use="afterSchool" id="musicRoom" who="kai" place="musicRoom" title="The old music room">
-  @kai{emotion="smirk"}: Door was open. That's on you. Sit on the one chair that isn't a hazard.
-  @kai: Four bars. Then nothing. You hear it too, right? The gap?
+<beat use="afterSchool" id="musicRoom" who="kai" place="musicRoom" title="The old music room" instance="use-004">
+  @kai{code="0010" emotion="smirk"}: Door was open. That's on you. Sit on the one chair that isn't a hazard.
+  @kai{code="0020"}: Four bars. Then nothing. You hear it too, right? The gap?
   <match on="run.day">
     <when is="..2">
-      @kai: Don't clap. If you clap, someone hears, and then Aoki comes up with a clipboard.
+      @kai{code="0030"}: Don't clap. If you clap, someone hears, and then Aoki comes up with a clipboard.
     </when>
     <when is="3..4">
-      @kai{emotion="smirk"}: You tap your foot a beat late. Every time. It's annoying. Keep doing it.
+      @kai{code="0040" emotion="smirk"}: You tap your foot a beat late. Every time. It's annoying. Keep doing it.
     </when>
     <otherwise>
-      @kai{emotion="fond"}: Festival tomorrow. Everyone goes to the lake, the whole school's empty, and the acoustics in here are perfect. Just saying.
+      @kai{code="0050" emotion="fond"}: Festival tomorrow. Everyone goes to the lake, the whole school's empty, and the acoustics in here are perfect. Just saying.
     </otherwise>
   </match>
 </beat>
 
-<beat use="shutOut" id="musicShut" who="kai" place="musicRoom" title="The old music room">
-  @kai{os emotion="angry"}: Go tell Aoki you found me. Go on. You're good at that.
+<beat use="shutOut" id="musicShut" who="kai" place="musicRoom" title="The old music room" instance="use-004">
+  @kai{code="0010" os emotion="angry"}: Go tell Aoki you found me. Go on. You're good at that.
 </beat>
 
 <beat id="nobody" on="visit" target="kind:place" title="Nobody about" priority="-10" once="false">
-  @narrator: You spend the hour at {{occasion.target}}. Nobody comes. A paper lantern someone started is lying half-folded where they left it.
+  @narrator{code="0010"}: You spend the hour at {{occasion.target}}. Nobody comes. A paper lantern someone started is lying half-folded where they left it.
 </beat>

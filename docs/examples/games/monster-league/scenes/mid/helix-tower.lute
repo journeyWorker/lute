@@ -23,35 +23,35 @@ when: "run.lair.helixHQ != 'cleared' && run.lair.towerSiege == 'cleared'"
 
 ::bg{location="helix-tower" time="day"}
 ::music{action="change" mood="tense" volume="normal"}
-@narrator{when="run.lair.helixHQ == 'hidden'"}: Helix Tower belongs to Team Eclipse now. The receptionist has an Eclipse badge pinned over her name tag, and she will not meet your eye.
-@silvercrestReceptionist{when="run.lair.helixHQ == 'hidden'"}: Welcome to Helix Corp. We are... under new management. Please don't make a scene.
-@narrator{when="run.lair.helixHQ == 'found'"}: The receptionist sees you and quietly slides a card key across the desk again, in case you lost the first one.
+@narrator{code="0010" when="run.lair.helixHQ == 'hidden'"}: Helix Tower belongs to Team Eclipse now. The receptionist has an Eclipse badge pinned over her name tag, and she will not meet your eye.
+@silvercrestReceptionist{code="0010" when="run.lair.helixHQ == 'hidden'"}: Welcome to Helix Corp. We are... under new management. Please don't make a scene.
+@narrator{code="0020" when="run.lair.helixHQ == 'found'"}: The receptionist sees you and quietly slides a card key across the desk again, in case you lost the first one.
 ::set{run.lair.helixHQ = "found" when="run.lair.helixHQ == 'hidden'"}
-::use{component="trainerBattle" who="helixGruntLobby" intro="Visitors sign in! You didn't sign in! That's a battle!" win="You can go up. I'll put you down as a delivery." lose="And stay signed out!" prize="720" when="!holds('defeated', ['helixGruntLobby'])"}
+::use{component="trainerBattle" who="helixGruntLobby" intro="Visitors sign in! You didn't sign in! That's a battle!" win="You can go up. I'll put you down as a delivery." lose="And stay signed out!" prize="720" when="!holds('defeated', ['helixGruntLobby'])" instance="use-001"}
 ::next{to="thrownOut" when="!holds('defeated', ['helixGruntLobby'])"}
 
 ## The card key
 
-@silvercrestReceptionist: Take this. It opens the doors upstairs. They took the Director's name off the old one, but it still works.
-::use{component="obtain" item="cardKey"}
+@silvercrestReceptionist{code="0020"}: Take this. It opens the doors upstairs. They took the Director's name off the old one, but it still works.
+::use{component="obtain" item="cardKey" instance="use-001"}
 
 ## The third floor
 
 ::bg{location="helix-offices" time="day"}
-@narrator: Open-plan offices. The staff are still at their desks, typing very carefully, with grunts reading over their shoulders.
-::use{component="trainerBattle" who="helixGruntF3" intro="Nobody leaves their desk before five! That includes you!" win="Is it five yet? It feels like five." lose="Back to your desk. Wait, you don't have a desk." prize="760" when="!holds('defeated', ['helixGruntF3'])"}
+@narrator{code="0030"}: Open-plan offices. The staff are still at their desks, typing very carefully, with grunts reading over their shoulders.
+::use{component="trainerBattle" who="helixGruntF3" intro="Nobody leaves their desk before five! That includes you!" win="Is it five yet? It feels like five." lose="Back to your desk. Wait, you don't have a desk." prize="760" when="!holds('defeated', ['helixGruntF3'])" instance="use-002"}
 ::next{to="thrownOut" when="!holds('defeated', ['helixGruntF3'])"}
 
 ## The seventh floor
 
 ::bg{location="helix-lab" time="day"}
-@narrator: The research floor. A tank in the middle holds a sketch of a sleeping giant, labelled SUBJECT S, TO BE WOKEN.
-::use{component="trainerBattle" who="helixScientistOrrin" intro="The Director will have his giants, and I will have my grant. Stand aside!" win="My grant! Do you know how long those forms take?" lose="Science marches on. Over you, specifically." prize="960" when="!holds('defeated', ['helixScientistOrrin'])"}
+@narrator{code="0040"}: The research floor. A tank in the middle holds a sketch of a sleeping giant, labelled SUBJECT S, TO BE WOKEN.
+::use{component="trainerBattle" who="helixScientistOrrin" intro="The Director will have his giants, and I will have my grant. Stand aside!" win="My grant! Do you know how long those forms take?" lose="Science marches on. Over you, specifically." prize="960" when="!holds('defeated', ['helixScientistOrrin'])" instance="use-003"}
 ::next{to="thrownOut" when="!holds('defeated', ['helixScientistOrrin'])"}
 
 ## The tenth floor
 
-::use{component="trainerBattle" who="helixGruntF10" intro="The boardroom's one floor up, and you're not getting there. I've been practising this line all week." win="I should have practised the battle." lose="Nailed it. The line AND the battle." prize="800" when="!holds('defeated', ['helixGruntF10'])"}
+::use{component="trainerBattle" who="helixGruntF10" intro="The boardroom's one floor up, and you're not getting there. I've been practising this line all week." win="I should have practised the battle." lose="Nailed it. The line AND the battle." prize="800" when="!holds('defeated', ['helixGruntF10'])" instance="use-004"}
 ::next{to="thrownOut" when="!holds('defeated', ['helixGruntF10'])"}
 
 ## The eleventh floor
@@ -59,10 +59,10 @@ when: "run.lair.helixHQ != 'cleared' && run.lair.towerSiege == 'cleared'"
 ::bg{location="helix-atrium" time="day"}
 ::next{to="boardroom" when="holds('rivalFought', ['tower'])"}
 ::auto{character="rival" action="enter"}
-@rival{emotion="smug"}: There you are. I cleared floors one to ten while you were riding the lift.
-@narrator: You did not ride the lift.
-::use{component="rivalBattle" meet="tower" intro="What kept you? Eclipse took the whole building, and I've been fighting them floor by floor. Let's see if you're worth fighting next to!" win="Fine, you win. Just go upstairs and finish it. I'll be... guarding the stairs. Strategically." lose="Ha! I'll handle the top floor myself, then. Try to keep up."}
-@rival{emotion="determined"}: The admin up there talks too much. Don't let her.
+@rival{code="0010" emotion="smug"}: There you are. I cleared floors one to ten while you were riding the lift.
+@narrator{code="0050"}: You did not ride the lift.
+::use{component="rivalBattle" meet="tower" intro="What kept you? Eclipse took the whole building, and I've been fighting them floor by floor. Let's see if you're worth fighting next to!" win="Fine, you win. Just go upstairs and finish it. I'll be... guarding the stairs. Strategically." lose="Ha! I'll handle the top floor myself, then. Try to keep up." instance="use-001"}
+@rival{code="0020" emotion="determined"}: The admin up there talks too much. Don't let her.
 ::auto{character="rival" action="exit"}
 
 ## The boardroom
@@ -70,19 +70,19 @@ when: "run.lair.helixHQ != 'cleared' && run.lair.towerSiege == 'cleared'"
 ::mark{id="boardroom"}
 ::bg{location="helix-boardroom" time="day"}
 ::music{action="change" mood="battle" volume="up"}
-@narrator: A long table, a wall of windows over Silvercrest, and at the far end a woman in a grey Eclipse coat, turning a pen over and over.
-::use{component="trainerBattle" who="gruntHelix" intro="The Director's plans are bigger than one tower, child. He is already waiting for you at the end of the road. But you won't leave this one." win="Enough! We're pulling out of Silvercrest. Tell your friend on the stairs he talks too much." lose="Security will see you out. Through the lobby, this time." prize="1500"}
+@narrator{code="0060"}: A long table, a wall of windows over Silvercrest, and at the far end a woman in a grey Eclipse coat, turning a pen over and over.
+::use{component="trainerBattle" who="gruntHelix" intro="The Director's plans are bigger than one tower, child. He is already waiting for you at the end of the road. But you won't leave this one." win="Enough! We're pulling out of Silvercrest. Tell your friend on the stairs he talks too much." lose="Security will see you out. Through the lobby, this time." prize="1500" instance="use-005"}
 ::set{run.lair.helixHQ = "cleared" when="@wonFight"}
 <match on="scene.battle.fight.won">
   <when is="true">
     ::music{action="change" mood="triumphant" volume="normal"}
-    @narrator: Team Eclipse leaves Helix Tower by the fire stairs. The staff stand up from their desks, one by one, and nobody tells them to sit down.
-    @narrator: Across the square, the Mind Gym's doors unlock.
-    @silvercrestReceptionist: Helix Corp thanks you. I'm taking this badge off right now. And the rest of the week.
+    @narrator{code="0070"}: Team Eclipse leaves Helix Tower by the fire stairs. The staff stand up from their desks, one by one, and nobody tells them to sit down.
+    @narrator{code="0080"}: Across the square, the Mind Gym's doors unlock.
+    @silvercrestReceptionist{code="0030"}: Helix Corp thanks you. I'm taking this badge off right now. And the rest of the week.
     ::end{reason="helixFreed"}
   </when>
   <otherwise>
-    @narrator: Two grunts walk you to the lift and press the button for the lobby.
+    @narrator{code="0090"}: Two grunts walk you to the lift and press the button for the lobby.
   </otherwise>
 </match>
 
@@ -90,4 +90,4 @@ when: "run.lair.helixHQ != 'cleared' && run.lair.towerSiege == 'cleared'"
 
 ::mark{id="thrownOut"}
 ::bg{location="silvercrest" time="day"}
-@narrator: The revolving doors turn you out onto the square. Somewhere above, a grunt is laughing.
+@narrator{code="0100"}: The revolving doors turn you out onto the square. Somewhere above, a grunt is laughing.

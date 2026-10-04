@@ -16,6 +16,6 @@ when: "run.islesVanes >= 3 && !holds('islesLensBack', ['mistral'])"
 ## The loft
 
 ::bg{location="mistral-windmill" time="day"}
-@narrator: The loft hatch swings open on the turning of the sails. Up among the gears, a grunt clutches the Mistral lens.
-::use{component="trainerBattle" who="duskGruntGale" intro="You turned the sails? I was hiding up here!" win="The wind's on your side, fine." lose="Blown away!" prize="1800"}
+@narrator{code="0010"}: The loft hatch swings open on the turning of the sails. Up among the gears, a grunt clutches the Mistral lens.
+::use{component="trainerBattle" who="duskGruntGale" intro="You turned the sails? I was hiding up here!" win="The wind's on your side, fine." lose="Blown away!" prize="1800" instance="use-001"}
 ::assert{islesLensBack(mistral) when="@wonFight"}

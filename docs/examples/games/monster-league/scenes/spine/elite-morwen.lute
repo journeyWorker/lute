@@ -12,16 +12,16 @@ when: "@badgeCount >= 8 && holds('defeated', ['tarrok']) && !holds('defeated', [
 
 ::bg{location="shadeChamber" time="day"}
 ::auto{character="morwen" anchor="center" action="enter"}
-@morwen: I am Morwen. I was battling when the professor was a boy. Do you know what my monsters see in you?
+@morwen{code="0010"}: I am Morwen. I was battling when the professor was a boy. Do you know what my monsters see in you?
 ::music{action="change" mood="battle" volume="up"}
 ::battle{foe="morwen" kind="elite" resultKey="fight"}
 <match on="scene.battle.fight.won">
   <when is="true">
-    @morwen: Well. The old woman loses one. Go on, child. The Dragon is waiting.
+    @morwen{code="0020"}: Well. The old woman loses one. Go on, child. The Dragon is waiting.
     ::assert{defeated(morwen)}
   </when>
   <otherwise>
-    @morwen: They saw a child who was not ready. Rest.
+    @morwen{code="0030"}: They saw a child who was not ready. Rest.
     // the streak breaks: the whole Four must be beaten again
     ::retract{defeated(frostine)}
     ::retract{defeated(tarrok)}

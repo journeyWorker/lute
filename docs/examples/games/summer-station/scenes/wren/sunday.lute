@@ -12,9 +12,9 @@ when: "holds('at', ['wren', 'deck'])"
 
 ::bg{location="deck" time="afternoon"}
 ::sfx{sound="goat bells, coming up the path"}
-::use{component="enter" who="wren" side="right"}
-@wren{emotion="laughing"}: Sunday! Nobody works on Sunday, so I brought the goats to watch you not working.
-@narrator: A goat eats the corner of the log before you can stop it. Ines, from the doorway, does not stop it either.
-@wren{emotion="fond" when="run.aff.wren >= 3"}: Tonight, then. Save me a spot by the fountain.
-@wren{emotion="neutral" when="run.aff.wren < 3"}: See you tonight. Probably. Everybody's there.
+::use{component="enter" who="wren" side="right" instance="use-001"}
+@wren{code="0010" emotion="laughing"}: Sunday! Nobody works on Sunday, so I brought the goats to watch you not working.
+@narrator{code="0010"}: A goat eats the corner of the log before you can stop it. Ines, from the doorway, does not stop it either.
+@wren{code="0020" emotion="fond" when="run.aff.wren >= 3"}: Tonight, then. Save me a spot by the fountain.
+@wren{code="0030" emotion="neutral" when="run.aff.wren < 3"}: See you tonight. Probably. Everybody's there.
 ::set{run.aff.wren += 1}

@@ -51,26 +51,26 @@ components: [../components/lamps-out.component.lute]
     @solt{code="0030"}: Nor were half the passengers on this train, I expect. Have you anything else?
     @narrator{code="0040"}: The constables look at you, and at the doctor's calm grey face, and at each other. Nobody moves.
     @solt{code="0040"}: Good morning, Inspector. Do get some sleep.
-    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The right name and no case. Somewhere a watch is being wound back."}
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The right name and no case. Somewhere a watch is being wound back." instance="use-001"}
   </when>
   <when is="lise">
     @lise{code="0010" emotion="sad"}: I sang for the whole of the tunnel. There are twenty people in this car who heard me.
     @narrator{code="0050"}: The constables take her arm anyway. Behind them, at the far table, Dr. Solt finishes his coffee.
-    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The wrong name. Somewhere a watch is being wound back."}
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The wrong name. Somewhere a watch is being wound back." instance="use-002"}
   </when>
   <when is="mirela">
     @mirela{code="0010" emotion="angry"}: For a cufflink he stole from a dead man. Well done, Inspector.
     @narrator{code="0060"}: Dr. Solt steps down onto the platform with his bag and does not look back.
-    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The wrong name. Somewhere a watch is being wound back."}
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The wrong name. Somewhere a watch is being wound back." instance="use-003"}
   </when>
   <when is="crane">
     @crane{code="0010" emotion="sad"}: Twenty-two years on this line.
     @narrator{code="0070"}: Dr. Solt steps down onto the platform with his bag and does not look back.
-    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The wrong name. Somewhere a watch is being wound back."}
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="The wrong name. Somewhere a watch is being wound back." instance="use-004"}
   </when>
   <when is="silence | nobody">
     @narrator{code="0080"}: The passengers file off into Ossery one by one. The last is a doctor with a black calf bag, who tips his hat to you.
-    ::use{component="lampsOut" depth="long" where="Ossery station" memory="Nothing said, and nothing to show for it. Somewhere a watch is being wound back."}
+    ::use{component="lampsOut" depth="long" where="Ossery station" memory="Nothing said, and nothing to show for it. Somewhere a watch is being wound back." instance="use-005"}
   </when>
 </match>
 /* Any name said here ends the night: the schema's `terminal:` (`run.accused != 'nobody'`) holds from

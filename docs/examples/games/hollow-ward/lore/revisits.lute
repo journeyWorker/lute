@@ -5,63 +5,63 @@ title: Coming back to a room
 ---
 
 <beat id="lobby" on="enter" target="room.lobby" once="false">
-  @narrator: The lobby. The wheelchair is facing the room now.
-  @narrator{when="run.power"}: Under the new light the map of the ward is legible: YOU ARE HERE, and a red dot scratched out.
-  @narrator{when="holds('canEnter', ['surgery'])"}: Down the east corridor, the surgery doors are lit.
+  @narrator{code="0010"}: The lobby. The wheelchair is facing the room now.
+  @narrator{code="0020" when="run.power"}: Under the new light the map of the ward is legible: YOU ARE HERE, and a red dot scratched out.
+  @narrator{code="0030" when="holds('canEnter', ['surgery'])"}: Down the east corridor, the surgery doors are lit.
 </beat>
 
 <beat id="reception" on="enter" target="room.reception" once="false">
-  @narrator: Reception. The switchboard cords have been plugged back in, every one of them, into the wrong holes.
+  @narrator{code="0010"}: Reception. The switchboard cords have been plugged back in, every one of them, into the wrong holes.
 </beat>
 
 <beat id="chapel" on="enter" target="room.chapel" once="false">
   <match on="run.bellRung">
     <when is="true">
-      @narrator: The chapel. The pews have turned back to face the altar.
+      @narrator{code="0010"}: The chapel. The pews have turned back to face the altar.
     </when>
     <otherwise>
-      @narrator: The chapel. The pews still face the door. The rope hangs, waiting for three.
+      @narrator{code="0020"}: The chapel. The pews still face the door. The rope hangs, waiting for three.
     </otherwise>
   </match>
 </beat>
 
 <beat id="childrensWard" on="enter" target="room.childrensWard" once="false">
-  @narrator: The children's ward. Eleven mattresses. Someone has straightened the blankets.
-  @child{os when="@shaken"}: You came back. Nobody comes back.
+  @narrator{code="0010"}: The children's ward. Eleven mattresses. Someone has straightened the blankets.
+  @child{code="0010" os when="@shaken"}: You came back. Nobody comes back.
 </beat>
 
 <beat id="hydro" on="enter" target="room.hydro" once="false">
   /* a fact cannot be a <match> subject: an if/else on one is two guarded lines */
-  @narrator{when="holds('solved', ['hydroValves'])"}: Hydrotherapy. The empty tub drips. The canvas lids are all buckled shut again.
-  @narrator{when="!holds('solved', ['hydroValves'])"}: Hydrotherapy. The black water, the brass key, the patient valves.
+  @narrator{code="0010" when="holds('solved', ['hydroValves'])"}: Hydrotherapy. The empty tub drips. The canvas lids are all buckled shut again.
+  @narrator{code="0020" when="!holds('solved', ['hydroValves'])"}: Hydrotherapy. The black water, the brass key, the patient valves.
 </beat>
 
 <beat id="pharmacy" on="enter" target="room.pharmacy" once="false">
-  @narrator: The pharmacy. Every bottle has been turned to face the wall.
+  @narrator{code="0010"}: The pharmacy. Every bottle has been turned to face the wall.
 </beat>
 
 <beat id="records" on="enter" target="room.records" once="false">
-  @narrator: Records. A new drawer is open. You didn't open it.
+  @narrator{code="0010"}: Records. A new drawer is open. You didn't open it.
 </beat>
 
 <beat id="morgue" on="enter" target="room.morgue" once="false">
-  @narrator: The morgue. The gurney in the middle of the floor has been made up, sheet tucked in tight.
-  @tobias{when="@withToby"}: I'm not going back in there. Nell. I'm not.
+  @narrator{code="0010"}: The morgue. The gurney in the middle of the floor has been made up, sheet tucked in tight.
+  @tobias{code="0010" when="@withToby"}: I'm not going back in there. Nell. I'm not.
 </beat>
 
 <beat id="boiler" on="enter" target="room.boiler" once="false">
-  @narrator: The boiler room. Heat, rust, and the furnace door ajar like a mouth deciding what to say.
+  @narrator{code="0010"}: The boiler room. Heat, rust, and the furnace door ajar like a mouth deciding what to say.
 </beat>
 
 <beat id="surgery" on="enter" target="room.surgery" once="false">
-  @narrator: Surgery. The operating lamp swings to follow you, very slightly, like a sunflower.
+  @narrator{code="0010"}: Surgery. The operating lamp swings to follow you, very slightly, like a sunflower.
 </beat>
 
 <beat id="office" on="enter" target="room.office" once="false">
-  @narrator: The office. The decanter is full now. The wasp is gone.
+  @narrator{code="0010"}: The office. The decanter is full now. The wasp is gone.
 </beat>
 
 <beat id="gate" on="enter" target="room.gate" once="false">
-  @narrator: The gate. Beyond the bars, the car, the road, the whole ordinary world, lit by one sodium lamp.
-  @narrator: The keypad on the gatepost blinks.
+  @narrator{code="0010"}: The gate. Beyond the bars, the car, the road, the whole ordinary world, lit by one sodium lamp.
+  @narrator{code="0020"}: The keypad on the gatepost blinks.
 </beat>

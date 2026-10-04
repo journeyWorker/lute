@@ -11,19 +11,19 @@ table (FINDINGS-0.23 N6 on what a bundle costs). */
   ::bg{location="lantern_shop" time="night"}
   ::music{action="start" mood="wistful" volume="down"}
   ::auto{character="pell" anchor="left" action="fadeInUp"}
-  @narrator: Your bag is half packed on the bed. The other half of it is somehow all over the shop.
+  @narrator{code="0010"}: Your bag is half packed on the bed. The other half of it is somehow all over the shop.
   <match on="run.festivalWith">
     <when is="ines">
-      @pell{emotion="teasing"}: The library girl walked past the window twice today. Twice. The library is the other way.
+      @pell{code="0010" emotion="teasing"}: The library girl walked past the window twice today. Twice. The library is the other way.
     </when>
     <when is="theo">
-      @pell{emotion="teasing"}: There's a bundle of reed on the step with your name on it. Well. Not your name. "Qualified hands."
+      @pell{code="0020" emotion="teasing"}: There's a bundle of reed on the step with your name on it. Well. Not your name. "Qualified hands."
     </when>
     <otherwise>
-      @pell: You'll come back next summer. Everyone says they won't and then they do.
+      @pell{code="0030"}: You'll come back next summer. Everyone says they won't and then they do.
     </otherwise>
   </match>
-  @sol{mono}: One more day.
+  @sol{code="0010" mono}: One more day.
   ::auto{character="pell" action="fadeOut"}
   ::music{action="fadeOut"}
 </beat>
@@ -32,10 +32,10 @@ table (FINDINGS-0.23 N6 on what a bundle costs). */
   ::bg{location="marrow_bay_bus_shelter" time="night"}
   ::music{action="start" mood="tender" volume="down"}
   ::auto{character="ines" anchor="center" action="fadeInUp"}
-  @ines{emotion="shy"}: The library's shut on Sundays. So technically I'm not working. So technically this is just — standing at a bus stop.
-  @narrator: She presses the 1962 tide almanac into your hands. Inside the cover, under someone's grandfather's handwriting, in hers: *Next summer. Wednesday afternoon. I'll put some aside.*
-  @sol: Ines —
-  @ines{emotion="happy"}: Don't. Say it next summer. It'll keep. Kozo holds when it's wet.
+  @ines{code="0010" emotion="shy"}: The library's shut on Sundays. So technically I'm not working. So technically this is just — standing at a bus stop.
+  @narrator{code="0010"}: She presses the 1962 tide almanac into your hands. Inside the cover, under someone's grandfather's handwriting, in hers: *Next summer. Wednesday afternoon. I'll put some aside.*
+  @sol{code="0010"}: Ines —
+  @ines{code="0020" emotion="happy"}: Don't. Say it next summer. It'll keep. Kozo holds when it's wet.
   ::auto{character="ines" action="fadeOut"}
   ::set{user.endings += 1}
   ::set{run.departed = true}
@@ -46,12 +46,12 @@ table (FINDINGS-0.23 N6 on what a bundle costs). */
   ::bg{location="marrow_bay_bus_shelter" time="night"}
   ::music{action="start" mood="tender" volume="down"}
   ::auto{character="theo" anchor="center" action="fadeInUp"}
-  @theo{emotion="neutral"}: Pell said six. It's five to. I ran.
-  @narrator: He holds out a bundle of green reed tied with fishing line.
-  @theo{emotion="shy"}: For next year's. Soak it the night before. Don't bend it dry. You know. You've got qualified hands.
-  @sol: Theo.
-  @theo{emotion="shy" when="holds('confided', ['theo'])"}: Dad would've liked you. He liked anyone who shut up and watched.
-  @theo{emotion="happy"}: The sea blushes in August too. Just so you know. Just — for planning purposes.
+  @theo{code="0010" emotion="neutral"}: Pell said six. It's five to. I ran.
+  @narrator{code="0010"}: He holds out a bundle of green reed tied with fishing line.
+  @theo{code="0020" emotion="shy"}: For next year's. Soak it the night before. Don't bend it dry. You know. You've got qualified hands.
+  @sol{code="0010"}: Theo.
+  @theo{code="0030" emotion="shy" when="holds('confided', ['theo'])"}: Dad would've liked you. He liked anyone who shut up and watched.
+  @theo{code="0040" emotion="happy"}: The sea blushes in August too. Just so you know. Just — for planning purposes.
   ::auto{character="theo" action="fadeOut"}
   ::set{user.endings += 1}
   ::set{run.departed = true}
@@ -62,17 +62,17 @@ table (FINDINGS-0.23 N6 on what a bundle costs). */
   ::bg{location="marrow_bay_bus_shelter" time="night"}
   ::music{action="start" mood="wistful" volume="down"}
   ::auto{character="pell" anchor="center" action="fadeInUp"}
-  @pell{emotion="sad"}: Well. Seven days. That's a week, the way they used to make them.
+  @pell{code="0010" emotion="sad"}: Well. Seven days. That's a week, the way they used to make them.
   <match on="quest.festivalLantern.state">
     <when is="complete">
-      @pell{emotion="happy"}: Mrs Kaur says our lantern got furthest out. She's a liar, but she's a kind one.
+      @pell{code="0020" emotion="happy"}: Mrs Kaur says our lantern got furthest out. She's a liar, but she's a kind one.
     </when>
     <otherwise>
-      @pell: Next year there'll be a lantern. You'll see. I'll practise.
+      @pell{code="0030"}: Next year there'll be a lantern. You'll see. I'll practise.
     </otherwise>
   </match>
-  @pell: Go on. The driver won't wait, he never has.
-  @sol{mono}: Through the back window, the shop sign on Tern Street, getting small. Then the headland. Then only the lighthouse.
+  @pell{code="0040"}: Go on. The driver won't wait, he never has.
+  @sol{code="0010" mono}: Through the back window, the shop sign on Tern Street, getting small. Then the headland. Then only the lighthouse.
   ::auto{character="pell" action="fadeOut"}
   ::set{user.endings += 1}
   ::set{run.departed = true}

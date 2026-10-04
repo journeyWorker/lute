@@ -11,68 +11,68 @@ title: Fairhaven (the day care, the lighthouse, the Dex rater)
 <beat id="arrive" on="enterTown" target="town.fairhaven" title="Fairhaven" priority="10" once="run">
   ::bg{location="fairhaven" time="day"}
   ::music{action="change" mood="calm" volume="normal"}
-  @narrator: Fairhaven: white cottages, a harbour full of small boats, and on the point a lighthouse that has not been lit for thirty years.
-  @narrator: The day care has a fenced garden full of monsters that are not anybody's, for now. Two old people are counting them. Then counting them again.
+  @narrator{code="0010"}: Fairhaven: white cottages, a harbour full of small boats, and on the point a lighthouse that has not been lit for thirty years.
+  @narrator{code="0020"}: The day care has a fenced garden full of monsters that are not anybody's, for now. Two old people are counting them. Then counting them again.
 </beat>
 
 <entry id="midFairhavenMorning" on="enterTown" target="town.fairhaven" category="bark" once="day" when="@isMorning">
-  @narrator: Gulls, fishing boats heading out, and Grandma Ilse in the day care garden calling a name over and over.
+  @narrator{code="0010"}: Gulls, fishing boats heading out, and Grandma Ilse in the day care garden calling a name over and over.
 </entry>
 
 <entry id="midFairhavenDay" on="enterTown" target="town.fairhaven" category="bark" once="day" when="run.slot == 'day'">
-  @narrator: The harbour is sleepy in the afternoon. Somebody's Seahorsling is doing lazy circles by the jetty.
+  @narrator{code="0010"}: The harbour is sleepy in the afternoon. Somebody's Seahorsling is doing lazy circles by the jetty.
 </entry>
 
 <entry id="midFairhavenNight" on="enterTown" target="town.fairhaven" category="bark" once="day" when="@isNight">
-  @narrator: At night the dark lighthouse on the point is darker than the sky around it. Every so often, a light moves at the top. Nobody in Fairhaven looks.
+  @narrator{code="0010"}: At night the dark lighthouse on the point is darker than the sky around it. Every so often, a light moves at the top. Nobody in Fairhaven looks.
 </entry>
 
 // ── services ──────────────────────────────────────────────────────────────
 
 <beat id="center" on="heal" target="town.fairhaven" title="Monster Center" once="false">
-  ::use{component="nurse" town="fairhaven"}
+  ::use{component="nurse" town="fairhaven" instance="use-001"}
 </beat>
 
 <beat id="mart" on="shop" target="town.fairhaven" title="Mart" once="false">
-  ::use{component="shop" stock="fairhavenStock"}
+  ::use{component="shop" stock="fairhavenStock" instance="use-001"}
 </beat>
 
 // ── the day care ──────────────────────────────────────────────────────────
 
 <beat id="dayCare" on="enterPlace" target="place.fairhavenDayCare" title="Fairhaven day care" once="false">
   ::bg{location="fairhaven-day-care" time="day"}
-  @narrator: A long room with a stove, two armchairs and a ledger the size of a door. Every monster that has ever stayed here is written in it, in two different hands.
+  @narrator{code="0010"}: A long room with a stove, two armchairs and a ledger the size of a door. Every monster that has ever stayed here is written in it, in two different hands.
 </beat>
 
 <beat id="tobbeAsks" on="talk" target="npc.fairhavenDayCareMan" title="Grandpa Tobbe" priority="10" once="run">
   ::auto{character="fairhavenDayCareMan" anchor="center" action="enter"}
-  @fairhavenDayCareMan{emotion="worried"}: Twenty-two in the garden, and there should be twenty-three. Our Mothfuzz has flown off again. It always heads for the Preserve. The lights, you see.
-  @fairhavenDayCareMan: Ilse won't sleep till it's back. If you catch a Mothfuzz out there, would you show her? She won't know the difference. I won't tell her.
+  @fairhavenDayCareMan{code="0010" emotion="worried"}: Twenty-two in the garden, and there should be twenty-three. Our Mothfuzz has flown off again. It always heads for the Preserve. The lights, you see.
+  @fairhavenDayCareMan{code="0020"}: Ilse won't sleep till it's back. If you catch a Mothfuzz out there, would you show her? She won't know the difference. I won't tell her.
   <branch id="midDayCareAsk" prompt="Help Grandpa Tobbe?">
     <choice id="help" label="I'll look for it">
       ::accept{quest="midDayCareRunaway"}
-      @fairhavenDayCareMan{emotion="happy"}: Bless you. Look in the Wildmoor Preserve, near the lamps. And mind the contest people, they'll net anything.
+      @fairhavenDayCareMan{code="0030" emotion="happy"}: Bless you. Look in the Wildmoor Preserve, near the lamps. And mind the contest people, they'll net anything.
     </choice>
     <choice id="busy" label="Not now">
-      @fairhavenDayCareMan: No, no, of course. You've your own monsters. It'll come home. It usually does.
+      @fairhavenDayCareMan{code="0040"}: No, no, of course. You've your own monsters. It'll come home. It usually does.
     </choice>
   </branch>
 </beat>
 
 <entry id="midTobbe" on="talk" target="npc.fairhavenDayCareMan" category="bark" when="quest.midDayCareRunaway.state != 'complete'">
-  @fairhavenDayCareMan: We look after anyone's monster, for a small fee and a large amount of worrying. Mostly the worrying.
+  @fairhavenDayCareMan{code="0010"}: We look after anyone's monster, for a small fee and a large amount of worrying. Mostly the worrying.
 </entry>
 
 <entry id="midTobbeAfter" on="talk" target="npc.fairhavenDayCareMan" category="bark" when="quest.midDayCareRunaway.state == 'complete'">
-  @fairhavenDayCareMan{emotion="happy"}: Twenty-three in the garden. Twenty-four, counting yours, when you visit. Ilse's asleep in her chair. First time in a week.
+  @fairhavenDayCareMan{code="0010" emotion="happy"}: Twenty-three in the garden. Twenty-four, counting yours, when you visit. Ilse's asleep in her chair. First time in a week.
 </entry>
 
 <entry id="midIlse" on="talk" target="npc.fairhavenDayCareLady" category="bark" when="quest.midDayCareRunaway.state != 'active'">
-  @fairhavenDayCareLady: Leave a monster with us and it'll come back happier, fatter and a little bit spoiled. That's a promise.
+  @fairhavenDayCareLady{code="0010"}: Leave a monster with us and it'll come back happier, fatter and a little bit spoiled. That's a promise.
 </entry>
 
 <entry id="midIlseWaiting" on="talk" target="npc.fairhavenDayCareLady" category="bark" when="quest.midDayCareRunaway.state == 'active'">
-  @fairhavenDayCareLady{emotion="worried"}: Have you seen a Mothfuzz? Fluffy, round, likes lamps, answers to nothing. It's never been gone this long.
+  @fairhavenDayCareLady{code="0010" emotion="worried"}: Have you seen a Mothfuzz? Fluffy, round, likes lamps, answers to nothing. It's never been gone this long.
 </entry>
 
 // ── the harbour ───────────────────────────────────────────────────────────
@@ -80,32 +80,32 @@ title: Fairhaven (the day care, the lighthouse, the Dex rater)
 <entry id="midDexRater" on="talk" target="npc.fairhavenDexRater" category="bark">
   <match>
     <when test="@dexCaught >= 80">
-      @fairhavenDexRater: {{@dexCaught}} kinds! I have nothing left to teach you. I'm going to sit down.
+      @fairhavenDexRater{code="0010"}: {{@dexCaught}} kinds! I have nothing left to teach you. I'm going to sit down.
     </when>
     <when test="@dexCaught >= 40">
-      @fairhavenDexRater: {{@dexCaught}} kinds. Now that's a Dex. The professor will be telling people about you.
+      @fairhavenDexRater{code="0020"}: {{@dexCaught}} kinds. Now that's a Dex. The professor will be telling people about you.
     </when>
     <when test="@dexCaught >= 20">
-      @fairhavenDexRater: {{@dexCaught}} kinds. Respectable! Try the fens at night; things come out you won't see by day.
+      @fairhavenDexRater{code="0030"}: {{@dexCaught}} kinds. Respectable! Try the fens at night; things come out you won't see by day.
     </when>
     <otherwise>
-      @fairhavenDexRater: Only {{@dexCaught}} kinds? Chin up. The Wildmoor Preserve is full of bugs, and bugs count.
+      @fairhavenDexRater{code="0040"}: Only {{@dexCaught}} kinds? Chin up. The Wildmoor Preserve is full of bugs, and bugs count.
     </otherwise>
   </match>
 </entry>
 
 <entry id="midKeeper" on="talk" target="npc.fairhavenKeeper" category="bark" when="!holds('midGhostSeen', ['fairhavenLighthouse'])">
-  @fairhavenKeeper: I keep the lighthouse. I don't light it. Thirty years ago the light went out on its own, and every night since, something at the top has been trying to light it again.
+  @fairhavenKeeper{code="0010"}: I keep the lighthouse. I don't light it. Thirty years ago the light went out on its own, and every night since, something at the top has been trying to light it again.
 </entry>
 
 <entry id="midKeeperAfter" on="talk" target="npc.fairhavenKeeper" category="bark" when="holds('midGhostSeen', ['fairhavenLighthouse'])">
-  @fairhavenKeeper: You saw it? The old keeper. Still on shift. Well. Somebody has to be.
+  @fairhavenKeeper{code="0010"}: You saw it? The old keeper. Still on shift. Well. Somebody has to be.
 </entry>
 
 <entry id="midPainter" on="talk" target="npc.fairhavenPainter" category="bark" when="!@weekend">
-  @fairhavenPainter: Weekdays I teach at the school in Silvercrest. Weekends I paint the harbour. The harbour never sits still.
+  @fairhavenPainter{code="0010"}: Weekdays I teach at the school in Silvercrest. Weekends I paint the harbour. The harbour never sits still.
 </entry>
 
 <entry id="midPainterWeekend" on="talk" target="npc.fairhavenPainter" category="bark" when="@weekend">
-  @fairhavenPainter: Stand still. No, over there. You're in the harbour now. I've given you a hat. You looked like you needed a hat.
+  @fairhavenPainter{code="0010"}: Stand still. No, over there. You're in the harbour now. I've given you a hat. You looked like you needed a hat.
 </entry>

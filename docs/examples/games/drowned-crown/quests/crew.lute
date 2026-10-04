@@ -11,7 +11,7 @@ title: The crew of the Gull's Mercy
   <objective id="deep" title="Reach the fifth chamber" done="user.deepest >= 5"/>
   <objective id="trust" title="Earn Sefa's trust" done="holds('trusts', ['sefa'])"/>
   <on event="questComplete">
-    @sefa{emotion="delighted"}: It's done. Look at it. Every hall, every door. You drew this, you know. I only held the pen.
+    @sefa{code="0010" emotion="delighted"}: It's done. Look at it. Every hall, every door. You drew this, you know. I only held the pen.
   </on>
 </quest>
 
@@ -20,11 +20,11 @@ title: The crew of the Gull's Mercy
   <objective id="surface" title="Come up on your own" done="user.surfaces >= 1"/>
   <objective id="tell" title="Tell Brann the Regent is dead" on="talk" target="npc.brann" done="holds('told', ['brann', 'regent'])"/>
   <on event="runEnd" when="@surfaced">
-    @brann{os}: Line coming up light! He's swimming! Haul, you dogs, haul!
+    @brann{code="0010" os}: Line coming up light! He's swimming! Haul, you dogs, haul!
   </on>
   <on event="questComplete">
-    @brann: Here. It was your father's lantern. He'd want it lit.
-    ::use{component="keepsake" who="brann" item="lantern"}
+    @brann{code="0020"}: Here. It was your father's lantern. He'd want it lit.
+    ::use{component="keepsake" who="brann" item="lantern" instance="use-001"}
   </on>
 </quest>
 
@@ -33,14 +33,14 @@ title: The crew of the Gull's Mercy
   <objective id="death" title="Learn how Quill drowned" done="entry.quillDeath.everRead"/>
   <objective id="heir" title="Learn who Quill served" done="entry.quillHeir.everRead"/>
   <on event="bossDefeated">
-    @quill{os}: I was there. I saw it fall. Nobody ever lets me see anything fall.
+    @quill{code="0010" os}: I was there. I saw it fall. Nobody ever lets me see anything fall.
     ::set{user.bond.quill += 1}
   </on>
   <on event="bossDefeated" target="foe.regent">
-    @quill{os}: The throne's empty. Three hundred years I've waited to see it empty.
+    @quill{code="0020" os}: The throne's empty. Three hundred years I've waited to see it empty.
   </on>
   <on event="questComplete">
-    @quill: I remember now. I held the rope for your father too. I let it go.
-    ::use{component="keepsake" who="quill" item="shell"}
+    @quill{code="0030"}: I remember now. I held the rope for your father too. I let it go.
+    ::use{component="keepsake" who="quill" item="shell" instance="use-002"}
   </on>
 </quest>

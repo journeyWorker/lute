@@ -12,12 +12,12 @@ when: "@badgeCount >= 1"
 
 ::sfx{sound="radio-static"}
 ::music{action="change" mood="tense" volume="normal"}
-@announcer: Good morning, Verdane! It's {{clock.weekdayLabel}}, and the weather along the coast is...
+@announcer{code="0010"}: Good morning, Verdane! It's {{clock.weekdayLabel}}, and the weather along the coast is...
 ::sfx{sound="radio-squeal"}
-@vex{vo}: Citizens of Verdane. Forgive the interruption. I am Director Vex, of Team Eclipse.
-@vex{vo}: There are monsters in this region older than your towns. In the rock under your feet. In your towers. In the sky.
-@vex{vo}: You leave them to sleep. We will put them to work. Team Eclipse thanks you in advance for staying out of our way.
+@vex{code="0010" vo}: Citizens of Verdane. Forgive the interruption. I am Director Vex, of Team Eclipse.
+@vex{code="0020" vo}: There are monsters in this region older than your towns. In the rock under your feet. In your towers. In the sky.
+@vex{code="0030" vo}: You leave them to sleep. We will put them to work. Team Eclipse thanks you in advance for staying out of our way.
 ::sfx{sound="radio-static"}
-@announcer: ...we appear to have lost the signal. Please stay tuned.
-@narrator: Every radio in the region said the same thing, word for word, at the same moment.
+@announcer{code="0020"}: ...we appear to have lost the signal. Please stay tuned.
+@narrator{code="0010"}: Every radio in the region said the same thing, word for word, at the same moment.
 ::accept{quest="eclipseArc"}

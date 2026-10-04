@@ -8,28 +8,28 @@ title: Sunfall Isles trainers
 // after-battle lines. Grunts are in the lens scenes; Ace Kestrel is the
 // Battle Tower's.
 
-<beat use="trainerBattle" id="emberkeyHikerRook" who="emberkeyHikerRook" intro="The mountain's warm today. So am I!" win="Cooled off." lose="Hot streak!" prize="1400"/>
-<beat use="trainerBattle" id="emberkeyFirebreatherIda" when="@isNight" who="emberkeyFirebreatherIda" intro="Fire looks better in the dark." win="Snuffed out." lose="Whoosh!" prize="1500"/>
-<beat use="trainerBattle" id="mistralBirdKeeperOwen" who="mistralBirdKeeperOwen" intro="My birds can ride this wind all day." win="Grounded." lose="Up, up, and away!" prize="1400"/>
-<beat use="trainerBattle" id="mistralKiteFlyerJun" when="!@isNight" who="mistralKiteFlyerJun" intro="You walked into my kite string!" win="Tangled up." lose="Look at it fly!" prize="1300"/>
-<beat use="trainerBattle" id="coralreachSwimmerTess" when="@islesLowTide" who="coralreachSwimmerTess" intro="The tide pools are my training pool." win="Wiped out." lose="Swam circles round you." prize="1400"/>
-<beat use="trainerBattle" id="coralreachFishermanAbe" who="coralreachFishermanAbe" intro="Hooked one! Oh, it's a trainer." win="The one that got away." lose="Reeled in!" prize="1400"/>
+<beat use="trainerBattle" id="emberkeyHikerRook" who="emberkeyHikerRook" intro="The mountain's warm today. So am I!" win="Cooled off." lose="Hot streak!" prize="1400" instance="use-001"/>
+<beat use="trainerBattle" id="emberkeyFirebreatherIda" when="@isNight" who="emberkeyFirebreatherIda" intro="Fire looks better in the dark." win="Snuffed out." lose="Whoosh!" prize="1500" instance="use-002"/>
+<beat use="trainerBattle" id="mistralBirdKeeperOwen" who="mistralBirdKeeperOwen" intro="My birds can ride this wind all day." win="Grounded." lose="Up, up, and away!" prize="1400" instance="use-003"/>
+<beat use="trainerBattle" id="mistralKiteFlyerJun" when="!@isNight" who="mistralKiteFlyerJun" intro="You walked into my kite string!" win="Tangled up." lose="Look at it fly!" prize="1300" instance="use-004"/>
+<beat use="trainerBattle" id="coralreachSwimmerTess" when="@islesLowTide" who="coralreachSwimmerTess" intro="The tide pools are my training pool." win="Wiped out." lose="Swam circles round you." prize="1400" instance="use-005"/>
+<beat use="trainerBattle" id="coralreachFishermanAbe" who="coralreachFishermanAbe" intro="Hooked one! Oh, it's a trainer." win="The one that got away." lose="Reeled in!" prize="1400" instance="use-006"/>
 
 <entry id="islesRookAfter" on="talk" target="npc.emberkeyHikerRook" category="bark" when="holds('defeated', ['emberkeyHikerRook'])">
-  @emberkeyHikerRook: The whole island is a volcano. Nobody here minds.
+  @emberkeyHikerRook{code="0010"}: The whole island is a volcano. Nobody here minds.
 </entry>
 <entry id="islesIdaAfter" on="talk" target="npc.emberkeyFirebreatherIda" category="bark" when="holds('defeated', ['emberkeyFirebreatherIda'])">
-  @emberkeyFirebreatherIda: Come back when the beacon's lit. It's the best fire on the island.
+  @emberkeyFirebreatherIda{code="0010"}: Come back when the beacon's lit. It's the best fire on the island.
 </entry>
 <entry id="islesOwenAfter" on="talk" target="npc.mistralBirdKeeperOwen" category="bark" when="holds('defeated', ['mistralBirdKeeperOwen'])">
-  @mistralBirdKeeperOwen: The windmill turns with the wind, or it's supposed to.
+  @mistralBirdKeeperOwen{code="0010"}: The windmill turns with the wind, or it's supposed to.
 </entry>
 <entry id="islesJunAfter" on="talk" target="npc.mistralKiteFlyerJun" category="bark" when="holds('defeated', ['mistralKiteFlyerJun'])">
-  @mistralKiteFlyerJun: West wind today. It's always west wind.
+  @mistralKiteFlyerJun{code="0010"}: West wind today. It's always west wind.
 </entry>
 <entry id="islesTessAfter" on="talk" target="npc.coralreachSwimmerTess" category="bark" when="holds('defeated', ['coralreachSwimmerTess'])">
-  @coralreachSwimmerTess: At high tide I swim over the cave. It's creepy.
+  @coralreachSwimmerTess{code="0010"}: At high tide I swim over the cave. It's creepy.
 </entry>
 <entry id="islesAbeAfter" on="talk" target="npc.coralreachFishermanAbe" category="bark" when="holds('defeated', ['coralreachFishermanAbe'])">
-  @coralreachFishermanAbe: The grunt in the cave? She fishes worse than me.
+  @coralreachFishermanAbe{code="0010"}: The grunt in the cave? She fishes worse than me.
 </entry>

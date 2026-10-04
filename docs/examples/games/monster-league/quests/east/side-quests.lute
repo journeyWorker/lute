@@ -18,7 +18,7 @@ title: Eastmarch side quests
   <objective id="guests" title="Beat the four guests" done="holds('defeated', ['meridianGentlemanHale']) && holds('defeated', ['meridianLassPip']) && holds('defeated', ['meridianFisherTeo']) && holds('defeated', ['meridianBeautyCeline'])"/>
   <reward kind="MONEY" amount="2000"/>
   <on event="questComplete">
-    @meridianSteward: Every passenger on the Meridian, beaten fair and square. The captain has asked me to present you with the ship's compliments, and something more practical.
+    @meridianSteward{code="0010"}: Every passenger on the Meridian, beaten fair and square. The captain has asked me to present you with the ship's compliments, and something more practical.
   </on>
 </quest>
 
@@ -28,7 +28,7 @@ title: Eastmarch side quests
   <objective id="ghost" title="Or bring Yun a ghost to carry the light" on="talk" target="npc.ashgroveLanternMaker" done="holds('caughtType', ['ghost'])"/>
   <reward kind="ITEM" amount="1" target="spellTag"/>
   <on event="questComplete">
-    @ashgroveLanternMaker: There. Now there's a light up there that's yours. Take this; it was my mother's. Ghosts like it. Well. Some ghosts.
+    @ashgroveLanternMaker{code="0010"}: There. Now there's a light up there that's yours. Take this; it was my mother's. Ghosts like it. Well. Some ghosts.
   </on>
 </quest>
 
@@ -38,7 +38,7 @@ title: Eastmarch side quests
   <objective id="bees" title="Find Tom's hive a new queen" quest="eastGardensBees"/>
   <reward kind="ITEM" amount="1" target="miracleSeed"/>
   <on event="questComplete">
-    @bloomfieldFlorist{vo}: Seeds in Portvolt, a queen in the hive. Bloomfield will be in bloom by Sunday. You've earned this: it grows anything.
+    @bloomfieldFlorist{code="0010" vo}: Seeds in Portvolt, a queen in the hive. Bloomfield will be in bloom by Sunday. You've earned this: it grows anything.
   </on>
 </quest>
 
@@ -46,14 +46,14 @@ title: Eastmarch side quests
   <objective id="deliver" title="Take the seed packets to Marta in Portvolt" on="talk" target="npc.portvoltVendor" done="true"/>
   <reward kind="MONEY" amount="500"/>
   <on event="questComplete">
-    @portvoltVendor: Poppy's seeds! Finally something on my stall people want. Here, for your trouble. Tell her the striped awning says thank you.
+    @portvoltVendor{code="0010"}: Poppy's seeds! Finally something on my stall people want. Here, for your trouble. Tell her the striped awning says thank you.
   </on>
 </quest>
 
 <quest id="eastGardensBees" title="A new queen for the hive" activate="accept">
   <objective id="queen" title="Show Tom a waspire" on="talk" target="npc.bloomfieldBeekeeper" done="holds('caught', ['waspire'])"/>
   <on event="questComplete">
-    @bloomfieldBeekeeper: A waspire! Look at her. The hive'll follow her anywhere. Don't worry, she'll still be yours. They just like to know she's about.
+    @bloomfieldBeekeeper{code="0010"}: A waspire! Look at her. The hive'll follow her anywhere. Don't worry, she'll still be yours. They just like to know she's about.
   </on>
 </quest>
 
@@ -63,7 +63,7 @@ title: Eastmarch side quests
   <objective id="tamsin" title="Get past the council's engineer" done="holds('defeated', ['powerPlantEngineerTamsin'])"/>
   <reward kind="MONEY" amount="3000"/>
   <on event="questComplete">
-    @narrator: The council's note on the Center board has been stamped PAID. Somebody has drawn a small lightning bird in the corner.
+    @narrator{code="0010"}: The council's note on the Center board has been stamped PAID. Somebody has drawn a small lightning bird in the corner.
   </on>
 </quest>
 
@@ -71,6 +71,6 @@ title: Eastmarch side quests
 <quest id="eastThunderwing" title="The storm bird">
   <objective id="catch" title="Find what sits on the power plant's chimney" done="holds('caught', ['thunderwing'])"/>
   <on event="questComplete">
-    @portvoltKeeper{vo}: So it was real. I'll sleep tonight, for the first time in forty years.
+    @portvoltKeeper{code="0010" vo}: So it was real. I'll sleep tonight, for the first time in forty years.
   </on>
 </quest>

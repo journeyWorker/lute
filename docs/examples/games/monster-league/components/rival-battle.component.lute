@@ -14,18 +14,18 @@ params:
 (rivalBeaten), and the standing moves one step either way. The outcome is
 this component's own ::battle result. */
 ::auto{character="rival" action="enter"}
-@rival: {{@intro}}
+@rival{code="0010"}: {{@intro}}
 ::music{action="change" mood="battle" volume="up"}
 ::battle{foe="rival" kind=@kind team=@meet resultKey="fight"}
 ::assert{rivalFought(@meet)}
 <match on="scene.battle.fight.won">
   <when is="true">
-    @rival: {{@win}}
+    @rival{code="0020"}: {{@win}}
     ::assert{rivalBeaten(@meet)}
     ::set{run.rivalStanding += 1}
   </when>
   <otherwise>
-    @rival: {{@lose}}
+    @rival{code="0030"}: {{@lose}}
     ::set{run.rivalStanding -= 1}
   </otherwise>
 </match>

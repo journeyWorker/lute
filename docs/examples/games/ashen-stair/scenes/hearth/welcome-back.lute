@@ -11,7 +11,7 @@ when: 'has(prev.run.outcome)'
 ## Back again
 
 ::bg{location="hearth" time="night"}
-::use{component="hearthFire" flare=@fireFlare}
+::use{component="hearthFire" flare=@fireFlare instance="use-001"}
 <match on="prev.run.outcome">
   <when is="fell">
     @maud{code="0010"}: Floor {{prev.run.floor}} this time. Sit. Drink. Complain if you like.

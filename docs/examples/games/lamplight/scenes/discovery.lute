@@ -25,7 +25,7 @@ components: [../components/lamps-out.component.lute]
 
 ::bg{location="compartment_7" time="night"}
 @narrator{code="0030"}: Aurel Hask lies on the lower berth with his boots still on. The lamp above him is lit and turned low. The window is shut. The tea on the fold-down table has a skin on it.
-::use{component="lampsOut" depth="brief" where="the sleeper car" memory="Did I sleep through the tunnel, or only through the dark?"}
+::use{component="lampsOut" depth="brief" where="the sleeper car" memory="Did I sleep through the tunnel, or only through the dark?" instance="use-001"}
 @inspector{code="0030" mono}: The Lamplight reaches Ossery at six. Four hours, nine cars, and everyone who could have done it is still aboard.
 ::auto{character="crane" anchor="left" action="fadeInUp"}
 @crane{code="0010" emotion="sad"}: Tobiah Crane, conductor. Dr. Solt has looked at him already. Says he's been gone since a quarter past one.

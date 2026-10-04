@@ -8,5 +8,5 @@ when: "clock.day >= 13 && run.storm == 'squall'"
 
 ## Storm
 
-@narrator: The squall breaks the moorings.
+@narrator{code="0010"}: The squall breaks the moorings.
 ::set{run.storm = 'wrecked'}

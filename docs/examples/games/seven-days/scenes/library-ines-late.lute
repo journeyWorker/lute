@@ -14,10 +14,10 @@ priority: 30
 ::bg{location="library_reading_room" time="afternoon"}
 ::auto{character="ines" anchor="center" action="fadeInUp"}
 ::set{run.seen.ines = run.day}
-@ines{emotion="neutral"}: Oh. It's you.
-@narrator: She slides a parcel across the desk without looking up. The sheets inside are the colour of weak tea.
-@ines: I kept them. Wednesday. In case.
+@ines{code="0010" emotion="neutral"}: Oh. It's you.
+@narrator{code="0010"}: She slides a parcel across the desk without looking up. The sheets inside are the colour of weak tea.
+@ines{code="0020"}: I kept them. Wednesday. In case.
 ::set{run.lantern.paper = true}
-@sol: Ines, I'm sorry, I —
-@ines{emotion="sad"}: It's fine. It's paper. Mind the corners.
+@sol{code="0010"}: Ines, I'm sorry, I —
+@ines{code="0030" emotion="sad"}: It's fine. It's paper. Mind the corners.
 ::auto{character="ines" action="fadeOut"}

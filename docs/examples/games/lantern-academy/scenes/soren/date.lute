@@ -13,23 +13,23 @@ after: 'visited("common.festival")'
 ::bg{location="library" time="dusk"}
 ::music{action="start" mood="romantic" volume="down"}
 ::auto{character="soren" anchor="center" action="fadeInUp"}
-@soren{emotion="shy"}: The closed stacks. Nobody comes here. That's the whole point of them. And of me, usually.
-@soren: Every student since 1890 has hidden a letter in these books. I've read all of them. I'm not proud of it.
+@soren{code="0010" emotion="shy"}: The closed stacks. Nobody comes here. That's the whole point of them. And of me, usually.
+@soren{code="0020"}: Every student since 1890 has hidden a letter in these books. I've read all of them. I'm not proud of it.
 
 ::date{with="soren" spot="library" resultKey="stacks"}
 
 <match on="scene.date.stacks.mood">
   <when is="perfect">
-    @soren{emotion="happy"}: You found the one I hid. I — I wrote it the night of the festival. Please read it when I'm not in the room. Please read it now.
-    ::use{component="cg" id="cgSorenLetter"}
+    @soren{code="0030" emotion="happy"}: You found the one I hid. I — I wrote it the night of the festival. Please read it when I'm not in the room. Please read it now.
+    ::use{component="cg" id="cgSorenLetter" instance="use-001"}
     ::set{run.aff.soren += 2}
   </when>
   <when is="sweet">
-    @soren{emotion="fond"}: You read out loud like you're telling a secret. Do it again.
+    @soren{code="0040" emotion="fond"}: You read out loud like you're telling a secret. Do it again.
     ::set{run.aff.soren += 1}
   </when>
   <otherwise>
-    @soren{emotion="sad"}: Sorry. I talked about bindings for forty minutes. Nobody wants to hear about bindings.
+    @soren{code="0050" emotion="sad"}: Sorry. I talked about bindings for forty minutes. Nobody wants to hear about bindings.
   </otherwise>
 </match>
-@narrator{when="scene.date.stacks.hearts >= 5"}: When the lamps click off, neither of you reaches for the switch.
+@narrator{code="0010" when="scene.date.stacks.hearts >= 5"}: When the lamps click off, neither of you reaches for the switch.

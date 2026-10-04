@@ -9,6 +9,6 @@ when: run.accused != "magpie"
 
 ## The Parlour Again
 
-@aunt_mabel: Well. I suppose we shall never know.
-@narrator{when="run.slot == 'evening'"}: The {{run.slot}} tea has gone cold in the pot.
-@narrator: On the sundial, the magpie tilts its head, and something silver winks.
+@aunt_mabel{code="0010"}: Well. I suppose we shall never know.
+@narrator{code="0010" when="run.slot == 'evening'"}: The {{run.slot}} tea has gone cold in the pot.
+@narrator{code="0020"}: On the sundial, the magpie tilts its head, and something silver winks.

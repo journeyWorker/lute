@@ -16,13 +16,13 @@ priority: 10
 
 ::bg{location="moonstone-cave" time="day"}
 ::music{action="change" mood="eerie" volume="down"}
-@narrator: Moonstone Cave. The miners' ladders go down into the dark, and the dark smells of wet stone and lamp oil.
-@narrator: Chalked on the first beam: "DUSKBATS SLEEP HERE. BE NICE." Underneath, in a different hand: "BE QUICK."
+@narrator{code="0010"}: Moonstone Cave. The miners' ladders go down into the dark, and the dark smells of wet stone and lamp oil.
+@narrator{code="0020"}: Chalked on the first beam: "DUSKBATS SLEEP HERE. BE NICE." Underneath, in a different hand: "BE QUICK."
 
 ## The lights
 
 ::sfx{sound="pickaxe-far"}
-@narrator: Far below, where no miner has worked in years, there are lights. White work lights, too many of them, and the tock-tock-tock of picks going all at once.
+@narrator{code="0030"}: Far below, where no miner has worked in years, there are lights. White work lights, too many of them, and the tock-tock-tock of picks going all at once.
 ::set{run.lair.quarryDig = "found"}
-@grunt: (echoing) Keep it moving! The Director wants the spiral beds cleared by the new moon!
-@narrator: Three ramps lead down towards the lights. Each one has somebody in black standing at the top of it.
+@grunt{code="0010"}: (echoing) Keep it moving! The Director wants the spiral beds cleared by the new moon!
+@narrator{code="0040"}: Three ramps lead down towards the lights. Each one has somebody in black standing at the top of it.

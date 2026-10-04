@@ -10,14 +10,14 @@ priority: 10
 ## Reception
 
 ::bg{location="reception" time="night"}
-@narrator: A switchboard with its cords pulled out and laid in a neat row, like the switchboard itself had been laid out for viewing.
-@narrator: A duty roster is still pinned to the corkboard. The drawer under the desk is not quite shut.
-@narrator: Through the wall, the pharmacy door has a keypad of its own, four digits, green letters that read PRESCRIBED STAFF ONLY.
+@narrator{code="0010"}: A switchboard with its cords pulled out and laid in a neat row, like the switchboard itself had been laid out for viewing.
+@narrator{code="0020"}: A duty roster is still pinned to the corkboard. The drawer under the desk is not quite shut.
+@narrator{code="0030"}: Through the wall, the pharmacy door has a keypad of its own, four digits, green letters that read PRESCRIBED STAFF ONLY.
 <match on="run.hour">
   <when is="h23|h00">
-    @nell{mono}: The clock above the desk says half past four. It has said half past four since 1979.
+    @nell{code="0010" mono}: The clock above the desk says half past four. It has said half past four since 1979.
   </when>
   <otherwise>
-    @nell{mono}: The clock above the desk says half past four. For the first time tonight, that feels close.
+    @nell{code="0020" mono}: The clock above the desk says half past four. For the first time tonight, that feels close.
   </otherwise>
 </match>

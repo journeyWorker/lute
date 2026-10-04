@@ -11,40 +11,40 @@ title: Ash Tower, floors 2-6 (the siege)
 
 // ── the mediums, floors 2-4 ──────────────────────────────────────────────
 
-<beat use="trainerBattle" id="ashTowerMediumAgatha" who="ashTowerMediumAgatha" intro="Get... out... of... the... tower..." win="Oh! Where am I? Why is my hair like this?" lose="Leeeave... usss..." prize="560"/>
+<beat use="trainerBattle" id="ashTowerMediumAgatha" who="ashTowerMediumAgatha" intro="Get... out... of... the... tower..." win="Oh! Where am I? Why is my hair like this?" lose="Leeeave... usss..." prize="560" instance="use-001"/>
 
 <entry id="eastAshTowerMediumAgathaAfter" on="talk" target="npc.ashTowerMediumAgatha" category="bark" when="holds('defeated', ['ashTowerMediumAgatha'])">
-  @ashTowerMediumAgatha: I came to light a candle for my old puffsong. Then everything went grey. Thank you, dear.
+  @ashTowerMediumAgatha{code="0010"}: I came to light a candle for my old puffsong. Then everything went grey. Thank you, dear.
 </entry>
 
-<beat use="trainerBattle" id="ashTowerMediumHester" who="ashTowerMediumHester" intro="You can see them too? The shapes on the stairs? Then you can see ME!" win="The shapes are gone. Were they ever there?" lose="The shapes like me better." prize="560"/>
+<beat use="trainerBattle" id="ashTowerMediumHester" who="ashTowerMediumHester" intro="You can see them too? The shapes on the stairs? Then you can see ME!" win="The shapes are gone. Were they ever there?" lose="The shapes like me better." prize="560" instance="use-002"/>
 
 <entry id="eastAshTowerMediumHesterAfter" on="talk" target="npc.ashTowerMediumHester" category="bark" when="holds('defeated', ['ashTowerMediumHester'])">
-  @ashTowerMediumHester: The monsters resting here don't mind visitors. It's the living ones upstairs they can't abide.
+  @ashTowerMediumHester{code="0010"}: The monsters resting here don't mind visitors. It's the living ones upstairs they can't abide.
 </entry>
 
-<beat use="trainerBattle" id="ashTowerMediumLorna" who="ashTowerMediumLorna" intro="Kekeke... kekeke... KEKEKE!" win="Kek... oh. Oh, how embarrassing." lose="Kekeke!" prize="600"/>
+<beat use="trainerBattle" id="ashTowerMediumLorna" who="ashTowerMediumLorna" intro="Kekeke... kekeke... KEKEKE!" win="Kek... oh. Oh, how embarrassing." lose="Kekeke!" prize="600" instance="use-003"/>
 
 <entry id="eastAshTowerMediumLornaAfter" on="talk" target="npc.ashTowerMediumLorna" category="bark" when="holds('defeated', ['ashTowerMediumLorna'])">
-  @ashTowerMediumLorna: I have never said "kekeke" in my life. Please forget you heard it.
+  @ashTowerMediumLorna{code="0010"}: I have never said "kekeke" in my life. Please forget you heard it.
 </entry>
 
 // ── Team Eclipse, floors 5-6 ─────────────────────────────────────────────
 
-<beat use="trainerBattle" id="ashTowerGruntMoss" who="ashTowerGruntMoss" intro="How'd you get up the stairs? The ghost was supposed to scare off the tourists!" win="Ugh. I hate this job. I hate this tower." lose="Scram! Before the ghost comes back!" prize="700"/>
+<beat use="trainerBattle" id="ashTowerGruntMoss" who="ashTowerGruntMoss" intro="How'd you get up the stairs? The ghost was supposed to scare off the tourists!" win="Ugh. I hate this job. I hate this tower." lose="Scram! Before the ghost comes back!" prize="700" instance="use-004"/>
 
 <entry id="eastAshTowerGruntMossAfter" on="talk" target="npc.ashTowerGruntMoss" category="bark" when="holds('defeated', ['ashTowerGruntMoss'])">
-  @ashTowerGruntMoss: The Director says the old man knows where the great sleepers are. I say the old man's been asleep since we got here.
+  @ashTowerGruntMoss{code="0010"}: The Director says the old man knows where the great sleepers are. I say the old man's been asleep since we got here.
 </entry>
 
-<beat use="trainerBattle" id="ashTowerGruntSlate" who="ashTowerGruntSlate" intro="Team Eclipse has this tower under new management! Visiting hours are over!" win="Management will hear about this." lose="Visiting hours, I said!" prize="700"/>
+<beat use="trainerBattle" id="ashTowerGruntSlate" who="ashTowerGruntSlate" intro="Team Eclipse has this tower under new management! Visiting hours are over!" win="Management will hear about this." lose="Visiting hours, I said!" prize="700" instance="use-005"/>
 
 <entry id="eastAshTowerGruntSlateAfter" on="talk" target="npc.ashTowerGruntSlate" category="bark" when="holds('defeated', ['ashTowerGruntSlate'])">
-  @ashTowerGruntSlate: Admin Corvid's upstairs. If you're smart you'll go home. You're not smart, are you.
+  @ashTowerGruntSlate{code="0010"}: Admin Corvid's upstairs. If you're smart you'll go home. You're not smart, are you.
 </entry>
 
-<beat use="trainerBattle" id="ashTowerAdminCorvid" title="Admin Corvid" who="ashTowerAdminCorvid" intro="A child with a lens. The Director warned me about curious children. He did not say you would be this curious." win="Hm. The Director will want to hear about you, personally." lose="Run along. Tell your professor Team Eclipse sends its regards." prize="1600"/>
+<beat use="trainerBattle" id="ashTowerAdminCorvid" title="Admin Corvid" who="ashTowerAdminCorvid" intro="A child with a lens. The Director warned me about curious children. He did not say you would be this curious." win="Hm. The Director will want to hear about you, personally." lose="Run along. Tell your professor Team Eclipse sends its regards." prize="1600" instance="use-006"/>
 
 <entry id="eastAshTowerAdminCorvidAfter" on="talk" target="npc.ashTowerAdminCorvid" category="bark" when="holds('defeated', ['ashTowerAdminCorvid'])">
-  @ashTowerAdminCorvid: Do you know what sleeps under Verdane? No. Nor do we, yet. That is the only reason we are still here.
+  @ashTowerAdminCorvid{code="0010"}: Do you know what sleeps under Verdane? No. Nor do we, yet. That is the only reason we are still here.
 </entry>

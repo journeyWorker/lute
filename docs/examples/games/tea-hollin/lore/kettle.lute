@@ -5,5 +5,5 @@ title: The Kettle
 ---
 
 <entry id="kettleSings" on="teatime" once="slot">
-  @narrator: Somewhere below stairs, the kettle sings.
+  @narrator{code="0010"}: Somewhere below stairs, the kettle sings.
 </entry>

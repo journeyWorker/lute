@@ -7,62 +7,62 @@ title: Daily and weekly resets, event openings
 birthdays answer it too, from their own files. */
 
 <beat id="dailyNotice" on="dailyReset" once="day" priority="20">
-  @lumi: New day, Wishkeeper. Daily missions are fresh, and the stamina bar's full.
+  @lumi{code="0010"}: New day, Wishkeeper. Daily missions are fresh, and the stamina bar's full.
 </beat>
 /* The first reset of each clock week, once a week (launch week has nothing
 to reset yet). */
 <beat id="weeklyNotice" on="dailyReset" once="week" priority="19" when="user.day > 7">
-  @lumi: A new week, too! The Hollow Tower's floors have reset. Weekly rewards are back.
+  @lumi{code="0010"}: A new week, too! The Hollow Tower's floors have reset. Weekly rewards are back.
 </beat>
 /* Birthdays: every owned hero whose birthday it is, one after another, in
 roster order. Each hero's own birthday line (lore/bonds/<hero>.lute)
 follows the banner. */
 <beat id="birthday" on="dailyReset" for="kind:hero" once="day" priority="1" when="holds('celebrate', [occasion.target])">
-  @lumi{emotion="happy"}: It's {{occasion.target}}'s birthday! A gift is in your mailbox. It's from all of us!
+  @lumi{code="0010" emotion="happy"}: It's {{occasion.target}}'s birthday! A gift is in your mailbox. It's from all of us!
 </beat>
 /* Event openings: once per festival window, so the rerun announces itself again. */
 <beat id="harvestOpens" on="dailyReset" once="season:harvest" priority="10" when="@harvestLive">
-  @pim{emotion="happy"}: Harvest Moon Festival! Moon cakes, lanterns, and a very sleepy priestess on the banner.
-  @pim{when="@harvestRerun"}: It's the rerun! Missed Cyra last time? Now's your chance. I'll be at my stall.
-  @pim{when="has(prev.season.harvest.tokens) && prev.season.harvest.tokens >= 400"}: Last moon you walked off with {{prev.season.harvest.tokens}} tokens. Big spender. Let's see if you top it.
-  @pim{when="quest.starfallMissions.state == 'failed'"}: And those comet missions you let slip? Gone with the comets. Not this time, eh?
+  @pim{code="0010" emotion="happy"}: Harvest Moon Festival! Moon cakes, lanterns, and a very sleepy priestess on the banner.
+  @pim{code="0020" when="@harvestRerun"}: It's the rerun! Missed Cyra last time? Now's your chance. I'll be at my stall.
+  @pim{code="0030" when="has(prev.season.harvest.tokens) && prev.season.harvest.tokens >= 400"}: Last moon you walked off with {{prev.season.harvest.tokens}} tokens. Big spender. Let's see if you top it.
+  @pim{code="0040" when="quest.starfallMissions.state == 'failed'"}: And those comet missions you let slip? Gone with the comets. Not this time, eh?
   ::openBanner{banner="harvest"}
 </beat>
 
 <beat id="starfallOpens" on="dailyReset" once="season:starfall" priority="10" when="@starfallLive">
-  @pim{emotion="happy"}: Starfall Night! Comets for sale, wishes for free, and a very grumpy knight on the banner.
+  @pim{code="0010" emotion="happy"}: Starfall Night! Comets for sale, wishes for free, and a very grumpy knight on the banner.
   ::openBanner{banner="starfall"}
 </beat>
 
 <beat id="chapterThree" on="dailyReset" once="user" priority="5" when="@ch3Released">
-  @lumi{emotion="surprised"}: Wishkeeper! The road to the Hollow Keep just opened. Chapter 3 is here!
+  @lumi{code="0010" emotion="surprised"}: Wishkeeper! The road to the Hollow Keep just opened. Chapter 3 is here!
 </beat>
 /* dayClose: the day is about to roll over (user.day not yet advanced). */
 <beat id="eventLastCall" on="dayClose" once="day" when="(@harvestLive && @harvestDaysLeft == 0) || (@starfallLive && @starfallDaysLeft == 0)">
-  @pim{emotion="smug"}: Last night of the festival! Tokens don't keep, friend. Spend 'em or dream about 'em.
+  @pim{code="0010" emotion="smug"}: Last night of the festival! Tokens don't keep, friend. Spend 'em or dream about 'em.
 </beat>
 
-<beat use="eventOpens" id="frostOpens" season="frost" live="@frostLive" banner="frost">
-  @pim{emotion="happy"}: The Frostlight Vigil! The sea's frozen solid, and there's a very quiet girl on the banner.
-  @nyx{emotion="shy" when="!holds('owned', ['nyx'])"}: ...Hello. Don't mind me. I'm just lighting things.
+<beat use="eventOpens" id="frostOpens" season="frost" live="@frostLive" banner="frost" instance="use-001">
+  @pim{code="0010" emotion="happy"}: The Frostlight Vigil! The sea's frozen solid, and there's a very quiet girl on the banner.
+  @nyx{code="0010" emotion="shy" when="!holds('owned', ['nyx'])"}: ...Hello. Don't mind me. I'm just lighting things.
 </beat>
 
 <beat id="frostLastCall" on="dayClose" once="season:frost" share="frostLastCall" priority="1" when="@frostLive && @frostDaysLeft == 0">
-  @nyx{emotion="sad"}: Last night on the ice. I'll keep the candles going until the very end. You don't have to stay. ...You can, though.
+  @nyx{code="0010" emotion="sad"}: Last night on the ice. I'll keep the candles going until the very end. You don't have to stay. ...You can, though.
 </beat>
 /* Every night of the vigil the player spends on the ice adds a night. Rides
 along whatever else closes the day. */
 <beat id="frostVigilNight" on="dayClose" also once="day" after="visited('frost.f1')" when="@frostLive">
-  @nyx: Another night kept. The lanterns are warmer for it.
+  @nyx{code="0010"}: Another night kept. The lanterns are warmer for it.
   ::set{season.frost.vigils += 1}
 </beat>
 /* Pim nags until the player has kept three vigil nights this window. spentBy
 latches for the once period, so once="season:frost" re-arms it each window. */
 <beat id="frostNag" on="dailyReset" once="season:frost" priority="9" spentBy="season.frost.vigils >= 3" when="@frostLive">
-  @pim{emotion="smug"}: {{season.frost.vigils:plural(# vigil night|# vigil nights)}} kept so far. Nyx says three's the proper number. I say candles are two for one.
+  @pim{code="0010" emotion="smug"}: {{season.frost.vigils:plural(# vigil night|# vigil nights)}} kept so far. Nyx says three's the proper number. I say candles are two for one.
 </beat>
 /* Each hero the player is close to (bond rank 2 or better) brings a candle
 on the first reset of the vigil. */
 <beat id="frostCandles" on="dailyReset" for="kind:hero" once="season:frost" priority="2" when="@frostLive && holds('owned', [occasion.target]) && holds('bondRank', [occasion.target, 'r2'])">
-  @narrator: {{occasion.target}} turns up at the door with a candle, already lit. "For the vigil," they say.
+  @narrator{code="0010"}: {{occasion.target}} turns up at the door with a candle, already lit. "For the vigil," they say.
 </beat>

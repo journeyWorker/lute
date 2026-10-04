@@ -12,47 +12,47 @@ priority: 100
 ::bg{location="promenade" time="night"}
 ::music{action="start" mood="festive" volume="normal"}
 ::vfx{type="lanterns"}
-@narrator: The whole town walks the promenade in the blue hour, carrying lanterns on sticks: fish, stars, a lopsided whale, a lantern shaped like a lantern.
+@narrator{code="0010"}: The whole town walks the promenade in the blue hour, carrying lanterns on sticks: fish, stars, a lopsided whale, a lantern shaped like a lantern.
 
 <match on="quest.festivalLantern.state">
   <when is="complete">
     ::auto{character="pell" anchor="center" action="fadeInUp"}
-    @pell{emotion="happy"}: That's ours. That's the shop's. Forty-one years.
-    @narrator: Your lantern is not the most beautiful on the promenade. It is the only one that is yours.
+    @pell{code="0010" emotion="happy"}: That's ours. That's the shop's. Forty-one years.
+    @narrator{code="0020"}: Your lantern is not the most beautiful on the promenade. It is the only one that is yours.
   </when>
   <when is="failed">
-    @narrator: The Lantern Walk starts without a lantern from the shop on Tern Street, for the first time in forty years.
+    @narrator{code="0030"}: The Lantern Walk starts without a lantern from the shop on Tern Street, for the first time in forty years.
     ::auto{character="pell" anchor="center" action="fadeInUp"}
-    @pell{emotion="sad"}: Never mind, love. It's only paper.
-    @sol{mono}: It is not only paper. She has said "only paper" twice now, and her hands are shaking worse than on Monday.
+    @pell{code="0020" emotion="sad"}: Never mind, love. It's only paper.
+    @sol{code="0010" mono}: It is not only paper. She has said "only paper" twice now, and her hands are shaking worse than on Monday.
   </when>
   <otherwise>
-    @narrator: You carry nothing. It feels like forgetting someone's name.
+    @narrator{code="0040"}: You carry nothing. It feels like forgetting someone's name.
   </otherwise>
 </match>
 
 ## Down to the water
 
 ::bg{location="slipway" time="night"}
-@narrator: At the bottom of the slipway people crouch and let their lanterns go. The tide takes them out in a slow, glowing line toward the lighthouse.
+@narrator{code="0050"}: At the bottom of the slipway people crouch and let their lanterns go. The tide takes them out in a slow, glowing line toward the lighthouse.
 
 <branch id="walkWith" prompt="Someone should be beside you when the lanterns go out.">
   <choice id="ines" label="Find Ines." into="run.festivalWith" value="ines" when="run.aff.ines >= 2">
     ::auto{character="ines" anchor="left" action="fadeInUp"}
-    @ines{emotion="shy"}: I hoped you'd look for me. I didn't want to hope it out loud.
+    @ines{code="0010" emotion="shy"}: I hoped you'd look for me. I didn't want to hope it out loud.
     ::set{run.aff.ines += 1}
   </choice>
   <choice id="theo" label="Find Theo." into="run.festivalWith" value="theo" when="run.aff.theo >= 2">
     ::auto{character="theo" anchor="right" action="fadeInUp"}
-    @theo{emotion="happy"}: Qualified hands. You floated it. I'm — yeah. Proud's a weird word. I'm that.
+    @theo{code="0010" emotion="happy"}: Qualified hands. You floated it. I'm — yeah. Proud's a weird word. I'm that.
     ::set{run.aff.theo += 1}
   </choice>
   <choice id="pell" label="Stay with Aunt Pell." into="run.festivalWith" value="pell">
     ::auto{character="pell" anchor="center" action="fadeInUp"}
-    @pell: You don't have to babysit me.
-    @sol: I know.
+    @pell{code="0030"}: You don't have to babysit me.
+    @sol{code="0020"}: I know.
   </choice>
 </branch>
 
-@narrator: The last lantern rounds the breakwater. For a moment the whole bay holds its breath, lit from underneath.
+@narrator{code="0060"}: The last lantern rounds the breakwater. For a moment the whole bay holds its breath, lit from underneath.
 ::music{action="fadeOut"}

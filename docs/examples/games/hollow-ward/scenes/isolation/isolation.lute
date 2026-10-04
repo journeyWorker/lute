@@ -11,7 +11,7 @@ priority: 10
 
 ::bg{location="isolation" time="night"}
 ::music{action="start" mood="hush" volume="low"}
-@narrator: Three cells with their doors off. In one, a hospital bed. In one, a chair turned to a painted-over window. In the last, a cot.
-@narrator: Every one of them is occupied, and every one of them is waiting.
-@nell{mono when="run.hush == 0"}: They think I'm the round.
-@nell{mono}: {{run.hush:plural(One of them is|# of them are)}} asleep now.
+@narrator{code="0010"}: Three cells with their doors off. In one, a hospital bed. In one, a chair turned to a painted-over window. In the last, a cot.
+@narrator{code="0020"}: Every one of them is occupied, and every one of them is waiting.
+@nell{code="0010" mono when="run.hush == 0"}: They think I'm the round.
+@nell{code="0020" mono}: {{run.hush:plural(One of them is|# of them are)}} asleep now.

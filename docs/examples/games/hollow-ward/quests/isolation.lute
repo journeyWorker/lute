@@ -8,12 +8,12 @@ id: isolationQuests
   <objective id="walter" title="Give Mr. Pell his visiting day" done="holds('calmed', ['walter'])"/>
   <objective id="june" title="Call June by her name" done="holds('calmed', ['june'])" by="@lateNight"/>
   <on event="questActive">
-    @nell{mono}: Three beds. Three people who never got the round they were promised.
+    @nell{code="0010" mono}: Three beds. Three people who never got the round they were promised.
   </on>
   <on event="questComplete">
-    @narrator: Down in the wing, three sets of breathing stop, one after the other, like lamps going out along a street.
+    @narrator{code="0010"}: Down in the wing, three sets of breathing stop, one after the other, like lamps going out along a street.
   </on>
   <on event="questFailed">
-    @june{os when="quest.hushWing.objectives.june.failed"}: It's three. You said you'd come before three.
+    @june{code="0010" os when="quest.hushWing.objectives.june.failed"}: It's three. You said you'd come before three.
   </on>
 </quest>

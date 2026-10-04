@@ -15,10 +15,10 @@ when: "holds('hasItem', ['goldTooth'])"
 
 ::bg{location="warden-house" time="day"}
 ::auto{character="wardenHolt" anchor="center" action="enter"}
-@wardenHolt{emotion="sad"}: Hwah? Ish that... ish that mah teef? Mah gold teef! Ah losht 'em in the Pweserve!
-@narrator: Warden Holt takes the gold tooth, gives it a polish on his sleeve, and puts it back in with a click.
+@wardenHolt{code="0010" emotion="sad"}: Hwah? Ish that... ish that mah teef? Mah gold teef! Ah losht 'em in the Pweserve!
+@narrator{code="0010"}: Warden Holt takes the gold tooth, gives it a polish on his sleeve, and puts it back in with a click.
 ::retract{hasItem(goldTooth)}
-@wardenHolt{emotion="happy"}: Ah, much better. Thank you, young trainer. I can whistle for my Ranger again!
-@wardenHolt: Take this. My old Bullrush moved boulders with it for thirty years. It's retired now. It moves sofas.
-::use{component="obtain" item="hmStrength"}
-@wardenHolt: With the Bloom Badge, your monsters can use Strength outside of battle. The boulders on Victory Road won't know what hit them.
+@wardenHolt{code="0020" emotion="happy"}: Ah, much better. Thank you, young trainer. I can whistle for my Ranger again!
+@wardenHolt{code="0030"}: Take this. My old Bullrush moved boulders with it for thirty years. It's retired now. It moves sofas.
+::use{component="obtain" item="hmStrength" instance="use-001"}
+@wardenHolt{code="0040"}: With the Bloom Badge, your monsters can use Strength outside of battle. The boulders on Victory Road won't know what hit them.

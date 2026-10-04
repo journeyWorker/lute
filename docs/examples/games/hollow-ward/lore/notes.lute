@@ -6,41 +6,41 @@ series: wardNotes
 ---
 
 <entry id="tobiasNote" on="read" target="note.tobiasNote" category="note" title="A note on the dash">
-  @tobias{vo}: Nell. If you're reading this I'm late, and you drove out here, which I told you not to. Don't come in. I mean it. Go home. T.
-  @tobias{vo}: P.S. If you do come in, the lantern's mine, bring it back.
+  @tobias{code="0010" vo}: Nell. If you're reading this I'm late, and you drove out here, which I told you not to. Don't come in. I mean it. Go home. T.
+  @tobias{code="0020" vo}: P.S. If you do come in, the lantern's mine, bring it back.
 </entry>
 
 <entry id="plaque" on="read" target="note.plaque" category="note" title="The brass plaque">
-  @narrator: ST. AGATHE'S HOLLOW WARD. FOR THE REST OF THE TROUBLED MIND. OPENED BY THE GRACE OF GOD AND THE COUNTY BOARD, 19 APRIL 1947.
-  @narrator: Somebody has scratched a line through REST and written, very small, KEEPING.
+  @narrator{code="0010"}: ST. AGATHE'S HOLLOW WARD. FOR THE REST OF THE TROUBLED MIND. OPENED BY THE GRACE OF GOD AND THE COUNTY BOARD, 19 APRIL 1947.
+  @narrator{code="0020"}: Somebody has scratched a line through REST and written, very small, KEEPING.
 </entry>
 
 <entry id="roster" on="read" target="note.roster" category="note" title="The duty roster">
-  @narrator: NIGHTS: Sister M. Pryce (ward). A. Crane (orderly, all floors). Dr. R. Hale (on call, do NOT call).
-  @narrator: At the bottom, in a different pen: BOILER: fire II before I. NEVER III with the pressure up. Ask Crane.
-  @nell{mono}: Crane. The orderly, all floors.
+  @narrator{code="0010"}: NIGHTS: Sister M. Pryce (ward). A. Crane (orderly, all floors). Dr. R. Hale (on call, do NOT call).
+  @narrator{code="0020"}: At the bottom, in a different pen: BOILER: fire II before I. NEVER III with the pressure up. Ask Crane.
+  @nell{code="0010" mono}: Crane. The orderly, all floors.
 </entry>
 
 <entry id="drawing" on="read" target="note.drawing" category="note" title="The newest drawing">
-  @narrator: A bath with a lid on it. A stick figure inside, only its eyes showing. A blue scribble, a red scribble, a chain, and a very large smiling sun.
-  @child{vo}: BLU FURST THEN RED THEN LET IT GO. then its morning.
+  @narrator{code="0010"}: A bath with a lid on it. A stick figure inside, only its eyes showing. A blue scribble, a red scribble, a chain, and a very large smiling sun.
+  @child{code="0010" vo}: BLU FURST THEN RED THEN LET IT GO. then its morning.
 </entry>
 
 <entry id="hymnBoard" on="read" target="note.hymnBoard" category="note" title="The hymn board">
-  @narrator: Three wooden tiles on their pegs: 3. 1. 8.
-  @narrator: Under them, where the psalm number should be, a tile that has been turned face down.
+  @narrator{code="0010"}: Three wooden tiles on their pegs: 3. 1. 8.
+  @narrator{code="0020"}: Under them, where the psalm number should be, a tile that has been turned face down.
 </entry>
 
 <entry id="bedCard" on="read" target="note.bedCard" category="note" title="A bed card">
-  @narrator: A card in the brass holder at the foot of the twelfth crib, written tonight: BED 13. ARDEN, T. ADMITTED 23:04.
-  @narrator: Underneath, in the same hand: TRANSFERRED: MORTUARY, DRAWER 13. KEEP COLD.
-  @nell{emotion="afraid"}: There is no bed thirteen. There are twelve cribs. There are twelve.
+  @narrator{code="0010"}: A card in the brass holder at the foot of the twelfth crib, written tonight: BED 13. ARDEN, T. ADMITTED 23:04.
+  @narrator{code="0020"}: Underneath, in the same hand: TRANSFERRED: MORTUARY, DRAWER 13. KEEP COLD.
+  @nell{code="0010" emotion="afraid"}: There is no bed thirteen. There are twelve cribs. There are twelve.
 </entry>
 
 <entry id="tape" on="read" target="note.tape" category="tape" title="Toby's dictaphone">
-  @tobias{vo}: Hollow Ward, part two. Twenty-three hundred, I'm in reception. There's a wheel squeaking somewhere, which is, obviously, great for the channel.
-  @tobias{vo}: Okay. Okay, there's a guy. There's a guy with a trolley at the end of the corridor and he's just... standing. Hello? Mate?
-  @tobias{vo}: He's humming. Why does he know that song? Mum used to...
-  @narrator: The rest of the tape is a gurney wheel, going round, for forty minutes.
+  @tobias{code="0010" vo}: Hollow Ward, part two. Twenty-three hundred, I'm in reception. There's a wheel squeaking somewhere, which is, obviously, great for the channel.
+  @tobias{code="0020" vo}: Okay. Okay, there's a guy. There's a guy with a trolley at the end of the corridor and he's just... standing. Hello? Mate?
+  @tobias{code="0030" vo}: He's humming. Why does he know that song? Mum used to...
+  @narrator{code="0010"}: The rest of the tape is a gurney wheel, going round, for forty minutes.
   ::fright{when="!entry.tape.read"}
 </entry>

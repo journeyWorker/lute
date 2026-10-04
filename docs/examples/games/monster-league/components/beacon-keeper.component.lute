@@ -20,9 +20,9 @@ beat:
 ## Beacon keeper
 /* The keeper takes the lens, climbs, and the beacon burns again. The use's
 own lines play between the thanks and the flame. */
-@@keeper: {{@thanks}}
+@@keeper{code="0010"}: {{@thanks}}
 ::body
 ::assert{islesRelit(@isle)}
 ::sfx{sound="flame-whoosh"}
-@narrator: Light pours out of the {{@isle}} beacon and runs across the water.
-@narrator: {{@lit:plural(One beacon burns|# beacons burn)}} over the Sunfall Isles.
+@narrator{code="0010"}: Light pours out of the {{@isle}} beacon and runs across the water.
+@narrator{code="0020"}: {{@lit:plural(One beacon burns|# beacons burn)}} over the Sunfall Isles.

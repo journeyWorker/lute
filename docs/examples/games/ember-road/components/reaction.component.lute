@@ -13,18 +13,18 @@ companion — it picks the member of `run.approval[@who]`. */
 <match on="@feel">
   <when is="approves">
     ::set{run.approval[@who] += 1}
-    @narrator: {{@who}} approves.
+    @narrator{code="0010"}: {{@who}} approves.
   </when>
   <when is="disapproves">
     ::set{run.approval[@who] -= 1}
-    @narrator: {{@who}} disapproves.
+    @narrator{code="0020"}: {{@who}} disapproves.
   </when>
   <when is="adores">
     ::set{run.approval[@who] += 2}
-    @narrator: {{@who}} greatly approves.
+    @narrator{code="0030"}: {{@who}} greatly approves.
   </when>
   <when is="despises">
     ::set{run.approval[@who] -= 3}
-    @narrator: {{@who}} greatly disapproves.
+    @narrator{code="0040"}: {{@who}} greatly disapproves.
   </when>
 </match>

@@ -12,16 +12,16 @@ when: "@badgeCount >= 8 && holds('defeated', ['morwen']) && !holds('defeated', [
 
 ::bg{location="dragonChamber" time="day"}
 ::auto{character="drakon" anchor="center" action="enter"}
-@drakon: I am Drakon, last of the Four. Dragons are the oldest monsters of all. Here, they are mine.
+@drakon{code="0010"}: I am Drakon, last of the Four. Dragons are the oldest monsters of all. Here, they are mine.
 ::music{action="change" mood="battle" volume="up"}
 ::battle{foe="drakon" kind="elite" resultKey="fight"}
 <match on="scene.battle.fight.won">
   <when is="true">
-    @drakon: Beaten. By a trainer who is not yet grown. The Champion's hall is open to you.
+    @drakon{code="0020"}: Beaten. By a trainer who is not yet grown. The Champion's hall is open to you.
     ::assert{defeated(drakon)}
   </when>
   <otherwise>
-    @drakon: The dragons win. As they always have.
+    @drakon{code="0030"}: The dragons win. As they always have.
     // the streak breaks: the whole Four must be beaten again
     ::retract{defeated(frostine)}
     ::retract{defeated(tarrok)}

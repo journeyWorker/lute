@@ -67,6 +67,45 @@ existing key; `lute tag --force` retags line codes only and remains guarded by
 `codesLocked`. Published parent/document renames use the
 `identity.renames` ledger described in [DSL 0.36 §3](../proposals/scenario-dsl/0.36.0.md#3-rename-ledger-and-save-migration).
 
+### Stable identity policy and migration
+
+Projects that publish saves, localization, or voice joins SHOULD set
+`identity.requireStable: true`. With that opt-in, every untagged component
+invocation and uncoded line is diagnosed (`W-COMPONENT-INSTANCE-UNTAGGED` and
+`W-LINE-CODE-UNTAGGED`); standalone files and snippets do not emit these two
+warnings. Run `lute tag` to back-fill both axes. It preserves authored values,
+allocates component keys as `use-001`, `use-002`, … per owner/component, writes
+only changed files, and is idempotent. `lute tag --force` still retags line
+codes only and never rewrites an explicit `instance`.
+
+Published renames are explicit migration data:
+
+```yaml
+identity:
+  requireStable: true
+  renames:
+    "quest:oldName": "quest:newName"
+```
+
+The ledger is resolved to canonical `NodeKey` strings, sorted by `from`, and
+rejects stale sources, missing destinations, duplicate endpoints, chains, and
+cycles. It is carried as `identityRenames` in the execution IR and project
+index. Semantic diff reports a `renamed` change when the ledger matches; an
+unmatched identity is reported as `unmappedIdentity`, never inferred from
+position or `addr`.
+
+```lute check
+---
+kind: scene
+id: identity-demo
+---
+## Opening
+@narrator{code="intro"}: The fire is ready.
+```
+
+The component key must match `[A-Za-z][A-Za-z0-9_-]{0,63}` and is unique for
+the same component in its immediate owner.
+
 ### Identity history
 
 [DSL 0.36 §1](../proposals/scenario-dsl/0.36.0.md#1-identity-contract), [§2](../proposals/scenario-dsl/0.36.0.md#2-stable-component-instance-keys), [§3](../proposals/scenario-dsl/0.36.0.md#3-rename-ledger-and-save-migration); [architecture D8](../design/architecture-direction.md#d8-identity).

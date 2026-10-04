@@ -11,4 +11,4 @@ params:
 ## Keepsake
 
 ::assert{gifted(@who, @item)}
-@narrator: Ilo stows {{@who}}'s {{@item}} in the sea-chest at the stern.
+@narrator{code="0010"}: Ilo stows {{@who}}'s {{@item}} in the sea-chest at the stern.

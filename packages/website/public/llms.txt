@@ -114,3 +114,7 @@ are `ids`, `lineIds`, `voiceKeys`, `choiceEffects`, `rewards`, `conditions`,
 `files`, `target`, `declared`, `references`, `affected`, `tests`, `plays`,
 `vocabulary`, and `notIncluded`; `--run <FILE>` requires a script and records
 witnessed execution.
+
+Lute 0.36 identity: authored `::use` instance keys, `identity.requireStable`,
+`lute tag` back-fill, `identity.renames`/`identityRenames`, and `lute diff`
+`renamed`/`unmappedIdentity` results are documented in the full reference.

@@ -15,19 +15,19 @@ when: "!holds('defeated', ['fern'])"
 
 ::bg{location="bloom-gym" time="day"}
 ::music{action="change" mood="calm" volume="down"}
-@narrator: The Bloom Gym is a greenhouse full of sleeping flowers. At the far end, in a wicker chair, a woman is also asleep.
-@narrator{when="holds('defeated', ['bloomGymLassRose']) && holds('defeated', ['bloomGymBeautyLily']) && holds('defeated', ['bloomGymPicnickerIvy'])"}: Her trainers cough, loudly and together. She wakes.
+@narrator{code="0010"}: The Bloom Gym is a greenhouse full of sleeping flowers. At the far end, in a wicker chair, a woman is also asleep.
+@narrator{code="0020" when="holds('defeated', ['bloomGymLassRose']) && holds('defeated', ['bloomGymBeautyLily']) && holds('defeated', ['bloomGymPicnickerIvy'])"}: Her trainers cough, loudly and together. She wakes.
 
 ## Fern
 
-::use{component="gymLeader" who="fern" badge="bloom" intro="Hello. Lovely weather, isn't it? It's so pleasant. Oh dear, I must have dozed off. Welcome. My name is Fern. I am the leader here." win="Oh! I concede defeat. You are remarkably strong. I must confer on you the Bloom Badge." lose="Oh, that was a pleasant battle. Do come again." prize="2900"}
+::use{component="gymLeader" who="fern" badge="bloom" intro="Hello. Lovely weather, isn't it? It's so pleasant. Oh dear, I must have dozed off. Welcome. My name is Fern. I am the leader here." win="Oh! I concede defeat. You are remarkably strong. I must confer on you the Bloom Badge." lose="Oh, that was a pleasant battle. Do come again." prize="2900" instance="use-001"}
 <match on="scene.battle.fight.won">
   <when is="true">
-    @fern{emotion="happy"}: And take this too. My flying monsters carried me home from every town in Verdane, on the days I fell asleep somewhere else.
-    ::use{component="obtain" item="hmFly"}
-    @fern: A boy came through this morning, very loud. He beat me, and then he fell asleep on the bench. I let him. He looked like he needed it.
+    @fern{code="0010" emotion="happy"}: And take this too. My flying monsters carried me home from every town in Verdane, on the days I fell asleep somewhere else.
+    ::use{component="obtain" item="hmFly" instance="use-001"}
+    @fern{code="0020"}: A boy came through this morning, very loud. He beat me, and then he fell asleep on the bench. I let him. He looked like he needed it.
   </when>
   <otherwise>
-    @narrator: The scent of flowers follows you out of the gym.
+    @narrator{code="0030"}: The scent of flowers follows you out of the gym.
   </otherwise>
 </match>

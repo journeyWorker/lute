@@ -19631,3 +19631,24 @@ An accepted patch exits 1 when it changes semantics and 0 when it doesn't
 `vocabulary`, and `notIncluded`; `--run <FILE>` requires a script and records
 witnessed results. Run `lute tag` before editing when lines lack IDs: generated
 line IDs are positional and must not be invented or renumbered.
+
+## Lute 0.36 identity migration
+
+`::use{component="hearthFire" instance="opening"}` uses the authored
+`hearthFire#opening` scope; it never derives identity from sibling position.
+The optional `identityRenames` list in execution IR and project index carries
+canonical `{from, to}` `NodeKey` pairs from `identity.renames`. A matching
+`lute diff --json` row is
+`{kind:"renamed", node:<to>, from:<old>, to:<new>, before, after, locations:[old,new], declarationLocation:{file,span}}`.
+Removed or added save-shaped rows carry `unmappedIdentity: true` when no
+authored mapping exists; diff never guesses from position or text.
+
+
+```lute check
+---
+kind: scene
+id: llms-identity
+---
+## Opening
+@narrator{code="intro"}: Ready.
+```

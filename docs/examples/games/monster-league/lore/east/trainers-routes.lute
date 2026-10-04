@@ -10,150 +10,150 @@ title: Eastmarch route trainers (Routes 5-8, Lantern Tunnel)
 
 // ── Route 5: Portvolt north to the Lantern Tunnel, a meadow road ───────────
 
-<beat use="trainerBattle" id="r5BugCatcherMilo" who="r5BugCatcherMilo" intro="Shh! I've nearly got a cocoonix! Oh, it's you. Battle, then." win="My cocoonix never even hatched." lose="Bugs beat everything, eventually." prize="120"/>
+<beat use="trainerBattle" id="r5BugCatcherMilo" who="r5BugCatcherMilo" intro="Shh! I've nearly got a cocoonix! Oh, it's you. Battle, then." win="My cocoonix never even hatched." lose="Bugs beat everything, eventually." prize="120" instance="use-001"/>
 
 <entry id="eastR5BugCatcherMiloAfter" on="talk" target="npc.r5BugCatcherMilo" category="bark" when="holds('defeated', ['r5BugCatcherMilo'])">
-  @r5BugCatcherMilo: My big sister won the bug contest at Wildmoor three times. She says I hold the net like a spoon.
+  @r5BugCatcherMilo{code="0010"}: My big sister won the bug contest at Wildmoor three times. She says I hold the net like a spoon.
 </entry>
 
 // day: Daisy picks flowers until the light goes
-<beat use="trainerBattle" id="r5LassDaisy" when="!@isNight" who="r5LassDaisy" intro="You walked right through my daisy chain! You owe me a battle!" win="And now my daisy chain AND my pride." lose="That's what you get for trampling." prize="210"/>
+<beat use="trainerBattle" id="r5LassDaisy" when="!@isNight" who="r5LassDaisy" intro="You walked right through my daisy chain! You owe me a battle!" win="And now my daisy chain AND my pride." lose="That's what you get for trampling." prize="210" instance="use-002"/>
 
 <entry id="eastR5LassDaisyAfter" on="talk" target="npc.r5LassDaisy" category="bark" when="holds('defeated', ['r5LassDaisy'])">
-  @r5LassDaisy: Bloomfield has flowers that only open on Sundays. Everybody says so. I've never seen one.
+  @r5LassDaisy{code="0010"}: Bloomfield has flowers that only open on Sundays. Everybody says so. I've never seen one.
 </entry>
 
-<beat use="trainerBattle" id="r5HikerGrant" who="r5HikerGrant" intro="Going through the tunnel? Warm up on me first, then!" win="Whew! Good stretch, that." lose="Legs of iron, monsters of stone!" prize="350"/>
+<beat use="trainerBattle" id="r5HikerGrant" who="r5HikerGrant" intro="Going through the tunnel? Warm up on me first, then!" win="Whew! Good stretch, that." lose="Legs of iron, monsters of stone!" prize="350" instance="use-003"/>
 
 <entry id="eastR5HikerGrantAfter" on="talk" target="npc.r5HikerGrant" category="bark" when="holds('defeated', ['r5HikerGrant'])">
-  @r5HikerGrant: The Lantern Tunnel had lamps all the way through, once. Then the power plant closed and the lamps went dark.
+  @r5HikerGrant{code="0010"}: The Lantern Tunnel had lamps all the way through, once. Then the power plant closed and the lamps went dark.
 </entry>
 
-<beat use="trainerBattle" id="r5CamperReed" who="r5CamperReed" intro="I've camped here three nights! I know every monster on this road!" win="I didn't know THAT one." lose="Three nights! Told you!" prize="180"/>
+<beat use="trainerBattle" id="r5CamperReed" who="r5CamperReed" intro="I've camped here three nights! I know every monster on this road!" win="I didn't know THAT one." lose="Three nights! Told you!" prize="180" instance="use-004"/>
 
 <entry id="eastR5CamperReedAfter" on="talk" target="npc.r5CamperReed" category="bark" when="holds('defeated', ['r5CamperReed'])">
-  @r5CamperReed: At night the voltmouse come out of the long grass. Their tails glow. It's the best thing in the world.
+  @r5CamperReed{code="0010"}: At night the voltmouse come out of the long grass. Their tails glow. It's the best thing in the world.
 </entry>
 
 // night: June is only out for the fireflies
-<beat use="trainerBattle" id="r5PicnickerJune" when="@isNight" who="r5PicnickerJune" intro="Out after dark too? Then you're brave enough to battle!" win="Oh! I dropped my lantern." lose="The fireflies are cheering for me!" prize="200"/>
+<beat use="trainerBattle" id="r5PicnickerJune" when="@isNight" who="r5PicnickerJune" intro="Out after dark too? Then you're brave enough to battle!" win="Oh! I dropped my lantern." lose="The fireflies are cheering for me!" prize="200" instance="use-005"/>
 
 <entry id="eastR5PicnickerJuneAfter" on="talk" target="npc.r5PicnickerJune" category="bark" when="holds('defeated', ['r5PicnickerJune'])">
-  @r5PicnickerJune: I come out every night to watch the voltmouse glow. Nobody believes how pretty it is.
+  @r5PicnickerJune{code="0010"}: I come out every night to watch the voltmouse glow. Nobody believes how pretty it is.
 </entry>
 
 // ── Lantern Tunnel: dark without Flash ─────────────────────────────────
 
-<beat use="trainerBattle" id="lanternTunnelHikerOrrin" who="lanternTunnelHikerOrrin" intro="Oof! You walked straight into me! Where did that light come from?" win="Bright AND strong. Unfair." lose="I know this tunnel in the dark. You don't." prize="360"/>
+<beat use="trainerBattle" id="lanternTunnelHikerOrrin" who="lanternTunnelHikerOrrin" intro="Oof! You walked straight into me! Where did that light come from?" win="Bright AND strong. Unfair." lose="I know this tunnel in the dark. You don't." prize="360" instance="use-006"/>
 
 <entry id="eastLanternTunnelHikerOrrinAfter" on="talk" target="npc.lanternTunnelHikerOrrin" category="bark" when="holds('defeated', ['lanternTunnelHikerOrrin'])">
-  @lanternTunnelHikerOrrin: I've been lost in here for two days. Don't tell anyone. I'm a professional.
+  @lanternTunnelHikerOrrin{code="0010"}: I've been lost in here for two days. Don't tell anyone. I'm a professional.
 </entry>
 
-<beat use="trainerBattle" id="lanternTunnelCollectorVik" who="lanternTunnelCollectorVik" intro="My collection is the rarest in Eastmarch! Look upon it and weep!" win="My collection! It's still rare! It's still RARE!" lose="Weep, I said. Weep!" prize="480"/>
+<beat use="trainerBattle" id="lanternTunnelCollectorVik" who="lanternTunnelCollectorVik" intro="My collection is the rarest in Eastmarch! Look upon it and weep!" win="My collection! It's still rare! It's still RARE!" lose="Weep, I said. Weep!" prize="480" instance="use-007"/>
 
 <entry id="eastLanternTunnelCollectorVikAfter" on="talk" target="npc.lanternTunnelCollectorVik" category="bark" when="holds('defeated', ['lanternTunnelCollectorVik'])">
-  @lanternTunnelCollectorVik: They say a bird of pure lightning nests in the old power plant. I'd give my whole collection to see it. Well. Half.
+  @lanternTunnelCollectorVik{code="0010"}: They say a bird of pure lightning nests in the old power plant. I'd give my whole collection to see it. Well. Half.
 </entry>
 
-<beat use="trainerBattle" id="lanternTunnelHikerBess" who="lanternTunnelHikerBess" intro="Nearly out! See the daylight? You'll have to get past me to reach it!" win="Go on, then. Go and see the sky." lose="Back into the dark with you!" prize="370"/>
+<beat use="trainerBattle" id="lanternTunnelHikerBess" who="lanternTunnelHikerBess" intro="Nearly out! See the daylight? You'll have to get past me to reach it!" win="Go on, then. Go and see the sky." lose="Back into the dark with you!" prize="370" instance="use-008"/>
 
 <entry id="eastLanternTunnelHikerBessAfter" on="talk" target="npc.lanternTunnelHikerBess" category="bark" when="holds('defeated', ['lanternTunnelHikerBess'])">
-  @lanternTunnelHikerBess: Ashgrove's on the other side. Quiet town. Too quiet, since those people in black climbed the tower.
+  @lanternTunnelHikerBess{code="0010"}: Ashgrove's on the other side. Quiet town. Too quiet, since those people in black climbed the tower.
 </entry>
 
 // ── Route 6: Ashgrove to Bloomfield, a river road ────────────────────────
 
-<beat use="trainerBattle" id="r6BeautyIris" when="!@isNight" who="r6BeautyIris" intro="I'm on my way to Bloomfield for perfume. You're in my way." win="My perfume money!" lose="Out of my way, then." prize="640"/>
+<beat use="trainerBattle" id="r6BeautyIris" when="!@isNight" who="r6BeautyIris" intro="I'm on my way to Bloomfield for perfume. You're in my way." win="My perfume money!" lose="Out of my way, then." prize="640" instance="use-009"/>
 
 <entry id="eastR6BeautyIrisAfter" on="talk" target="npc.r6BeautyIris" category="bark" when="holds('defeated', ['r6BeautyIris'])">
-  @r6BeautyIris: Anise in Bloomfield mixes a scent that makes grass monsters purr. I'm told. Allegedly. I need three bottles.
+  @r6BeautyIris{code="0010"}: Anise in Bloomfield mixes a scent that makes grass monsters purr. I'm told. Allegedly. I need three bottles.
 </entry>
 
-<beat use="trainerBattle" id="r6JugglerNico" who="r6JugglerNico" intro="Watch the balls, not the monsters! Ha! Too late!" win="I dropped them. I dropped them all." lose="Ta-da!" prize="500"/>
+<beat use="trainerBattle" id="r6JugglerNico" who="r6JugglerNico" intro="Watch the balls, not the monsters! Ha! Too late!" win="I dropped them. I dropped them all." lose="Ta-da!" prize="500" instance="use-010"/>
 
 <entry id="eastR6JugglerNicoAfter" on="talk" target="npc.r6JugglerNico" category="bark" when="holds('defeated', ['r6JugglerNico'])">
-  @r6JugglerNico: Five balls is easy. Five monster capsules, now, that's a way to lose a finger.
+  @r6JugglerNico{code="0010"}: Five balls is easy. Five monster capsules, now, that's a way to lose a finger.
 </entry>
 
-<beat use="trainerBattle" id="r6BirdKeeperWren" who="r6BirdKeeperWren" intro="My birds spotted you from a mile off! Wings up!" win="Grounded. Every one of them." lose="Nothing outflies my flock!" prize="420"/>
+<beat use="trainerBattle" id="r6BirdKeeperWren" who="r6BirdKeeperWren" intro="My birds spotted you from a mile off! Wings up!" win="Grounded. Every one of them." lose="Nothing outflies my flock!" prize="420" instance="use-011"/>
 
 <entry id="eastR6BirdKeeperWrenAfter" on="talk" target="npc.r6BirdKeeperWren" category="bark" when="holds('defeated', ['r6BirdKeeperWren'])">
-  @r6BirdKeeperWren: Fern teaches Fly to trainers who beat her. My birds could carry you from here to Hollowtown before lunch.
+  @r6BirdKeeperWren{code="0010"}: Fern teaches Fly to trainers who beat her. My birds could carry you from here to Hollowtown before lunch.
 </entry>
 
-<beat use="trainerBattle" id="r6PicnickerTess" when="!@isNight" who="r6PicnickerTess" intro="The river's perfect for a picnic! And a battle!" win="My sandwiches went in the river." lose="Picnic victory!" prize="220"/>
+<beat use="trainerBattle" id="r6PicnickerTess" when="!@isNight" who="r6PicnickerTess" intro="The river's perfect for a picnic! And a battle!" win="My sandwiches went in the river." lose="Picnic victory!" prize="220" instance="use-012"/>
 
 <entry id="eastR6PicnickerTessAfter" on="talk" target="npc.r6PicnickerTess" category="bark" when="holds('defeated', ['r6PicnickerTess'])">
-  @r6PicnickerTess: I saw a boy with spiky hair running this way. He said he'd already beaten the Bloom Gym. He had leaves in his hair.
+  @r6PicnickerTess{code="0010"}: I saw a boy with spiky hair running this way. He said he'd already beaten the Bloom Gym. He had leaves in his hair.
 </entry>
 
 // night: Lou plays cards under the bridge by lantern-light
-<beat use="trainerBattle" id="r6GamblerLou" when="@isNight" who="r6GamblerLou" intro="Double or nothing, kid? No? Then just the battle." win="House loses. Happens once a decade." lose="House always wins, kid." prize="900"/>
+<beat use="trainerBattle" id="r6GamblerLou" when="@isNight" who="r6GamblerLou" intro="Double or nothing, kid? No? Then just the battle." win="House loses. Happens once a decade." lose="House always wins, kid." prize="900" instance="use-013"/>
 
 <entry id="eastR6GamblerLouAfter" on="talk" target="npc.r6GamblerLou" category="bark" when="holds('defeated', ['r6GamblerLou'])">
-  @r6GamblerLou: There's a game corner in Silvercrest. Men in black keep going in and never coming out. Bad odds, I call that.
+  @r6GamblerLou{code="0010"}: There's a game corner in Silvercrest. Men in black keep going in and never coming out. Bad odds, I call that.
 </entry>
 
 // ── Route 7: Bloomfield west to Silvercrest, the cycling road ────────────
 
 // night: the bikers own the road after dark
-<beat use="trainerBattle" id="r7BikerRex" when="@isNight" who="r7BikerRex" intro="This road's ours after dark! Pay the toll!" win="Aw, man! My paint job!" lose="Toll paid. Beat it." prize="580"/>
+<beat use="trainerBattle" id="r7BikerRex" when="@isNight" who="r7BikerRex" intro="This road's ours after dark! Pay the toll!" win="Aw, man! My paint job!" lose="Toll paid. Beat it." prize="580" instance="use-014"/>
 
 <entry id="eastR7BikerRexAfter" on="talk" target="npc.r7BikerRex" category="bark" when="holds('defeated', ['r7BikerRex'])">
-  @r7BikerRex: We're not a gang. We're a cycling club. With a gang's attitude.
+  @r7BikerRex{code="0010"}: We're not a gang. We're a cycling club. With a gang's attitude.
 </entry>
 
-<beat use="trainerBattle" id="r7CueBallKnox" when="@isNight" who="r7CueBallKnox" intro="What're you looking at? My head? Nobody looks at my head!" win="Stop looking at my head." lose="Heh. Shiny AND tough." prize="600"/>
+<beat use="trainerBattle" id="r7CueBallKnox" when="@isNight" who="r7CueBallKnox" intro="What're you looking at? My head? Nobody looks at my head!" win="Stop looking at my head." lose="Heh. Shiny AND tough." prize="600" instance="use-015"/>
 
 <entry id="eastR7CueBallKnoxAfter" on="talk" target="npc.r7CueBallKnox" category="bark" when="holds('defeated', ['r7CueBallKnox'])">
-  @r7CueBallKnox: I polish it every morning. Every morning. You think this shine happens by itself?
+  @r7CueBallKnox{code="0010"}: I polish it every morning. Every morning. You think this shine happens by itself?
 </entry>
 
 // day: Otto only cycles in daylight
-<beat use="trainerBattle" id="r7SuperNerdOtto" when="!@isNight" who="r7SuperNerdOtto" intro="Statistically, you should lose. Let me show you the maths!" win="My maths! My beautiful maths!" lose="Q.E.D." prize="440"/>
+<beat use="trainerBattle" id="r7SuperNerdOtto" when="!@isNight" who="r7SuperNerdOtto" intro="Statistically, you should lose. Let me show you the maths!" win="My maths! My beautiful maths!" lose="Q.E.D." prize="440" instance="use-016"/>
 
 <entry id="eastR7SuperNerdOttoAfter" on="talk" target="npc.r7SuperNerdOtto" category="bark" when="holds('defeated', ['r7SuperNerdOtto'])">
-  @r7SuperNerdOtto: There are one hundred and fifty-one kinds of monster in Verdane. I've seen twelve. Statistically that's a start.
+  @r7SuperNerdOtto{code="0010"}: There are one hundred and fifty-one kinds of monster in Verdane. I've seen twelve. Statistically that's a start.
 </entry>
 
-<beat use="trainerBattle" id="r7BlackbeltKen" who="r7BlackbeltKen" intro="Hoo-hah! I train on this hill every day! Face me!" win="Hah! Good form! Good spirit!" lose="Hoo-hah! Train harder!" prize="640"/>
+<beat use="trainerBattle" id="r7BlackbeltKen" who="r7BlackbeltKen" intro="Hoo-hah! I train on this hill every day! Face me!" win="Hah! Good form! Good spirit!" lose="Hoo-hah! Train harder!" prize="640" instance="use-017"/>
 
 <entry id="eastR7BlackbeltKenAfter" on="talk" target="npc.r7BlackbeltKen" category="bark" when="holds('defeated', ['r7BlackbeltKen'])">
-  @r7BlackbeltKen: Up the hill, down the hill. Up the hill, down the hill. That is the whole secret.
+  @r7BlackbeltKen{code="0010"}: Up the hill, down the hill. Up the hill, down the hill. That is the whole secret.
 </entry>
 
 // ── Route 8: Portvolt down the coast to the old power plant ─────────────
 
-<beat use="trainerBattle" id="r8FishermanGus" who="r8FishermanGus" intro="Something's biting! Oh. It's you." win="Threw my line in the wrong water." lose="Reeled you right in." prize="380"/>
+<beat use="trainerBattle" id="r8FishermanGus" who="r8FishermanGus" intro="Something's biting! Oh. It's you." win="Threw my line in the wrong water." lose="Reeled you right in." prize="380" instance="use-018"/>
 
 <entry id="eastR8FishermanGusAfter" on="talk" target="npc.r8FishermanGus" category="bark" when="holds('defeated', ['r8FishermanGus'])">
-  @r8FishermanGus: Fish don't bite near the plant. Something in there hums, and they don't like it.
+  @r8FishermanGus{code="0010"}: Fish don't bite near the plant. Something in there hums, and they don't like it.
 </entry>
 
-<beat use="trainerBattle" id="r8EngineerVolk" when="!@isNight" who="r8EngineerVolk" intro="I worked the plant twenty years. It's still running, you know. Nobody's switched it on." win="Tripped the breaker on me." lose="Twenty years of practice, kid." prize="600"/>
+<beat use="trainerBattle" id="r8EngineerVolk" when="!@isNight" who="r8EngineerVolk" intro="I worked the plant twenty years. It's still running, you know. Nobody's switched it on." win="Tripped the breaker on me." lose="Twenty years of practice, kid." prize="600" instance="use-019"/>
 
 <entry id="eastR8EngineerVolkAfter" on="talk" target="npc.r8EngineerVolk" category="bark" when="holds('defeated', ['r8EngineerVolk'])">
-  @r8EngineerVolk: When the storms come in off the sea, all the lights in the plant come on at once. Nobody's paid the bill since I left.
+  @r8EngineerVolk{code="0010"}: When the storms come in off the sea, all the lights in the plant come on at once. Nobody's paid the bill since I left.
 </entry>
 
-<beat use="trainerBattle" id="r8SwimmerCora" when="!@isNight" who="r8SwimmerCora" intro="The water's lovely! Come on in! Or battle me, I suppose." win="Sunk!" lose="Splash!" prize="300"/>
+<beat use="trainerBattle" id="r8SwimmerCora" when="!@isNight" who="r8SwimmerCora" intro="The water's lovely! Come on in! Or battle me, I suppose." win="Sunk!" lose="Splash!" prize="300" instance="use-020"/>
 
 <entry id="eastR8SwimmerCoraAfter" on="talk" target="npc.r8SwimmerCora" category="bark" when="holds('defeated', ['r8SwimmerCora'])">
-  @r8SwimmerCora: I swim to the lighthouse and back every morning. Keeper Sol waves. I think he waves. It might be a flag.
+  @r8SwimmerCora{code="0010"}: I swim to the lighthouse and back every morning. Keeper Sol waves. I think he waves. It might be a flag.
 </entry>
 
 // night: Nix is only here when the lights are out
-<beat use="trainerBattle" id="r8BurglarNix" when="@isNight" who="r8BurglarNix" intro="You didn't see me. And you won't see your prize money either!" win="Fine! You saw me! Happy?" lose="Thanks for the donation." prize="700"/>
+<beat use="trainerBattle" id="r8BurglarNix" when="@isNight" who="r8BurglarNix" intro="You didn't see me. And you won't see your prize money either!" win="Fine! You saw me! Happy?" lose="Thanks for the donation." prize="700" instance="use-021"/>
 
 <entry id="eastR8BurglarNixAfter" on="talk" target="npc.r8BurglarNix" category="bark" when="holds('defeated', ['r8BurglarNix'])">
-  @r8BurglarNix: I was only going to borrow the copper from the plant. Then something in there looked at me. I'm going straight now.
+  @r8BurglarNix{code="0010"}: I was only going to borrow the copper from the plant. Then something in there looked at me. I'm going straight now.
 </entry>
 
 // ── the old power plant ──────────────────────────────────────────────────
 
-<beat use="trainerBattle" id="powerPlantEngineerTamsin" who="powerPlantEngineerTamsin" intro="Who let you in? This is a restricted site! I'm... restricting it!" win="Fine. Fine! But don't touch the big switch." lose="Restricted. Told you." prize="720"/>
+<beat use="trainerBattle" id="powerPlantEngineerTamsin" who="powerPlantEngineerTamsin" intro="Who let you in? This is a restricted site! I'm... restricting it!" win="Fine. Fine! But don't touch the big switch." lose="Restricted. Told you." prize="720" instance="use-022"/>
 
 <entry id="eastPowerPlantEngineerTamsinAfter" on="talk" target="npc.powerPlantEngineerTamsin" category="bark" when="holds('defeated', ['powerPlantEngineerTamsin'])">
-  @powerPlantEngineerTamsin: The council sent me to find out why Portvolt's lights keep flickering. It's not the wiring. The wiring is terrified.
+  @powerPlantEngineerTamsin{code="0010"}: The council sent me to find out why Portvolt's lights keep flickering. It's not the wiring. The wiring is terrified.
 </entry>

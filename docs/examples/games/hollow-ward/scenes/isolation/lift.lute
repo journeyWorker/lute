@@ -10,5 +10,5 @@ priority: 10
 ## Lift
 
 ::bg{location="lift" time="night"}
-@narrator: A cage of a lift, the gate a concertina of rust. The panel has two buttons: G and a blank one, rubbed smooth.
-@nell{mono}: The boiler's lit. Something down there wanted it lit.
+@narrator{code="0010"}: A cage of a lift, the gate a concertina of rust. The panel has two buttons: G and a blank one, rubbed smooth.
+@nell{code="0010" mono}: The boiler's lit. Something down there wanted it lit.

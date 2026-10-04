@@ -14,9 +14,9 @@ priority: 10
 
 ::bg{location="tidewell-cape" time="day"}
 ::auto{character="cassius" anchor="center" action="enter"}
-@cassius{emotion="surprised"}: A visitor! Nobody comes out to the cape. Mind the charts; they're in order. It's a very particular order.
-@cassius: I'm Cassius. I study monster migrations, mostly from boats. The Galewings go north in spring, the Sealpups go south in autumn, and I go wherever they're going.
-@cassius: Except this year. The Meridian docks in Portvolt this week, and I have a ticket I will never use. Eclipse has boats in the strait; the Galewings won't go near them, and neither will I.
-@cassius{emotion="happy"}: Take it. Go and see the sea. And if you see a flock going the wrong way, write it down for me.
-::use{component="obtain" item="ferryTicket"}
-@cassius: The gangway's at Portvolt. Show that to the sailor at the bottom. He'll pretend to read it. He can't read. Be kind.
+@cassius{code="0010" emotion="surprised"}: A visitor! Nobody comes out to the cape. Mind the charts; they're in order. It's a very particular order.
+@cassius{code="0020"}: I'm Cassius. I study monster migrations, mostly from boats. The Galewings go north in spring, the Sealpups go south in autumn, and I go wherever they're going.
+@cassius{code="0030"}: Except this year. The Meridian docks in Portvolt this week, and I have a ticket I will never use. Eclipse has boats in the strait; the Galewings won't go near them, and neither will I.
+@cassius{code="0040" emotion="happy"}: Take it. Go and see the sea. And if you see a flock going the wrong way, write it down for me.
+::use{component="obtain" item="ferryTicket" instance="use-001"}
+@cassius{code="0050"}: The gangway's at Portvolt. Show that to the sailor at the bottom. He'll pretend to read it. He can't read. Be kind.

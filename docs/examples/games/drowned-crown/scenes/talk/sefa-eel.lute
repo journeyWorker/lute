@@ -12,9 +12,9 @@ when: "holds('felled', ['eel']) && !holds('heard', ['sefa', 'eel'])"
 
 ## Chart table
 
-@ilo: The long hall has a keeper. Had. An eel as long as this ship.
-@sefa{emotion="surprised"}: Had?
-@ilo: It went out a window.
-@sefa{emotion="delighted"}: Then the long hall is clear! Hold still, I need the length of it in paces.
+@ilo{code="0010"}: The long hall has a keeper. Had. An eel as long as this ship.
+@sefa{code="0010" emotion="surprised"}: Had?
+@ilo{code="0020"}: It went out a window.
+@sefa{code="0020" emotion="delighted"}: Then the long hall is clear! Hold still, I need the length of it in paces.
 ::assert{told(sefa, eel)}
 ::set{user.bond.sefa += 1}

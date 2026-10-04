@@ -10,17 +10,17 @@ spentBy: "holds('solved', ['pharmacyPad'])"
 
 ## Keypad
 
-@narrator: Four digits. The keys are worn, but not in any helpful pattern: every key is worn, as if every number had been tried.
-@nell{mono when="entry.plaque.read"}: The plaque in the lobby. The year they opened the doors.
+@narrator{code="0010"}: Four digits. The keys are worn, but not in any helpful pattern: every key is worn, as if every number had been tried.
+@nell{code="0010" mono when="entry.plaque.read"}: The plaque in the lobby. The year they opened the doors.
 ::keypad{pad="pharmacyPad" resultKey="pad"}
 <match on="scene.keypad.pad.entered">
   <when test="$ == @pharmacyCode">
-    @narrator: The letters go from green to white. The lock lets go with a sound like a held breath let out.
+    @narrator{code="0020"}: The letters go from green to white. The lock lets go with a sound like a held breath let out.
     ::assert{solved(pharmacyPad)}
   </when>
   <otherwise>
-    @narrator: The letters flash red, and a bell somewhere in the building starts ringing for someone to come.
-    @nell: No, no, no...
+    @narrator{code="0030"}: The letters flash red, and a bell somewhere in the building starts ringing for someone to come.
+    @nell{code="0020"}: No, no, no...
     ::lure{room="reception"}
     ::fright
   </otherwise>

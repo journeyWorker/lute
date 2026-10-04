@@ -5,41 +5,41 @@ title: Gale, Balladeer of Questionable Rhyme (SR)
 ---
 
 <beat id="galeIntro" on="summon" target="hero.gale" once="user" priority="10">
-  @gale{emotion="smug"}: Summoned by a Wishkeeper with eyes like... like... hold on, I'll get it.
-  @gale: Gale, at your service. I sing, I fight, I rhyme "sword" with "sword." Bold choices.
+  @gale{code="0010" emotion="smug"}: Summoned by a Wishkeeper with eyes like... like... hold on, I'll get it.
+  @gale{code="0020"}: Gale, at your service. I sing, I fight, I rhyme "sword" with "sword." Bold choices.
 </beat>
 
 <beat id="galeDupe" on="summon" target="hero.gale" once="false" priority="3" when="holds('owned', ['gale']) && occasion.payload.copies <= 6">
-  @gale{emotion="happy"}: A duet! Finally someone who can keep up with me. It's me.
+  @gale{code="0010" emotion="happy"}: A duet! Finally someone who can keep up with me. It's me.
 </beat>
 
 <beat id="galeTap" on="homeTap" target="hero.gale" once="day">
-  @gale: New verse: "Oh Wishkeeper, you tap me with grace, like a... tapper... in a tapping place." Working on it.
-  @gale{when="@harvestLive"}: Harvest Moon verse: "The moon is round, the moon is big." That's it. That's the verse.
+  @gale{code="0010"}: New verse: "Oh Wishkeeper, you tap me with grace, like a... tapper... in a tapping place." Working on it.
+  @gale{code="0020" when="@harvestLive"}: Harvest Moon verse: "The moon is round, the moon is big." That's it. That's the verse.
 </beat>
 
 <beat id="galeBirthday" on="dailyReset" once="day" when="holds('celebrate', ['gale'])">
-  @gale{emotion="happy"}: My birthday! I've written myself a ballad. Forty verses. Get comfortable.
+  @gale{code="0010" emotion="happy"}: My birthday! I've written myself a ballad. Forty verses. Get comfortable.
 </beat>
 
-<beat use="bondStory" id="galeR1" who="gale" rank="r1" vow="I'll write you into something. Something that lasts.">
-  @gale: People think bards are all charm. They're right. But also.
-  @gale{emotion="sad"}: Somebody has to remember the names. When the Hollow King takes a town, the songs are all that's left of it.
+<beat use="bondStory" id="galeR1" who="gale" rank="r1" vow="I'll write you into something. Something that lasts." instance="use-001">
+  @gale{code="0010"}: People think bards are all charm. They're right. But also.
+  @gale{code="0020" emotion="sad"}: Somebody has to remember the names. When the Hollow King takes a town, the songs are all that's left of it.
 </beat>
 
-<beat use="bondStory" id="galeR2" who="gale" rank="r2" prev="bonds.gale.galeR1" vow="Every tavern from here to the sea will know your name. Spelled wrong, probably.">
-  @gale: I finished your song. Do you want to hear it?
+<beat use="bondStory" id="galeR2" who="gale" rank="r2" prev="bonds.gale.galeR1" vow="Every tavern from here to the sea will know your name. Spelled wrong, probably." instance="use-002">
+  @gale{code="0010"}: I finished your song. Do you want to hear it?
   <branch id="galeR2Song" prompt="Gale tunes his lute, hopeful.">
     <choice id="yes" label="Of course.">
-      @gale{emotion="happy"}: "They came from the stars, and they stayed." ...That's the whole song. Short songs last longer.
+      @gale{code="0020" emotion="happy"}: "They came from the stars, and they stayed." ...That's the whole song. Short songs last longer.
     </choice>
     <choice id="rhymes" label="Does it rhyme?">
-      @gale{emotion="smug"}: Not even slightly. It's my best work.
+      @gale{code="0030" emotion="smug"}: Not even slightly. It's my best work.
     </choice>
   </branch>
 </beat>
 
-<beat use="bondStory" id="galeR3" who="gale" rank="r3" prev="bonds.gale.galeR2" vow="Gale, your bard. First verse and last.">
-  @gale: Fen said three sentences to me yesterday. I cried. Don't tell her.
-  @gale{emotion="happy"}: That's your doing, you know. You make people louder. Even the quiet ones.
+<beat use="bondStory" id="galeR3" who="gale" rank="r3" prev="bonds.gale.galeR2" vow="Gale, your bard. First verse and last." instance="use-003">
+  @gale{code="0010"}: Fen said three sentences to me yesterday. I cried. Don't tell her.
+  @gale{code="0020" emotion="happy"}: That's your doing, you know. You make people louder. Even the quiet ones.
 </beat>

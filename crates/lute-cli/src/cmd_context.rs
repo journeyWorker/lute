@@ -247,9 +247,27 @@ fn run_task_context(
         .as_ref()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|source| node.span.map(|span| excerpt(&source, span)));
+    let identity = {
+        let mut value = serde_json::to_value(&node.identity).unwrap_or_default();
+        if key.kind == lute_model::NodeKind::Line {
+            if let Some(scope) = model.documents().iter().filter_map(|document| document.artifact.as_ref())
+                .flat_map(|artifact| artifact.commands.iter())
+                .find_map(|command| match command {
+                    lute_compile::Command::Line(line) if line.line_id == key.key =>
+                        line.stamp.source.as_ref().map(|source| source.scope.clone()),
+                    _ => None,
+                }) {
+                if let serde_json::Value::Object(map) = &mut value {
+                    map.insert("componentScope".into(), serde_json::Value::String(scope));
+                }
+            }
+        }
+        value
+    };
     let target_value = serde_json::json!({
         "kind": key.kind.as_str(),
         "key": key.key,
+        "identity": identity,
         "file": node.file.as_ref().map(|p| relative(&model, p)),
         "span": node.span.map(|s| serde_json::json!({"line":s.line,"column":s.column,"byteStart":s.byte_start,"byteEnd":s.byte_end})),
         "excerpt": excerpt,

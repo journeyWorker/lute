@@ -26,6 +26,8 @@ defaults:
     - components/bond-story.component.lute
     - components/login-stamp.component.lute
     - components/event-opens.component.lute
+identity:
+  requireStable: true
 # The main story is one manifest chapters: chain: each listed stage scene gets
 # on: stageClear, a descending priority and after: the one before, so a new
 # stage is one line here. (The prologue answers newGame and stays outside.)

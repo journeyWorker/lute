@@ -11,4 +11,4 @@ once: false
 ## Deck
 
 ::bg{location="deck" time="day"}
-@narrator: Rope creaks. Tavi's pot bubbles. Far below, the palace waits with its doors open.
+@narrator{code="0010"}: Rope creaks. Tavi's pot bubbles. Far below, the palace waits with its doors open.

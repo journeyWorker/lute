@@ -15,21 +15,21 @@ priority: 10
 
 ::bg{location="sunport-quay" time="day"}
 ::music{action="change" mood="calm" volume="normal"}
-@narrator: The Isle Ferry bumps against the Sunport quay. Three islands sit on the horizon, and on each one a tower that should be a beacon stands dark.
-@sunportHarbormaster: Champion! We heard. Everyone heard. Mind the ropes.
+@narrator{code="0010"}: The Isle Ferry bumps against the Sunport quay. Three islands sit on the horizon, and on each one a tower that should be a beacon stands dark.
+@sunportHarbormaster{code="0010"}: Champion! We heard. Everyone heard. Mind the ropes.
 ::auto{character="sunportSage" anchor="right" action="enter"}
-@sunportSage{emotion="worried"}: Three nights now, and not one beacon lit. The boats have stopped sailing after dark.
-@sunportSage: Men in grey coats came on the last ferry. They climbed the towers, and when they came down the great lenses were gone.
+@sunportSage{code="0010" emotion="worried"}: Three nights now, and not one beacon lit. The boats have stopped sailing after dark.
+@sunportSage{code="0020"}: Men in grey coats came on the last ferry. They climbed the towers, and when they came down the great lenses were gone.
 
 <branch id="islesArrivalAsk" prompt="What do you say?">
   <choice id="help" label="I'll get the lenses back">
-    @sunportSage{emotion="happy"}: I thought you might say that. Brand keeps Emberkey, Sorrel keeps Mistral, Nerissa keeps Coralreach. Bring each of them their lens.
+    @sunportSage{code="0030" emotion="happy"}: I thought you might say that. Brand keeps Emberkey, Sorrel keeps Mistral, Nerissa keeps Coralreach. Bring each of them their lens.
   </choice>
   <choice id="who" label="Grey coats? Team Eclipse is gone">
-    @sunportSage: Gone from the mainland, maybe. What is left of them calls itself the Dusk Remnant now. Brand, Sorrel and Nerissa keep the beacons. Bring each of them their lens.
+    @sunportSage{code="0040"}: Gone from the mainland, maybe. What is left of them calls itself the Dusk Remnant now. Brand, Sorrel and Nerissa keep the beacons. Bring each of them their lens.
   </choice>
 </branch>
 
 ::accept{quest="islesBeacons"}
-@sunportSage: And when all three burn, go down to the old shrine under the town. The beacons were built to light its door.
+@sunportSage{code="0050"}: And when all three burn, go down to the old shrine under the town. The beacons were built to light its door.
 ::auto{character="sunportSage" action="exit"}

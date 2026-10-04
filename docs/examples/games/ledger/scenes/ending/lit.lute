@@ -9,5 +9,5 @@ when: "run.oil >= 3 && run.knowsName"
 
 ## The Lamp Catches
 
-@narrator: The lamp catches. Out on the water the ship turns.
+@narrator{code="0010"}: The lamp catches. Out on the water the ship turns.
 ::end{reason="lit"}

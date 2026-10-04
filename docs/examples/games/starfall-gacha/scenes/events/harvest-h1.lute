@@ -12,7 +12,7 @@ not shown it again in the rerun, and a newcomer in the rerun is. */
 
 ## The empty festival
 
-@pim{emotion="happy"}: Moon cakes! Lanterns! Harvest sigils! Get 'em while the moon's up!
-@narrator: The square is strung with lanterns. Not one is lit. Nobody is buying.
-@pim: It's the moon. It won't come up full. No full moon, no festival. No festival, no customers.
-@lumi{emotion="sad"}: The Hollow King took the harvest moon a hundred years ago. Somebody got it back. Nobody knows who.
+@pim{code="0010" emotion="happy"}: Moon cakes! Lanterns! Harvest sigils! Get 'em while the moon's up!
+@narrator{code="0010"}: The square is strung with lanterns. Not one is lit. Nobody is buying.
+@pim{code="0020"}: It's the moon. It won't come up full. No full moon, no festival. No festival, no customers.
+@lumi{code="0010" emotion="sad"}: The Hollow King took the harvest moon a hundred years ago. Somebody got it back. Nobody knows who.

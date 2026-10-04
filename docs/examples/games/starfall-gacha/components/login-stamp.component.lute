@@ -9,4 +9,4 @@ params:
 ## Stamp
 
 ::stamp{card=@card}
-@@who: {{@line}}
+@@who{code="0010"}: {{@line}}

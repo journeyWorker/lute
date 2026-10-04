@@ -1678,7 +1678,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 `::use`에 명시적인 `instance`가 없어 과도기 위치 기반 폴백을 사용합니다.
 
-명세: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+명세: [dsl 0.36.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### W-COMPONENT-UNVERIFIED
 
@@ -1768,7 +1768,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 콘텐츠 라인에 명시적인 화자별 `code`가 없어 컴파일러 할당을 사용하고 있습니다.
 
-명세: [dsl 0.36.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+명세: [dsl 0.36.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
 ### W-LUTE-VERSION-STALE
 

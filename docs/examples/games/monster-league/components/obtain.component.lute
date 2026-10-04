@@ -9,4 +9,4 @@ params:
 /* A key item changes hands: the fact, the fanfare and the line together. */
 ::assert{hasItem(@item)}
 ::sfx{sound="key-item-fanfare"}
-@narrator: {{userName}} received the {{@item}}!
+@narrator{code="0010"}: {{userName}} received the {{@item}}!

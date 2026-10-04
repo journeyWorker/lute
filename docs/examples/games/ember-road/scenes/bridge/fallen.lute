@@ -9,7 +9,7 @@ when: "count('mourned', ['_']) >= 1"
 
 ## The Dead
 
-@narrator: Not everyone gets up.
-@narrator{when="holds('fell', ['isolde'])"}: Isolde Vane lies where she chose to stand, in front of the wagons, sword still out. She kept her oath. It cost exactly what she said it would.
-@narrator{when="holds('fell', ['corvin'])"}: Corvin is sitting against a wheel as if he stopped for a rest. His purse is still on his belt. That is how you know.
-@narrator{when="holds('fell', ['wren'])"}: Wren went down at the edge of the gorge, and the river came up to meet her. It did not give her back.
+@narrator{code="0010"}: Not everyone gets up.
+@narrator{code="0020" when="holds('fell', ['isolde'])"}: Isolde Vane lies where she chose to stand, in front of the wagons, sword still out. She kept her oath. It cost exactly what she said it would.
+@narrator{code="0030" when="holds('fell', ['corvin'])"}: Corvin is sitting against a wheel as if he stopped for a rest. His purse is still on his belt. That is how you know.
+@narrator{code="0040" when="holds('fell', ['wren'])"}: Wren went down at the edge of the gorge, and the river came up to meet her. It did not give her back.

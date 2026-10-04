@@ -18,16 +18,16 @@ when: "holds('hasItem', ['wakingFlute'])"
 
 ::bg{location="route-12" time="day"}
 ::music{action="fadeOut"}
-@narrator: The road along Lake Hush ends in a wall of fur. It rises. It falls. It snores, and the reeds bend with every breath.
-@narrator: The flute from Ash Tower is warm in your bag, as if it knows.
+@narrator{code="0010"}: The road along Lake Hush ends in a wall of fur. It rises. It falls. It snores, and the reeds bend with every breath.
+@narrator{code="0020"}: The flute from Ash Tower is warm in your bag, as if it knows.
 
 ## The flute
 
 ::sfx{sound="waking-flute"}
-@narrator: You play the flute. One clear note goes out over the water, and Lake Hush holds it for a long time.
+@narrator{code="0030"}: You play the flute. One clear note goes out over the water, and Lake Hush holds it for a long time.
 ::camera{shake="0.6" duration="1.2"}
-@narrator: The wall of fur stops snoring. An eye opens, as big as a cartwheel, and looks straight at you.
+@narrator{code="0040"}: The wall of fur stops snoring. An eye opens, as big as a cartwheel, and looks straight at you.
 ::accept{quest="midSleepingGiant"}
 ::music{action="change" mood="battle" volume="up"}
-@narrator: Slumbear gets up. It is not happy about it.
+@narrator{code="0050"}: Slumbear gets up. It is not happy about it.
 ::encounter{species="slumbear" level="40"}

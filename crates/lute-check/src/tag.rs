@@ -23,73 +23,127 @@ pub struct TagOutcome {
 /// unchanged with `added: 0`).
 pub fn tag_document(text: &str) -> TagOutcome {
     let (doc, diags) = parse(text);
-
-    // Never rewrite a broken doc: any error-severity diagnostic means the node
-    // stream may be corrupt, so return the input verbatim.
     if diags.iter().any(|d| d.severity == Severity::Error) {
-        return TagOutcome {
-            text: text.to_string(),
-            added: 0,
-        };
+        return TagOutcome { text: text.to_string(), added: 0 };
     }
-
     let bytes = text.as_bytes();
     let mut inserts: Vec<(usize, String)> = Vec::new();
-
-    // Scene identity scope (dsl 0.2.0 §7): every shot's `:line`s (into branch
-    // choices' + match arms' bodies) share ONE scope — the whole document —
-    // unchanged from 0.1.0.
-    let mut scene_lines: Vec<&Line> = Vec::new();
+    let mut scene_lines = Vec::new();
     for shot in &doc.shots {
         collect_lines(&shot.body, &mut scene_lines);
     }
     tag_scope(scene_lines, bytes, &mut inserts);
-
-    // Per-quest identity scope (dsl 0.2.0 §7): a quest's lines (reached via
-    // its `<on>`/`<objective>` arms) are scoped PER `<quest>` — each `<quest>`
-    // is its own identity domain, so the SAME (speaker, code) pair may repeat
-    // across two different quests without colliding (mirrors
-    // `match_check.rs::check_line_codes`'s per-quest scoping). Each quest
-    // therefore gets its OWN fresh per-speaker counter.
     for quest in &doc.quests {
-        let mut quest_lines: Vec<&Line> = Vec::new();
-        collect_lines(&quest.body, &mut quest_lines);
-        tag_scope(quest_lines, bytes, &mut inserts);
+        let mut lines = Vec::new();
+        collect_lines(&quest.body, &mut lines);
+        tag_scope(lines, bytes, &mut inserts);
     }
-    // Per-entry identity scope (dsl 0.19.0 §4): each `<entry>` is its own
-    // identity domain with a fresh per-speaker counter, exactly as a quest.
     for entry in &doc.entries {
-        let mut entry_lines: Vec<&Line> = Vec::new();
-        collect_lines(&entry.body, &mut entry_lines);
-        tag_scope(entry_lines, bytes, &mut inserts);
+        let mut lines = Vec::new();
+        collect_lines(&entry.body, &mut lines);
+        tag_scope(lines, bytes, &mut inserts);
     }
-    // Per-beat identity scope (dsl 0.23.0 §4): each lore `<beat>` bundle is its
-    // own identity domain (prefix `<doc id>.<beat id>`) with a fresh
-    // per-speaker counter, exactly as an entry.
     for beat in &doc.beats {
-        let mut beat_lines: Vec<&Line> = Vec::new();
-        collect_lines(&beat.body, &mut beat_lines);
-        tag_scope(beat_lines, bytes, &mut inserts);
+        let mut lines = Vec::new();
+        collect_lines(&beat.body, &mut lines);
+        tag_scope(lines, bytes, &mut inserts);
     }
-
+    tag_components(text, &mut inserts);
     if inserts.is_empty() {
-        return TagOutcome {
-            text: text.to_string(),
-            added: 0,
-        };
+        return TagOutcome { text: text.to_string(), added: 0 };
     }
-
-    // Splice back-to-front (descending offset) so earlier offsets stay valid.
     inserts.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
     let mut out = text.to_string();
     for (at, inserted) in &inserts {
         out.insert_str(*at, inserted);
     }
+    TagOutcome { text: out, added: inserts.len() }
+}
 
-    TagOutcome {
-        text: out,
-        added: inserts.len(),
+fn tag_components(text: &str, inserts: &mut Vec<(usize, String)>) {
+    let owner = "document".to_string();
+    let mut used: std::collections::BTreeMap<
+        (String, String),
+        std::collections::BTreeSet<u32>,
+    > = std::collections::BTreeMap::new();
+    let mut missing = Vec::new();
+    let mut offset = 0usize;
+    for line in text.split_inclusive('\n') {
+        for marker in ["::use{", "<beat "] {
+            let mut cursor = 0usize;
+            while let Some(rel) = line[cursor..].find(marker) {
+                let start = cursor + rel;
+                let close_rel = find_opener_end(&line[start..], marker == "::use{");
+                let Some(close_rel) = close_rel else { break };
+                let close = start + close_rel;
+                let raw = &line[start..=close];
+                let key = if marker == "::use{" { "component" } else { "use" };
+                if let Some(component) = quoted_attr(raw, key) {
+                    let scope = (owner.clone(), component);
+                    if let Some(instance) = quoted_attr(raw, "instance") {
+                        if let Some(n) = instance.strip_prefix("use-").and_then(|s| s.parse().ok()) {
+                            used.entry(scope).or_default().insert(n);
+                        }
+                    } else {
+                        missing.push((offset + start, offset + close, marker == "::use{", scope));
+                    }
+                }
+                cursor = close + 1;
+            }
+        }
+        offset += line.len();
     }
+    for (start, close, directive, scope) in missing {
+        let occupied = used.entry(scope).or_default();
+        let mut n = 1;
+        while occupied.contains(&n) { n += 1; }
+        occupied.insert(n);
+        let at = if directive {
+            close
+        } else if text[start..=close].ends_with("/>") {
+            close - 1
+        } else {
+            close
+        };
+        inserts.push((at, format!(" instance=\"use-{n:03}\"")));
+    }
+}
+fn component_tagged_text(text: &str) -> (String, usize) {
+    let mut inserts = Vec::new();
+    tag_components(text, &mut inserts);
+    if inserts.is_empty() {
+        return (text.to_string(), 0);
+    }
+    inserts.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+    let mut out = text.to_string();
+    for (at, inserted) in &inserts {
+        out.insert_str(*at, inserted);
+    }
+    (out, inserts.len())
+}
+
+fn quoted_attr(raw: &str, key: &str) -> Option<String> {
+    let marker = format!("{key}=\"");
+    let start = raw.find(&marker)? + marker.len();
+    let end = raw[start..].find('"')?;
+    Some(raw[start..start + end].to_string())
+}
+fn find_opener_end(raw: &str, directive: bool) -> Option<usize> {
+    let end = if directive { b'}' } else { b'>' };
+    let mut quoted = false;
+    let mut escaped = false;
+    for (i, byte) in raw.bytes().enumerate() {
+        if escaped {
+            escaped = false;
+        } else if quoted && byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            quoted = !quoted;
+        } else if !quoted && byte == end {
+            return Some(i);
+        }
+    }
+    None
 }
 
 /// Back-fill codes for ONE identity scope (dsl 0.2.0 §7) — the whole document
@@ -137,6 +191,23 @@ fn tag_scope(lines: Vec<&Line>, bytes: &[u8], inserts: &mut Vec<(usize, String)>
     }
 }
 
+/// The outcome of a FORCE renumber (`lute tag --force`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum RetagOutcome {
+    /// Codes are locked, but component instances were added.
+    LockedInstances { text: String, added: usize },
+    /// Codes are locked and no component instance was missing.
+    Locked,
+    /// A structural parse defect; no rewrite occurred.
+    Broken,
+    /// The renumbered text and counts.
+    Renumbered {
+        text: String,
+        renumbered: usize,
+        skipped: usize,
+    },
+}
+
 /// Where and what to splice to give `line` a fresh `code` attribute.
 ///
 /// 0.1.0 content line: `:speaker{attrs}?: text` (dsl §7.1). We derive the
@@ -171,26 +242,6 @@ fn code_insert(line: &Line, bytes: &[u8], code: &str) -> (usize, String) {
     }
 }
 
-/// The outcome of a FORCE renumber ([`retag_document`], `lute tag --force`).
-#[derive(Clone, Debug, PartialEq)]
-pub enum RetagOutcome {
-    /// Frontmatter carries `codesLocked` — the document's codes are published
-    /// identity (they key `lineId`/`voiceKey`, dsl §12) and renumbering is
-    /// refused. Remove the key (or set it `false`) to renumber again.
-    Locked,
-    /// A structural (Error-severity) parse defect — never rewrite a broken
-    /// doc; the input is left untouched.
-    Broken,
-    /// The renumbered text. `renumbered` counts lines whose code was written
-    /// (changed or newly inserted); `skipped` counts lines whose `code` is
-    /// not a string literal (an `@ref` is intentional identity, not a
-    /// sequence member — left alone).
-    Renumbered {
-        text: String,
-        renumbered: usize,
-        skipped: usize,
-    },
-}
 
 /// FORCE-renumber every content line's `code` (`lute tag --force`): each
 /// identity scope (the scene, then each `<quest>` — dsl 0.2.0 §7 — then each
@@ -215,7 +266,12 @@ pub fn retag_document(text: &str) -> RetagOutcome {
         return RetagOutcome::Broken;
     }
     if codes_locked(&doc.meta.raw_yaml) {
-        return RetagOutcome::Locked;
+        let (tagged, added) = component_tagged_text(text);
+        return if added == 0 {
+            RetagOutcome::Locked
+        } else {
+            RetagOutcome::LockedInstances { text: tagged, added }
+        };
     }
 
     let bytes = text.as_bytes();
@@ -846,5 +902,48 @@ mod tests {
         let twice = tag_document(&once);
         assert_eq!(twice.added, 0);
         assert_eq!(twice.text, once);
+    }
+    #[test]
+    fn tags_component_instances_and_is_idempotent() {
+        let src = "---\nkind: scene\n---\n## Shot\n::use{component=\"fire\" flare=\"high\"}\n<beat use=\"talk\" id=\"a\">\n@n: hi\n</beat>\n";
+        let mut inserts = Vec::new();
+        tag_components(src, &mut inserts);
+        inserts.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+        let mut once = src.to_string();
+        for (at, inserted) in &inserts {
+            once.insert_str(*at, inserted);
+        }
+        assert_eq!(inserts.len(), 2);
+        assert!(once.contains("component=\"fire\""));
+        assert!(once.matches("instance=\"use-001\"").count() == 2);
+        let mut second = Vec::new();
+        tag_components(&once, &mut second);
+        assert!(second.is_empty());
+    }
+    #[test]
+    fn component_instances_increment_within_document_owner() {
+        let src = "## One\n::use{component=\"fire\"}\n## Two\n::use{component=\"fire\"}\n";
+        let mut inserts = Vec::new();
+        tag_components(src, &mut inserts);
+        inserts.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+        let mut out = src.to_string();
+        for (at, inserted) in &inserts {
+            out.insert_str(*at, inserted);
+        }
+        assert_eq!(out.matches("instance=\"use-001\"").count(), 1);
+        assert_eq!(out.matches("instance=\"use-002\"").count(), 1);
+    }
+
+    #[test]
+    fn force_locked_adds_instances_without_retagging_lines() {
+        let src = "---\nkind: scene\ncodesLocked: true\n---\n## One\n::use{component=\"fire\"}\n@a{code=\"0050\"}: kept\n";
+        match retag_document(src) {
+            RetagOutcome::LockedInstances { text, added } => {
+                assert_eq!(added, 1);
+                assert!(text.contains("instance=\"use-001\""));
+                assert!(text.contains("code=\"0050\""));
+            }
+            other => panic!("expected locked instance migration, got {other:?}"),
+        }
     }
 }

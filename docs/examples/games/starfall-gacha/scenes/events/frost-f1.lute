@@ -10,8 +10,8 @@ when: "@frostLive"
 
 ## On foot
 
-@narrator: The Lantern Sea has frozen. The lanterns are stuck in the ice like coins in a cake.
-@pim{emotion="happy"}: Candles! Get your candles! You can't hold a vigil without a candle, it's in the name!
-@narrator: Out on the ice, a girl in a grey coat is lighting them one at a time. There are a great many of them.
-@lumi{emotion="surprised"}: That's Nyx. She's been out here since the first wish sank.
-@nyx{emotion="shy"}: Oh. Visitors. Mind the thin bits. I'm the thin bits' friend, so they tell me.
+@narrator{code="0010"}: The Lantern Sea has frozen. The lanterns are stuck in the ice like coins in a cake.
+@pim{code="0010" emotion="happy"}: Candles! Get your candles! You can't hold a vigil without a candle, it's in the name!
+@narrator{code="0020"}: Out on the ice, a girl in a grey coat is lighting them one at a time. There are a great many of them.
+@lumi{code="0010" emotion="surprised"}: That's Nyx. She's been out here since the first wish sank.
+@nyx{code="0010" emotion="shy"}: Oh. Visitors. Mind the thin bits. I'm the thin bits' friend, so they tell me.

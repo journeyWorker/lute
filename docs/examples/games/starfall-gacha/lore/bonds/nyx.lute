@@ -6,38 +6,38 @@ title: Nyx, Keeper of the Frostlight (limited SSR)
 /* Limited: only on the Frostlight Vigil banner. */
 
 <beat id="nyxIntro" on="summon" target="hero.nyx" once="user" priority="10">
-  @nyx{emotion="shy"}: You pulled me out of the ice. That's... that's never happened. Hello.
-  @nyx: I'm Nyx. I keep the candles for wishes nobody else kept. You can help, if you want.
+  @nyx{code="0010" emotion="shy"}: You pulled me out of the ice. That's... that's never happened. Hello.
+  @nyx{code="0020"}: I'm Nyx. I keep the candles for wishes nobody else kept. You can help, if you want.
 </beat>
 
 <beat id="nyxRateUp" on="summon" target="hero.nyx" also once="false" when="occasion.payload.banner == 'frost'">
-  @lumi{emotion="happy"}: Right off the {{occasion.payload.banner}} banner! The rate-up worked!
+  @lumi{code="0010" emotion="happy"}: Right off the {{occasion.payload.banner}} banner! The rate-up worked!
 </beat>
 
 <beat id="nyxDupe" on="summon" target="hero.nyx" once="false" priority="3" when="holds('owned', ['nyx']) && occasion.payload.copies <= 6">
-  @nyx{emotion="happy"}: Another me? Good. Twice the candles. {{occasion.payload.copies:plural(# copy|# copies)}} of me now.
+  @nyx{code="0010" emotion="happy"}: Another me? Good. Twice the candles. {{occasion.payload.copies:plural(# copy|# copies)}} of me now.
 </beat>
 
 <beat id="nyxTap" on="homeTap" target="hero.nyx" once="day">
-  @nyx{emotion="shy"}: I melted a little frost off your window. So you could see out.
-  @nyx{when="@frostLive"}: The sea's frozen. That's my week. Come walk on it with me.
+  @nyx{code="0010" emotion="shy"}: I melted a little frost off your window. So you could see out.
+  @nyx{code="0020" when="@frostLive"}: The sea's frozen. That's my week. Come walk on it with me.
 </beat>
 
 <beat id="nyxBirthday" on="dailyReset" once="day" when="holds('celebrate', ['nyx'])">
-  @nyx{emotion="happy"}: A birthday candle? For me? I'll... I'll keep it lit. I'm good at that.
+  @nyx{code="0010" emotion="happy"}: A birthday candle? For me? I'll... I'll keep it lit. I'm good at that.
 </beat>
 
-<beat use="bondStory" id="nyxR1" who="nyx" rank="r1" vow="I'll keep a candle lit for you. Even when you don't need one.">
-  @nyx: Can I tell you why I stay on the ice?
-  @nyx{emotion="sad"}: Every lantern out there was somebody's wish, and they let go of it. Somebody should still hold the string.
+<beat use="bondStory" id="nyxR1" who="nyx" rank="r1" vow="I'll keep a candle lit for you. Even when you don't need one." instance="use-001">
+  @nyx{code="0010"}: Can I tell you why I stay on the ice?
+  @nyx{code="0020" emotion="sad"}: Every lantern out there was somebody's wish, and they let go of it. Somebody should still hold the string.
 </beat>
 
-<beat use="bondStory" id="nyxR2" who="nyx" rank="r2" prev="bonds.nyx.nyxR1" vow="Your wishes don't go in the sea. Not while I'm here.">
-  @nyx: I found one of your lanterns. From before. You wished for somebody to come back.
-  @nyx{emotion="shy"}: I didn't read it. Much. I just wanted you to know it's safe.
+<beat use="bondStory" id="nyxR2" who="nyx" rank="r2" prev="bonds.nyx.nyxR1" vow="Your wishes don't go in the sea. Not while I'm here." instance="use-002">
+  @nyx{code="0010"}: I found one of your lanterns. From before. You wished for somebody to come back.
+  @nyx{code="0020" emotion="shy"}: I didn't read it. Much. I just wanted you to know it's safe.
 </beat>
 
-<beat use="bondStory" id="nyxR3" who="nyx" rank="r3" prev="bonds.nyx.nyxR2" vow="Nyx of the Frostlight, sworn. Every candle, every night.">
-  @nyx: I lit a candle today for no wish at all. Just because you were here.
-  @nyx{emotion="happy"}: I've never done that before. It burned the brightest.
+<beat use="bondStory" id="nyxR3" who="nyx" rank="r3" prev="bonds.nyx.nyxR2" vow="Nyx of the Frostlight, sworn. Every candle, every night." instance="use-003">
+  @nyx{code="0010"}: I lit a candle today for no wish at all. Just because you were here.
+  @nyx{code="0020" emotion="happy"}: I've never done that before. It burned the brightest.
 </beat>

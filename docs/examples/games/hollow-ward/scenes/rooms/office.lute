@@ -10,6 +10,6 @@ priority: 10
 ## Office
 
 ::bg{location="office" time="night"}
-@narrator: Carpet, the only carpet in the building. A desk with a leather blotter, a decanter with a dead wasp in it, and a wall safe behind a painting of the ward in summer, which is a lie.
-@narrator: Dr. Hale's diary lies open on the blotter at the last entry, as if he expected to come back and finish it.
-@nell{mono}: The man in charge. Every door in this place leads back to this carpet.
+@narrator{code="0010"}: Carpet, the only carpet in the building. A desk with a leather blotter, a decanter with a dead wasp in it, and a wall safe behind a painting of the ward in summer, which is a lie.
+@narrator{code="0020"}: Dr. Hale's diary lies open on the blotter at the last entry, as if he expected to come back and finish it.
+@nell{code="0010" mono}: The man in charge. Every door in this place leads back to this carpet.

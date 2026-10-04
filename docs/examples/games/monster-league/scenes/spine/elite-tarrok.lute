@@ -12,16 +12,16 @@ when: "@badgeCount >= 8 && holds('defeated', ['frostine']) && !holds('defeated',
 
 ::bg{location="fistChamber" time="day"}
 ::auto{character="tarrok" anchor="center" action="enter"}
-@tarrok: I am Tarrok. I trained on a mountain until the mountain gave up. Show me your strongest!
+@tarrok{code="0010"}: I am Tarrok. I trained on a mountain until the mountain gave up. Show me your strongest!
 ::music{action="change" mood="battle" volume="up"}
 ::battle{foe="tarrok" kind="elite" resultKey="fight"}
 <match on="scene.battle.fight.won">
   <when is="true">
-    @tarrok: Ha! A good fight. My fists are ringing. Go!
+    @tarrok{code="0020"}: Ha! A good fight. My fists are ringing. Go!
     ::assert{defeated(tarrok)}
   </when>
   <otherwise>
-    @tarrok: Discipline wins. Back to the start with you.
+    @tarrok{code="0030"}: Discipline wins. Back to the start with you.
     // the streak breaks: the whole Four must be beaten again
     ::retract{defeated(frostine)}
     ::retract{defeated(tarrok)}

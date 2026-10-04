@@ -9,5 +9,5 @@ when: "!(run.oil >= 3 && run.knowsName)"
 
 ## Timber on Rock
 
-@narrator: The wick sputters. Somewhere below, timber meets rock.
+@narrator{code="0010"}: The wick sputters. Somewhere below, timber meets rock.
 ::end{reason="dark"}

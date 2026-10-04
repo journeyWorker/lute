@@ -4,6 +4,8 @@ defaultProfile: ward
 profiles:
   ward:
     plugins: { ward.engine: true }
+identity:
+  requireStable: true
 defaults:
   luteVersion: "0.35.0"
   uses:

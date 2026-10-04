@@ -9,62 +9,62 @@ title: Route 3 — Pebbleton east to Moonstone Cave
 // trainers, one of them only at night by his campfire.
 
 <beat id="enter" on="enterRoute" target="route.r3" title="Route 3" priority="10">
-  @narrator: ROUTE 3 — Pebbleton to Moonstone Cave. The road climbs a bare ridge. Every flat rock has a trainer standing on it, looking for somebody to fight.
-  @narrator: A signpost, much repaired: "MOONSTONE CAVE. MIND YOUR HEAD. MIND YOUR MONSTERS. MIND THE MINERS."
+  @narrator{code="0010"}: ROUTE 3 — Pebbleton to Moonstone Cave. The road climbs a bare ridge. Every flat rock has a trainer standing on it, looking for somebody to fight.
+  @narrator{code="0020"}: A signpost, much repaired: "MOONSTONE CAVE. MIND YOUR HEAD. MIND YOUR MONSTERS. MIND THE MINERS."
 </beat>
 
 <entry id="southR3Morning" on="enterRoute" target="route.r3" category="bark" once="day" when="@isMorning">
-  @narrator: The ridge steams as the sun warms it. Spikelets bask on the rocks and pretend not to see you.
+  @narrator{code="0010"}: The ridge steams as the sun warms it. Spikelets bask on the rocks and pretend not to see you.
 </entry>
 
 <entry id="southR3Day" on="enterRoute" target="route.r3" category="bark" once="day" when="run.slot == 'day'">
-  @narrator: The wind off the ridge carries the clink of picks from somewhere inside the mountain.
+  @narrator{code="0010"}: The wind off the ridge carries the clink of picks from somewhere inside the mountain.
 </entry>
 
 <entry id="southR3Night" on="enterRoute" target="route.r3" category="bark" once="day" when="@isNight">
-  @narrator: A campfire burns at the foot of the ridge. The trainers have gone home, all except one.
+  @narrator{code="0010"}: A campfire burns at the foot of the ridge. The trainers have gone home, all except one.
 </entry>
 
 // ── Trainers ─────────────────────────────────────────────────────────────
 
-<beat use="trainerBattle" id="r3YoungsterAda" when="!@isNight" who="r3YoungsterAda" intro="I like shorts! They're comfy and easy to wear! Also I like battles!" win="Aww, my shorts are torn." lose="Shorts win again!" prize="160"/>
+<beat use="trainerBattle" id="r3YoungsterAda" when="!@isNight" who="r3YoungsterAda" intro="I like shorts! They're comfy and easy to wear! Also I like battles!" win="Aww, my shorts are torn." lose="Shorts win again!" prize="160" instance="use-001"/>
 
 <entry id="southR3YoungsterAdaAfter" on="talk" target="npc.r3YoungsterAda" category="bark" when="holds('defeated', ['r3YoungsterAda'])">
-  @r3YoungsterAda: Are you storing your monsters on a PC? Each box holds twenty! I have one box. It's full of Scurrats.
+  @r3YoungsterAda{code="0010"}: Are you storing your monsters on a PC? Each box holds twenty! I have one box. It's full of Scurrats.
 </entry>
 
-<beat use="trainerBattle" id="r3LassRobin" when="!@isNight" who="r3LassRobin" intro="Eek! You startled me! That means you have to battle me. That's how it works." win="I'm still startled, honestly." lose="Don't sneak up on people!" prize="144"/>
+<beat use="trainerBattle" id="r3LassRobin" when="!@isNight" who="r3LassRobin" intro="Eek! You startled me! That means you have to battle me. That's how it works." win="I'm still startled, honestly." lose="Don't sneak up on people!" prize="144" instance="use-002"/>
 
 <entry id="southR3LassRobinAfter" on="talk" target="npc.r3LassRobin" category="bark" when="holds('defeated', ['r3LassRobin'])">
-  @r3LassRobin: My Lunafae only dances when the moon is out. It won't show me. It just stares.
+  @r3LassRobin{code="0010"}: My Lunafae only dances when the moon is out. It won't show me. It just stares.
 </entry>
 
-<beat use="trainerBattle" id="r3HikerGus" who="r3HikerGus" intro="HO! I climbed this ridge forty times this year. Let's see if you're as tough as the ridge!" win="HAH! Tougher than the ridge!" lose="The ridge wins again!" prize="280"/>
+<beat use="trainerBattle" id="r3HikerGus" who="r3HikerGus" intro="HO! I climbed this ridge forty times this year. Let's see if you're as tough as the ridge!" win="HAH! Tougher than the ridge!" lose="The ridge wins again!" prize="280" instance="use-003"/>
 
 <entry id="southR3HikerGusAfter" on="talk" target="npc.r3HikerGus" category="bark" when="holds('defeated', ['r3HikerGus'])">
-  @r3HikerGus: The miners say the cave's been noisy at night. Picks, and carts, and somebody shouting orders. Miners don't shout orders. Miners shout "LUNCH".
+  @r3HikerGus{code="0010"}: The miners say the cave's been noisy at night. Picks, and carts, and somebody shouting orders. Miners don't shout orders. Miners shout "LUNCH".
 </entry>
 
-<beat use="trainerBattle" id="r3BugCatcherKeiko" when="!@isNight" who="r3BugCatcherKeiko" intro="There are no bugs on this ridge. I've looked for three hours. You'll have to do." win="There aren't even any bugs to cheer me up." lose="See? I don't need bugs. I have bugs." prize="80"/>
+<beat use="trainerBattle" id="r3BugCatcherKeiko" when="!@isNight" who="r3BugCatcherKeiko" intro="There are no bugs on this ridge. I've looked for three hours. You'll have to do." win="There aren't even any bugs to cheer me up." lose="See? I don't need bugs. I have bugs." prize="80" instance="use-004"/>
 
 <entry id="southR3BugCatcherKeikoAfter" on="talk" target="npc.r3BugCatcherKeiko" category="bark" when="holds('defeated', ['r3BugCatcherKeiko'])">
-  @r3BugCatcherKeiko: The Hushwood is full of bugs. Why am I here? Because my sister said I couldn't come here. That's why.
+  @r3BugCatcherKeiko{code="0010"}: The Hushwood is full of bugs. Why am I here? Because my sister said I couldn't come here. That's why.
 </entry>
 
-<beat use="trainerBattle" id="r3SuperNerdLyle" who="r3SuperNerdLyle" intro="Moonstones fall from the sky once every thousand years and I've calculated it's due. Don't distract me! Unless it's a battle." win="My calculations did not include you." lose="As calculated." prize="216"/>
+<beat use="trainerBattle" id="r3SuperNerdLyle" who="r3SuperNerdLyle" intro="Moonstones fall from the sky once every thousand years and I've calculated it's due. Don't distract me! Unless it's a battle." win="My calculations did not include you." lose="As calculated." prize="216" instance="use-005"/>
 
 <entry id="southR3SuperNerdLyleAfter" on="talk" target="npc.r3SuperNerdLyle" category="bark" when="holds('defeated', ['r3SuperNerdLyle'])">
-  @r3SuperNerdLyle: Revised calculation: the moonstone is due next Tuesday. Or it fell last Tuesday and someone took it. People in black have been going in and out of the cave.
+  @r3SuperNerdLyle{code="0010"}: Revised calculation: the moonstone is due next Tuesday. Or it fell last Tuesday and someone took it. People in black have been going in and out of the cave.
 </entry>
 
-<beat use="trainerBattle" id="r3YoungsterJosh" when="!@isNight" who="r3YoungsterJosh" intro="My Scurrat is in the top percentage of Scurrats! Want to see?" win="It's still top percentage. Of something." lose="Top percentage, told you!" prize="128"/>
+<beat use="trainerBattle" id="r3YoungsterJosh" when="!@isNight" who="r3YoungsterJosh" intro="My Scurrat is in the top percentage of Scurrats! Want to see?" win="It's still top percentage. Of something." lose="Top percentage, told you!" prize="128" instance="use-006"/>
 
 <entry id="southR3YoungsterJoshAfter" on="talk" target="npc.r3YoungsterJosh" category="bark" when="holds('defeated', ['r3YoungsterJosh'])">
-  @r3YoungsterJosh: I'll call you when my Scurrat gets even better. What's your number? You don't have a phone? Nobody has a phone.
+  @r3YoungsterJosh{code="0010"}: I'll call you when my Scurrat gets even better. What's your number? You don't have a phone? Nobody has a phone.
 </entry>
 
-<beat use="trainerBattle" id="r3CamperDoran" when="@isNight" who="r3CamperDoran" intro="Pull up a rock. Anyone who walks the ridge at night gets a battle and a toasted marshmallow. Battle first." win="Fair's fair. Marshmallow's yours." lose="Better luck by daylight." prize="192"/>
+<beat use="trainerBattle" id="r3CamperDoran" when="@isNight" who="r3CamperDoran" intro="Pull up a rock. Anyone who walks the ridge at night gets a battle and a toasted marshmallow. Battle first." win="Fair's fair. Marshmallow's yours." lose="Better luck by daylight." prize="192" instance="use-007"/>
 
 <entry id="southR3CamperDoranAfter" on="talk" target="npc.r3CamperDoran" category="bark" when="holds('defeated', ['r3CamperDoran']) && @isNight">
-  @r3CamperDoran: See the Duskbats coming out of the cave mouth? Thousands of them. They leave at dusk and come back before the miners wake. Nobody ever sees them go home but me.
+  @r3CamperDoran{code="0010"}: See the Duskbats coming out of the cave mouth? Thousands of them. They leave at dusk and come back before the miners wake. Nobody ever sees them go home but me.
 </entry>

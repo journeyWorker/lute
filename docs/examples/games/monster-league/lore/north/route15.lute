@@ -11,64 +11,64 @@ title: Route 15 — the Cliff Road
 <beat id="enter" on="enterRoute" target="route.r15" title="Route 15" priority="10">
   ::bg{location="route-15" time="day"}
   ::music{action="change" mood="upbeat" volume="normal"}
-  @narrator: The road climbs out of Frostharbor in switchbacks, with the sea on one side and nothing at all on the other. Bikers lean into the turns.
-  @narrator: A sign at the first bend: ROUTE 15 — CLIFF ROAD. VERDANT CITY UPHILL. CYCLISTS HAVE PRIORITY. CYCLISTS HAVE ALWAYS HAD PRIORITY.
+  @narrator{code="0010"}: The road climbs out of Frostharbor in switchbacks, with the sea on one side and nothing at all on the other. Bikers lean into the turns.
+  @narrator{code="0020"}: A sign at the first bend: ROUTE 15 — CLIFF ROAD. VERDANT CITY UPHILL. CYCLISTS HAVE PRIORITY. CYCLISTS HAVE ALWAYS HAD PRIORITY.
 </beat>
 
 <entry id="northR15Day" on="enterRoute" target="route.r15" category="bark" once="day" when="!@isNight">
-  @narrator: Wind off the sea, bells from the bikes, and the smell of cut grass from the meadows up top.
+  @narrator{code="0010"}: Wind off the sea, bells from the bikes, and the smell of cut grass from the meadows up top.
 </entry>
 
 <entry id="northR15Night" on="enterRoute" target="route.r15" category="bark" once="day" when="@isNight">
-  @narrator: The Cliff Road at night is headlamps and the sea breathing below. A candle burns in a tent near the top.
+  @narrator{code="0010"}: The Cliff Road at night is headlamps and the sea breathing below. A candle burns in a tent near the top.
 </entry>
 
 // ── trainers ────────────────────────────────────────────────────────────────
 
-<beat use="trainerBattle" id="r15BikerDax" who="r15BikerDax" intro="Walking up the Cliff Road? That's adorable. Let's race. By which I mean battle." win="You won. I'm still faster though." lose="Eat my dust! Uphill dust!" prize="1600"/>
+<beat use="trainerBattle" id="r15BikerDax" who="r15BikerDax" intro="Walking up the Cliff Road? That's adorable. Let's race. By which I mean battle." win="You won. I'm still faster though." lose="Eat my dust! Uphill dust!" prize="1600" instance="use-001"/>
 
 <entry id="northR15BikerDaxAfter" on="talk" target="npc.r15BikerDax" category="bark" when="holds('defeated', ['r15BikerDax'])">
-  @r15BikerDax: Downhill to Frostharbor takes four minutes. Uphill takes forty. Life is unfair.
+  @r15BikerDax{code="0010"}: Downhill to Frostharbor takes four minutes. Uphill takes forty. Life is unfair.
 </entry>
 
-<beat use="trainerBattle" id="r15BikerJett" who="r15BikerJett" intro="The Verdant gym's been shut for weeks. I've got nothing to do but fight tourists!" win="Okay, you're not a tourist." lose="Tourist season's over!" prize="1600"/>
+<beat use="trainerBattle" id="r15BikerJett" who="r15BikerJett" intro="The Verdant gym's been shut for weeks. I've got nothing to do but fight tourists!" win="Okay, you're not a tourist." lose="Tourist season's over!" prize="1600" instance="use-002"/>
 
 <entry id="northR15BikerJettAfter" on="talk" target="npc.r15BikerJett" category="bark" when="holds('defeated', ['r15BikerJett'])">
-  @r15BikerJett: The guys in the Verdant gym wear black and never smile. Weird crowd for a gym.
+  @r15BikerJett{code="0010"}: The guys in the Verdant gym wear black and never smile. Weird crowd for a gym.
 </entry>
 
-<beat use="trainerBattle" id="r15BirdKeeperPell" who="r15BirdKeeperPell" intro="The updrafts on this cliff are perfect! My birds love it! Watch!" win="Downdraft. Figures." lose="Soaring!" prize="1500"/>
+<beat use="trainerBattle" id="r15BirdKeeperPell" who="r15BirdKeeperPell" intro="The updrafts on this cliff are perfect! My birds love it! Watch!" win="Downdraft. Figures." lose="Soaring!" prize="1500" instance="use-003"/>
 
 <entry id="northR15BirdKeeperPellAfter" on="talk" target="npc.r15BirdKeeperPell" category="bark" when="holds('defeated', ['r15BirdKeeperPell'])">
-  @r15BirdKeeperPell: Sometimes the sky over Victory Road glows orange at dusk. Not sunset orange. Fire orange.
+  @r15BirdKeeperPell{code="0010"}: Sometimes the sky over Victory Road glows orange at dusk. Not sunset orange. Fire orange.
 </entry>
 
-<beat use="trainerBattle" id="r15CamperRoy" who="r15CamperRoy" intro="I pitched my tent on the windiest spot in Verdane. I regret nothing! Battle me!" win="I regret this a little." lose="No regrets!" prize="1400"/>
+<beat use="trainerBattle" id="r15CamperRoy" who="r15CamperRoy" intro="I pitched my tent on the windiest spot in Verdane. I regret nothing! Battle me!" win="I regret this a little." lose="No regrets!" prize="1400" instance="use-004"/>
 
 <entry id="northR15CamperRoyAfter" on="talk" target="npc.r15CamperRoy" category="bark" when="holds('defeated', ['r15CamperRoy'])">
-  @r15CamperRoy: My tent blew into the sea twice. The third one I tied to a Boulderon.
+  @r15CamperRoy{code="0010"}: My tent blew into the sea twice. The third one I tied to a Boulderon.
 </entry>
 
 // Tilly picnics in daylight only.
-<beat use="trainerBattle" id="r15PicnickerTilly" when="!@isNight" who="r15PicnickerTilly" intro="You stepped on my blanket! That means battle. It's the rule!" win="Okay, you can have a sandwich." lose="And stay off the blanket!" prize="1400"/>
+<beat use="trainerBattle" id="r15PicnickerTilly" when="!@isNight" who="r15PicnickerTilly" intro="You stepped on my blanket! That means battle. It's the rule!" win="Okay, you can have a sandwich." lose="And stay off the blanket!" prize="1400" instance="use-005"/>
 
 <entry id="northR15PicnickerTillyAfter" on="talk" target="npc.r15PicnickerTilly" category="bark" when="holds('defeated', ['r15PicnickerTilly'])">
-  @r15PicnickerTilly: The gardens in Verdant City grow the best berries in Verdane. Gardener Moss gives them away if you're polite.
+  @r15PicnickerTilly{code="0010"}: The gardens in Verdant City grow the best berries in Verdane. Gardener Moss gives them away if you're polite.
 </entry>
 
 // Mira reads fortunes by candlelight: out at night only.
-<beat use="trainerBattle" id="r15PsychicMira" when="@isNight" who="r15PsychicMira" intro="I foresaw you coming up the road tonight. I also foresaw that you'd lose." win="I foresaw that too, actually. I just didn't want to say." lose="As foretold." prize="2200"/>
+<beat use="trainerBattle" id="r15PsychicMira" when="@isNight" who="r15PsychicMira" intro="I foresaw you coming up the road tonight. I also foresaw that you'd lose." win="I foresaw that too, actually. I just didn't want to say." lose="As foretold." prize="2200" instance="use-006"/>
 
 <entry id="northR15PsychicMiraAfter" on="talk" target="npc.r15PsychicMira" category="bark" when="holds('defeated', ['r15PsychicMira'])">
-  @r15PsychicMira: Your future has a cave in it, and a boy with a very loud voice. That's all I see.
+  @r15PsychicMira{code="0010"}: Your future has a cave in it, and a boy with a very loud voice. That's all I see.
 </entry>
 
 // ── Ranger Tamsin, at the lookout ───────────────────────────────────────────
 
 <entry id="northTamsinBark" on="talk" target="npc.r15Ranger" category="bark">
-  @r15Ranger: From this lookout you can see Frostharbor, Cinder Isle and, on a clear day, the Plateau. It is never a clear day.
+  @r15Ranger{code="0010"}: From this lookout you can see Frostharbor, Cinder Isle and, on a clear day, the Plateau. It is never a clear day.
 </entry>
 
 <entry id="northTamsinMorning" on="talk" target="npc.r15Ranger" category="bark" priority="5" when="@isMorning">
-  @r15Ranger: Morning's the only time the mist lifts. Look west: that white line on the mountain is Victory Road.
+  @r15Ranger{code="0010"}: Morning's the only time the mist lifts. Look west: that white line on the mountain is Victory Road.
 </entry>
