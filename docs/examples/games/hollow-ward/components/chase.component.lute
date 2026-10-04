@@ -10,22 +10,22 @@ params:
 /* The chase minigame. The engine plays it out; this says what the outcome
 means. A beat that needs more (Tobias) reads scene.evade.chase.outcome
 after the ::use. */
-@narrator: {{@flavor}}
+@narrator{code="0010"}: {{@flavor}}
 ::evade{tactic=@tactic resultKey="chase"}
 <match on="scene.evade.chase.outcome">
   <when is="lost">
-    @narrator: The wheels squeal past. They slow. They go on down the corridor.
+    @narrator{code="0020"}: The wheels squeal past. They slow. They go on down the corridor.
     ::set{run.chases += 1}
   </when>
   <when is="hurt">
-    @narrator: A hand like a cold towel closes on your ankle. Then it lets go, as if it had only been counting you.
+    @narrator{code="0030"}: A hand like a cold towel closes on your ankle. Then it lets go, as if it had only been counting you.
     ::fright{amount=2}
     ::fright
     ::set{run.chases += 1}
   </when>
   <when is="taken">
-    @orderly: Lights out, love. Back to bed.
-    @narrator: The gurney is warm. Someone was on it a moment ago.
+    @orderly{code="0010"}: Lights out, love. Back to bed.
+    @narrator{code="0040"}: The gurney is warm. Someone was on it a moment ago.
     ::set{run.fate = "taken"}
     ::set{user.deaths += 1}
   </when>

@@ -15,9 +15,9 @@ when: "run.slot == 'afternoon' && run.day <= 6"
 ## The balloon shed
 
 ::bg{location="deck" time="afternoon"}
-::use{component="enter" who="ines" side="left"}
-@ines{emotion="neutral"}: Radiosonde. Hydrogen, latex, a box of instruments the weight of a sandwich. It goes up twenty kilometres and tells us what the sky is doing where we can't see.
-@ines{emotion="worried" when="run.balloonTries > 0"}: {{run.balloonTries:plural(One balloon|# balloons)}} in the bin already. The Met Office bills us for them.
+::use{component="enter" who="ines" side="left" instance="use-001"}
+@ines{code="0010" emotion="neutral"}: Radiosonde. Hydrogen, latex, a box of instruments the weight of a sandwich. It goes up twenty kilometres and tells us what the sky is doing where we can't see.
+@ines{code="0020" emotion="worried" when="run.balloonTries > 0"}: {{run.balloonTries:plural(One balloon|# balloons)}} in the bin already. The Met Office bills us for them.
 ::set{run.balloonTries += 1}
 
 <branch id="launch" prompt="The balloon strains at its cord like a dog that has seen a cat.">
@@ -25,16 +25,16 @@ when: "run.slot == 'afternoon' && run.day <= 6"
     <match on="run.weather">
       <when is="clear">
         ::set{run.balloonUp = true}
-        @narrator: It goes straight up, shrinking to a pearl, then a point, then nothing. The receiver in the radio room starts clicking.
-        @ines{emotion="happy"}: That's a launch. Write the time. To the second.
+        @narrator{code="0010"}: It goes straight up, shrinking to a pearl, then a point, then nothing. The receiver in the radio room starts clicking.
+        @ines{code="0030" emotion="happy"}: That's a launch. Write the time. To the second.
       </when>
       <otherwise>
-        @narrator: A gust takes it sideways into the mast. The pop is almost polite.
-        @ines{emotion="tired"}: Tomorrow. Wind and latex don't negotiate.
+        @narrator{code="0020"}: A gust takes it sideways into the mast. The pop is almost polite.
+        @ines{code="0040" emotion="tired"}: Tomorrow. Wind and latex don't negotiate.
       </otherwise>
     </match>
   </choice>
   <choice id="wait" label="Wait for a lull">
-    @ines: Sensible. The lull doesn't come. Tomorrow, then.
+    @ines{code="0050"}: Sensible. The lull doesn't come. Tomorrow, then.
   </choice>
 </branch>

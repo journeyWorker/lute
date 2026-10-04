@@ -12,31 +12,31 @@ priority: 20
 
 ::bg{location="harbour_square_market" time="morning"}
 ::music{action="start" mood="festive" volume="normal"}
-@narrator: Saturdays, the square fills with trestle tables: peaches, smoked mackerel, second-hand anoraks, a man who sharpens anything for a pound.
+@narrator{code="0010"}: Saturdays, the square fills with trestle tables: peaches, smoked mackerel, second-hand anoraks, a man who sharpens anything for a pound.
 ::auto{character="ines" anchor="left" action="slideInLeft"}
 ::auto{character="theo" anchor="right" action="slideInRight"}
 ::set{run.seen.ines = run.day}
 ::set{run.seen.theo = run.day}
-@ines{emotion="surprised"}: Oh — hello.
-@theo{emotion="neutral"}: Morning.
-@narrator: They look at each other the way people do who went to the same tiny school and never once spoke.
+@ines{code="0010" emotion="surprised"}: Oh — hello.
+@theo{code="0010" emotion="neutral"}: Morning.
+@narrator{code="0020"}: They look at each other the way people do who went to the same tiny school and never once spoke.
 
 <branch id="market" prompt="Pell asked for peaches. Who do you walk the stalls with?">
   <choice id="ines" label="Ines is looking at the book stall.">
     ::set{run.aff.ines += 1}
     ::auto{character="theo" action="slideOut"}
-    @ines{emotion="happy"}: Look — a 1962 tide almanac. Someone's grandfather wrote in all the margins.
-    @ines{emotion="shy"}: I'm buying it. I'm going to read every note. That's my whole Saturday. Want to hear the good ones?
+    @ines{code="0020" emotion="happy"}: Look — a 1962 tide almanac. Someone's grandfather wrote in all the margins.
+    @ines{code="0030" emotion="shy"}: I'm buying it. I'm going to read every note. That's my whole Saturday. Want to hear the good ones?
   </choice>
   <choice id="theo" label="Theo is haggling over rope.">
     ::set{run.aff.theo += 1}
     ::auto{character="ines" action="slideOut"}
-    @theo{emotion="teasing"}: Watch. He'll say twelve, I'll say eight, we'll both say ten, and then he'll throw in a peach because he knew my dad.
-    @narrator: That is exactly what happens. Theo gives you the peach.
+    @theo{code="0020" emotion="teasing"}: Watch. He'll say twelve, I'll say eight, we'll both say ten, and then he'll throw in a peach because he knew my dad.
+    @narrator{code="0030"}: That is exactly what happens. Theo gives you the peach.
   </choice>
   <choice id="peaches" label="Just buy the peaches.">
     ::auto{character="ines" action="slideOut"}
     ::auto{character="theo" action="slideOut"}
-    @narrator: The peaches are warm from the sun and bruise if you look at them.
+    @narrator{code="0040"}: The peaches are warm from the sun and bruise if you look at them.
   </choice>
 </branch>

@@ -70,8 +70,11 @@ pub struct CapabilitySnapshot {
     /// Empty = speakers stay shape-only; populated, a speaker outside it is
     /// `E-CAST-UNKNOWN`. GUARDED in [`capability_version`] like `occasions`.
     pub cast: BTreeMap<String, CastMember>,
-    /// Effective project/host capability ceiling. Empty means unrestricted.
     pub permissions: Permissions,
+    /// Project policy consumed by the checker, not part of the capability
+    /// surface. It is deliberately excluded from [`capability_version`] and
+    /// from serialized authoring-surface output.
+    pub identity_require_stable: bool,
 }
 
 /// An enum-style named vocabulary: an ordered member list, same shape as an

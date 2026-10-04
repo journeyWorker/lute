@@ -14,7 +14,7 @@ when: '@cameBackFromEscape && user.escapes == 1'
 ::bg{location="hearth" time="dawn"}
 ::music{action="start" mood="elegy" volume="down"}
 @narrator{code="0010"}: She had seen the sky. Then the sky had folded up like a letter, and she was here.
-::use{component="hearthFire" flare="high"}
+::use{component="hearthFire" flare="high" instance="use-001"}
 ::auto{character="maud" anchor="center" action="fadeInUp"}
 @maud{code="0010" emotion="stricken"}: You got out. You actually — I felt the fire jump. It hasn't done that in forty years.
 @wren{code="0010"}: It didn't hold. I was out, and then I wasn't.

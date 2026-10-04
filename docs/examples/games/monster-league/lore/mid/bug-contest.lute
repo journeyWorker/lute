@@ -17,8 +17,8 @@ title: The Wildmoor bug-catching contest (Tuesday, Thursday, Saturday)
 <beat id="register" on="talk" target="npc.wildmoorContestOfficer" title="Contest desk" priority="20" once="false" when="@midContestOpen && !@midContestToday">
   ::bg{location="wildmoor-contest-desk" time="day"}
   ::auto{character="wildmoorContestOfficer" anchor="center" action="enter"}
-  @wildmoorContestOfficer{emotion="happy"}: Welcome to the Wildmoor bug-catching contest! It's {{clock.weekdayLabel}}, the nets are out, and the bugs don't know what's coming.
-  @wildmoorContestOfficer: The rules: twenty Park Balls, bugs only, and only your best catch counts. You have until the bell. The judges like rare bugs. They like big bugs even more.
+  @wildmoorContestOfficer{code="0010" emotion="happy"}: Welcome to the Wildmoor bug-catching contest! It's {{clock.weekdayLabel}}, the nets are out, and the bugs don't know what's coming.
+  @wildmoorContestOfficer{code="0020"}: The rules: twenty Park Balls, bugs only, and only your best catch counts. You have until the bell. The judges like rare bugs. They like big bugs even more.
   <branch id="midContestEnter" prompt="Enter today's contest? The fee is 500 coins.">
     <choice id="enter" label="Enter (500 coins)" when="run.money >= 500">
       ::set{run.money -= 500}
@@ -26,11 +26,11 @@ title: The Wildmoor bug-catching contest (Tuesday, Thursday, Saturday)
       ::set{run.midContestScore = 0}
       ::set{run.midContestDay = run.day}
       ::give{item="parkBall" qty="20"}
-      @narrator: {{userName}} received twenty Park Balls.
-      @wildmoorContestOfficer: Off you go! Listen for the bell. And don't catch the rangers, they bruise.
+      @narrator{code="0010"}: {{userName}} received twenty Park Balls.
+      @wildmoorContestOfficer{code="0030"}: Off you go! Listen for the bell. And don't catch the rangers, they bruise.
     </choice>
     <choice id="decline" label="Not today">
-      @wildmoorContestOfficer: Suit yourself. The desk's open until nightfall, if you change your mind.
+      @wildmoorContestOfficer{code="0040"}: Suit yourself. The desk's open until nightfall, if you change your mind.
     </choice>
   </branch>
 </beat>
@@ -38,30 +38,30 @@ title: The Wildmoor bug-catching contest (Tuesday, Thursday, Saturday)
 <entry id="midContestDeskActive" on="talk" target="npc.wildmoorContestOfficer" category="bark" priority="15" when="run.midContest == 'entered'">
   <match on="run.midContestScore">
     <when is="3..">
-      @wildmoorContestOfficer{emotion="surprised"}: Is that what I think it is in your ball? Don't show me, show the judges! Keep going, or don't. You might not beat that.
+      @wildmoorContestOfficer{code="0010" emotion="surprised"}: Is that what I think it is in your ball? Don't show me, show the judges! Keep going, or don't. You might not beat that.
     </when>
     <when is="2">
-      @wildmoorContestOfficer: A fine catch already. There are rarer ones out in the tall grass, near the old oaks.
+      @wildmoorContestOfficer{code="0020"}: A fine catch already. There are rarer ones out in the tall grass, near the old oaks.
     </when>
     <when is="1">
-      @wildmoorContestOfficer: One in the bag! It's a start. The judges have seen a lot of those today.
+      @wildmoorContestOfficer{code="0030"}: One in the bag! It's a start. The judges have seen a lot of those today.
     </when>
     <otherwise>
-      @wildmoorContestOfficer: Nothing yet? The bell won't wait. Try the tall grass by the pond.
+      @wildmoorContestOfficer{code="0040"}: Nothing yet? The bell won't wait. Try the tall grass by the pond.
     </otherwise>
   </match>
 </entry>
 
 <entry id="midContestDeskDone" on="talk" target="npc.wildmoorContestOfficer" category="bark" priority="12" when="@midContestToday && run.midContest == 'closed'">
-  @wildmoorContestOfficer: One entry a day, I'm afraid. Come back next contest day: Tuesday, Thursday or Saturday.
+  @wildmoorContestOfficer{code="0010"}: One entry a day, I'm afraid. Come back next contest day: Tuesday, Thursday or Saturday.
 </entry>
 
 <entry id="midContestDeskNight" on="talk" target="npc.wildmoorContestOfficer" category="bark" priority="10" when="@contestDay && @isNight">
-  @wildmoorContestOfficer: The contest's over for today. The bugs have gone to bed, and so should you.
+  @wildmoorContestOfficer{code="0010"}: The contest's over for today. The bugs have gone to bed, and so should you.
 </entry>
 
 <entry id="midContestDeskOff" on="talk" target="npc.wildmoorContestOfficer" category="bark">
-  @wildmoorContestOfficer: The bug-catching contest runs Tuesdays, Thursdays and Saturdays, morning and afternoon. Today, I'm just a woman at a desk.
+  @wildmoorContestOfficer{code="0010"}: The bug-catching contest runs Tuesdays, Thursdays and Saturdays, morning and afternoon. Today, I'm just a woman at a desk.
 </entry>
 
 // ── the catches: one beat per prize tier, over the tier's species kind
@@ -69,53 +69,53 @@ title: The Wildmoor bug-catching contest (Tuesday, Thursday, Saturday)
 
 <beat id="catchRare" on="caught" target="kind:midBugRare" title="Contest catch: rare" priority="20" once="false" when="run.midContest == 'entered'">
   ::set{run.midContestScore = 3}
-  @narrator: A {{occasion.target}}! The nets all around you go still. Somebody whistles.
+  @narrator{code="0010"}: A {{occasion.target}}! The nets all around you go still. Somebody whistles.
 </beat>
 
 <beat id="catchFine" on="caught" target="kind:midBugFine" title="Contest catch: fine" priority="20" once="false" when="run.midContest == 'entered'">
   ::set{run.midContestScore = 2 when="run.midContestScore < 2"}
-  @narrator: A {{occasion.target}}. A fine catch: the judges will want a look at that one.
+  @narrator{code="0010"}: A {{occasion.target}}. A fine catch: the judges will want a look at that one.
 </beat>
 
 <beat id="catchCommon" on="caught" target="kind:midBugCommon" title="Contest catch: common" priority="20" once="false" when="run.midContest == 'entered'">
   ::set{run.midContestScore = 1 when="run.midContestScore < 1"}
-  @narrator: A {{occasion.target}}. It counts, and the judges have seen plenty of them today.
+  @narrator{code="0010"}: A {{occasion.target}}. It counts, and the judges have seen plenty of them today.
 </beat>
 
 // ── the bell (the slot the entrant registered in has ended) ───────────────
 
 <beat id="judgeFirst" on="slotStart" title="Contest results: first prize" once="false" when="run.midContest == 'entered' && run.midContestScore >= 3">
   ::sfx{sound="contest-bell"}
-  @wildmoorContestOfficer{vo}: That's the bell! Nets down, everyone. The judges have made their decision.
-  @wildmoorContestOfficer{vo}: And first prize goes to... {{userName}}, for a truly magnificent bug! Please collect your Sun Stone at the desk!
+  @wildmoorContestOfficer{code="0010" vo}: That's the bell! Nets down, everyone. The judges have made their decision.
+  @wildmoorContestOfficer{code="0020" vo}: And first prize goes to... {{userName}}, for a truly magnificent bug! Please collect your Sun Stone at the desk!
   ::set{run.midContestWins += 1}
   ::set{run.midContest = "closed"}
   ::give{item="sunStone"}
-  @narrator: {{userName}} received a Sun Stone! First prizes so far: {{run.midContestWins}}.
+  @narrator{code="0010"}: {{userName}} received a Sun Stone! First prizes so far: {{run.midContestWins}}.
 </beat>
 
 <beat id="judgeSecond" on="slotStart" title="Contest results: second prize" once="false" when="run.midContest == 'entered' && run.midContestScore == 2">
   ::sfx{sound="contest-bell"}
-  @wildmoorContestOfficer{vo}: That's the bell! Nets down, everyone. The judges have made their decision.
-  @wildmoorContestOfficer{vo}: Second prize goes to {{userName}}! A very fine bug. Your Everstone is waiting at the desk.
+  @wildmoorContestOfficer{code="0010" vo}: That's the bell! Nets down, everyone. The judges have made their decision.
+  @wildmoorContestOfficer{code="0020" vo}: Second prize goes to {{userName}}! A very fine bug. Your Everstone is waiting at the desk.
   ::set{run.midContest = "closed"}
   ::give{item="everstone"}
-  @narrator: {{userName}} received an Everstone.
+  @narrator{code="0010"}: {{userName}} received an Everstone.
 </beat>
 
 <beat id="judgeThird" on="slotStart" title="Contest results: third prize" once="false" when="run.midContest == 'entered' && run.midContestScore == 1">
   ::sfx{sound="contest-bell"}
-  @wildmoorContestOfficer{vo}: That's the bell! Nets down, everyone. The judges have made their decision.
-  @wildmoorContestOfficer{vo}: Third prize to {{userName}}! Every champion starts somewhere. Usually with a Cocoonix.
+  @wildmoorContestOfficer{code="0010" vo}: That's the bell! Nets down, everyone. The judges have made their decision.
+  @wildmoorContestOfficer{code="0020" vo}: Third prize to {{userName}}! Every champion starts somewhere. Usually with a Cocoonix.
   ::set{run.midContest = "closed"}
   ::give{item="silverPowder"}
-  @narrator: {{userName}} received some Silver Powder.
+  @narrator{code="0010"}: {{userName}} received some Silver Powder.
 </beat>
 
 <beat id="judgeNone" on="slotStart" title="Contest results: no catch" once="false" when="run.midContest == 'entered' && run.midContestScore < 1">
   ::sfx{sound="contest-bell"}
-  @wildmoorContestOfficer{vo}: That's the bell! Nets down, everyone. The judges have made their decision.
-  @wildmoorContestOfficer{vo}: And to {{userName}}, who caught nothing at all: a consolation berry, and our deepest sympathy.
+  @wildmoorContestOfficer{code="0010" vo}: That's the bell! Nets down, everyone. The judges have made their decision.
+  @wildmoorContestOfficer{code="0020" vo}: And to {{userName}}, who caught nothing at all: a consolation berry, and our deepest sympathy.
   ::set{run.midContest = "closed"}
   ::give{item="oranBerry"}
 </beat>

@@ -35,7 +35,7 @@
     "knows(vesna, project_lumen)",
     "seen(jon, key)"
   ],
-  "irVersion": "0.35",
+  "irVersion": "0.36",
   "kind": "lore",
   "quests": {},
   "state": {

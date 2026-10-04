@@ -5,15 +5,15 @@ title: Ren's endings
 ---
 
 <beat id="lantern" on="termEnd" after="visited('ren.confession')" title="Ren — the lantern ending" priority="10" when="run.route == 'ren' && @devoted(run.aff.ren)">
-  @narrator: The closing ceremony. The president's chair on the stage is empty.
-  @ren{emotion="happy"}: I wrote to my father. I told him the island needs a council president more than the mainland needs another heir. He hasn't answered. I don't need him to.
-  @ren{emotion="fond"}: Sign here. Once is enough, this time.
-  ::use{component="cg" id="cgRenEnd"}
-  ::use{component="ending" who="ren" kind="good" title="Ren — the lantern ending"}
+  @narrator{code="0010"}: The closing ceremony. The president's chair on the stage is empty.
+  @ren{code="0010" emotion="happy"}: I wrote to my father. I told him the island needs a council president more than the mainland needs another heir. He hasn't answered. I don't need him to.
+  @ren{code="0020" emotion="fond"}: Sign here. Once is enough, this time.
+  ::use{component="cg" id="cgRenEnd" instance="use-001"}
+  ::use{component="ending" who="ren" kind="good" title="Ren — the lantern ending" instance="use-001"}
 </beat>
 
 <beat id="ember" on="termEnd" after="visited('ren.confession')" title="Ren — the ember ending" priority="5" when="run.route == 'ren'">
-  @narrator: The ferry horn goes twice. Ren is on the deck with his register under his arm.
-  @ren{emotion="sad"}: I'll write. Officially. On letterhead. ...Name a star after me, if you find a spare one.
-  ::use{component="ending" who="ren" kind="bittersweet" title="Ren — the ember ending"}
+  @narrator{code="0010"}: The ferry horn goes twice. Ren is on the deck with his register under his arm.
+  @ren{code="0010" emotion="sad"}: I'll write. Officially. On letterhead. ...Name a star after me, if you find a spare one.
+  ::use{component="ending" who="ren" kind="bittersweet" title="Ren — the ember ending" instance="use-002"}
 </beat>

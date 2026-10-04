@@ -10,17 +10,17 @@ when: "holds('inParty', ['wren']) && (quest.toll.state == 'complete' || run.appr
 ## The Edge of the Firelight
 
 ::auto{character="wren" anchor="center" action="fadeInUp"}
-@narrator: Wren has her pack on. She has not said goodbye to anyone, which is how you know she means to.
+@narrator{code="0010"}: Wren has her pack on. She has not said goodbye to anyone, which is how you know she means to.
 <match on="quest.toll.state">
   <when is="complete">
-    @wren{emotion="angry"}: Tam's friends are in a Duskbound cage tonight because you wanted a bridge more than you wanted to be a person.
-    @wren: I'm going home. Somebody at the ford has to be there when Maelis's people come knocking. It won't be you.
+    @wren{code="0010" emotion="angry"}: Tam's friends are in a Duskbound cage tonight because you wanted a bridge more than you wanted to be a person.
+    @wren{code="0020"}: I'm going home. Somebody at the ford has to be there when Maelis's people come knocking. It won't be you.
   </when>
   <otherwise>
-    @wren: I keep waiting for you to become someone I'd follow. The river's patient. I'm not.
+    @wren{code="0030"}: I keep waiting for you to become someone I'd follow. The river's patient. I'm not.
   </otherwise>
 </match>
-@wren: Don't follow me. The river knows your face now.
+@wren{code="0040"}: Don't follow me. The river knows your face now.
 ::auto{character="wren" action="fadeOut"}
 ::assert{departed(wren)}
-@narrator: Wren has left the party.
+@narrator{code="0020"}: Wren has left the party.

@@ -6,10 +6,10 @@ title: The week's promises
 
 <quest id="festivalLantern" title="A lantern for the Walk" tier="run">
   <objective id="frame" title="Bend a reed frame (Theo cuts reed at the pier, mornings)" done="run.lantern.frame" by="@friAfternoonOver">
-    @narrator: The frame holds its shape when you let go. That is most of a lantern.
+    @narrator{code="0010"}: The frame holds its shape when you let go. That is most of a lantern.
   </objective>
   <objective id="paper" title="Find paper that will not drown (ask at the library)" done="run.lantern.paper" by="@friAfternoonOver">
-    @narrator: The paper is thin as an onion skin and tougher than it looks.
+    @narrator{code="0020"}: The paper is thin as an onion skin and tougher than it looks.
   </objective>
   <objective id="wish" title="Write a wish on the lantern" done="has(run.lantern.wish)" optional/>
 </quest>
@@ -20,7 +20,7 @@ title: The week's promises
     ::set{run.aff.theo += 1}
   </on>
   <on event="questFailed">
-    @narrator: Somewhere out past the breakwater, the water glowed for an hour, and nobody was there to see it but Theo.
+    @narrator{code="0010"}: Somewhere out past the breakwater, the water glowed for an hour, and nobody was there to see it but Theo.
   </on>
 </quest>
 

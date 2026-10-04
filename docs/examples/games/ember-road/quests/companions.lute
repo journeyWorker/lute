@@ -15,7 +15,7 @@ title: Companion quests
   </on>
   <on event="questFailed">
     ::set{run.approval.isolde -= 2}
-    @narrator: Isolde takes off the Company clasp she still wore at her collar, and does not put it back on.
+    @narrator{code="0010"}: Isolde takes off the Company clasp she still wore at her collar, and does not put it back on.
   </on>
 </quest>
 /* Wren's river. It opens by itself once she is with the party and warm to you. */
@@ -25,6 +25,6 @@ title: Companion quests
   <objective id="listen" title="Hear what the river told Wren" done="holds('knows', ['token'])"/>
   <objective id="carry" title="Carry Tam's token across the gorge" on="chapterEnd" done="@bridgeOpen && holds('inParty', ['wren'])"/>
   <on event="questFailed">
-    @narrator: Somewhere a river token sinks, and nobody hears it.
+    @narrator{code="0010"}: Somewhere a river token sinks, and nobody hears it.
   </on>
 </quest>

@@ -1,6 +1,9 @@
+---
+status: Accepted
+---
+
 # Architecture direction after the three independent reviews
 
-- **Status:** Accepted, 2026-10-01.
 - **Inputs:** three independent reviews under `reports/`:
   `lute-deep-report.md` ("Deep"), `Lute_2026_Clean_Room_Architecture_Thesis.md`
   ("Thesis"), `lute_report_03_bundle/lute_report_03.md` ("03"). Thesis and 03

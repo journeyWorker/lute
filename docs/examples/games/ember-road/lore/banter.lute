@@ -7,38 +7,38 @@ title: Road banter
 barks outrank the generic ones; the sharpest reactions outrank everything. */
 
 <entry id="banterGrief" on="banter" category="bark" title="Corvin, alone" priority="60" once="run" when="holds('fell', ['isolde']) && holds('inParty', ['corvin'])">
-  @corvin: Nobody's told me to stop talking in two days. I don't like it.
+  @corvin{code="0010"}: Nobody's told me to stop talking in two days. I don't like it.
 </entry>
 
 <entry id="banterSold" on="banter" category="bark" title="Isolde, cold" priority="50" once="run" when="run.bridge == 'sold' && holds('inParty', ['isolde']) && holds('inParty', ['corvin'])">
-  @isolde: Corvin. Walk on the other side of the wagon.
-  @corvin: It was the Warden's decision.
-  @isolde: I am aware. I am choosing which of you I can stand to look at.
+  @isolde{code="0010"}: Corvin. Walk on the other side of the wagon.
+  @corvin{code="0010"}: It was the Warden's decision.
+  @isolde{code="0020"}: I am aware. I am choosing which of you I can stand to look at.
 </entry>
 
 <entry id="banterCrate" on="banter" category="bark" title="Twelve crates" priority="30" once="run" when="holds('inParty', ['isolde']) && holds('inParty', ['corvin']) && !holds('knows', ['ledger'])">
-  @corvin: Twelve crates in the ninth wagon, Vane. The manifest says eleven.
-  @isolde: Then the manifest is wrong.
-  @corvin: Manifests are never wrong. They're just honest about different things.
+  @corvin{code="0010"}: Twelve crates in the ninth wagon, Vane. The manifest says eleven.
+  @isolde{code="0010"}: Then the manifest is wrong.
+  @corvin{code="0020"}: Manifests are never wrong. They're just honest about different things.
 </entry>
 
 <entry id="banterRiver" on="banter" category="bark" title="Wren and Corvin" priority="35" once="run" when="@wrenWithUs && holds('inParty', ['corvin'])">
-  @corvin: So what's the river saying now?
-  @wren: That you owe it a coin from the ford crossing last spring.
-  @corvin: How does it know that?
-  @wren: How do you think I know that?
+  @corvin{code="0010"}: So what's the river saying now?
+  @wren{code="0010"}: That you owe it a coin from the ford crossing last spring.
+  @corvin{code="0020"}: How does it know that?
+  @wren{code="0020"}: How do you think I know that?
 </entry>
 
 <entry id="banterOath" on="banter" category="bark" title="Isolde hums" priority="20" once="run" when="quest.isoldeOath.state == 'active' && @wrenWithUs && holds('inParty', ['isolde'])">
-  @wren: What's that you're humming?
-  @isolde: A Coldwater song. I didn't know I still knew it.
+  @wren{code="0010"}: What's that you're humming?
+  @isolde{code="0010"}: A Coldwater song. I didn't know I still knew it.
 </entry>
 
 <entry id="banterLedger" on="banter" category="bark" title="Paper and fire" priority="25" once="run" when="holds('knows', ['ledger']) && holds('inParty', ['isolde'])">
-  @isolde: Coldwater. Pell's Reach. Harrow Top. They wrote the names down, like a shopping list.
-  @corvin{when="holds('inParty', ['corvin'])"}: Everyone writes it down. That's how you know it was business.
+  @isolde{code="0010"}: Coldwater. Pell's Reach. Harrow Top. They wrote the names down, like a shopping list.
+  @corvin{code="0010" when="holds('inParty', ['corvin'])"}: Everyone writes it down. That's how you know it was business.
 </entry>
 
 <entry id="banterQuiet" on="banter" category="bark" title="The road">
-  @narrator: The wheels grind. The mules plod. Somewhere ahead, the black sun on another milestone.
+  @narrator{code="0010"}: The wheels grind. The mules plod. Somewhere ahead, the black sun on another milestone.
 </entry>

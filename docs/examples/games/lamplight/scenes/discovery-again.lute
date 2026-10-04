@@ -15,7 +15,7 @@ components: [../components/lamps-out.component.lute]
 ::music{action="start" mood="tense" volume="down"}
 @narrator{code="0010"}: At 2:31 somebody knocks on compartment 3 as though the door owes them money.
 @inspector{code="0010" mono}: I know this knock.
-::use{component="lampsOut" depth="brief" where="the sleeper car" memory="The tunnel. Again."}
+::use{component="lampsOut" depth="brief" where="the sleeper car" memory="The tunnel. Again." instance="use-001"}
 @narrator{code="0020"}: Your casebook is on the pillow beside you, open, full of your own handwriting. The ink on the last page is still wet.
 <match on="prev.run.accused">
   <when is="solt">

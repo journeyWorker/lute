@@ -18,3 +18,4 @@ serde_yaml = { workspace = true }
 [dev-dependencies]
 insta = { workspace = true }
 lute-test-vocab = { path = "../lute-test-vocab" }
+proptest = "1"

@@ -6,37 +6,37 @@ title: Fen, the Last Arrow (SR)
 /* Fen talks in as few words as possible. That's the joke and the point. */
 
 <beat id="fenIntro" on="summon" target="hero.fen" once="user" priority="10">
-  @fen: Fen. Archer.
-  @fen{emotion="shy"}: ...Hello.
+  @fen{code="0010"}: Fen. Archer.
+  @fen{code="0020" emotion="shy"}: ...Hello.
 </beat>
 
 <beat id="fenDupe" on="summon" target="hero.fen" once="false" priority="3" when="holds('owned', ['fen']) && occasion.payload.copies <= 6">
-  @fen: Again.
+  @fen{code="0010"}: Again.
 </beat>
 
 <beat id="fenTap" on="homeTap" target="hero.fen" once="day">
-  @narrator: There's a small pinecone on your pillow. Fen is very carefully not looking at you.
+  @narrator{code="0010"}: There's a small pinecone on your pillow. Fen is very carefully not looking at you.
 </beat>
 
 <beat id="fenBirthday" on="dailyReset" once="day" when="holds('celebrate', ['fen'])">
-  @fen{emotion="shy"}: Birthday. Mine.
-  @fen{emotion="happy"}: ...Cake?
+  @fen{code="0010" emotion="shy"}: Birthday. Mine.
+  @fen{code="0020" emotion="happy"}: ...Cake?
 </beat>
 
-<beat use="bondStory" id="fenR1" who="fen" rank="r1" vow="Your back. Mine to watch.">
-  @fen: My village had a hundred archers.
-  @fen: The Hollow King came. I'm the last arrow.
-  @fen{emotion="shy"}: Words were theirs. I kept the arrows.
+<beat use="bondStory" id="fenR1" who="fen" rank="r1" vow="Your back. Mine to watch." instance="use-001">
+  @fen{code="0010"}: My village had a hundred archers.
+  @fen{code="0020"}: The Hollow King came. I'm the last arrow.
+  @fen{code="0030" emotion="shy"}: Words were theirs. I kept the arrows.
 </beat>
 
-<beat use="bondStory" id="fenR2" who="fen" rank="r2" prev="bonds.fen.fenR1" vow="Two archers now. Not the last.">
-  @narrator: Fen hands you a bow, carved small, the string still new.
-  @fen: Yours. Practice.
-  @fen{emotion="happy"}: I'll teach. Slowly. With words.
+<beat use="bondStory" id="fenR2" who="fen" rank="r2" prev="bonds.fen.fenR1" vow="Two archers now. Not the last." instance="use-002">
+  @narrator{code="0010"}: Fen hands you a bow, carved small, the string still new.
+  @fen{code="0010"}: Yours. Practice.
+  @fen{code="0020" emotion="happy"}: I'll teach. Slowly. With words.
 </beat>
 
-<beat use="bondStory" id="fenR3" who="fen" rank="r3" prev="bonds.fen.fenR2" vow="Fen, the first arrow of a new village. Ours.">
-  @fen: I talked to Gale today. Whole sentences. Three.
-  @fen{emotion="shy"}: He cried. Bards.
-  @fen{emotion="happy"}: You taught me. Words aren't only theirs.
+<beat use="bondStory" id="fenR3" who="fen" rank="r3" prev="bonds.fen.fenR2" vow="Fen, the first arrow of a new village. Ours." instance="use-003">
+  @fen{code="0010"}: I talked to Gale today. Whole sentences. Three.
+  @fen{code="0020" emotion="shy"}: He cried. Bards.
+  @fen{code="0030" emotion="happy"}: You taught me. Words aren't only theirs.
 </beat>

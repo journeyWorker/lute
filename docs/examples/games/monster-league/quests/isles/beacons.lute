@@ -15,7 +15,7 @@ title: The Sunfall Isles
   <objective id="coral" title="Relight the Coralreach beacon" quest="islesCoralreach"/>
   <objective id="nyx" title="Stop Admin Nyx in the Sunfall Shrine" done="holds('defeated', ['duskAdminNyx'])"/>
   <on event="questComplete">
-    @sunportSage{emotion="happy"}: Three beacons, and the shrine quiet again. The boats will sail tonight, Champion.
+    @sunportSage{code="0010" emotion="happy"}: Three beacons, and the shrine quiet again. The boats will sail tonight, Champion.
   </on>
 </quest>
 
@@ -42,7 +42,7 @@ title: The Sunfall Isles
   <objective id="deliver" title="Bring Keeper Nerissa her medicine before nightfall" on="talk" target="npc.coralreachKeeper" done="true" by="@isNight"/>
   <reward kind="ITEM" target="sitrusBerry" amount="3"/>
   <on event="questFailed">
-    @narrator: Night falls over Coralreach. Somebody else will have to take Nerissa her medicine.
+    @narrator{code="0010"}: Night falls over Coralreach. Somebody else will have to take Nerissa her medicine.
   </on>
 </quest>
 

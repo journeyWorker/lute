@@ -6,16 +6,16 @@ title: The Parlour
 
 ## The Parlour
 
-@narrator: Six cups, six saucers, five spoons.
-@aunt_mabel: The Hollin spoon is gone. My grandmother's spoon!
-@vicar: Perhaps it simply wandered off, Mabel.
+@narrator{code="0010"}: Six cups, six saucers, five spoons.
+@aunt_mabel{code="0010"}: The Hollin spoon is gone. My grandmother's spoon!
+@vicar{code="0010"}: Perhaps it simply wandered off, Mabel.
 
 <branch id="firstLook" prompt="Where do you look first?">
   <choice id="sugarBowl" label="Look in the sugar bowl">
-    @pippa: Nothing but lumps.
+    @pippa{code="0010"}: Nothing but lumps.
   </choice>
   <choice id="vicarPocket" label="Glance at the vicar's pocket" into="run.sawPocket">
-    @pippa{mono}: Something bulges. Probably a hymn book.
+    @pippa{code="0020" mono}: Something bulges. Probably a hymn book.
     ::set{run.cluesFound += 1}
   </choice>
 </branch>

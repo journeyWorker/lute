@@ -13,5 +13,5 @@ priority: 20
 ## Lights on
 
 ::sfx{sound="power-up"}
-@narrator: Down the coast, every streetlamp in Portvolt comes on at once and, for the first time in ten years, stays on.
-@profAlder{vo}: {{userName}}? The Dex just did something it has never done. Thunderwing! I have one photograph of it, and it is mostly a smudge. Come to the lab when you can. Bring it. Please.
+@narrator{code="0010"}: Down the coast, every streetlamp in Portvolt comes on at once and, for the first time in ten years, stays on.
+@profAlder{code="0010" vo}: {{userName}}? The Dex just did something it has never done. Thunderwing! I have one photograph of it, and it is mostly a smudge. Come to the lab when you can. Bring it. Please.

@@ -8,7 +8,7 @@ once: user
 
 ## After the fight
 
-@aria{emotion="surprised"}: Did we win? We won! Those were Hollow hounds. They eat light.
-@lumi: They'll be back. The Hollow King sends them wherever a star falls.
-@aria: Then we don't let them catch any more. Where's the next star?
-@lumi: East. Toward the keep. Of course it's toward the keep.
+@aria{code="0010" emotion="surprised"}: Did we win? We won! Those were Hollow hounds. They eat light.
+@lumi{code="0010"}: They'll be back. The Hollow King sends them wherever a star falls.
+@aria{code="0020"}: Then we don't let them catch any more. Where's the next star?
+@lumi{code="0020"}: East. Toward the keep. Of course it's toward the keep.

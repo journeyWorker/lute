@@ -557,79 +557,89 @@ fn reachability_value(model: &ProjectModel, node: &NodeKey) -> Option<Value> {
     };
     scenario.reach.get(&id).map(|verdict| serde_json::json!(format!("{verdict:?}")))
 }
-fn preserve_node_matches(claim: &NodeKey, changed: &NodeKey) -> bool {
-    claim == changed
+fn preserve_node_matches(
+    claim: &NodeKey,
+    changed: &NodeKey,
+    before: &ProjectModel,
+    after: &ProjectModel,
+) -> bool {
+    if claim == changed
         || (claim.kind == changed.kind
             && (changed.key.strip_prefix("quest:") == Some(claim.key.as_str())
                 || claim.key.strip_prefix("quest:") == Some(changed.key.as_str())))
+    {
+        return true;
+    }
+    after.identity_renames().iter().any(|rename| {
+        (rename.from == claim.canonical() && rename.to == changed.canonical())
+            || (rename.to == claim.canonical() && rename.from == changed.canonical())
+    }) && (before.graph().nodes.contains_key(claim) || after.graph().nodes.contains_key(claim))
+        && (before.graph().nodes.contains_key(changed) || after.graph().nodes.contains_key(changed))
 }
 fn component_fingerprints(model: &ProjectModel) -> BTreeMap<NodeKey, String> {
-    let mut instances = BTreeMap::new();
-    // Beat nodes by (file, local beat id): the lookup each template beat needs.
-    // The first node in key order wins, as the per-beat linear search did.
-    let mut beats: BTreeMap<(&Path, &str), &crate::graph::GraphNode> = BTreeMap::new();
-    for node in model.graph().nodes.values().filter(|node| node.id.kind == NodeKind::Beat) {
-        let (Some(file), Some(local)) = (node.file.as_deref(), node.id.key.rsplit('.').next()) else { continue };
-        beats.entry((file, local)).or_insert(node);
-    }
+    let mut out = BTreeMap::new();
     for document in model.documents() {
-        let (authored, _) = lute_syntax::parse(&document.input.text);
-        for beat in &authored.beats {
-            let Some(template) = &beat.template else { continue };
-            let Some(node) = beats.get(&(document.path.as_path(), beat.id.as_str())) else { continue };
-            let enclosing = node.id.key.rsplit_once('.').map_or("", |(owner, _)| owner);
-            let mut bindings: Vec<(String, String)> = vec![
-                ("on", beat.on.as_ref().map(|v| v.0.clone())),
-                ("target", beat.target.as_ref().map(|v| v.0.clone())),
-                ("for", beat.for_kind.as_ref().map(|v| v.0.clone())),
-                ("title", beat.title.as_ref().map(|v| v.0.clone())),
-                ("priority", beat.priority.as_ref().map(|v| v.0.clone())),
-                ("once", beat.once.as_ref().map(|v| v.0.clone())),
-                ("share", beat.share.as_ref().map(|v| v.0.clone())),
-                ("after", beat.after.as_ref().map(|v| v.0.clone())),
-                ("advances", beat.advances.as_ref().map(|v| v.0.clone())),
-                ("when", beat.when.as_ref().map(|v| v.raw.clone())),
-            ].into_iter().map(|(key, value)| (key.to_string(), value.unwrap_or_default())).collect();
-            bindings.extend(beat.attrs.iter().map(|attr| {
-                let value = match &attr.value {
-                    lute_syntax::ast::AttrValue::Str(value) => value.clone(),
-                    lute_syntax::ast::AttrValue::Ref(value) => value.raw.clone(),
-                    lute_syntax::ast::AttrValue::BoolTrue => "true".into(),
-                };
-                (attr.key.clone(), value)
-            }));
-            bindings.sort();
-            let children: Vec<_> = beat.body.iter().filter_map(|node| match node {
-                lute_syntax::ast::Node::Line(line) => line.attrs.iter().find(|attr| attr.key == "id")
-                    .map(|attr| document.input.text[attr.value_span.byte_start..attr.value_span.byte_end].to_string()),
-                _ => None,
-            }).collect();
-            instances.insert(node.id.clone(), serde_json::json!([template.name, bindings, enclosing, children]).to_string());
+        let Some(artifact) = document.artifact.as_ref() else { continue };
+        for command in &artifact.commands {
+            let lute_compile::Command::Line(line) = command else { continue };
+            let Some(source) = line.stamp.source.as_ref() else { continue };
+            let key = NodeKey::new(NodeKind::Line, line.line_id.clone());
+            let instance = source.scope.rsplit('/').next()
+                .and_then(|segment| segment.rsplit_once('#').map(|(_, key)| key))
+                .unwrap_or_default();
+            let fingerprint = serde_json::json!({
+                "component": source.component,
+                "key": instance,
+                "scope": source.scope,
+                "sourceOrigin": format!("{}:{}", source.component, line.line_id),
+            }).to_string();
+            out.insert(key, fingerprint);
         }
     }
-    instances
+    out
 }
 
 fn preserve_violations(items: &[Preserve], diff: &crate::SemanticDiff, before: &ProjectModel, after: &ProjectModel) -> Vec<SemanticChange> {
     let mut out = Vec::new();
+    let mapped = |claim: &NodeKey| -> Option<NodeKey> {
+        after.identity_renames().iter().find_map(|rename| {
+            let raw = if rename.from == claim.canonical() { &rename.to }
+                else if rename.to == claim.canonical() { &rename.from } else { return None };
+            let (kind, key) = raw.split_once(':')?;
+            let kind = match kind {
+                "quest" => NodeKind::Quest, "scene" => NodeKind::Scene, "document" => NodeKind::Document,
+                "entry" => NodeKind::Entry, "beat" => NodeKind::Beat, "line" => NodeKind::Line,
+                "objective" => NodeKind::Objective, "choice" => NodeKind::Choice, "reward" => NodeKind::Reward,
+                _ => return None,
+            };
+            Some(NodeKey::new(kind, key))
+        })
+    };
     for item in items {
         match item {
             Preserve::Ids(nodes) => {
                 let mut fingerprints = None;
                 for node in nodes {
-                    if !after.graph().nodes.contains_key(node) {
-                        out.extend(diff.changes.iter().filter(|c| preserve_node_matches(node, &c.node)).cloned());
+                    let target = if after.graph().nodes.contains_key(node) {
+                        Some(node.clone())
+                    } else {
+                        mapped(node).filter(|mapped| after.graph().nodes.contains_key(mapped))
+                    };
+                    let Some(target) = target else {
+                        out.extend(diff.changes.iter().filter(|c| preserve_node_matches(node, &c.node, before, after)).cloned());
                         continue;
-                    }
+                    };
                     let (before_prints, after_prints) = fingerprints
                         .get_or_insert_with(|| (component_fingerprints(before), component_fingerprints(after)));
                     if let Some(fingerprint) = before_prints.get(node) {
                         if after_prints.values().filter(|candidate| *candidate == fingerprint).count() > 1 {
                             out.push(SemanticChange {
                                 kind: ChangeKind::Field("componentAmbiguous".into()),
-                                node: node.clone(), before: Some(serde_json::json!({"fingerprint": fingerprint})),
+                                node: target,
+                                before: Some(serde_json::json!({"fingerprint": fingerprint})),
                                 after: Some(serde_json::json!({"ambiguous": true, "fingerprint": fingerprint})),
                                 locations: vec![],
+                                unmapped_identity: false,
                             });
                         }
                     }
@@ -637,14 +647,15 @@ fn preserve_violations(items: &[Preserve], diff: &crate::SemanticDiff, before: &
             }
             Preserve::LineIds => out.extend(diff.changes.iter().filter(|c| c.before.as_ref().is_some_and(|v| v.get("command").and_then(|v| v.get("lineId")).is_some()) && c.before.as_ref().and_then(|v| v.get("command")).and_then(|v| v.get("lineId")) != c.after.as_ref().and_then(|v| v.get("command")).and_then(|v| v.get("lineId"))).cloned()),
             Preserve::VoiceKeys => out.extend(diff.changes.iter().filter(|c| c.before.as_ref().is_some_and(|v| v.get("command").and_then(|v| v.get("voiceKey")).is_some()) && c.before.as_ref().and_then(|v| v.get("command")).and_then(|v| v.get("voiceKey")) != c.after.as_ref().and_then(|v| v.get("command")).and_then(|v| v.get("voiceKey"))).cloned()),
-            Preserve::ChoiceEffects(nodes) => out.extend(diff.changes.iter().filter(|c| nodes.iter().any(|node| preserve_node_matches(node, &c.node)) && matches!(&c.kind, ChangeKind::Field(f) if ["effects", "writes", "asserts", "grants", "choiceEffects"].iter().any(|x| f.contains(x)))).cloned()),
-            Preserve::Rewards(nodes) => out.extend(diff.changes.iter().filter(|c| nodes.iter().any(|node| preserve_node_matches(node, &c.node)) && (c.node.kind == NodeKind::Reward || matches!(&c.kind, ChangeKind::Field(f) if f.contains("reward")))).cloned()),
+            Preserve::ChoiceEffects(nodes) => out.extend(diff.changes.iter().filter(|c| nodes.iter().any(|node| preserve_node_matches(node, &c.node, before, after)) && matches!(&c.kind, ChangeKind::Field(f) if ["effects", "writes", "asserts", "grants", "choiceEffects"].iter().any(|x| f.contains(x)))).cloned()),
+            Preserve::Rewards(nodes) => out.extend(diff.changes.iter().filter(|c| nodes.iter().any(|node| preserve_node_matches(node, &c.node, before, after)) && (c.node.kind == NodeKind::Reward || matches!(&c.kind, ChangeKind::Field(f) if f.contains("reward")))).cloned()),
             Preserve::HostContracts => out.extend(diff.changes.iter().filter(|c| matches!(&c.kind, ChangeKind::Field(f) if { let f=f.to_ascii_lowercase(); f.contains("host") || f.contains("contract") || f.contains("required") || f.contains("environment") || f == "enginepath" || (f == "vocabulary" && matches!(c.node.kind, NodeKind::Project | NodeKind::Engine | NodeKind::Relation | NodeKind::State)) })).cloned()),
-            Preserve::Conditions(nodes) => out.extend(diff.changes.iter().filter(|c| nodes.iter().any(|node| preserve_node_matches(node, &c.node)) && (matches!(c.kind, ChangeKind::ConditionUnparsable) || matches!(&c.kind, ChangeKind::Field(f) if f.to_ascii_lowercase().contains("condition") || f.to_ascii_lowercase().contains("when") || f.to_ascii_lowercase().contains("guard") || f == "scheduling"))).cloned()),
+            Preserve::Conditions(nodes) => out.extend(diff.changes.iter().filter(|c| nodes.iter().any(|node| preserve_node_matches(node, &c.node, before, after)) && (matches!(c.kind, ChangeKind::ConditionUnparsable) || matches!(&c.kind, ChangeKind::Field(f) if f.to_ascii_lowercase().contains("condition") || f.to_ascii_lowercase().contains("when") || f.to_ascii_lowercase().contains("guard") || f == "scheduling"))).cloned()),
             Preserve::Reachability(nodes) => for node in nodes {
                 let old = reachability_value(before, node);
-                let new = reachability_value(after, node);
-                if old != new { out.push(SemanticChange { kind: ChangeKind::Field("reachability".into()), node: node.clone(), before: old, after: new, locations: vec![] }); }
+                let mapped_node = mapped(node).unwrap_or_else(|| node.clone());
+                let new = reachability_value(after, &mapped_node);
+                if old != new { out.push(SemanticChange { kind: ChangeKind::Field("reachability".into()), node: mapped_node, before: old, after: new, locations: vec![], unmapped_identity: false }); }
             },
             Preserve::Constraints => {
                 let old = constraint_values(before);
@@ -652,13 +663,13 @@ fn preserve_violations(items: &[Preserve], diff: &crate::SemanticDiff, before: &
                 for (id, value) in &old {
                     let after_value = new.get(id);
                     if value.get("verdict") == Some(&Value::String("holds".into())) && after_value.and_then(|v| v.get("verdict")) != Some(&Value::String("holds".into())) {
-                        out.push(SemanticChange { kind: ChangeKind::Field("constraints".into()), node: NodeKey::new(NodeKind::Project, id), before: Some(value.clone()), after: after_value.cloned(), locations: vec![] });
+                        out.push(SemanticChange { kind: ChangeKind::Field("constraints".into()), node: NodeKey::new(NodeKind::Project, id), before: Some(value.clone()), after: after_value.cloned(), locations: vec![], unmapped_identity: false });
                     }
                 }
             }
         }
     }
-    out.sort_by_key(|c| (c.node.clone(), format!("{:?}", c.kind))); out.dedup_by(|a,b| a.node == b.node && a.kind == b.kind); let _ = before; out
+    out.sort_by_key(|c| (c.node.clone(), format!("{:?}", c.kind))); out.dedup_by(|a,b| a.node == b.node && a.kind == b.kind); out
 }
 
 impl fmt::Display for PatchRefusal { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Io { path, message } => write!(f, "error: {}: {message}", path.display()), _ => write!(f, "{}: {}", self.code(), self.message()) } } }
@@ -676,9 +687,9 @@ mod tests {
         std::fs::write(root.join("scene.lute"), "---\nkind: scene\nid: hall\n---\n\n## Opening\n\n@narrator: Hello\n").unwrap();
         let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
         let line = NodeKey::new(NodeKind::Line, "line");
-        let change = |node: NodeKey, kind: ChangeKind, before: Value, after: Value| SemanticChange { node, kind, before: Some(before), after: Some(after), locations: vec![] };
+        let change = |node: NodeKey, kind: ChangeKind, before: Value, after: Value| SemanticChange { node, kind, before: Some(before), after: Some(after), locations: vec![], unmapped_identity: false };
         let revision = model.revisions().clone();
-        let make_diff = |change| crate::SemanticDiff { schema_version: "0.35.0.diff", before: revision.clone(), after: revision.clone(), changes: vec![change] };
+        let make_diff = |change| crate::SemanticDiff { schema_version: "0.36.0.diff", before: revision.clone(), after: revision.clone(), changes: vec![change] };
         let cases = vec![
             (Preserve::Ids(vec![NodeKey::new(NodeKind::Line, "missing")]), change(NodeKey::new(NodeKind::Line, "missing"), ChangeKind::Removed, serde_json::json!({}), Value::Null)),
             (Preserve::LineIds, change(line.clone(), ChangeKind::Field("lineId".into()), serde_json::json!({"command":{"lineId":"a"}}), serde_json::json!({"command":{"lineId":"b"}}))),
@@ -698,8 +709,8 @@ mod tests {
         std::fs::write(root.join("scene.lute"), "---\nkind: scene\nid: hall\n---\n\n## Opening\n@narrator: Hello\n").unwrap();
         let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
         let revision = model.revisions().clone();
-        let make = |node: NodeKey, field: &str| crate::SemanticDiff { schema_version: "0.35.0.diff", before: revision.clone(), after: revision.clone(), changes: vec![SemanticChange {
-            node, kind: ChangeKind::Field(field.into()), before: Some(serde_json::json!({})), after: Some(serde_json::json!({})), locations: vec![],
+        let make = |node: NodeKey, field: &str| crate::SemanticDiff { schema_version: "0.36.0.diff", before: revision.clone(), after: revision.clone(), changes: vec![SemanticChange {
+            node, kind: ChangeKind::Field(field.into()), before: Some(serde_json::json!({})), after: Some(serde_json::json!({})), locations: vec![], unmapped_identity: false,
         }] };
         for (name, diff) in [
             ("requiredSemantics", make(NodeKey::new(NodeKind::Project, "root"), "requiredSemantics")),
@@ -722,7 +733,7 @@ mod tests {
         let before = ProjectModel::build_single_root(&before_root, &ModelOptions::default()).unwrap();
         let after = ProjectModel::build_single_root(&after_root, &ModelOptions::default()).unwrap();
         let node = NodeKey::new(NodeKind::Scene, "hall");
-        let diff = crate::SemanticDiff { schema_version: "0.35.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes: vec![] };
+        let diff = crate::SemanticDiff { schema_version: "0.36.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes: vec![] };
         assert_ne!(reachability_value(&before, &node), reachability_value(&after, &node), "before={:?} after={:?} keys={:?}", reachability_value(&before, &node), reachability_value(&after, &node), before.reconciled().scenarios.values().map(|scenario| scenario.reach.keys().collect::<Vec<_>>()).collect::<Vec<_>>());
         assert!(!preserve_violations(&[Preserve::Reachability(vec![node])], &diff, &before, &after).is_empty());
         let _ = std::fs::remove_dir_all(before_root);
@@ -741,7 +752,7 @@ mod tests {
         let old = constraint_values(&before);
         assert!(before.manifest().is_some(), "manifest missing");
         assert_eq!(old.get("hall-reachable").and_then(|value| value.get("verdict")), Some(&Value::String("holds".into())));
-        let diff = crate::SemanticDiff { schema_version: "0.35.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes: vec![] };
+        let diff = crate::SemanticDiff { schema_version: "0.36.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes: vec![] };
         assert!(!preserve_violations(&[Preserve::Constraints], &diff, &before, &after).is_empty());
         let _ = std::fs::remove_dir_all(before_root);
         let _ = std::fs::remove_dir_all(after_root);

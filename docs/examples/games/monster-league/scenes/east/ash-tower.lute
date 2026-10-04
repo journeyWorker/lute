@@ -19,25 +19,25 @@ when: "run.lair.towerSiege != 'cleared'"
 ::bg{location="ash-tower-top" time="night"}
 ::music{action="change" mood="eerie" volume="down"}
 ::set{run.lair.towerSiege = "found" when="run.lair.towerSiege == 'hidden'"}
-@narrator: At the top of the tower, under the old bells, two Eclipse grunts stand guard over an old man tied to a chair.
-@elderRook{os}: I have told you. The old monsters sleep where they sleep. Your Director may whistle for them.
-@gruntTower: Quiet, grandpa. Hey! Who let a kid up here? Corvid was supposed to be on the stairs!
-::use{component="trainerBattle" who="gruntTower" intro="The old man won't tell us where the monsters sleep. Maybe you will. Hah!" win="Tch. This tower gives me the creeps anyway. We're out!" lose="Go home, kid. Ghosts are the least of your problems." prize="800"}
+@narrator{code="0010"}: At the top of the tower, under the old bells, two Eclipse grunts stand guard over an old man tied to a chair.
+@elderRook{code="0010" os}: I have told you. The old monsters sleep where they sleep. Your Director may whistle for them.
+@gruntTower{code="0010"}: Quiet, grandpa. Hey! Who let a kid up here? Corvid was supposed to be on the stairs!
+::use{component="trainerBattle" who="gruntTower" intro="The old man won't tell us where the monsters sleep. Maybe you will. Hah!" win="Tch. This tower gives me the creeps anyway. We're out!" lose="Go home, kid. Ghosts are the least of your problems." prize="800" instance="use-001"}
 ::set{run.lair.towerSiege = "cleared" when="@wonFight"}
 
 ## Elder Rook
 
 <match on="scene.battle.fight.won">
   <when is="true">
-    @narrator: The grunts clatter down the stairs, arguing about whose idea the tower was.
+    @narrator{code="0020"}: The grunts clatter down the stairs, arguing about whose idea the tower was.
     ::auto{character="elderRook" anchor="center" action="enter"}
-    @elderRook{emotion="happy"}: Thank you, child. They wanted to know where the old monsters sleep. I would not tell them. I am too old to be frightened of people in matching jackets.
-    @elderRook: Take this flute. Its note wakes anything, even the great sleeper on the Silvercrest road. I was keeping it from them. Now I am keeping it from nobody.
-    ::use{component="obtain" item="wakingFlute"}
-    @elderRook{emotion="worried"}: Their Director has an office in Silvercrest, in the tall tower of glass. Whatever he is looking for, he has not stopped looking.
+    @elderRook{code="0020" emotion="happy"}: Thank you, child. They wanted to know where the old monsters sleep. I would not tell them. I am too old to be frightened of people in matching jackets.
+    @elderRook{code="0030"}: Take this flute. Its note wakes anything, even the great sleeper on the Silvercrest road. I was keeping it from them. Now I am keeping it from nobody.
+    ::use{component="obtain" item="wakingFlute" instance="use-001"}
+    @elderRook{code="0040" emotion="worried"}: Their Director has an office in Silvercrest, in the tall tower of glass. Whatever he is looking for, he has not stopped looking.
   </when>
   <otherwise>
-    @elderRook{os emotion="worried"}: Go, child! Come back when you are stronger. I have waited three days; I can wait three more.
-    @narrator: The bells above you ring once, though nobody touched them.
+    @elderRook{code="0050" os emotion="worried"}: Go, child! Come back when you are stronger. I have waited three days; I can wait three more.
+    @narrator{code="0030"}: The bells above you ring once, though nobody touched them.
   </otherwise>
 </match>

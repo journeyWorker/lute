@@ -16,7 +16,7 @@ title: The League spine
   <objective id="elite" title="Defeat the Elite Four" quest="eliteFour"/>
   <objective id="crown" title="Defeat the Champion" done="@champion"/>
   <on event="questComplete">
-    @narrator: The Summit League records a new Champion: {{userName}} of Hollowtown.
+    @narrator{code="0010"}: The Summit League records a new Champion: {{userName}} of Hollowtown.
   </on>
 </quest>
 
@@ -33,7 +33,7 @@ title: The League spine
   <objective id="blaze" title="Blaze Badge: Ignatius, Cinder Isle" done="holds('hasBadge', ['blaze'])"/>
   <objective id="earth" title="Earth Badge: Verdant City" done="holds('hasBadge', ['earth'])"/>
   <on event="questComplete">
-    @profAlder{vo}: Eight badges! Then Victory Road will let you through. The Summit Plateau is at the top of it.
+    @profAlder{code="0010" vo}: Eight badges! Then Victory Road will let you through. The Summit Plateau is at the top of it.
   </on>
 </quest>
 
@@ -46,7 +46,7 @@ title: The League spine
   <objective id="hq" title="Free Helix Tower" done="run.lair.helixHQ == 'cleared'"/>
   <objective id="vex" title="Face Director Vex" done="holds('defeated', ['vex'])"/>
   <on event="questComplete">
-    @announcer: Radio Verdane, with the news: Team Eclipse has disbanded. Helix Tower has reopened to the public.
+    @announcer{code="0010"}: Radio Verdane, with the news: Team Eclipse has disbanded. Helix Tower has reopened to the public.
   </on>
 </quest>
 
@@ -70,13 +70,13 @@ title: The League spine
   <on event="questComplete">
     <match on="run.rivalStanding">
       <when is="3..">
-        @narrator: Six battles with Kai. He won so few of them that he has started keeping count himself.
+        @narrator{code="0010"}: Six battles with Kai. He won so few of them that he has started keeping count himself.
       </when>
       <when is="..-1">
-        @narrator: Six battles with Kai. He won more than he lost, and he will tell anyone who asks.
+        @narrator{code="0020"}: Six battles with Kai. He won more than he lost, and he will tell anyone who asks.
       </when>
       <otherwise>
-        @narrator: Six battles with Kai, and nobody could say who was ahead.
+        @narrator{code="0030"}: Six battles with Kai, and nobody could say who was ahead.
       </otherwise>
     </match>
   </on>
@@ -119,7 +119,7 @@ title: The League spine
   <objective id="legends" title="Catch three of Verdane's legends" done="count('caughtLegend', ['_']) >= 3"/>
   <objective id="dex" title="Complete the Dex" done="@dexCaught >= 150"/>
   <on event="questComplete">
-    @profAlder{vo}: {{userName}}, I have been a professor for forty years and I have never seen a Dex like yours. Come by the lab. Kai is here, and he wants a rematch.
+    @profAlder{code="0010" vo}: {{userName}}, I have been a professor for forty years and I have never seen a Dex like yours. Come by the lab. Kai is here, and he wants a rematch.
   </on>
 </quest>
 

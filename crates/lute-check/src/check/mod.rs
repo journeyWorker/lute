@@ -89,8 +89,8 @@ use crate::schema_import::{merge_domains, SchemaImports};
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
-    check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
-    check_quest, check_quest_guard_defassign, check_quest_rewards, check_set, DomainInfo,
+    check_branch, check_cel_slot, check_definite_assignment, check_hub, check_quest,
+    check_quest_guard_defassign, check_quest_rewards, check_set, DomainInfo,
 };
 
 mod choice_record;

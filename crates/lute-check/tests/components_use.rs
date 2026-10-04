@@ -122,6 +122,59 @@ fn unknown_arg_is_component_arg() {
 }
 
 #[test]
+fn component_instance_identity_diagnostics_are_strict() {
+    let dir = unique_dir();
+    write_lute(&dir, "greet.lute", "---\ncomponent: greet\n---\n## Body\n@narrator: hi\n");
+
+    let duplicate = scene(
+        "greet.lute",
+        "::use{component=\"greet\" instance=\"same\"}\n::use{component=\"greet\" instance=\"same\"}",
+    );
+    assert!(codes(&dir, &duplicate).contains(&"E-COMPONENT-INSTANCE-DUPLICATE".to_string()));
+
+    let invalid = scene(
+        "greet.lute",
+        "::use{component=\"greet\" instance=\"bad.key\"}",
+    );
+    assert!(codes(&dir, &invalid).contains(&"E-COMPONENT-INSTANCE-INVALID".to_string()));
+    let long = scene(
+        "greet.lute",
+        &format!("::use{{component=\"greet\" instance=\"{}\"}}", "a".repeat(65)),
+    );
+    assert!(codes(&dir, &long).contains(&"E-COMPONENT-INSTANCE-INVALID".to_string()));
+
+    let duplicate_attr = scene(
+        "greet.lute",
+        "::use{component=\"greet\" instance=\"one\" instance=\"two\"}",
+    );
+    assert!(!codes(&dir, &duplicate_attr).contains(&"E-COMPONENT-ARG".to_string()));
+
+    let parameter = scene(
+        "greet.lute",
+        "::use{component=\"greet\" instance=\"opening\"}",
+    );
+    assert!(!codes(&dir, &parameter).contains(&"E-COMPONENT-ARG".to_string()));
+}
+
+
+#[test]
+fn component_instance_duplicate_in_exclusive_branches_still_conflicts() {
+    let dir = unique_dir();
+    write_lute(&dir, "greet.lute", "---\ncomponent: greet\n---\n## Body\n@narrator: hi\n");
+    let source = scene(
+        "greet.lute",
+        "<branch id=\"route\">\n\
+         <choice id=\"left\" label=\"Left\" when=\"true\">\n\
+         ::use{component=\"greet\" instance=\"shared\"}\n\
+         </choice>\n\
+         <choice id=\"right\" label=\"Right\">\n\
+         ::use{component=\"greet\" instance=\"shared\"}\n\
+         </choice>\n\
+         </branch>",
+    );
+    assert!(codes(&dir, &source).contains(&"E-COMPONENT-INSTANCE-DUPLICATE".to_string()));
+}
+#[test]
 fn mistyped_arg_is_component_arg() {
     let dir = unique_dir();
     // An int-typed param, supplied a non-numeric string.

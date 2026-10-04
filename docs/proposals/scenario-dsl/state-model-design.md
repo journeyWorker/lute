@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # scenario DSL — state-model design rationale & audit record
 
 > **Normative spec:** the state model is folded into [`0.0.1.md`](0.0.1.md) §6.1 (frontmatter),

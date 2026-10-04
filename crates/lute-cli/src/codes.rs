@@ -394,6 +394,16 @@ pub(crate) const CODES: &[Code] = &[
         spec: &[],
     },
     Code {
+        code: "E-COMPONENT-INSTANCE-DUPLICATE",
+        summary: "The same component and instance key occur twice in one immediate expansion owner.",
+        spec: &["dsl 0.36.0 §2.3"],
+    },
+    Code {
+        code: "E-COMPONENT-INSTANCE-INVALID",
+        summary: "`instance` is empty, exceeds 64 characters, uses a non-ASCII token, or appears more than once as an identity attribute on one `::use`.",
+        spec: &["dsl 0.36.0 §2.3"],
+    },
+    Code {
         code: "E-COMPONENT-PARSE",
         summary: "A component file cannot be read, resolved, or parsed cleanly — an unresolvable `components:` import path, a missing `component:` name, or a malformed `params:` entry.",
         spec: &[],
@@ -461,12 +471,12 @@ pub(crate) const CODES: &[Code] = &[
     Code {
         code: "E-CONTEXT-POSITION",
         summary: "A context position query has an invalid coordinate or falls outside the source file.",
-        spec: &["dsl 0.35.0 §3.3", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §3.3", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-CONTEXT-TARGET",
         summary: "A context target key is unknown or ambiguous in the project graph.",
-        spec: &["dsl 0.35.0 §3.1", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §3.1", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-DATALOG-FUNCTION",
@@ -551,12 +561,12 @@ pub(crate) const CODES: &[Code] = &[
     Code {
         code: "E-DIFF-INPUT",
         summary: "A diff side cannot be read, safely materialized, or built into a complete project model.",
-        spec: &["dsl 0.35.0 §4", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §4", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-DIFF-MODEL",
         summary: "A semantic diff cannot produce a complete project model for one side.",
-        spec: &["dsl 0.35.0 §4", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §4", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-DOLLAR-OUTSIDE-MATCH",
@@ -711,12 +721,12 @@ pub(crate) const CODES: &[Code] = &[
     Code {
         code: "E-FMT",
         summary: "The formatter cannot parse or preserve the requested file.",
-        spec: &["dsl 0.35.0 §1", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §1", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-FMT-CHECK",
         summary: "A formatter check found noncanonical bytes in the requested file.",
-        spec: &["dsl 0.35.0 §1", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §1", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-FRONTMATTER-SCHEMA",
@@ -946,27 +956,27 @@ pub(crate) const CODES: &[Code] = &[
     Code {
         code: "E-PATCH-CHECK",
         summary: "A staged patch introduces a new check or project error.",
-        spec: &["dsl 0.35.0 §5.2", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §5.2", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-PATCH-EDIT",
         summary: "A patch edit is malformed, outside its target, overlaps another edit, or fails its escape-hatch span assertion.",
-        spec: &["dsl 0.35.0 §5.1", "dsl 0.35.0 §5.2", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §5.1", "dsl 0.36.0 §5.2", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-PATCH-PRESERVE",
         summary: "A patch violates a requested preserve claim, including an ambiguous reward or component match.",
-        spec: &["dsl 0.35.0 §5.3", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §5.3", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-PATCH-STALE",
         summary: "A patch base project or asserted file revision differs from the current revision.",
-        spec: &["dsl 0.35.0 §5.2", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §5.2", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-PATCH-TARGET",
         summary: "A patch target is unknown, ambiguous, or has no editable source anchor.",
-        spec: &["dsl 0.35.0 §5.1", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §5.1", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-PATH-IDENT",
@@ -1214,6 +1224,21 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.3.0 §4"],
     },
     Code {
+        code: "E-RENAME-LEDGER",
+        summary: "A rename entry is malformed, has an unknown kind/key, duplicates a source or destination, or is not a canonical key mapping.",
+        spec: &["dsl 0.36.0 §3"],
+    },
+    Code {
+        code: "E-RENAME-LEDGER-CYCLE",
+        summary: "Rename entries form a chain, self-loop, or cycle.",
+        spec: &["dsl 0.36.0 §3"],
+    },
+    Code {
+        code: "E-RENAME-LEDGER-STALE",
+        summary: "A ledger source key is still present, or its destination key is absent after project resolution.",
+        spec: &["dsl 0.36.0 §3"],
+    },
+    Code {
         code: "E-RESERVED-NAME",
         summary: "A declared name is one the language keeps for itself — a state root naming an entity member, def or season, `unset`/`true`/`false`/`null`/`_` naming a member, `none` or a CEL literal naming an id, a CEL keyword in a state path or id that becomes one, a CEL call or rule word naming a relation, `narrator` in `cast:`, or a number in a member list — so the name would be read as that word where it is used. The message names a replacement; `lute --explain E-RESERVED-NAME` lists every reserved name.",
         spec: &["dsl 0.28.0 §1"],
@@ -1361,7 +1386,7 @@ pub(crate) const CODES: &[Code] = &[
     Code {
         code: "E-TASK-TRAP",
         summary: "An edit-task suite trap did not refuse or flag the patch as expected.",
-        spec: &["dsl 0.35.0 §6", "dsl 0.35.0 §8"],
+        spec: &["dsl 0.36.0 §6", "dsl 0.36.0 §8"],
     },
     Code {
         code: "E-TEMPLATE",
@@ -1649,6 +1674,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.12.0"],
     },
     Code {
+        code: "W-COMPONENT-INSTANCE-UNTAGGED",
+        summary: "With `identity.requireStable`, a `::use` has no explicit `instance` and is using the positional fallback; run `lute tag` to write one.",
+        spec: &["dsl 0.36.0 §2.2"],
+    },
+    Code {
         code: "W-COMPONENT-UNVERIFIED",
         summary: "A standalone component check has no caller in scope — either no project was resolved, or the resolved project has no document that `::use`s the component — so the verdict covers only the component's own frontmatter and body.",
         spec: &["dsl 0.10.0 §9"],
@@ -1717,6 +1747,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-L10N-MISSING",
         summary: "A compiled line record is missing text for a locale its localization bundle declares.",
         spec: &["dsl 0.8.0 §7"],
+    },
+    Code {
+        code: "W-LINE-CODE-UNTAGGED",
+        summary: "With `identity.requireStable`, a content line has no explicit per-speaker `code` and compiler allocation is being used; run `lute tag` to write one.",
+        spec: &["dsl 0.36.0 §2.2"],
     },
     Code {
         code: "W-LUTE-VERSION-STALE",

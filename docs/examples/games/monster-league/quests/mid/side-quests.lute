@@ -15,7 +15,7 @@ title: Midlands side quests
   <objective id="jolene" title="Beat Rocker Jolene, who leads the singing" done="holds('defeated', ['r10RockerJolene'])"/>
   <reward kind="MONEY" amount="3000"/>
   <on event="questComplete">
-    @r10Watchman{vo}: The Riders are asleep by ten now. The board says the bounty's yours. Enjoy the quiet, I know I will.
+    @r10Watchman{code="0010" vo}: The Riders are asleep by ten now. The board says the bounty's yours. Enjoy the quiet, I know I will.
   </on>
 </quest>
 
@@ -26,8 +26,8 @@ title: Midlands side quests
   <objective id="caught" title="Catch Slumbear" done="holds('caught', ['slumbear'])"/>
   <objective id="letGo" title="Let Slumbear go back to the hills" on="battleEnd" done="holds('seen', ['slumbear']) && !holds('caught', ['slumbear'])"/>
   <on event="questComplete">
-    @narrator{when="holds('caught', ['slumbear'])"}: The ball rocks once, twice, three times, and Lake Hush goes quiet. The giant that slept across Route 12 for a hundred years is yours now.
-    @narrator{when="!holds('caught', ['slumbear'])"}: Slumbear shakes itself, yawns so wide the reeds flatten, and lumbers off toward the hills. The road to the sea gate is open.
+    @narrator{code="0010" when="holds('caught', ['slumbear'])"}: The ball rocks once, twice, three times, and Lake Hush goes quiet. The giant that slept across Route 12 for a hundred years is yours now.
+    @narrator{code="0020" when="!holds('caught', ['slumbear'])"}: Slumbear shakes itself, yawns so wide the reeds flatten, and lumbers off toward the hills. The road to the sea gate is open.
   </on>
 </quest>
 
@@ -40,7 +40,7 @@ title: Midlands side quests
   <objective id="lighthouse" title="The lighthouse ghost" quest="midGhostLighthouse"/>
   <reward kind="TM" amount="1" target="shadowBall"/>
   <on event="questComplete">
-    @silvercrestMedium{vo}: Three stories, three ghosts, all true. I knew it. I always knew it. Come and collect your reward, dear, before I start a fourth.
+    @silvercrestMedium{code="0010" vo}: Three stories, three ghosts, all true. I knew it. I always knew it. Come and collect your reward, dear, before I start a fourth.
   </on>
 </quest>
 
@@ -63,7 +63,7 @@ title: Midlands side quests
   <objective id="theReturn" title="Show it to Grandma Ilse at the day care" on="talk" target="npc.fairhavenDayCareLady" done="holds('caught', ['mothfuzz'])"/>
   <reward kind="ITEM" amount="1" target="luckyEgg"/>
   <on event="questComplete">
-    @fairhavenDayCareLady{vo}: That's not our Mothfuzz, dear. Ours came home on its own last night. But yours is lovely too. Keep it, and take this for your trouble.
+    @fairhavenDayCareLady{code="0010" vo}: That's not our Mothfuzz, dear. Ours came home on its own last night. But yours is lovely too. Keep it, and take this for your trouble.
   </on>
 </quest>
 
@@ -74,6 +74,6 @@ title: Midlands side quests
   <objective id="three" title="Win three first prizes" done="run.midContestWins >= 3" optional/>
   <reward kind="TM" amount="1" target="xScissor"/>
   <on event="questComplete">
-    @wildmoorContestOfficer{vo}: A first prize! Your name goes on the board by the desk, under last year's winner, who was a very determined eight-year-old.
+    @wildmoorContestOfficer{code="0010" vo}: A first prize! Your name goes on the board by the desk, under last year's winner, who was a very determined eight-year-old.
   </on>
 </quest>

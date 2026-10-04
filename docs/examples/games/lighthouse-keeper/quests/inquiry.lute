@@ -11,10 +11,10 @@ title: The Skerry Rock inquiry
   <objective id="reconstruct" title="File the reconstruction with the Board" quest="reconstruction"/>
   <on event="questComplete">
     ::set{user.casesClosed += 1}
-    @narrator: The Board closes the file on Skerry Rock. Somebody else will keep the light now.
+    @narrator{code="0010"}: The Board closes the file on Skerry Rock. Somebody else will keep the light now.
   </on>
   <on event="questFailed">
-    @narrator: The Board closes the file on Skerry Rock without you. The islanders will go on telling their own version.
+    @narrator{code="0020"}: The Board closes the file on Skerry Rock without you. The islanders will go on telling their own version.
   </on>
 </quest>
 
@@ -27,7 +27,7 @@ title: The Skerry Rock inquiry
     // The boat sailed without a report (`by`). A report the Board rejects at the
     // hearing (`until`) is told by the hearing's closing scene, board.close:
     // `inquest` judges before its beats (judge: before), so that scene reads the verdict.
-    @chair: No reconstruction reached the Board before the relief boat sailed.
-    @chair: The Board finds the reconstruction unsafe and returns an open verdict.
+    @chair{code="0010"}: No reconstruction reached the Board before the relief boat sailed.
+    @chair{code="0020"}: The Board finds the reconstruction unsafe and returns an open verdict.
   </on>
 </quest>

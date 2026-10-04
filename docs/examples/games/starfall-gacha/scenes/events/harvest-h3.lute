@@ -11,7 +11,7 @@ when: "@harvestLive"
 
 ## Moonrise
 
-@cyra: I held the moon inside that lantern for a hundred winters. I think it's time to let it out.
-@narrator: She opens the lid. The moon climbs out slowly, like someone getting out of a warm bath, and rises full over the square.
-@pim{emotion="happy"}: CUSTOMERS!
-@cyra{emotion="happy"}: Happy harvest, Wishkeeper. Come find me on the Wishing Well. I'll be awake. Probably.
+@cyra{code="0010"}: I held the moon inside that lantern for a hundred winters. I think it's time to let it out.
+@narrator{code="0010"}: She opens the lid. The moon climbs out slowly, like someone getting out of a warm bath, and rises full over the square.
+@pim{code="0010" emotion="happy"}: CUSTOMERS!
+@cyra{code="0020" emotion="happy"}: Happy harvest, Wishkeeper. Come find me on the Wishing Well. I'll be awake. Probably.

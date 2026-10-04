@@ -11,18 +11,18 @@ when: "holds('at', ['ines', 'radio']) && quest.forecast.state == 'active' && !ru
 ## The chart table
 
 ::bg{location="radio_room" time="afternoon"}
-::use{component="enter" who="ines" side="left"}
-@ines{emotion="neutral"}: Sit. Your mornings, my charts. A ridge of high pressure coming in off the Atlantic — see how the isobars open out?
-@ines: The question is whether it holds until Sunday night, or breaks on Saturday like it did in '94.
+::use{component="enter" who="ines" side="left" instance="use-001"}
+@ines{code="0010" emotion="neutral"}: Sit. Your mornings, my charts. A ridge of high pressure coming in off the Atlantic — see how the isobars open out?
+@ines{code="0020"}: The question is whether it holds until Sunday night, or breaks on Saturday like it did in '94.
 
 <branch id="call" prompt="She slides the pen over to you.">
   <choice id="clear" label="Forecast clear skies for Sunday night">
-    @ines{emotion="fond"}: Brave. Your numbers back you. Sign it.
+    @ines{code="0030" emotion="fond"}: Brave. Your numbers back you. Sign it.
   </choice>
   <choice id="cautious" label="Forecast clear, with a chance of wind after midnight">
-    @ines{emotion="happy"}: That's a forecaster's answer. Honest and a little cowardly. Sign it.
+    @ines{code="0040" emotion="happy"}: That's a forecaster's answer. Honest and a little cowardly. Sign it.
   </choice>
 </branch>
 
 ::set{run.forecastWritten = true}
-@ines: Now it has to get down the mountain before Friday is over. The radio doesn't count; Maren wants paper.
+@ines{code="0050"}: Now it has to get down the mountain before Friday is over. The radio doesn't count; Maren wants paper.

@@ -18,5 +18,5 @@ beat:
 ## Ines
 
 ::bg{location=@bg time=@time}
-::use{component="enter" who="ines" side=@side}
+::use{component="enter" who="ines" side=@side instance="use-001"}
 ::body

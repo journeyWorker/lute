@@ -9,7 +9,9 @@ use lute_core_span::Severity;
 
 use crate::cmd_check::{component_name_of, component_root_diag};
 use crate::compile_all;
-use lute_model::{build_input, BuiltInput};
+use lute_model::{
+    build_input, BuiltInput, ModelError, ModelOptions, ProjectModel,
+};
 use crate::loc;
 use crate::output::{render_diagnostics, severity_str, write_stdout, DenyPolicy};
 use lute_model::project_gate_result;
@@ -140,6 +142,8 @@ fn run_compile(
         input,
         resolve_error,
         identity,
+        identity_rename_decls,
+        identity_rename_diags,
         ..
     } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
@@ -175,6 +179,17 @@ fn run_compile(
     };
     match compiled {
         Ok(mut artifact) => {
+            if let Err(code) = stamp_project_identity_renames(
+                &mut artifact,
+                resolved,
+                providers,
+                permission_profile,
+                &identity_rename_decls,
+                &identity_rename_diags,
+                policy,
+            ) {
+                return code;
+            }
             // dsl 0.8.0 §7: merge strictly downstream of the addressing pass —
             // `compile_with_check` has already stamped every final `lineId`,
             // which is the ONLY key a bundle joins on.
@@ -252,6 +267,60 @@ fn run_compile(
             ExitCode::FAILURE
         }
     }
+}
+
+/// Resolve and stamp a project's expanded identity ledger only when the
+/// manifest actually declares one. The project model owns graph resolution;
+/// this path merely applies its already-resolved ledger to the standalone
+/// artifact.
+fn stamp_project_identity_renames(
+    artifact: &mut lute_compile::ExecutionIr,
+    project: Option<&Path>,
+    providers: Option<&Path>,
+    permission_profile: Option<&str>,
+    declarations: &[lute_manifest::project::IdentityRenameDecl],
+    manifest_diags: &[lute_manifest::project::ResolveDiag],
+    policy: &DenyPolicy,
+) -> Result<(), ExitCode> {
+    if declarations.is_empty() && manifest_diags.is_empty() {
+        return Ok(());
+    }
+    let Some(root) = project else {
+        return Ok(());
+    };
+    let opts = ModelOptions {
+        providers: providers.map(Path::to_path_buf),
+        permission_profile: permission_profile.map(str::to_owned),
+        mode: lute_check::Mode::Ci,
+        compile: true,
+        wip: false,
+    };
+    let model = match ProjectModel::build_single_root(root, &opts) {
+        Ok(model) => model,
+        Err(ModelError::Compile { path, diagnostics }) => {
+            eprint!("{}", render_diagnostics(&path, &diagnostics, policy));
+            return Err(ExitCode::FAILURE);
+        }
+        Err(error) => {
+            eprintln!("lute: cannot resolve identity ledger for {}: {error}", root.display());
+            return Err(ExitCode::from(2));
+        }
+    };
+    if model.identity_renames().is_empty() {
+        let mut emitted = false;
+        for (path, diagnostic) in model.project_diagnostics() {
+            if diagnostic.code.starts_with("E-RENAME-") {
+                eprint!("{}", render_diagnostics(path, std::slice::from_ref(diagnostic), policy));
+                emitted = true;
+            }
+        }
+        if !emitted {
+            eprintln!("lute: project identity ledger did not resolve");
+        }
+        return Err(ExitCode::FAILURE);
+    }
+    lute_compile::stamp_identity_renames(artifact, model.identity_renames());
+    Ok(())
 }
 
 /// Read + parse a `--locales <bundle.json>` file (dsl 0.8.0 §7). A missing or

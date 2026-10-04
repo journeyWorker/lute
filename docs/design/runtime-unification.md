@@ -1,9 +1,12 @@
+---
+status: Implemented
+---
+
 # Runtime unification: one walker, drivers, differential test
 
 - **Spec:** `docs/proposals/scenario-dsl/0.27.0.md` §1 (decisions D-A, D-B)
 - **Findings:** round-5 triage `lute-dogfood/round5/TRIAGE.md` T1-3, T1-5, T1-7, T1-9, T1-11
   (and §8 item 1), plus the divergences listed in §2.3 below
-- **Status:** design for wave 2 of 0.27. Wave 3 (spec §3–§8) builds on the result.
 - **Line references** are against `d35f4db` (0.27 spec commit; runtime code is
   identical to `654c1c8`, 0.26.0). Wave 1 moves some lines; function names are
   the stable anchor.

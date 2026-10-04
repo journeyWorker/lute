@@ -17,10 +17,10 @@ beat:
 
 ## A postcard
 
-@narrator: Mira slides the rack round. Gulls, the lighthouse, the lighthouse again with a gull on it.
-@sol{mono}: One for {{@to}}.
+@narrator{code="0010"}: Mira slides the rack round. Gulls, the lighthouse, the lighthouse again with a gull on it.
+@sol{code="0010" mono}: One for {{@to}}.
 ::body
 ::set{run.postcards += 1}
 ::assert{sentTo(@to)}
 ::set{run.seen.mira = run.day}
-@mira: {{@to}}. Lovely. It'll go with the afternoon van.
+@mira{code="0010"}: {{@to}}. Lovely. It'll go with the afternoon van.

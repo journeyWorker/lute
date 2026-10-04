@@ -9,13 +9,13 @@ earned says a word as he goes over, one after another, once a dive. */
 <beat id="word" on="runStart" for="kind:bonded" once="run" priority="5" when="user.bond[occasion.target] >= 3 && (occasion.target != 'quill' || entry.quillFirst.everRead)">
   <match on="occasion.target">
     <when is="brann">
-      @brann{os}: Come back up, boy. That's an order.
+      @brann{code="0010" os}: Come back up, boy. That's an order.
     </when>
     <when is="sefa">
-      @sefa{os emotion="shy"}: Bring me the shape of a new door.
+      @sefa{code="0010" os emotion="shy"}: Bring me the shape of a new door.
     </when>
     <when is="quill">
-      @quill{os}: I'll be down there already. I'm always down there.
+      @quill{code="0010" os}: I'll be down there already. I'm always down there.
     </when>
   </match>
 </beat>

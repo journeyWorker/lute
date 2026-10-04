@@ -15,7 +15,7 @@ title: Southshore side quests
   <objective id="spiral" title="Bring a spiral fossil back to life" done="holds('caught', ['spiralfossil'])"/>
   <reward kind="MONEY" amount="1500"/>
   <on event="questComplete">
-    @pebbletonCurator{vo}: The museum thanks you. The museum is also slightly jealous of you. Please visit with it.
+    @pebbletonCurator{code="0010" vo}: The museum thanks you. The museum is also slightly jealous of you. Please visit with it.
   </on>
 </quest>
 
@@ -26,15 +26,15 @@ title: Southshore side quests
   <objective id="first" title="Lesson one: a Goldfinn" quest="southOldSaltFirst"/>
   <objective id="big" title="Lesson two: a Crownfinn" quest="southOldSaltBig"/>
   <on event="questComplete">
-    @tidewellMorrow{emotion="laughing"}: That's everything I know. The rest you learn from the fish. They're better teachers than me, and they don't talk as much.
+    @tidewellMorrow{code="0010" emotion="laughing"}: That's everything I know. The rest you learn from the fish. They're better teachers than me, and they don't talk as much.
   </on>
 </quest>
 
 <quest id="southOldSaltFirst" title="Lesson one: a Goldfinn">
   <objective id="show" title="Show Old Salt a Goldfinn" on="talk" target="npc.tidewellMorrow" done="holds('caught', ['goldfinn'])"/>
   <on event="questComplete">
-    @tidewellMorrow{emotion="happy"}: A Goldfinn! Useless, flappy, gasping thing. Keep it. Raise it. One day it'll bite the hand of everyone who laughed.
-    @tidewellMorrow: Lesson two. A Goldfinn that grew up. A Crownfinn. Most people give up before the Goldfinn does. Don't.
+    @tidewellMorrow{code="0010" emotion="happy"}: A Goldfinn! Useless, flappy, gasping thing. Keep it. Raise it. One day it'll bite the hand of everyone who laughed.
+    @tidewellMorrow{code="0020"}: Lesson two. A Goldfinn that grew up. A Crownfinn. Most people give up before the Goldfinn does. Don't.
     ::accept{quest="southOldSaltBig"}
   </on>
 </quest>
@@ -61,6 +61,6 @@ title: Southshore side quests
   <objective id="land" title="Land a Seahorsling on derby day" on="caught" target="mon.seahorsling" done="@southDerbyDay"/>
   <reward kind="MONEY" amount="3000"/>
   <on event="questComplete">
-    @tidewellPim{emotion="surprised"}: A SEAHORSLING! On derby day! Somebody fetch the trophy! Somebody fetch my great-great-grandmother!
+    @tidewellPim{code="0010" emotion="surprised"}: A SEAHORSLING! On derby day! Somebody fetch the trophy! Somebody fetch my great-great-grandmother!
   </on>
 </quest>

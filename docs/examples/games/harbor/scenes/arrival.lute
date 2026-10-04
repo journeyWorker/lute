@@ -6,5 +6,5 @@ title: Arrival at the harbor
 
 ## The pier
 
-@harbormaster: Welcome to the harbor. Mind the nets.
+@harbormaster{code="0010"}: Welcome to the harbor. Mind the nets.
 ::set{user.days += 1}

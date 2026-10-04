@@ -27,30 +27,38 @@ use super::*;
 /// identity scope. Document order, deterministic (the caller's final
 /// `(byte_start, code)` sort settles ties).
 pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
+    check_line_codes_with_policy(doc, false)
+}
+
+/// Check line identity under the governing project's stable-identity policy.
+pub(crate) fn check_line_codes_with_policy(
+    doc: &Document,
+    require_stable: bool,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
     let mut scene_lines: Vec<&Line> = Vec::new();
     for shot in &doc.shots {
         collect_lines(&shot.body, &mut scene_lines);
     }
-    check_dup_line_codes(&scene_lines, &mut diags);
+    check_dup_line_codes(&scene_lines, require_stable, &mut diags);
 
     for quest in &doc.quests {
         let mut quest_lines: Vec<&Line> = Vec::new();
         collect_lines(&quest.body, &mut quest_lines);
-        check_dup_line_codes(&quest_lines, &mut diags);
+        check_dup_line_codes(&quest_lines, require_stable, &mut diags);
     }
 
     for entry in &doc.entries {
         let mut entry_lines: Vec<&Line> = Vec::new();
         collect_lines(&entry.body, &mut entry_lines);
-        check_dup_line_codes(&entry_lines, &mut diags);
+        check_dup_line_codes(&entry_lines, require_stable, &mut diags);
     }
 
     for beat in &doc.beats {
         let mut beat_lines: Vec<&Line> = Vec::new();
         collect_lines(&beat.body, &mut beat_lines);
-        check_dup_line_codes(&beat_lines, &mut diags);
+        check_dup_line_codes(&beat_lines, require_stable, &mut diags);
     }
 
     diags
@@ -59,10 +67,23 @@ pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
 /// Flag every repeated `(speaker, code)` pair WITHIN `lines` — the caller
 /// decides the identity scope (whole document for a scene, per-`<quest>` for
 /// a quest, dsl 0.2.0 §7) by choosing which lines to pass in one call.
-fn check_dup_line_codes<'a>(lines: &[&'a Line], diags: &mut Vec<Diagnostic>) {
+fn check_dup_line_codes<'a>(
+    lines: &[&'a Line],
+    require_stable: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
     let mut seen: BTreeSet<(&'a str, String)> = BTreeSet::new();
     for line in lines {
         let Some(code) = authored_code(line) else {
+            if require_stable {
+                diags.push(diag(
+                    "W-LINE-CODE-UNTAGGED",
+                    Severity::Warning,
+                    "content line has no per-speaker `code`; run `lute tag` to allocate one"
+                        .to_string(),
+                    line.span,
+                ));
+            }
             continue;
         };
         if !seen.insert((line.speaker.as_str(), code.clone())) {

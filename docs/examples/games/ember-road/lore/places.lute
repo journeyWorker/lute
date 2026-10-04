@@ -5,28 +5,28 @@ title: Searching the ford
 ---
 
 <entry id="millPassage" on="explore" target="place.mill" category="search" title="The millrace" priority="10" spentBy="holds('knows', ['passage'])" when="quest.hostages.state == 'active'">
-  @narrator: The wheel is chained. Under it, the millrace should be loud, and it is not: someone has dammed it with sacking.
-  @wren{when="@wrenWithUs"}: Smell that? Lamp oil. Nobody burns oil underwater unless there's air down there. There's a smugglers' cut under the race.
-  @corvin{when="holds('inParty', ['corvin'])"}: There's always a smugglers' cut. I'm almost offended nobody told me.
+  @narrator{code="0010"}: The wheel is chained. Under it, the millrace should be loud, and it is not: someone has dammed it with sacking.
+  @wren{code="0010" when="@wrenWithUs"}: Smell that? Lamp oil. Nobody burns oil underwater unless there's air down there. There's a smugglers' cut under the race.
+  @corvin{code="0010" when="holds('inParty', ['corvin'])"}: There's always a smugglers' cut. I'm almost offended nobody told me.
   ::assert{knows(passage)}
 </entry>
 
 <entry id="millQuiet" on="explore" target="place.mill" category="search" title="The mill">
-  @narrator: Flour dust, a cold hearth, and the black sun painted on the inside of the door as well. As if to be sure.
+  @narrator{code="0010"}: Flour dust, a cold hearth, and the black sun painted on the inside of the door as well. As if to be sure.
 </entry>
 
 <entry id="ninthWagon" on="explore" target="place.wagons" category="search" title="The twelfth crate" priority="10" spentBy="holds('knows', ['ledger'])" when="holds('inParty', ['corvin']) && run.approval.corvin >= 1">
-  @corvin: Ninth wagon, twelfth crate. Keep the lantern low.
-  @narrator: No silver. Paper. A Company ledger, stamped and sealed, listing farms by name: Coldwater, Pell's Reach, Harrow Top. Beside each name, one word. Burned.
-  @corvin: Well. That's worth more than silver. To someone.
+  @corvin{code="0010"}: Ninth wagon, twelfth crate. Keep the lantern low.
+  @narrator{code="0010"}: No silver. Paper. A Company ledger, stamped and sealed, listing farms by name: Coldwater, Pell's Reach, Harrow Top. Beside each name, one word. Burned.
+  @corvin{code="0020"}: Well. That's worth more than silver. To someone.
   ::pickup{item="ledger"}
 </entry>
 
 <entry id="wagonsQuiet" on="explore" target="place.wagons" category="search" title="The wagons">
-  @narrator: Eleven wagons, each one locked, each lock with a Company seal. The ninth rides a little low.
+  @narrator{code="0010"}: Eleven wagons, each one locked, each lock with a Company seal. The ninth rides a little low.
 </entry>
 /* Any site, searched again once nothing new is left there (a kind target,
 dsl 0.26; the label names the place, dsl 0.27 §7). */
 <entry id="searchedOut" on="explore" target="kind:site" category="search" title="Nothing new" priority="-10">
-  @narrator: You go over {{occasion.target}} again. Nothing you have not already seen.
+  @narrator{code="0010"}: You go over {{occasion.target}} again. Nothing you have not already seen.
 </entry>

@@ -11,19 +11,19 @@ params:
 ::vfx{type="dawn"}
 <match on="@day">
   <when is="Wednesday">
-    @narrator: {{@day}}. Low tide after dark.
+    @narrator{code="0010"}: {{@day}}. Low tide after dark.
   </when>
   <when is="Friday">
-    @narrator: {{@day}}. The Lantern Walk.
+    @narrator{code="0020"}: {{@day}}. The Lantern Walk.
   </when>
   <when is="Saturday">
-    @narrator: {{@day}}. Market day.
+    @narrator{code="0030"}: {{@day}}. Market day.
   </when>
   <when is="Sunday">
-    @narrator: {{@day}}. The last bus leaves at six.
+    @narrator{code="0040"}: {{@day}}. The last bus leaves at six.
   </when>
   <otherwise>
-    @narrator: {{@day}}.
+    @narrator{code="0050"}: {{@day}}.
   </otherwise>
 </match>
-@narrator: Outside: {{@weather}}.
+@narrator{code="0060"}: Outside: {{@weather}}.

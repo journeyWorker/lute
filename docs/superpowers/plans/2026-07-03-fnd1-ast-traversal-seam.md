@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # FND-1: Unified AST Traversal / CEL-Slot Seam — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.

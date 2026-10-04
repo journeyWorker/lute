@@ -5,14 +5,14 @@ title: Soren's endings
 ---
 
 <beat id="lantern" on="termEnd" after="visited('soren.confession')" title="Soren — the lantern ending" priority="10" when="run.route == 'soren' && @devoted(run.aff.soren)">
-  @narrator: The closing ceremony. The exchange list is read aloud. Soren's name is not on it.
-  @soren{emotion="happy"}: I asked to stay another year. I said the collection was incomplete. It was. It didn't have you in it.
-  ::use{component="cg" id="cgSorenEnd"}
-  ::use{component="ending" who="soren" kind="good" title="Soren — the lantern ending"}
+  @narrator{code="0010"}: The closing ceremony. The exchange list is read aloud. Soren's name is not on it.
+  @soren{code="0010" emotion="happy"}: I asked to stay another year. I said the collection was incomplete. It was. It didn't have you in it.
+  ::use{component="cg" id="cgSorenEnd" instance="use-001"}
+  ::use{component="ending" who="soren" kind="good" title="Soren — the lantern ending" instance="use-001"}
 </beat>
 
 <beat id="ember" on="termEnd" after="visited('soren.confession')" title="Soren — the ember ending" priority="5" when="run.route == 'soren'">
-  @narrator: Soren leaves on the early ferry, before the ceremony. On your desk: a library book, overdue, with a letter pressed in the last chapter.
-  @soren{vo emotion="sad"}: Return it whenever you like. I'll be the one waiting at the other end of the loan.
-  ::use{component="ending" who="soren" kind="bittersweet" title="Soren — the ember ending"}
+  @narrator{code="0010"}: Soren leaves on the early ferry, before the ceremony. On your desk: a library book, overdue, with a letter pressed in the last chapter.
+  @soren{code="0010" vo emotion="sad"}: Return it whenever you like. I'll be the one waiting at the other end of the loan.
+  ::use{component="ending" who="soren" kind="bittersweet" title="Soren — the ember ending" instance="use-002"}
 </beat>

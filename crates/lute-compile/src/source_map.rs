@@ -87,10 +87,12 @@ pub struct SourceInfo {
 pub struct ComponentUse {
     /// The innermost component's name (whose file the span is in).
     pub name: String,
-    /// Which use: every enclosing expansion's `{component}#{n}` segment,
-    /// outermost first, `.`-joined (`outer#2.inner#1`), as the record's
-    /// identity scope.
+    /// Complete enclosing component instance scope, outermost first. Each
+    /// segment is authored when `stable` is true, otherwise it is the
+    /// transition ordinal fallback.
     pub scope: String,
+    /// Whether every segment in `scope` is an authored instance key.
+    pub stable: bool,
 }
 
 impl SourceInfo {

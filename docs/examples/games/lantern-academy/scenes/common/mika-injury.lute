@@ -12,24 +12,24 @@ after: 'visited("common.clash")'
 
 ::bg{location="track" time="morning"}
 ::auto{character="mika" anchor="center" action="fadeInUp"}
-@narrator: Mika runs the last bend alone, then folds onto the grass with his hand wrapped round his ankle.
-@mika{emotion="hurt"}: Don't — it's nothing. It's been nothing for three weeks.
-@mika{emotion="laughing"}: The relay's on Saturday, before the lanterns. If Coach sees me limp, I'm on the bench. So I won't limp.
-@mika{emotion="sad"}: You won't tell him. Right?
+@narrator{code="0010"}: Mika runs the last bend alone, then folds onto the grass with his hand wrapped round his ankle.
+@mika{code="0010" emotion="hurt"}: Don't — it's nothing. It's been nothing for three weeks.
+@mika{code="0020" emotion="laughing"}: The relay's on Saturday, before the lanterns. If Coach sees me limp, I'm on the bench. So I won't limp.
+@mika{code="0030" emotion="sad"}: You won't tell him. Right?
 
 <branch id="injury" prompt="Mika is still holding his ankle.">
   <choice id="keep" label="Promise to keep it secret">
-    @mika{emotion="happy"}: You're the best. Seriously. I'll win it for you, then.
+    @mika{code="0040" emotion="happy"}: You're the best. Seriously. I'll win it for you, then.
     ::set{run.aff.mika += 2}
   </choice>
   <choice id="urge" label="Tell him to see the nurse himself">
-    @mika{emotion="neutral"}: ...Yeah. Maybe. After the relay.
+    @mika{code="0050" emotion="neutral"}: ...Yeah. Maybe. After the relay.
     ::set{run.aff.mika += 1}
   </choice>
   <choice id="coach" label="Walk straight to Coach Dunmore">
-    @coach: Sato! Bench. Ice. Now. The transfer did you a favour.
-    @mika{emotion="hurt"}: A favour. Sure. Thanks for the favour.
-    @ren{os}: That was the responsible thing. I'll make a note.
+    @coach{code="0010"}: Sato! Bench. Ice. Now. The transfer did you a favour.
+    @mika{code="0060" emotion="hurt"}: A favour. Sure. Thanks for the favour.
+    @ren{code="0010" os}: That was the responsible thing. I'll make a note.
     ::set{run.aff.ren += 1}
     ::assert{locked(mika)}
   </choice>

@@ -2,6 +2,8 @@ defaultProfile: core
 profiles:
   core:
     plugins: {}
+identity:
+  requireStable: true
 defaults:
   uses: [world.schema.yaml]
 chapters: [{ on: chapter, scenes: [arrival, parlour, kitchen, garden] }]

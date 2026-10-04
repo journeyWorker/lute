@@ -1,12 +1,12 @@
 ---
-title: "AI harness surface — 0.35.0"
+title: "AI harness surface — 0.36.0"
 status: Draft
 ---
 
 # AI harness surface
 
-This page is the thin adapter contract for 0.35.0. The normative semantics are
-in `docs/proposals/scenario-dsl/0.35.0.md`; this page only gives a harness the
+This page is the thin adapter contract for 0.36.0. The normative semantics are
+in `docs/proposals/scenario-dsl/0.36.0.md`; this page only gives a harness the
 stable command sequence and JSON boundaries. The CLI is the boundary, not a
 chat app, session manager, MCP server, or Lute-specific agent protocol
 (`docs/design/architecture-direction.md:225-241`).
@@ -128,7 +128,7 @@ Inspect `context.json`, then plan a request whose `base.project` and
 $ lute patch /tmp/drowned-crown planned-patch.json --dry-run --json
 ```
 
-The successful patch JSON has `schemaVersion: "0.35.0.patch"`, `ok: true`,
+The successful patch JSON has `schemaVersion: "0.36.0.patch"`, `ok: true`,
 `before`, `after`, `diff`, and `writes`. `diff.changes` is the semantic
 review surface; formatting-only edits have no changes. Apply the identical
 request only after review:

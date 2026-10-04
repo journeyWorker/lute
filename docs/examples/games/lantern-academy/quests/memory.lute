@@ -12,6 +12,6 @@ title: What the save remembers
   <objective id="soren" title="Float a lantern with Soren" done="count('cleared', ['soren', '_']) >= 1"/>
   <objective id="kai" title="Float a lantern with Kai" done="count('cleared', ['kai', '_']) >= 1"/>
   <on event="questComplete">
-    @hotaru{vo emotion="fond"}: Four lanterns. You carried every one of them back to me. Come to the jetty next term. I'll be the one without a lantern.
+    @hotaru{code="0010" vo emotion="fond"}: Four lanterns. You carried every one of them back to me. Come to the jetty next term. I'll be the one without a lantern.
   </on>
 </quest>

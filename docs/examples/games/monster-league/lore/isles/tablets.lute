@@ -9,13 +9,13 @@ series: islesTablets
 // when the player examines the stone. Page order is file order.
 
 <entry id="islesTablet1" target="item.tabletEmberkey" category="codex" title="The first tablet">
-  @narrator: "The first fire is the mountain's. Keep it and the ships come home."
+  @narrator{code="0010"}: "The first fire is the mountain's. Keep it and the ships come home."
 </entry>
 
 <entry id="islesTablet2" target="item.tabletMistral" category="codex" title="The second tablet" when="entry.islesTablet1.read">
-  @narrator: "The second fire is the wind's. It will not burn facing the wrong way."
+  @narrator{code="0010"}: "The second fire is the wind's. It will not burn facing the wrong way."
 </entry>
 
 <entry id="islesTablet3" target="item.tabletCoralreach" category="codex" title="The third tablet" when="entry.islesTablet2.read">
-  @narrator: "The third fire is the sea's. When the three fires meet, the door remembers."
+  @narrator{code="0010"}: "The third fire is the sea's. When the three fires meet, the door remembers."
 </entry>

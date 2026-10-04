@@ -10,13 +10,13 @@ pov: ilo
 ::bg{location="throne" time="night"}
 <branch id="crownChoice" prompt="The crown is within reach.">
   <choice id="wear" label="Put it on">
-    @ilo{mono}: It's cold. It's so cold. It fits.
-    @narrator: Far above, the sea around the Gull's Mercy goes flat and bright, and stays that way.
+    @ilo{code="0010" mono}: It's cold. It's so cold. It fits.
+    @narrator{code="0010"}: Far above, the sea around the Gull's Mercy goes flat and bright, and stays that way.
     ::set{user.crowned = true}
     ::end{reason="crowned"}
   </choice>
   <choice id="leave" label="Leave it where it is">
-    @ilo{mono}: Not yet. Not while they're still waiting up there.
-    @narrator: He swims back up through a palace that lets him go.
+    @ilo{code="0020" mono}: Not yet. Not while they're still waiting up there.
+    @narrator{code="0020"}: He swims back up through a palace that lets him go.
   </choice>
 </branch>

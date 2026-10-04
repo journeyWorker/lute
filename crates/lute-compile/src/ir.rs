@@ -24,6 +24,10 @@ pub struct ExecutionIr {
     pub ir_version: String,
     /// Plugin-system §13 capability snapshot stamp (A9): `snapshot.version`.
     pub capability_version: String,
+    /// Resolved authored rename ledger relevant to this artifact. Empty
+    /// ledgers are omitted from the wire shape.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub identity_renames: Vec<lute_manifest::project::IdentityRename>,
     /// Exact engine semantic capabilities required by this lowered artifact.
     /// Compiler-derived, sorted, and duplicate-free; serialized immediately
     /// after the plugin capability snapshot.
@@ -746,13 +750,13 @@ pub struct Stamp {
 #[derive(Clone, Debug, Serialize)]
 pub struct Source {
     pub component: String,
-    /// The record's identity scope below the host prefix: every enclosing
-    /// expansion's `{component}#{n}` segment, outermost first, `.`-joined
-    /// (dsl 0.22.0 §11, `normalize::component_scope`). The addressing pass
-    /// mints a component line's `lineId`/`voiceKey` under
-    /// `{prefix}.{scope}`. Not wire data — the `lineId` already carries it.
+    /// Complete enclosing component scope, outermost first.
     #[serde(skip)]
     pub scope: String,
+    /// False when one or more enclosing uses use the transitional positional
+    /// fallback. This metadata is internal; line joins still expose the scope.
+    #[serde(skip)]
+    pub stable: bool,
 }
 
 /// `:line` role (§4.4, foundation D7). Voiced roles carry a `voiceKey`

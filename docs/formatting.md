@@ -1,4 +1,4 @@
-# Formatting rules (0.35.0)
+# Formatting rules (0.36.0)
 
 `lute fmt <path>…` canonicalizes source without changing its meaning. It walks
 selected inputs in sorted path order and is deterministic, so repeated runs are

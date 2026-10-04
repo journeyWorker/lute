@@ -1,3 +1,7 @@
+---
+status: Draft
+---
+
 # Haven drive test, re-run against Lute 0.10.0 — findings
 
 *Measured 2026-08-06 on `feat/lute-0.10.0` at `d8d79e0`, 68 commits ahead of `main`.

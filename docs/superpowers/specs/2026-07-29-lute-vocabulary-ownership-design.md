@@ -1,7 +1,10 @@
+---
+status: Implemented
+---
+
 # Lute — Vocabulary Ownership: the Core Declares Slots, the Project Declares Members (approved design)
 
 - **Date:** 2026-07-29
-- **Status:** approved design; spec-first (documents/decisions before implementation)
 - **Version:** **language 0.9.0** + **plugin-system 0.0.3** delta. Breaking at the language axis
   (pre-1.0 allowance, dsl 0.1.0 §2): a document using a domain slot must now declare that domain.
   **IR schema unchanged at 0.8.0** by construction (D-B).

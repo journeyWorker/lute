@@ -11,49 +11,49 @@ priority: 10
 
 ::bg{location="ferry" time="morning"}
 ::music{action="start" mood="peaceful" volume="normal"}
-@narrator: The ferry noses through the mist. On the far shore Lantern Academy is lighting its lamps, one by one, although it is already morning.
-@you{mono}: A transfer in the middle of autumn. Nobody transfers in the middle of autumn.
-@you{mono when="@ngPlus"}: ...And yet I know that bell tower. I know which dormitory window sticks in the rain.
-@hotaru{vo when="@ngPlus"}: Welcome back. Try to remember more of it this time.
+@narrator{code="0010"}: The ferry noses through the mist. On the far shore Lantern Academy is lighting its lamps, one by one, although it is already morning.
+@you{code="0010" mono}: A transfer in the middle of autumn. Nobody transfers in the middle of autumn.
+@you{code="0020" mono when="@ngPlus"}: ...And yet I know that bell tower. I know which dormitory window sticks in the rain.
+@hotaru{code="0010" vo when="@ngPlus"}: Welcome back. Try to remember more of it this time.
 
 ## The gate
 
 ::bg{location="gate" time="morning"}
 ::auto{character="nana" anchor="left" action="fadeInUp"}
-@nana{emotion="happy"}: You're the transfer! Nana. Your roommate, your guide, and your only source of reliable gossip.
-@nana{emotion="teasing"}: Four people you need to know about. I'll point. You pretend you're not looking.
+@nana{code="0010" emotion="happy"}: You're the transfer! Nana. Your roommate, your guide, and your only source of reliable gossip.
+@nana{code="0020" emotion="teasing"}: Four people you need to know about. I'll point. You pretend you're not looking.
 ::auto{character="ren" anchor="right" action="fadeInUp"}
-@ren{emotion="stern"}: Visitors sign the register. Transfers sign it twice.
-@nana: Ren Aoki. Council president. Allergic to fun, fluent in rules.
+@ren{code="0010" emotion="stern"}: Visitors sign the register. Transfers sign it twice.
+@nana{code="0030"}: Ren Aoki. Council president. Allergic to fun, fluent in rules.
 ::auto{character="ren" action="fadeOut"}
 ::auto{character="mika" anchor="right" action="fadeInUp"}
-@mika{emotion="laughing"}: Heads up! Sorry — sorry! That ball has a mind of its own!
-@nana: Mika Sato. Fastest legs on the island. Also the loudest mouth.
+@mika{code="0010" emotion="laughing"}: Heads up! Sorry — sorry! That ball has a mind of its own!
+@nana{code="0040"}: Mika Sato. Fastest legs on the island. Also the loudest mouth.
 ::auto{character="mika" action="fadeOut"}
 ::auto{character="soren" anchor="right" action="fadeInUp"}
-@soren{emotion="shy"}: ...You dropped this. It's a library card. It's mine, actually. I'll just — take it back.
-@nana: Soren Voss. Lives in the library. We think he's paying rent.
+@soren{code="0010" emotion="shy"}: ...You dropped this. It's a library card. It's mine, actually. I'll just — take it back.
+@nana{code="0050"}: Soren Voss. Lives in the library. We think he's paying rent.
 ::auto{character="soren" action="fadeOut"}
-@narrator: Somewhere above the gate, a piano stumbles over the same four bars and starts again.
-@nana{emotion="worried"}: And that's Kai Hollow, in a room he isn't supposed to be in. Don't.
+@narrator{code="0020"}: Somewhere above the gate, a piano stumbles over the same four bars and starts again.
+@nana{code="0060" emotion="worried"}: And that's Kai Hollow, in a room he isn't supposed to be in. Don't.
 
 <branch id="firstLook" prompt="Who stays on your mind through the first lesson?">
   <choice id="ren" label="The president who made you sign twice">
-    @you{mono}: He wrote my name down as if it mattered to get it right.
+    @you{code="0030" mono}: He wrote my name down as if it mattered to get it right.
     ::set{run.aff.ren += 1}
   </choice>
   <choice id="mika" label="The runner with the runaway ball">
-    @you{mono}: He apologised three times and grinned through all of them.
+    @you{code="0040" mono}: He apologised three times and grinned through all of them.
     ::set{run.aff.mika += 1}
   </choice>
   <choice id="soren" label="The librarian who took his card back">
-    @you{mono}: His ears went red. Mine might have too.
+    @you{code="0050" mono}: His ears went red. Mine might have too.
     ::set{run.aff.soren += 1}
   </choice>
   <choice id="kai" label="Whoever is playing that piano">
-    @you{mono}: Four bars, again and again, as if the fifth one was hiding.
+    @you{code="0060" mono}: Four bars, again and again, as if the fifth one was hiding.
     ::set{run.aff.kai += 1}
   </choice>
 </branch>
 
-@nana{emotion="teasing"}: I saw that face. The Lantern Festival is on Saturday. Whoever you float a lantern with... well. Island tradition.
+@nana{code="0070" emotion="teasing"}: I saw that face. The Lantern Festival is on Saturday. Whoever you float a lantern with... well. Island tradition.

@@ -9,77 +9,77 @@ title: Route 2 — the Hushwood and the gatehouse
 // Bug catchers own the wood by day; at night it belongs to Oona.
 
 <beat id="enter" on="enterRoute" target="route.r2" title="Route 2" priority="10">
-  @narrator: ROUTE 2 — the Hushwood. The trees close over the path and the sound of the sea stops as if a door had shut.
-  @narrator: A board nailed to a trunk: "PEBBLETON, THROUGH THE WOOD. DO NOT FEED THE STINGLES."
+  @narrator{code="0010"}: ROUTE 2 — the Hushwood. The trees close over the path and the sound of the sea stops as if a door had shut.
+  @narrator{code="0020"}: A board nailed to a trunk: "PEBBLETON, THROUGH THE WOOD. DO NOT FEED THE STINGLES."
 </beat>
 
 <entry id="southR2Morning" on="enterRoute" target="route.r2" category="bark" once="day" when="@isMorning">
-  @narrator: Mist sits in the Hushwood until the sun finds it. Cocoonix hang from every branch like washing.
+  @narrator{code="0010"}: Mist sits in the Hushwood until the sun finds it. Cocoonix hang from every branch like washing.
 </entry>
 
 <entry id="southR2Day" on="enterRoute" target="route.r2" category="bark" once="day" when="run.slot == 'day'">
-  @narrator: Somewhere in the wood, a bug catcher shouts "GOT ONE!" and then, a moment later, "NO I DIDN'T."
+  @narrator{code="0010"}: Somewhere in the wood, a bug catcher shouts "GOT ONE!" and then, a moment later, "NO I DIDN'T."
 </entry>
 
 <entry id="southR2Night" on="enterRoute" target="route.r2" category="bark" once="day" when="@isNight">
-  @narrator: No bug catchers now. Just the Hushwood, very dark, and a lantern moving between the trees that nobody seems to be carrying.
+  @narrator{code="0010"}: No bug catchers now. Just the Hushwood, very dark, and a lantern moving between the trees that nobody seems to be carrying.
 </entry>
 
 // ── The gatehouse and the aide (the hmFlash hand-off is south.aideFlash) ──
 
 <beat id="gatehouse" on="enterPlace" target="place.r2Gatehouse" title="The Route 2 gatehouse" priority="10">
-  @narrator: A little stone gatehouse on the Pebbleton road. On the counter: a guest book, a pot of tea, and a sign reading "PROF. ALDER'S FIELD OFFICE (UNOFFICIAL)".
-  @aide: Oh! You're the one with the Dex. The professor phoned ahead. He phones ahead about everything.
-  @aide: I'm his aide. Catch ten different kinds and come and see me. I have something from him that you'll want in the caves.
+  @narrator{code="0010"}: A little stone gatehouse on the Pebbleton road. On the counter: a guest book, a pot of tea, and a sign reading "PROF. ALDER'S FIELD OFFICE (UNOFFICIAL)".
+  @aide{code="0010"}: Oh! You're the one with the Dex. The professor phoned ahead. He phones ahead about everything.
+  @aide{code="0020"}: I'm his aide. Catch ten different kinds and come and see me. I have something from him that you'll want in the caves.
 </beat>
 
 <entry id="southGatehouseAgain" on="enterPlace" target="place.r2Gatehouse" category="bark" once="day">
-  @narrator: The tea in the pot is always hot. Nobody has ever seen the aide make it.
+  @narrator{code="0010"}: The tea in the pot is always hot. Nobody has ever seen the aide make it.
 </entry>
 
 <entry id="southAideCounting" on="talk" target="npc.aide" category="bark" when="@dexCaught < 10">
-  @aide: {{@dexCaught}} kinds so far. Ten is the magic number. Well, it's the professor's number. He's not magic. Mostly.
+  @aide{code="0010"}: {{@dexCaught}} kinds so far. Ten is the magic number. Well, it's the professor's number. He's not magic. Mostly.
 </entry>
 
 <entry id="southAideAfter" on="talk" target="npc.aide" category="bark" priority="5" when="holds('hasItem', ['hmFlash'])">
   <match>
     <when test="@badgeCount >= 1">
-      @aide: Flash will work outside battle now that you've got a badge. The tunnel east of Portvolt is darker than the inside of a Duskbat.
+      @aide{code="0010"}: Flash will work outside battle now that you've got a badge. The tunnel east of Portvolt is darker than the inside of a Duskbat.
     </when>
     <otherwise>
-      @aide: Flash won't work outside battle until you've beaten Petra. Rules are rules. The League's rules, not mine.
+      @aide{code="0020"}: Flash won't work outside battle until you've beaten Petra. Rules are rules. The League's rules, not mine.
     </otherwise>
   </match>
 </entry>
 
 // ── Trainers (bug catchers by day, the hex maniac by night) ─────────────
 
-<beat use="trainerBattle" id="r2BugCatcherSid" when="!@isNight" who="r2BugCatcherSid" intro="Hey! You have monsters! Bugs are the best monsters. That's not an opinion, that's a fact." win="That was a fact until just now." lose="Facts are facts!" prize="60"/>
+<beat use="trainerBattle" id="r2BugCatcherSid" when="!@isNight" who="r2BugCatcherSid" intro="Hey! You have monsters! Bugs are the best monsters. That's not an opinion, that's a fact." win="That was a fact until just now." lose="Facts are facts!" prize="60" instance="use-001"/>
 
 <entry id="southR2BugCatcherSidAfter" on="talk" target="npc.r2BugCatcherSid" category="bark" when="holds('defeated', ['r2BugCatcherSid'])">
-  @r2BugCatcherSid: Stingles only sting when they're scared. They're scared of everything. So.
+  @r2BugCatcherSid{code="0010"}: Stingles only sting when they're scared. They're scared of everything. So.
 </entry>
 
-<beat use="trainerBattle" id="r2BugCatcherAnnie" when="!@isNight" who="r2BugCatcherAnnie" intro="I've been in the Hushwood since breakfast! My net is ready. My monsters are ready. Are you?" win="My net was ready. I wasn't." lose="Swish! Caught you!" prize="72"/>
+<beat use="trainerBattle" id="r2BugCatcherAnnie" when="!@isNight" who="r2BugCatcherAnnie" intro="I've been in the Hushwood since breakfast! My net is ready. My monsters are ready. Are you?" win="My net was ready. I wasn't." lose="Swish! Caught you!" prize="72" instance="use-002"/>
 
 <entry id="southR2BugCatcherAnnieAfter" on="talk" target="npc.r2BugCatcherAnnie" category="bark" when="holds('defeated', ['r2BugCatcherAnnie'])">
-  @r2BugCatcherAnnie: If a Cocoonix looks at you, it's about to hatch. If it doesn't look at you, it's also about to hatch. Everything's about to hatch.
+  @r2BugCatcherAnnie{code="0010"}: If a Cocoonix looks at you, it's about to hatch. If it doesn't look at you, it's also about to hatch. Everything's about to hatch.
 </entry>
 
-<beat use="trainerBattle" id="r2LassFaye" who="r2LassFaye" intro="I'm lost. I'm not lost. I'm exploring. Battle me while I explore." win="Could you point me at Pebbleton? Casually?" lose="Winners don't get lost. Probably." prize="112"/>
+<beat use="trainerBattle" id="r2LassFaye" who="r2LassFaye" intro="I'm lost. I'm not lost. I'm exploring. Battle me while I explore." win="Could you point me at Pebbleton? Casually?" lose="Winners don't get lost. Probably." prize="112" instance="use-003"/>
 
 <entry id="southR2LassFayeAfter" on="talk" target="npc.r2LassFaye" category="bark" when="holds('defeated', ['r2LassFaye'])">
-  @r2LassFaye: The moss grows on the north side of the trees. Or the sea side. I forget which, and they're the same side here.
+  @r2LassFaye{code="0010"}: The moss grows on the north side of the trees. Or the sea side. I forget which, and they're the same side here.
 </entry>
 
-<beat use="trainerBattle" id="r2PicnickerHana" when="!@isNight" who="r2PicnickerHana" intro="You're walking right through my picnic! Now you have to battle for a sandwich." win="Fine, have the sandwich. It's cucumber." lose="The sandwich stays with me." prize="112"/>
+<beat use="trainerBattle" id="r2PicnickerHana" when="!@isNight" who="r2PicnickerHana" intro="You're walking right through my picnic! Now you have to battle for a sandwich." win="Fine, have the sandwich. It's cucumber." lose="The sandwich stays with me." prize="112" instance="use-004"/>
 
 <entry id="southR2PicnickerHanaAfter" on="talk" target="npc.r2PicnickerHana" category="bark" when="holds('defeated', ['r2PicnickerHana'])">
-  @r2PicnickerHana: My Puffsong sings when it's full. It's been singing all afternoon. It ate my cake.
+  @r2PicnickerHana{code="0010"}: My Puffsong sings when it's full. It's been singing all afternoon. It ate my cake.
 </entry>
 
-<beat use="trainerBattle" id="r2HexManiacOona" when="@isNight" who="r2HexManiacOona" intro="The lantern in the trees? That's mine. You followed it. They always follow it." win="Hm. You follow things and win. That's rare." lose="Follow the lantern home, little one." prize="240"/>
+<beat use="trainerBattle" id="r2HexManiacOona" when="@isNight" who="r2HexManiacOona" intro="The lantern in the trees? That's mine. You followed it. They always follow it." win="Hm. You follow things and win. That's rare." lose="Follow the lantern home, little one." prize="240" instance="use-005"/>
 
 <entry id="southR2HexManiacOonaAfter" on="talk" target="npc.r2HexManiacOona" category="bark" when="holds('defeated', ['r2HexManiacOona']) && @isNight">
-  @r2HexManiacOona: There's a tower in Ashgrove where the ghosts don't like being looked at. You'll go there. I can tell. Take a lens.
+  @r2HexManiacOona{code="0010"}: There's a tower in Ashgrove where the ghosts don't like being looked at. You'll go there. I can tell. Take a lens.
 </entry>

@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # FEAT-2: `extends:` Schema Composition + Named Composition Policy
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.

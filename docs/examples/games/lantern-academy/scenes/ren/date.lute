@@ -13,23 +13,23 @@ after: 'visited("common.festival")'
 ::bg{location="roof" time="dusk"}
 ::music{action="start" mood="romantic" volume="down"}
 ::auto{character="ren" anchor="center" action="fadeInUp"}
-@ren{emotion="stern"}: This roof is off limits. I have the only key. Therefore I am the only one who can break the rule, and I am choosing to. Sit.
-@ren{emotion="flustered"}: I come up here to name the stars. Officially they have names. I give them better ones.
+@ren{code="0010" emotion="stern"}: This roof is off limits. I have the only key. Therefore I am the only one who can break the rule, and I am choosing to. Sit.
+@ren{code="0020" emotion="flustered"}: I come up here to name the stars. Officially they have names. I give them better ones.
 
 ::date{with="ren" spot="roof" resultKey="stars"}
 
 <match on="scene.date.stars.mood">
   <when is="perfect">
-    @ren{emotion="happy"}: That one is yours now. I just decided. Don't argue with the president.
-    ::use{component="cg" id="cgRenStars"}
+    @ren{code="0030" emotion="happy"}: That one is yours now. I just decided. Don't argue with the president.
+    ::use{component="cg" id="cgRenStars" instance="use-001"}
     ::set{run.aff.ren += 2}
   </when>
   <when is="sweet">
-    @ren{emotion="fond"}: You're a terrible astronomer. Come back tomorrow and be terrible again.
+    @ren{code="0040" emotion="fond"}: You're a terrible astronomer. Come back tomorrow and be terrible again.
     ::set{run.aff.ren += 1}
   </when>
   <otherwise>
-    @ren{emotion="sad"}: ...It's cold. We should go down. I'll sign you out.
+    @ren{code="0050" emotion="sad"}: ...It's cold. We should go down. I'll sign you out.
   </otherwise>
 </match>
-@narrator{when="scene.date.stars.hearts >= 5"}: He walks you to the dormitory door and forgets, for once, to check the time.
+@narrator{code="0010" when="scene.date.stars.hearts >= 5"}: He walks you to the dormitory door and forgets, for once, to check the time.

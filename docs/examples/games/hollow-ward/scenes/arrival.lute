@@ -10,33 +10,33 @@ once: run
 
 ::bg{location="gate" time="night"}
 ::music{action="start" mood="dread" volume="low"}
-@narrator: Tobias's car is parked across the ambulance bay, driver's door open, the dome light long dead.
-@narrator: On the dash, under the parking permit he stole in 2019, a note in his square capitals.
+@narrator{code="0010"}: Tobias's car is parked across the ambulance bay, driver's door open, the dome light long dead.
+@narrator{code="0020"}: On the dash, under the parking permit he stole in 2019, a note in his square capitals.
 <match on="user.deaths">
   <when is="0">
-    @nell{mono}: Eleven o'clock. He went in at nine. He said two hours.
+    @nell{code="0010" mono}: Eleven o'clock. He went in at nine. He said two hours.
   </when>
   <when is="1..2">
-    @nell{mono}: I have stood here before. I know I have. The gravel remembers my shoes.
+    @nell{code="0020" mono}: I have stood here before. I know I have. The gravel remembers my shoes.
   </when>
   <otherwise>
-    @nell{mono emotion="numb"}: Again. The same car, the same door, the same note. The ward keeps the night on a loop and me inside it.
+    @nell{code="0030" mono emotion="numb"}: Again. The same car, the same door, the same note. The ward keeps the night on a loop and me inside it.
   </otherwise>
 </match>
 
 ## The door
 
-@narrator: The gate of St. Agathe's has been chained since 1979. Someone has cut the chain. Someone has also put a new keypad on the gatepost, and it is lit.
-@nell: Toby? Tobias!
-@narrator: The ward swallows the name. Somewhere inside, very far off, a wheel squeaks once.
+@narrator{code="0030"}: The gate of St. Agathe's has been chained since 1979. Someone has cut the chain. Someone has also put a new keypad on the gatepost, and it is lit.
+@nell{code="0040"}: Toby? Tobias!
+@narrator{code="0040"}: The ward swallows the name. Somewhere inside, very far off, a wheel squeaks once.
 <branch id="goIn" prompt="The lobby doors stand open.">
   <choice id="call" label="Call him again">
-    @nell: Tobias Arden, you come out here right now!
-    @narrator: The squeak again. Closer, and then not.
+    @nell{code="0050"}: Tobias Arden, you come out here right now!
+    @narrator{code="0050"}: The squeak again. Closer, and then not.
     ::lure{room="lobby"}
   </choice>
   <choice id="quiet" label="Go in quietly">
-    @nell{mono}: Quiet. Whatever squeaks, it doesn't need to know my name.
+    @nell{code="0060" mono}: Quiet. Whatever squeaks, it doesn't need to know my name.
   </choice>
 </branch>
-@narrator: You step over the threshold. Behind you the gate's keypad blinks, patient as a pulse.
+@narrator{code="0060"}: You step over the threshold. Behind you the gate's keypad blinks, patient as a pulse.

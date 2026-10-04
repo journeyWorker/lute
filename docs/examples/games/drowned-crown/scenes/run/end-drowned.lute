@@ -12,5 +12,5 @@ when: "@died"
 
 ::bg{location="palace" time="night"}
 ::vfx{type="blackOut"}
-@ilo{mono}: Count your breaths. One. Two. Th—
-@narrator: The palace keeps him for a while. Then, as it always does, it lets go of the rope.
+@ilo{code="0010" mono}: Count your breaths. One. Two. Th—
+@narrator{code="0010"}: The palace keeps him for a while. Then, as it always does, it lets go of the rope.

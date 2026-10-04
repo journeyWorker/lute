@@ -13,22 +13,22 @@ spentBy: "holds('solved', ['sluice'])"
 ## Sluice
 
 ::bg{location="library" time="night"}
-@narrator: Three brass wheels stand in the wall below a door of green bronze. Each is stamped with a sea-creature: an eel, a gull, a crown.
-@quill{os when="entry.quillFirst.everRead"}: The librarians used to open it at low tide. Low things first, they said.
+@narrator{code="0010"}: Three brass wheels stand in the wall below a door of green bronze. Each is stamped with a sea-creature: an eel, a gull, a crown.
+@quill{code="0010" os when="entry.quillFirst.everRead"}: The librarians used to open it at low tide. Low things first, they said.
 
 <branch id="valveOrder" prompt="Which wheel first?">
   <choice id="eelFirst" label="The eel, then the gull, then the crown">
     ::set{run.valves += 3}
-    @narrator: The wheels turn one after another. Somewhere behind the bronze, water drains away with a long sigh.
+    @narrator{code="0020"}: The wheels turn one after another. Somewhere behind the bronze, water drains away with a long sigh.
     ::assert{solved(sluice)}
-    @ilo{mono}: Low things first.
+    @ilo{code="0010" mono}: Low things first.
   </choice>
   <choice id="crownFirst" label="The crown first">
     ::set{run.valves += 1}
-    @narrator: The crown wheel spins free and the corridor floods to the ceiling. Ilo claws his way back to the stair.
+    @narrator{code="0030"}: The crown wheel spins free and the corridor floods to the ceiling. Ilo claws his way back to the stair.
   </choice>
   <choice id="gullFirst" label="The gull first">
     ::set{run.valves += 1}
-    @narrator: The gull wheel will not move. Something behind the door laughs, very quietly.
+    @narrator{code="0040"}: The gull wheel will not move. Something behind the door laughs, very quietly.
   </choice>
 </branch>

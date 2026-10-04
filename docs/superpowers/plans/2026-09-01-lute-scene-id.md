@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Lute 0.15.0 — Authored Scene Identity Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.

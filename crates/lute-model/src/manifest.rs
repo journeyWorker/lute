@@ -21,11 +21,16 @@ pub struct ManifestContext {
 /// subtly different manifest read/provider/snapshot assembly path.
 pub fn manifest_context(root: &Path) -> Result<ManifestContext, String> {
     let project = load_project(root)?;
-    let (snapshot, _) = resolve_document_snapshot(project.as_ref(), None, &BTreeMap::new());
+    let (mut snapshot, _) = resolve_document_snapshot(project.as_ref(), None, &BTreeMap::new());
+    snapshot.identity_require_stable =
+        project.as_ref().is_some_and(ProjectConfig::identity_require_stable);
     let providers = project_providers(project.as_ref());
     Ok(ManifestContext { project, snapshot, providers })
 }
 /// Resolve a capability snapshot from an already-loaded project config.
 pub fn resolve_snapshot(project: Option<&ProjectConfig>) -> CapabilitySnapshot {
-    resolve_document_snapshot(project, None, &BTreeMap::new()).0
+    let mut snapshot = resolve_document_snapshot(project, None, &BTreeMap::new()).0;
+    snapshot.identity_require_stable =
+        project.is_some_and(ProjectConfig::identity_require_stable);
+    snapshot
 }

@@ -5,29 +5,29 @@ title: The palace guardians
 ---
 
 <entry id="eelFirst" on="bossDefeated" target="foe.eel" category="bark" title="The Long Eel" priority="10" once="user">
-  @narrator: The Long Eel slides off the flagstones and out through a window that has not held glass in three hundred years.
-  @ilo{mono}: It kept the hall. Now the hall is mine.
+  @narrator{code="0010"}: The Long Eel slides off the flagstones and out through a window that has not held glass in three hundred years.
+  @ilo{code="0010" mono}: It kept the hall. Now the hall is mine.
 </entry>
 
 <entry id="choirFirst" on="bossDefeated" target="foe.choir" category="bark" title="The Drowned Choir" priority="10" once="user">
-  @narrator: The choir's last note hangs in the water after the singers are gone.
-  @ilo{mono}: I know that song. Mother sang it. Why do I know that song?
+  @narrator{code="0010"}: The choir's last note hangs in the water after the singers are gone.
+  @ilo{code="0010" mono}: I know that song. Mother sang it. Why do I know that song?
 </entry>
 /* A guardian that falls again gets one bark a dive, whichever it is; each
 first kill above (and the Regent's own scene) outranks it. */
 <entry id="guardianAgain" on="bossDefeated" target="kind:foe" category="bark" once="run">
   <match on="occasion.target">
     <when is="eel">
-      @narrator: The eel again. It never learns, and neither does he.
+      @narrator{code="0010"}: The eel again. It never learns, and neither does he.
     </when>
     <when is="choir">
-      @narrator: The choir falls silent, for now.
+      @narrator{code="0020"}: The choir falls silent, for now.
     </when>
     <when is="archivist">
-      @archivist{emotion="grim"}: You have been catalogued before. I will file you again.
+      @archivist{code="0010" emotion="grim"}: You have been catalogued before. I will file you again.
     </when>
     <when is="regent">
-      @regent: Again, little heir? The throne is patient.
+      @regent{code="0010"}: Again, little heir? The throne is patient.
     </when>
   </match>
 </entry>
@@ -35,5 +35,5 @@ first kill above (and the Regent's own scene) outranks it. */
 so a second repeat kill in one dive (the eel on the way back up) gets this
 one. */
 <entry id="anyGuardian" on="bossDefeated" target="kind:foe" category="bark" priority="-5">
-  @narrator: Ilo watches {{occasion.target}} sink out of sight. It will be back.
+  @narrator{code="0010"}: Ilo watches {{occasion.target}} sink out of sight. It will be back.
 </entry>

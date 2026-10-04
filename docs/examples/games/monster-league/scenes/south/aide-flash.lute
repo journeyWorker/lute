@@ -15,6 +15,6 @@ when: "@dexCaught >= 10"
 
 ::bg{location="route-2-gatehouse" time="day"}
 ::auto{character="aide" anchor="center" action="enter"}
-@aide: You're the professor's new helper! Ten kinds caught already? He told me to give you this if you ever got that far.
-::use{component="obtain" item="hmFlash"}
-@aide: Flash lights up dark caves. You'll need the Stone Badge before your monsters will use it outside battle.
+@aide{code="0010"}: You're the professor's new helper! Ten kinds caught already? He told me to give you this if you ever got that far.
+::use{component="obtain" item="hmFlash" instance="use-001"}
+@aide{code="0020"}: Flash lights up dark caves. You'll need the Stone Badge before your monsters will use it outside battle.

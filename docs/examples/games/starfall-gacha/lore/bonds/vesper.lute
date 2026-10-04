@@ -6,44 +6,44 @@ title: Vesper, the Knight Who Left (limited SSR)
 /* Limited: only on the Starfall Night banner. Formerly the Hollow King's. */
 
 <beat id="vesperIntro" on="summon" target="hero.vesper" once="user" priority="10">
-  @vesper{emotion="smug"}: A summoning circle. Candles. Glitter. You really went all out.
-  @vesper: Vesper. I used to serve the Hollow King. I'm told that's awkward. I'll manage.
+  @vesper{code="0010" emotion="smug"}: A summoning circle. Candles. Glitter. You really went all out.
+  @vesper{code="0020"}: Vesper. I used to serve the Hollow King. I'm told that's awkward. I'll manage.
 </beat>
 
 <beat id="vesperRateUp" on="summon" target="hero.vesper" also once="false" when="occasion.payload.banner == 'starfall'">
-  @lumi{emotion="surprised"}: That's her! The Starfall knight! ...Should we be worried?
-  @vesper{emotion="smug"}: Always, star. It keeps you sharp.
+  @lumi{code="0010" emotion="surprised"}: That's her! The Starfall knight! ...Should we be worried?
+  @vesper{code="0010" emotion="smug"}: Always, star. It keeps you sharp.
 </beat>
 
 <beat id="vesperTap" on="homeTap" target="hero.vesper" once="day">
-  @vesper: Don't tap me. I'm brooding. It's a full-time position.
-  @vesper{when="@starfallLive"}: The festival. Lights, music, joy. Disgusting. ...Save me a lantern.
+  @vesper{code="0010"}: Don't tap me. I'm brooding. It's a full-time position.
+  @vesper{code="0020" when="@starfallLive"}: The festival. Lights, music, joy. Disgusting. ...Save me a lantern.
 </beat>
 
 <beat id="vesperBirthday" on="dailyReset" once="day" when="holds('celebrate', ['vesper'])">
-  @vesper{emotion="sad"}: Nobody's said happy birthday to me in eleven years.
-  @vesper{emotion="smug"}: Don't make it a habit. ...Do make it a habit.
+  @vesper{code="0010" emotion="sad"}: Nobody's said happy birthday to me in eleven years.
+  @vesper{code="0020" emotion="smug"}: Don't make it a habit. ...Do make it a habit.
 </beat>
 
-<beat use="bondStory" id="vesperR1" who="vesper" rank="r1" vow="I don't kneel anymore. I'll stand next to you instead.">
-  @vesper: You want the story. Fine. I carried the Hollow King's lantern for eleven years.
-  @vesper{emotion="sad"}: Then one night I looked inside it. Every star he'd taken, crammed in, still blinking.
-  @vesper: I opened it. That's the whole story. It was very bright. I was very fired.
+<beat use="bondStory" id="vesperR1" who="vesper" rank="r1" vow="I don't kneel anymore. I'll stand next to you instead." instance="use-001">
+  @vesper{code="0010"}: You want the story. Fine. I carried the Hollow King's lantern for eleven years.
+  @vesper{code="0020" emotion="sad"}: Then one night I looked inside it. Every star he'd taken, crammed in, still blinking.
+  @vesper{code="0030"}: I opened it. That's the whole story. It was very bright. I was very fired.
 </beat>
 
-<beat use="bondStory" id="vesperR2" who="vesper" rank="r2" prev="bonds.vesper.vesperR1" vow="If he comes, he comes through me. Then through you. He won't enjoy either.">
-  @vesper: He'll come for me. You know that.
+<beat use="bondStory" id="vesperR2" who="vesper" rank="r2" prev="bonds.vesper.vesperR1" vow="If he comes, he comes through me. Then through you. He won't enjoy either." instance="use-002">
+  @vesper{code="0010"}: He'll come for me. You know that.
   <branch id="vesperR2Answer" prompt="Vesper doesn't look at you.">
     <choice id="letHim" label="Let him come.">
-      @vesper{emotion="smug"}: Reckless. Good. I hate careful people.
+      @vesper{code="0020" emotion="smug"}: Reckless. Good. I hate careful people.
     </choice>
     <choice id="hideYou" label="Then we'll hide you somewhere bright.">
-      @vesper{emotion="sad"}: ...Somewhere bright. I'd forgotten that was an option.
+      @vesper{code="0030" emotion="sad"}: ...Somewhere bright. I'd forgotten that was an option.
     </choice>
   </branch>
 </beat>
 
-<beat use="bondStory" id="vesperR3" who="vesper" rank="r3" prev="bonds.vesper.vesperR2" vow="Vesper, knight of nobody, by choice, yours.">
-  @vesper: I bought a festival lantern. With my own tokens. I stood in line.
-  @vesper{emotion="smug"}: If you tell anyone, I'll deny it. If you light it with me, I won't have to.
+<beat use="bondStory" id="vesperR3" who="vesper" rank="r3" prev="bonds.vesper.vesperR2" vow="Vesper, knight of nobody, by choice, yours." instance="use-003">
+  @vesper{code="0010"}: I bought a festival lantern. With my own tokens. I stood in line.
+  @vesper{code="0020" emotion="smug"}: If you tell anyone, I'll deny it. If you light it with me, I won't have to.
 </beat>

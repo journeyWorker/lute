@@ -90,8 +90,8 @@
         "caught": true,
         "expected": {
           "code": "E-PATCH-PRESERVE",
-          "node": "beat:south.route3.r3YoungsterAda",
-          "preserve": "ids"
+          "node": "line:south.route3.r3YoungsterAda.trainerBattle#use-001.r3YoungsterAda_0010",
+          "preserve": "lineIds"
         },
         "name": "trap-duplicate-instance.json",
         "status": 2

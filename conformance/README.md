@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.35.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.36.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -119,7 +119,20 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `cel-errors` | condition-error-as-not-satisfied and `::set` evaluation errors that halt without a partial write |
 | `grant-instance` | a single-walk `lute run` fixture pinning `instance` and `index` field presence on objective and quest rewards; multi-run identity is pinned by `crates/lute-cli/tests/grant_identity.rs` |
 | `grant-replay` | a single-walk `lute run` fixture pinning stable grant identity fields and objective/index coordinates; replay and multi-run identity are pinned by `crates/lute-cli/tests/grant_identity.rs` |
-| `invalid/owned-write` | hand-built IR rejection of an engine-owned state write with `E-RUN-OWNED-WRITE` (invalid fixture class) |
+| `identity/explicit-component` | explicit `instance="use-001"`/`use-002` component scopes; nested component joins remain stable under insertion |
+| `identity/insertion-before-repeat` | inserting before a repeated component preserves authored instance identities |
+| `identity/rename-ledger` | a project manifest's quest rename expands to objective/state pairs in `identityRenames`; `requiredSemantics` includes `lute.identity.renames/1` |
+| `identity/save-collision` | the real rename ledger is paired with `save-before.json` and `migration-report.json`; engines MUST reproduce the report's refusal/coalescing outcomes before mutating saves |
+
+The component-key uniqueness rule is intentionally strict: duplicate keys in
+mutually exclusive branches still conflict when they share one immediate
+owner (scenario DSL 0.36.0 §2.1). Checker tests cover that diagnostic; it is
+not a runtime conformance fixture.
+
+The save format is engine-owned. `save-collision/migration-report.json` is the
+engine contract data: an engine MUST apply the artifact's `identityRenames`
+atomically, refuse unequal destination values while leaving the save unchanged,
+and MAY coalesce equal values.
 
 The command inventory is intentionally explicit: every currently supported runtime
 command kind is covered by at least one fixture above or by the pre-existing
@@ -127,7 +140,7 @@ fixtures. `command-staging` covers `background`, `music`, `sfx`, `vfx`, `sprite`
 `camera`, `cut`, `video`, and `barrier`; `command-lifecycle` covers `accept`,
 `beat`, and `retract`; `command-plugin` covers `plugin`. No requested kind is
 unsupported by the reference runner. The staging fixture uses a live
-`luteVersion: "0.35.0"` header, as do the lifecycle and plugin sources.
+`luteVersion: "0.36.0"` header, as do the lifecycle and plugin sources.
 
 ## Boundaries — what the reference runner deliberately does NOT implement
 
@@ -195,7 +208,7 @@ Invalid engine fixtures use `engine.yaml`, an artifact, and `expected-stderr`; t
 
 ## Edit-task suite
 
-The 0.35.0 AI edit-loop conformance suite is in
+The 0.36.0 AI edit-loop conformance suite is in
 [`edit-tasks/`](edit-tasks/). It contains 12 inspect/plan/patch/check cases;
 `REPORT.json` records the expected outcomes.
 

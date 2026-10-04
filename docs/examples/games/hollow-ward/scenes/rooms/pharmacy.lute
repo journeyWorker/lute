@@ -10,6 +10,6 @@ priority: 10
 ## Pharmacy
 
 ::bg{location="pharmacy" time="night"}
-@narrator: Shelves of brown bottles, labels curled like fingernails. Every one of them has been opened.
-@narrator: Hanging on a hook by the hatch: a key tag stamped MORTUARY. In the fridge, which should not be cold and is, a single loaded syringe with a label in green ink: FOR A.C. ONLY.
-@nell{mono}: A.C. Whoever that is, they needed putting down on a schedule.
+@narrator{code="0010"}: Shelves of brown bottles, labels curled like fingernails. Every one of them has been opened.
+@narrator{code="0020"}: Hanging on a hook by the hatch: a key tag stamped MORTUARY. In the fridge, which should not be cold and is, a single loaded syringe with a label in green ink: FOR A.C. ONLY.
+@nell{code="0010" mono}: A.C. Whoever that is, they needed putting down on a schedule.

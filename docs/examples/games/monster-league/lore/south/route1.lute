@@ -8,60 +8,60 @@ title: Route 1 — Hollowtown to the Hushwood crossroads
 // youngsters by day; one youngster who should be in bed by night.
 
 <beat id="enter" on="enterRoute" target="route.r1" title="Route 1" priority="10">
-  @narrator: ROUTE 1 — Hollowtown to the Hushwood crossroads. Someone has written "KAI WAS HERE" under the sign, and then, smaller, "FIRST".
-  @r1Joss: Off to Pebbleton, are you? Here. My mother swore by these and she lived to ninety-eight.
+  @narrator{code="0010"}: ROUTE 1 — Hollowtown to the Hushwood crossroads. Someone has written "KAI WAS HERE" under the sign, and then, smaller, "FIRST".
+  @r1Joss{code="0010"}: Off to Pebbleton, are you? Here. My mother swore by these and she lived to ninety-eight.
   ::give{item="potion" qty="2"}
-  @r1Joss: Stay out of the tall grass if you've no monster with you. You've got one? Then get in there.
+  @r1Joss{code="0020"}: Stay out of the tall grass if you've no monster with you. You've got one? Then get in there.
 </beat>
 
 <entry id="southR1Morning" on="enterRoute" target="route.r1" category="bark" once="day" when="@isMorning">
-  @narrator: Dew on the long grass. Pidgelings argue on the fence posts about who got there first.
+  @narrator{code="0010"}: Dew on the long grass. Pidgelings argue on the fence posts about who got there first.
 </entry>
 
 <entry id="southR1Day" on="enterRoute" target="route.r1" category="bark" once="day" when="run.slot == 'day'">
-  @narrator: The hay is being cut. Scurrats run from the blades in little panicked waves.
+  @narrator{code="0010"}: The hay is being cut. Scurrats run from the blades in little panicked waves.
 </entry>
 
 <entry id="southR1Night" on="enterRoute" target="route.r1" category="bark" once="day" when="@isNight">
-  @narrator: The fields are black and loud with crickets. Something small with red eyes watches you from the ditch.
+  @narrator{code="0010"}: The fields are black and loud with crickets. Something small with red eyes watches you from the ditch.
 </entry>
 
 // ── Farmer Joss ──────────────────────────────────────────────────────────
 
 <entry id="southR1JossMorning" on="talk" target="npc.r1Joss" category="bark" priority="10" when="@isMorning">
-  @r1Joss: Up before the rooster, same as me. You'll go far. Probably Pebbleton, at least.
+  @r1Joss{code="0010"}: Up before the rooster, same as me. You'll go far. Probably Pebbleton, at least.
 </entry>
 
 <entry id="southR1JossNight" on="talk" target="npc.r1Joss" category="bark" priority="10" when="@isNight">
-  @r1Joss: I'm out checking the fences. Duskbats chew the rope. Go home, youngster.
+  @r1Joss{code="0010"}: I'm out checking the fences. Duskbats chew the rope. Go home, youngster.
 </entry>
 
 <entry id="southR1Joss" on="talk" target="npc.r1Joss" category="bark">
-  @r1Joss: Monsters, crops, weather. You can't hurry any of the three.
+  @r1Joss{code="0010"}: Monsters, crops, weather. You can't hurry any of the three.
 </entry>
 
 // ── Trainers ─────────────────────────────────────────────────────────────
 
-<beat use="trainerBattle" id="r1YoungsterTodd" when="!@isNight" who="r1YoungsterTodd" intro="Hey! You've got a monster! That means we have to battle. It's the law. Probably." win="Okay, it's not actually the law." lose="See? The law is on my side." prize="96"/>
+<beat use="trainerBattle" id="r1YoungsterTodd" when="!@isNight" who="r1YoungsterTodd" intro="Hey! You've got a monster! That means we have to battle. It's the law. Probably." win="Okay, it's not actually the law." lose="See? The law is on my side." prize="96" instance="use-001"/>
 
 <entry id="southR1YoungsterToddAfter" on="talk" target="npc.r1YoungsterTodd" category="bark" when="holds('defeated', ['r1YoungsterTodd'])">
-  @r1YoungsterTodd: My cousin says if you rub a Pebblet it gets shinier. It doesn't. I rubbed it for a week.
+  @r1YoungsterTodd{code="0010"}: My cousin says if you rub a Pebblet it gets shinier. It doesn't. I rubbed it for a week.
 </entry>
 
-<beat use="trainerBattle" id="r1LassMina" who="r1LassMina" intro="You looked at me! Don't pretend you didn't. Battle!" win="Fine. Maybe you were looking at the view." lose="Next time, don't stare." prize="120"/>
+<beat use="trainerBattle" id="r1LassMina" who="r1LassMina" intro="You looked at me! Don't pretend you didn't. Battle!" win="Fine. Maybe you were looking at the view." lose="Next time, don't stare." prize="120" instance="use-002"/>
 
 <entry id="southR1LassMinaAfter" on="talk" target="npc.r1LassMina" category="bark" when="holds('defeated', ['r1LassMina'])">
-  @r1LassMina: I'm waiting for the Pebbleton bus. There is no Pebbleton bus. I'm starting to think there never was.
+  @r1LassMina{code="0010"}: I'm waiting for the Pebbleton bus. There is no Pebbleton bus. I'm starting to think there never was.
 </entry>
 
-<beat use="trainerBattle" id="r1BugCatcherRene" when="!@isNight" who="r1BugCatcherRene" intro="Shh! You'll scare the Inchlets. Actually, you already did. Now we battle." win="My Inchlets need a nap." lose="Bugs are small, but they're many!" prize="80"/>
+<beat use="trainerBattle" id="r1BugCatcherRene" when="!@isNight" who="r1BugCatcherRene" intro="Shh! You'll scare the Inchlets. Actually, you already did. Now we battle." win="My Inchlets need a nap." lose="Bugs are small, but they're many!" prize="80" instance="use-003"/>
 
 <entry id="southR1BugCatcherReneAfter" on="talk" target="npc.r1BugCatcherRene" category="bark" when="holds('defeated', ['r1BugCatcherRene'])">
-  @r1BugCatcherRene: An Inchlet turns into a Cocoonix and just sits there. I respect that. I'd like a week of just sitting.
+  @r1BugCatcherRene{code="0010"}: An Inchlet turns into a Cocoonix and just sits there. I respect that. I'd like a week of just sitting.
 </entry>
 
-<beat use="trainerBattle" id="r1YoungsterBen" when="@isNight" who="r1YoungsterBen" intro="Don't tell my mum I'm out! Battle me and we'll call it even!" win="Okay, okay. Now we're even. Still don't tell her." lose="Ha! Night training works!" prize="104"/>
+<beat use="trainerBattle" id="r1YoungsterBen" when="@isNight" who="r1YoungsterBen" intro="Don't tell my mum I'm out! Battle me and we'll call it even!" win="Okay, okay. Now we're even. Still don't tell her." lose="Ha! Night training works!" prize="104" instance="use-004"/>
 
 <entry id="southR1YoungsterBenAfter" on="talk" target="npc.r1YoungsterBen" category="bark" when="holds('defeated', ['r1YoungsterBen']) && @isNight">
-  @r1YoungsterBen: Duskbats only come out at night. That's why I'm out. That's the whole reason. Scientifically.
+  @r1YoungsterBen{code="0010"}: Duskbats only come out at night. That's why I'm out. That's the whole reason. Scientifically.
 </entry>

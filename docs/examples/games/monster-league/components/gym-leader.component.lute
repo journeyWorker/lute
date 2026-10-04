@@ -14,19 +14,19 @@ params:
 /* The leader on stage speaking as themself (`@@who`), the battle, and on a
 win the badge. The outcome is this component's own ::battle result. */
 ::auto{character=@who action="enter"}
-@@who: {{@intro}}
+@@who{code="0010"}: {{@intro}}
 ::music{action="change" mood="battle" volume="up"}
 ::battle{foe=@who kind="gym" resultKey="fight"}
 <match on="scene.battle.fight.won">
   <when is="true">
-    @@who: {{@win}}
+    @@who{code="0020"}: {{@win}}
     ::assert{defeated(@who)}
     ::assert{hasBadge(@badge)}
     ::set{run.money += @prize}
     ::sfx{sound="badge-fanfare"}
-    @narrator: {{userName}} received the {{@badge}}!
+    @narrator{code="0010"}: {{userName}} received the {{@badge}}!
   </when>
   <otherwise>
-    @@who: {{@lose}}
+    @@who{code="0030"}: {{@lose}}
   </otherwise>
 </match>

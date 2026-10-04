@@ -6,14 +6,14 @@ title: The harbor meeting
 
 ## Meeting
 
-@mara: The lantern festival is coming. We need hands.
+@mara{code="0010"}: The lantern festival is coming. We need hands.
 <branch id="help" prompt="Will you help?">
   <choice id="yes" label="Count me in">
     ::set{user.bond.mara += 1}
     ::assert{canSail(gull)}
-    @mara: Good. Take the Gull out tomorrow.
+    @mara{code="0020"}: Good. Take the Gull out tomorrow.
   </choice>
   <choice id="no" label="Maybe later">
-    @mara: Suit yourself.
+    @mara{code="0030"}: Suit yourself.
   </choice>
 </branch>

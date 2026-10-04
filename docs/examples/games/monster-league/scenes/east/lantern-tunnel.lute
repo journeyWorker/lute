@@ -13,6 +13,6 @@ target: place.lanternTunnel
 
 ::bg{location="lantern-tunnel" time="night"}
 ::music{action="change" mood="eerie" volume="down"}
-@narrator: Old lamp brackets line the tunnel walls, every one of them empty. The dark swallows the light from outside after three steps.
-@narrator: Your monster's Flash fills the tunnel with white. Something with a lot of legs leaves in a hurry.
-@narrator: Hand-painted on the wall, faded: ASHGROVE, 2 MILES. MIND THE HIKERS.
+@narrator{code="0010"}: Old lamp brackets line the tunnel walls, every one of them empty. The dark swallows the light from outside after three steps.
+@narrator{code="0020"}: Your monster's Flash fills the tunnel with white. Something with a lot of legs leaves in a hurry.
+@narrator{code="0030"}: Hand-painted on the wall, faded: ASHGROVE, 2 MILES. MIND THE HIKERS.

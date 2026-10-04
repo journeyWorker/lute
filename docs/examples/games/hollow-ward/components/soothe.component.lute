@@ -17,7 +17,7 @@ beat:
 same three moves every time: the patient's own words (the beat body), the
 tune, and the bed going still. */
 ::body
-@narrator: {{@tune}}
-@narrator: The breathing under the sheet slows, and stops, and does not start again.
+@narrator{code="0010"}: {{@tune}}
+@narrator{code="0020"}: The breathing under the sheet slows, and stops, and does not start again.
 ::assert{calmed(@who)}
 ::set{run.hush += 1}

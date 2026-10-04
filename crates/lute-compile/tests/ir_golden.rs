@@ -284,6 +284,7 @@ fn timeline_stamp_and_source_flatten() {
             source: Some(Source {
                 component: "stinger".into(),
                 scope: "stinger#1".into(),
+                stable: false,
             }),
             ..Stamp::default()
         },
@@ -431,6 +432,7 @@ fn envelope_serializes_with_state_entries() {
         lute: "0.3.0".into(),
         ir_version: "0.3.0".into(),
         capability_version: "cap-sha".into(),
+        identity_renames: vec![],
         required_semantics: vec![],
         meta: ArtifactMeta::Scene(SceneMeta {
             id: "marina.s01ep02".into(),

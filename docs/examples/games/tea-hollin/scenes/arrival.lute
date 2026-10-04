@@ -7,6 +7,6 @@ pov: pippa
 
 ## The Front Step
 
-@narrator: Number nine Hollin Street smells of lemon polish and scones.
-@aunt_mabel: Pippa, darling! You're late, and the spoons are counted.
-@pippa{mono}: The spoons are always counted in this house.
+@narrator{code="0010"}: Number nine Hollin Street smells of lemon polish and scones.
+@aunt_mabel{code="0010"}: Pippa, darling! You're late, and the spoons are counted.
+@pippa{code="0010" mono}: The spoons are always counted in this house.

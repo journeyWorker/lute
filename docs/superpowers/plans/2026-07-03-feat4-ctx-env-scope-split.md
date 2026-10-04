@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # FEAT-4: `Ctx` Env/Scope Split — maintainability refactor (audit #5)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.

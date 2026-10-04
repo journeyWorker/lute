@@ -10,7 +10,7 @@ priority: 10
 ## The Landing
 
 ::bg{location="skerry_landing" time="day"}
-@narrator: The iron steps go down into green water. Weed hangs from the chain like wet hair.
-@narrator: Something dark is jammed in the chain above the tide line. A coat.
-@narrator: On the lowest step, fresh scrapes in the weed: a small boat tied up here, and not long ago.
-@inspector{mono}: The Guillemot came ashore on the north side, in pieces. Whoever tied up here came in something that still floats.
+@narrator{code="0010"}: The iron steps go down into green water. Weed hangs from the chain like wet hair.
+@narrator{code="0020"}: Something dark is jammed in the chain above the tide line. A coat.
+@narrator{code="0030"}: On the lowest step, fresh scrapes in the weed: a small boat tied up here, and not long ago.
+@inspector{code="0010" mono}: The Guillemot came ashore on the north side, in pieces. Whoever tied up here came in something that still floats.

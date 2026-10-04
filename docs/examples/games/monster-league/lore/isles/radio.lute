@@ -9,5 +9,5 @@ title: The Sunfall morning report
 // occasion raised for no target).
 
 <entry id="islesBeaconReport" on="dayStart" for="kind:island" category="bark" when="holds('islesRelit', [occasion.target])">
-  @announcer: The {{occasion.target}} beacon burned all night. The island boats report calm water.
+  @announcer{code="0010"}: The {{occasion.target}} beacon burned all night. The island boats report calm water.
 </entry>

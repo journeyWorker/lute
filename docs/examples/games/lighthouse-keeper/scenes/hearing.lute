@@ -10,26 +10,26 @@ after: 'visited("rock.report")'
 
 ::bg{location="board_room" time="day"}
 ::auto{character="chair" anchor="center" action="fadeInUp"}
-@chair: The inquiry into the loss of Keeper Elias Voss, Skerry Rock light. The inspector's report is before us.
+@chair{code="0010"}: The inquiry into the loss of Keeper Elias Voss, Skerry Rock light. The inspector's report is before us.
 <match on="run.verdictFate">
   <when is="fell">
-    @chair: The inspector finds that Voss fell from the lantern gallery while clearing salt from the glass, the seaward rail having failed.
+    @chair{code="0020"}: The inspector finds that Voss fell from the lantern gallery while clearing salt from the glass, the seaward rail having failed.
   </when>
   <when is="murdered">
-    @chair: The inspector alleges foul play. A grave charge. The Board will want to see how it is supported.
+    @chair{code="0030"}: The inspector alleges foul play. A grave charge. The Board will want to see how it is supported.
   </when>
   <when is="drowned">
-    @chair: The inspector finds that Voss was taken by the sea from the landing.
+    @chair{code="0040"}: The inspector finds that Voss was taken by the sea from the landing.
   </when>
 </match>
 <match on="run.verdictOnRock">
   <when is="ada">
-    @chair: And that the assistant keeper, Miss Pell, was on the rock against orders, and kept the light burning until dawn.
+    @chair{code="0050"}: And that the assistant keeper, Miss Pell, was on the rock against orders, and kept the light burning until dawn.
   </when>
   <when is="tobias">
-    @chair: And that the fisherman Crane came out to the rock that night.
+    @chair{code="0060"}: And that the fisherman Crane came out to the rock that night.
   </when>
   <otherwise>
-    @chair: And that the keeper was alone on the rock.
+    @chair{code="0070"}: And that the keeper was alone on the rock.
   </otherwise>
 </match>

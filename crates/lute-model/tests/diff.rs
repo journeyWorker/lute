@@ -172,6 +172,7 @@ fn speaker_and_line_id_changes_are_removed_and_added() {
     cleanup(before, after);
 }
 
+
 #[test]
 fn authored_line_id_change_is_removed_and_added() {
     let before = temp_dir("line-id-before");
@@ -180,8 +181,8 @@ fn authored_line_id_change_is_removed_and_added() {
     std::fs::write(before.join("scene.lute"), format!("{prefix}@hero{{code=\"0010\"}}: Hello\n")).unwrap();
     std::fs::write(after.join("scene.lute"), format!("{prefix}@hero{{code=\"0020\"}}: Hello\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
-    assert!(diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Removed) && c.node.canonical() == "line:hall.hero_0010"));
-    assert!(diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Added) && c.node.canonical() == "line:hall.hero_0020"));
+    assert!(diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Removed) && c.node.canonical() == "line:hall.hero_0010" && c.unmapped_identity));
+    assert!(diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Added) && c.node.canonical() == "line:hall.hero_0020" && c.unmapped_identity));
     cleanup(before, after);
 }
 
@@ -291,6 +292,24 @@ fn document_id_change_is_removed_and_added() {
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Removed)));
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Added)));
+    cleanup(before, after);
+}
+
+#[test]
+fn authored_quest_rename_is_one_renamed_row_per_mapped_node() {
+    let before = temp_dir("quest-rename-before");
+    let after = temp_dir("quest-rename-after");
+    let old = "---\nkind: quest\nid: q\n---\n\n<quest id=\"oldQuest\" start=\"true\">\n\
+                <objective id=\"reach\" title=\"Reach\" done=\"quest.oldQuest.state == 'complete'\"/>\n</quest>\n";
+    let new = old.replace("oldQuest", "newQuest");
+    let manifest = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\nidentity:\n  renames:\n    \"quest:oldQuest\": \"quest:newQuest\"\n";
+    std::fs::write(before.join("quest.lute"), old).unwrap();
+    std::fs::write(after.join("quest.lute"), new).unwrap();
+    std::fs::write(after.join("lute.project.yaml"), manifest).unwrap();
+    let diff = diff_models(&model(&before), &model(&after)).unwrap();
+    let renamed = diff.changes.iter().filter(|c| matches!(c.kind, lute_model::ChangeKind::Renamed { .. })).count();
+    assert_eq!(renamed, 3, "{:?}", diff.changes);
+    assert!(!diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Removed | lute_model::ChangeKind::Added)));
     cleanup(before, after);
 }
 

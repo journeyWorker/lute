@@ -8,8 +8,8 @@ once: user
 
 ## A lantern in the snow
 
-@narrator: The last hound drops something as it flees: a lantern, cracked, with a single star inside.
-@lumi{emotion="surprised"}: That's Nell! She lived next to me! She owes me a comet!
-@narrator: The glass breaks. A pinprick of light shoots up and sticks to the sky.
-@aria{emotion="happy"}: Nine thousand nine hundred and... well. One more.
-@lumi: The keep's past the mountains. The road there isn't open yet. We'll need a lot more stars.
+@narrator{code="0010"}: The last hound drops something as it flees: a lantern, cracked, with a single star inside.
+@lumi{code="0010" emotion="surprised"}: That's Nell! She lived next to me! She owes me a comet!
+@narrator{code="0020"}: The glass breaks. A pinprick of light shoots up and sticks to the sky.
+@aria{code="0010" emotion="happy"}: Nine thousand nine hundred and... well. One more.
+@lumi{code="0020"}: The keep's past the mountains. The road there isn't open yet. We'll need a lot more stars.

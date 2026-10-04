@@ -10,9 +10,9 @@ proof of its own: Maelis takes it as she would the ledger (quest parley). */
   <objective id="roll" title="Find what Coldwater kept of itself" done="holds('knows', ['roll'])"/>
   <objective id="isolde" title="Show Isolde the roll" on="talk" target="npc.isolde" done="holds('knows', ['roll'])"/>
   <on event="questComplete">
-    @narrator: Two hundred and six names. You find you have read every one.
+    @narrator{code="0010"}: Two hundred and six names. You find you have read every one.
   </on>
   <on event="questFailed">
-    @narrator: The roll stays in your pack. There is nobody left to read it to.
+    @narrator{code="0020"}: The roll stays in your pack. There is nobody left to read it to.
   </on>
 </quest>

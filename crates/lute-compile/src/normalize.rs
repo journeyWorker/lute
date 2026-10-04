@@ -7,9 +7,9 @@
 //! Component-sourced regions are wrapped in `__component-begin`/`-end`
 //! sentinel directives (reserved `__` prefix — the parser can never produce
 //! them from source). The stage walker (Task 8) consumes them into
-//! `source { component }` stamps; they emit no records. The begin sentinel
-//! also carries the expansion's identity segment `{component}#{n}` (dsl
-//! 0.22.0 §11, [`component_scope`]).
+//! source { component } stamps; they emit no records. The begin sentinel
+//! also carries the expansion's identity segment `{component}#{instance}` for
+//! authored uses (or a warning-bearing transition fallback).
 
 use std::collections::BTreeMap;
 
@@ -32,20 +32,13 @@ use lute_syntax::ast::{
 pub const COMPONENT_BEGIN: &str = "__component-begin";
 pub const COMPONENT_END: &str = "__component-end";
 
-/// The begin sentinel's identity-segment attr: `{component}#{n}`, where `n`
-/// is the 1-based ordinal of this `::use` among the host's uses of the SAME
-/// component, in document order (dsl 0.22.0 §11). The host is one identity
-/// scope of the document (all shots together; each `<quest>`; each
-/// `<entry>`) or, for a nested `::use`, the enclosing component expansion.
-/// A line's `lineId`/`voiceKey` prefix is the host prefix joined with every
-/// enclosing segment, outermost first — so two uses never share an id and a
-/// component line never shares one with its host.
+/// The begin sentinel's identity segment: `{component}#{instance}` for an
+/// authored key, or `{component}#{n}` for the warning-bearing transition
+/// fallback. The latter is never exposed as stable identity metadata.
 const COMPONENT_SCOPE_ATTR: &str = "scope";
+const COMPONENT_STABLE_ATTR: &str = "__stable";
 
-/// The identity segment a begin sentinel carries ([`COMPONENT_SCOPE_ATTR`]);
-/// empty for any other directive. Every consumer that re-derives a
-/// component line's `lineId` (the addressing pass via the stage walker,
-/// `lute loc export`) reads it from here, so they cannot disagree.
+/// The identity segment a begin sentinel carries ([`COMPONENT_SCOPE_ATTR`]).
 pub fn component_scope(d: &Directive) -> &str {
     d.attrs
         .iter()
@@ -54,6 +47,17 @@ pub fn component_scope(d: &Directive) -> &str {
             _ => None,
         })
         .unwrap_or("")
+}
+
+/// Whether a component scope is authored. Missing/invalid uses use the
+/// transition ordinal only as a warning-bearing fallback.
+pub fn component_stable(d: &Directive) -> bool {
+    d.attrs.iter().find_map(|a| {
+        (a.key == COMPONENT_STABLE_ATTR).then(|| match &a.value {
+            AttrValue::Str(s) => s == "true",
+            _ => false,
+        })
+    }).unwrap_or(false)
 }
 
 /// dsl 0.27.0 §6: carried by the two sentinels a template's `::body` split
@@ -163,8 +167,14 @@ struct Components<'a> {
     domains: &'a BTreeMap<String, Domain>,
 }
 
-/// Per-host `::use` ordinals, keyed by component name.
-type UseOrdinals = BTreeMap<String, u32>;
+/// Per-owner component instance allocation. Explicit keys are independent of
+/// positional fallback counters, so inserting a keyed use never renumbers a
+/// keyed sibling.
+#[derive(Default)]
+struct UseIdentityState {
+    fallback_ordinals: BTreeMap<String, u32>,
+    explicit: std::collections::BTreeSet<(String, String)>,
+}
 
 /// Normalize the tree in place: no `::use` survives; persists are real `Set`s.
 /// Total; failures (gate-proven unreachable) degrade to `E-COMPILE-COMPONENT`.
@@ -192,7 +202,7 @@ pub fn normalize_document(
     let mut diags = Vec::new();
     // One ordinal counter per identity scope (see `COMPONENT_SCOPE_ATTR`):
     // shots share one, each quest and each entry gets its own.
-    let mut shot_uses = UseOrdinals::new();
+    let mut shot_uses = UseIdentityState::default();
     for shot in &mut doc.shots {
         expand_target_uses(&mut shot.body, targets);
         normalize_nodes(
@@ -208,7 +218,7 @@ pub fn normalize_document(
             &mut quest.body,
             components,
             schema,
-            &mut UseOrdinals::new(),
+            &mut UseIdentityState::default(),
             &mut diags,
         );
     }
@@ -220,7 +230,7 @@ pub fn normalize_document(
             &mut entry.body,
             components,
             schema,
-            &mut UseOrdinals::new(),
+            &mut UseIdentityState::default(),
             &mut diags,
         );
     }
@@ -232,7 +242,7 @@ pub fn normalize_document(
             &mut beat.body,
             components,
             schema,
-            &mut UseOrdinals::new(),
+            &mut UseIdentityState::default(),
             &mut diags,
         );
     }
@@ -475,7 +485,7 @@ fn normalize_nodes(
     nodes: &mut Vec<Node>,
     components: &Components<'_>,
     schema: &StateSchema,
-    uses: &mut UseOrdinals,
+    uses: &mut UseIdentityState,
     diags: &mut Vec<Diagnostic>,
 ) {
     // dsl 0.27.0 §6: the tail (after `::body`) of a template expanded
@@ -763,13 +773,38 @@ pub(crate) fn guard_match(guard: CelSlot, body: Vec<Node>, span: Span) -> Node {
         span,
     })
 }
+fn identity_diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: code.to_string(),
+        severity,
+        message,
+        evidence: None,
+        span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+fn valid_instance_token(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1..]
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'-')
+}
+
 
 /// `::use{component="name" <arg>=…}` → `[begin, …bound body…, end]`.
 fn expand_use(
     d: &Directive,
     components: &Components<'_>,
     schema: &StateSchema,
-    uses: &mut UseOrdinals,
+    uses: &mut UseIdentityState,
     diags: &mut Vec<Diagnostic>,
 ) -> Vec<Node> {
     let name = d
@@ -798,6 +833,60 @@ fn expand_use(
         return Vec::new();
     };
     let name = name.unwrap_or_default();
+    let instance_attrs: Vec<&Attr> = d.attrs.iter().filter(|a| a.key == "instance").collect();
+    let mut stable = false;
+    let mut instance = None;
+    if instance_attrs.len() > 1 {
+        for attr in instance_attrs.iter().skip(1) {
+            diags.push(identity_diag(
+                "E-COMPONENT-INSTANCE-INVALID",
+                Severity::Error,
+                format!(
+                    "`::use` has more than one `instance` identity attribute for component `{name}`"
+                ),
+                attr.span,
+            ));
+        }
+    } else if let Some(attr) = instance_attrs.first() {
+        match &attr.value {
+            AttrValue::Str(value) if valid_instance_token(value) => {
+                if !uses.explicit.insert((name.clone(), value.clone())) {
+                    diags.push(identity_diag(
+                        "E-COMPONENT-INSTANCE-DUPLICATE",
+                        Severity::Error,
+                        format!(
+                            "component `{name}` instance `{value}` is duplicated in one expansion owner"
+                        ),
+                        attr.span,
+                    ));
+                }
+                stable = true;
+                instance = Some(value.clone());
+            }
+            AttrValue::Str(value) => {
+                diags.push(identity_diag(
+                    "E-COMPONENT-INSTANCE-INVALID",
+                    Severity::Error,
+                    format!(
+                        "component `{name}` instance must match [A-Za-z][A-Za-z0-9_-]{{0,63}}, got `{value}`"
+                    ),
+                    attr.value_span,
+                ));
+            }
+            _ => {
+                diags.push(identity_diag(
+                    "E-COMPONENT-INSTANCE-INVALID",
+                    Severity::Error,
+                    format!("component `{name}` instance must be an ASCII token"),
+                    attr.value_span,
+                ));
+            }
+        }
+    } else {
+        // The checker emits W-COMPONENT-INSTANCE-UNTAGGED. Normalization
+        // carries the unstable fallback marker but does not duplicate the
+        // front-end warning.
+    }
     let args = use_args_for(d, def);
     // Defensive arg/param validation (checker gate: E-COMPONENT-ARG). The
     // invocation's arg key set MUST match `def.params` exactly — no missing,
@@ -866,16 +955,20 @@ fn expand_use(
         &mut body,
         components,
         schema,
-        &mut UseOrdinals::new(),
+        &mut UseIdentityState::default(),
         diags,
     );
     // §6.4: static selection / residual dispatch for any param-scoped
     // `<match>` in the bound body — runs ONLY here, on this clone (B2).
     fold_component_matches(&mut body, schema);
 
-    let ordinal = uses.entry(name.clone()).or_insert(0);
-    *ordinal += 1;
-    let scope = format!("{name}#{ordinal}");
+    let scope = if let Some(instance) = instance {
+        format!("{name}#{instance}")
+    } else {
+        let ordinal = uses.fallback_ordinals.entry(name.clone()).or_insert(0);
+        *ordinal += 1;
+        format!("{name}#{ordinal}")
+    };
     let span = d.span;
     let attr = |key: &str, value: String| Attr {
         key: key.to_string(),
@@ -886,7 +979,11 @@ fn expand_use(
     // dsl 0.26.0 §4: a guarded `::use` rides its guard on the begin sentinel;
     // `expand` wraps begin…end in the one-arm match once the enclosing `$`
     // has expanded ([`guard_match`]).
-    let mut attrs = vec![attr("component", name), attr(COMPONENT_SCOPE_ATTR, scope)];
+    let mut attrs = vec![
+        attr("component", name),
+        attr(COMPONENT_SCOPE_ATTR, scope),
+        attr(COMPONENT_STABLE_ATTR, stable.to_string()),
+    ];
     if d.when.is_some() {
         attrs.push(attr(
             AUTHORED_ATTR,

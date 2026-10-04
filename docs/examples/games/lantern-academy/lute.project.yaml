@@ -15,8 +15,10 @@ defaultProfile: academy
 profiles:
   academy:
     plugins: { academy.engine: true }
+identity:
+  requireStable: true
 defaults:
-  luteVersion: "0.35.0"
+  luteVersion: "0.36.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
   # every quest is a term quest unless it says tier="user"
   questTier: run

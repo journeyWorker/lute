@@ -14,8 +14,8 @@ when: "!holds('islesLensBack', ['emberkey'])"
 ## The lamp room
 
 ::bg{location="emberkey-beacon" time="day"}
-@narrator: The lamp room at the top of the Emberkey beacon is hot as an oven. A grunt in a grey coat is trying to fit the great lens into a sack.
-@duskGruntCinder: This lens is Remnant property now. Nyx says so.
-::use{component="trainerBattle" who="duskGruntCinder" intro="Back down the stairs, Champion. Or go down them faster." win="Hot. Too hot. Take it!" lose="Stairs are that way." prize="1800"}
+@narrator{code="0010"}: The lamp room at the top of the Emberkey beacon is hot as an oven. A grunt in a grey coat is trying to fit the great lens into a sack.
+@duskGruntCinder{code="0010"}: This lens is Remnant property now. Nyx says so.
+::use{component="trainerBattle" who="duskGruntCinder" intro="Back down the stairs, Champion. Or go down them faster." win="Hot. Too hot. Take it!" lose="Stairs are that way." prize="1800" instance="use-001"}
 ::assert{islesLensBack(emberkey) when="@wonFight"}
-@narrator{when="@wonFight"}: The lens is heavier than it looks. Keeper Brand will want it back.
+@narrator{code="0020" when="@wonFight"}: The lens is heavier than it looks. Keeper Brand will want it back.

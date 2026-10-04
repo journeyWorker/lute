@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::core::load_core_snapshot;
 use crate::loader::load_plugins_dir;
@@ -25,6 +25,22 @@ use crate::resolve::{
 use crate::snapshot::CapabilitySnapshot;
 use crate::types::Literal;
 use crate::constraints::{parse_constraints, ConstraintDecl};
+
+/// A resolved canonical identity migration entry. The manifest loader keeps
+/// source spans separately; this wire DTO is intentionally only the two
+/// canonical keys that engines consume.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct IdentityRename {
+    pub from: String,
+    pub to: String,
+}
+
+/// One authored ledger entry together with its manifest declaration location.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IdentityRenameDecl {
+    pub rename: IdentityRename,
+    pub span: Option<lute_core_span::Span>,
+}
 
 /// A loaded `lute.project.yaml`: the resolved profile graph plus the absolute
 /// plugins directory the registry loads from.
@@ -51,10 +67,20 @@ pub struct ProjectConfig {
     pub identity: IdentityTemplates,
     /// `E-IDENTITY-TEMPLATE` diagnostics raised while resolving `identity:`.
     /// Held on the config rather than failing the load, so a bad template
-    /// degrades to the default shape instead of collapsing the whole project
+    /// degrades to the default instead of collapsing the whole project
     /// to core-only; [`resolve_document_snapshot`] replays them so BOTH the
     /// CLI and the LSP report them (the no-divergence invariant).
     pub identity_diags: Vec<ResolveDiag>,
+    /// Whether the project opts into stable-identity diagnostics for untagged
+    /// lines and component uses. Defaults to false for the transition period.
+    pub identity_require_stable: bool,
+    /// Authored identity migration entries, retained with their source spans
+    /// until project graph resolution can validate their endpoints.
+    pub identity_renames: Vec<IdentityRenameDecl>,
+    /// Malformed ledger declarations that can be reported before graph
+    /// resolution. Endpoint existence and graph-dependent rules are validated
+    /// by `lute-model`.
+    pub identity_rename_diags: Vec<ResolveDiag>,
     /// The manifest's resolved `defaults:` block (0.10.0 §6). Empty when the
     /// manifest supplies none, which is every manifest written before this
     /// release.
@@ -71,7 +97,7 @@ pub struct ProjectConfig {
     /// dsl 0.28.0 §4: `E-CHAPTERS` diagnostics of a malformed `chapters:`
     /// (its shape, or the retired `sequence:` key; the ids are checked
     /// project-wide against the scenes). Reported once per manifest,
-    /// located: by `lute check-project` beside the documents (never fatal to
+    /// located: by `check-project` beside the documents (never fatal to
     /// their check), by the commands that build a project (`compile --all`,
     /// `play`) as a gate.
     pub chapter_diags: Vec<ChapterDiag>,
@@ -83,6 +109,11 @@ pub struct ProjectConfig {
     /// Typed project-level constraints and declaration diagnostics.
     pub constraints: Vec<ConstraintDecl>,
     pub constraint_diags: Vec<ResolveDiag>,
+}
+
+impl ProjectConfig {
+    /// Whether stable identity warnings are enabled for this project.
+    pub fn identity_require_stable(&self) -> bool { self.identity_require_stable }
 }
 
 /// Source locations for one manifest `chapters:` chain.
@@ -153,8 +184,8 @@ pub const MANIFEST_KEYS: [&str; 10] = [
 /// The keys of one `profiles:` entry.
 const PROFILE_KEYS: [&str; 3] = ["extends", "plugins", "permissions"];
 
-/// The keys of `identity:`.
-const IDENTITY_KEYS: [&str; 2] = ["lineId", "voiceKey"];
+/// Keys accepted below `identity:`.
+const IDENTITY_KEYS: [&str; 4] = ["lineId", "voiceKey", "requireStable", "renames"];
 
 /// Keys a schema declares, which a manifest cannot (dsl 0.28.0 §1: "an
 /// engine-only key written in the wrong layer names the layer that owns
@@ -731,14 +762,64 @@ impl FromIterator<(String, serde_yaml::Value)> for MetaDefaults {
     }
 }
 
-/// Raw `identity:` block — both keys optional, each defaulting to its default
-/// shape independently (a project may retemplate `lineId` alone).
-#[derive(Debug, Default, Deserialize)]
+/// Raw `identity:` block — both template keys optional, with an optional
+/// canonical-key rename mapping retained as YAML so malformed entries can
+/// receive the ledger diagnostic rather than a generic manifest-shape error.
+#[derive(Debug, Default, Deserialize, Clone)]
 struct RawIdentity {
     #[serde(rename = "lineId", default)]
     line_id: Option<String>,
     #[serde(rename = "voiceKey", default)]
     voice_key: Option<String>,
+    #[serde(rename = "requireStable", default)]
+    require_stable: bool,
+    #[serde(default)]
+    renames: Option<serde_yaml::Value>,
+}
+
+/// Resolve the YAML mapping while retaining one source location per entry.
+/// Graph-dependent endpoint checks belong to the project model.
+fn resolve_identity_renames(
+    raw: Option<serde_yaml::Value>,
+    text: &str,
+    locate: &dyn Fn(&[&str]) -> Option<std::ops::Range<usize>>,
+) -> (Vec<IdentityRenameDecl>, Vec<ResolveDiag>) {
+    let text_index = lute_core_span::TextIndex::new(text);
+    let mut entries = Vec::new();
+    let mut diags = Vec::new();
+    let Some(raw) = raw else { return (entries, diags) };
+    let serde_yaml::Value::Mapping(map) = raw else {
+        diags.push(ResolveDiag {
+            span: locate(&["identity", "renames"]),
+            code: "E-RENAME-LEDGER".into(),
+            message: "`identity.renames` must be a mapping from canonical NodeKey to canonical NodeKey".into(),
+        });
+        return (entries, diags);
+    };
+    for (from, to) in map {
+        let Some(from) = from.as_str() else {
+            diags.push(ResolveDiag {
+                span: locate(&["identity", "renames"]),
+                code: "E-RENAME-LEDGER".into(),
+                message: "rename source keys must be canonical NodeKey strings".into(),
+            });
+            continue;
+        };
+        let span = locate(&["identity", "renames", from]);
+        let Some(to) = to.as_str() else {
+            diags.push(ResolveDiag {
+                span,
+                code: "E-RENAME-LEDGER".into(),
+                message: format!("rename destination for `{from}` must be a canonical NodeKey string"),
+            });
+            continue;
+        };
+        entries.push(IdentityRenameDecl {
+            rename: IdentityRename { from: from.to_string(), to: to.to_string() },
+            span: span.map(|r| lute_core_span::Span::from_bytes(&text_index, r.start, r.end)),
+        });
+    }
+    (entries, diags)
 }
 
 /// The resolved `identity:` block (0.8.0 §9, adoption G4): the `lineId` and
@@ -1455,11 +1536,15 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
     };
     let plugins_dir = project_dir.join(raw.plugins_dir.as_deref().unwrap_or("plugins/"));
     let catalog_dir = project_dir.join(raw.catalog_dir.as_deref().unwrap_or("catalog/"));
-    let (identity, identity_diags) = resolve_identity(raw.identity, &locate);
-    let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults, &locate);
+    let identity_raw = raw.identity.clone();
+    let identity_require_stable = identity_raw.as_ref().is_some_and(|i| i.require_stable);
+    let (identity, identity_diags) = resolve_identity(identity_raw.clone(), &locate);
+    let (identity_renames, identity_rename_diags) =
+        resolve_identity_renames(identity_raw.and_then(|i| i.renames), &text, &locate);
     let chapter_origins = chapter_origins(&text, raw.chapters.as_ref(), &path);
     let (chapters, chapter_diags) = resolve_chapters(raw.chapters, raw.sequence);
     let (constraints, constraint_diags) = parse_constraints(raw.constraints.as_ref(), &text);
+    let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults, &locate);
     let mut defaults = defaults.with_chapters(chapters);
     if defaults.get("questTier").is_some() {
         if let Some(r) = locate(&["defaults", "questTier"]) {
@@ -1477,6 +1562,9 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
         catalog_dir,
         identity,
         identity_diags,
+        identity_require_stable,
+        identity_renames,
+        identity_rename_diags,
         defaults,
         chapter_origins,
         defaults_diags,
@@ -1552,10 +1640,9 @@ pub fn resolve_document_snapshot(
     let Some(project) = project else {
         return (load_core_snapshot(), Vec::new());
     };
-
-    // `identity:` was validated at load; replay its diagnostics here so the ONE
-    // shared resolver remains the single reporting seam for both surfaces.
     let mut diags = project.identity_diags.clone();
+    diags.extend(project.identity_rename_diags.clone());
+    // shared resolver remains the single reporting seam for both surfaces.
 
     // 1. Load every installed plugin package; surface load errors.
     let (registry, load_errs) = load_plugins_dir(&project.plugins_dir);
@@ -1656,5 +1743,25 @@ mod tests {
             &text[origins[0].scenes["second"].byte_start..origins[0].scenes["second"].byte_end],
             "second"
         );
+    }
+    #[test]
+    fn identity_rename_mapping_is_loaded_with_source_location() {
+        let root = std::env::temp_dir().join(format!(
+            "lute-identity-renames-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let _ = std::fs::create_dir_all(&root);
+        let path = root.join("lute.project.yaml");
+        std::fs::write(
+            &path,
+            "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\nidentity:\n  renames:\n    \"quest:old\": \"quest:new\"\n",
+        )
+        .unwrap();
+        let config = load_project(&root).unwrap().unwrap();
+        assert_eq!(config.identity_renames.len(), 1);
+        assert_eq!(config.identity_renames[0].rename.from, "quest:old");
+        assert!(config.identity_renames[0].span.is_some());
+        let _ = std::fs::remove_dir_all(root);
     }
 }

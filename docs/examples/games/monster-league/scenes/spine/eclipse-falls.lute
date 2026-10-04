@@ -12,9 +12,9 @@ when: "holds('defeated', ['vex'])"
 ::bg{location="earth-gym" time="day"}
 ::music{action="change" mood="sad" volume="down"}
 ::auto{character="vex" anchor="center" action="enter"}
-@vex: So. A child from Hollowtown, with a Dex and a bag of badges.
-@vex{when="run.lair.helixHQ == 'cleared'"}: You took my tower. You took my people out of it one floor at a time. And now this.
-@vex: Team Eclipse is finished. I am finished with it.
-@vex: I am going somewhere quiet, to think about what the monsters owe me and what I owe them. Do not look for me.
+@vex{code="0010"}: So. A child from Hollowtown, with a Dex and a bag of badges.
+@vex{code="0020" when="run.lair.helixHQ == 'cleared'"}: You took my tower. You took my people out of it one floor at a time. And now this.
+@vex{code="0030"}: Team Eclipse is finished. I am finished with it.
+@vex{code="0040"}: I am going somewhere quiet, to think about what the monsters owe me and what I owe them. Do not look for me.
 ::auto{character="vex" action="exit"}
-@narrator: The gym is empty. On the leader's platform, where Director Vex stood, the Earth Badge's case lies open.
+@narrator{code="0010"}: The gym is empty. On the leader's platform, where Director Vex stood, the Earth Badge's case lies open.

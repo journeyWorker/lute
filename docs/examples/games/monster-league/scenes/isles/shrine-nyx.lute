@@ -15,16 +15,16 @@ priority: 10
 ## The inner hall
 
 ::bg{location="sunfall-shrine" time="night"}
-@duskAdminNyx{emotion="angry"}: Vex gave up. I did not. This shrine is the last thing Team Eclipse ever wanted, and I will have it.
+@duskAdminNyx{code="0010" emotion="angry"}: Vex gave up. I did not. This shrine is the last thing Team Eclipse ever wanted, and I will have it.
 ::battle{foe="duskAdminNyx" kind="boss" resultKey="fight"}
 <match on="scene.battle.fight.won">
   <when is="true">
     ::assert{defeated(duskAdminNyx)}
     ::set{run.money += 6000}
-    @duskAdminNyx: Then keep your shrine. There is nothing in it but old light.
-    @narrator: Nyx walks out past {{userName}} and does not look back. The Dusk Remnant leaves Sunport on the morning ferry.
+    @duskAdminNyx{code="0020"}: Then keep your shrine. There is nothing in it but old light.
+    @narrator{code="0010"}: Nyx walks out past {{userName}} and does not look back. The Dusk Remnant leaves Sunport on the morning ferry.
   </when>
   <otherwise>
-    @duskAdminNyx{emotion="smug"}: Go and heal. The shrine and I are not going anywhere.
+    @duskAdminNyx{code="0030" emotion="smug"}: Go and heal. The shrine and I are not going anywhere.
   </otherwise>
 </match>

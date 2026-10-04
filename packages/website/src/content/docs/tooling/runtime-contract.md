@@ -12,7 +12,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
 The machine-checkable shape is
-[`schemas/lute-ir-0.35.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.35.schema.json)
+[`schemas/lute-ir-0.36.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.36.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -46,6 +46,30 @@ fact-query functions the structured `expr` AST deliberately omits".
 The same holds for `visited('<scene id>')` (dsl 0.21.0): legal in every condition slot, true once
 that scene has been presented in this save — the visited set the engine already keeps for
 `after:` — and carried as `cel` text alone.
+
+## Identity migration (0.36.0)
+
+Component scopes use the authored `instance` key:
+`::use{component="hearthFire" instance="opening"}` produces
+`hearthFire#opening`, never an ordinal. A project that publishes joins or saves
+opts into `identity.requireStable: true`; this enables diagnostics for missing
+component instances and line codes. `lute tag` back-fills both, preserving
+existing authored keys and allocating `use-001`, `use-002`, ….
+
+The optional `identityRenames` array in the execution IR and project index is
+the engine's only rename migration input. Each item is `{from, to}` using
+canonical `NodeKey` strings. `lute diff` reports `renamed` for a ledger match
+and `unmappedIdentity` when no authored mapping exists; it never guesses from
+text or position.
+
+```lute check
+---
+kind: scene
+id: runtime-identity
+---
+## Opening
+@narrator{code="intro"}: Ready.
+```
 
 The through-line: Lute proves *shape and structure*; the engine supplies
 *evaluation and effect*. Lute's static analyses are also honest about their

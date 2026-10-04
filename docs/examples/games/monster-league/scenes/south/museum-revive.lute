@@ -15,18 +15,18 @@ when: "run.southFossil != 'none'"
 
 ::bg{location="museum-lab" time="day"}
 ::auto{character="pebbletonKell" anchor="center" action="enter"}
-@pebbletonKell{emotion="surprised"}: Is that — from Moonstone? From the deep beds? Give it here. Gently. GENTLY.
-@pebbletonKell: The machine is old, the theory is older, and I have done this exactly twice. Stand back. Further. Behind the lead screen, please.
+@pebbletonKell{code="0010" emotion="surprised"}: Is that — from Moonstone? From the deep beds? Give it here. Gently. GENTLY.
+@pebbletonKell{code="0020"}: The machine is old, the theory is older, and I have done this exactly twice. Stand back. Further. Behind the lead screen, please.
 ::sfx{sound="revive-machine"}
 ::vfx{type="flash"}
 <match on="run.southFossil">
   <when is="dome">
-    @pebbletonKell{emotion="happy"}: It moved! It's a Domefossil! It's looking at you like you owe it seventy million years of rent.
+    @pebbletonKell{code="0030" emotion="happy"}: It moved! It's a Domefossil! It's looking at you like you owe it seventy million years of rent.
     ::gift{species="domefossil" level="5"}
   </when>
   <when is="spiral">
-    @pebbletonKell{emotion="happy"}: It moved! It's a Spiralfossil! Hello, little one. Hello. Don't bite the doctor.
+    @pebbletonKell{code="0040" emotion="happy"}: It moved! It's a Spiralfossil! Hello, little one. Hello. Don't bite the doctor.
     ::gift{species="spiralfossil" level="5"}
   </when>
 </match>
-@pebbletonKell: It's yours. It knows you better than me: you carried it out of the dark. Look after it.
+@pebbletonKell{code="0050"}: It's yours. It knows you better than me: you carried it out of the dark. Look after it.

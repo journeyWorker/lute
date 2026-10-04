@@ -43,6 +43,18 @@ use lute_manifest::relations::KindShape;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{type_accepts, Literal, Type};
 use lute_syntax::ast::{Arm, Document, Node};
+/// Attach the expanded project identity ledger to one artifact and refresh its
+/// derived semantic capability list. Every artifact-producing path uses this
+/// same operation so the ledger cannot drift from `required_semantics`.
+pub fn stamp_identity_renames(
+    artifact: &mut ExecutionIr,
+    renames: &[lute_manifest::project::IdentityRename],
+) {
+    artifact.identity_renames = renames.to_vec();
+    artifact.required_semantics =
+        semantics::collect(artifact).ids.into_iter().map(str::to_string).collect();
+}
+
 
 /// Language-version pin stamped into the artifact envelope's `lute` field (DSL
 /// 0.7.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
@@ -383,7 +395,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.35.0";
+pub const LUTE_IR_VERSION: &str = "0.36.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -689,6 +701,7 @@ fn compile_inner(
         lute: LUTE_LANG_VERSION.to_string(),
         ir_version: LUTE_IR_VERSION.to_string(),
         capability_version: input.snapshot.version.clone(),
+        identity_renames: Vec::new(),
         required_semantics: Vec::new(),
         meta,
         state: state_entries(&folded.env.state, &branch_paths, &reserved, &folded.domains,
@@ -1647,11 +1660,11 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.35.0 axis alignment (docs/versioning.md): AI edit loop, lossless
+        // 0.36.0 axis alignment (docs/versioning.md): AI edit loop, lossless
         // source/project revisions, task context, semantic diff, and patching
         // move the language and IR, and the workspace toolchain follows.
-        assert_eq!(super::LUTE_IR_VERSION, "0.35.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.35.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.36.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.36.0");
     }
 
     #[test]
@@ -1660,8 +1673,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.35.0");
-        assert_eq!(v["irVersion"], "0.35.0");
+        assert_eq!(v["lute"], "0.36.0");
+        assert_eq!(v["irVersion"], "0.36.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

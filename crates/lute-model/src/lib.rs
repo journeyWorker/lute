@@ -5,6 +5,7 @@
 //! CLI, LSP, or trace crates.
 
 pub mod cache;
+pub mod identity;
 pub mod input;
 pub mod manifest;
 pub mod project;
@@ -17,7 +18,10 @@ pub mod constraints;
 pub mod graph;
 pub mod derivation;
 pub mod patch;
+#[cfg(test)]
+mod identity_tests;
 pub mod impact;
+pub mod rename;
 
 pub use cache::InputCache;
 pub use input::{
@@ -40,6 +44,8 @@ pub use gate::{
 };
 
 pub use graph::{GraphEdge, GraphNode, NodeKey, NodeKind, SemanticGraph};
+pub use identity::{IdentityMetadata, IdentitySource};
+pub use rename::{resolve_ledger, RenameError, ResolvedRenames};
 pub use impact::{ImpactItem, ImpactReport, ImpactTarget};
 pub use revision::{project_revision, FileRevision, ProjectRevision, RevisionError};
 pub use diff::{diff_models, ChangeKind, DiffError, SemanticChange, SemanticDiff, SourceLocation};

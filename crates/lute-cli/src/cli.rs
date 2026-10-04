@@ -235,9 +235,10 @@ pub(crate) enum Command {
         #[arg(long = "permission-profile", value_name = "NAME")]
         permission_profile: Option<String>,
     },
-    /// Back-fill a stable `code` into every untagged `:line`, rewriting the
-    /// file in place — or every `.lute` file under a directory (recursive,
-    /// sorted).
+    /// Back-fill missing stable identity attributes in the corpus: per-speaker
+    /// line `code` values and `::use` component `instance` keys. Existing
+    /// authored codes and instances are preserved byte-for-byte; only changed
+    /// files are written. A second run is a no-op.
     Tag {
         /// The `.lute` file to tag, or a directory to tag recursively.
         path: PathBuf,
@@ -245,7 +246,8 @@ pub(crate) enum Command {
         /// (0010/0020/… per speaker per scope), rewriting existing codes.
         /// A drafting tool: refused when frontmatter declares `codesLocked:`
         /// (published codes key `lineId`/`voiceKey` — renumbering breaks the
-        /// localization/voice join).
+        /// localization/voice join). `--force` never changes an explicit
+        /// component `instance`.
         #[arg(long)]
         force: bool,
     },

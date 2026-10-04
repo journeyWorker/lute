@@ -20,6 +20,11 @@ pub struct BuiltInput {
     pub meta: lute_check::TypedMeta,
     pub defaults: lute_manifest::project::MetaDefaults,
     pub identity: lute_manifest::project::IdentityTemplates,
+    /// Authored project ledger declarations, used to cheaply decide whether a
+    /// full project graph is needed to stamp a standalone artifact.
+    pub identity_rename_decls: Vec<lute_manifest::project::IdentityRenameDecl>,
+    /// Manifest-level ledger diagnostics that exist before graph validation.
+    pub identity_rename_diags: Vec<ResolveDiag>,
 }
 
 impl BuiltInput {
@@ -84,7 +89,8 @@ pub fn assemble_input_with_mode(cache: &InputCache, file: &Path, text: String, p
     let meta_span = doc.meta.span;
     let resolved = cache.snapshot(root, project, meta0.profile.as_deref(), &meta0.plugins);
     let (mut snapshot, mut rdiags) = (resolved.0.clone(), resolved.1.clone());
-    lute_check::chapters::apply_chapters(&mut parsed.0, &defaults, &snapshot.occasions);
+    snapshot.identity_require_stable =
+        project.is_some_and(lute_manifest::project::ProjectConfig::identity_require_stable);
     if let Some(name) = permission_profile {
         match project.as_ref() {
             Some(config) => match resolve_permissions(config, name) {
@@ -109,6 +115,8 @@ pub fn assemble_input_with_mode(cache: &InputCache, file: &Path, text: String, p
     let built = BuiltInput {
         input: CheckInput { text, uri: file.display().to_string(), snapshot, providers, mode, imports, components, defaults: defaults.clone() },
         resolve_error, resolve_blocks, project_diags, resolve_diags: rdiags, meta: meta0, defaults, identity,
+        identity_rename_decls: project.map(|p| p.identity_renames.clone()).unwrap_or_default(),
+        identity_rename_diags: project.map(|p| p.identity_rename_diags.clone()).unwrap_or_default(),
     };
     (built, parsed)
 }

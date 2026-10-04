@@ -7,13 +7,13 @@ use lute_model::{apply_patch, PatchRefusal, PatchRequest};
 fn refusal_json(refusal: &PatchRefusal) -> serde_json::Value {
     if let PatchRefusal::Io { path, message } = refusal {
         return serde_json::json!({
-            "schemaVersion": "0.35.0.patch",
+            "schemaVersion": "0.36.0.patch",
             "ok": false,
             "error": {"kind": "io", "path": path, "message": message},
         });
     }
     let mut value = serde_json::json!({
-        "schemaVersion": "0.35.0.patch",
+        "schemaVersion": "0.36.0.patch",
         "ok": false,
         "code": refusal.code(),
         "message": refusal.message(),
@@ -44,7 +44,7 @@ fn refusal_json(refusal: &PatchRefusal) -> serde_json::Value {
 
 fn report_json(report: &lute_model::PatchReport) -> Result<String, serde_json::Error> {
     let mut value = serde_json::to_value(report)?;
-    value["schemaVersion"] = serde_json::Value::String("0.35.0.patch".into());
+    value["schemaVersion"] = serde_json::Value::String("0.36.0.patch".into());
     value["ok"] = serde_json::Value::Bool(true);
     serde_json::to_string_pretty(&value).map(|text| format!("{text}\n"))
 }
@@ -64,7 +64,7 @@ pub(crate) fn run(dir: &Path, patch: &Path, dry_run: bool, json: bool) -> ExitCo
         Ok(request) => request,
         Err(error) => {
             let refusal = serde_json::json!({
-                "schemaVersion": "0.35.0.patch",
+                "schemaVersion": "0.36.0.patch",
                 "ok": false,
                 "code": "E-PATCH-EDIT",
                 "message": format!("invalid patch JSON: {error}"),

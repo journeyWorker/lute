@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # FEAT-3: `<choice>` Persist Sugar — richer branch control-flow (dsl §11.1.1)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.

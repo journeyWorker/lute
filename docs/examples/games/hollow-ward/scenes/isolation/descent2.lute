@@ -6,5 +6,5 @@ title: Second stop
 
 ## Second stop
 
-@narrator: Lower. The cage shudders, stops. Someone on the other side of the wall is knocking, in time with your heart.
+@narrator{code="0010"}: Lower. The cage shudders, stops. Someone on the other side of the wall is knocking, in time with your heart.
 ::fright

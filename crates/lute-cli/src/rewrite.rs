@@ -151,6 +151,17 @@ fn tag_file(file: &Path, force: bool, scope: Scope<'_>) -> (Outcome, usize) {
 
     if force {
         return match lute_check::retag_document(&text) {
+            lute_check::RetagOutcome::LockedInstances { text: out, added } => {
+                if !write(file, &out) {
+                    return (Outcome::Failed, 0);
+                }
+                eprintln!(
+                    "lute: {} declares `codesLocked:` — refusing line-code renumber; \
+                     added {added} component instance key(s)",
+                    file.display()
+                );
+                (Outcome::Refused, added)
+            }
             lute_check::RetagOutcome::Locked => {
                 eprintln!(
                     "lute: {} declares `codesLocked:` — its codes are published identity \

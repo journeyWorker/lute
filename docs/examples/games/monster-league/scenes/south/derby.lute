@@ -16,7 +16,7 @@ when: "@southDerbyDay && quest.southDerby.state == 'unset'"
 ::bg{location="tidewell-pier" time="day"}
 ::music{action="change" mood="festive" volume="up"}
 ::auto{character="tidewellPim" anchor="center" action="enter"}
-@tidewellPim{emotion="happy"}: Welcome, welcome, WELCOME to the Tidewell Sunday Derby! Established one hundred and four years ago by my great-great-grandmother, who was very bored!
-@tidewellPim: The rules: one rod, one day, one fish. This week's prize fish is the Seahorsling. Land one before midnight and the trophy's yours.
-@tidewellPim{emotion="surprised"}: No Seahorsling? Nobody ever gets a Seahorsling. That's why it's the prize. Good luck!
+@tidewellPim{code="0010" emotion="happy"}: Welcome, welcome, WELCOME to the Tidewell Sunday Derby! Established one hundred and four years ago by my great-great-grandmother, who was very bored!
+@tidewellPim{code="0020"}: The rules: one rod, one day, one fish. This week's prize fish is the Seahorsling. Land one before midnight and the trophy's yours.
+@tidewellPim{code="0030" emotion="surprised"}: No Seahorsling? Nobody ever gets a Seahorsling. That's why it's the prize. Good luck!
 ::accept{quest="southDerby"}

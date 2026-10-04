@@ -12,14 +12,14 @@ after: 'visited("rock.report")'
 // already judged when this scene plays, so it can read the Board's verdict.
 <match on="quest.reconstruction.state">
   <when is="complete">
-    @chair: The Board accepts the inspector's reconstruction in full.
+    @chair{code="0010"}: The Board accepts the inspector's reconstruction in full.
   </when>
   <otherwise>
-    @chair{when="quest.reconstruction.objectives.fate.failed"}: The Board does not accept the finding on the manner of death.
-    @chair{when="quest.reconstruction.objectives.whoWasThere.failed"}: The Board does not accept the account of who was on the rock.
-    @chair{when="quest.reconstruction.objectives.whoLied.failed"}: The Board does not accept the finding on whose statement was false.
-    @chair: The Board finds the reconstruction unsafe and returns an open verdict.
+    @chair{code="0020" when="quest.reconstruction.objectives.fate.failed"}: The Board does not accept the finding on the manner of death.
+    @chair{code="0030" when="quest.reconstruction.objectives.whoWasThere.failed"}: The Board does not accept the account of who was on the rock.
+    @chair{code="0040" when="quest.reconstruction.objectives.whoLied.failed"}: The Board does not accept the finding on whose statement was false.
+    @chair{code="0050"}: The Board finds the reconstruction unsafe and returns an open verdict.
   </otherwise>
 </match>
-@chair: The inquiry will rise.
+@chair{code="0060"}: The inquiry will rise.
 ::set{run.fileClosed = true}

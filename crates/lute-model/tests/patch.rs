@@ -174,6 +174,36 @@ fn check_and_ids_preserve_refusals_are_reported() {
     assert_eq!(refused.code(), "E-PATCH-PRESERVE");
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn mapped_preserve_id_accepts_renamed_quest_identity() {
+    let root = quest_project(
+        "<quest id=\"newQuest\" start=\"true\">\n\
+         <objective id=\"reach\" title=\"Reach\" done=\"true\"/>\n</quest>",
+    );
+    std::fs::write(
+        root.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\nidentity:\n  renames:\n    \"quest:oldQuest\": \"quest:newQuest\"\n",
+    )
+    .unwrap();
+    let target = node(&root, NodeKind::Quest, "newQuest");
+    let request = patch(
+        &root,
+        vec![target.clone()],
+        vec![PatchEdit::ReplaceNode {
+            node: target,
+            text: "<quest id=\"newQuest\" start=\"true\">\n\
+                   <objective id=\"reach\" title=\"Reached\" done=\"true\"/>\n</quest>"
+                .into(),
+        }],
+        vec![lute_model::Preserve::Ids(vec![lute_model::NodeKey::new(
+            NodeKind::Quest,
+            "oldQuest",
+        )])],
+    );
+    assert!(apply_patch(&root, request, true).is_ok());
+    let _ = std::fs::remove_dir_all(root);
+}
 #[test]
 fn acceptance_refusal_matrix_has_named_cases() {
     let mut cases = Vec::new();

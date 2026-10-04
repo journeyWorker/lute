@@ -11,21 +11,21 @@ priority: 10
 
 ::bg{location="childrensWard" time="night"}
 ::vfx{type="flicker"}
-@narrator: Twelve iron cribs. Eleven have mattresses. The twelfth has a music box sitting where the pillow should be, lid open, the little dancer bent flat.
-@narrator: Crayon drawings cover the lower half of the walls, exactly as high as a child can reach. One is newer than the others.
-@child{os}: Are you the new nurse?
+@narrator{code="0010"}: Twelve iron cribs. Eleven have mattresses. The twelfth has a music box sitting where the pillow should be, lid open, the little dancer bent flat.
+@narrator{code="0020"}: Crayon drawings cover the lower half of the walls, exactly as high as a child can reach. One is newer than the others.
+@child{code="0010" os}: Are you the new nurse?
 <branch id="answer" prompt="The voice is behind the twelfth crib.">
   <choice id="yes" label="&quot;Yes.&quot;">
-    @nell: Yes. I'm the new nurse.
-    @child{os}: Then you have to do the round. At three. Everybody has to be in bed at three.
+    @nell{code="0010"}: Yes. I'm the new nurse.
+    @child{code="0020" os}: Then you have to do the round. At three. Everybody has to be in bed at three.
   </choice>
   <choice id="no" label="&quot;No. Who's there?&quot;">
-    @nell: No. Who's there? Come out, I won't...
-    @child{os}: Shh. He counts the beds.
+    @nell{code="0020"}: No. Who's there? Come out, I won't...
+    @child{code="0030" os}: Shh. He counts the beds.
     ::fright
   </choice>
   <choice id="silent" label="Say nothing">
-    @narrator: You hold your breath. After a while the crib creaks, as if someone small had got down off it.
+    @narrator{code="0030"}: You hold your breath. After a while the crib creaks, as if someone small had got down off it.
   </choice>
 </branch>
-@narrator: There is nobody behind the twelfth crib. There is a dent in the dust the size of a knee.
+@narrator{code="0040"}: There is nobody behind the twelfth crib. There is a dent in the dust the size of a knee.

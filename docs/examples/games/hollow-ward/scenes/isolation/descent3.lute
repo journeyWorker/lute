@@ -6,5 +6,5 @@ title: The bottom
 
 ## The bottom
 
-@narrator: The gate opens on a corridor tiled green to the shoulder. On a hook by the gate, a key on a string: ISOLATION.
+@narrator{code="0010"}: The gate opens on a corridor tiled green to the shoulder. On a hook by the gate, a key on a string: ISOLATION.
 ::give{item="wardKey"}

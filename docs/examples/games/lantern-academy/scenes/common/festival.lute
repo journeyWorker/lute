@@ -13,32 +13,32 @@ after: 'visited("common.eve")'
 ::bg{location="lakeshore" time="night"}
 ::music{action="start" mood="festive" volume="normal"}
 ::vfx{type="lanterns"}
-@narrator: The whole school walks down to the water with paper lanterns. The lake takes them one at a time, as if it has been waiting all year.
-::use{component="cg" id="cgFestival"}
-@nana{emotion="happy" when="quest.festivalPrep.state == 'complete'"}: Our dorm's lanterns are the brightest three on the water. Told you we'd make it.
-@nana{emotion="sad" when="quest.festivalPrep.state == 'failed'"}: Our window is the dark one this year. Next year. Probably.
-@nana{emotion="teasing"}: So. Island tradition. Who's holding the other side of your lantern?
+@narrator{code="0010"}: The whole school walks down to the water with paper lanterns. The lake takes them one at a time, as if it has been waiting all year.
+::use{component="cg" id="cgFestival" instance="use-001"}
+@nana{code="0010" emotion="happy" when="quest.festivalPrep.state == 'complete'"}: Our dorm's lanterns are the brightest three on the water. Told you we'd make it.
+@nana{code="0020" emotion="sad" when="quest.festivalPrep.state == 'failed'"}: Our window is the dark one this year. Next year. Probably.
+@nana{code="0030" emotion="teasing"}: So. Island tradition. Who's holding the other side of your lantern?
 
 <branch id="lantern" prompt="Whose hand is on the other side of your lantern?">
   <choice id="ren" label="Ren, who came down to the jetty without his register" when="holds('routeOpen', ['ren'])" into="run.route" value="ren">
-    @ren{emotion="flustered"}: I am here in an official capacity. Mostly. Hold it level, please.
+    @ren{code="0010" emotion="flustered"}: I am here in an official capacity. Mostly. Hold it level, please.
   </choice>
   <choice id="mika" label="Mika, still in his relay shirt" when="holds('routeOpen', ['mika'])" into="run.route" value="mika">
-    @mika{emotion="laughing"}: Me? Really? Okay — okay! I'm not crying, the lake's just really bright.
+    @mika{code="0010" emotion="laughing"}: Me? Really? Okay — okay! I'm not crying, the lake's just really bright.
   </choice>
   <choice id="soren" label="Soren, at the edge of the crowd with a book under his arm" when="holds('routeOpen', ['soren'])" into="run.route" value="soren">
-    @soren{emotion="shy"}: I wrote something on ours. You can read it. Later. Much later.
+    @soren{code="0010" emotion="shy"}: I wrote something on ours. You can read it. Later. Much later.
   </choice>
   <choice id="kai" label="Kai, who says he only came for the noise" when="holds('routeOpen', ['kai'])" into="run.route" value="kai">
-    @kai{emotion="smirk"}: Fine. But I'm writing the wish. Yours would be embarrassing.
+    @kai{code="0010" emotion="smirk"}: Fine. But I'm writing the wish. Yours would be embarrassing.
   </choice>
   <choice id="hotaru" label="The girl on the far jetty, who has no lantern of her own" when="quest.fourLanterns.state == 'complete'" into="run.route" value="hotaru">
-    @hotaru{emotion="sad"}: Nobody has ever floated one with me. I don't know how to hold it.
-    @you: Like this. Both hands.
+    @hotaru{code="0010" emotion="sad"}: Nobody has ever floated one with me. I don't know how to hold it.
+    @you{code="0010"}: Like this. Both hands.
   </choice>
   <choice id="alone" label="Float it on your own" into="run.route" value="alone">
-    @you{mono}: My lantern. My wish. The lake can keep a secret.
+    @you{code="0020" mono}: My lantern. My wish. The lake can keep a secret.
   </choice>
 </branch>
 
-@narrator: The lantern leaves your hands and does not look back.
+@narrator{code="0020"}: The lantern leaves your hands and does not look back.

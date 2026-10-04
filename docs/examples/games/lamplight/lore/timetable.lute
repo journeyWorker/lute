@@ -28,11 +28,11 @@ components: [../components/wire.component.lute]
   @narrator{code="0010"}: The corridor clock strikes six. Brakes, a long grey platform, a clock tower with the lamps still lit: Ossery.
 </beat>
 
-<beat use="wire" id="wireBoard" to="board" sender="the Medical Board">
+<beat use="wire" id="wireBoard" to="board" sender="the Medical Board" instance="use-001">
   @narrator{code="0020"}: MEDICAL BOARD OSSERY TO INSPECTOR WREN STOP E SOLT SIGNED FOR TWO OUNCES TINCT OPII KESSEL INFIRMARY SEPTEMBER STOP NEVER RETURNED STOP
   ::assert{means(solt)}
 </beat>
 
-<beat use="wire" id="wireVarn" to="varn" sender="the Varn police">
+<beat use="wire" id="wireVarn" to="varn" sender="the Varn police" instance="use-002">
   @narrator{code="0030"}: VARN CONSTABULARY TO INSPECTOR WREN STOP T CRANE TWENTY TWO YEARS CLEAN SHEET STOP A HASK KNOWN TO US STOP NO FRIENDS STOP
 </beat>

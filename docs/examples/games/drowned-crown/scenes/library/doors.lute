@@ -13,4 +13,4 @@ when: "holds('solved', ['sluice'])"
 ## Stacks
 
 ::bg{location="library" time="night"}
-@narrator: The bronze doors stand open. Beyond them, shelves climb into the dark, and every book is swollen shut.
+@narrator{code="0010"}: The bronze doors stand open. Beyond them, shelves climb into the dark, and every book is swollen shut.

@@ -9,9 +9,9 @@ title: Find the Hollin Spoon
   <objective id="cake" title="Try the seed cake" done="run.tastedCake" optional/>
   <objective id="name" title="Name the real thief before evening" done="run.accused == 'magpie'" by="run.slot == 'evening'"/>
   <on event="questComplete">
-    @narrator: The case of the Hollin spoon is closed.
+    @narrator{code="0010"}: The case of the Hollin spoon is closed.
   </on>
   <on event="questFailed">
-    @narrator: Somewhere, a spoon stays lost.
+    @narrator{code="0020"}: Somewhere, a spoon stays lost.
   </on>
 </quest>

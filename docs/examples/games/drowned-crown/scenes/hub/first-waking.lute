@@ -12,12 +12,12 @@ priority: 100
 
 ::bg{location="deck" time="dusk"}
 ::music{action="start" mood="sad" volume="down"}
-@narrator: Seawater leaves Ilo's lungs in one long, burning heave.
+@narrator{code="0010"}: Seawater leaves Ilo's lungs in one long, burning heave.
 ::auto{character="brann" anchor="left" action="fadeInUp"}
-@brann{emotion="grim"}: Breathe, boy. You were down there four minutes. Nobody comes back from four minutes.
-@ilo: The crown. I saw the crown on the throne.
-@brann: Everyone who goes down sees the crown. Most of them stay with it.
+@brann{code="0010" emotion="grim"}: Breathe, boy. You were down there four minutes. Nobody comes back from four minutes.
+@ilo{code="0010"}: The crown. I saw the crown on the throne.
+@brann{code="0020"}: Everyone who goes down sees the crown. Most of them stay with it.
 ::auto{character="sefa" anchor="right" action="fadeInUp"}
-@sefa{emotion="surprised"}: He's warm, Brann. He's warm. The sea gave him back.
-@brann{emotion="grim"}: Then the sea wants something from him. Get him dry, and get him fed.
-@narrator: Somewhere below the keel, something very large turns over in its sleep.
+@sefa{code="0010" emotion="surprised"}: He's warm, Brann. He's warm. The sea gave him back.
+@brann{code="0030" emotion="grim"}: Then the sea wants something from him. Get him dry, and get him fed.
+@narrator{code="0020"}: Somewhere below the keel, something very large turns over in its sleep.

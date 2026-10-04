@@ -9,7 +9,7 @@ pov: ilo
 
 ::bg{location="rail" time="dawn"}
 ::music{action="start" mood="tense" volume="normal"}
-@brann{emotion="grim"}: You're not coming back up this time. I can see it on you.
-@ilo: I'm coming back. Just not the same.
-@sefa{emotion="sad"}: Take the chart. You won't need it. Take it anyway.
-@narrator: Ilo goes over the side without counting his breaths.
+@brann{code="0010" emotion="grim"}: You're not coming back up this time. I can see it on you.
+@ilo{code="0010"}: I'm coming back. Just not the same.
+@sefa{code="0010" emotion="sad"}: Take the chart. You won't need it. Take it anyway.
+@narrator{code="0010"}: Ilo goes over the side without counting his breaths.

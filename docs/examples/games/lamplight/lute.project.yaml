@@ -4,6 +4,8 @@ defaultProfile: lamplight
 profiles:
   lamplight:
     plugins: { lamplight.occasions: true }
+identity:
+  requireStable: true
 defaults:
-  luteVersion: "0.35.0"
+  luteVersion: "0.36.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]

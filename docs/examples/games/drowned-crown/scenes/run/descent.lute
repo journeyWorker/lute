@@ -13,5 +13,5 @@ priority: 10
 
 ::bg{location="rail" time="dawn"}
 ::sfx{sound="rope paying out"}
-@narrator: Ilo checks the knot at his waist twice, the way Brann taught him, and goes over the side.
-@brann{os}: Count your breaths, boy. Count them out loud if you have to.
+@narrator{code="0010"}: Ilo checks the knot at his waist twice, the way Brann taught him, and goes over the side.
+@brann{code="0010" os}: Count your breaths, boy. Count them out loud if you have to.

@@ -33,6 +33,7 @@ const FACTS: SemanticId = SemanticId("lute.knowledge.facts/1");
 const RULES: SemanticId = SemanticId("lute.knowledge.rules/1");
 const TEMPORAL: SemanticId = SemanticId("lute.knowledge.temporal/1");
 const LORE: SemanticId = SemanticId("lute.lore/1");
+const IDENTITY_RENAMES: SemanticId = SemanticId("lute.identity.renames/1");
 
 pub const REGISTRY: &[SemanticEntry] = &[
     SemanticEntry { id: CORE, module: "core", behavior: "baseline execution" },
@@ -49,6 +50,7 @@ pub const REGISTRY: &[SemanticEntry] = &[
     SemanticEntry { id: RULES, module: "knowledge", behavior: "Datalog rules" },
     SemanticEntry { id: TEMPORAL, module: "knowledge", behavior: "temporal fact queries" },
     SemanticEntry { id: LORE, module: "lore", behavior: "lore disclosure and read state" },
+    SemanticEntry { id: IDENTITY_RENAMES, module: "identity", behavior: "save identity migrations" },
 ];
 /// Serialized keys covered by the semantic-field invariant. Dynamic maps
 /// (`extra`, plugin `fields`, labels, and locale text) are intentionally
@@ -62,7 +64,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "document","domain","done","double","duration","easing","effects","else","emotion","entities",
     "entityKind","enums","episode","episodeId","event","excludes","exit","explanation","expr","extra",
     "fail","fields","first","focus","follows","forKind","format","forms","from","full","functions",
-    "gates","has","head","heading","id","indefinite","index","injected","int","irVersion","is","key",
+    "gates","has","head","heading","id","identityRenames","indefinite","index","injected","int","irVersion","is","key",
     "kind","l","label","labelForms","labels","last","length","lhs","lineId","list","live","location",
     "lute","members","meta","mood","moveX","moveY","n","name","negated","node","objectives","occasion",
     "on","once","op","open","optional","options","order","otherwise","outcome","outsideRun","overloads",
@@ -116,7 +118,9 @@ impl Collected {
 pub fn collect(ir: &ExecutionIr) -> Collected {
     let mut out = Collected::default();
     out.add(CORE, None, "execution IR envelope");
-
+    if !ir.identity_renames.is_empty() {
+        out.add(IDENTITY_RENAMES, None, "identity rename ledger");
+    }
     if !ir.entities.is_empty() || !ir.relations.is_empty() || !ir.seed_facts.is_empty() {
         out.add(FACTS, None, "relational vocabulary or seed facts");
     }
@@ -347,8 +351,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_has_all_fourteen_ids() {
-        assert_eq!(REGISTRY.len(), 14);
+    fn registry_has_all_fifteen_ids() {
+        assert_eq!(REGISTRY.len(), 15);
         assert!(REGISTRY.iter().all(|entry| is_registered(entry.id.as_str())));
     }
 
@@ -427,10 +431,22 @@ mod tests {
 
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
-            kind: DocKind::Scene, lute: "0.35.0".into(), ir_version: "0.35.0".into(),
-            capability_version: "cap".into(), required_semantics: vec![],
+            kind: DocKind::Scene, lute: "0.36.0".into(), ir_version: "0.36.0".into(),
+            capability_version: "cap".into(), identity_renames: vec![], required_semantics: vec![],
             meta: ArtifactMeta::Scene(SceneMeta { id: "s".into(), character: None, season: None, episode: None, episode_id: None, title: None, extra: BTreeMap::new(), plugin: BTreeMap::new(), beat: None }),
             state: vec![], entities: vec![], enums: vec![], relations: vec![], seed_facts: vec![], rules: vec![], commands: vec![], prereq_edges: vec![], shots: vec![], clock: None, gates: vec![], terminal: None, terminal_persists: false, seasons: vec![], outside_run: vec![], cel_env: CelEnv::default(),
         }
+    }
+    #[test]
+    fn identity_rename_ledger_requires_registered_semantic() {
+        let mut ir = test_ir();
+        ir.identity_renames.push(lute_manifest::project::IdentityRename {
+            from: "quest:old".into(),
+            to: "quest:new".into(),
+        });
+        let collected = collect(&ir);
+        assert!(collected.ids.contains("lute.identity.renames/1"));
+        assert!(is_registered("lute.identity.renames/1"));
+        assert!(field_is_registered("identityRenames"));
     }
 }

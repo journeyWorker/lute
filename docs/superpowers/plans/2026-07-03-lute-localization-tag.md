@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Lute Localization `lute tag` Pass (§12) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.

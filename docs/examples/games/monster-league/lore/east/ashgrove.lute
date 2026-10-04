@@ -10,102 +10,102 @@ title: Ashgrove, the lantern town
 // ── services ─────────────────────────────────────────────────────────────
 
 <beat id="center" on="heal" target="town.ashgrove" title="Monster Center" once="false">
-  ::use{component="nurse" town="ashgrove"}
+  ::use{component="nurse" town="ashgrove" instance="use-001"}
 </beat>
 
 <beat id="mart" on="shop" target="town.ashgrove" title="Mart" once="false">
-  ::use{component="shop" stock="ashgroveStock"}
+  ::use{component="shop" stock="ashgroveStock" instance="use-001"}
 </beat>
 
 // ── walking in, after the first visit ───────────────────────────────────
 
 <entry id="eastAshgroveMorning" on="enterTown" target="town.ashgrove" category="ambient" priority="5" once="day" when="@isMorning">
-  @narrator: Morning mist sits in Ashgrove's streets like it pays rent. The tower bells are silent.
+  @narrator{code="0010"}: Morning mist sits in Ashgrove's streets like it pays rent. The tower bells are silent.
 </entry>
 
 <entry id="eastAshgroveDay" on="enterTown" target="town.ashgrove" category="ambient" priority="5" once="day" when="run.slot == 'day'">
-  @narrator: Ashgrove is quiet at midday too. Someone is sweeping the steps of the tower, very slowly, as if the steps might mind.
+  @narrator{code="0010"}: Ashgrove is quiet at midday too. Someone is sweeping the steps of the tower, very slowly, as if the steps might mind.
 </entry>
 
 <entry id="eastAshgroveNight" on="enterTown" target="town.ashgrove" category="ambient" priority="5" once="day" when="@isNight && clock.weekday != 4">
-  @narrator: At night the paper lanterns along the eaves glow by themselves. Nobody in Ashgrove will tell you who lights them.
+  @narrator{code="0010"}: At night the paper lanterns along the eaves glow by themselves. Nobody in Ashgrove will tell you who lights them.
 </entry>
 
 <entry id="eastAshgroveFridayNight" on="enterTown" target="town.ashgrove" category="ambient" priority="8" once="day" when="@isNight && clock.weekday == 4">
-  @narrator: Friday night. The whole town is walking up the hill to the tower, lanterns held high, not saying a word.
+  @narrator{code="0010"}: Friday night. The whole town is walking up the hill to the tower, lanterns held high, not saying a word.
 </entry>
 
 // ── Yun the lantern-maker: eastLanterns ──────────────────────────────────
 
 <beat id="yunLanterns" on="talk" target="npc.ashgroveLanternMaker" title="A lantern for the tower" priority="10">
-  @ashgroveLanternMaker: You're the one who came through the tunnel. Can you carry a lantern? Not now. On a Friday night.
-  @ashgroveLanternMaker: Every Friday we walk our lanterns up the tower for the monsters we've lost. This year we've a stranger's hands and fewer of ours.
-  @ashgroveLanternMaker: Or, if you'd rather: bring me a ghost. A friendly one. They carry the light better than any of us.
+  @ashgroveLanternMaker{code="0010"}: You're the one who came through the tunnel. Can you carry a lantern? Not now. On a Friday night.
+  @ashgroveLanternMaker{code="0020"}: Every Friday we walk our lanterns up the tower for the monsters we've lost. This year we've a stranger's hands and fewer of ours.
+  @ashgroveLanternMaker{code="0030"}: Or, if you'd rather: bring me a ghost. A friendly one. They carry the light better than any of us.
   ::accept{quest="eastLanterns"}
 </beat>
 
 <entry id="eastYunBark" on="talk" target="npc.ashgroveLanternMaker" category="bark">
-  @ashgroveLanternMaker: Paper, wire, a little oil, and somebody to remember. That's all a lantern is.
+  @ashgroveLanternMaker{code="0010"}: Paper, wire, a little oil, and somebody to remember. That's all a lantern is.
 </entry>
 
 <entry id="eastYunMorning" on="talk" target="npc.ashgroveLanternMaker" category="bark" priority="5" when="@isMorning">
-  @ashgroveLanternMaker: I make lanterns in the morning and sell them at night. The morning ones are better. I'm less tired.
+  @ashgroveLanternMaker{code="0010"}: I make lanterns in the morning and sell them at night. The morning ones are better. I'm less tired.
 </entry>
 
 <entry id="eastYunDone" on="talk" target="npc.ashgroveLanternMaker" category="bark" priority="20" when="quest.eastLanterns.state == 'complete'">
-  @ashgroveLanternMaker: Your lantern's on the fourth floor, by the window. I checked. It's still lit.
+  @ashgroveLanternMaker{code="0010"}: Your lantern's on the fourth floor, by the window. I checked. It's still lit.
 </entry>
 
 // ── Caretaker Bea ────────────────────────────────────────────────────────
 
 <entry id="eastBeaWorried" on="talk" target="npc.ashgroveCaretaker" category="bark" when="run.lair.towerSiege != 'cleared'">
-  @ashgroveCaretaker: I look after the monsters whose trainers have passed on. There's room for more, I'm sorry to say. And now no Elder Rook to help.
+  @ashgroveCaretaker{code="0010"}: I look after the monsters whose trainers have passed on. There's room for more, I'm sorry to say. And now no Elder Rook to help.
 </entry>
 
 <entry id="eastBeaRelieved" on="talk" target="npc.ashgroveCaretaker" category="bark" when="run.lair.towerSiege == 'cleared'">
-  @ashgroveCaretaker: Rook's home, grumbling about his knees. That's how I know he's fine. Thank you. The whole house thanks you.
+  @ashgroveCaretaker{code="0010"}: Rook's home, grumbling about his knees. That's how I know he's fine. Thank you. The whole house thanks you.
 </entry>
 
 // ── Hobb the gravekeeper ─────────────────────────────────────────────────
 
 <entry id="eastHobbBark" on="talk" target="npc.ashgroveGravekeeper" category="bark">
-  @ashgroveGravekeeper: Every name on that tower wall, I've carved. Two thousand and eleven. Mostly spelled right.
+  @ashgroveGravekeeper{code="0010"}: Every name on that tower wall, I've carved. Two thousand and eleven. Mostly spelled right.
 </entry>
 
 <entry id="eastHobbNight" on="talk" target="npc.ashgroveGravekeeper" category="bark" priority="10" when="@isNight">
-  @ashgroveGravekeeper: Night's when they visit. Don't look so pale. I mean the families. Mostly the families.
+  @ashgroveGravekeeper{code="0010"}: Night's when they visit. Don't look so pale. I mean the families. Mostly the families.
 </entry>
 
 // ── Nell and her puffsong ────────────────────────────────────────────────
 
 <entry id="eastNellBark" on="talk" target="npc.ashgroveMourner" category="bark" when="run.lair.towerSiege != 'cleared'">
-  @ashgroveMourner: My puffsong used to sing me to sleep. Now I can't even reach her candle.
+  @ashgroveMourner{code="0010"}: My puffsong used to sing me to sleep. Now I can't even reach her candle.
 </entry>
 
 <entry id="eastNellAfter" on="talk" target="npc.ashgroveMourner" category="bark" when="run.lair.towerSiege == 'cleared'">
-  @ashgroveMourner: I lit her candle again. I sang to it this time. It's only fair.
+  @ashgroveMourner{code="0010"}: I lit her candle again. I sang to it this time. It's only fair.
 </entry>
 
 // ── Elder Rook, home again ───────────────────────────────────────────────
 
 <entry id="eastRookHome" on="talk" target="npc.elderRook" category="bark" when="run.lair.towerSiege == 'cleared'">
-  @elderRook: The flute is for the great sleeper on the Silvercrest road. It will not like being woken. Nobody does. Be ready.
+  @elderRook{code="0010"}: The flute is for the great sleeper on the Silvercrest road. It will not like being woken. Nobody does. Be ready.
 </entry>
 
 <entry id="eastRookMorning" on="talk" target="npc.elderRook" category="bark" priority="5" when="run.lair.towerSiege == 'cleared' && @isMorning">
-  @elderRook{emotion="happy"}: Tea? No? Young people. Three days tied to a chair and all I wanted was tea.
+  @elderRook{code="0010" emotion="happy"}: Tea? No? Young people. Three days tied to a chair and all I wanted was tea.
 </entry>
 
 <entry id="eastRookFlute" on="talk" target="npc.elderRook" category="bark" priority="10" when="run.lair.towerSiege == 'cleared' && holds('caught', ['slumbear'])">
-  @elderRook{emotion="happy"}: You woke it, and it came with you. Then it was waiting for you, all those years. I am glad I kept the flute.
+  @elderRook{code="0010" emotion="happy"}: You woke it, and it came with you. Then it was waiting for you, all those years. I am glad I kept the flute.
 </entry>
 
 // ── Ash Tower's ground floor, on later visits ─────────────────────────────
 
 <entry id="eastTowerHallBesieged" on="enterPlace" target="place.ashTowerHall" category="ambient" priority="5" once="day" when="run.lair.towerSiege != 'cleared'">
-  @narrator: The candles in the hall are burning low. Nobody has dared go up to light new ones.
+  @narrator{code="0010"}: The candles in the hall are burning low. Nobody has dared go up to light new ones.
 </entry>
 
 <entry id="eastTowerHallFree" on="enterPlace" target="place.ashTowerHall" category="ambient" priority="5" once="day" when="run.lair.towerSiege == 'cleared'">
-  @narrator: Fresh candles on every ledge, all the way up the stairs. On the third step, someone has left a single sprig of heather.
+  @narrator{code="0010"}: Fresh candles on every ledge, all the way up the stairs. On the third step, someone has left a single sprig of heather.
 </entry>

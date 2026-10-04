@@ -1,0 +1,12 @@
+---
+kind: scene
+id: identity.explicit
+luteVersion: "0.36.0"
+components: [component.lute, nested.component.lute]
+---
+
+## Opening
+
+::use{component="spark" instance="use-001"}
+::use{component="spark" instance="use-002"}
+::use{component="nested" instance="outer"}

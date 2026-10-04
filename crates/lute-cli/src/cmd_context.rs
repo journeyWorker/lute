@@ -247,9 +247,27 @@ fn run_task_context(
         .as_ref()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|source| node.span.map(|span| excerpt(&source, span)));
+    let identity = {
+        let mut value = serde_json::to_value(&node.identity).unwrap_or_default();
+        if key.kind == lute_model::NodeKind::Line {
+            if let Some(scope) = model.documents().iter().filter_map(|document| document.artifact.as_ref())
+                .flat_map(|artifact| artifact.commands.iter())
+                .find_map(|command| match command {
+                    lute_compile::Command::Line(line) if line.line_id == key.key =>
+                        line.stamp.source.as_ref().map(|source| source.scope.clone()),
+                    _ => None,
+                }) {
+                if let serde_json::Value::Object(map) = &mut value {
+                    map.insert("componentScope".into(), serde_json::Value::String(scope));
+                }
+            }
+        }
+        value
+    };
     let target_value = serde_json::json!({
         "kind": key.kind.as_str(),
         "key": key.key,
+        "identity": identity,
         "file": node.file.as_ref().map(|p| relative(&model, p)),
         "span": node.span.map(|s| serde_json::json!({"line":s.line,"column":s.column,"byteStart":s.byte_start,"byteEnd":s.byte_end})),
         "excerpt": excerpt,
@@ -267,7 +285,7 @@ fn run_task_context(
         })
         .collect::<serde_json::Map<_, _>>();
     let output = serde_json::json!({
-        "schemaVersion": "0.35.0.context",
+        "schemaVersion": "0.36.0.context",
         "projectRevision": revision,
         "files": files,
         "target": target_value,
@@ -320,7 +338,7 @@ fn run_position_context(
         Err(error) => { eprintln!("lute: position query refused: {error:?}"); return ExitCode::from(1); }
     };
     let value = serde_json::json!({
-        "schemaVersion": "0.35.0.position",
+        "schemaVersion": "0.36.0.position",
         "expectedType": resolution.expected_type.as_ref().map(|ty| attr_type_str(ty).0),
         "visibleSymbols": resolution.visible_symbols.iter().map(symbol_json).collect::<Vec<_>>(),
         "cursor": resolution.cursor.map(|cursor| serde_json::json!({"kind":cursor.kind,"span":cursor.span})),

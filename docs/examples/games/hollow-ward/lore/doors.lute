@@ -5,41 +5,41 @@ title: Doors that stay shut
 ---
 
 <entry id="doorAny" on="lockedDoor" target="kind:room" category="bark">
-  @narrator: The door to {{occasion.target}} gives a quarter inch and stops, as if someone on the other side had put their weight against it.
+  @narrator{code="0010"}: The door to {{occasion.target}} gives a quarter inch and stops, as if someone on the other side had put their weight against it.
 </entry>
 
 <entry id="doorPharmacy" on="lockedDoor" target="room.pharmacy" category="bark">
-  @narrator: PRESCRIBED STAFF ONLY. The keypad beside the door waits for four digits.
+  @narrator{code="0010"}: PRESCRIBED STAFF ONLY. The keypad beside the door waits for four digits.
 </entry>
 
 <entry id="doorRecords" on="lockedDoor" target="room.records" category="bark">
-  @narrator: A brass mortice lock, the kind with a key as long as your finger. Through the keyhole: the smell of paper and mice.
+  @narrator{code="0010"}: A brass mortice lock, the kind with a key as long as your finger. Through the keyhole: the smell of paper and mice.
 </entry>
 
 <entry id="doorMorgue" on="lockedDoor" target="room.morgue" category="bark">
-  @narrator: Double doors, steel, a padlock through the handles. Cold comes under them like a draught from a cellar. The padlock is new.
-  @nell{mono}: The key would be with the drugs. Everything in here is kept with the drugs.
+  @narrator{code="0010"}: Double doors, steel, a padlock through the handles. Cold comes under them like a draught from a cellar. The padlock is new.
+  @nell{code="0010" mono}: The key would be with the drugs. Everything in here is kept with the drugs.
 </entry>
 
 <entry id="doorBoiler" on="lockedDoor" target="room.boiler" category="bark">
-  @narrator: The basement stairs go down into black so total it looks solid. You put a foot on the first step and your body refuses the second.
-  @nell{mono}: Not without a light. Not a chance.
+  @narrator{code="0010"}: The basement stairs go down into black so total it looks solid. You put a foot on the first step and your body refuses the second.
+  @nell{code="0010" mono}: Not without a light. Not a chance.
 </entry>
 
 <entry id="doorSurgery" on="lockedDoor" target="room.surgery" category="bark">
-  @narrator: Electric doors, the rubber seals perished. No handle. A dead button that says PRESS.
-  @nell{mono}: No power. Something in this building still makes heat; find it.
+  @narrator{code="0010"}: Electric doors, the rubber seals perished. No handle. A dead button that says PRESS.
+  @nell{code="0010" mono}: No power. Something in this building still makes heat; find it.
 </entry>
 
 <entry id="doorOffice" on="lockedDoor" target="room.office" category="bark">
-  @narrator: DIRECTOR. A polished brass lock on a door that has been polished too, recently, by someone who cares.
+  @narrator{code="0010"}: DIRECTOR. A polished brass lock on a door that has been polished too, recently, by someone who cares.
 </entry>
 
 <entry id="padDead" on="examine" target="fixture.gatePad" category="bark">
-  @narrator: The gatepost keypad's screen reads INSERT CARD. There is a slot above the keys. Your fingers find nothing to put in it.
-  @nell{mono}: A card. Of course. Someone in charge would have kept the card.
+  @narrator{code="0010"}: The gatepost keypad's screen reads INSERT CARD. There is a slot above the keys. Your fingers find nothing to put in it.
+  @nell{code="0010" mono}: A card. Of course. Someone in charge would have kept the card.
 </entry>
 
 <entry id="fixtureDone" on="examine" target="kind:fixture" category="bark">
-  @narrator: You've done what you can with it. It has done what it can with you.
+  @narrator{code="0010"}: You've done what you can with it. It has done what it can with you.
 </entry>

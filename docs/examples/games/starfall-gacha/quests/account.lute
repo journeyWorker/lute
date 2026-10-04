@@ -9,7 +9,7 @@ starts over) and rearm on their own condition instead of a run or season. */
   <reward kind="GEMS" amount="100"/>
   <objective id="climb" title="Clear 10 tower floors" done="user.towerFloors >= 10"/>
   <on event="questComplete">
-    @lumi{emotion="happy"}: Ten floors! The tower's getting nervous. See you next week, same stairs.
+    @lumi{code="0010" emotion="happy"}: Ten floors! The tower's getting nervous. See you next week, same stairs.
   </on>
 </quest>
 

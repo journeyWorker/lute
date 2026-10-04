@@ -1,7 +1,10 @@
+---
+status: Implemented
+---
+
 # Lute compile IR — 0.2.0 addendum: kind envelope + quest/objective/on records
 
 - **Date:** 2026-07-09
-- **Status:** design addendum to `docs/superpowers/specs/2026-07-04-lute-compile-json-ir-design.md` (the 0.1.0 JSON-IR design). Drives Plan D (`docs/superpowers/plans/…lute-compile-0.2.0-quest…`).
 - **Scope:** the compiler artifact for the 0.2.0 additions — the `kind` envelope discriminator, the kind-polymorphic envelope `meta`, and the three quest-kind record types (`quest`, `objective`, `on`). The scene artifact is UNCHANGED except for the new leading `kind` field. Everything else (§4 record set, §5 addressing, §5.6 addr scheme, CEL `ExprNode`, `{{…}}` placeholders) is reused verbatim.
 - **Reduces-to-data invariant (§3):** a quest document still compiles to a finite, ordered, flat array of command records + CEL `ExprNode`s. `<on>`/`<objective>` are forward-only; no backward jumps.
 

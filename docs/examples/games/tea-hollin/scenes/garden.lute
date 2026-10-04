@@ -6,18 +6,18 @@ title: The Rose Garden
 
 ## Among the Roses
 
-@narrator: The garden is quiet in the {{run.slot}} light, except for a magpie on the sundial.
-@pippa{mono}: Magpies love anything that shines.
-@pippa{mono when="run.sawPocket"}: Not a hymn book in the vicar's pocket, then. Something shinier?
+@narrator{code="0010"}: The garden is quiet in the {{run.slot}} light, except for a magpie on the sundial.
+@pippa{code="0010" mono}: Magpies love anything that shines.
+@pippa{code="0020" mono when="run.sawPocket"}: Not a hymn book in the vicar's pocket, then. Something shinier?
 
 <branch id="accuse" prompt="Who took the Hollin spoon?">
   <choice id="accuseCook" label="Mrs. Dunn, the cook" into="run.accused" value="cook">
-    @pippa: Mrs. Dunn, you washed five spoons, not six.
+    @pippa{code="0030"}: Mrs. Dunn, you washed five spoons, not six.
   </choice>
   <choice id="accuseVicar" label="The vicar" into="run.accused" value="vicar">
-    @pippa: Vicar, turn out your pocket.
+    @pippa{code="0040"}: Vicar, turn out your pocket.
   </choice>
   <choice id="accuseMagpie" label="The magpie" into="run.accused" value="magpie" when="run.cluesFound >= 2">
-    @pippa: It was never a person at all.
+    @pippa{code="0050"}: It was never a person at all.
   </choice>
 </branch>

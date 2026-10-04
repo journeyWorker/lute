@@ -12,12 +12,12 @@ priority: 30
 
 ::bg{location="post_office" time="morning"}
 ::music{action="start" mood="peaceful" volume="down"}
-@narrator: The post office is a counter, a rack of postcards, and a franking machine the size of a small car.
+@narrator{code="0010"}: The post office is a counter, a rack of postcards, and a franking machine the size of a small car.
 ::auto{character="mira" anchor="center" action="fadeInUp"}
-@mira{emotion="happy"}: You're Pell's! You've got her eyebrows. Postcards are forty pence, stamps are extra, and the machine is broken.
+@mira{code="0010" emotion="happy"}: You're Pell's! You've got her eyebrows. Postcards are forty pence, stamps are extra, and the machine is broken.
 ::set{run.seen.mira = run.day}
-@sol: Broken how?
-@mira{emotion="tired"}: It eats the stamps. Every one. It's been eating them since Easter. Your aunt says it's haunted.
-@mira: Send three cards home before you go and I'll put your name on the board. Nobody sends postcards any more.
+@sol{code="0010"}: Broken how?
+@mira{code="0020" emotion="tired"}: It eats the stamps. Every one. It's been eating them since Easter. Your aunt says it's haunted.
+@mira{code="0030"}: Send three cards home before you go and I'll put your name on the board. Nobody sends postcards any more.
 ::auto{character="mira" action="fadeOut"}
-@sol{mono}: Three postcards. Mum, Gran, Maya. I can do three postcards.
+@sol{code="0020" mono}: Three postcards. Mum, Gran, Maya. I can do three postcards.

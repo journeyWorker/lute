@@ -375,6 +375,7 @@ impl Walker<'_> {
                                         self.components,
                                         ctx,
                                         &self.param_domains,
+                                        self.snapshot.identity_require_stable,
                                         &mut self.diags,
                                     );
                                     check_use_typed_args(
@@ -707,7 +708,14 @@ impl Walker<'_> {
     fn check_use_node(&mut self, d: &lute_syntax::ast::Directive, ctx: &Ctx<'_>) {
         let judge = |d: &lute_syntax::ast::Directive| {
             let mut ds = Vec::new();
-            check_use(d, self.components, ctx, &self.param_domains, &mut ds);
+            check_use(
+                d,
+                self.components,
+                ctx,
+                &self.param_domains,
+                self.snapshot.identity_require_stable,
+                &mut ds,
+            );
             check_use_typed_args(
                 d,
                 self.components,

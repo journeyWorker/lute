@@ -1,3 +1,7 @@
+---
+status: Draft
+---
+
 # The staging reducer dispatches on the source tag, not the record kind — filed for 0.11.0
 
 *Measured 2026-08-10 on `feat/lute-0.10.1` at `422457c` (the `v0.10.0` tag, no code changes).

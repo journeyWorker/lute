@@ -9,8 +9,8 @@ when: "count('mourned', ['_']) >= 1"
 
 ## Cairns
 
-@narrator: The party builds cairns at the edge of the camp, where the wagons can't roll over them. It takes longer than it should. Nobody hurries.
-@corvin{when="holds('fell', ['isolde']) && holds('inParty', ['corvin'])"}: She'd have given a speech. I'm not going to. She'd have hated mine anyway.
-@isolde{when="holds('fell', ['corvin']) && holds('inParty', ['isolde'])"}: He owed me four silver. I'll let him keep it.
-@isolde{when="holds('fell', ['wren']) && holds('inParty', ['isolde'])"}: She would want this by the water. We'll carry a stone to the far bank for her.
-@narrator{when="count('inParty', ['_']) == 0"}: There is nobody left to build a cairn with. You build it anyway.
+@narrator{code="0010"}: The party builds cairns at the edge of the camp, where the wagons can't roll over them. It takes longer than it should. Nobody hurries.
+@corvin{code="0010" when="holds('fell', ['isolde']) && holds('inParty', ['corvin'])"}: She'd have given a speech. I'm not going to. She'd have hated mine anyway.
+@isolde{code="0010" when="holds('fell', ['corvin']) && holds('inParty', ['isolde'])"}: He owed me four silver. I'll let him keep it.
+@isolde{code="0020" when="holds('fell', ['wren']) && holds('inParty', ['isolde'])"}: She would want this by the water. We'll carry a stone to the far bank for her.
+@narrator{code="0020" when="count('inParty', ['_']) == 0"}: There is nobody left to build a cairn with. You build it anyway.

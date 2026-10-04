@@ -11,50 +11,50 @@ state:
 
 // Ink: {lamp_room == 1: The lamp room smells of cold brass.|The lamp room again. The dark is closer.}
 // The first-visit text plays once, before the hub; <return> is the text for every return.
-@narrator: The lamp room smells of cold brass.
-@narrator{when="run.oil > 0"}: A can of oil sits by the lens.
+@narrator{code="0010"}: The lamp room smells of cold brass.
+@narrator{code="0020" when="run.oil > 0"}: A can of oil sits by the lens.
 
 <hub id="lamp">
   <return>
-    @narrator: The lamp room again. The dark is closer.
-    @narrator{when="run.oil > 0"}: A can of oil sits by the lens.
+    @narrator{code="0130"}: The lamp room again. The dark is closer.
+    @narrator{code="0140" when="run.oil > 0"}: A can of oil sits by the lens.
   </return>
   <choice id="ledger" label="Read the ledger">
     ::set{scene.ledgerReads += 1}
     <match on="scene.ledgerReads">
       <when is="1">
-        @narrator: The last entry is three weeks old. "Oil low. Ship due."
+        @narrator{code="0030"}: The last entry is three weeks old. "Oil low. Ship due."
       </when>
       <when is="2">
-        @narrator: You read it again. The handwriting shakes toward the end.
+        @narrator{code="0040"}: You read it again. The handwriting shakes toward the end.
       </when>
       <otherwise>
-        @narrator: The words have stopped changing.
+        @narrator{code="0050"}: The words have stopped changing.
       </otherwise>
     </match>
   </choice>
   <choice id="desk" label="Search the keeper's desk" when="scene.ledgerReads > 0" once>
-    @narrator: Under the blotter: a letter signed "Tomas Vell".
+    @narrator{code="0060"}: Under the blotter: a letter signed "Tomas Vell".
     ::set{run.knowsName = true}
   </choice>
   <choice id="gallery" label="Look out from the gallery">
     ::set{scene.gallery += 1}
-    @narrator{when="scene.gallery > 2"}: A light on the water. A ship, coming in blind.
-    @narrator{when="scene.gallery <= 2"}: Only fog.
+    @narrator{code="0070" when="scene.gallery > 2"}: A light on the water. A ship, coming in blind.
+    @narrator{code="0080" when="scene.gallery <= 2"}: Only fog.
   </choice>
   <choice id="stores" label="Go down to the stores" once>
-    @narrator: You find two more cans of oil.
+    @narrator{code="0090"}: You find two more cans of oil.
     ::set{run.oil += 2}
   </choice>
   <choice id="name" label="Say the keeper's name aloud" when="run.knowsName" once>
-    @narrator: "Tomas." The lens turns a quarter, by itself.
+    @narrator{code="0100"}: "Tomas." The lens turns a quarter, by itself.
   </choice>
   <choice id="leap" label="Climb the rail toward the light" when="scene.gallery > 2" once>
-    @narrator: The rail is wet. The light is very far away.
+    @narrator{code="0110"}: The rail is wet. The light is very far away.
     ::set{run.fate = "drowned"}
     ::end{reason="drowned"}
   </choice>
   <choice id="dusk" label="Wait for dark" exit>
-    @narrator: The sun goes under.
+    @narrator{code="0120"}: The sun goes under.
   </choice>
 </hub>

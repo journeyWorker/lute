@@ -1,0 +1,7 @@
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+identity:
+  renames:
+    "quest:oldQuest": "quest:newQuest"

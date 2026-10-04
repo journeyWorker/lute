@@ -10,5 +10,5 @@ when: "holds('birthdayToday', [occasion.target])"
 
 ## Song
 
-@narrator: The harbor sings for {{occasion.target}}.
+@narrator{code="0010"}: The harbor sings for {{occasion.target}}.
 ::set{user.bond[occasion.target] += 1}

@@ -15,11 +15,11 @@ when: "!holds('defeated', ['marin'])"
 
 ::bg{location="tide-gym" time="day"}
 ::music{action="change" mood="upbeat" volume="normal"}
-@narrator: The Tide Gym is a swimming pool with a lighthouse's worth of windows. The floating walkways dip under your feet. At the deep end, somebody is doing lengths faster than seems reasonable.
-@marin{emotion="laughing"}: Hang on! Twelve more! ... Okay, I'm lying, that was the last one. Hi!
+@narrator{code="0010"}: The Tide Gym is a swimming pool with a lighthouse's worth of windows. The floating walkways dip under your feet. At the deep end, somebody is doing lengths faster than seems reasonable.
+@marin{code="0010" emotion="laughing"}: Hang on! Twelve more! ... Okay, I'm lying, that was the last one. Hi!
 
 ## Marin
 
-::use{component="gymLeader" who="marin" badge="tide" intro="Hi, you're a new face! Trainers who want to turn pro have to have a policy about monsters. Mine is an all-out offensive with water!" win="Wow! You're too much. All right, you can have the Tide Badge to show you beat me." lose="The tide always comes back in. So can you." prize="2100"}
-@marin{when="@wonFight" emotion="happy"}: With the Tide Badge, a monster that knows Cut will use it for you outside battle. There's a thin tree in Portvolt that's been annoying everyone for years.
-@marin{when="!@wonFight"}: Go and dry off. Come back wetter. That's not a riddle, it's advice.
+::use{component="gymLeader" who="marin" badge="tide" intro="Hi, you're a new face! Trainers who want to turn pro have to have a policy about monsters. Mine is an all-out offensive with water!" win="Wow! You're too much. All right, you can have the Tide Badge to show you beat me." lose="The tide always comes back in. So can you." prize="2100" instance="use-001"}
+@marin{code="0020" when="@wonFight" emotion="happy"}: With the Tide Badge, a monster that knows Cut will use it for you outside battle. There's a thin tree in Portvolt that's been annoying everyone for years.
+@marin{code="0030" when="!@wonFight"}: Go and dry off. Come back wetter. That's not a riddle, it's advice.

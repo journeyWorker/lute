@@ -10,7 +10,7 @@ when: "@starfallLive"
 
 ## Comets for sale
 
-@pim{emotion="happy"}: Comets! Fresh-fallen, still warm! One token each, two for a wish!
-@narrator: A knight in black armour is standing at the edge of the market, very still, watching the comets like they owe her money.
-@lumi{emotion="surprised"}: Wishkeeper. That's Vesper. The Hollow King's lantern-bearer.
-@vesper{emotion="smug"}: Former. I'm between kings. Buy me a comet and I'll explain.
+@pim{code="0010" emotion="happy"}: Comets! Fresh-fallen, still warm! One token each, two for a wish!
+@narrator{code="0010"}: A knight in black armour is standing at the edge of the market, very still, watching the comets like they owe her money.
+@lumi{code="0010" emotion="surprised"}: Wishkeeper. That's Vesper. The Hollow King's lantern-bearer.
+@vesper{code="0010" emotion="smug"}: Former. I'm between kings. Buy me a comet and I'll explain.

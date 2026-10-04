@@ -13,40 +13,40 @@ after: 'visited("common.exam")'
 ::bg{location="lakeshore" time="evening"}
 ::music{action="start" mood="peaceful" volume="down"}
 ::auto{character="hotaru" anchor="center" action="fadeInUp"}
-@narrator: A girl in an old-fashioned uniform is sitting on the jetty, lighting lanterns nobody asked her to light.
-@hotaru{emotion="smiling"}: You can see me. Most transfers can't, the first week.
+@narrator{code="0010"}: A girl in an old-fashioned uniform is sitting on the jetty, lighting lanterns nobody asked her to light.
+@hotaru{code="0010" emotion="smiling"}: You can see me. Most transfers can't, the first week.
 
 <match on="user.terms">
   <when is="0">
-    @hotaru: I'm Hotaru. I keep the lanterns. Tomorrow the whole school floats them, and every one of them comes back to me.
-    @you: Comes back?
-    @hotaru{emotion="sad"}: The lake is round. Everything comes back.
+    @hotaru{code="0020"}: I'm Hotaru. I keep the lanterns. Tomorrow the whole school floats them, and every one of them comes back to me.
+    @you{code="0010"}: Comes back?
+    @hotaru{code="0030" emotion="sad"}: The lake is round. Everything comes back.
   </when>
   <when is="1">
-    @hotaru{emotion="fond"}: You again. One lantern on this lake is yours, did you know? I keep count.
+    @hotaru{code="0040" emotion="fond"}: You again. One lantern on this lake is yours, did you know? I keep count.
   </when>
   <otherwise>
-    @hotaru{emotion="fond"}: You again. {{user.terms}} lanterns on this lake are yours, did you know? I keep count.
+    @hotaru{code="0050" emotion="fond"}: You again. {{user.terms}} lanterns on this lake are yours, did you know? I keep count.
   </otherwise>
 </match>
 
 <match on="prev.run.ending">
   <when is="good">
-    @hotaru{emotion="neutral"}: Last time it was {{prev.run.route}}'s lantern. It came back to me warm.
+    @hotaru{code="0060" emotion="neutral"}: Last time it was {{prev.run.route}}'s lantern. It came back to me warm.
   </when>
   <when is="bittersweet">
-    @hotaru{emotion="sad"}: Last time it was {{prev.run.route}}'s lantern. It came back to me with the flame guttering.
+    @hotaru{code="0070" emotion="sad"}: Last time it was {{prev.run.route}}'s lantern. It came back to me with the flame guttering.
   </when>
   <when is="solo">
-    @hotaru{emotion="sad"}: Last time you floated yours alone. It came back to me cold.
+    @hotaru{code="0080" emotion="sad"}: Last time you floated yours alone. It came back to me cold.
   </when>
   <when is="keeper">
-    @hotaru{emotion="neutral"}: They tell me I used to keep these. I don't remember it. You look as if you do.
+    @hotaru{code="0090" emotion="neutral"}: They tell me I used to keep these. I don't remember it. You look as if you do.
   </when>
   <otherwise>
-    @narrator: Out on the water, the first test lanterns bob and turn.
+    @narrator{code="0020"}: Out on the water, the first test lanterns bob and turn.
   </otherwise>
 </match>
 
-@hotaru{emotion="fond" when="quest.fourLanterns.state == 'complete' && !holds('cgSeen', ['cgKeeperEnd'])"}: Four lanterns, four people. You've given this lake everyone but me. Tomorrow... float one for me?
+@hotaru{code="0100" emotion="fond" when="quest.fourLanterns.state == 'complete' && !holds('cgSeen', ['cgKeeperEnd'])"}: Four lanterns, four people. You've given this lake everyone but me. Tomorrow... float one for me?
 ::auto{character="hotaru" action="fadeOut"}

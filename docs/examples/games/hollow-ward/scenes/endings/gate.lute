@@ -11,35 +11,35 @@ when: "holds('holding', ['keycard'])"
 
 ## Gatepost
 
-@narrator: The card slides in with a click like a tongue. The screen changes: ENTER CODE. Three digits.
-@nell{mono when="entry.ledgerPage1.read && entry.ledgerPage2.read && entry.ledgerPage3.read"}: Two. Seven. Five. The gate remembers them in order.
-@tobias{when="@withToby"}: Nell. Nell, the wheels. Hurry.
+@narrator{code="0010"}: The card slides in with a click like a tongue. The screen changes: ENTER CODE. Three digits.
+@nell{code="0010" mono when="entry.ledgerPage1.read && entry.ledgerPage2.read && entry.ledgerPage3.read"}: Two. Seven. Five. The gate remembers them in order.
+@tobias{code="0010" when="@withToby"}: Nell. Nell, the wheels. Hurry.
 ::keypad{pad="gatePad" resultKey="gate"}
 <match on="scene.keypad.gate.entered">
   <when test="$ == @gateCode">
-    @narrator: The lock clunks. The gate swings outward on hinges that have not moved since 1979, and the air on the other side smells of wet road and petrol and nothing else at all.
+    @narrator{code="0020"}: The lock clunks. The gate swings outward on hinges that have not moved since 1979, and the air on the other side smells of wet road and petrol and nothing else at all.
     <match on="quest.quietWard.state">
       <when is="complete">
         ::set{run.fate = "released"}
-        @narrator: Behind you, one by one, the windows of St. Agathe's go dark, not like lights going out but like eyes closing.
-        @child{os}: Night night, nurse.
-        @tobias{when="@withToby"}: Did you hear that? Nell, did you...
-        @nell{emotion="relieved"}: I heard. Let them sleep.
+        @narrator{code="0030"}: Behind you, one by one, the windows of St. Agathe's go dark, not like lights going out but like eyes closing.
+        @child{code="0010" os}: Night night, nurse.
+        @tobias{code="0020" when="@withToby"}: Did you hear that? Nell, did you...
+        @nell{code="0020" emotion="relieved"}: I heard. Let them sleep.
       </when>
       <otherwise>
         ::set{run.fate = "together" when="@withToby"}
         ::set{run.fate = "escaped" when="!@withToby"}
-        @tobias{when="@withToby"}: Don't look back. Don't. I looked back once tonight and look where it got me.
-        @nell{mono when="!@withToby" emotion="numb"}: The car is still here. His car. I have his lantern. I have his car. I don't have him.
-        @narrator: Behind you, very faintly, a gurney squeaks, turns, and goes back inside to wait.
+        @tobias{code="0030" when="@withToby"}: Don't look back. Don't. I looked back once tonight and look where it got me.
+        @nell{code="0030" mono when="!@withToby" emotion="numb"}: The car is still here. His car. I have his lantern. I have his car. I don't have him.
+        @narrator{code="0040"}: Behind you, very faintly, a gurney squeaks, turns, and goes back inside to wait.
       </otherwise>
     </match>
     ::music{action="stop"}
     ::end{reason="out"}
   </when>
   <otherwise>
-    @narrator: ACCESS DENIED. And then, from a loudspeaker on the gatepost that has no wires, a siren, winding up.
-    @nell: Shut up. Shut up, shut up!
+    @narrator{code="0050"}: ACCESS DENIED. And then, from a loudspeaker on the gatepost that has no wires, a siren, winding up.
+    @nell{code="0040"}: Shut up. Shut up, shut up!
     ::lure{room="gate"}
     ::fright{amount=2}
   </otherwise>

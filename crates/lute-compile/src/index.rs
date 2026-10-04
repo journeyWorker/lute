@@ -180,6 +180,9 @@ pub struct ProjectIndex {
     pub capability_version: String,
     /// Sorted union of the compiler-derived capabilities of every artifact.
     pub required_semantics: Vec<String>,
+    /// Resolved project identity migrations, unioned and sorted by source key.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub identity_renames: Vec<lute_manifest::project::IdentityRename>,
     pub documents: Vec<IndexDocument>,
     pub entities: Vec<EntityKindEntry>,
     pub enums: Vec<EnumEntry>,
@@ -384,10 +387,17 @@ pub fn build_index(
     let mut seed_facts: BTreeMap<(String, Vec<String>), SeedFactEntry> = BTreeMap::new();
     let mut outside_run: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut rules: BTreeMap<(String, String), RuleEntry> = BTreeMap::new();
+    let mut identity_renames: BTreeMap<String, lute_manifest::project::IdentityRename> = BTreeMap::new();
     let mut required_semantics: BTreeSet<String> = BTreeSet::new();
 
     for d in docs {
         let a = d.artifact;
+        if !a.identity_renames.is_empty() {
+            required_semantics.insert("lute.identity.renames/1".to_string());
+        }
+        for rename in &a.identity_renames {
+            identity_renames.entry(rename.from.clone()).or_insert_with(|| rename.clone());
+        }
         required_semantics.extend(a.required_semantics.iter().cloned());
         for e in &a.entities {
             entities.push(&e.name, e, &d.path, &mut errors);
@@ -541,6 +551,7 @@ pub fn build_index(
         ir_version: ir_version.to_string(),
         capability_version: capability.map(|(_, v)| v.to_string()).unwrap_or_default(),
         required_semantics: required_semantics.into_iter().collect(),
+        identity_renames: identity_renames.into_values().collect(),
         documents,
         entities: entities.finish(),
         enums: enums.finish(),
@@ -694,6 +705,7 @@ mod tests {
             lute: "0.11.0".to_string(),
             ir_version: "0.11.0".to_string(),
             capability_version: capability.to_string(),
+            identity_renames: Vec::new(),
             required_semantics: Vec::new(),
             meta: ArtifactMeta::Scene(SceneMeta {
                 id: format!("{character}.s01ep02"),

@@ -23,11 +23,12 @@ impl Serialize for SourceLocation {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ChangeKind {
     Added,
     Removed,
     Moved,
+    Renamed { from: NodeKey, to: NodeKey, declaration: Option<SourceLocation> },
     Field(String),
     ConditionUnparsable,
 }
@@ -37,9 +38,10 @@ impl ChangeKind {
         match self {
             Self::Added => (0, "added"),
             Self::Removed => (1, "removed"),
-            Self::Moved => (2, "moved"),
-            Self::Field(name) => (3, name),
-            Self::ConditionUnparsable => (4, "conditionUnparsable"),
+            Self::Renamed { .. } => (2, "renamed"),
+            Self::Moved => (3, "moved"),
+            Self::Field(name) => (4, name),
+            Self::ConditionUnparsable => (5, "conditionUnparsable"),
         }
     }
     fn text(&self) -> String {
@@ -54,6 +56,9 @@ pub struct SemanticChange {
     pub before: Option<Value>,
     pub after: Option<Value>,
     pub locations: Vec<SourceLocation>,
+    /// True only for a removed/added save-shaped identity pair with no ledger
+    /// mapping. This is deliberately a review signal, not a checker error.
+    pub unmapped_identity: bool,
 }
 
 impl Serialize for SemanticChange {
@@ -67,10 +72,34 @@ impl Serialize for SemanticChange {
             before: &'a Option<Value>,
             after: &'a Option<Value>,
             locations: &'a [SourceLocation],
+            #[serde(skip_serializing_if = "Option::is_none")]
+            from: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            to: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            declaration_location: Option<&'a SourceLocation>,
+            #[serde(skip_serializing_if = "std::ops::Not::not")]
+            unmapped_identity: bool,
         }
-        Change { kind: self.kind.text(), node: self.node.canonical(), before: &self.before, after: &self.after, locations: &self.locations }.serialize(serializer)
+        let (from, to, declaration_location) = match &self.kind {
+            ChangeKind::Renamed { from, to, declaration } =>
+                (Some(from.canonical()), Some(to.canonical()), declaration.as_ref()),
+            _ => (None, None, None),
+        };
+        Change {
+            kind: self.kind.text(),
+            node: self.node.canonical(),
+            before: &self.before,
+            after: &self.after,
+            locations: &self.locations,
+            from,
+            to,
+            declaration_location,
+            unmapped_identity: self.unmapped_identity,
+        }.serialize(serializer)
     }
 }
+
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -450,6 +479,32 @@ fn has_unparsable(value: &Value) -> bool {
     value.to_string().contains("E-CEL-") || value.to_string().contains("conditionUnparsable")
 }
 
+fn parse_canonical_key(raw: &str) -> Option<NodeKey> {
+    let (kind, key) = raw.split_once(':')?;
+    let kind = match kind {
+        "project" => NodeKind::Project, "document" => NodeKind::Document,
+        "scene" => NodeKind::Scene, "beat" => NodeKind::Beat, "shot" => NodeKind::Shot,
+        "line" => NodeKind::Line, "choice" => NodeKind::Choice, "quest" => NodeKind::Quest,
+        "objective" => NodeKind::Objective, "reward" => NodeKind::Reward,
+        "entry" => NodeKind::Entry, "occasion" => NodeKind::Occasion,
+        "relation" => NodeKind::Relation, "state" => NodeKind::State, "def" => NodeKind::Def,
+        "component" => NodeKind::Component, "expanded" => NodeKind::Expanded,
+        "fact" => NodeKind::Fact, "clock" => NodeKind::Clock, "engine" => NodeKind::Engine,
+        _ => return None,
+    };
+    (!key.is_empty()).then(|| NodeKey::new(kind, key))
+}
+
+fn ledger_declaration(model: &ProjectModel, from: &str) -> Option<SourceLocation> {
+    let config = model.manifest()?;
+    let entry = config.identity_renames.iter().find(|entry| entry.rename.from == from)?;
+    let span = entry.span?;
+    Some(SourceLocation { file: PathBuf::from("lute.project.yaml"), span })
+}
+
+fn save_shaped(kind: NodeKind) -> bool {
+    !matches!(kind, NodeKind::Project | NodeKind::Engine | NodeKind::Component)
+}
 fn field_name(node: &NodeKey, before: &Value, after: &Value) -> ChangeKind {
     if has_unparsable(before) || has_unparsable(after) { return ChangeKind::ConditionUnparsable; }
     let changed = |name: &str| before.get(name) != after.get(name);
@@ -509,7 +564,31 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
     keys.extend(after_values.keys().cloned());
     let ambiguous_rewards = reward_ambiguities(&before_values, &after_values);
     let mut changes = Vec::new();
+    let mut handled = BTreeSet::new();
+
+    // The validated ledger is the only source of rename matching. Apply it
+    for rename in after.identity_renames() {
+        let Some(from) = parse_canonical_key(&rename.from) else { continue };
+        let Some(to) = parse_canonical_key(&rename.to) else { continue };
+        let (Some(old), Some(new)) = (before_values.get(&from), after_values.get(&to)) else { continue };
+        let mut locs = locations(before, &before_graph, &from);
+        locs.extend(locations(after, &after_graph, &to));
+        changes.push(SemanticChange {
+            kind: ChangeKind::Renamed { from: from.clone(), to: to.clone(), declaration: ledger_declaration(after, &rename.from) },
+            node: to.clone(),
+            before: Some(old.clone()),
+            after: Some(new.clone()),
+            locations: locs,
+            unmapped_identity: false,
+        });
+        handled.insert(from);
+        handled.insert(to);
+    }
+
     for key in keys {
+        if handled.contains(&key) {
+            continue;
+        }
         if key.kind == NodeKind::Reward && ambiguous_rewards.iter().any(|ambiguous| {
             let owner = |reward: &NodeKey| reward.key.rsplit_once('#').map_or_else(|| reward.key.clone(), |(owner, _)| owner.to_string());
             owner(&key) == owner(ambiguous)
@@ -539,9 +618,9 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
             let before_loc = locations(before, &before_graph, &key);
             let mut after_loc = locations(after, &after_graph, &key);
             after_loc.extend(parse_locs);
-            let mut locs = before_loc.clone();
+            let mut locs = before_loc;
             locs.extend(after_loc);
-            changes.push(SemanticChange { kind, node: key, before: b.cloned(), after: after_value, locations: locs });
+            changes.push(SemanticChange { kind, node: key, before: b.cloned(), after: after_value, locations: locs, unmapped_identity: false });
         } else if b.is_some() && a.is_some() {
             let bl = before_graph.nodes.get(&key).and_then(|node| node.file.as_ref())
                 .map(|path| relative_node_path(before.root(), path));
@@ -550,7 +629,7 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
             if bl != al {
                 let mut locs = locations(before, &before_graph, &key);
                 locs.extend(locations(after, &after_graph, &key));
-                changes.push(SemanticChange { kind: ChangeKind::Moved, node: key, before: b.cloned(), after: a.cloned(), locations: locs });
+                changes.push(SemanticChange { kind: ChangeKind::Moved, node: key, before: b.cloned(), after: a.cloned(), locations: locs, unmapped_identity: false });
             }
         }
     }
@@ -565,7 +644,40 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
             before: before_value,
             after: Some(after_value.clone()),
             locations: locs,
+            unmapped_identity: false,
         });
+    }
+
+    // Pair semantically equivalent key changes first, then use balanced
+    // same-kind pairing when references make the values differ.
+    let removed: Vec<usize> = changes.iter().enumerate()
+        .filter(|(_, c)| matches!(c.kind, ChangeKind::Removed) && save_shaped(c.node.kind))
+        .map(|(i, _)| i).collect();
+    let added: Vec<usize> = changes.iter().enumerate()
+        .filter(|(_, c)| matches!(c.kind, ChangeKind::Added) && save_shaped(c.node.kind))
+        .map(|(i, _)| i).collect();
+    for ri in &removed {
+        let Some(old) = changes[*ri].before.as_ref().map(semantic_node_value) else { continue };
+        let Some(ai) = added.iter().copied().find(|ai| {
+            changes[*ai].node.kind == changes[*ri].node.kind
+                && changes[*ai].after.as_ref().map(semantic_node_value) == Some(old.clone())
+        }) else { continue };
+        changes[*ri].unmapped_identity = true;
+        changes[ai].unmapped_identity = true;
+    }
+    let mut removed_by_kind = BTreeMap::<NodeKind, Vec<usize>>::new();
+    let mut added_by_kind = BTreeMap::<NodeKind, Vec<usize>>::new();
+    for index in removed { removed_by_kind.entry(changes[index].node.kind).or_default().push(index); }
+    for index in added { added_by_kind.entry(changes[index].node.kind).or_default().push(index); }
+    for (kind, mut old) in removed_by_kind {
+        let Some(mut new) = added_by_kind.remove(&kind) else { continue };
+        if old.len() != new.len() { continue; }
+        old.sort_by_key(|index| changes[*index].node.clone());
+        new.sort_by_key(|index| changes[*index].node.clone());
+        for (ri, ai) in old.into_iter().zip(new) {
+            changes[ri].unmapped_identity = true;
+            changes[ai].unmapped_identity = true;
+        }
     }
     changes.sort_by(|a, b| {
         let location_key = |change: &SemanticChange| change.locations.first()
@@ -575,13 +687,20 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
             .then_with(|| a.kind.rank().cmp(&b.kind.rank()))
             .then_with(|| location_key(a).cmp(&location_key(b)))
     });
-    Ok(SemanticDiff { schema_version: "0.35.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes })
+    Ok(SemanticDiff { schema_version: "0.36.0.diff", before: before.revisions().clone(), after: after.revisions().clone(), changes })
 }
 
 pub fn human(diff: &SemanticDiff) -> String {
     let mut out = format!("before {}\nafter {}\n", diff.before.sha256, diff.after.sha256);
     for change in &diff.changes {
-        out.push_str(&format!("{} {}\n", change.kind.text(), change.node.canonical()));
+        match &change.kind {
+            ChangeKind::Renamed { from, to, .. } => out.push_str(&format!("renamed {} -> {}", from.canonical(), to.canonical())),
+            _ => out.push_str(&format!("{} {}", change.kind.text(), change.node.canonical())),
+        }
+        if change.unmapped_identity {
+            out.push_str(" [unmappedIdentity]");
+        }
+        out.push('\n');
     }
     out
 }

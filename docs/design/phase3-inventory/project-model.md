@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # Phase 3 inventory — project-model
 
 ## summary

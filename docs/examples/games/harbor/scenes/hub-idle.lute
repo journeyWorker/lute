@@ -8,4 +8,4 @@ once: false
 
 ## Pier
 
-@narrator: Gulls argue over a fish head. It is {{clock.weekdayLabel}}, and you have {{run.coins:plural(# coin|# coins)}}.
+@narrator{code="0010"}: Gulls argue over a fish head. It is {{clock.weekdayLabel}}, and you have {{run.coins:plural(# coin|# coins)}}.

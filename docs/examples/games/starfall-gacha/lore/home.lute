@@ -7,21 +7,21 @@ title: Home screen taps
 to these roster-wide lines. */
 
 <beat id="festivalTap" on="homeTap" target="kind:hero" once="false" priority="-1" when="@anyEventLive">
-  @narrator: {{occasion.target}} is wearing a paper festival crown. Somebody made it badly, with love.
+  @narrator{code="0010"}: {{occasion.target}} is wearing a paper festival crown. Somebody made it badly, with love.
 </beat>
 
 <beat id="idleTap" on="homeTap" target="kind:hero" once="false" priority="-2">
-  @narrator: {{occasion.target}} waves back.
+  @narrator{code="0010"}: {{occasion.target}} waves back.
 </beat>
 
 <beat id="lateTap" on="homeTap" target="kind:hero" once="slot" priority="-1" when="@weekend && !@anyEventLive">
-  @narrator: {{occasion.target}} is asleep on the couch. It's the weekend, after all.
+  @narrator{code="0010"}: {{occasion.target}} is asleep on the couch. It's the weekend, after all.
 </beat>
 /* Bond tab, Story button, when the hero has no story ready: how far the
 next rank is (the roster's rule table: 100 / 300 / 600). */
 <beat id="bondNotYet" on="bondStory" target="kind:hero" once="false" priority="-10">
-  @narrator: {{occasion.target}} smiles, but doesn't say anything else yet. Spend more time together.
-  @narrator{when="!holds('bondRank', [occasion.target, 'r1'])"}: Bond {{user.bond[occasion.target]}} of 100 to the first story.
-  @narrator{when="holds('bondRank', [occasion.target, 'r1']) && !holds('bondRank', [occasion.target, 'r2'])"}: Bond {{user.bond[occasion.target]}} of 300 to the next story.
-  @narrator{when="holds('bondRank', [occasion.target, 'r2']) && !holds('bondRank', [occasion.target, 'r3'])"}: Bond {{user.bond[occasion.target]}} of 600 to the last story.
+  @narrator{code="0010"}: {{occasion.target}} smiles, but doesn't say anything else yet. Spend more time together.
+  @narrator{code="0020" when="!holds('bondRank', [occasion.target, 'r1'])"}: Bond {{user.bond[occasion.target]}} of 100 to the first story.
+  @narrator{code="0030" when="holds('bondRank', [occasion.target, 'r1']) && !holds('bondRank', [occasion.target, 'r2'])"}: Bond {{user.bond[occasion.target]}} of 300 to the next story.
+  @narrator{code="0040" when="holds('bondRank', [occasion.target, 'r2']) && !holds('bondRank', [occasion.target, 'r3'])"}: Bond {{user.bond[occasion.target]}} of 600 to the last story.
 </beat>

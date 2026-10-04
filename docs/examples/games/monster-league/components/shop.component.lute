@@ -6,6 +6,6 @@ params:
 
 ## Mart
 
-@clerk: Hi there! May I help you?
+@clerk{code="0010"}: Hi there! May I help you?
 ::shop{stock=@stock}
-@clerk: Please come again!
+@clerk{code="0020"}: Please come again!

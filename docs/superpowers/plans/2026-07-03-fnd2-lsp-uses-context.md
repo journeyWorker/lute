@@ -1,3 +1,7 @@
+---
+status: Implemented
+---
+
 # FND-2: LSP Feature Context sees `uses:` Imports — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development.

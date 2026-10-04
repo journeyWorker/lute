@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: ownedWrite
-luteVersion: "0.35.0"
+luteVersion: "0.36.0"
 title: Invalid Owned Write
 uses: ./schema.yaml
 ---

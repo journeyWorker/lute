@@ -10,13 +10,13 @@ title: Monster Centers and Marts (fallbacks)
 // label; it cannot ::use the nurse component, whose `town` param takes a
 // literal member only (not occasion.target), so the nurse's lines are here.
 <beat id="centerFallback" on="heal" target="kind:town" title="Monster Center" priority="-100" once="false">
-  @nurse: Welcome to the {{occasion.target}} Monster Center!
-  @nurse: We restore tired monsters to full health. I'll take yours for a moment.
+  @nurse{code="0010"}: Welcome to the {{occasion.target}} Monster Center!
+  @nurse{code="0020"}: We restore tired monsters to full health. I'll take yours for a moment.
   ::heal
   ::sfx{sound="center-jingle"}
-  @nurse: Thank you for waiting. Your monsters are fighting fit! We hope to see you again.
+  @nurse{code="0030"}: Thank you for waiting. Your monsters are fighting fit! We hope to see you again.
 </beat>
 
 <beat id="martFallback" on="shop" title="Mart" priority="-100" once="false">
-  ::use{component="shop" stock="basicStock"}
+  ::use{component="shop" stock="basicStock" instance="use-001"}
 </beat>

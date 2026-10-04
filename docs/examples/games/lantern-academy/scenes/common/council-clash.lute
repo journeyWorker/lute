@@ -14,32 +14,32 @@ after: 'visited("common.arrival")'
 ::music{action="start" mood="tense" volume="down"}
 ::auto{character="ren" anchor="left" action="fadeInUp"}
 ::auto{character="kai" anchor="right" action="fadeInUp"}
-@ren{emotion="stern"}: Item four. The old music room is condemned. Someone has been in it after curfew, every night, for a month.
-@kai{emotion="smirk"}: Someone. Wonder who.
-@ren{emotion="stern"}: The floor is rotten, Hollow. I am not writing to your mother because a piano fell through it with you on the stool.
-@kai{emotion="angry"}: So lock me out of the one room on this island that doesn't talk back.
-@ren: The transfer student was there last night. We'll hear a witness.
-@you{mono}: Every head in the room turns to me.
+@ren{code="0010" emotion="stern"}: Item four. The old music room is condemned. Someone has been in it after curfew, every night, for a month.
+@kai{code="0010" emotion="smirk"}: Someone. Wonder who.
+@ren{code="0020" emotion="stern"}: The floor is rotten, Hollow. I am not writing to your mother because a piano fell through it with you on the stool.
+@kai{code="0020" emotion="angry"}: So lock me out of the one room on this island that doesn't talk back.
+@ren{code="0030"}: The transfer student was there last night. We'll hear a witness.
+@you{code="0010" mono}: Every head in the room turns to me.
 
 <branch id="clash" prompt="Ren and Kai are both waiting.">
   <choice id="sideRen" label="Tell the truth: the floor creaked under both of us">
-    @ren{emotion="flustered"}: ...Thank you. That is exactly what a report is supposed to sound like.
-    @kai{emotion="sad"}: Right. Good. Nice to know whose side the new kid is on.
+    @ren{code="0040" emotion="flustered"}: ...Thank you. That is exactly what a report is supposed to sound like.
+    @kai{code="0030" emotion="sad"}: Right. Good. Nice to know whose side the new kid is on.
     ::set{run.aff.ren += 2}
     ::assert{locked(kai)}
   </choice>
   <choice id="sideKai" label="Lie for Kai: you were alone, and the room was fine">
-    @kai{emotion="happy"}: Huh. Didn't see that coming.
-    @ren{emotion="sad"}: I see. Then the council has nothing to act on. Meeting adjourned.
+    @kai{code="0040" emotion="happy"}: Huh. Didn't see that coming.
+    @ren{code="0050" emotion="sad"}: I see. Then the council has nothing to act on. Meeting adjourned.
     ::set{run.aff.kai += 2}
     ::assert{locked(ren)}
   </choice>
   <choice id="stayOut" label="Say you don't remember">
-    @ren: Noted. Unhelpfully.
-    @kai: Coward. Smart coward, though.
+    @ren{code="0060"}: Noted. Unhelpfully.
+    @kai{code="0050"}: Coward. Smart coward, though.
   </choice>
 </branch>
 
 ::auto{character="ren" action="fadeOut"}
 ::auto{character="kai" action="fadeOut"}
-@narrator: The bell rings over all of it.
+@narrator{code="0010"}: The bell rings over all of it.

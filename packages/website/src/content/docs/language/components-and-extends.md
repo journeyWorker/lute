@@ -424,13 +424,21 @@ values free to use `@param`) is a **beat template** (dsl 0.27.0 §6): a bundle b
 
 ### Line identity
 
-Each `::use` expansion is its own identity scope (0.22.0). A line expanded from a component is
-addressed `{prefix}.{component}#{n}.{speaker}_{code}`, where `{prefix}` is the host document's
-key and `n` counts the host's `::use`s of that component — 1-based, in document order. The scene
-above compiles the component's narrator line to `demo.s01ep02.greet#1.narrator_0010` and its own
-`@narrator: And the scene carries on.` to `demo.s01ep02.narrator_0010`. A voiced line's default
-`voiceKey` takes the same scope (see [Frontmatter & profiles](/language/frontmatter-and-profiles/)
-for the `identity:` templates).
+Each `::use` expansion is its own identity scope. A line expanded from a
+component is addressed `{prefix}.{component}#{instance}.{speaker}_{code}`,
+where `instance` is the authored `instance="…"` token, not a count of sibling
+uses. Missing keys are warning-bearing fallbacks until `lute tag` writes them.
+A voiced line's default `voiceKey` takes the same scope (see
+[Frontmatter & profiles](/language/frontmatter-and-profiles/) for the
+`identity:` templates).
+
+```lute check
+---
+component: toast
+---
+## A Toast
+@mira{code="0010"}: To the harbor.
+```
 
 Take a component with one tagged and one untagged line:
 

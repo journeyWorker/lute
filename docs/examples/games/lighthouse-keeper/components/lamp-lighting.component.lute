@@ -10,12 +10,12 @@ params:
 ## Lighting the Lamp
 
 ::sfx{sound="brass_crank"}
-@narrator: {{@keeper}} climbs the hundred and eleven steps, trims the wick, and sets the clockwork turning.
+@narrator{code="0010"}: {{@keeper}} climbs the hundred and eleven steps, trims the wick, and sets the clockwork turning.
 <match on="@glass">
   <when is="steady">
-    @narrator: The beam walks out across the water, steady as a heartbeat. Five seconds dark, one second bright.
+    @narrator{code="0020"}: The beam walks out across the water, steady as a heartbeat. Five seconds dark, one second bright.
   </when>
   <when is="guttering">
-    @narrator: The wind finds every seam in the lantern. The flame leans and gutters, and the beam stutters over the Teeth.
+    @narrator{code="0030"}: The wind finds every seam in the lantern. The flame leans and gutters, and the beam stutters over the Teeth.
   </when>
 </match>

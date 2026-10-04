@@ -39,7 +39,7 @@ pub fn hover_at(
     let (mut meta, _) = parse_meta(&doc.meta, snapshot);
     lute_resolve::cursor::merge_imports(&mut meta, imports);
     let cursor = lute_resolve::cursor::resolve(doc, off)?;
-    let md = match cursor {
+    let mut md = match cursor {
         Cursor::DirectiveName(tag) => directive_hover(snapshot, tag),
         Cursor::AttrValue {
             directive: Some(dir),
@@ -120,7 +120,22 @@ pub fn hover_at(
         Cursor::SetPath { path } => state_hover(&meta, path),
         Cursor::ConstructAttrArea { construct } => Some(construct_hover(construct)),
         Cursor::OnEventValue(event) => event_hover(snapshot, event),
-    }?;
+    };
+    if let Some(identity) = super::identity_at(doc, off) {
+        let source = format!("{:?}", identity.identity.source).to_ascii_lowercase();
+        let suffix = format!(
+            "**identity** `{}` — source `{source}`, stable `{}`{}",
+            identity.identity.computed,
+            identity.identity.stable,
+            identity.component_scope.as_deref().map_or(String::new(), |scope| format!(", componentScope `{scope}`")),
+        );
+        if let Some(existing) = md.as_mut() {
+            existing.push_str(&format!("\n\n{suffix}"));
+        } else {
+            md = Some(suffix);
+        }
+    }
+    let md = md?;
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
@@ -425,6 +440,18 @@ mod tests {
     /// Byte offset just inside `needle` (on its first char) within `text`.
     fn pos_on(text: &str, needle: &str) -> usize {
         text.find(needle).expect("needle present") + 1
+    }
+
+    #[test]
+    fn hover_on_line_exposes_identity_metadata() {
+        let text = "## Shot 1.\n@narrator{code=\"intro\"}: Hello\n";
+        let doc = parsed(text);
+        let off = pos_on(text, "intro");
+        let hover = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let rendered = contents_text(&hover);
+        assert!(rendered.contains("identity"), "{rendered}");
+        assert!(rendered.contains("authored"), "{rendered}");
+        assert!(rendered.contains("stable `true`"), "{rendered}");
     }
 
     const WITH_DEF_FOND: &str = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: int, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.marina\">\n  <when test=\"@fond\">\n    @fixer: gently.\n  </when>\n  <otherwise>\n    @fixer: bluntly.\n  </otherwise>\n</match>\n";

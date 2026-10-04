@@ -12,7 +12,7 @@ priority: 10
 ## Reading room
 
 ::bg{location="library" time="night"}
-@archivist{emotion="grim"}: You are not in my catalogue. Everything that comes down here is in my catalogue.
-@ilo: Then write me in.
-@archivist: I have. Under "drowned". The ink is still wet.
-@narrator: The Archivist folds in on itself like a closing book, and the shelves go still.
+@archivist{code="0010" emotion="grim"}: You are not in my catalogue. Everything that comes down here is in my catalogue.
+@ilo{code="0010"}: Then write me in.
+@archivist{code="0020"}: I have. Under "drowned". The ink is still wet.
+@narrator{code="0010"}: The Archivist folds in on itself like a closing book, and the shelves go still.

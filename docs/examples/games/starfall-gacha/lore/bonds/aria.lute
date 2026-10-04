@@ -7,44 +7,44 @@ title: Aria, the Starcaller (SSR)
 Summon intro and dupe line, home-screen tap, birthday, bond stories r1-r3. */
 
 <beat id="ariaIntro" on="summon" target="hero.aria" once="user" priority="10">
-  @aria{emotion="surprised"}: Oh! I fell. From up there. That was the sky, right?
-  @aria{emotion="happy"}: I'm Aria. I call stars. Usually they answer. Tonight, you did.
+  @aria{code="0010" emotion="surprised"}: Oh! I fell. From up there. That was the sky, right?
+  @aria{code="0020" emotion="happy"}: I'm Aria. I call stars. Usually they answer. Tonight, you did.
 </beat>
 
 <beat id="ariaDupe" on="summon" target="hero.aria" once="false" priority="3" when="holds('owned', ['aria']) && occasion.payload.copies <= 6">
-  @aria{emotion="shy"}: Me again! I'll count this as a second wish. Or a {{occasion.payload.copies:ordinal}}.
+  @aria{code="0010" emotion="shy"}: Me again! I'll count this as a second wish. Or a {{occasion.payload.copies:ordinal}}.
 </beat>
 
 <beat id="ariaTap" on="homeTap" target="hero.aria" once="day">
-  @aria: Seventeen stars came out last night. I named four of them after you. Is that weird?
-  @aria{when="@weekend"}: It's the weekend! Stars don't take weekends. I asked.
+  @aria{code="0010"}: Seventeen stars came out last night. I named four of them after you. Is that weird?
+  @aria{code="0020" when="@weekend"}: It's the weekend! Stars don't take weekends. I asked.
 </beat>
 
 <beat id="ariaBirthday" on="dailyReset" once="day" when="holds('celebrate', ['aria'])">
-  @aria{emotion="surprised"}: You remembered my birthday? I didn't even tell the stars.
+  @aria{code="0010" emotion="surprised"}: You remembered my birthday? I didn't even tell the stars.
 </beat>
 
-<beat use="bondStory" id="ariaR1" who="aria" rank="r1" vow="Now I count you too. Don't go missing.">
-  @aria: Can I tell you why I count stars?
-  @aria: When I was small, the sky went dark for a whole winter. The Hollow King was hungry.
-  @aria{emotion="sad"}: I counted the ones that were left. Every night. So none could go missing without someone noticing.
+<beat use="bondStory" id="ariaR1" who="aria" rank="r1" vow="Now I count you too. Don't go missing." instance="use-001">
+  @aria{code="0010"}: Can I tell you why I count stars?
+  @aria{code="0020"}: When I was small, the sky went dark for a whole winter. The Hollow King was hungry.
+  @aria{code="0030" emotion="sad"}: I counted the ones that were left. Every night. So none could go missing without someone noticing.
 </beat>
 
-<beat use="bondStory" id="ariaR2" who="aria" rank="r2" prev="bonds.aria.ariaR1" vow="I'll keep calling. You keep answering.">
-  @aria: I tried to call a star for you tonight. The brightest one.
-  @aria{emotion="sad"}: It didn't come. Maybe I'm not as good as they say.
+<beat use="bondStory" id="ariaR2" who="aria" rank="r2" prev="bonds.aria.ariaR1" vow="I'll keep calling. You keep answering." instance="use-002">
+  @aria{code="0010"}: I tried to call a star for you tonight. The brightest one.
+  @aria{code="0020" emotion="sad"}: It didn't come. Maybe I'm not as good as they say.
   <branch id="ariaR2Answer" prompt="Aria looks at her hands.">
     <choice id="stayed" label="You called me. I stayed.">
-      @aria{emotion="shy"}: ...That's a really unfair thing to say. Thank you.
+      @aria{code="0030" emotion="shy"}: ...That's a really unfair thing to say. Thank you.
     </choice>
     <choice id="tomorrow" label="Try again tomorrow. I'll watch.">
-      @aria{emotion="happy"}: Tomorrow, then. Bring a blanket. The roof is cold.
+      @aria{code="0040" emotion="happy"}: Tomorrow, then. Bring a blanket. The roof is cold.
     </choice>
   </branch>
 </beat>
 
-<beat use="bondStory" id="ariaR3" who="aria" rank="r3" prev="bonds.aria.ariaR2" vow="Starcaller Aria, sworn to you. Every night.">
-  @aria: I finally counted all of them. Every star the Hollow King took, we've brought back.
-  @aria{emotion="surprised"}: Except one. There's a gap, just there, low in the east.
-  @aria{emotion="happy"}: I think I'll leave it empty. It's shaped like the day I met you.
+<beat use="bondStory" id="ariaR3" who="aria" rank="r3" prev="bonds.aria.ariaR2" vow="Starcaller Aria, sworn to you. Every night." instance="use-003">
+  @aria{code="0010"}: I finally counted all of them. Every star the Hollow King took, we've brought back.
+  @aria{code="0020" emotion="surprised"}: Except one. There's a gap, just there, low in the east.
+  @aria{code="0030" emotion="happy"}: I think I'll leave it empty. It's shaped like the day I met you.
 </beat>

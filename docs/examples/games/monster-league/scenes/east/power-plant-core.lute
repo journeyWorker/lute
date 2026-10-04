@@ -19,6 +19,6 @@ after: 'visited("east.powerPlant")'
 ::bg{location="power-plant-roof" time="night"}
 ::music{action="change" mood="battle" volume="up"}
 ::vfx{type="flash"}
-@narrator: At the top of the chimney stair the sky is very close. On the lip of the chimney, wings folded, sits a bird made of yellow light.
-@narrator: It looks at you the way the lighthouse looks at the sea. Then it opens its wings, and every bulb in the plant goes out at once.
+@narrator{code="0010"}: At the top of the chimney stair the sky is very close. On the lip of the chimney, wings folded, sits a bird made of yellow light.
+@narrator{code="0020"}: It looks at you the way the lighthouse looks at the sea. Then it opens its wings, and every bulb in the plant goes out at once.
 ::encounter{species="thunderwing" level="50"}

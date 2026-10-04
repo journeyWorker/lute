@@ -56,13 +56,15 @@ pub fn run(
         input,
         resolve_error,
         identity,
+        identity_rename_decls,
+        identity_rename_diags,
         ..
     } = built;
     if resolve_error {
         return ExitCode::FAILURE;
     }
 
-    let compiler = match ContinuationCompiler::new(input, identity) {
+    let mut compiler = match ContinuationCompiler::new(input, identity) {
         Ok(compiler) => compiler,
         Err(diagnostics) => {
             let stdout = io::stdout();
@@ -78,6 +80,36 @@ pub fn run(
             };
         }
     };
+    if !identity_rename_decls.is_empty() || !identity_rename_diags.is_empty() {
+        let Some(root) = project else {
+            eprintln!("lute compile-stream: identity ledger requires a project root");
+            return ExitCode::FAILURE;
+        };
+        let opts = lute_model::ModelOptions {
+            providers: providers.map(Path::to_path_buf),
+            permission_profile: permission_profile.map(str::to_owned),
+            mode: lute_check::Mode::Ci,
+            compile: true,
+            wip: false,
+        };
+        let model = match lute_model::ProjectModel::build_single_root(root, &opts) {
+            Ok(model) => model,
+            Err(error) => {
+                eprintln!("lute compile-stream: cannot resolve identity ledger: {error}");
+                return ExitCode::from(2);
+            }
+        };
+        if model.identity_renames().is_empty() {
+            for (path, diagnostic) in model.project_diagnostics() {
+                if diagnostic.code.starts_with("E-RENAME-") {
+                    eprintln!("{}: [{}] {}", path.display(), diagnostic.code, diagnostic.text());
+                }
+            }
+            return ExitCode::FAILURE;
+        }
+        compiler.set_identity_renames(model.identity_renames());
+    }
+
 
     let stdin = io::stdin();
     let stdout = io::stdout();

@@ -11,9 +11,9 @@ when: "quest.league.state == 'complete'"
 ::bg{location="hall-of-fame" time="day"}
 ::music{action="change" mood="triumphant" volume="up"}
 ::set{user.hallOfFame += 1}
-@profAlder: This is where the League keeps its Champions. Every team that ever won is recorded here.
-@narrator: The Hall of Fame records {{userName}} and team. Hall of Fame entry number {{user.hallOfFame}}.
-@narrator{when="user.hallOfFame >= 2"}: It is the {{user.hallOfFame:ordinalWord}} time this trainer's name has gone on the wall.
-@narrator{when="@dexCaught >= 150"}: Beside the entry, a note in the professor's hand: Dex complete.
-@narrator: {{@dexCaught}} kinds caught. {{@dexSeen}} seen. {{@badgeCount}} badges.
+@profAlder{code="0010"}: This is where the League keeps its Champions. Every team that ever won is recorded here.
+@narrator{code="0010"}: The Hall of Fame records {{userName}} and team. Hall of Fame entry number {{user.hallOfFame}}.
+@narrator{code="0020" when="user.hallOfFame >= 2"}: It is the {{user.hallOfFame:ordinalWord}} time this trainer's name has gone on the wall.
+@narrator{code="0030" when="@dexCaught >= 150"}: Beside the entry, a note in the professor's hand: Dex complete.
+@narrator{code="0040"}: {{@dexCaught}} kinds caught. {{@dexSeen}} seen. {{@badgeCount}} badges.
 ::vfx{type="sparkle"}

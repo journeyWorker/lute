@@ -365,6 +365,7 @@ mod tests {
                 file: None,
                 span: None,
                 speaker: None,
+                identity: crate::IdentityMetadata::computed("state", "a"),
             },
         );
         graph.nodes.insert(
@@ -374,6 +375,7 @@ mod tests {
                 file: None,
                 span: None,
                 speaker: None,
+                identity: crate::IdentityMetadata::computed("state", "b"),
             },
         );
         graph.edges = vec![

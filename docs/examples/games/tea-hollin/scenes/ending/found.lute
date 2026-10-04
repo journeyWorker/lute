@@ -9,5 +9,5 @@ when: run.accused == "magpie"
 
 ## The Sundial
 
-@narrator: In the magpie's nest: a thimble, two buttons, and the Hollin spoon.
-@aunt_mabel: Pippa! You clever, clever girl. More tea?
+@narrator{code="0010"}: In the magpie's nest: a thimble, two buttons, and the Hollin spoon.
+@aunt_mabel{code="0010"}: Pippa! You clever, clever girl. More tea?
