@@ -89,6 +89,10 @@ Version moves to 0.36.3; no shape or content change — a no-op for consumers.
   called.
 - `play/calendar/mod.rs` moves its per-cell evaluation (`columns`,
   `evaluate`, `cell_facts`) to `calendar/cells.rs` (841 → 635 lines).
+- The public-API CI job reads the `api-change` label when it runs, via the
+  API, instead of from the event payload. A label added by `gh pr create
+  --label`, or added after the PR opens, now counts on a re-run. README now
+  states that the gate compares item paths only.
 
 ## [0.36.2] - 2026-10-06
 
