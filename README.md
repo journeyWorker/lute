@@ -42,15 +42,15 @@ lute play my-project --script p.play.yaml   # raise occasions + engine writes, s
 lute test my-project/tests --project my-project   # execute declared scenario and play expectations
 lute beats my-project          # beat eligibility, ordering, and coverage report
 lute tag .                     # stamp stable content-line codes for localization and voice assets
-lute impact . fact:felled(regent)   # reverse dependency closure (0.36.0)
-lute constraints .                  # manifest invariants (0.36.0)
+lute impact . fact:felled(regent)   # reverse dependency closure (0.36.1)
+lute constraints .                  # manifest invariants (0.36.1)
 lute calendar my-project --axis run.day=1..7 --axis run.slot=morning,night   # who answers in every cell
 lute loc export . --format csv # localization round trip (+ import, word-count report)
 lute scenario .                # read-only graph / reachability / envelope reporting (+ `knowledge`: fact producers)
 lute context scene.lute        # project-resolved authoring surface
-lute fmt .                     # canonical, lossless source formatting (0.36.0)
-lute diff before after         # semantic revision diff (0.36.0)
-lute patch . patch.json        # atomic revision-checked edit (0.36.0)
+lute fmt .                     # canonical, lossless source formatting (0.36.1)
+lute diff before after         # semantic revision diff (0.36.1)
+lute patch . patch.json        # atomic revision-checked edit (0.36.1)
 lute doctor                    # diagnose local toolchain + project setup
 lute version                   # the three independent version axes
 ```
@@ -61,7 +61,7 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.36.0`](docs/proposals/scenario-dsl/0.36.0.md) (names as written, paths like JavaScript: every name a condition reaches is letters, digits, `_` or `-`, not starting with `-`, and a name that is not an identifier is written in a condition as a quoted index, `quest["zero-coke-001"].state`, or a quoted fact argument, `holds('at', ["lab-b2"])`; only a name read bare as `@name` stays an identifier). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.36.1`](docs/proposals/scenario-dsl/0.36.0.md) (names as written, paths like JavaScript: every name a condition reaches is letters, digits, `_` or `-`, not starting with `-`, and a name that is not an identifier is written in a condition as a quoted index, `quest["zero-coke-001"].state`, or a quoted fact argument, `holds('at', ["lab-b2"])`; only a name read bare as `@name` stays an identifier). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
 | **writing scenarios, fast** (one page to keep open: every construct, CLI, diagnostics, gotchas) | the spec stack above | the website's [Cheatsheet](https://lute-lang.vercel.app/reference/cheatsheet/) — every snippet on it is compile-checked in CI |
 | **authoring quests** (lifecycle, objectives, subquests, rewards) | [`0.2.0`](docs/proposals/scenario-dsl/0.2.0.md) §6 (quest kind, objectives, lifecycle events) + [`0.14.0`](docs/proposals/scenario-dsl/0.14.0.md) (subquests) + [`0.16.0`](docs/proposals/scenario-dsl/0.16.0.md) (`<reward/>`) + [`0.24.0`](docs/proposals/scenario-dsl/0.24.0.md) §2 (`activate="accept"`, `complete="any"`, `by=` / `until=` deadlines, `failedBy`) + [`0.25.0`](docs/proposals/scenario-dsl/0.25.0.md) §§4–5 (subquest and `start` graph anchors, `accept="external"`) + [`0.27.0`](docs/proposals/scenario-dsl/0.27.0.md) §5 (`rearm=`, `tier="season:<name>"`) + [`0.28.0`](docs/proposals/scenario-dsl/0.28.0.md) §§5–6 (`follows=`, `outcome=`, `visibleWhen=`, `failedBy: subquest`) | [`runtime/quest-lifecycle.md`](docs/runtime/quest-lifecycle.md) |
 | **authoring lore** (item descriptions, found notes, codex pages, barks) | [`0.19.0`](docs/proposals/scenario-dsl/0.19.0.md) (`kind: lore`, `<entry>`, `entry.<id>.read`, document bundles) + [`0.23.0`](docs/proposals/scenario-dsl/0.23.0.md) §4 (scene-like `<beat>` bundles) | [`runtime/lore-entries.md`](docs/runtime/lore-entries.md) |
@@ -124,7 +124,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.36.0"
+luteVersion: "0.36.1"
 profile: date-minigame
 extra:
   arc: main
@@ -227,8 +227,8 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: implemented at 0.36.0.** The normative surface is the versioned spec stack — the [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta through [`0.36.0`](docs/proposals/scenario-dsl/0.36.0.md). This release adds the lossless syntax layer, canonical formatting, source/project revisions, task-scoped context, semantic diff, and atomic source patching; components and templates remain compile-time expansion with no separate engine id.
-- **IR: 0.36.0.** The execution IR and project index retain the compiler-derived, sorted `requiredSemantics` envelope alongside the 0.35 source-edit contract. Engines gate the exact major.minor line and compare `requiredSemantics` with the immutable `lute.engine.yaml` matrix.
+- **Language: implemented at 0.36.1.** The normative surface is the versioned spec stack — the [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta through [`0.36.1`](docs/proposals/scenario-dsl/0.36.0.md). This release adds the lossless syntax layer, canonical formatting, source/project revisions, task-scoped context, semantic diff, and atomic source patching; components and templates remain compile-time expansion with no separate engine id.
+- **IR: 0.36.1.** The execution IR and project index retain the compiler-derived, sorted `requiredSemantics` envelope alongside the 0.35 source-edit contract. Engines gate the exact major.minor line and compare `requiredSemantics` with the immutable `lute.engine.yaml` matrix.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver, reference runtime, LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates), with editor clients under [`editors/`](editors) and npm distribution under [`packages/`](packages). Run `lute version` to print all three axes.
 
 The toolchain is MIT-licensed ([`LICENSE`](LICENSE)); releases are tracked in

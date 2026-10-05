@@ -38,6 +38,56 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [0.36.1] - 2026-10-05
+
+### Syntax
+
+None.
+
+### Semantics
+
+None.
+
+### Plugin
+
+None.
+
+### CLI
+
+None.
+
+### Diagnostics
+
+None.
+
+### Identity
+
+None.
+
+### IR
+
+Version moves to 0.36.1; no shape or content change — a no-op for consumers.
+
+### Tooling
+
+No behavior change: apart from the version stamps (`lute version`, artifact
+`irVersion`), outputs are byte-identical to 0.36.0 across `lute test
+docs/examples`, check-project and compile --all on all 14 games, single-file
+checks of every corpus `.lute`, context, diff/patch on every edit task, and
+play plus condition dumps. `lute test` assembles each project once
+(monster-league release 17.9 s → 15.0 s); project compile reuses the parsed
+pre-splice document; CEL path-use parse cache; Datalog join precheck and no
+widened-artifact clone per play machine; typed diff/patch model with patch
+split into decode/stage/apply/preserve; typed manifest/schema/expand error
+enums; exhaustive `lute_cel::walk` for context-free CEL passes; frontmatter
+parsed once into TypedMeta for folded-aware passes; module splits (parser,
+testcmd, beats, cast, meta, cel_resolve, connectivity); shared CLI test
+support; new tests for project compile == standalone compile over every root,
+createFile-exists refusal, duplicate frontmatter blocks, and
+check-doc-snippets resolving diagnostic-code constants. `lute-bench` A/B versus
+0.36.0: every cell 0.97–1.01.
+
+
 ## [0.36.0] - 2026-10-05
 
 **Identity, migration, performance** (phase 5 of
