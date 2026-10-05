@@ -213,6 +213,9 @@ jobs:
   public-api:
     name: public Rust API
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -230,12 +233,21 @@ jobs:
             ~/.cargo/git/db/
           key: lute-public-api-cargo-${{ hashFiles('Cargo.lock') }}
 
+      # The label is read live, not from the event payload: `gh pr create
+      # --label` attaches it after the `opened` event fires, and a re-run
+      # replays the original payload. With a live read, labeling the PR and
+      # re-running this one job is enough.
       - name: Check public API against merge base
         env:
-          ALLOW_REMOVALS: ${{ contains(github.event.pull_request.labels.*.name, 'api-change') }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          if [[ "$ALLOW_REMOVALS" == "true" ]]; then
+          labels=""
+          if [[ -n "${PR:-}" ]]; then
+            labels=$(gh api "repos/${{ github.repository }}/issues/$PR/labels" --jq '.[].name')
+          fi
+          if grep -qx 'api-change' <<<"$labels"; then
             python3 scripts/check-public-api.py --allow-removals
           else
             python3 scripts/check-public-api.py

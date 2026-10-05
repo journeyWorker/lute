@@ -227,7 +227,12 @@ Pull requests that touch the Rust workspace run a public-API gate alongside the
 other test jobs. It builds rustdoc with `--no-deps` for every workspace library
 crate at the merge base and at the pull-request revision, then compares each
 crate's `all.html` item list. Removed public items fail the gate unless the
-pull request has the `api-change` label.
+pull request has the `api-change` label. The job reads the label when it runs,
+so after adding the label, re-run the `public Rust API` job.
+
+The gate compares item paths only. It does not see changed signatures, struct
+fields that become private, or changed enum variants. A green run means no
+public item disappeared, not that the API is unchanged.
 
 To run the same check locally (the default base is the merge base with
 `origin/main`):
