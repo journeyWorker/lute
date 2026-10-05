@@ -322,10 +322,10 @@ fn expand_slot(
             slot.authored.get_or_insert(authored);
         }
         Ok(_) => {}
-        Err(message) => diags.push(Diagnostic {
+        Err(error) => diags.push(Diagnostic {
             code: "E-COMPILE-EXPAND".to_string(),
             severity: Severity::Error,
-            message,
+            message: error.to_string(),
             evidence: None,
             span: slot.span,
             layer: Layer::Cel,

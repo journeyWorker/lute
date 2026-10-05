@@ -411,7 +411,6 @@ struct Walk {
     out: Vec<PathUse>,
     local: Vec<String>,
 }
-
 impl Walk {
     fn push(&mut self, path: String, role: PathRole) {
         if is_state_path(&path) {
@@ -436,7 +435,6 @@ impl Walk {
         match expr {
             Expr::Ident(name) => self.push(name.clone(), PathRole::Read),
             Expr::Select(sel) => {
-                // A test-only Select is the `has(p)` macro (dsl §9.4 guard).
                 let role = if sel.test {
                     if dominating {
                         PathRole::Guard
@@ -449,9 +447,6 @@ impl Walk {
                 if let Some(path) = select_path(expr) {
                     self.push(path, role);
                 } else {
-                    // Chain bottoms out in a non-ident (e.g. `f(x).field`,
-                    // `xs[0].field`): not a static state path, but its operand
-                    // may still contain reads.
                     self.expr(&sel.operand.expr, false);
                 }
             }
@@ -461,7 +456,6 @@ impl Walk {
                 }
             }
             Expr::Call(call) => {
-                // Legacy 0.31 `isSet(p)` presence guard; 0.32 uses `has(p)`.
                 if let Some(path) = is_set_arg(call) {
                     let role = if dominating {
                         PathRole::Guard
@@ -471,12 +465,6 @@ impl Walk {
                     self.push(path, role);
                     return;
                 }
-                // Boolean structure controls dominance: `&&` preserves it for
-                // both args; `||`, `!`, `?:` (and any other call/operand) drop
-                // it. Short-circuit order controls LOCAL proof (dsl 0.24.0):
-                // the right operand of `&&` runs only when the left is true,
-                // of `||` only when it is false, and a conditional's branches
-                // only when its condition is true / false.
                 if call.target.is_none() {
                     match (call.func_name.as_str(), call.args.as_slice()) {
                         (op::LOGICAL_AND, [a, b]) => {
@@ -541,6 +529,7 @@ impl Walk {
         }
     }
 }
+
 
 /// The static state path of a legacy 0.31 `isSet(p)` call, or `None`.
 fn is_set_arg(call: &CallExpr) -> Option<String> {

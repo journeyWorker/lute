@@ -598,49 +598,55 @@ fn paths_that_may_stay(when: &str, folded: &FoldedEnv) -> Option<Vec<String>> {
                 .get(p)
                 .is_some_and(|d| d.owner == Some(lute_manifest::types::Owner::Engine))
     };
-    // `Err(())`: a read the walk cannot place (a function call, a query).
-    fn walk(
-        expr: &Expr,
-        is_clock: &dyn Fn(&str) -> bool,
-        clock_reads: &mut usize,
-        other: &mut Vec<String>,
-    ) -> Result<(), ()> {
-        match expr {
-            Expr::Ident(_) | Expr::Select(_) => {
-                let path = crate::cel_paths::select_path(expr).ok_or(())?;
-                if is_clock(&path) {
-                    *clock_reads += 1;
-                } else if !other.contains(&path) {
-                    other.push(path);
-                }
-                Ok(())
-            }
-            Expr::Call(c)
-                if c.target.is_none()
-                    && !c.func_name.starts_with(|ch: char| ch.is_ascii_alphabetic()) =>
-            {
-                c.args
-                    .iter()
-                    .try_for_each(|a| walk(&a.expr, is_clock, clock_reads, other))
-            }
-            Expr::List(l) => l
-                .elements
-                .iter()
-                .try_for_each(|e| walk(&e.expr, is_clock, clock_reads, other)),
-            Expr::Literal(_) => Ok(()),
-            _ => Err(()),
-        }
-    }
     let mut arena = lute_cel::CelArena::default();
     let ided = lute_cel::parse_slot_marked_refs(&mut arena, &expanded).and_then(|h| arena.get(h));
     let Some(ided) = ided else {
         return Some(Vec::new());
     };
     let (mut clock_reads, mut other) = (0usize, Vec::new());
-    match walk(&ided.expr, &is_clock, &mut clock_reads, &mut other) {
-        Ok(()) if other.is_empty() => None,
-        Ok(()) => Some(other),
-        Err(()) => Some(other),
+    let mut invalid = false;
+    lute_cel::walk(&ided.expr, &mut |node| {
+        let lute_cel::Node::Expr(expr) = node else {
+            return lute_cel::Flow::Continue;
+        };
+        match expr {
+            Expr::Ident(_) | Expr::Select(_) => {
+                let Some(path) = crate::cel_paths::select_path(expr) else {
+                    invalid = true;
+                    return lute_cel::Flow::Stop;
+                };
+                if is_clock(&path) {
+                    clock_reads += 1;
+                } else if !other.contains(&path) {
+                    other.push(path);
+                }
+                lute_cel::Flow::Skip
+            }
+            Expr::Call(c)
+                if c.target.is_none()
+                    && !c.func_name.starts_with(|ch: char| ch.is_ascii_alphabetic()) =>
+            {
+                lute_cel::Flow::Continue
+            }
+            Expr::List(_) => lute_cel::Flow::Continue,
+            Expr::Literal(_) => lute_cel::Flow::Skip,
+            Expr::Call(_)
+            | Expr::Comprehension(_)
+            | Expr::Map(_)
+            | Expr::Struct(_)
+            | Expr::Unspecified => {
+                invalid = true;
+                lute_cel::Flow::Stop
+            }
+        }
+    });
+    if invalid {
+        return Some(other);
+    }
+    if other.is_empty() {
+        None
+    } else {
+        Some(other)
     }
 }
 

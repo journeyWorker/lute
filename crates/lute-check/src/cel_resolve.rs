@@ -596,6 +596,7 @@ pub fn expand_rule_guard(
         }
     }
     crate::cel_expand::expand_cel(cel, defs, None, &mut Vec::new())
+        .map_err(|error| error.to_string())
 }
 
 /// dsl 0.24 T1-1: rewrite every rule guard of `vocab` to its def-expanded
@@ -711,48 +712,37 @@ pub(crate) fn check_def_body(
 pub const W_QUEST_STATE_HAS: &str = "W-QUEST-STATE-HAS";
 
 fn check_quest_state_isset(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) {
-    match expr {
-        Expr::Select(sel) if sel.test => {
-            if let Some(path) = crate::cel_paths::select_path(expr)
-                .filter(|p| crate::cel_paths::is_reserved_quest_state(p))
-            {
-                diags.push(Diagnostic {
-                    severity: Severity::Warning,
-                    ..diag(
-                        W_QUEST_STATE_HAS,
-                        format!(
-                            "`has({path})` is always true: a quest's state is always \
-                             assigned — `unset` until the quest activates, then `active`, \
-                             `complete` or `failed`. Test `{path} == 'unset'` (or \
-                             `!= 'unset'`) instead"
-                        ),
-                        span,
-                    )
-                });
+    lute_cel::walk(expr, &mut |node| {
+        let lute_cel::Node::Expr(expr) = node else {
+            return lute_cel::Flow::Continue;
+        };
+        match expr {
+            Expr::Select(sel) if sel.test => {
+                if let Some(path) = crate::cel_paths::select_path(expr)
+                    .filter(|p| crate::cel_paths::is_reserved_quest_state(p))
+                {
+                    diags.push(Diagnostic {
+                        severity: Severity::Warning,
+                        ..diag(
+                            W_QUEST_STATE_HAS,
+                            format!(
+                                "`has({path})` is always true: a quest's state is always \
+                                 assigned — `unset` until the quest activates, then `active`, \
+                                 `complete` or `failed`. Test `{path} == 'unset'` (or \
+                                 `!= 'unset'`) instead"
+                            ),
+                            span,
+                        )
+                    });
+                }
+                lute_cel::Flow::Continue
             }
-            check_quest_state_isset(&sel.operand.expr, span, diags);
+            Expr::Call(_) | Expr::Select(_) => lute_cel::Flow::Continue,
+            Expr::List(_) => lute_cel::Flow::Continue,
+            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
+            | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
         }
-        Expr::Call(c) => {
-            if let Some(t) = &c.target {
-                check_quest_state_isset(&t.expr, span, diags);
-            }
-            for a in &c.args {
-                check_quest_state_isset(&a.expr, span, diags);
-            }
-        }
-        Expr::List(list) => {
-            for el in &list.elements {
-                check_quest_state_isset(&el.expr, span, diags);
-            }
-        }
-        Expr::Select(sel) => check_quest_state_isset(&sel.operand.expr, span, diags),
-        Expr::Comprehension(_)
-        | Expr::Map(_)
-        | Expr::Struct(_)
-        | Expr::Ident(_)
-        | Expr::Literal(_)
-        | Expr::Unspecified => {}
-    }
+    });
 }
 
 /// The [`GUARD_FIREWALL_CALLS`] walk (D7): a `Call` (with or without a
@@ -761,40 +751,32 @@ fn check_quest_state_isset(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>)
 /// [`check_cel_profile`]'s own stop-on-reject shape); everything else
 /// recurses the same way `check_cel_profile` does.
 fn check_guard_fact_access(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) {
-    match expr {
-        Expr::Call(c) => {
-            let name = c.func_name.as_str();
-            if GUARD_FIREWALL_CALLS.contains(&name) {
-                diags.push(diag(
-                    E_DATALOG_GUARD_FACT,
-                    format!(
-                        "`{name}(…)` reads the fact store or narrative time inside a rule guard; \
-                         rules have no access to time or facts (dsl 0.3.0 §9.3, D7)"
-                    ),
-                    span,
-                ));
-                return;
+    lute_cel::walk(expr, &mut |node| {
+        let lute_cel::Node::Expr(expr) = node else {
+            return lute_cel::Flow::Continue;
+        };
+        match expr {
+            Expr::Call(c) => {
+                let name = c.func_name.as_str();
+                if GUARD_FIREWALL_CALLS.contains(&name) {
+                    diags.push(diag(
+                        E_DATALOG_GUARD_FACT,
+                        format!(
+                            "`{name}(…)` reads the fact store or narrative time inside a rule guard; \
+                             rules have no access to time or facts (dsl 0.3.0 §9.3, D7)"
+                        ),
+                        span,
+                    ));
+                    lute_cel::Flow::Skip
+                } else {
+                    lute_cel::Flow::Continue
+                }
             }
-            if let Some(t) = &c.target {
-                check_guard_fact_access(&t.expr, span, diags);
-            }
-            for a in &c.args {
-                check_guard_fact_access(&a.expr, span, diags);
-            }
+            Expr::List(_) | Expr::Select(_) => lute_cel::Flow::Continue,
+            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
+            | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
         }
-        Expr::List(list) => {
-            for el in &list.elements {
-                check_guard_fact_access(&el.expr, span, diags);
-            }
-        }
-        Expr::Select(sel) => check_guard_fact_access(&sel.operand.expr, span, diags),
-        Expr::Comprehension(_)
-        | Expr::Map(_)
-        | Expr::Struct(_)
-        | Expr::Ident(_)
-        | Expr::Literal(_)
-        | Expr::Unspecified => {}
-    }
+    });
 }
 
 /// The Lute-CEL profile gate (dsl §8.4). The environment is **closed**: host
@@ -854,11 +836,7 @@ fn check_cel_profile(
                 || visited
             {
                 if visited {
-                    // A string-literal leaf: nothing to recurse into.
                 } else if is_fact_query_name(c) {
-                    // Relation names and pattern lists are data, not CEL
-                    // expressions. Malformed shapes are diagnosed by the
-                    // fact-query pass with E-FACT-QUERY.
                     if c.func_name == "validAt" && is_profile_fact_query(c) {
                         if let Some(t) = c.args.get(2) {
                             check_cel_profile(&t.expr, slot, scope, diags);
@@ -869,8 +847,6 @@ fn check_cel_profile(
                         check_cel_profile(&a.expr, slot, scope, diags);
                     }
                 } else {
-                    // Structural — recurse into target + args to catch any
-                    // nested out-of-profile call.
                     if let Some(t) = &c.target {
                         check_cel_profile(&t.expr, slot, scope, diags);
                     }
@@ -879,8 +855,6 @@ fn check_cel_profile(
                     }
                 }
             } else {
-                // An out-of-profile function/method call. Report and stop
-                // descending (the whole call is rejected).
                 let hint = if name == VISITED_FN && slot.kind != CelKind::Condition {
                     " — `visited(…)` is only legal in a condition slot".to_string()
                 } else {
@@ -914,25 +888,15 @@ fn check_cel_profile(
                 .to_string(),
             slot.span,
         )),
-        // List literals + the ternary/operator operands reach here as their child
-        // exprs; recurse so a call nested inside a list is still caught.
         Expr::List(list) => {
             for el in &list.elements {
                 check_cel_profile(&el.expr, slot, scope, diags);
             }
         }
-        // A field selection: recurse into the operand (`foo().bar` hides a call).
         Expr::Select(sel) => check_cel_profile(&sel.operand.expr, slot, scope, diags),
-        // A bare identifier is in profile ONLY as a legal expression root
-        // ([`is_profile_ident_root`]): a state tier, the substituted `$` subject
-        // `_`, or a marker-rewritten `@ref`. Every other bare name is a free
-        // variable reference — there are no un-namespaced state names (dsl §9.1) —
-        // and is out of profile. Scalar literals are in profile; `Unspecified` is
-        // inert.
         Expr::Ident(name) => {
             if !is_profile_ident_root(name) && !scope.bound.iter().any(|b| b == name) {
                 let message = match name.strip_prefix('_').filter(|n| !n.is_empty()) {
-                    // `$oil`: the `$` subject rewrite left `_oil`.
                     Some(bare) => format!(
                         "`${bare}`: a state path takes no `$` (`$` alone is the `<match>` \
                          subject) — write the path with its tier{}",
@@ -941,11 +905,8 @@ fn check_cel_profile(
                             |p| format!(" — did you mean `{p}`?")
                         )
                     ),
-                    // Yarn's `when: once` / `when: always`: how often a beat
-                    // plays is its `once` key, not a condition.
                     None if matches!(name.as_str(), "once" | "always")
-                        && slot.raw.trim() == name.as_str() =>
-                    {
+                        && slot.raw.trim() == name.as_str() => {
                         format!(
                             "`{name}` is not a condition: how often a beat plays is its own key, \
                              `once` — `once: run` (once per run, the default), `once: user` \
@@ -1248,36 +1209,25 @@ pub fn visited_call_target(c: &cel_parser::ast::CallExpr) -> Option<&str> {
 /// order (dsl 0.21.0 §7a.1). Walks every sub-expression, including the
 /// arguments of other calls.
 pub fn visited_targets(expr: &Expr) -> Vec<String> {
-    fn walk(expr: &Expr, out: &mut Vec<String>) {
+    let mut out = Vec::new();
+    lute_cel::walk(expr, &mut |node| {
+        let lute_cel::Node::Expr(expr) = node else {
+            return lute_cel::Flow::Continue;
+        };
         match expr {
             Expr::Call(c) => {
                 if let Some(id) = visited_call_target(c) {
                     out.push(id.to_string());
-                    return;
-                }
-                if let Some(t) = &c.target {
-                    walk(&t.expr, out);
-                }
-                for a in &c.args {
-                    walk(&a.expr, out);
+                    lute_cel::Flow::Skip
+                } else {
+                    lute_cel::Flow::Continue
                 }
             }
-            Expr::List(list) => {
-                for el in &list.elements {
-                    walk(&el.expr, out);
-                }
-            }
-            Expr::Select(sel) => walk(&sel.operand.expr, out),
-            Expr::Comprehension(_)
-            | Expr::Map(_)
-            | Expr::Struct(_)
-            | Expr::Ident(_)
-            | Expr::Literal(_)
-            | Expr::Unspecified => {}
+            Expr::List(_) | Expr::Select(_) => lute_cel::Flow::Continue,
+            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
+            | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
         }
-    }
-    let mut out = Vec::new();
-    walk(expr, &mut out);
+    });
     out
 }
 
@@ -1432,7 +1382,8 @@ fn first_relation_query(expr: &Expr) -> Option<&str> {
             .iter()
             .find_map(|e| first_relation_query(&e.expr)),
         Expr::Select(sel) => first_relation_query(&sel.operand.expr),
-        _ => None,
+        Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
+        | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => None,
     }
 }
 

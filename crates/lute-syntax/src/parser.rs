@@ -96,9 +96,6 @@ pub const E_TAG_NOT_ONE_LINE: &str = "E-TAG-NOT-ONE-LINE";
 /// itself names the (fixable) deprecation instead of the residual
 /// "unrecognized line" bucket.
 pub const E_LEGACY_CONTENT_SIGIL: &str = "E-LEGACY-CONTENT-SIGIL";
-/// [`E_LEGACY_CONTENT_SIGIL`]'s message, kept beside the code: the website
-/// quotes it and the snippet gate pairs a quote with the source declaring it.
-const LEGACY_CONTENT_SIGIL_MESSAGE: &str = "content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically";
 /// Diagnostic code (dsl §2.3): an element's body — and, in the worst case, its
 /// matching `</tag>` close — was written on the opener's own physical line
 /// (`<tag …>body</tag>`). That single-line form is deliberately **not**

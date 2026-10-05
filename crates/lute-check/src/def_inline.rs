@@ -62,7 +62,7 @@ pub fn decided_literal(d: &Decided) -> String {
 /// Expand a `{{@def}}` / `{{@fn(args)}}` referent into the standalone CEL an
 /// engine evaluates to render it. `Err` carries the reason it cannot be.
 pub fn inline_interp_ref(raw: &str, defs: &DefTable<'_>) -> Result<String, String> {
-    let body = expand_cel(raw, defs, None, &mut Vec::new())?;
+    let body = expand_cel(raw, defs, None, &mut Vec::new()).map_err(|error| error.to_string())?;
     let mut arena = lute_cel::CelArena::default();
     lute_cel::parse_slot(&mut arena, &body, 0)
         .map(|_| body.clone())

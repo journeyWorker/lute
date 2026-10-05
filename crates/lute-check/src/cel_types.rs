@@ -139,7 +139,20 @@ pub(crate) fn check_types(
             }
         }
     }
-    walk(expr, span, t, diags);
+    lute_cel::walk(expr, &mut |node| {
+        let lute_cel::Node::Expr(expr) = node else {
+            return lute_cel::Flow::Continue;
+        };
+        match expr {
+            Expr::Call(c) => {
+                check_call(expr, c, span, t, diags);
+                lute_cel::Flow::Continue
+            }
+            Expr::List(_) | Expr::Select(_) => lute_cel::Flow::Continue,
+            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
+            | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
+        }
+    });
 }
 
 /// A bare state path or `@def` is typed against a condition by `E-REF-TYPE`.
@@ -153,26 +166,6 @@ fn is_whole_ref_or_path(expr: &Expr) -> bool {
     }
 }
 
-fn walk(expr: &Expr, span: Span, t: &Typing<'_>, diags: &mut Vec<Diagnostic>) {
-    match expr {
-        Expr::Call(c) => {
-            check_call(expr, c, span, t, diags);
-            if let Some(target) = &c.target {
-                walk(&target.expr, span, t, diags);
-            }
-            for a in &c.args {
-                walk(&a.expr, span, t, diags);
-            }
-        }
-        Expr::List(list) => {
-            for el in &list.elements {
-                walk(&el.expr, span, t, diags);
-            }
-        }
-        Expr::Select(sel) => walk(&sel.operand.expr, span, t, diags),
-        _ => {}
-    }
-}
 
 fn check_call(whole: &Expr, c: &CallExpr, span: Span, t: &Typing<'_>, diags: &mut Vec<Diagnostic>) {
     let name = c.func_name.as_str();

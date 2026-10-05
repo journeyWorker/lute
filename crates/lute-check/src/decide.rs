@@ -395,8 +395,8 @@ fn chain_literals<'e>(
     chain: Chain,
     out: &mut Vec<(&'e Expr, bool)>,
 ) {
-    if let Expr::Call(c) = expr {
-        if c.target.is_none() {
+    match expr {
+        Expr::Call(c) if c.target.is_none() => {
             match (c.func_name.as_str(), c.args.as_slice()) {
                 (op::LOGICAL_NOT, [a]) => return chain_literals(&a.expr, !positive, chain, out),
                 (n @ (op::LOGICAL_AND | op::LOGICAL_OR), [a, b])
@@ -409,6 +409,15 @@ fn chain_literals<'e>(
                 _ => {}
             }
         }
+        Expr::Call(_)
+        | Expr::Comprehension(_)
+        | Expr::Ident(_)
+        | Expr::List(_)
+        | Expr::Literal(_)
+        | Expr::Map(_)
+        | Expr::Select(_)
+        | Expr::Struct(_)
+        | Expr::Unspecified => {}
     }
     out.push((expr, positive));
 }
@@ -430,8 +439,8 @@ pub(crate) fn literal_truth(
     positive: bool,
     ctx: &DecideCtx<'_>,
 ) -> Option<(String, PathDomain, Truth)> {
-    if let Expr::Select(sel) = expr {
-        if sel.test {
+    match expr {
+        Expr::Select(sel) if sel.test => {
             let path = crate::cel_paths::select_path(expr)?;
             let dom = path_domain(&path, ctx.schema);
             let truth = Truth {
@@ -440,9 +449,7 @@ pub(crate) fn literal_truth(
             };
             return Some((path, dom, truth));
         }
-    }
-    if let Expr::Call(c) = expr {
-        if c.target.is_none() {
+        Expr::Call(c) if c.target.is_none() => {
             match (c.func_name.as_str(), c.args.as_slice()) {
                 (op::LOGICAL_NOT, [a]) => return literal_truth(&a.expr, !positive, ctx),
                 (n @ (op::LOGICAL_AND | op::LOGICAL_OR), [_, _]) => {
@@ -463,6 +470,15 @@ pub(crate) fn literal_truth(
                 _ => {}
             }
         }
+        Expr::Call(_)
+        | Expr::Comprehension(_)
+        | Expr::Ident(_)
+        | Expr::List(_)
+        | Expr::Literal(_)
+        | Expr::Map(_)
+        | Expr::Select(_)
+        | Expr::Struct(_)
+        | Expr::Unspecified => {}
     }
     // A bare read of a boolean (or undeclared) path.
     let (key, dom) = subject(expr, ctx)?;
@@ -1131,45 +1147,43 @@ struct Reads {
 
 impl Reads {
     fn collect(&mut self, expr: &Expr) {
-        match expr {
-            Expr::Literal(_) => {}
-            Expr::Ident(name) => {
-                self.keys.insert(name.clone());
-            }
-            Expr::Select(sel) => match state_path(expr) {
-                Some(path) => {
-                    self.keys.insert(path);
+        lute_cel::walk(expr, &mut |node| {
+            let lute_cel::Node::Expr(expr) = node else {
+                return lute_cel::Flow::Continue;
+            };
+            match expr {
+                Expr::Literal(_) => lute_cel::Flow::Skip,
+                Expr::Ident(name) => {
+                    self.keys.insert(name.clone());
+                    lute_cel::Flow::Skip
                 }
-                None => self.collect(&sel.operand.expr),
-            },
-            Expr::Call(c) if c.func_name.starts_with(lute_cel::REF_MARKER) => {
-                self.everything = true
-            }
-            Expr::Call(c) if crate::cel_resolve::is_profile_fact_query(c) => {
-                self.keys.insert("holds()".to_string());
-            }
-            Expr::Call(c) if c.func_name == crate::cel_resolve::VISITED_FN => {
-                self.keys.insert("visited()".to_string());
-            }
-            Expr::Call(c) => {
-                for e in c
-                    .target
-                    .iter()
-                    .map(|t| &t.expr)
-                    .chain(c.args.iter().map(|a| &a.expr))
-                {
-                    self.collect(e);
+                Expr::Select(_) => {
+                    if let Some(path) = state_path(expr) {
+                        self.keys.insert(path);
+                        lute_cel::Flow::Skip
+                    } else {
+                        lute_cel::Flow::Continue
+                    }
+                }
+                Expr::Call(c) if c.func_name.starts_with(lute_cel::REF_MARKER) => {
+                    self.everything = true;
+                    lute_cel::Flow::Skip
+                }
+                Expr::Call(c) if crate::cel_resolve::is_profile_fact_query(c) => {
+                    self.keys.insert("holds()".to_string());
+                    lute_cel::Flow::Skip
+                }
+                Expr::Call(c) if c.func_name == crate::cel_resolve::VISITED_FN => {
+                    self.keys.insert("visited()".to_string());
+                    lute_cel::Flow::Skip
+                }
+                Expr::Call(_) | Expr::List(_) => lute_cel::Flow::Continue,
+                Expr::Map(_) | Expr::Struct(_) | Expr::Comprehension(_) | Expr::Unspecified => {
+                    self.everything = true;
+                    lute_cel::Flow::Skip
                 }
             }
-            Expr::List(list) => {
-                for el in &list.elements {
-                    self.collect(&el.expr);
-                }
-            }
-            Expr::Map(_) | Expr::Struct(_) | Expr::Comprehension(_) | Expr::Unspecified => {
-                self.everything = true
-            }
-        }
+        });
     }
 
     fn disjoint(&self, other: &Reads) -> bool {

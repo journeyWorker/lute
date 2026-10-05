@@ -165,7 +165,7 @@ pub use bundles::{
     BUNDLE_BEAT_ATTRS,
 };
 pub use cast::{check_speakers, decide_guard_implication, declared_cast, E_CAST_UNKNOWN};
-pub use cel_expand::{expand_cel, DefTable};
+pub use cel_expand::{expand_cel, DefTable, ExpandError};
 pub use cel_message::{translate_cel_parse, Translation};
 pub use cel_paths::{is_entry_ever_read, is_reserved_entry_read, reserved_entry_id, E_PATH_IDENT};
 pub use cel_resolve::{

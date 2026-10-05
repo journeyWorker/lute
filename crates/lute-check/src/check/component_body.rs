@@ -449,8 +449,6 @@ fn scan_fact_queries(expr: &cel_parser::ast::Expr, slot: &CelSlot, diags: &mut V
                     )
                 };
                 diags.push(use_diag(E_COMPONENT_STATE, message, slot.span));
-                // `validAt`'s second arg is a genuine CEL expr (may itself
-                // nest another fact query, e.g. `validAt(rel(a), now())`).
                 if c.func_name == "validAt" {
                     if let Some(t) = c.args.get(1) {
                         scan_fact_queries(&t.expr, slot, diags);

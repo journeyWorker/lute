@@ -1421,18 +1421,30 @@ fn start_sources(
     decls: &QuestDecls<'_>,
     nodes: &BTreeMap<NodeId, NodeInfo>,
 ) -> Option<Vec<NodeId>> {
-    if let Expr::Call(c) = e {
-        if c.func_name == op::LOGICAL_OR && c.target.is_none() && c.args.len() == 2 {
+    match e {
+        Expr::Call(c)
+            if c.func_name == op::LOGICAL_OR
+                && c.target.is_none()
+                && c.args.len() == 2 =>
+        {
             let mut from = start_sources(&c.args[0].expr, own, decls, nodes)?;
             for n in start_sources(&c.args[1].expr, own, decls, nodes)? {
                 if !from.contains(&n) {
                     from.push(n);
                 }
             }
-            return Some(from);
+            Some(from)
         }
+        Expr::Call(_)
+        | Expr::Comprehension(_)
+        | Expr::Ident(_)
+        | Expr::List(_)
+        | Expr::Literal(_)
+        | Expr::Map(_)
+        | Expr::Select(_)
+        | Expr::Struct(_)
+        | Expr::Unspecified => start_source(e, own, decls, nodes).map(|n| vec![n]),
     }
-    start_source(e, own, decls, nodes).map(|n| vec![n])
 }
 
 /// The graph node one anchoring read names (see [`start_anchors`]).

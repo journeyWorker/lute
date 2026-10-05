@@ -47,7 +47,7 @@ impl Parser<'_> {
         }
         if b[cstart] == b':' {
             let sigil_span = self.span(cstart, cstart + 1);
-            self.emit_line(E_LEGACY_CONTENT_SIGIL, LEGACY_CONTENT_SIGIL_MESSAGE, i, Layer::Content);
+            self.emit_line(E_LEGACY_CONTENT_SIGIL, "content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically", i, Layer::Content);
             if let Some(d) = self.diags.last_mut() {
                 d.fixits.push(Fixit {
                     title: "Migrate content-line sigil `:` to `@`".to_string(),

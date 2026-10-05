@@ -1435,7 +1435,12 @@ fn collect_atoms(expr: &Expr, ctx: &DecideCtx<'_>, negated: bool, out: &mut Vec<
             }
         }
         Expr::Select(sel) => collect_atoms(&sel.operand.expr, ctx, negated, out),
-        _ => {}
+        Expr::Comprehension(_)
+        | Expr::Map(_)
+        | Expr::Struct(_)
+        | Expr::Ident(_)
+        | Expr::Literal(_)
+        | Expr::Unspecified => {}
     }
 }
 

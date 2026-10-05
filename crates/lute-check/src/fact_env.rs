@@ -1482,7 +1482,7 @@ struct SlotFacts {
     own: Vec<MustFact>,
     closure: Option<Arc<MustClosure>>,
     /// The whole set, filled on the first read.
-    full: OnceLock<Vec<MustFact>>,
+    full: OnceLock<Arc<Vec<MustFact>>>,
 }
 
 impl SlotFacts {
@@ -1490,17 +1490,19 @@ impl SlotFacts {
         if self.shared.is_none() && self.closure.is_none() {
             return &self.own;
         }
-        self.full.get_or_init(|| {
-            let mut all = match &self.shared {
-                Some(shared) => merge_facts(shared, &self.own),
-                None => self.own.clone(),
-            };
-            if let Some(closure) = &self.closure {
-                let derived = closure.derived(&all);
-                all.extend(derived.iter().cloned());
-            }
-            all
-        })
+        self.full
+            .get_or_init(|| {
+                let mut all = match &self.shared {
+                    Some(shared) => merge_facts(shared, &self.own),
+                    None => self.own.clone(),
+                };
+                if let Some(closure) = &self.closure {
+                    let derived = closure.derived(&all);
+                    all.extend(derived.iter().cloned());
+                }
+                Arc::new(all)
+            })
+            .as_slice()
     }
 }
 

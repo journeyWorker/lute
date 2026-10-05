@@ -728,21 +728,27 @@ pub fn persistent_reads(
     relation_kept: &dyn Fn(&str) -> Option<bool>,
 ) -> Vec<String> {
     use cel_parser::ast::Expr;
-    fn walk(
-        e: &Expr,
-        quest_kept: &dyn Fn(&str) -> Option<bool>,
-        relation_kept: &dyn Fn(&str) -> Option<bool>,
-        out: &mut Vec<String>,
-    ) {
+    let mut arena = lute_cel::CelArena::default();
+    let Ok(handle) = lute_cel::parse_slot(&mut arena, raw, 0) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let Some(root) = arena.get(handle) else {
+        return out;
+    };
+    lute_cel::walk(&root.expr, &mut |node| {
+        let lute_cel::Node::Expr(expr) = node else {
+            return lute_cel::Flow::Continue;
+        };
         let mut keep = |text: String| {
             if !out.contains(&text) {
                 out.push(text);
             }
         };
-        match e {
+        match expr {
             Expr::Ident(_) | Expr::Select(_) => {
-                let Some(p) = crate::cel_paths::select_path(e) else {
-                    return;
+                let Some(p) = crate::cel_paths::select_path(expr) else {
+                    return lute_cel::Flow::Skip;
                 };
                 let kept = p.starts_with("user.")
                     || p.starts_with("app.")
@@ -753,6 +759,7 @@ pub fn persistent_reads(
                 if kept {
                     keep(p);
                 }
+                lute_cel::Flow::Skip
             }
             Expr::Call(c) if c.target.is_none() => {
                 let lit = || match c.args.first().map(|a| &a.expr) {
@@ -767,38 +774,18 @@ pub fn persistent_reads(
                     "holds" | "count" | "countDistinct" => crate::fact_env::QueryPattern::from_call(c)
                         .and_then(|q| (relation_kept(&q.relation) == Some(true)).then_some(true))
                         .unwrap_or(false),
-                    _ => {
-                        for a in &c.args {
-                            walk(&a.expr, quest_kept, relation_kept, out);
-                        }
-                        return;
-                    }
+                    _ => return lute_cel::Flow::Continue,
                 };
                 if kept {
-                    keep(crate::cel_types::show(e));
+                    keep(crate::cel_types::show(expr));
                 }
+                lute_cel::Flow::Skip
             }
-            Expr::Call(c) => {
-                for a in c.target.iter().map(|t| &**t).chain(&c.args) {
-                    walk(&a.expr, quest_kept, relation_kept, out);
-                }
-            }
-            Expr::List(l) => {
-                for x in &l.elements {
-                    walk(&x.expr, quest_kept, relation_kept, out);
-                }
-            }
-            _ => {}
+            Expr::Call(_) | Expr::List(_) => lute_cel::Flow::Continue,
+            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
+            | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
         }
-    }
-    let mut arena = lute_cel::CelArena::default();
-    let Ok(handle) = lute_cel::parse_slot(&mut arena, raw, 0) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    if let Some(root) = arena.get(handle) {
-        walk(&root.expr, quest_kept, relation_kept, &mut out);
-    }
+    });
     out
 }
 

@@ -17,9 +17,53 @@
 //! and imports `expand_cel`/`DefTable` from this module.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 use lute_cel::{cel_string_mask, scan_refs};
 use lute_manifest::types::Type;
+
+/// Failure while expanding a textual CEL definition reference.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExpandError {
+    /// `$` was used where no enclosing `<match>` subject exists.
+    MissingSubject,
+    /// The referenced definition has no body.
+    UnknownDef { name: String },
+    /// A definition call supplied the wrong number of arguments.
+    Arity {
+        name: String,
+        expected: usize,
+        actual: usize,
+    },
+    /// Recursive definition expansion encountered a cycle.
+    Cycle { path: Vec<String>, name: String },
+}
+
+impl fmt::Display for ExpandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingSubject => write!(f, "`$` used outside a <match> arm"),
+            Self::UnknownDef { name } => write!(
+                f,
+                "`@{name}` names no known def body (gate should have caught this)"
+            ),
+            Self::Arity {
+                name,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "`@{name}` takes {expected} arg(s), got {actual} (gate should have caught this)"
+            ),
+            Self::Cycle { path, name } => {
+                write!(f, "def expansion cycle: {} -> {name}", path.join(" -> "))
+            }
+        }
+    }
+}
+
+impl std::error::Error for ExpandError {}
+
 
 /// The merged def table (plugin < imported < inline), borrowed from
 /// `FoldedEnv { def_bodies, env.def_params }` (`crate::check::FoldedEnv`).
@@ -36,7 +80,7 @@ pub fn expand_cel(
     defs: &DefTable<'_>,
     subject: Option<&str>,
     stack: &mut Vec<String>,
-) -> Result<String, String> {
+) -> Result<String, ExpandError> {
     let refs = scan_refs(raw);
     if refs.is_empty() {
         return Ok(raw.to_string());
@@ -68,7 +112,7 @@ pub fn expand_cel(
         let end = r.call.as_ref().map_or(r.span.byte_end, |c| c.span.byte_end);
         let replacement = if r.is_dollar {
             let Some(s) = subject else {
-                return Err("`$` used outside a <match> arm".to_string());
+                return Err(ExpandError::MissingSubject);
             };
             subject_text(s)
         } else {
@@ -85,12 +129,12 @@ fn expand_ref(
     defs: &DefTable<'_>,
     subject: Option<&str>,
     stack: &mut Vec<String>,
-) -> Result<String, String> {
+) -> Result<String, ExpandError> {
     let name = &r.name;
     let Some(body) = defs.bodies.get(name) else {
-        return Err(format!(
-            "`@{name}` names no known def body (gate should have caught this)"
-        ));
+        return Err(ExpandError::UnknownDef {
+            name: name.clone(),
+        });
     };
     // Args expand in the CALLER's scope, BEFORE the cycle push — `@f(@f(1))`
     // is nesting, not a cycle.
@@ -111,17 +155,17 @@ fn expand_ref(
         None => Vec::new(),
     };
     if args.len() != params.len() {
-        return Err(format!(
-            "`@{name}` takes {} arg(s), got {} (gate should have caught this)",
-            params.len(),
-            args.len()
-        ));
+        return Err(ExpandError::Arity {
+            name: name.clone(),
+            expected: params.len(),
+            actual: args.len(),
+        });
     }
     if stack.iter().any(|n| n == name) {
-        return Err(format!(
-            "def expansion cycle: {} -> {name}",
-            stack.join(" -> ")
-        ));
+        return Err(ExpandError::Cycle {
+            path: stack.clone(),
+            name: name.clone(),
+        });
     }
     stack.push(name.clone());
     // Thread the caller's `subject`: a match-scoped def body may use `$`, which
@@ -341,7 +385,7 @@ mod tests {
         (b, p)
     }
 
-    fn expand(raw: &str, t: &Tables, subject: Option<&str>) -> Result<String, String> {
+    fn expand(raw: &str, t: &Tables, subject: Option<&str>) -> Result<String, ExpandError> {
         let defs = DefTable {
             bodies: &t.0,
             params: &t.1,
@@ -404,7 +448,7 @@ mod tests {
     fn cycle_is_an_error_not_a_hang() {
         let t = tables(&[("a", "@b"), ("b", "@a")], &[]);
         let err = expand("@a", &t, None).unwrap_err();
-        assert!(err.contains("cycle"), "{err}");
+        assert!(err.to_string().contains("cycle"), "{err}");
     }
 
     #[test]

@@ -1,6 +1,32 @@
 use crate::types::{Field, Literal, PathSegment, Type};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
+/// Structured error from a manifest schema conversion.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SchemaError {
+    Enum(String),
+    Fact(String),
+    Write(String),
+    Lowering(String),
+    RewardTarget(String),
+    OccasionTarget(String),
+}
+impl fmt::Display for SchemaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::Enum(message)
+            | Self::Fact(message)
+            | Self::Write(message)
+            | Self::Lowering(message)
+            | Self::RewardTarget(message)
+            | Self::OccasionTarget(message) => message,
+        };
+        f.write_str(message)
+    }
+}
+
+impl std::error::Error for SchemaError {}
 // Every struct below that a plugin export file deserializes into denies
 // unknown keys (dsl 0.24.0 T1-3): a typo'd key (`selct: all`) or a flow-map
 // value split at a comma (`description: Pick one, the player picks one`
@@ -77,9 +103,9 @@ pub enum EnumDecl {
 }
 
 impl TryFrom<serde_yaml::Value> for EnumDecl {
-    type Error = String;
+    type Error = SchemaError;
 
-    fn try_from(v: serde_yaml::Value) -> Result<Self, String> {
+    fn try_from(v: serde_yaml::Value) -> Result<Self, SchemaError> {
         use serde_yaml::Value;
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
@@ -97,28 +123,30 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
         match &v {
             Value::Sequence(_) => serde_yaml::from_value::<Vec<String>>(v)
                 .map(EnumDecl::Members)
-                .map_err(|_| format!("lists something that is not a member name; {SHAPES}")),
+                .map_err(|_| {
+                    SchemaError::Enum(format!("lists something that is not a member name; {SHAPES}"))
+                }),
             Value::Mapping(m) => {
                 let keys = crate::entities::ENUM_LONG_FORM_KEYS;
                 if let Some(key) = m
                     .keys()
                     .find(|k| !k.as_str().is_some_and(|k| keys.contains(&k)))
                 {
-                    let key = serde_yaml::to_string(key).unwrap_or_default();
+                    let key = serde_yaml::to_string(key).map_or_else(|_| String::new(), |s| s);
                     let key = key.trim();
-                    return Err(format!(
+                    return Err(SchemaError::Enum(format!(
                         "has no key `{key}`{}; {SHAPES}",
                         crate::suggest::did_you_mean(key, keys)
-                    ));
+                    )));
                 }
                 if !m.contains_key("members") {
-                    return Err(format!("needs `members:`; {SHAPES}"));
+                    return Err(SchemaError::Enum(format!("needs `members:`; {SHAPES}")));
                 }
                 let long = serde_yaml::from_value::<Long>(v).map_err(|_| {
-                    format!(
+                    SchemaError::Enum(format!(
                         "is misshapen: `members:` and `exits:` list member names and `labels:` \
                          maps each member to its text; {SHAPES}"
-                    )
+                    ))
                 })?;
                 Ok(EnumDecl::Long {
                     members: long.members,
@@ -127,7 +155,7 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
                     labels: long.labels,
                 })
             }
-            _ => Err(format!("is not an enum; {SHAPES}")),
+            _ => Err(SchemaError::Enum(format!("is not an enum; {SHAPES}"))),
         }
     }
 }
@@ -372,14 +400,14 @@ impl From<FactEffect> for String {
 }
 
 impl TryFrom<String> for FactEffect {
-    type Error = String;
+    type Error = SchemaError;
 
-    fn try_from(s: String) -> Result<Self, String> {
+    fn try_from(s: String) -> Result<Self, SchemaError> {
         let bad = |why: &str| {
-            Err(format!(
+            Err(SchemaError::Fact(format!(
                 "effects fact `{s}` {why}; a fact effect is `relation(arg, …)` whose args are \
                  members, `true`/`false`, `@attr` (one of the directive's attrs) or `_`"
-            ))
+            )))
         };
         let ident = crate::ident::is_name;
         let t = s.trim();
@@ -487,23 +515,23 @@ const WRITE_VALUE_SHAPES: &str = "a bool/number/string literal, `{ fromAttr: <at
      { fromAttr: <attr> } }`";
 
 impl TryFrom<serde_yaml::Value> for WriteValue {
-    type Error = String;
+    type Error = SchemaError;
 
-    fn try_from(v: serde_yaml::Value) -> Result<Self, String> {
+    fn try_from(v: serde_yaml::Value) -> Result<Self, SchemaError> {
         use serde_yaml::Value;
         let bad = |what: String| {
-            Err(format!(
+            Err(SchemaError::Write(format!(
                 "effects.writes value {what}; a write's value is {WRITE_VALUE_SHAPES}"
-            ))
+            )))
         };
-        let attr_name = |v: &Value, key: &str| -> Result<String, String> {
+        let attr_name = |v: &Value, key: &str| -> Result<String, SchemaError> {
             match v.get("fromAttr") {
                 Some(Value::String(a)) if v.as_mapping().is_some_and(|m| m.len() == 1) => {
                     Ok(a.clone())
                 }
-                _ => Err(format!(
+                _ => Err(SchemaError::Write(format!(
                     "effects.writes value: `{key}` must be `{{ fromAttr: <attr name> }}`"
-                )),
+                ))),
             }
         };
         match &v {
@@ -549,8 +577,13 @@ impl TryFrom<serde_yaml::Value> for WriteValue {
                             }
                         };
                         let by = match v.get("by") {
-                            Some(Value::Number(n)) if n.as_f64().is_some() => {
-                                OpBy::Num(n.as_f64().unwrap_or_default())
+                            Some(Value::Number(n)) => {
+                                let Some(value) = n.as_f64() else {
+                                    return bad(
+                                        "`by:` must be a number or `{ fromAttr: <attr> }`".into(),
+                                    );
+                                };
+                                OpBy::Num(value)
                             }
                             Some(by @ Value::Mapping(_)) => OpBy::FromAttr {
                                 from_attr: attr_name(by, "by")?,
@@ -653,9 +686,9 @@ struct RawLowering {
 const OMIT_LOWER: &str = "omit `lower:` for the generic `kind: \"plugin\"` passthrough";
 
 impl TryFrom<RawLowering> for Lowering {
-    type Error = String;
+    type Error = SchemaError;
 
-    fn try_from(raw: RawLowering) -> Result<Self, String> {
+    fn try_from(raw: RawLowering) -> Result<Self, SchemaError> {
         match raw {
             RawLowering {
                 record: Some(record),
@@ -664,9 +697,9 @@ impl TryFrom<RawLowering> for Lowering {
                 name: None,
             } => match fields {
                 Some(fields) => Ok(Lowering::Record { record, fields }),
-                None => Err(format!(
+                None => Err(SchemaError::Lowering(format!(
                     "`lower: {{ record: {record} }}` needs `fields:` (write `fields: {{}}` for none)"
-                )),
+                ))),
             },
             RawLowering {
                 record: None,
@@ -675,26 +708,26 @@ impl TryFrom<RawLowering> for Lowering {
                 name,
             } => {
                 if kind != "builtin" {
-                    return Err(format!(
+                    return Err(SchemaError::Lowering(format!(
                         "`lower.kind` is `{kind}`, but the only kind is `builtin` \
                          (or write `{{ record, fields }}`); {OMIT_LOWER}"
-                    ));
+                    )));
                 }
                 let Some(name) = name else {
-                    return Err(format!(
+                    return Err(SchemaError::Lowering(format!(
                         "`lower: {{ kind: builtin }}` needs `name:` (one of {}); {OMIT_LOWER}",
                         BUILTIN_LOWERING_HOOKS.join(", ")
-                    ));
+                    )));
                 };
                 if !BUILTIN_LOWERING_HOOKS.contains(&name.as_str()) {
                     let max = (name.chars().count() / 3).clamp(1, 3);
                     let hint = crate::suggest::nearest(&name, BUILTIN_LOWERING_HOOKS.iter().copied(), max)
                         .map(|s| format!(" (did you mean `{s}`?)"))
                         .unwrap_or_default();
-                    return Err(format!(
+                    return Err(SchemaError::Lowering(format!(
                         "`{name}` is not a builtin lowering hook{hint}; the core registers {}; {OMIT_LOWER}",
                         BUILTIN_LOWERING_HOOKS.join(", ")
-                    ));
+                    )));
                 }
                 Ok(Lowering::Builtin { kind, name })
             }
@@ -703,12 +736,12 @@ impl TryFrom<RawLowering> for Lowering {
                 fields: None,
                 kind: None,
                 name: None,
-            } => Err(format!(
+            } => Err(SchemaError::Lowering(format!(
                 "`lower:` is empty; write `{{ record, fields }}` or `{{ kind: builtin, name }}`, or {OMIT_LOWER}"
-            )),
-            _ => Err(format!(
+            ))),
+            _ => Err(SchemaError::Lowering(format!(
                 "`lower:` is either `{{ record, fields }}` or `{{ kind: builtin, name }}`, not a mix; {OMIT_LOWER}"
-            )),
+            ))),
         }
     }
 }
@@ -858,12 +891,12 @@ struct RawRewardTarget {
 }
 
 impl TryFrom<RawRewardTarget> for RewardTarget {
-    type Error = String;
-    fn try_from(raw: RawRewardTarget) -> Result<Self, String> {
+    type Error = SchemaError;
+    fn try_from(raw: RawRewardTarget) -> Result<Self, SchemaError> {
         if raw.provider.is_some() && raw.entity.is_some() {
-            return Err(
+            return Err(SchemaError::RewardTarget(
                 "a reward kind's `target:` takes `provider:` or `entity:`, not both".to_string(),
-            );
+            ));
         }
         Ok(RewardTarget {
             provider: raw.provider,
@@ -1234,26 +1267,26 @@ const OCCASION_TARGET_SHAPES: &str = "an occasion's `target:` is `true` (any dot
      (`members` optional)";
 
 impl TryFrom<serde_yaml::Value> for OccasionTarget {
-    type Error = String;
+    type Error = SchemaError;
 
-    fn try_from(v: serde_yaml::Value) -> Result<Self, String> {
+    fn try_from(v: serde_yaml::Value) -> Result<Self, SchemaError> {
         use serde_yaml::Value;
         let shown = |v: &Value| {
-            serde_yaml::to_string(v)
-                .unwrap_or_default()
-                .trim()
-                .to_string()
+            serde_yaml::to_string(v).map_or_else(
+                |_| String::new(),
+                |s| s.trim().to_string(),
+            )
         };
-        let name = |key: &str| -> Result<String, String> {
+        let name = |key: &str| -> Result<String, SchemaError> {
             match v.get(key) {
                 Some(Value::String(s)) if !s.trim().is_empty() => Ok(s.clone()),
-                None | Some(Value::Null) => Err(format!(
+                None | Some(Value::Null) => Err(SchemaError::OccasionTarget(format!(
                     "`target:` names no `{key}:`; {OCCASION_TARGET_SHAPES}"
-                )),
-                Some(other) => Err(format!(
+                ))),
+                Some(other) => Err(SchemaError::OccasionTarget(format!(
                     "`target.{key}: {}` is not a name; {OCCASION_TARGET_SHAPES}",
                     shown(other)
-                )),
+                ))),
             }
         };
         match &v {
@@ -1265,10 +1298,10 @@ impl TryFrom<serde_yaml::Value> for OccasionTarget {
                     .find(|k| !k.as_str().is_some_and(|k| KEYS.contains(&k)))
                 {
                     let key = shown(key);
-                    return Err(format!(
+                    return Err(SchemaError::OccasionTarget(format!(
                         "`target:` has no key `{key}`{}; {OCCASION_TARGET_SHAPES}",
                         crate::suggest::did_you_mean(&key, KEYS)
-                    ));
+                    )));
                 }
                 let members = match v.get("members") {
                     None => None,
@@ -1277,18 +1310,18 @@ impl TryFrom<serde_yaml::Value> for OccasionTarget {
                             .iter()
                             .map(|i| match i {
                                 Value::String(s) => Ok(s.clone()),
-                                other => Err(format!(
+                                other => Err(SchemaError::OccasionTarget(format!(
                                     "`target.members` lists `{}`, which is not a member name",
                                     shown(other)
-                                )),
+                                ))),
                             })
                             .collect::<Result<Vec<_>, _>>()?,
                     ),
                     Some(other) => {
-                        return Err(format!(
+                        return Err(SchemaError::OccasionTarget(format!(
                             "`target.members: {}` is not a list — write `members: [<member>, …]`",
                             shown(other)
-                        ))
+                        )))
                     }
                 };
                 Ok(OccasionTarget::Domain {
@@ -1297,11 +1330,11 @@ impl TryFrom<serde_yaml::Value> for OccasionTarget {
                     members,
                 })
             }
-            Value::Null => Err(format!("`target:` is empty; {OCCASION_TARGET_SHAPES}")),
-            other => Err(format!(
+            Value::Null => Err(SchemaError::OccasionTarget(format!("`target:` is empty; {OCCASION_TARGET_SHAPES}"))),
+            other => Err(SchemaError::OccasionTarget(format!(
                 "`target: {}` is not a target; {OCCASION_TARGET_SHAPES}",
                 shown(other)
-            )),
+            ))),
         }
     }
 }
@@ -1424,7 +1457,9 @@ fn payload_type(field: &str, v: &serde_yaml::Value) -> Result<Type, String> {
             other => Err(refuse(other)),
         },
         Value::Mapping(m) if m.len() == 1 => {
-            let (k, arg) = m.iter().next().expect("one entry");
+            let Some((k, arg)) = m.iter().next() else {
+                return Err(refuse("empty"));
+            };
             let Some(name) = k.as_str() else {
                 return Err(refuse(&shown_yaml(k)));
             };

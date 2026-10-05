@@ -6,6 +6,8 @@
 //! deterministic baseline every checker/LSP consumer resolves on top of.
 
 use std::collections::BTreeMap;
+use std::fmt;
+use std::sync::{Arc, LazyLock};
 
 use crate::schema::{DirectivesFile, EnumsFile, PluginManifest};
 use crate::snapshot::{capability_version, CapabilitySnapshot, Domain, ResolvedPlugin};
@@ -50,25 +52,48 @@ pub const NEXT_DIRECTIVE: &str = "next";
 /// this tag and MUST agree.
 pub const CLEAR_DIRECTIVE: &str = "clear";
 
-/// Build the built-in `lute.core` capability snapshot: all dsl Appendix A
-/// baseline directives (bg/music/sfx/auto/vfx/cut/video/camera) plus the 0.8.0
-/// walk terminator `::end`, stamped with a deterministic `capabilityVersion`
-/// (plugin §13).
-///
-/// dsl 0.9.0 D-A: it carries NO vocabulary members. `assets/lute.core/
-/// enums.yaml` is empty, so both `enums` and `domains` come out empty; every
-/// member comes from a document's own inline `enums:`, a project schema, or a
-/// plugin. SIX of the seven slot names survive here as attribute types in
-/// `staging.yaml` (`action`, `anchor`, `mood`, `musicAction`, `vfxType`,
-/// `volume`); the seventh, `emotion`, is a
-/// content-line slot owned by `lute-check`'s `content_line` checker rather than
-/// by any directive attribute.
-pub fn load_core_snapshot() -> CapabilitySnapshot {
+/// Failure loading one of the embedded `lute.core` assets.
+#[derive(Clone, Debug)]
+pub enum CoreLoadError {
+    AssetParse {
+        asset: &'static str,
+        source: Arc<serde_yaml::Error>,
+    },
+}
+
+impl fmt::Display for CoreLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AssetParse { asset, source } => {
+                write!(f, "core {asset} must parse: {source}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CoreLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::AssetParse { source, .. } => Some(source.as_ref()),
+        }
+    }
+}
+
+fn build_core_snapshot() -> Result<CapabilitySnapshot, CoreLoadError> {
     let manifest: PluginManifest =
-        serde_yaml::from_str(MANIFEST).expect("core plugin.yaml must parse");
+        serde_yaml::from_str(MANIFEST).map_err(|e| CoreLoadError::AssetParse {
+            asset: "plugin.yaml",
+            source: Arc::new(e),
+        })?;
     let staging: DirectivesFile =
-        serde_yaml::from_str(STAGING).expect("core staging.yaml must parse");
-    let enums: EnumsFile = serde_yaml::from_str(ENUMS).expect("core enums.yaml must parse");
+        serde_yaml::from_str(STAGING).map_err(|e| CoreLoadError::AssetParse {
+            asset: "directives/staging.yaml",
+            source: Arc::new(e),
+        })?;
+    let enums: EnumsFile = serde_yaml::from_str(ENUMS).map_err(|e| CoreLoadError::AssetParse {
+        asset: "enums.yaml",
+        source: Arc::new(e),
+    })?;
 
     let mut directives = BTreeMap::new();
     for d in staging.directives {
@@ -115,7 +140,26 @@ pub fn load_core_snapshot() -> CapabilitySnapshot {
         .map(|name| (name.clone(), "lute.core".to_string()))
         .collect();
     snap.version = capability_version(&snap);
-    snap
+    Ok(snap)
+}
+static CORE: LazyLock<Result<CapabilitySnapshot, CoreLoadError>> =
+    LazyLock::new(build_core_snapshot);
+
+/// Load the embedded `lute.core` snapshot.
+///
+/// The assets are part of this crate and are validated by the manifest tests;
+/// a failure here indicates a broken binary rather than author input.
+pub fn load_core_snapshot() -> CapabilitySnapshot {
+    match &*CORE {
+        Ok(snapshot) => snapshot.clone(),
+        Err(error) => panic!("{error}"),
+    }
+}
+
+/// Fallible form of [`load_core_snapshot`] for callers that need controlled
+/// initialization errors.
+pub fn try_load_core_snapshot() -> Result<CapabilitySnapshot, CoreLoadError> {
+    CORE.clone()
 }
 
 #[cfg(test)]
