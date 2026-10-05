@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: celErrors
-luteVersion: "0.36.1"
+luteVersion: "0.36.2"
 title: CEL Errors
 uses: ./schema.yaml
 ---

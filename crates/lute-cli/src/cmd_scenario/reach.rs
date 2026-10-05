@@ -188,6 +188,7 @@ pub(crate) fn unanchored_quests(
 fn print_prereq_structure(
     out: &mut String,
     scenario: &RootScenario,
+    docs: &[lute_check::ProjectDoc<'_>],
     node: &lute_check::connectivity::NodeId,
 ) {
     use lute_check::connectivity::{NodeId, PrereqState};
@@ -206,7 +207,7 @@ fn print_prereq_structure(
             );
         }
         _ if matches!(node, NodeId::Beat(_)) => {
-            print_bundle_beat_selection(out, scenario, node);
+            print_bundle_beat_selection(out, scenario, docs, node);
         }
         None | Some(PrereqState::Absent) => {
             outln!(
@@ -277,6 +278,7 @@ fn print_referenced(
 fn print_bundle_beat_selection(
     out: &mut String,
     scenario: &RootScenario,
+    docs: &[lute_check::ProjectDoc<'_>],
     node: &lute_check::connectivity::NodeId,
 ) {
     use lute_check::connectivity::PrereqState;
@@ -308,13 +310,12 @@ fn print_bundle_beat_selection(
     let lute_check::connectivity::NodeId::Beat(key) = node else {
         return;
     };
-    let beat = scenario
-        .docs
+    let beat = docs
         .iter()
-        .filter(|(p, _)| *p == info.path)
-        .flat_map(|(_, d)| {
-            let doc_id = lute_check::connectivity::bundle_id(d);
-            d.beats.iter().map(move |b| (doc_id.clone(), b))
+        .filter(|item| item.path == info.path)
+        .flat_map(|item| {
+            let doc_id = lute_check::connectivity::bundle_id(item.meta);
+            item.doc.beats.iter().map(move |b| (doc_id.clone(), b))
         })
         .find(|(doc_id, b)| {
             doc_id
@@ -349,6 +350,9 @@ pub(crate) fn run_scenario_reach(
         Err(code) => return code,
     };
     let node_id = node_ref_to_id(&node_ref);
+    let docs = lute_model::project_docs(
+        by_root.get(root).expect("resolved scenario root must have documents"),
+    );
     outln!(out, "project root: {}", root.display());
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
         outln!(out, "reach {node_id}: unavailable -- {note}");
@@ -360,6 +364,6 @@ pub(crate) fn run_scenario_reach(
         "  verdict: {}",
         reach_verdict_text(&scenario, &node_id)
     );
-    print_prereq_structure(out, &scenario, &node_id);
+    print_prereq_structure(out, &scenario, &docs, &node_id);
     ExitCode::SUCCESS
 }

@@ -10,7 +10,7 @@ use lute_check::connectivity::{
 };
 use lute_check::{
     check, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv,
-    MaySet, MetaKind, Mode, RootVocab, SchemaImports,
+    MaySet, MetaKind, Mode, ProjectDoc, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::schema::{CastMember, OccasionDecl, OccasionSelect};
@@ -336,26 +336,31 @@ fn project_in(
         foldeds.push(folded);
         docs.push((PathBuf::from(path), doc));
     }
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (graph, _) = assemble_graph(&docs, &key_set, &quest_ids);
-    let lifecycle = unreachable_quest_ids(&docs, &results);
-    let ambiguous = ambiguous_quest_ids(&docs);
+    let views: Vec<_> = docs
+        .iter()
+        .zip(&foldeds)
+        .map(|((path, doc), folded)| ProjectDoc::new(path, doc, &folded.typed))
+        .collect();
+    let key_set = scene_key_set(&views);
+    let quest_ids = quest_id_set(&views);
+    let (graph, _) = assemble_graph(&views, &key_set, &quest_ids);
+    let lifecycle = unreachable_quest_ids(&views, &results);
+    let ambiguous = ambiguous_quest_ids(&views);
     let (reach, _) = check_reachability(&graph, &quest_ids, &ambiguous, &lifecycle);
     let mut vocab = RootVocab::default();
     for folded in &foldeds {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
-    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
+    let facts = live_assert_sites(&views, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
         .flat_map(|(_, a)| vocab.asserted_facts(&a));
-    let may = MaySet::build(&vocab, facts, &stable_seeds(&docs, &vocab));
+    let may = MaySet::build(&vocab, facts, &stable_seeds(&views, &vocab));
     let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
-    let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);
+    let must = compute_must(&views, &folded_refs, &graph, &vocab, &may);
     let env = FactEnv::new(may, must.slots);
-    let ladder = lute_check::beats::presence_ladder(&docs, &folded_refs);
-    let producers = lute_check::cast::fact_producers(&docs, &Default::default());
-    let after = lute_check::cast::occasions_before(&docs, &folded_refs, &graph);
+    let ladder = lute_check::beats::presence_ladder(&views, &folded_refs);
+    let producers = lute_check::cast::fact_producers(&views, &Default::default());
+    let after = lute_check::cast::occasions_before(&views, &folded_refs, &graph);
     let no_ladder = std::collections::BTreeMap::new();
     let no_after = std::collections::BTreeMap::new();
     results

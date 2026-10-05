@@ -11,7 +11,8 @@ use lute_check::connectivity::{
     NodeId, PrereqState,
 };
 use lute_check::{
-    check, check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, SchemaImports,
+    check, check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, ProjectDocs,
+    SchemaImports,
 };
 use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
@@ -45,25 +46,24 @@ fn scene(id: &str, fm: &str) -> String {
     format!("---\nkind: scene\nid: {id}\n{fm}---\n## Shot 1.\n@n: hi\n")
 }
 
-fn project(files: &[(&str, &str)]) -> Vec<(PathBuf, lute_syntax::ast::Document)> {
-    files
-        .iter()
-        .map(|(p, t)| (PathBuf::from(p), lute_syntax::parse(t).0))
-        .collect()
+fn project(files: &[(&str, &str)]) -> ProjectDocs {
+    let docs = files.iter().map(|(p,t)| (PathBuf::from(p), lute_syntax::parse(t).0)).collect();
+    ProjectDocs::parse(docs, &lute_manifest::core::load_core_snapshot())
 }
 
 fn project_beat_diags(files: &[(&str, &str)]) -> Vec<(PathBuf, Diagnostic)> {
-    let docs = project(files);
+    let owned = project(files);
+    let views = owned.views();
     let foldeds: Vec<FoldedEnv> = files
         .iter()
-        .zip(&docs)
+        .zip(owned.documents())
         .map(|((_, t), (_, d))| fold_env(d, &input(t)).0)
         .collect();
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     check_project_beats(
-        &docs,
+        &views,
         &refs,
-        &lute_check::cast::fact_producers(&docs, &Default::default()),
+        &lute_check::cast::fact_producers(&views, &Default::default()),
         None,
         &Default::default(),
     )
@@ -184,9 +184,9 @@ fn the_presence_ladder_reads_a_shared_spend_as_the_keys_disjunction() {
          <beat id=\"roof\" on=\"dusk\" once=\"user\" share=\"solWarm\">\n@n: b\n</beat>\n\
          <beat id=\"after\" on=\"visit\">\n@n: c\n</beat>\n",
     );
-    let docs = project(&[("talks.lute", &talks)]);
-    let folded = fold_env(&docs[0].1, &input(&talks)).0;
-    let ladder = lute_check::beats::presence_ladder(&docs, &[&folded]);
+    let owned = project(&[("talks.lute", &talks)]);
+    let folded = fold_env(&owned.documents()[0].1, &input(&talks)).0;
+    let ladder = lute_check::beats::presence_ladder(&owned.views(), &[&folded]);
     let rungs: Vec<&String> = ladder[&PathBuf::from("talks.lute")]
         .values()
         .flatten()
@@ -211,7 +211,8 @@ fn bundle_after_draws_a_scenario_edge() {
         "{:#?}",
         check(&input(WITNESSES)).diagnostics
     );
-    let docs = project(&[("witnesses.lute", WITNESSES)]);
+    let owned = project(&[("witnesses.lute", WITNESSES)]);
+    let docs = owned.views();
     let (graph, _) = assemble_graph(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
     let from = NodeId::Beat("witnesses.maren".into());
     let to = NodeId::Beat("witnesses.marenConfronted".into());
@@ -244,7 +245,8 @@ fn bundle_after_is_checked_like_a_scene_after() {
         r.diagnostics
     );
     let typo = WITNESSES.replace("witnesses.maren')", "witnesses.marn')");
-    let docs = project(&[("witnesses.lute", &typo)]);
+    let owned = project(&[("witnesses.lute", &typo)]);
+    let docs = owned.views();
     let out = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
     assert!(
         out.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"
@@ -261,7 +263,8 @@ fn a_visited_when_conjunct_is_an_unanchored_hint() {
         "after=\"visited('witnesses.maren')\"",
         "when=\"visited('witnesses.maren') && true\"",
     );
-    let docs = project(&[("witnesses.lute", &gated)]);
+    let owned = project(&[("witnesses.lute", &gated)]);
+    let docs = owned.views();
     let (graph, _) = assemble_graph(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
     assert!(graph.edges.is_empty(), "{:#?}", graph.edges);
     assert_eq!(
@@ -276,7 +279,8 @@ fn a_visited_when_conjunct_is_an_unanchored_hint() {
         "after=\"visited('witnesses.maren')\"",
         "when=\"visited('witnesses.maren') || true\"",
     );
-    let docs = project(&[("witnesses.lute", &either)]);
+    let owned = project(&[("witnesses.lute", &either)]);
+    let docs = owned.views();
     let (graph, _) = assemble_graph(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
     assert!(when_visited_unanchored(&docs, &graph).is_empty());
 }

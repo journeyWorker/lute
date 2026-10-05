@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use lute_model::{ModelOptions, ProjectModel};
+use lute_semantic::NodeKind;
 
 /// A fresh project per test. Tests run in parallel, so the directory name
 /// carries the process id and a per-process counter, not only a timestamp.
@@ -21,7 +22,7 @@ fn project() -> PathBuf {
 fn dry_run_json_reports_diff_and_preserves_source() {
     let root = project();
     let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
-    let line = model.graph().nodes.keys().find(|key| key.kind == lute_model::NodeKind::Line).unwrap().canonical();
+    let line = model.graph().nodes.keys().find(|key| key.kind == NodeKind::Line).unwrap().canonical();
     let request = serde_json::json!({
         "base": {"project": format!("sha256:{}", model.revisions().sha256)},
         "targets": [line.clone()],
@@ -68,7 +69,7 @@ fn model_io_failure_is_untyped_json_error() {
 fn accepted_json_has_shape_and_exit_review() {
     let root = project();
     let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
-    let line = model.graph().nodes.keys().find(|key| key.kind == lute_model::NodeKind::Line).unwrap().canonical();
+    let line = model.graph().nodes.keys().find(|key| key.kind == NodeKind::Line).unwrap().canonical();
     let patch = root.join("patch.json");
     std::fs::write(&patch, serde_json::to_vec(&serde_json::json!({
         "base": {"project": format!("sha256:{}", model.revisions().sha256)},

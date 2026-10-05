@@ -1,3 +1,5 @@
+pub mod project_doc;
+
 pub mod accept;
 pub mod admission;
 pub mod beats;
@@ -76,7 +78,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.36.1";
+pub const LUTE_LANG_VERSION: &str = "0.36.2";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -97,11 +99,12 @@ pub fn desugar_document(
         return Vec::new();
     }
     // The def names `@name` resolves against in this document: plugin,
-    // imported and inline `defs:`.
+    // imported and inline `defs:`. `desugar_document` runs before the
+    // checker has a TypedMeta, so this is the one intentional entrance parse.
+    let inline = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml).ok();
     let mut host_defs: std::collections::BTreeSet<String> =
         input.snapshot.defs.keys().cloned().collect();
     host_defs.extend(input.imports.defs.keys().cloned());
-    let inline = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml).ok();
     if let Some(defs) = inline.as_ref().and_then(|v| v.get("defs")?.as_mapping()) {
         host_defs.extend(defs.keys().filter_map(|k| k.as_str().map(str::to_string)));
     }
@@ -119,9 +122,8 @@ pub fn desugar_document(
             host.cast.insert(id.to_string(), name.to_string());
         }
     }
-    let own_vocab = inline
-        .as_ref()
-        .is_some_and(|v| v.get("entities").is_some() || v.get("enums").is_some());
+    let own_vocab =
+        inline.as_ref().is_some_and(|v| v.get("entities").is_some() || v.get("enums").is_some());
     if !own_vocab {
         let mut domains = input.snapshot.domains.clone();
         domains.extend(input.imports.domains.clone());
@@ -214,6 +216,8 @@ pub use meta::{
     ident_from_name, parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace,
     StateDecl, StateSchema, TypedMeta, E_KIND_MISSING, E_STATE_COLLECTION, E_UNKNOWN_KIND,
 };
+pub use project_doc::{ProjectDoc, ProjectDocs};
+
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
 pub use permissions::{
     check_permissions, E_PERMISSION_BRIDGE, E_PERMISSION_DIRECTIVE, E_PERMISSION_FACT,

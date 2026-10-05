@@ -149,6 +149,8 @@ pub(crate) fn check_types(
                 lute_cel::Flow::Continue
             }
             Expr::List(_) | Expr::Select(_) => lute_cel::Flow::Continue,
+            // The closed profile rejects these containers before nested typing
+            // (docs/runtime/cel-and-facts.md:12-16).
             Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
             | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
         }

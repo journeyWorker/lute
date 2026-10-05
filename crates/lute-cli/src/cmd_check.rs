@@ -9,10 +9,9 @@ use lute_check::{check, fold_env, CheckInput, Mode};
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
-use lute_model::{build_input, manifest_context, BuiltInput};
+use lute_load::{build_input, manifest_context, nearest_manifest_dir, normalize_span_from_text, BuiltInput};
 use crate::output::{check_result_json, pretty_json, print_human, DenyPolicy};
 use crate::project::{canonical_path, find_lute_files, resolve_project};
-use lute_model::nearest_manifest_dir;
 
 /// Every document under `root` whose `::use` names component `name`
 /// (dsl 0.10.0 §9 rule 4).
@@ -359,7 +358,7 @@ pub(crate) fn engine_semantic_diags(
         };
         for provenance in &collected.provenance[id] {
             if let Some(source) = provenance.addr.as_deref().and_then(|addr| source_map.by_addr.get(addr)) {
-                add(crate::project::normalize_span_from_text(&input.text, source.span), None);
+                add(normalize_span_from_text(&input.text, source.span), None);
                 continue;
             }
             let keys: &[&str] = match (id, provenance.what.as_str()) {
@@ -384,10 +383,10 @@ pub(crate) fn engine_semantic_diags(
                 .find(|key| own.contains_key(serde_yaml::Value::String((*key).into())))
             {
                 let span = lute_check::meta::meta_key_span(&doc.meta, key);
-                add(crate::project::normalize_span_from_text(&input.text, span), None);
+                add(normalize_span_from_text(&input.text, span), None);
                 found = true;
             }
-            let meta_span = crate::project::normalize_span_from_text(&input.text, doc.meta.span);
+            let meta_span = normalize_span_from_text(&input.text, doc.meta.span);
             let origins = &input.imports.rel.origins;
             let imported: Vec<lute_check::rel_schema::DeclOrigin> = match id {
                 "lute.knowledge.facts/1" => origins.relations.values()

@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_core_span::{Diagnostic, Span, TextIndex};
-use lute_model::{assemble_root_scenario, nearest_manifest_dir};
-/// Recursively collect every `*.lute` file under `dir`, sorted byte-wise
+use lute_load::nearest_manifest_dir;
+use lute_model::assemble_root_scenario;
 /// (`PathBuf`'s `Ord` is byte-lexicographic) for deterministic output
 /// regardless of the OS's directory-iteration order. Symlinked directories
 /// are not followed (`read_dir`'s default — avoids an infinite walk on a
@@ -31,7 +31,7 @@ use lute_model::{assemble_root_scenario, nearest_manifest_dir};
 /// first rather than depending on directory-iteration order). A canonicalize
 /// failure (e.g. a dangling symlink) is surfaced exactly like every other
 /// walk I/O error above, never silently skipped or panicked on.
-pub(crate) use lute_model::find_lute_files;
+pub(crate) use lute_load::find_lute_files;
 
 
 /// One resolved project root's docs, each paired with its parsed
@@ -144,7 +144,7 @@ pub(crate) fn collect_project_inputs(
         for doc in model.documents() {
             for message in &doc.project_diags {
                 if reported.insert(message.clone()) {
-                    eprintln!("{}", lute_model::project_diag_line(message));
+                eprintln!("{}", lute_load::project_diag_line(message));
                 }
             }
             file_results.push((doc.path.clone(), doc.check.clone()));
@@ -178,7 +178,7 @@ pub(crate) fn parse_project_docs(
     dir: &Path,
     files: &[PathBuf],
 ) -> Vec<std::io::Result<(lute_syntax::ast::Document, Vec<Diagnostic>)>> {
-    lute_model::parse_project_docs(dir, files)
+    lute_load::parse_project_docs(dir, files)
 }
 
 /// Re-derive `span`'s `line`/`column`/`utf16_range` from its byte offsets
@@ -265,8 +265,9 @@ pub(crate) fn project_assert_relations(
     let (file_results, by_root) = collect_project_docs(root, providers, single_root).ok()?;
     let group = by_root.get(root)?;
     let scenario = assemble_root_scenario(group, &file_results);
+    let docs = lute_model::project_docs(group);
     Some(lute_check::connectivity::live_assert_relations(
-        &scenario.docs,
+        &docs,
         &scenario.reach,
         &scenario.ambiguous_quests,
         &scenario.unreachable_quests,
@@ -279,10 +280,7 @@ pub(crate) fn project_assert_relations(
 /// notes against. `None` when the project cannot be collected.
 pub(crate) fn project_quest_ids(root: &Path, providers: Option<&Path>) -> Option<BTreeSet<String>> {
     let (_, by_root) = collect_project_docs(root, providers, true).ok()?;
-    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = by_root
-        .get(root)?
-        .iter()
-        .map(|(p, d, _)| (p.clone(), d.clone()))
-        .collect();
+    let group = by_root.get(root)?;
+    let docs = lute_model::project_docs(group);
     Some(lute_check::connectivity::quest_id_set(&docs))
 }

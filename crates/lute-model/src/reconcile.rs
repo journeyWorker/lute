@@ -7,13 +7,14 @@ use std::path::{Path, PathBuf};
 
 use lute_check::{
     check_definite_assignment, check_project_quest_ids, check_project_quest_refs, defassign,
-    envelope,
+    envelope, ProjectDoc,
 };
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::project::load_project;
 use rayon::prelude::*;
 
-use crate::{normalize_span_from_text, ByRoot, DocGroup};
+use lute_load::normalize_span_from_text;
+use crate::{ByRoot, DocGroup};
 
 /// The converged result of [`compute_conn_fixpoint`]'s monotone iteration
 /// (dsl 0.4.0 §4.2's relational-objective-liveness CLOSURE, connectivity
@@ -85,7 +86,7 @@ pub struct ConnFixpoint {
 /// [`assemble_root_scenario`]: crate::cmd_scenario::assemble_root_scenario
 /// [`run_check_project`]: crate::cmd_check_project::run_check_project
 pub fn compute_conn_fixpoint(
-    group: &[(PathBuf, lute_syntax::ast::Document)],
+    group: &[ProjectDoc<'_>],
     group_full: &DocGroup,
     file_results: &[(PathBuf, lute_check::CheckResult)],
     conn_graph: &lute_check::connectivity::ConnGraph,
@@ -100,9 +101,7 @@ pub fn compute_conn_fixpoint(
     }
     // seven F3: a document whose frontmatter does not parse may produce facts
     // nothing here can see — no guard is dead for want of them.
-    let typed: Vec<&lute_check::TypedMeta> =
-        group_full.iter().map(|(_, _, folded)| &folded.typed).collect();
-    root_vocab.note_unreadable_documents(group, &typed);
+    root_vocab.note_unreadable_documents(group);
     // dsl 0.23.0 §9: seeds nothing can remove — a negated rule atom over one
     // of them never holds.
     let stable = lute_check::stable_seeds(group, &root_vocab);
@@ -297,11 +296,10 @@ pub fn reconcile_collected(
         result_ix.entry(p.clone()).or_insert(i);
     }
     for (root, group_full) in by_root {
-        let plain_group: Vec<(PathBuf, lute_syntax::ast::Document)> = group_full
+        let group: Vec<ProjectDoc<'_>> = group_full
             .iter()
-            .map(|(p, d, _)| (p.clone(), d.clone()))
+            .map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed))
             .collect();
-        let group = &plain_group;
         let mut group_ix: std::collections::HashMap<&Path, usize> =
             std::collections::HashMap::with_capacity(group_full.len());
         for (i, (p, _, _)) in group_full.iter().enumerate() {
@@ -316,18 +314,18 @@ pub fn reconcile_collected(
         // fixed order the passes always ran in.
         type Pass<'a> = Box<dyn Fn() -> Vec<(PathBuf, Diagnostic)> + Send + Sync + 'a>;
         let standalone: Vec<Pass<'_>> = vec![
-            Box::new(|| check_project_quest_ids(group)),
+            Box::new(|| check_project_quest_ids(&group)),
             // A root with a manifest is a whole project (a root never ascends
             // above the walk), so an unknown quest read is an error there.
-            Box::new(|| check_project_quest_refs(group, root.join("lute.project.yaml").is_file())),
+            Box::new(|| check_project_quest_refs(&group, root.join("lute.project.yaml").is_file())),
             // dsl 0.21.0 §7a.3: every `::accept` names an accept-driven quest.
-            Box::new(|| lute_check::check_project_accepts(group)),
+            Box::new(|| lute_check::check_project_accepts(&group)),
             // dsl 0.24.0 §2: an accept-driven quest no `::accept`, mock, or test accepts.
-            Box::new(|| lute_check::check_project_never_accepted(group, &mocked)),
+            Box::new(|| lute_check::check_project_never_accepted(&group, &mocked)),
             // dsl 0.19.0 §3/§5: project-wide entry id / series-order uniqueness
             // and `entry.<id>.read` references (the quest passes' lore mirror).
-            Box::new(|| lute_check::check_project_entry_ids(group)),
-            Box::new(|| lute_check::check_project_entry_refs(group)),
+            Box::new(|| lute_check::check_project_entry_ids(&group)),
+            Box::new(|| lute_check::check_project_entry_refs(&group)),
             // dsl 2026-08-31 §4 (subquest design): structural checks over the
             // parent→child tree implied by every `<objective quest="c">`. Sits
             // next to the existing quest-ref pass because the two ask the same
@@ -335,40 +333,40 @@ pub fn reconcile_collected(
             // (`quest.<id>.state` from anywhere), tree pass on the STRUCTURAL
             // side (parent quest naming the child). Both are project-wide
             // because a `quest=` reference can name a quest in a sibling file.
-            Box::new(|| lute_check::check_project_quest_tree(group)),
+            Box::new(|| lute_check::check_project_quest_tree(&group)),
             // dsl 0.22.0 §7: `<on event="questFailed">` on a quest that cannot
             // fail (project-wide: a parent in another file can cascade-fail it).
-            Box::new(|| lute_check::check_project_quest_handlers(group)),
-            Box::new(|| lute_check::connectivity::check_conn_episode_dup(group)),
+            Box::new(|| lute_check::check_project_quest_handlers(&group)),
+            Box::new(|| lute_check::connectivity::check_conn_episode_dup(&group)),
             // Two documents' menus answered by one `choose:` key.
-            Box::new(|| lute_check::check_project_branch_ids(root, group)),
+            Box::new(|| lute_check::check_project_branch_ids(root, &group)),
             // dsl 0.28.0 §4: the manifest's `chapters:` names this root's scenes.
-            Box::new(|| lute_check::chapters::check_project_chapters(root, group, &beat_foldeds)),
+            Box::new(|| lute_check::chapters::check_project_chapters(root, &group, &beat_foldeds)),
             // dsl 0.26.0 §2.1: every declaration of one state path agrees.
-            Box::new(|| lute_check::state_decls::check_project_state_decls(group, &beat_foldeds)),
+            Box::new(|| lute_check::state_decls::check_project_state_decls(&group, &beat_foldeds)),
             // An objective whose `done` can only hold once its deadline does.
             Box::new(|| {
-                lute_check::clock_positions::check_project_deadline_windows(group, &beat_foldeds)
+                lute_check::clock_positions::check_project_deadline_windows(&group, &beat_foldeds)
             }),
             // A beat whose `when` holds only where the clock does not raise
             // its occasion (or only at a last `dayEnd` the game's end closes).
-            Box::new(|| lute_check::clock_positions::check_project_unraised(group, &beat_foldeds)),
+            Box::new(|| lute_check::clock_positions::check_project_unraised(&group, &beat_foldeds)),
             // A repeatable beat must not answer a clock raise and advance
             // itself into the next raised position.
             Box::new(|| {
                 lute_check::clock_positions::check_project_advance_cascades(
-                    group,
+                    &group,
                     &beat_foldeds,
                 )
             }),
             // dsl 0.31.0: required objective windows and same-slot
             // advancement contention.
             Box::new(|| {
-                lute_check::check_project_objective_clock_windows(group, &beat_foldeds)
+                lute_check::check_project_objective_clock_windows(&group, &beat_foldeds)
             }),
             // A `spentBy` another document's quest spends at the start, or
             // one whose condition can turn false again after it has held.
-            Box::new(|| lute_check::spent_by::check_project_spent_by(root, group, &beat_foldeds)),
+            Box::new(|| lute_check::spent_by::check_project_spent_by(root, &group, &beat_foldeds)),
             // dsl 0.26.0 §2.8: advisory — two speakers sharing a display name.
             Box::new(|| {
                 let casts: Vec<_> = beat_foldeds.iter().map(|f| &f.cast).collect();
@@ -383,25 +381,25 @@ pub fn reconcile_collected(
                     let plugins = project.as_ref().map(|p| p.plugins_dir.as_path());
                     cast_home(root, plugins, &origins, id)
                 };
-                lute_check::display_names::check_display_names(group, &casts, &use_lines, &home)
+                lute_check::display_names::check_display_names(&group, &casts, &use_lines, &home)
             }),
         ];
         let (chain, (standalone_diags, (ladder, producers))) = rayon::join(
             || {
-                let key_set = lute_check::connectivity::scene_key_set(group);
-                let quest_ids = lute_check::connectivity::quest_id_set(group);
+                let key_set = lute_check::connectivity::scene_key_set(&group);
+                let quest_ids = lute_check::connectivity::quest_id_set(&group);
                 let node_diags =
-                    lute_check::connectivity::resolve_nodes(group, &key_set, &quest_ids);
+                    lute_check::connectivity::resolve_nodes(&group, &key_set, &quest_ids);
                 let (conn_graph, cycle_diags) =
-                    lute_check::connectivity::assemble_graph(group, &key_set, &quest_ids);
+                    lute_check::connectivity::assemble_graph(&group, &key_set, &quest_ids);
                 // T7/T14/Fix2 wiring: `compute_conn_fixpoint` iterates the
                 // reach/live-assert/may-set/dead-quest composition to a finite
                 // fixpoint (see its own doc comment for the termination + soundness
                 // argument) -- `ambiguous_quests` is shared with the envelope wiring
                 // below.
-                let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(group);
+                let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&group);
                 let fp = compute_conn_fixpoint(
-                    group,
+                    &group,
                     group_full,
                     &file_results,
                     &conn_graph,
@@ -422,9 +420,9 @@ pub fn reconcile_collected(
                     || standalone.par_iter().map(|pass| pass()).collect::<Vec<_>>(),
                     || {
                         (
-                            lute_check::beats::presence_ladder(group, &beat_foldeds),
+                            lute_check::beats::presence_ladder(&group, &beat_foldeds),
                             lute_check::cast::fact_producers(
-                                group,
+                                &group,
                                 &lute_check::directive_facts::root_table(
                                     group_full.iter().map(|(_, _, f)| f),
                                 ),
@@ -472,12 +470,12 @@ pub fn reconcile_collected(
             for (_, _, folded) in group_full {
                 vocab.add(&folded.env.rel_vocab, &folded.env.domains);
             }
-            let unproduced = lute_check::unproduced_relations(group, &vocab);
+            let unproduced = lute_check::unproduced_relations(&group, &vocab);
             fp.fact_env.clone().with_wip(&vocab, &unproduced)
         });
         match &wip_env {
             None => project_diags.extend(lute_check::check_project_subquest_unsatisfiable(
-                group,
+                &group,
                 &fp.unreachable_quests,
             )),
             // dsl 0.26.0 §2.6: a child unreachable only for want of
@@ -486,7 +484,7 @@ pub fn reconcile_collected(
             // verdicts the work-in-progress twin does not share.
             Some(env) => {
                 let mut firm =
-                    lute_check::connectivity::unreachable_quest_ids(group, &file_results);
+                    lute_check::connectivity::unreachable_quest_ids(&group, &file_results);
                 for (path, doc, folded) in group_full {
                     firm.extend(lute_check::fact_check::dead_required_objective_quests(
                         path,
@@ -507,10 +505,10 @@ pub fn reconcile_collected(
                 let pending: BTreeSet<String> =
                     fp.unreachable_quests.difference(&firm).cloned().collect();
                 project_diags.extend(lute_check::check_project_subquest_unsatisfiable(
-                    group, &firm,
+                    &group, &firm,
                 ));
                 project_diags.extend(
-                    lute_check::check_project_subquest_unsatisfiable(group, &pending)
+                    lute_check::check_project_subquest_unsatisfiable(&group, &pending)
                         .into_iter()
                         .map(|(path, d)| {
                             let d = lute_check::fact_check::wip_warning(
@@ -567,7 +565,7 @@ pub fn reconcile_collected(
                     })
                     .collect();
                 lute_check::check_project_beats(
-                    group,
+                    &group,
                     &beat_foldeds,
                     &producers,
                     Some(fact_env),
@@ -587,7 +585,7 @@ pub fn reconcile_collected(
         // §6: a line that follows a `changedOn` occasion in the scenario
         // graph is decided without `assume: true` for that relation — added.
         // (`ladder` and `producers` were computed alongside the fixpoint.)
-        let after = lute_check::cast::occasions_before(group, &beat_foldeds, &conn_graph);
+        let after = lute_check::cast::occasions_before(&group, &beat_foldeds, &conn_graph);
         let no_ladder = BTreeMap::new();
         let no_after = BTreeMap::new();
         for (path, doc, folded) in group_full {
@@ -791,20 +789,20 @@ pub fn reconcile_collected(
                 reconciled_reads.push((scene_path.clone(), *span, message.clone()));
             }
         }
-        covered.extend(lute_check::colliding_occurrences(group));
-        entry_covered.extend(lute_check::colliding_entry_occurrences(group));
+        covered.extend(lute_check::colliding_occurrences(&group));
+        entry_covered.extend(lute_check::colliding_entry_occurrences(&group));
         let heads: Vec<String> = group
             .iter()
-            .flat_map(|(_, doc)| {
-                let quests = doc.quests.iter().map(|q| ("quest", &q.id));
-                quests.chain(doc.entries.iter().map(|e| ("entry", &e.id)))
+            .flat_map(|item| {
+                let quests = item.doc.quests.iter().map(|q| ("quest", &q.id));
+                quests.chain(item.doc.entries.iter().map(|e| ("entry", &e.id)))
             })
             .filter(|(_, id)| id.contains('.'))
             .map(|(root, id)| format!("{root}.{id}."))
             .collect();
         if !heads.is_empty() {
-            for (p, _) in group {
-                dotted_root_of.insert(p.clone(), dotted_heads.len());
+            for item in &group {
+                dotted_root_of.insert(item.path.to_path_buf(), dotted_heads.len());
             }
             dotted_heads.push(heads);
         }

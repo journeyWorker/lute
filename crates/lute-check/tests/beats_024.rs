@@ -9,12 +9,11 @@ use std::path::PathBuf;
 
 use lute_check::{
     check, check_project_beats, check_project_entry_refs, check_project_quest_refs, fold_env,
-    CheckInput, FoldedEnv, Mode, SchemaImports,
+    CheckInput, FoldedEnv, Mode, ProjectDocs, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::Document;
 
 fn snapshot() -> CapabilitySnapshot {
     let mut snap = lute_manifest::core::load_core_snapshot();
@@ -75,25 +74,30 @@ fn quest_doc(body: &str) -> String {
     format!("---\nkind: quest\n---\n{body}")
 }
 
-fn parse_all(texts: &[&str]) -> (Vec<(PathBuf, Document)>, Vec<FoldedEnv>) {
+fn parse_all(texts: &[&str]) -> ProjectDocs {
     let mut docs = Vec::new();
-    let mut foldeds = Vec::new();
     for (i, text) in texts.iter().enumerate() {
         let input = input(text);
         let (doc, _) = lute_syntax::parse(&input.text);
-        foldeds.push(fold_env(&doc, &input).0);
         docs.push((PathBuf::from(format!("{i}.lute")), doc));
     }
-    (docs, foldeds)
+    ProjectDocs::parse(docs, &snapshot())
 }
 
 fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
-    let (docs, foldeds) = parse_all(texts);
+    let docs = parse_all(texts);
+    let views = docs.views();
+    let foldeds: Vec<_> = docs
+        .documents()
+        .iter()
+        .zip(texts)
+        .map(|((_, doc), text)| fold_env(doc, &input(text)).0)
+        .collect();
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     check_project_beats(
-        &docs,
+        &views,
         &refs,
-        &lute_check::cast::fact_producers(&docs, &Default::default()),
+        &lute_check::cast::fact_producers(&views, &Default::default()),
         None,
         &Default::default(),
     )
@@ -299,8 +303,9 @@ fn frontmatter_when_quest_and_entry_typos_are_reported_at_the_id() {
         "mara.typo",
         "on: talk\ntarget: npc.maud\nwhen: \"entry.tomasOyl.everRead && quest.lampOot.state == 'active'\"\n",
     );
-    let (docs, _) = parse_all(&[&quests, &barks, &typo]);
-    let q = check_project_quest_refs(&docs, false);
+    let docs = parse_all(&[&quests, &barks, &typo]);
+    let views = docs.views();
+    let q = check_project_quest_refs(&views, false);
     assert_eq!(q.len(), 1, "{q:?}");
     let (path, d) = &q[0];
     assert_eq!(path, &PathBuf::from("2.lute"));
@@ -311,7 +316,7 @@ fn frontmatter_when_quest_and_entry_typos_are_reported_at_the_id() {
         "{}",
         d.message
     );
-    let e = check_project_entry_refs(&docs);
+    let e = check_project_entry_refs(&views);
     assert_eq!(e.len(), 1, "{e:?}");
     let (_, d) = &e[0];
     assert_eq!(&typo[d.span.byte_start..d.span.byte_end], "tomasOyl");
@@ -345,8 +350,14 @@ fn an_entry_target_on_an_untargeted_occasion_is_metadata() {
 // --- T3-16: W-RELATION-UNREAD / W-DEF-UNUSED -----------------------------------
 
 fn usage(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
-    let (docs, foldeds) = parse_all(texts);
+    let owned = parse_all(texts);
+    let docs = owned.documents();
     let paths: Vec<PathBuf> = docs.iter().map(|(p, _)| p.clone()).collect();
+    let foldeds: Vec<_> = docs
+        .iter()
+        .zip(texts)
+        .map(|((_, doc), text)| fold_env(doc, &input(text)).0)
+        .collect();
     let docs: Vec<lute_check::UsageDoc<'_>> = docs
         .iter()
         .zip(&foldeds)

@@ -1,10 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use lute_check::{check_definite_assignment, defassign, envelope};
+use lute_check::{check_definite_assignment, defassign, envelope, ProjectDoc};
 use lute_core_span::Span;
 
 use crate::{compute_conn_fixpoint, ByRoot, DocGroup};
+
+/// The project views of `group`'s documents: borrowed, built per call, never
+/// stored (a [`RootScenario`] lives inside the model that owns the documents).
+pub fn project_docs(group: &DocGroup) -> Vec<ProjectDoc<'_>> {
+    group.iter().map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed)).collect()
+}
 
 pub struct RootScenario {
     pub graph: lute_check::connectivity::ConnGraph,
@@ -19,7 +25,6 @@ pub struct RootScenario {
     pub unreachable_quests: BTreeSet<String>,
     pub dead_required_objective_quests: BTreeSet<String>,
     pub envelope_d: BTreeSet<String>,
-    pub docs: Vec<(PathBuf, lute_syntax::ast::Document)>,
     pub per_doc: envelope::PerDocEffects,
     pub rel_vocab: lute_check::RelVocab,
     pub scene_must: BTreeMap<String, Vec<lute_check::fact_env::MustFact>>,
@@ -29,13 +34,13 @@ pub fn assemble_root_scenario(
     group_full: &DocGroup,
     file_results: &[(PathBuf, lute_check::CheckResult)],
 ) -> RootScenario {
-    let docs: Vec<_> = group_full.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
-    let key_set = lute_check::connectivity::scene_key_set(&docs);
-    let quest_ids = lute_check::connectivity::quest_id_set(&docs);
-    let beat_keys = lute_check::connectivity::bundle_beat_key_set(&docs);
-    let (graph, _) = lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
-    let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&docs);
-    let fp = compute_conn_fixpoint(&docs, group_full, file_results, &graph, &quest_ids, &ambiguous_quests);
+    let project_docs = project_docs(group_full);
+    let key_set = lute_check::connectivity::scene_key_set(&project_docs);
+    let quest_ids = lute_check::connectivity::quest_id_set(&project_docs);
+    let beat_keys = lute_check::connectivity::bundle_beat_key_set(&project_docs);
+    let (graph, _) = lute_check::connectivity::assemble_graph(&project_docs, &key_set, &quest_ids);
+    let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&project_docs);
+    let fp = compute_conn_fixpoint(&project_docs, group_full, file_results, &graph, &quest_ids, &ambiguous_quests);
     let mut per_doc = envelope::PerDocEffects::default();
     let mut envelope_d = BTreeSet::new();
     let mut reads_per_scene = BTreeMap::new();
@@ -68,7 +73,7 @@ pub fn assemble_root_scenario(
         graph, reach: fp.reach, envs, tainted, reads_per_scene, key_set, beat_keys,
         quest_ids, ambiguous_quests, unreachable_quests: fp.unreachable_quests,
         dead_required_objective_quests: fp.dead_required_objective_quests,
-        envelope_d, docs, per_doc, rel_vocab, scene_must: fp.scene_must,
+        envelope_d, per_doc, rel_vocab, scene_must: fp.scene_must,
     }
 }
 
@@ -82,11 +87,11 @@ pub fn find_matching_roots<'a>(
     node: &lute_check::connectivity::NodeId,
 ) -> Vec<(&'a PathBuf, RootScenario)> {
     by_root.iter().filter_map(|(root, group)| {
-        let docs: Vec<_> = group.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+        let project_docs = project_docs(group);
         let found = match node {
-            lute_check::connectivity::NodeId::Scene(key) => lute_check::connectivity::scene_key_set(&docs).contains_key(key),
-            lute_check::connectivity::NodeId::Quest(id) => lute_check::connectivity::quest_id_set(&docs).contains(id),
-            lute_check::connectivity::NodeId::Beat(key) => lute_check::connectivity::bundle_beat_key_set(&docs).contains_key(key),
+            lute_check::connectivity::NodeId::Scene(key) => lute_check::connectivity::scene_key_set(&project_docs).contains_key(key),
+            lute_check::connectivity::NodeId::Quest(id) => lute_check::connectivity::quest_id_set(&project_docs).contains(id),
+            lute_check::connectivity::NodeId::Beat(key) => lute_check::connectivity::bundle_beat_key_set(&project_docs).contains_key(key),
             lute_check::connectivity::NodeId::Entry(_) => false,
         };
         found.then(|| (root, assemble_root_scenario(group, file_results)))

@@ -6,8 +6,8 @@ use std::process::ExitCode;
 
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_check::CheckInput;
+use lute_load::project_root_for;
 use lute_model::relocate_imported_diags;
-
 use crate::cmd_check::{engine_semantic_diags, merge_gate_diags};
 use crate::manifests;
 use crate::mockcheck;
@@ -76,8 +76,9 @@ pub(crate) fn run_check_project(
     for model in &models {
         let Some(project) = model.manifest() else { continue; };
         let docs: Vec<_> = model.documents().iter().map(|d| (d.path.clone(), d.doc.clone())).collect();
+        let project_docs = model.project_docs();
         let folded_refs: Vec<_> = model.documents().iter().map(|d| &d.folded).collect();
-        let slots = lute_check::clock_positions::project_objective_slot_results(&docs, &folded_refs);
+        let slots = lute_check::clock_positions::project_objective_slot_results(&project_docs, &folded_refs);
         for result in lute_model::constraints::evaluate_constraints_with_foldeds(model.root(), project, &docs, &folded_refs, model.reconciled().scenarios.get(model.root()).expect("model scenario"), &slots) {
             if !result.declaration_errors.is_empty() {
                 let manifest = model.root().join("lute.project.yaml");
@@ -113,7 +114,7 @@ pub(crate) fn run_check_project(
         }
         let imported_by = inputs
             .values()
-            .filter(|(root, _)| *root == lute_model::project_root_for(path, dir))
+            .filter(|(root, _)| *root == project_root_for(path, dir))
             .count();
         if imported_by > 0 {
             let message = diagnostic

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use lute_check::{
     check, check_project_entry_ids, check_project_entry_refs, colliding_entry_occurrences,
-    fix_document, CheckInput, CheckResult, Mode, SchemaImports,
+    fix_document, CheckInput, CheckResult, Mode, ProjectDocs, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::provider::ProviderSet;
@@ -341,7 +341,7 @@ fn entry_asserts_are_live_producer_sites() {
     let src = entry("::assert{knows(vesna, project_lumen)}");
     let docs = parse_docs(&[("notes.lute", &src)]);
     let live = lute_check::connectivity::live_assert_relations(
-        &docs,
+        &docs.views(),
         &Default::default(),
         &Default::default(),
         &Default::default(),
@@ -533,11 +533,12 @@ fn when_test_literal_and_fix_reach_entry_arms() {
 
 // --- check-project -------------------------------------------------------------
 
-fn parse_docs(files: &[(&str, &str)]) -> Vec<(PathBuf, lute_syntax::ast::Document)> {
-    files
+fn parse_docs(files: &[(&str, &str)]) -> ProjectDocs {
+    let docs = files
         .iter()
         .map(|(p, t)| (PathBuf::from(p), lute_syntax::parse(t).0))
-        .collect()
+        .collect();
+    ProjectDocs::parse(docs, &lute_manifest::core::load_core_snapshot())
 }
 
 #[test]
@@ -545,7 +546,7 @@ fn project_entry_id_dup_across_files() {
     let a = lore("<entry id=\"note\">\n@n: a\n</entry>\n");
     let b = lore("<entry id=\"other\">\n@n: x\n</entry>\n<entry id=\"note\">\n@n: b\n</entry>\n");
     let docs = parse_docs(&[("a.lute", &a), ("b.lute", &b)]);
-    let out = check_project_entry_ids(&docs);
+    let out = check_project_entry_ids(&docs.views());
     assert_eq!(out.len(), 1, "{out:?}");
     let (path, d) = &out[0];
     assert_eq!(path, &PathBuf::from("b.lute"));
@@ -555,7 +556,7 @@ fn project_entry_id_dup_across_files() {
 
     // Both occurrences are covered, so check-project suppresses the per-file
     // copies of the same collision.
-    let covered = colliding_entry_occurrences(&docs);
+    let covered = colliding_entry_occurrences(&docs.views());
     assert_eq!(covered.len(), 2, "{covered:?}");
 }
 
@@ -567,7 +568,7 @@ fn project_series_order_dup_across_files() {
          <entry id=\"log1b\" series=\"log\" order=\"1\">\n@n: c\n</entry>\n",
     );
     let docs = parse_docs(&[("a.lute", &a), ("b.lute", &b)]);
-    let out = check_project_entry_ids(&docs);
+    let out = check_project_entry_ids(&docs.views());
     assert_eq!(out.len(), 1, "{out:?}");
     let (path, d) = &out[0];
     assert_eq!(path, &PathBuf::from("b.lute"));
@@ -585,7 +586,7 @@ fn project_entry_ref_unknown() {
          @x{{when=\"entry.scientistLog9.read\"}}: typo\n"
     );
     let docs = parse_docs(&[("notes.lute", &notes), ("scene.lute", &scene)]);
-    let out = check_project_entry_refs(&docs);
+    let out = check_project_entry_refs(&docs.views());
     assert_eq!(out.len(), 1, "{out:?}");
     let (path, d) = &out[0];
     assert_eq!(path, &PathBuf::from("scene.lute"));
@@ -600,7 +601,7 @@ fn project_entry_ref_unknown() {
     // Every read resolves once the entry is declared.
     let fixed = scene.replace("scientistLog9", "scientistLog1");
     let docs = parse_docs(&[("notes.lute", &notes), ("scene.lute", &fixed)]);
-    assert!(check_project_entry_refs(&docs).is_empty());
+    assert!(check_project_entry_refs(&docs.views()).is_empty());
 }
 
 // --- §2.1 the document is the bundle ------------------------------------------
@@ -621,9 +622,10 @@ fn series_document_checks_clean_and_orders_by_position() {
     );
     let ds = diags(&src);
     assert!(ds.is_empty(), "{ds:#?}");
-    let doc = lute_syntax::parse(&src).0;
-    let series = lute_check::document_series(&doc.meta);
-    let resolved: Vec<_> = lute_check::resolve_entry_series(series.as_deref(), &doc.entries)
+    let docs = parse_docs(&[("bundle.lute", &src)]);
+    let views = docs.views();
+    let series = lute_check::document_series(views[0].meta);
+    let resolved: Vec<_> = lute_check::resolve_entry_series(series.as_deref(), &views[0].doc.entries)
         .iter()
         .map(|e| (e.series, e.order))
         .collect();
@@ -721,7 +723,7 @@ fn document_series_collides_with_attribute_positions_project_wide() {
     );
     let b = lore("<entry id=\"logB\" series=\"log\" order=\"2\">\n@n: c\n</entry>\n");
     let docs = parse_docs(&[("a.lute", &a), ("b.lute", &b)]);
-    let out = check_project_entry_ids(&docs);
+    let out = check_project_entry_ids(&docs.views());
     assert_eq!(out.len(), 1, "{out:?}");
     let (path, d) = &out[0];
     assert_eq!(path, &PathBuf::from("b.lute"));
@@ -737,10 +739,10 @@ fn document_series_collides_with_attribute_positions_project_wide() {
     // Reversed file order: the document-series entry is the later
     // occurrence and anchors at its entry id (it authored no `order=`).
     let docs = parse_docs(&[("a.lute", &b), ("b.lute", &a)]);
-    let out = check_project_entry_ids(&docs);
+    let out = check_project_entry_ids(&docs.views());
     assert_eq!(out.len(), 1, "{out:?}");
     assert_eq!(anchored(&a, &out[0].1), "log2");
-    assert_eq!(colliding_entry_occurrences(&docs).len(), 2);
+    assert_eq!(colliding_entry_occurrences(&docs.views()).len(), 2);
 }
 
 /// dsl 0.26.0 §8 (T3-4): an entry beat without `once` is presented again by

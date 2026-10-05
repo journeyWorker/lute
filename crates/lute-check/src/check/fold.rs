@@ -22,6 +22,39 @@ pub(super) fn params_from_yaml(v: &serde_yaml::Value) -> Vec<(String, lute_manif
         .collect()
 }
 
+/// The document kind (which body walk applies) and frontmatter kind (which
+/// keys the meta parse admits) for `doc`, plus the kind diagnostics (dsl 0.2.0
+/// §3.1). Unresolved defaults to `Scene`, the degrade-safe path; a fragment
+/// opened standalone takes its import role from its shape. One rule for
+/// [`fold_env`] and every caller that lifts frontmatter on its own
+/// ([`crate::ProjectDocs::parse`]), so both see the same typed metadata.
+pub(crate) fn resolve_kinds(
+    doc: &Document,
+    defaults: &lute_manifest::project::MetaDefaults,
+) -> (crate::meta::DocKind, crate::meta::MetaKind, Vec<Diagnostic>) {
+    use crate::meta::{DocKind, MetaKind};
+    let (resolved_kind, kind_diags) = crate::meta::resolve_doc_kind_with_defaults(&doc.meta, defaults);
+    let has_body = !doc.shots.is_empty()
+        || !doc.quests.is_empty()
+        || !doc.entries.is_empty()
+        || !doc.beats.is_empty();
+    match resolved_kind {
+        Some(DocKind::Scene) => (DocKind::Scene, MetaKind::Scene, kind_diags),
+        Some(DocKind::Quest) => (DocKind::Quest, MetaKind::Quest, kind_diags),
+        // dsl 0.19.0 §2: a lore document takes the quest-document frontmatter
+        // keys (`MetaKind::Lore` mirrors `MetaKind::Quest`'s key set).
+        Some(DocKind::Lore) => (DocKind::Lore, MetaKind::Lore, kind_diags),
+        None => match crate::meta::infer_meta_kind_from_shape(&doc.meta, has_body) {
+            // A fragment opened standalone: validate in its import role, drop the
+            // root-only E-KIND-MISSING/E-META-MISSING false positives. Any body
+            // (e.g. a component's `## Scene`) still walks as `DocKind::Scene` —
+            // the same degrade-safe shape as the genuine-missing-kind default.
+            Some(mk) => (DocKind::Scene, mk, Vec::new()),
+            None => (DocKind::Scene, MetaKind::Scene, kind_diags), // genuine missing kind
+        },
+    }
+}
+
 /// Fold the analysis environment from an already-parsed document. Returns two
 /// diagnostic streams kept SEPARATE so `check()` preserves its exact diagnostic
 /// byte-order contract (a stable sort on `(byte_start, code)` makes same-span
@@ -38,43 +71,7 @@ pub fn fold_env(
     //    `Scene` — the degrade-safe path — when unresolved (missing/unknown
     //    `kind:`), so a mis-kinded doc still gets the scene-triad required-key
     //    treatment it had pre-0.2.0.
-    let (resolved_kind, kind_diags) =
-        crate::meta::resolve_doc_kind_with_defaults(&doc.meta, &input.defaults);
-    let has_body = !doc.shots.is_empty()
-        || !doc.quests.is_empty()
-        || !doc.entries.is_empty()
-        || !doc.beats.is_empty();
-    let (doc_kind, meta_kind, kind_diags) = match resolved_kind {
-        Some(crate::meta::DocKind::Scene) => (
-            crate::meta::DocKind::Scene,
-            crate::meta::MetaKind::Scene,
-            kind_diags,
-        ),
-        Some(crate::meta::DocKind::Quest) => (
-            crate::meta::DocKind::Quest,
-            crate::meta::MetaKind::Quest,
-            kind_diags,
-        ),
-        // dsl 0.19.0 §2: a lore document takes the quest-document frontmatter
-        // keys (`MetaKind::Lore` mirrors `MetaKind::Quest`'s key set).
-        Some(crate::meta::DocKind::Lore) => (
-            crate::meta::DocKind::Lore,
-            crate::meta::MetaKind::Lore,
-            kind_diags,
-        ),
-        None => match crate::meta::infer_meta_kind_from_shape(&doc.meta, has_body) {
-            // A fragment opened standalone: validate in its import role, drop the
-            // root-only E-KIND-MISSING/E-META-MISSING false positives. Any body
-            // (e.g. a component's `## Scene`) still walks as `DocKind::Scene` —
-            // the same degrade-safe shape as the genuine-missing-kind default.
-            Some(mk) => (crate::meta::DocKind::Scene, mk, Vec::new()),
-            None => (
-                crate::meta::DocKind::Scene,
-                crate::meta::MetaKind::Scene,
-                kind_diags,
-            ), // genuine missing kind
-        },
-    };
+    let (doc_kind, meta_kind, kind_diags) = resolve_kinds(doc, &input.defaults);
 
     // 3b. Typed frontmatter + inline state schema, dispatched by the resolved
     //     kind (dsl 0.2.0 §3.1, §6.1): a Quest doc carries none of the scene

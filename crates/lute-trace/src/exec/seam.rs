@@ -58,7 +58,9 @@ pub fn terminal_holds(p: &ExecProject, w: &World) -> Result<bool, String> {
     match &p.index.terminal {
         None => Ok(false),
         Some(t) => decide(
-            &mut w.evaluator(&p.eval_json).with_visited(&w.visited),
+            &mut w
+                .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+                .with_visited(&w.visited),
             &t.raw,
         ),
     }
@@ -78,7 +80,9 @@ fn member<'t>(p: &ExecProject, occasion: &str, target: &'t str) -> std::borrow::
 /// terminal condition holds, or the occasion's gate is false — or `None`
 /// when it would.
 pub fn closed(p: &ExecProject, w: &World, occasion: &str, target: Option<&str>) -> Option<Closed> {
-    let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
+    let mut eval = w
+        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .with_visited(&w.visited);
     closed_in(p, &mut eval, occasion, target)
 }
 

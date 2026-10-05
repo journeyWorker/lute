@@ -13,7 +13,7 @@ use lute_check::connectivity::{
 use lute_check::fact_env::{MustFact, Provenance};
 use lute_check::{
     check, check_fact_guards, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv,
-    GroundFact, MaySet, Mode, MustMap, RootVocab, SchemaImports, TypedMeta,
+    GroundFact, MaySet, Mode, MustMap, ProjectDocs, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_syntax::ast::{Document, Node};
@@ -73,7 +73,7 @@ fn lore(body: &str) -> String {
 
 /// One resolved root, analyzed the way `check-project` analyzes it.
 struct Root {
-    docs: Vec<(PathBuf, Document)>,
+    docs: ProjectDocs,
     foldeds: Vec<FoldedEnv>,
     per_file: Vec<Vec<Diagnostic>>,
     env: FactEnv,
@@ -81,7 +81,7 @@ struct Root {
 }
 
 fn root(texts: &[(&str, &str)]) -> Root {
-    let mut docs = Vec::new();
+    let mut raw_docs = Vec::new();
     let mut foldeds = Vec::new();
     let mut per_file = Vec::new();
     let mut results = Vec::new();
@@ -93,26 +93,27 @@ fn root(texts: &[(&str, &str)]) -> Root {
         per_file.push(result.diagnostics.clone());
         results.push((PathBuf::from(path), result));
         foldeds.push(folded);
-        docs.push((PathBuf::from(path), doc));
+        raw_docs.push((PathBuf::from(path), doc));
     }
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (graph, _) = assemble_graph(&docs, &key_set, &quest_ids);
-    let lifecycle = unreachable_quest_ids(&docs, &results);
-    let ambiguous = ambiguous_quest_ids(&docs);
+    let docs = ProjectDocs::parse(raw_docs, &lute_manifest::core::load_core_snapshot());
+    let views = docs.views();
+    let key_set = scene_key_set(&views);
+    let quest_ids = quest_id_set(&views);
+    let (graph, _) = assemble_graph(&views, &key_set, &quest_ids);
+    let lifecycle = unreachable_quest_ids(&views, &results);
+    let ambiguous = ambiguous_quest_ids(&views);
     let (reach, _) = check_reachability(&graph, &quest_ids, &ambiguous, &lifecycle);
     let mut vocab = RootVocab::default();
     for folded in &foldeds {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
-    let typed: Vec<&TypedMeta> = foldeds.iter().map(|folded| &folded.typed).collect();
-    vocab.note_unreadable_documents(&docs, &typed);
-    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
+    vocab.note_unreadable_documents(&views);
+    let facts = live_assert_sites(&views, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
         .flat_map(|(_, a)| vocab.asserted_facts(&a));
-    let may = MaySet::build(&vocab, facts, &stable_seeds(&docs, &vocab));
+    let may = MaySet::build(&vocab, facts, &stable_seeds(&views, &vocab));
     let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
-    let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);
+    let must = compute_must(&views, &folded_refs, &graph, &vocab, &may);
     let scene_entry = must.scene_entry;
     let env = FactEnv::new(may, must.slots);
     Root {
@@ -128,9 +129,10 @@ impl Root {
     /// The project pass's diagnostics for the document at `path`.
     fn guards(&self, path: &str) -> Vec<Diagnostic> {
         let i = self.index(path);
+        let (path, doc) = &self.docs.documents()[i];
         check_fact_guards(
-            &self.docs[i].0,
-            &self.docs[i].1,
+            path,
+            doc,
             &self.foldeds[i],
             &self.env,
             &self.per_file[i],
@@ -139,6 +141,7 @@ impl Root {
 
     fn index(&self, path: &str) -> usize {
         self.docs
+            .documents()
             .iter()
             .position(|(p, _)| p == Path::new(path))
             .expect("fixture path")
@@ -518,9 +521,10 @@ fn objective_done_over_impossible_fact_is_unsatisfiable_once() {
             .any(|d| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "the per-file pass cannot decide it, so it is reported exactly once"
     );
+    let (path, doc) = &r.docs.documents()[0];
     let dead = lute_check::fact_check::dead_required_objective_quests(
-        &r.docs[0].0,
-        &r.docs[0].1,
+        path,
+        doc,
         &r.foldeds[0],
         &r.env,
         &Default::default(),
@@ -551,10 +555,11 @@ fn quest_start_over_impossible_fact_is_unreachable() {
     )]);
     let ds = r.guards("q.lute");
     let d = only(&ds, "E-QUEST-UNREACHABLE");
-    assert_eq!(d.span, r.docs[0].1.quests[0].span, "anchored at the quest");
+    let (path, doc) = &r.docs.documents()[0];
+    assert_eq!(d.span, doc.quests[0].span, "anchored at the quest");
     let dead = lute_check::fact_check::dead_lifecycle_quests(
-        &r.docs[0].0,
-        &r.docs[0].1,
+        path,
+        doc,
         &r.foldeds[0],
         &r.env,
         &Default::default(),
@@ -657,7 +662,8 @@ fn guaranteed_fact_in_a_line_guard_is_fact_guaranteed() {
     };
     let mut must = MustMap::default();
     for n in 0..2 {
-        must.insert(&r.docs[i].0, line_when(&r.docs[i].1, n), [fact.clone()]);
+        let (path, doc) = &r.docs.documents()[i];
+        must.insert(path, line_when(doc, n), [fact.clone()]);
     }
     r.env.must = must;
     let ds = r.guards("b.lute");
@@ -701,7 +707,8 @@ fn guaranteed_count_lower_bound_decides_comparisons() {
     };
     let mut must = MustMap::default();
     for n in 0..2 {
-        must.insert(&r.docs[0].0, line_when(&r.docs[0].1, n), [fact.clone()]);
+        let (path, doc) = &r.docs.documents()[0];
+        must.insert(path, line_when(doc, n), [fact.clone()]);
     }
     r.env.must = must;
     let ds = r.guards("a.lute");
@@ -1113,7 +1120,8 @@ impl Root {
         for folded in &self.foldeds {
             vocab.add(&folded.env.rel_vocab, &folded.env.domains);
         }
-        let unproduced = lute_check::unproduced_relations(&self.docs, &vocab);
+        let views = self.docs.views();
+        let unproduced = lute_check::unproduced_relations(&views, &vocab);
         self.env = self.env.with_wip(&vocab, &unproduced);
         self
     }

@@ -9,7 +9,7 @@ mod project;
 mod validation;
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::ident::is_name;

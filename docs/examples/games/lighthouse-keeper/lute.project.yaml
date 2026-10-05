@@ -7,7 +7,7 @@ profiles:
 identity:
   requireStable: true
 defaults:
-  luteVersion: "0.36.1"
+  luteVersion: "0.36.2"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
 # 0.27: the Board's hearing is one chapter of three scenes, played in one raise
 # of `inquest` (a `select: sequence` occasion), in this order.

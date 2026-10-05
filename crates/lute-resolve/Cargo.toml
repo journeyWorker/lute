@@ -9,7 +9,7 @@ lute-core-span = { path = "../lute-core-span" }
 lute-cel = { path = "../lute-cel" }
 lute-check = { path = "../lute-check" }
 lute-manifest = { path = "../lute-manifest" }
-lute-model = { path = "../lute-model" }
+lute-semantic = { path = "../lute-semantic" }
 lute-syntax = { path = "../lute-syntax" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }

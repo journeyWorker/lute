@@ -47,7 +47,7 @@
 //!
 //! `--project <dir>` resolves every traced document EXACTLY as `lute trace
 //! <file> --project <dir>` does — same flag, same help text, same
-//! [`lute_model::build_input`] call, same provider-catalog precedence (plugin
+//! [`lute_load::build_input`] call, same provider-catalog precedence (plugin
 //! §10: an explicit `--providers <dir>` wins; otherwise auto-discover
 //! through the project's pinned catalog). Before this flag existed, every
 //! test traced with a hardcoded `project: None`, so a document whose schema
@@ -83,7 +83,9 @@ use lute_trace::{
     TraceExit, TraceReport, UnresolvedEntry,
 };
 use rayon::prelude::*;
-use lute_model::{nearest_manifest_dir, ModelDocument, ModelError, ModelOptions, ProjectModel};
+use lute_load::nearest_manifest_dir;
+use lute_model::{ModelDocument, ModelError, ModelOptions, ProjectModel};
+use lute_semantic::{NodeKey, NodeKind};
 
 use crate::play_expect::ExpectMiss;
 

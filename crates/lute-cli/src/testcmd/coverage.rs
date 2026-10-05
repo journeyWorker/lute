@@ -94,19 +94,29 @@ pub(super) fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> 
         .collect();
     // Desugared as `check` sees them: template- and sequence-derived beats
     // are units too (dsl 0.27.0 §6).
-    let docs = crate::parse_project_docs(root, &paths);
-    for (path, parsed) in paths.iter().zip(docs) {
-        let file = display_path(path);
-        let canonical = canonical_key(path);
+    let parsed = crate::parse_project_docs(root, &paths);
+    let mut source_docs = Vec::new();
+    for (path, parsed) in paths.iter().zip(parsed) {
         let Ok((doc, _)) = parsed else {
             continue;
         };
+        source_docs.push((path.clone(), doc));
+    }
+    let snapshot = lute_load::manifest_context(root)
+        .map(|context| context.snapshot)
+        .unwrap_or_else(|_| lute_manifest::core::load_core_snapshot());
+    let owned = lute_check::ProjectDocs::parse(source_docs, &snapshot);
+    let views = owned.views();
+    for item in views {
+        let path = item.path;
+        let doc = item.doc;
+        let file = display_path(path);
+        let canonical = canonical_key(path);
         if doc.entries.is_empty() && doc.beats.is_empty() {
-            let meta = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
-            let scene = lute_check::connectivity::scene_key(&doc);
+            let meta = item.meta.yaml().and_then(serde_yaml::Value::as_mapping);
+            let scene = lute_check::connectivity::scene_key(item.meta);
             let doc_id = scene.clone().or_else(|| {
-                meta.as_ref()
-                    .and_then(|m| m.get("id"))
+                meta.and_then(|m| m.get("id"))
                     .and_then(serde_yaml::Value::as_str)
                     .map(str::to_string)
             });
@@ -128,7 +138,7 @@ pub(super) fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> 
             continue;
         }
         // Entries and bundle beats in source order, as the index lists them.
-        let bundle = lute_check::connectivity::bundle_id(&doc);
+        let bundle = lute_check::connectivity::bundle_id(item.meta);
         let mut units: Vec<(usize, CoverageUnit)> = doc
             .entries
             .iter()

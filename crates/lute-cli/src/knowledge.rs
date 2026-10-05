@@ -410,7 +410,7 @@ fn frontmatter_when(doc: &Document) -> Option<String> {
 /// order), each document in source order: the scene beat's `when:`, the
 /// scene body, entries and bundle beats (each guard, then its body), then
 /// quests (`start`/`fail`, rewards, objectives, handlers).
-fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<Guarded> {
+fn guarded(root: &Path, group: &DocGroup, docs: &[lute_check::ProjectDoc<'_>]) -> Vec<Guarded> {
     let foldeds: Vec<&lute_check::FoldedEnv> = group.iter().map(|(_, _, f)| f).collect();
     let beats = lute_check::project_beats(docs, &foldeds);
     // Each document's scene beats, in `beats` order — the `filter` a scan per
@@ -418,7 +418,7 @@ fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<G
     let mut scene_beats: std::collections::HashMap<&Path, Vec<&lute_check::ProjectBeat>> =
         std::collections::HashMap::new();
     for b in beats.iter().filter(|b| b.kind == ProjectBeatKind::Scene) {
-        scene_beats.entry(b.path.as_path()).or_default().push(b);
+        scene_beats.entry(b.path).or_default().push(b);
     }
     // Every document walks independently: in parallel, concatenated in walk order.
     let per_doc: Vec<Vec<Guarded>> = group
@@ -441,7 +441,7 @@ fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<G
                     );
                 }
             }
-            let scene: Vec<String> = lute_check::connectivity::scene_key(doc)
+            let scene: Vec<String> = lute_check::connectivity::scene_key(&folded.typed)
                 .into_iter()
                 .collect();
             for shot in &doc.shots {
@@ -459,7 +459,7 @@ fn guarded(root: &Path, group: &DocGroup, docs: &[(PathBuf, Document)]) -> Vec<G
                 .chain(doc.beats.iter().map(|b| (b.span.byte_start, Top::Beat(b))))
                 .collect();
             tops.sort_by_key(|(at, _)| *at);
-            let bundle = lute_check::connectivity::bundle_id(doc);
+            let bundle = lute_check::connectivity::bundle_id(&folded.typed);
             for (_, top) in tops {
                 match top {
                     Top::Entry(e) => {
@@ -635,7 +635,7 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
             continue;
         }
         let document = rel_path(root, path);
-        let scene = lute_check::connectivity::scene_key(doc)
+        let scene = lute_check::connectivity::scene_key(&folded.typed)
             .map(|k| format!("scene `{k}`"))
             .unwrap_or_else(|| "scene".to_string());
         for shot in &doc.shots {
@@ -647,7 +647,7 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
         for e in &doc.entries {
             record(&e.body, format!("entry `{}` ({document})", e.id));
         }
-        let bundle = lute_check::connectivity::bundle_id(doc);
+        let bundle = lute_check::connectivity::bundle_id(&folded.typed);
         for b in &doc.beats {
             let id = match &bundle {
                 Some(d) => lute_check::bundle_beat_key(d, &b.id),
@@ -815,13 +815,15 @@ pub(crate) struct RootKnowledge {
 
 /// The root's may set (`compute_conn_fixpoint`'s construction) and the
 /// root vocabulary it was built over.
-fn may_set(group: &DocGroup, docs: &[(PathBuf, Document)]) -> (MaySet, lute_check::RootVocab) {
+fn may_set(
+    group: &DocGroup,
+    docs: &[lute_check::ProjectDoc<'_>],
+) -> (MaySet, lute_check::RootVocab) {
     let mut vocab = lute_check::RootVocab::default();
     for (_, _, folded) in group {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
-    let typed: Vec<&lute_check::TypedMeta> = group.iter().map(|(_, _, f)| &f.typed).collect();
-    vocab.note_unreadable_documents(docs, &typed);
+    vocab.note_unreadable_documents(docs);
     let stable = lute_check::stable_seeds(docs, &vocab);
     let none = BTreeSet::new();
     let facts = lute_check::connectivity::live_assert_sites(
@@ -1418,10 +1420,7 @@ pub(crate) fn collect(by_root: &ByRoot) -> Vec<RootKnowledge> {
     by_root
         .iter()
         .map(|(root, group)| {
-            let docs: Vec<(PathBuf, Document)> = group
-                .iter()
-                .map(|(p, d, _)| (p.clone(), d.clone()))
-                .collect();
+            let docs = lute_model::project_docs(group);
             let (may, root_vocab) = may_set(group, &docs);
             RootKnowledge {
                 root: root.clone(),

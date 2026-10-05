@@ -18,10 +18,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, AttrValue, Directive, Document, Node};
+use lute_syntax::ast::{Arm, AttrValue, Directive, Node};
 
+use crate::ProjectDoc;
 use crate::content_line::E_UNKNOWN_ATTR;
-
 /// `::accept` names no quest, a malformed quest id, a bad `at`, or (at
 /// `check-project`) a quest that is not an accept-driven quest of the
 /// project (dsl 0.21.0 §7a.3, 0.24.0 §2); also `accept="external"` on a
@@ -126,16 +126,18 @@ struct ProjectQuests<'a> {
 }
 
 impl<'a> ProjectQuests<'a> {
-    fn new(docs: &'a [(PathBuf, Document)]) -> Self {
+    fn new(docs: &'a [ProjectDoc<'a>]) -> Self {
         let mut quests: BTreeMap<&str, QuestFacts> = BTreeMap::new();
         let mut parents: BTreeMap<&str, &str> = BTreeMap::new();
-        for (path, doc) in docs {
+        for item in docs {
+            let path = item.path;
+            let doc = item.doc;
             for q in doc.quests.iter().filter(|q| !q.id.is_empty()) {
                 let facts = quests.entry(q.id.as_str()).or_insert(QuestFacts {
                     start: false,
                     on_accept: false,
                     external: false,
-                    anchor: (path.as_path(), q.id_span),
+                    anchor: (path, q.id_span),
                 });
                 facts.start |= q.start.is_some();
                 facts.on_accept |= q.activates_on_accept();
@@ -165,7 +167,7 @@ impl<'a> ProjectQuests<'a> {
 /// quest=…>` in `docs` names it) or a subquest child declared
 /// `activate="accept"`. An auto-activating child — one without
 /// `activate="accept"` — activates with its parent and is not in the set.
-pub(crate) fn accept_driven_quests(docs: &[(PathBuf, Document)]) -> BTreeSet<&str> {
+pub(crate) fn accept_driven_quests<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeSet<&'a str> {
     let project = ProjectQuests::new(docs);
     project
         .quests
@@ -185,11 +187,13 @@ pub(crate) fn accept_driven_quests(docs: &[(PathBuf, Document)]) -> BTreeSet<&st
 /// a `<quest accept="external">` child that activates with its parent is
 /// the same no-op (dsl 0.25.0 §5), [`E_ACCEPT_TARGET`] at the `accept`
 /// value; beside `start` it is the per-file `E-ATTR-TYPE`.
-pub fn check_project_accepts(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
+pub fn check_project_accepts(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagnostic)> {
     let project = ProjectQuests::new(docs);
     let mut out = Vec::new();
     for_each_accept(docs, |path, d| check_target(d, &project, path, &mut out));
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         for q in doc.quests.iter().filter(|q| q.accepted_externally()) {
             let (Some(facts), Some(parent), Some((_, span))) = (
                 project.quests.get(q.id.as_str()),
@@ -202,7 +206,7 @@ pub fn check_project_accepts(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diag
                 continue;
             }
             out.push((
-                path.clone(),
+                path.to_path_buf(),
                 accept_diag(
                     E_ACCEPT_TARGET,
                     format!(
@@ -228,7 +232,7 @@ pub fn check_project_accepts(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diag
 /// not the game, dsl 0.25.0 D-C); the warning names them so the author
 /// sees why a passing test does not silence it.
 pub fn check_project_never_accepted(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     mocked: &BTreeMap<String, Vec<PathBuf>>,
 ) -> Vec<(PathBuf, Diagnostic)> {
     let project = ProjectQuests::new(docs);
@@ -322,11 +326,13 @@ fn check_target(
 /// Every `::accept` directive of `docs`, with its document's path: scene
 /// shots, quest bodies, lore entries, and bundle beats.
 fn for_each_accept<'a>(
-    docs: &'a [(PathBuf, Document)],
+    docs: &'a [ProjectDoc<'a>],
     mut f: impl FnMut(&'a Path, &'a Directive),
 ) {
-    for (path, doc) in docs {
-        let mut visit = |d: &'a Directive| f(path.as_path(), d);
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
+        let mut visit = |d: &'a Directive| f(path, d);
         for shot in &doc.shots {
             walk(&shot.body, &mut visit);
         }

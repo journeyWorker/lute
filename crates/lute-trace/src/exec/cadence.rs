@@ -522,7 +522,9 @@ pub fn observe(p: &ExecProject, w: &mut World) -> Vec<QuestAdvance> {
     if plan.is_empty() {
         return Vec::new();
     }
-    let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
+    let mut eval = w
+        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .with_visited(&w.visited);
     let seasons: Vec<Option<bool>> = plan
         .seasons
         .iter()
@@ -617,7 +619,9 @@ pub fn observe_latches(p: &ExecProject, w: &mut World) {
         .as_ref()
         .and_then(|c| crate::clock::position(c, &w.state));
     let mut held = Vec::new();
-    let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
+    let mut eval = w
+        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .with_visited(&w.visited);
     for l in &p.cadence.latches {
         let Some(beat) = p.index.beats.iter().find(|b| b.id == l.beat) else {
             continue;

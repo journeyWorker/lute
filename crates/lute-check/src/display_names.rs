@@ -19,6 +19,8 @@ use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use lute_manifest::schema::CastMember;
 use lute_syntax::ast::{Arm, AttrValue, ClipNode, Directive, Document, Line, Node};
 
+use crate::ProjectDoc;
+
 pub const W_DISPLAY_NAME_DUP: &str = "W-DISPLAY-NAME-DUP";
 
 /// One speaker showing a display name, and the first place it is shown.
@@ -39,7 +41,7 @@ struct Speaker {
 /// at the cast entry `cast_home` locates (file, span) — the second's, else
 /// the first's.
 pub fn check_display_names(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     casts: &[&BTreeMap<String, CastMember>],
     use_lines: &[&BTreeMap<usize, Vec<Line>>],
     cast_home: &dyn Fn(&str) -> Option<(PathBuf, Span)>,
@@ -63,7 +65,8 @@ pub fn check_display_names(
     // first line each cast id speaks, in project order
     let mut spoke: BTreeMap<&str, (usize, Span)> = BTreeMap::new();
     let mut uses: Vec<(&str, Option<&str>, usize, Span)> = Vec::new();
-    for (i, (_, doc)) in docs.iter().enumerate() {
+    for (i, item) in docs.iter().enumerate() {
+        let doc = item.doc;
         for_each_node(doc, &mut |node| match node {
             Visit::Line(l) => {
                 spoke.entry(l.speaker.as_str()).or_insert((i, l.span));
@@ -115,7 +118,7 @@ pub fn check_display_names(
         speakers.sort_by_key(|s| s.site.map_or((usize::MAX, 0), |(d, sp)| (d, sp.byte_start)));
         let at = |s: &Speaker| -> String {
             match s.site {
-                Some((d, sp)) => format!("{}:{}", docs[d].0.display(), sp.line),
+                Some((d, sp)) => format!("{}:{}", docs[d].path.display(), sp.line),
                 None => "the cast, never spoken".to_string(),
             }
         };
@@ -137,7 +140,7 @@ pub fn check_display_names(
         let anchor = speakers[1]
             .site
             .or(speakers[0].site)
-            .map(|(d, sp)| (docs[d].0.clone(), sp))
+            .map(|(d, sp)| (docs[d].path.to_path_buf(), sp))
             .or_else(|| {
                 speakers[1..]
                     .iter()
@@ -145,17 +148,21 @@ pub fn check_display_names(
                     .find_map(|s| s.id.as_deref().and_then(cast_home))
             });
         let Some((path, span)) =
-            anchor.or_else(|| docs.first().map(|(p, d)| (p.clone(), d.meta.span)))
+            anchor.or_else(|| docs.first().map(|item| (item.path.to_path_buf(), item.doc.meta.span)))
         else {
             continue;
         };
         let related = speakers
             .iter()
             .filter_map(|s| s.site)
-            .filter(|(d, sp)| !(docs[*d].0 == path && *sp == span))
+            .filter(|(d, sp)| !(docs[*d].path == path && *sp == span))
             .map(|(d, sp)| RelatedDiagnostic {
-                file: docs[d].0.display().to_string(),
-                diagnostic: warning(message.clone(), sp, Vec::new()),
+                file: docs[d].path.display().to_string(),
+                diagnostic: warning(
+                    format!("display name `{name}` is also shown for this speaker"),
+                    sp,
+                    Vec::new(),
+                ),
             })
             .collect();
         out.push((path, warning(message, span, related)));

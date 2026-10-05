@@ -56,36 +56,49 @@ impl LabelForms {
     }
 }
 
+/// Immutable, project-invariant evaluator data decoded from an artifact's
+/// state/rules/entity declarations.  Each machine owns only the mutable
+/// values, facts and evaluation bookkeeping that is layered over this schema.
+pub(crate) struct StoreSchema {
+    pub(crate) types: std::sync::Arc<BTreeMap<String, String>>,
+    pub(crate) labels: std::sync::Arc<BTreeMap<String, BTreeMap<String, String>>>,
+    pub(crate) kind_labels: std::sync::Arc<BTreeMap<String, BTreeMap<String, String>>>,
+    pub(crate) label_forms: std::sync::Arc<BTreeMap<String, BTreeMap<String, LabelForms>>>,
+    pub(crate) kind_label_forms: std::sync::Arc<BTreeMap<String, BTreeMap<String, LabelForms>>>,
+    pub(crate) state: std::sync::Arc<StateSchema>,
+    pub(crate) vocab: std::sync::Arc<RelVocab>,
+    pub(crate) program: std::sync::Arc<Program>,
+    pub(crate) derive: bool,
+    pub(crate) rules_read_state: bool,
+    pub(crate) rules_read_occasion_target: bool,
+    pub(crate) defaults: BTreeMap<String, Value>,
+    pub(crate) excludes: Vec<(String, String)>,
+    pub(crate) clock: Option<lute_manifest::clock::ClockDecl>,
+}
+
 pub(crate) struct Store {
+    pub(crate) store_schema: std::sync::Arc<StoreSchema>,
     /// Live scalar state (path → value).
     pub(crate) values: BTreeMap<String, Value>,
     /// Declared value-type per state path (the artifact `state[]` table).
-    pub(crate) types: BTreeMap<String, String>,
+    pub(crate) types: std::sync::Arc<BTreeMap<String, String>>,
     /// dsl 0.24.0 §1: per state path, the member → display-label map its
     /// artifact `state[].labels` declares.
-    pub(crate) labels: BTreeMap<String, BTreeMap<String, String>>,
+    pub(crate) labels: std::sync::Arc<BTreeMap<String, BTreeMap<String, String>>>,
     /// dsl 0.27.0 §7: per entity kind, the member → display-label map its
     /// artifact `entities[].labels` declares — what an `occasionTarget`
     /// placeholder of that kind renders.
-    pub(crate) kind_labels: BTreeMap<String, BTreeMap<String, String>>,
+    pub(crate) kind_labels: std::sync::Arc<BTreeMap<String, BTreeMap<String, String>>>,
     /// Per state path, the member → declared label forms its artifact
     /// `state[].labelForms` carries (a `{{path:start}}` renders them).
-    pub(crate) label_forms: BTreeMap<String, BTreeMap<String, LabelForms>>,
+    pub(crate) label_forms: std::sync::Arc<BTreeMap<String, BTreeMap<String, LabelForms>>>,
     /// Per entity kind, the member → declared label forms its artifact
     /// `entities[].labelForms` carries.
-    pub(crate) kind_label_forms: BTreeMap<String, BTreeMap<String, LabelForms>>,
-    /// Always empty: every declared default is already in `values`, so a
-    /// schema tier would only shadow reserved defaults.
-    schema: StateSchema,
-    /// Empty under `derive: true` (every relation is materialized, so a
-    /// query is definite); under `derive: false` (dsl 0.22.0 §6) it marks
-    /// the derived relations, so an unmatched query of one is unknown.
-    vocab: RelVocab,
-    program: Program,
+    pub(crate) kind_label_forms: std::sync::Arc<BTreeMap<String, BTreeMap<String, LabelForms>>>,
+    vocab: std::sync::Arc<RelVocab>,
+    program: std::sync::Arc<Program>,
     derive: bool,
-    /// Some rule body reads state: a write can change the closure.
     rules_read_state: bool,
-    /// Whether a rule guard reads the ephemeral occasion target.
     rules_read_occasion_target: bool,
     /// Seeds ∪ asserted − retracted.
     base: BTreeSet<Fact>,
@@ -111,31 +124,12 @@ pub(crate) struct Store {
 }
 
 impl Store {
-    /// The artifact's declared state table, defaults, seed facts, rules and
-    /// exclusive pairs. `derive: false` leaves the rules unapplied.
-    pub(crate) fn of_artifact(art: &Json, derive: bool) -> Self {
-        Self::of_artifact_with(art, derive, None, None)
-    }
-
-    /// Build a store from one document's commands while taking the
-    /// project-wide `rules` and `state` tables from the caller. This is the
-    /// play path's equivalent of widening the artifact JSON, without cloning
-    /// the document's command tree for every occasion.
-    pub(crate) fn of_artifact_with_project(
-        art: &Json,
-        derive: bool,
-        rules: &Json,
-        state: &BTreeMap<String, Json>,
-    ) -> Self {
-        Self::of_artifact_with(art, derive, Some(rules), Some(state))
-    }
-
-    fn of_artifact_with(
+    fn schema_for(
         art: &Json,
         derive: bool,
         rules_override: Option<&Json>,
         state_override: Option<&BTreeMap<String, Json>>,
-    ) -> Self {
+    ) -> std::sync::Arc<StoreSchema> {
         let state_entries: Vec<&Json> = match state_override {
             Some(state) => state.values().collect(),
             None => art
@@ -146,7 +140,7 @@ impl Store {
         let mut types = BTreeMap::new();
         let mut labels = BTreeMap::new();
         let mut label_forms = BTreeMap::new();
-        let mut values = BTreeMap::new();
+        let mut defaults = BTreeMap::new();
         for e in state_entries.iter().copied() {
             let path = e.get("path").and_then(Json::as_str).unwrap_or("");
             if path.is_empty() {
@@ -155,35 +149,18 @@ impl Store {
             let ty = e.get("type").and_then(Json::as_str).unwrap_or("string");
             types.insert(path.to_string(), ty.to_string());
             if let Some(map) = e.get("labels").and_then(Json::as_object) {
-                let map: BTreeMap<String, String> = map
-                    .iter()
-                    .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
-                    .collect();
-                labels.insert(path.to_string(), map);
+                labels.insert(
+                    path.to_string(),
+                    map.iter()
+                        .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+                        .collect(),
+                );
             }
             if let Some(forms) = e.get("labelForms") {
                 label_forms.insert(path.to_string(), LabelForms::map_of(forms));
             }
             if let Some(v) = e.get("default").and_then(|j| typed_json_to_value(j, ty)) {
-                values.insert(path.to_string(), v);
-            }
-        }
-        let mut base = BTreeSet::new();
-        // dsl 0.22.0 §6: under `derive: false` the world is exactly the
-        // supplied facts — the project's seed `facts:` are not loaded.
-        let seeds = art
-            .get("seedFacts")
-            .and_then(Json::as_array)
-            .filter(|_| derive);
-        for s in seeds.into_iter().flatten() {
-            let rel = s.get("relation").and_then(Json::as_str).unwrap_or("");
-            let args: Vec<String> = s
-                .get("args")
-                .and_then(Json::as_array)
-                .map(|a| a.iter().map(json_arg_to_string).collect())
-                .unwrap_or_default();
-            if !rel.is_empty() {
-                base.insert((rel.to_string(), args));
+                defaults.insert(path.to_string(), v);
             }
         }
         let rule_json = rules_override.or_else(|| art.get("rules"));
@@ -219,11 +196,7 @@ impl Store {
             .into_iter()
             .flatten()
             .flat_map(|r| {
-                let name = r
-                    .get("name")
-                    .and_then(Json::as_str)
-                    .unwrap_or("")
-                    .to_string();
+                let name = r.get("name").and_then(Json::as_str).unwrap_or("").to_string();
                 r.get("excludes")
                     .and_then(Json::as_array)
                     .into_iter()
@@ -234,56 +207,128 @@ impl Store {
                     .collect::<Vec<_>>()
             })
             .collect();
-        Store {
-            values,
-            types,
-            labels,
-            label_forms,
-            kind_label_forms: art
-                .get("entities")
-                .and_then(Json::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(|k| {
-                    let name = k.get("name")?.as_str()?;
-                    Some((name.to_string(), LabelForms::map_of(k.get("labelForms")?)))
-                })
-                .collect(),
-            kind_labels: art
-                .get("entities")
-                .and_then(Json::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(|k| {
-                    let name = k.get("name")?.as_str()?;
-                    let map = k.get("labels")?.as_object()?;
-                    let map = map
-                        .iter()
-                        .filter_map(|(m, l)| Some((m.clone(), l.as_str()?.to_string())))
-                        .collect();
-                    Some((name.to_string(), map))
-                })
-                .collect(),
-            schema: StateSchema::default(),
-            vocab,
+        std::sync::Arc::new(StoreSchema {
+            kind_label_forms: std::sync::Arc::new(
+                art
+                    .get("entities")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|k| {
+                        let name = k.get("name")?.as_str()?;
+                        Some((name.to_string(), LabelForms::map_of(k.get("labelForms")?)))
+                    })
+                    .collect(),
+            ),
+            kind_labels: std::sync::Arc::new(
+                art
+                    .get("entities")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|k| {
+                        let name = k.get("name")?.as_str()?;
+                        let map = k.get("labels")?.as_object()?;
+                        Some((
+                            name.to_string(),
+                            map.iter()
+                                .filter_map(|(m, l)| Some((m.clone(), l.as_str()?.to_string())))
+                                .collect(),
+                        ))
+                    })
+                    .collect(),
+            ),
+            state: std::sync::Arc::new(StateSchema::default()),
+            vocab: std::sync::Arc::new(vocab),
             rules_read_state: derive && program.reads_state(),
             rules_read_occasion_target: derive && program.reads_state_path("occasion.target"),
-            program,
+            types: std::sync::Arc::new(types),
+            labels: std::sync::Arc::new(labels),
+            label_forms: std::sync::Arc::new(label_forms),
+            program: std::sync::Arc::new(program),
             derive,
+            defaults,
+            excludes,
+            clock: art
+                .get("clock")
+                .and_then(|c| serde_json::from_value(c.clone()).ok()),
+        })
+    }
+
+    fn from_schema(art: &Json, schema: std::sync::Arc<StoreSchema>) -> Self {
+        let mut base = BTreeSet::new();
+        let seeds = art
+            .get("seedFacts")
+            .and_then(Json::as_array)
+            .filter(|_| schema.derive);
+        for s in seeds.into_iter().flatten() {
+            let rel = s.get("relation").and_then(Json::as_str).unwrap_or("");
+            let args: Vec<String> = s
+                .get("args")
+                .and_then(Json::as_array)
+                .map(|a| a.iter().map(json_arg_to_string).collect())
+                .unwrap_or_default();
+            if !rel.is_empty() {
+                base.insert((rel.to_string(), args));
+            }
+        }
+        Self {
+            store_schema: schema.clone(),
+            types: schema.types.clone(),
+            labels: schema.labels.clone(),
+            kind_labels: schema.kind_labels.clone(),
+            label_forms: schema.label_forms.clone(),
+            kind_label_forms: schema.kind_label_forms.clone(),
+            values: schema.defaults.clone(),
+            vocab: schema.vocab.clone(),
+            program: schema.program.clone(),
+            derive: schema.derive,
+            rules_read_state: schema.rules_read_state,
+            rules_read_occasion_target: schema.rules_read_occasion_target,
             base,
             all: BTreeSet::new(),
             undecided: BTreeMap::new(),
             dirty: true,
             visited: BTreeSet::new(),
-            excludes,
-            clock: art
-                .get("clock")
-                .and_then(|c| serde_json::from_value(c.clone()).ok()),
+            excludes: schema.excludes.clone(),
+            clock: schema.clock.clone(),
             reserved_reads: BTreeMap::new(),
             derived_reads: BTreeSet::new(),
             capture_reads: false,
             last_reads: Vec::new(),
         }
+    }
+
+    pub(crate) fn schema_for_project(
+        art: &Json,
+        derive: bool,
+        rules: &Json,
+        state: &BTreeMap<String, Json>,
+    ) -> std::sync::Arc<StoreSchema> {
+        Self::schema_for(art, derive, Some(rules), Some(state))
+    }
+
+    pub(crate) fn from_project_schema(art: &Json, schema: std::sync::Arc<StoreSchema>) -> Self {
+        Self::from_schema(art, schema)
+    }
+
+    /// The artifact's declared state table, defaults, seed facts, rules and
+    /// exclusive pairs. `derive: false` leaves the rules unapplied.
+    pub(crate) fn of_artifact(art: &Json, derive: bool) -> Self {
+        let schema = Self::schema_for(art, derive, None, None);
+        Self::from_schema(art, schema)
+    }
+
+    /// Compatibility constructor for callers that do not retain a project
+    /// schema. Play sessions use `from_project_schema` instead.
+    pub(crate) fn of_artifact_with_project(
+        art: &Json,
+        derive: bool,
+        rules: &Json,
+        state: &BTreeMap<String, Json>,
+    ) -> Self {
+        let schema = Self::schema_for_project(art, derive, rules, state);
+        Self::from_project_schema(art, schema)
     }
 
     pub(crate) fn enable_read_capture(&mut self) {
@@ -402,7 +447,7 @@ impl Store {
         }
         self.dirty = false;
         if self.derive {
-            let eff = EffectiveState::new(&self.schema, self.values.clone());
+            let eff = EffectiveState::new(&self.store_schema.state, self.values.clone());
             let closure = self.program.fixpoint(&self.base, &eff);
             self.all = closure.facts;
             self.undecided = closure.undecided;
@@ -436,9 +481,9 @@ impl Store {
     pub(crate) fn eval_expr(&mut self, expr: &Expr) -> (Value, Vec<UnresolvedAtom>) {
         self.derive();
         let eff = if self.capture_reads {
-            EffectiveState::new(&self.schema, self.values.clone()).with_read_log()
+            EffectiveState::new(&self.store_schema.state, self.values.clone()).with_read_log()
         } else {
-            EffectiveState::new(&self.schema, self.values.clone())
+            EffectiveState::new(&self.store_schema.state, self.values.clone())
         };
         let mut fs = FactStore::new(&self.vocab)
             .with_facts(&self.all)
@@ -474,7 +519,7 @@ impl Store {
         if self.all.contains(fact) {
             return Some(Vec::new());
         }
-        let eff = EffectiveState::new(&self.schema, self.values.clone());
+        let eff = EffectiveState::new(&self.store_schema.state, self.values.clone());
         let closure = crate::datalog::Closure::of_facts(self.all.clone());
         Some(match self.program.explain(&closure, fact, &eff) {
             crate::datalog::Explanation::Fails { attempts, .. } => attempts,

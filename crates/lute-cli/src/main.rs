@@ -123,7 +123,7 @@ pub(crate) use cmd_scenario::{
 pub(crate) use lute_model::{
     assemble_root_scenario, node_cycle_degraded, RootScenario,
 };
-pub(crate) use lute_model::BuiltInput;
+pub(crate) use lute_load::BuiltInput;
 pub(crate) use output::{cwd_relative, render_diagnostics, severity_str, write_stdout, DenyPolicy};
 pub(crate) use lute_model::{
     reconciled_project_results, reconcile_collected, ReconciledProject,

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use lute_model::{diff_models, project_revision, ModelOptions, ProjectModel};
-
+use lute_semantic::NodeKind;
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("lute-s2-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -235,7 +235,7 @@ fn reward_change_is_one_reward_change() {
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert_eq!(diff.changes.len(), 1, "unexpected changes: {:?}", diff.changes);
     assert!(matches!(&diff.changes[0].kind, lute_model::ChangeKind::Field(name) if name == "reward"));
-    assert_eq!(diff.changes[0].node.kind, lute_model::NodeKind::Reward);
+    assert_eq!(diff.changes[0].node.kind, NodeKind::Reward);
     assert_eq!(diff.changes[0].locations.len(), 2);
     cleanup(before, after);
 }

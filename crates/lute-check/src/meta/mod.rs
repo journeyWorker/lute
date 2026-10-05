@@ -30,7 +30,7 @@ pub use diagnostics::{
 };
 pub use frontmatter::{frontmatter_parses, parse_meta, parse_meta_kind, parse_meta_kind_with_defaults};
 pub use kind::{
-    apply_quest_tier_default, canonical_episode_id, canonical_episode_key, canonical_scene_key,
+    apply_quest_tier_default, authored_doc_kind, canonical_episode_id, canonical_episode_key, canonical_scene_key,
     default_key_legal_on, resolve_doc_kind, resolve_doc_kind_with_defaults, DocKind, MetaKind,
     E_KIND_MISSING, E_STATE_COLLECTION, E_UNKNOWN_KIND, SCENE_KEYS,
 };

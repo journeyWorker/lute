@@ -102,6 +102,7 @@ use lute_compile::locale::LocaleBundle;
 use lute_core_span::Severity;
 use lute_manifest::project::IdentityTemplates;
 use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, Document, Node};
+use lute_load::{build_input, find_lute_files, project_root_for};
 
 /// One translatable unit extracted from a document, carrying the byte offset
 /// used to sort the export deterministically.
@@ -465,11 +466,11 @@ fn is_component_document(doc: &Document) -> bool {
 /// the whole result is deterministic.
 ///
 /// Each file's `identity:` templates resolve against its OWN nearest-ancestor
-/// project root ([`lute_model::project_root_for`], bounded below by `dir`) —
+/// project root ([`lute_load::project_root_for`], bounded below by `dir`) —
 /// same nested-subproject rule `check-project` and `lute scenario` use, so a
 /// walk spanning two subprojects exports each one's real ids.
 fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
-    let files = lute_model::find_lute_files(dir).map_err(|e| {
+    let files = find_lute_files(dir).map_err(|e| {
         let e = lute_manifest::io_reason(&e);
         eprintln!("lute loc: cannot walk {}: {e}", dir.display());
         ExitCode::from(2)
@@ -483,8 +484,8 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         // `trace_document`), in the same order, with the same three passes;
         // `expand_document` is deliberately NOT run, because `{{…}}`
         // interpolation is what a translator must see intact.
-        let root = lute_model::project_root_for(path, dir);
-        let Some(built) = lute_model::build_input(path, None, Some(&root), None) else {
+        let root = project_root_for(path, dir);
+        let Some(built) = build_input(path, None, Some(&root), None) else {
             eprintln!(
                 "lute loc: skipping {} — cannot resolve inputs",
                 path.display()

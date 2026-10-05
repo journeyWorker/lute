@@ -1,12 +1,14 @@
 use super::graph_nodes::*;
 use super::graph_assembly::*;
 use super::*;
+use crate::ProjectDoc;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use cel_parser::ast::{operators as op, Expr};
 use cel_parser::reference::Val;
 use lute_core_span::Diagnostic;
-use lute_syntax::ast::{Document, Node};
+use lute_syntax::ast::Node;
 use crate::meta::{resolve_doc_kind, DocKind};
 use crate::prereq::{atoms, Atom};
 
@@ -103,7 +105,7 @@ pub(super) fn start_source(
 /// to run). A lore entry's `::accept` anchors nothing (the entry is no
 /// source until a `start` reads it); a quest never anchors itself.
 pub(super) fn accept_sources<'a>(
-    docs: &'a [(PathBuf, Document)],
+    docs: &'a [ProjectDoc<'a>],
     nodes: &BTreeMap<NodeId, NodeInfo>,
 ) -> BTreeMap<&'a str, Vec<NodeId>> {
     let driven = crate::accept::accept_driven_quests(docs);
@@ -123,8 +125,9 @@ pub(super) fn accept_sources<'a>(
             from.push(source.clone());
         }
     };
-    for (_, doc) in docs {
-        if let Some(source) = scene_key(doc)
+    for item in docs {
+        let doc = item.doc;
+        if let Some(source) = scene_key(item.meta)
             .map(NodeId::Scene)
             .filter(|s| nodes.contains_key(s))
         {
@@ -133,7 +136,7 @@ pub(super) fn accept_sources<'a>(
             }
         }
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Lore) {
-            if let Some(doc_id) = bundle_id(doc) {
+            if let Some(doc_id) = bundle_id(item.meta) {
                 for beat in doc
                     .beats
                     .iter()
@@ -186,7 +189,7 @@ pub enum OmittedRef {
 /// [`OmittedRef::Lifecycle`], then document order for
 /// [`OmittedRef::Visited`]. `quest_ids` is [`quest_id_set`] over `docs`.
 pub fn omitted_refs(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     graph: &ConnGraph,
     quest_ids: &BTreeSet<String>,
 ) -> Vec<OmittedRef> {
@@ -211,7 +214,8 @@ pub fn omitted_refs(
             }
         }
     }
-    for (_, doc) in docs {
+    for item in docs {
+        let doc = item.doc;
         for quest in &doc.quests {
             if quest.follows.is_some() || quest.id.is_empty() {
                 continue;

@@ -9,6 +9,7 @@ use lute_compile::ExecutionIr;
 use lute_manifest::schema::OccasionDecl;
 use lute_trace::exec::record::NeedleVocab;
 use lute_model::{relocate_imported_diags, ModelOptions, ProjectModel};
+use lute_load::nearest_manifest_dir;
 use lute_trace::exec::session::ExecProject;
 use lute_trace::exec::BridgeReads;
 /// `path` relative to `root`, forward-slash joined — the project-relative
@@ -52,7 +53,7 @@ pub(crate) const TEST: Gate = Gate {
 /// project that does not wholly compile — and build its index. `Err`
 /// carries the exit code after the diagnostics are printed.
 pub(super) fn compile_project(project_dir: &Path, gate: Gate, matrix: &crate::EngineMatrix) -> Result<ExecProject, ExitCode> {
-    let project_dir = lute_model::nearest_manifest_dir(project_dir)
+    let project_dir = nearest_manifest_dir(project_dir)
         .unwrap_or_else(|| project_dir.to_path_buf());
     manifest_gate(&project_dir, gate.cmd)?;
     let source_model = build_model(&project_dir, gate.cmd)?;
@@ -87,7 +88,7 @@ pub(crate) fn manifest_gate(project_dir: &Path, cmd: &str) -> Result<(), ExitCod
 /// manifest gate, for the differential oracle that drives the gates itself.
 #[cfg(test)]
 pub(crate) fn build_project_model(project_dir: &Path) -> Result<ProjectModel, ExitCode> {
-    let project_dir = lute_model::nearest_manifest_dir(project_dir)
+    let project_dir = nearest_manifest_dir(project_dir)
         .unwrap_or_else(|| project_dir.to_path_buf());
     build_model(&project_dir, "lute")
 }

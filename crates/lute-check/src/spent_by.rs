@@ -40,6 +40,7 @@ use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::types::Literal;
 use lute_syntax::ast::{CelSlot, Document, Node, Quest};
 
+use crate::ProjectDoc;
 use crate::cast::{Atom, FactWrite, Pol};
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
@@ -371,7 +372,7 @@ impl StartWorld {
 ///   false again after it has held.
 pub fn check_project_spent_by(
     root: &Path,
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
@@ -379,18 +380,18 @@ pub fn check_project_spent_by(
         .iter()
         .zip(foldeds)
         .enumerate()
-        .map(|(i, ((_, doc), folded))| (i, spent_beats(doc, folded)))
-        .filter(|(_, b)| !b.is_empty())
+        .map(|(i, (item, folded))| (i, spent_beats(item.doc, folded)))
         .collect();
     if spent.is_empty() {
         return out;
     }
     let params = BTreeMap::new();
-    let all_children = children(docs.iter().map(|(_, d)| d));
+    let all_children = children(docs.iter().map(|item| item.doc));
     let mut project_quests = QuestStarts::new();
     // Quest name → (its `rearm` is written, its `season:<name>` tier).
     let mut quest_cadence: BTreeMap<&str, (bool, Option<&str>)> = BTreeMap::new();
-    for ((_, doc), folded) in docs.iter().zip(foldeds) {
+    for (item, folded) in docs.iter().zip(foldeds) {
+        let doc = item.doc;
         if doc.quests.is_empty() {
             continue;
         }
@@ -409,8 +410,10 @@ pub fn check_project_spent_by(
     let effects = crate::directive_facts::root_table(foldeds.iter().copied());
     let writes = crate::cast::fact_writes(docs, &effects);
     for (i, beats) in spent {
-        let (path, doc) = &docs[i];
+        let item = &docs[i];
         let folded = foldeds[i];
+        let path = item.path;
+        let doc = item.doc;
         let defs = DefTable {
             bodies: &folded.def_bodies,
             params: &folded.env.def_params,
@@ -433,7 +436,7 @@ pub fn check_project_spent_by(
                 continue;
             }
             if world.holds(folded, raw, b.at, b.spent.span, &project_quests, &params) {
-                out.push((path.clone(), spent_at_start(&b.name, raw, b.spent.span)));
+                out.push((path.to_path_buf(), spent_at_start(&b.name, raw, b.spent.span)));
                 continue;
             }
             if b.once_written {
@@ -446,7 +449,7 @@ pub fn check_project_spent_by(
             reads.walk(&expr.expr, Pol::Pos);
             if let Some(undo) = reads.undo(folded, &quest_cadence, &writes) {
                 out.push((
-                    path.clone(),
+                    path.to_path_buf(),
                     crate::reachability::diag(
                         W_SPENT_BY_REVERSIBLE,
                         Severity::Warning,

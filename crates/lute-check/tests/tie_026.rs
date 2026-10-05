@@ -4,10 +4,8 @@
 
 use std::path::PathBuf;
 
-use lute_check::{check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, SchemaImports};
+use lute_check::{check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, ProjectDocs, SchemaImports};
 use lute_core_span::Diagnostic;
-use lute_syntax::ast::Document;
-
 fn input(text: &str) -> CheckInput {
     CheckInput {
         text: text.to_string(),
@@ -45,19 +43,25 @@ fn entry(id: &str, when: &str) -> String {
 }
 
 fn ties(texts: &[&str]) -> Vec<Diagnostic> {
-    let mut docs: Vec<(PathBuf, Document)> = Vec::new();
-    let mut foldeds: Vec<FoldedEnv> = Vec::new();
+    let mut raw = Vec::new();
     for (i, text) in texts.iter().enumerate() {
         let input = input(text);
         let (doc, _) = lute_syntax::parse(&input.text);
-        foldeds.push(fold_env(&doc, &input).0);
-        docs.push((PathBuf::from(format!("{i}.lute")), doc));
+        raw.push((PathBuf::from(format!("{i}.lute")), doc));
     }
+    let owned = ProjectDocs::parse(raw, &lute_manifest::core::load_core_snapshot());
+    let views = owned.views();
+    let foldeds: Vec<_> = owned
+        .documents()
+        .iter()
+        .zip(texts)
+        .map(|((_, doc), text)| fold_env(doc, &input(text)).0)
+        .collect();
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     check_project_beats(
-        &docs,
+        &views,
         &refs,
-        &lute_check::cast::fact_producers(&docs, &Default::default()),
+        &lute_check::cast::fact_producers(&views, &Default::default()),
         None,
         &Default::default(),
     )

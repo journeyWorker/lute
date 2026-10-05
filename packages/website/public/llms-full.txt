@@ -336,7 +336,7 @@ diagnostics, the compiled JSON IR, and a mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.36.1**.
+compiles, traces, and inspects them. The current language version is **0.36.2**.
 
 ## Quick start with `bunx`
 
@@ -392,9 +392,9 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.36.1
-language      0.36.1
-IR schema     0.36.1
+lute toolchain 0.36.2
+language      0.36.2
+IR schema     0.36.2
 ```
 
 The three lines are the **toolchain** (this CLI), the **language** the checker enforces, and the
@@ -407,10 +407,10 @@ For scripts and CI, `--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.36.1","language":"0.36.1","ir":"0.36.1"}
+{"toolchain":"0.36.2","language":"0.36.2","ir":"0.36.2"}
 ```
 
-(`lute --version` also works and prints just `lute 0.36.1` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.36.2` — the toolchain axis alone.)
 
 If your editor runs the language server, check that it is the same build: `lute-lsp --version`
 prints `lute-lsp <version>`, and `lute doctor` compares the `lute-lsp` first on your `PATH` with
@@ -439,7 +439,7 @@ Or start from a whole project: `lute init <dir>` scaffolds a minimal one, and
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.36.1**.
+**0.36.2**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -724,8 +724,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.36.1",
-  "irVersion": "0.36.1",
+  "lute": "0.36.2",
+  "irVersion": "0.36.2",
   "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
   "meta": {
     "id": "mira.s01ep01",
@@ -2195,8 +2195,8 @@ Once a document checks clean it compiles to its JSON command-record artifact:
 lute compile scenes/crime-scene.lute --project . -o crime-scene.json
 ```
 
-Exit `0`; `crime-scene.json` is stamped `"lute": "0.36.1"` /
-`"irVersion": "0.36.1"`. Every document in the project compiles. That artifact —
+Exit `0`; `crime-scene.json` is stamped `"lute": "0.36.2"` /
+`"irVersion": "0.36.2"`. Every document in the project compiles. That artifact —
 not the source — is what an engine plays through the
 [runtime contract](/tooling/runtime-contract/).
 
@@ -19178,7 +19178,7 @@ lute play docs/examples/games/tea-hollin --script docs/examples/games/tea-hollin
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.36.1**:
+the consolidated **index** of what is *current* at language version **0.36.2**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -19188,7 +19188,7 @@ full cumulative history (including the pre-implementation `0.0.1` draft and the
 capability proposals), see the [specification index](/spec/).
 :::
 
-## What is current at 0.36.1
+## What is current at 0.36.2
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -19521,7 +19521,7 @@ capability proposals), see the [specification index](/spec/).
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
 :::note
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language and IR version is **0.36.1**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language and IR version is **0.36.2**.
 :::
 
 ## Scenario DSL (the language)
@@ -19576,7 +19576,7 @@ The **repository files are the normative source of truth.** This site is the rea
 | `0.30.0` | **Names as written, paths like JavaScript**: every name a condition reaches by path, index or fact argument — scene, beat, entry, quest, objective, branch, hub, choice and mark ids, document id segments, `share` keys, seasons, relations, enum and entity kinds and members, plugin occasions and events, targets and categories — is letters, digits, `_` or `-`, not starting with `-` (`lamp-out`, `zero-coke-001`, `001`), ending 0.29.1's split between Lute-declared names and engine-owned ids; a name read bare as `@name` (defs, def params, component and template params) stays an identifier. A name that is not an identifier is written in a condition as a quoted index or a quoted fact argument, as in JavaScript and CEL — `quest["zero-coke-001"].state`, `run.visits['lab-b2']`, `holds('at', ["lab-b2"])` — in guards, `::set` / `::assert` / `::retract` targets, `{{…}}`, Datalog rules and play / test / trace inputs, and both spellings are one name; a non-identifier name after a `.` is `E-PATH-IDENT` naming the bracket spelling. The IR adds no field: path fields carry the canonical dotted path, whose segments may contain `-` or start with a digit; `schemas/lute-ir-0.29.schema.json` is renamed `schemas/lute-ir-0.30.schema.json`. | [0.30.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md) |
 
 | `0.32.0` | **Standard CEL and execution IR**: the closed standard-CEL profile uses `int` / `double` and list-form fact queries in conditions while Datalog rule syntax stays unchanged; scalar state removes `number`; quest saves expose numbered `questInstances`, grants carry `instance` / `index`; execution IR carries `celEnv`, `owner`, and `{cel, expr, authored?}` slots; `W-QUEST-STATE-HAS` replaces `W-QUEST-STATE-ISSET`, with `E-FACT-QUERY` and `E-RUN-OWNED-WRITE`. | [0.32.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md) |
-| `0.36.1` | **AI edit loop**: lossless syntax and canonical formatting, source/project revisions, task-scoped context and position queries, semantic diff, and atomic revision-checked source patches. | [0.36.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md) |
+| `0.36.2` | **AI edit loop**: lossless syntax and canonical formatting, source/project revisions, task-scoped context and position queries, semantic diff, and atomic revision-checked source patches. | [0.36.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md) |
 | `0.34.0` | **Project semantic model and impact analysis**: one shared project model powers project commands; `lute impact` reports deterministic reverse dependency closures; `lute constraints` checks reachable, completable, speaker-guard, and single-slot-progress policies; diagnostics and analysis results carry explicit evidence levels and bounded scopes. | [0.34.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md) |
 | `0.33.0` | **Domain modules and semantic negotiation**: compiler-derived sorted `requiredSemantics`, semantic-id registry, `lute.engine.yaml` `supportedIds`, exact-minor IR gate followed by refusal-before-playback, author-time `--engine` checks, and the new negotiation diagnostics. | [0.33.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
@@ -19602,7 +19602,7 @@ routes and their precedence, and the `exits:`/`default:` long form — see
 The plugin system also carries a human-facing overview at [`docs/plugin-system.md`](https://github.com/journeyWorker/lute/blob/main/docs/plugin-system.md), and the character/cast capability its design rationale at [`character-cast/design.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/design.md).
 
 
-## 0.36.1 AI editing surface
+## 0.36.2 AI editing surface
 
 The inspect–plan–patch–check–replay–review loop uses `lute context`, `lute
 patch`, and `lute diff`. `lute fmt [--check] <path>…` canonicalizes Lute-owned

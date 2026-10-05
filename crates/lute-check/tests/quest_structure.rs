@@ -10,12 +10,12 @@ use std::path::PathBuf;
 
 use lute_check::{
     check, check_project_accepts, check_project_never_accepted, check_project_quest_refs,
-    CheckInput, Mode, SchemaImports,
+    CheckInput, Mode, ProjectDocs, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{EventDecl, OccasionDecl, OccasionSelect, OccasionTarget};
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::Document;
+
 
 /// The core snapshot plus an occasion vocabulary — `bossDefeated` raised
 /// for one of two bosses, `examine` for any target, `hubVisit` for none —
@@ -99,11 +99,14 @@ fn scene_doc(id: &str, body: &str) -> String {
     )
 }
 
-fn docs(texts: &[(&str, &str)]) -> Vec<(PathBuf, Document)> {
-    texts
-        .iter()
-        .map(|(path, text)| (PathBuf::from(path), lute_syntax::parse(text).0))
-        .collect()
+fn docs(texts: &[(&str, &str)]) -> ProjectDocs {
+    ProjectDocs::parse(
+        texts
+            .iter()
+            .map(|(path, text)| (PathBuf::from(path), lute_syntax::parse(text).0))
+            .collect(),
+        &snapshot(),
+    )
 }
 
 // --- `<quest activate complete>` ---------------------------------------------
@@ -283,7 +286,7 @@ fn tree(child_attrs: &str) -> String {
 }
 
 fn project_accepts(texts: &[(&str, &str)]) -> Vec<Diagnostic> {
-    check_project_accepts(&docs(texts))
+    check_project_accepts(&docs(texts).views())
         .into_iter()
         .map(|(_, d)| d)
         .collect()
@@ -337,7 +340,7 @@ fn never_accepted(texts: &[(&str, &str)], mocked: &[(&str, &str)]) -> Vec<Diagno
             .or_default()
             .push(PathBuf::from(file));
     }
-    check_project_never_accepted(&docs(texts), &by_quest)
+    check_project_never_accepted(&docs(texts).views(), &by_quest)
         .into_iter()
         .map(|(_, d)| d)
         .collect()
@@ -492,7 +495,7 @@ fn project_resolves_failed_by_and_objective_failed_ids() {
     let refs = |when: &str| {
         let scene = reader(when);
         check_project_quest_refs(
-            &docs(&[("scene.lute", &scene), ("quest.lute", &quest)]),
+            &docs(&[("scene.lute", &scene), ("quest.lute", &quest)]).views(),
             false,
         )
         .into_iter()

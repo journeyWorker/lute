@@ -1,18 +1,20 @@
 use super::graph_nodes::*;
 use super::{graph_sources::*, identity::*};
+use crate::ProjectDoc;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Span};
-use lute_syntax::ast::{Document, Quest, Node};
+use lute_syntax::ast::{Quest, Node};
 use crate::meta::meta_key_span;
 use crate::prereq::{atoms, parse_prereq};
 
 pub fn assemble_graph(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
     _quest_ids: &BTreeSet<String>,
 ) -> (ConnGraph, Vec<(PathBuf, Diagnostic)>) {
-    let by_path: BTreeMap<&Path, &Document> = docs.iter().map(|(p, d)| (p.as_path(), d)).collect();
+    let by_path: BTreeMap<&Path, &ProjectDoc<'_>> = docs.iter().map(|item| (item.path, item)).collect();
 
     let mut nodes: BTreeMap<NodeId, NodeInfo> = BTreeMap::new();
 
@@ -26,12 +28,12 @@ pub fn assemble_graph(
         let prereq =
             by_path
                 .get(path.as_path())
-                .map_or(PrereqState::Absent, |doc| match scene_after(doc) {
+                .map_or(PrereqState::Absent, |item| match scene_after(item.meta) {
                     SceneAfter::Absent => PrereqState::Absent,
                     SceneAfter::NonString => PrereqState::Invalid,
                     SceneAfter::String(after) if after.is_empty() => PrereqState::Absent,
                     SceneAfter::String(after) => {
-                        let after_span = meta_key_span(&doc.meta, "after");
+                        let after_span = meta_key_span(&item.doc.meta, "after");
                         match parse_prereq(&after, after_span).0 {
                             Some(f) => PrereqState::Valid(f),
                             None => PrereqState::Invalid,
@@ -59,7 +61,7 @@ pub fn assemble_graph(
         };
         let prereq = match by_path
             .get(path.as_path())
-            .and_then(|doc| bundle_beat_after(doc, &key))
+            .and_then(|item| bundle_beat_after(item.doc, item.meta, &key))
         {
             None => PrereqState::Absent,
             Some((after, _)) if after.is_empty() => PrereqState::Absent,
@@ -85,7 +87,9 @@ pub fn assemble_graph(
     // caller-supplied `_quest_ids` set (Task 5 review fix: that set may be
     // stale/filtered relative to `docs`; gating SOURCE node admission on it
     // could silently drop a quest -- and its edges/cycles -- from the graph).
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         for quest in &doc.quests {
             let Some(after) = &quest.follows else {
                 continue;
@@ -105,7 +109,7 @@ pub fn assemble_graph(
                 NodeId::Quest(quest.id.clone()),
                 NodeInfo {
                     id: NodeId::Quest(quest.id.clone()),
-                    path: path.clone(),
+                    path: path.to_path_buf(),
                     prereq,
                     span: quest.id_span,
                 },
@@ -305,15 +309,17 @@ pub(super) struct QuestDecls<'a> {
 }
 
 impl<'a> QuestDecls<'a> {
-    fn new(docs: &'a [(PathBuf, Document)]) -> Self {
+    fn new(docs: &'a [ProjectDoc<'a>]) -> Self {
         let mut first: BTreeMap<&str, (&Path, &Quest)> = BTreeMap::new();
         let mut with_after = BTreeSet::new();
         let mut entries = BTreeMap::new();
-        for (path, doc) in docs {
+        for item in docs {
+            let path = item.path;
+            let doc = item.doc;
             for quest in doc.quests.iter().filter(|q| !q.id.is_empty()) {
                 first
                     .entry(quest.id.as_str())
-                    .or_insert((path.as_path(), quest));
+                    .or_insert((path, quest));
                 if quest.follows.is_some() {
                     with_after.insert(quest.id.as_str());
                 }
@@ -321,11 +327,12 @@ impl<'a> QuestDecls<'a> {
             for entry in doc.entries.iter().filter(|e| !e.id.is_empty()) {
                 entries
                     .entry(entry.id.as_str())
-                    .or_insert((path.as_path(), entry.id_span));
+                    .or_insert((path, entry.id_span));
             }
         }
         let mut parents = BTreeMap::new();
-        for (_, doc) in docs {
+        for item in docs {
+            let doc = item.doc;
             for quest in doc.quests.iter().filter(|q| !q.id.is_empty()) {
                 for node in &quest.body {
                     let Node::Objective(o) = node else { continue };
@@ -354,7 +361,7 @@ impl<'a> QuestDecls<'a> {
 /// A quest none of them anchors is absent. `nodes` holds the scene and
 /// bundle beat nodes the sources resolve against.
 pub(super) fn quest_anchors(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     decls: &QuestDecls<'_>,
     nodes: &BTreeMap<NodeId, NodeInfo>,
 ) -> BTreeMap<String, Vec<Anchor>> {

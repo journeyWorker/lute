@@ -235,12 +235,13 @@ fn ground_fact(p: &FactPattern) -> Option<String> {
 fn fold_document(
     document: &str,
     doc: &Document,
+    typed_meta: &lute_check::TypedMeta,
     effects: &lute_check::directive_facts::EffectDirectives,
     components: &BTreeMap<&str, &Document>,
     entries: &mut Vec<EntryRow>,
     facts: &mut BTreeMap<String, BTreeMap<String, Sources>>,
 ) {
-    let meta = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
+    let meta = typed_meta.yaml().and_then(serde_yaml::Value::as_mapping);
     let field = |k: &str| {
         meta.as_ref()?
             .get(serde_yaml::Value::String(k.to_string()))?
@@ -278,7 +279,7 @@ fn fold_document(
             }
         }
     };
-    let scene = lute_check::connectivity::scene_key(doc);
+    let scene = lute_check::connectivity::scene_key(typed_meta);
     let via = scene
         .as_ref()
         .map_or_else(|| document.to_string(), |k| format!("scene `{k}`"));
@@ -310,7 +311,7 @@ fn fold_document(
     // Entries and bundle beats in declaration order (the rows interleave by
     // source position, as their compiled records do).
     let mut rows: Vec<(usize, EntryRow)> = Vec::new();
-    let doc_series = lute_check::document_series(&doc.meta);
+    let doc_series = lute_check::document_series(typed_meta);
     let resolved = lute_check::resolve_entry_series(doc_series.as_deref(), &doc.entries);
     for (entry, position) in doc.entries.iter().zip(resolved) {
         reveal(
@@ -339,7 +340,7 @@ fn fold_document(
     // its canonical id; without a well-formed document `id:` it has none (its
     // own `E-BEAT-ATTR`), so the bare beat id stands in.
     let doc_id = (!doc.beats.is_empty())
-        .then(|| lute_check::connectivity::bundle_id(doc))
+        .then(|| lute_check::connectivity::bundle_id(typed_meta))
         .flatten();
     for beat in &doc.beats {
         let id = match &doc_id {
@@ -660,9 +661,16 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
             continue;
         }
         let document = path.strip_prefix(dir).unwrap_or(path).display().to_string();
+        let typed_meta = by_root
+            .values()
+            .flat_map(|group| group.iter())
+            .find(|(candidate, _, _)| candidate == path)
+            .map(|(_, _, folded)| &folded.typed)
+            .expect("collected lore document metadata");
         fold_document(
             &document,
             &doc,
+            typed_meta,
             &effects,
             &components,
             &mut entries,

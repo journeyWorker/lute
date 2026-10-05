@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use lute_check::{
     check, check_project_beats, check_project_entry_refs, check_project_quest_handlers, fold_env,
-    CheckInput, FoldedEnv, Mode, SchemaImports,
+    CheckInput, FoldedEnv, Mode, ProjectDocs, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
@@ -353,8 +353,11 @@ fn ever_read_is_a_readable_reserved_flag_and_unwritable() {
     assert!(with_code(&ds, "E-UNDECLARED").is_empty(), "{ds:?}");
     assert_eq!(with_code(&ds, "E-QUEST-RESERVED-WRITE").len(), 1, "{ds:?}");
     // check-project resolves the id like `entry.<id>.read`.
-    let docs = vec![(PathBuf::from("s.lute"), lute_syntax::parse(&src).0)];
-    let refs = check_project_entry_refs(&docs);
+    let docs = ProjectDocs::parse(
+        vec![(PathBuf::from("s.lute"), lute_syntax::parse(&src).0)],
+        &snapshot(),
+    );
+    let refs = check_project_entry_refs(&docs.views());
     assert_eq!(refs.len(), 1, "{refs:?}");
     assert_eq!(refs[0].1.code, "W-ENTRY-REF-UNKNOWN");
 }
@@ -387,8 +390,11 @@ fn quest_failed_handler_on_a_quest_that_cannot_fail_is_dead() {
         ))
     };
     let run = |src: &str| {
-        let docs = vec![(PathBuf::from("q.lute"), lute_syntax::parse(src).0)];
-        check_project_quest_handlers(&docs)
+        let docs = ProjectDocs::parse(
+            vec![(PathBuf::from("q.lute"), lute_syntax::parse(src).0)],
+            &snapshot(),
+        );
+        check_project_quest_handlers(&docs.views())
     };
     let out = run(&dead);
     assert_eq!(out.len(), 1, "{out:?}");
@@ -411,19 +417,25 @@ fn quest_failed_handler_on_a_quest_that_cannot_fail_is_dead() {
 // --- §13 project beat advisories -------------------------------------------
 
 fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
-    let mut docs = Vec::new();
-    let mut foldeds: Vec<FoldedEnv> = Vec::new();
+    let mut raw = Vec::new();
     for (i, text) in texts.iter().enumerate() {
         let input = input(text);
         let (doc, _) = lute_syntax::parse(&input.text);
-        foldeds.push(fold_env(&doc, &input).0);
-        docs.push((PathBuf::from(format!("{i}.lute")), doc));
+        raw.push((PathBuf::from(format!("{i}.lute")), doc));
     }
+    let owned = ProjectDocs::parse(raw, &snapshot());
+    let views = owned.views();
+    let foldeds: Vec<_> = owned
+        .documents()
+        .iter()
+        .zip(texts)
+        .map(|((_, doc), text)| fold_env(doc, &input(text)).0)
+        .collect();
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     check_project_beats(
-        &docs,
+        &views,
         &refs,
-        &lute_check::cast::fact_producers(&docs, &Default::default()),
+        &lute_check::cast::fact_producers(&views, &Default::default()),
         None,
         &Default::default(),
     )

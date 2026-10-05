@@ -1,4 +1,6 @@
 use super::*;
+use crate::ProjectDoc;
+
 use std::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -25,13 +27,9 @@ pub(super) fn unknown_node_diag(message: String, span: Span) -> Diagnostic {
     }
 }
 
-/// The raw `after:` frontmatter shape read straight off a scene doc's YAML
-/// mapping — the SAME ad-hoc lookup [`scene_identity`] uses (not `TypedMeta`;
-/// see its own doc comment on why this project-wide pass never builds one).
-/// Distinguishes an ABSENT key from a PRESENT-but-non-string one (Task 5
-/// review-2 fix): `.as_str()` alone collapsed both into `None`, so a
-/// malformed `after: 42` was silently classified the same as no `after` at
-/// all — see [`SceneAfter`].
+/// The raw `after:` frontmatter shape retained in a scene's typed metadata.
+/// Distinguishes an ABSENT key from a PRESENT-but-non-string one. The retained
+/// YAML is the parse result captured before duplicate-key sanitization.
 pub(super) enum SceneAfter {
     /// No `after:` key at all (or the frontmatter itself failed to parse /
     /// wasn't a mapping) — a valid entry node.
@@ -43,8 +41,8 @@ pub(super) enum SceneAfter {
     NonString,
 }
 
-pub(super) fn scene_after(doc: &Document) -> SceneAfter {
-    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml) else {
+pub(super) fn scene_after(meta: &crate::meta::TypedMeta) -> SceneAfter {
+    let Some(value) = meta.yaml() else {
         return SceneAfter::Absent;
     };
     let serde_yaml::Value::Mapping(map) = value else {
@@ -64,10 +62,10 @@ pub(super) fn scene_after(doc: &Document) -> SceneAfter {
 /// `E-QUEST-ID-MISSING` problem, not a node this pass can meaningfully
 /// index). Callers MUST pre-scope `docs` to one resolved project root, same
 /// as [`scene_key_set`].
-pub fn quest_id_set(docs: &[(PathBuf, Document)]) -> BTreeSet<String> {
+pub fn quest_id_set(docs: &[ProjectDoc<'_>]) -> BTreeSet<String> {
     let mut ids = BTreeSet::new();
-    for (_, doc) in docs {
-        for quest in &doc.quests {
+    for item in docs {
+        for quest in &item.doc.quests {
             if !quest.id.is_empty() {
                 ids.insert(quest.id.clone());
             }
@@ -240,6 +238,7 @@ pub(super) struct SceneKeys<'a> {
 /// per-file check's `E-CEL-PARSE`, never re-reported.
 pub(super) fn check_visited_calls(
     doc: &Document,
+    meta: &crate::meta::TypedMeta,
     path: &Path,
     key_set: &SceneKeys<'_>,
     out: &mut Vec<(PathBuf, Diagnostic)>,
@@ -261,7 +260,7 @@ pub(super) fn check_visited_calls(
         }
     });
     if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
-        if let Some(when) = scene_frontmatter_str(doc, "when") {
+        if let Some(when) = scene_frontmatter_str(meta, "when") {
             if when.contains(crate::cel_resolve::VISITED_FN) {
                 check_raw(&when, crate::beats::top_value_span(&doc.meta, "when"), out);
             }
@@ -271,9 +270,8 @@ pub(super) fn check_visited_calls(
 
 /// A top-level string value of a scene's frontmatter (the [`scene_after`]
 /// lookup, for keys whose non-string shape another pass owns).
-pub(super) fn scene_frontmatter_str(doc: &Document, key: &str) -> Option<String> {
-    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
-    value.get(key)?.as_str().map(str::to_string)
+pub(super) fn scene_frontmatter_str(meta: &crate::meta::TypedMeta, key: &str) -> Option<String> {
+    meta.yaml()?.get(key)?.as_str().map(str::to_string)
 }
 
 /// Resolve every prerequisite formula in `docs` — BOTH surfaces
@@ -290,27 +288,30 @@ pub(super) fn scene_frontmatter_str(doc: &Document, key: &str) -> Option<String>
 /// per-file `check()` pass (T2) — [`crate::prereq::parse_prereq`] returning
 /// `None` here is silently skipped, never double-reported.
 pub fn resolve_nodes(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
     quest_ids: &BTreeSet<String>,
 ) -> Vec<(PathBuf, Diagnostic)> {
+    let bundles = bundle_beat_key_set(docs);
     let key_set = &SceneKeys {
         keys: key_set,
-        bundles: bundle_beat_key_set(docs),
         complete: docs
             .iter()
-            .all(|(_, doc)| crate::meta::frontmatter_parses(&doc.meta)),
+            .all(|item| crate::meta::frontmatter_parses(&item.doc.meta)),
         quests: quest_ids,
+        bundles,
     };
     let mut out = Vec::new();
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         // dsl 0.28.0 §4: an `after:` a `chapters:` chain derived names the
         // entry before this one; a bad entry is `E-CHAPTERS`'s, at the
         // manifest, never this scene's.
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene)
             && !crate::chapters::derived(&doc.meta, "after")
         {
-            if let SceneAfter::String(after) = scene_after(doc) {
+            if let SceneAfter::String(after) = scene_after(item.meta) {
                 let after_span = meta_key_span(&doc.meta, "after");
                 let (formula, _) = parse_prereq(&after, after_span);
                 if let Some(formula) = formula {
@@ -345,7 +346,7 @@ pub fn resolve_nodes(
                 check_formula_atoms(&formula, *span, path, key_set, quest_ids, false, &mut out);
             }
         }
-        check_visited_calls(doc, path, key_set, &mut out);
+        check_visited_calls(doc, item.meta, path, key_set, &mut out);
     }
     out
 }

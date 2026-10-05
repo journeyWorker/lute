@@ -12,6 +12,8 @@ use super::graph_nodes::*;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use crate::ProjectDoc;
+
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::Document;
@@ -41,24 +43,10 @@ pub(super) fn diag(message: String, span: Span) -> Diagnostic {
     }
 }
 
-/// A scene document's canonical identity as resolved from raw frontmatter
-/// (dsl 0.15.0 §2): the canonical scene key plus the frontmatter key name
-/// the diagnostic anchor should point at — `id:` for an authored key,
-/// `character:` for the derived `{character}.{episodeId}` fallback.
-pub(super) struct SceneIdentity {
-    pub(super) key: String,
-    /// The frontmatter key the diagnostic must anchor at. Constant so both
-    /// [`scene_key_set`] and any future consumer report the same shape.
-    anchor: &'static str,
-}
-
-/// Resolve a scene document's canonical key straight off its raw frontmatter
-/// mapping — the same ad-hoc lookup `lute-compile::artifact_meta` uses, NOT
-/// `TypedMeta` (building that needs a `CapabilitySnapshot` the project walk
-/// does not have). dsl 0.15.0 §2: authored `id:` wins entire when present and
-/// well-formed (same `[A-Za-z0-9_.-]+` gate as [`crate::meta::parse_meta`],
-/// so a rejected id contributes no key here — its own `E-META-ID` is the
-/// anchoring diagnostic). Otherwise the derived legacy join
+/// A scene document's canonical identity as resolved from retained typed
+/// frontmatter YAML (dsl 0.15.0 §2): the canonical scene key plus the
+/// frontmatter key name the diagnostic anchor should point at — `id:` for an
+/// authored key, `character:` for the derived fallback.
 /// `{character}.{episodeId}` (with `episodeId` defaulting to
 /// `s{season:02}ep{episode:02}` via [`canonical_episode_key`]) is
 /// reconstructed; a scene doc missing/mistyping any of `character`/`season`/
@@ -66,11 +54,16 @@ pub(super) struct SceneIdentity {
 /// `check()` and this project-wide pass must never fabricate a degenerate
 /// key (e.g. `.s00ep00`) for it, or unrelated malformed docs would cascade
 /// into a bogus dup report.
-pub(super) fn scene_identity(doc: &Document) -> Option<SceneIdentity> {
-    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
-    let serde_yaml::Value::Mapping(map) = value else {
-        return None;
-    };
+pub(super) struct SceneIdentity {
+    pub(super) key: String,
+    anchor: &'static str,
+}
+
+pub(super) fn scene_identity(meta: &crate::meta::TypedMeta) -> Option<SceneIdentity> {
+    // The AUTHORED frontmatter, never the defaults-overlaid typed fields: a
+    // manifest default must not mint a scene key, and a malformed `id:` gives
+    // no identity (its own `E-META-ID` anchors).
+    let map = meta.yaml()?.as_mapping()?;
     let key = |k: &str| serde_yaml::Value::String(k.to_string());
     if let Some(raw) = map.get(key("id")).and_then(|v| v.as_str()) {
         return lute_manifest::ident::is_dotted_name(raw).then(|| SceneIdentity {
@@ -78,18 +71,15 @@ pub(super) fn scene_identity(doc: &Document) -> Option<SceneIdentity> {
             anchor: "id",
         });
     }
-    let character = map.get(key("character"))?.as_str()?.to_string();
+    let character = map.get(key("character"))?.as_str()?;
     if character.is_empty() {
         return None;
     }
     let season = map.get(key("season"))?.as_i64()?;
     let episode = map.get(key("episode"))?.as_i64()?;
-    let episode_id = map
-        .get(key("episodeId"))
-        .and_then(|v| v.as_str())
-        .map(String::from);
+    let episode_id = map.get(key("episodeId")).and_then(|v| v.as_str());
     Some(SceneIdentity {
-        key: canonical_episode_key(&character, season, episode, episode_id.as_deref()),
+        key: canonical_episode_key(character, season, episode, episode_id),
         anchor: "character",
     })
 }
@@ -103,17 +93,19 @@ pub(super) fn scene_identity(doc: &Document) -> Option<SceneIdentity> {
 /// contribute nothing (see [`scene_identity`]). Anchored at each doc's
 /// canonical-key source: `id:` when authored, `character:` for the derived
 /// triad.
-pub fn scene_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
+pub fn scene_key_set(docs: &[ProjectDoc<'_>]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
     let mut by_key: BTreeMap<String, Vec<(PathBuf, Span)>> = BTreeMap::new();
-    for (path, doc) in docs {
-        if resolve_doc_kind(&doc.meta).0 != Some(DocKind::Scene) {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
+        if crate::meta::authored_doc_kind(item.meta.yaml()) != Some(DocKind::Scene) {
             continue;
         }
-        let Some(SceneIdentity { key, anchor }) = scene_identity(doc) else {
+        let Some(SceneIdentity { key, anchor }) = scene_identity(item.meta) else {
             continue;
         };
         let span = meta_key_span(&doc.meta, anchor);
-        by_key.entry(key).or_default().push((path.clone(), span));
+        by_key.entry(key).or_default().push((path.to_path_buf(), span));
     }
     by_key
 }
@@ -121,11 +113,20 @@ pub fn scene_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(Path
 /// One scene document's canonical key — [`scene_key_set`]'s identity for a
 /// single document; `None` for a non-scene or a scene whose identity cannot
 /// be read.
-pub fn scene_key(doc: &Document) -> Option<String> {
-    if resolve_doc_kind(&doc.meta).0 != Some(DocKind::Scene) {
+pub fn scene_key(meta: &crate::meta::TypedMeta) -> Option<String> {
+    if crate::meta::authored_doc_kind(meta.yaml()) != Some(DocKind::Scene) {
         return None;
     }
-    scene_identity(doc).map(|s| s.key)
+    let map = meta.yaml()?.as_mapping()?;
+    let key = |k: &str| serde_yaml::Value::String(k.to_string());
+    if let Some(raw) = map.get(key("id")).and_then(|v| v.as_str()) {
+        return lute_manifest::ident::is_dotted_name(raw).then(|| raw.to_string());
+    }
+    let character = map.get(key("character"))?.as_str()?;
+    let season = map.get(key("season"))?.as_i64()?;
+    let episode = map.get(key("episode"))?.as_i64()?;
+    let episode_id = map.get(key("episodeId")).and_then(|v| v.as_str());
+    Some(canonical_episode_key(character, season, episode, episode_id))
 }
 
 /// A quest or lore document's authored, well-formed `id:` (dsl 0.19.0
@@ -134,12 +135,8 @@ pub fn scene_key(doc: &Document) -> Option<String> {
 /// anchors). Without one the document has no id in the shared namespace —
 /// its fallback index key (the first declared quest/entry id) is not a
 /// document id.
-pub fn bundle_id(doc: &Document) -> Option<String> {
-    let serde_yaml::Value::Mapping(map) =
-        serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml).ok()?
-    else {
-        return None;
-    };
+pub fn bundle_id(meta: &crate::meta::TypedMeta) -> Option<String> {
+    let map = meta.yaml()?.as_mapping()?;
     map.get(serde_yaml::Value::String("id".to_string()))?
         .as_str()
         .filter(|raw| lute_manifest::ident::is_dotted_name(raw))
@@ -152,13 +149,15 @@ pub fn bundle_id(doc: &Document) -> Option<String> {
 /// `id:`, or a beat whose id is not a name, contributes nothing (its
 /// own `E-BEAT-ATTR` anchors); a beat id repeated within one document counts
 /// once (the per-file check reports the repeat).
-pub fn bundle_beat_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
+pub fn bundle_beat_key_set(docs: &[ProjectDoc<'_>]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
     let mut by_key: BTreeMap<String, Vec<(PathBuf, Span)>> = BTreeMap::new();
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         if doc.beats.is_empty() || resolve_doc_kind(&doc.meta).0 != Some(DocKind::Lore) {
             continue;
         }
-        let Some(doc_id) = bundle_id(doc) else {
+        let Some(doc_id) = bundle_id(item.meta) else {
             continue;
         };
         let mut seen = BTreeSet::new();
@@ -169,7 +168,7 @@ pub fn bundle_beat_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec
             by_key
                 .entry(crate::bundles::bundle_beat_key(&doc_id, &beat.id))
                 .or_default()
-                .push((path.clone(), beat.id_span));
+                .push((path.to_path_buf(), beat.id_span));
         }
     }
     by_key
@@ -178,15 +177,22 @@ pub fn bundle_beat_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec
 /// dsl 0.25.0 §3: the `after=` (raw text + value span) of the bundle beat
 /// whose canonical id is `key`, declared in `doc` — its first declaration,
 /// as [`bundle_beat_key_set`] anchors it.
-pub fn bundle_beat_after<'d>(doc: &'d Document, key: &str) -> Option<&'d (String, Span)> {
-    bundle_beat(doc, key)?.after.as_ref()
+pub fn bundle_beat_after<'d>(
+    doc: &'d Document,
+    meta: &crate::meta::TypedMeta,
+    key: &str,
+) -> Option<&'d (String, Span)> {
+    bundle_beat(doc, meta, key)?.after.as_ref()
 }
 
 /// The first `<beat>` of `doc` whose canonical id is `key`.
-pub(super) fn bundle_beat<'d>(doc: &'d Document, key: &str) -> Option<&'d lute_syntax::ast::BundleBeat> {
-    let doc_id = bundle_id(doc)?;
-    let beat_id = key.strip_prefix(doc_id.as_str())?.strip_prefix('.')?;
-    doc.beats.iter().find(|b| b.id == beat_id)
+pub(super) fn bundle_beat<'d>(
+    doc: &'d Document,
+    meta: &crate::meta::TypedMeta,
+    key: &str,
+) -> Option<&'d lute_syntax::ast::BundleBeat> {
+    let doc_id = bundle_id(meta)?;
+    doc.beats.iter().find(|b| crate::bundles::bundle_beat_key(&doc_id, &b.id) == key)
 }
 
 /// dsl 0.25.0 §3: every beat node of `graph` (a scene beat or a bundle
@@ -196,21 +202,23 @@ pub(super) fn bundle_beat<'d>(doc: &'d Document, key: &str) -> Option<&'d lute_s
 /// suggests moving them to `after=` / `after:`. The ids come in source
 /// order; an unparseable `when` (the per-file check's) contributes nothing.
 pub fn when_visited_unanchored(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     graph: &ConnGraph,
 ) -> Vec<(NodeId, Vec<String>)> {
-    let by_path: BTreeMap<&Path, &Document> = docs.iter().map(|(p, d)| (p.as_path(), d)).collect();
+    let by_path: BTreeMap<&Path, &ProjectDoc<'_>> =
+        docs.iter().map(|item| (item.path, item)).collect();
     let mut out = Vec::new();
     for (id, info) in &graph.nodes {
         if !matches!(info.prereq, PrereqState::Absent) {
             continue;
         }
-        let Some(doc) = by_path.get(info.path.as_path()) else {
+        let Some(item) = by_path.get(info.path.as_path()) else {
             continue;
         };
+        let doc = item.doc;
         let when = match id {
-            NodeId::Scene(_) => scene_frontmatter_str(doc, "when"),
-            NodeId::Beat(key) => bundle_beat(doc, key)
+            NodeId::Scene(_) => scene_frontmatter_str(item.meta, "when"),
+            NodeId::Beat(key) => bundle_beat(doc, item.meta, key)
                 .and_then(|b| b.when.as_ref())
                 .map(|w| w.raw.clone()),
             _ => None,
@@ -258,15 +266,17 @@ pub(super) fn visited_conjuncts(e: &cel_parser::ast::Expr, out: &mut Vec<String>
 /// reads scene and bundle beat ids alike. Only the dup check reads this;
 /// `visited(K)` resolution stays on [`scene_key_set`] (+ bundle beat keys in
 /// a condition slot), since a quest or lore document is not a scene node.
-pub(super) fn document_id_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
+pub(super) fn document_id_set(docs: &[ProjectDoc<'_>]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
     let mut by_id: BTreeMap<String, Vec<(PathBuf, Span)>> = BTreeMap::new();
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         let (key, anchor) = match resolve_doc_kind(&doc.meta).0 {
-            Some(DocKind::Scene) => match scene_identity(doc) {
+            Some(DocKind::Scene) => match scene_identity(item.meta) {
                 Some(SceneIdentity { key, anchor }) => (key, anchor),
                 None => continue,
             },
-            Some(DocKind::Quest | DocKind::Lore) => match bundle_id(doc) {
+            Some(DocKind::Quest | DocKind::Lore) => match bundle_id(item.meta) {
                 Some(id) => (id, "id"),
                 None => continue,
             },
@@ -275,7 +285,7 @@ pub(super) fn document_id_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, 
         by_id
             .entry(key)
             .or_default()
-            .push((path.clone(), meta_key_span(&doc.meta, anchor)));
+            .push((path.to_path_buf(), meta_key_span(&doc.meta, anchor)));
     }
     for (key, occurrences) in bundle_beat_key_set(docs) {
         by_id.entry(key).or_default().extend(occurrences);
@@ -296,7 +306,7 @@ pub(super) fn document_id_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, 
 /// tooling to convey no new information. The MESSAGE generalises to
 /// `document id` (dsl 0.19.0 §2.1): scene ids (authored or derived) and
 /// quest/lore document ids share one namespace.
-pub fn check_conn_episode_dup(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
+pub fn check_conn_episode_dup(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (key, occurrences) in document_id_set(docs) {
         if occurrences.len() < 2 {

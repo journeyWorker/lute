@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-
+use lute_load::manifest_context;
 fn is_yaml(path: &Path) -> bool {
     matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml"))
 }
@@ -25,7 +25,7 @@ fn configured_plugin_file(path: &Path) -> bool {
     let mut ancestor = path.parent();
     while let Some(dir) = ancestor {
         if dir.join("lute.project.yaml").is_file() {
-            return lute_model::manifest_context(dir)
+            return manifest_context(dir)
                 .ok()
                 .and_then(|context| context.project)
                 .is_some_and(|config| path.starts_with(&config.plugins_dir));

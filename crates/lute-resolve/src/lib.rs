@@ -15,7 +15,7 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{Attr, AttrValue, CelKind, CelSlot, Document, Node};
 use lute_syntax::walk::for_each_cel_slot;
-use lute_model::graph::NodeKey;
+use lute_semantic::{NodeKey, NodeKind, SourceLocation};
 
 #[derive(Clone, Copy, Debug)]
 pub struct PositionQuery<'a> {
@@ -35,7 +35,7 @@ pub struct Symbol {
     pub name: String,
     pub kind: String,
     pub ty: Option<Type>,
-    pub declaration: Option<lute_model::SourceLocation>,
+    pub declaration: Option<SourceLocation>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -334,11 +334,11 @@ fn symbols_for_cursor(
     symbols
 }
 
-fn declaration(source: &str, key: &str) -> Option<lute_model::SourceLocation> {
+fn declaration(source: &str, key: &str) -> Option<SourceLocation> {
     let needle = format!("{key}:");
     let start = source.find(&needle)?;
     let idx = TextIndex::new(source);
-    Some(lute_model::SourceLocation { file: PathBuf::new(), span: Span::from_bytes(&idx, start, start + key.len()) })
+    Some(SourceLocation { file: PathBuf::new(), span: Span::from_bytes(&idx, start, start + key.len()) })
 }
 
 /// Parse the canonical `kind:key` form without coupling callers to graph
@@ -346,26 +346,26 @@ fn declaration(source: &str, key: &str) -> Option<lute_model::SourceLocation> {
 pub fn parse_node_key(raw: &str) -> Result<NodeKey, ResolveError> {
     let (kind, key) = raw.split_once(':').ok_or_else(|| ResolveError::Invalid("target must be kind:key".into()))?;
     let kind = match kind {
-        "project" => lute_model::NodeKind::Project,
-        "document" => lute_model::NodeKind::Document,
-        "scene" => lute_model::NodeKind::Scene,
-        "shot" => lute_model::NodeKind::Shot,
-        "line" => lute_model::NodeKind::Line,
-        "choice" => lute_model::NodeKind::Choice,
-        "quest" => lute_model::NodeKind::Quest,
-        "objective" => lute_model::NodeKind::Objective,
-        "reward" => lute_model::NodeKind::Reward,
-        "entry" => lute_model::NodeKind::Entry,
-        "beat" => lute_model::NodeKind::Beat,
-        "occasion" => lute_model::NodeKind::Occasion,
-        "relation" => lute_model::NodeKind::Relation,
-        "state" => lute_model::NodeKind::State,
-        "def" => lute_model::NodeKind::Def,
-        "component" => lute_model::NodeKind::Component,
-        "expanded" => lute_model::NodeKind::Expanded,
-        "fact" => lute_model::NodeKind::Fact,
-        "clock" => lute_model::NodeKind::Clock,
-        "engine" => lute_model::NodeKind::Engine,
+        "project" => NodeKind::Project,
+        "document" => NodeKind::Document,
+        "scene" => NodeKind::Scene,
+        "shot" => NodeKind::Shot,
+        "line" => NodeKind::Line,
+        "choice" => NodeKind::Choice,
+        "quest" => NodeKind::Quest,
+        "objective" => NodeKind::Objective,
+        "reward" => NodeKind::Reward,
+        "entry" => NodeKind::Entry,
+        "beat" => NodeKind::Beat,
+        "occasion" => NodeKind::Occasion,
+        "relation" => NodeKind::Relation,
+        "state" => NodeKind::State,
+        "def" => NodeKind::Def,
+        "component" => NodeKind::Component,
+        "expanded" => NodeKind::Expanded,
+        "fact" => NodeKind::Fact,
+        "clock" => NodeKind::Clock,
+        "engine" => NodeKind::Engine,
         _ => return Err(ResolveError::Invalid(format!("unknown node kind `{kind}`"))),
     };
     if key.is_empty() { return Err(ResolveError::Invalid("target key is empty".into())); }

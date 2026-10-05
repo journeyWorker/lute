@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::ident::is_name;
 use lute_manifest::types::{Literal, Type};
-use lute_syntax::ast::{AttrValue, Entry, Meta};
+use lute_syntax::ast::{AttrValue, Entry};
 
 use crate::meta::{Namespace, StateDecl};
 
@@ -161,17 +161,12 @@ pub fn resolve_entry_series<'a>(
         .collect()
 }
 
-/// A lore document's validated `series:` read straight off its raw
-/// frontmatter — for the project-wide passes and reports that hold a parsed
-/// [`Document`] but no [`crate::meta::TypedMeta`]. The same predicate as the
-/// typed lift (a string name); `series:` is never defaultable, so the raw
-/// mapping is the whole truth.
-pub fn document_series(meta: &Meta) -> Option<String> {
-    let map: serde_yaml::Mapping = serde_yaml::from_str(&meta.raw_yaml).ok()?;
-    map.get(serde_yaml::Value::String("series".to_string()))?
-        .as_str()
-        .filter(|s| is_name(s))
-        .map(str::to_string)
+/// A lore document's validated `series:` from typed frontmatter.
+///
+/// Project passes should use the already-lifted metadata rather than
+/// reparsing `Meta::raw_yaml`.
+pub fn document_series(meta: &crate::meta::TypedMeta) -> Option<String> {
+    meta.series.clone()
 }
 
 /// Check every `<entry>` of one document (dsl 0.19.0 §3, §5): per-entry

@@ -1,7 +1,7 @@
 //! The bare `lute scenario` graph view (and `--facts`).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
 use crate::cmd_scenario::reach::unanchored_quests;
@@ -237,9 +237,9 @@ pub(crate) fn run_scenario_graph(out: &mut String, by_root: &ByRoot, facts: bool
         return ExitCode::SUCCESS;
     }
     for (root, group_full) in by_root {
-        let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = group_full
+        let docs: Vec<lute_check::ProjectDoc<'_>> = group_full
             .iter()
-            .map(|(p, d, _)| (p.clone(), d.clone()))
+            .map(|(p, d, folded)| lute_check::ProjectDoc::new(p, d, &folded.typed))
             .collect();
         let key_set = lute_check::connectivity::scene_key_set(&docs);
         let quest_ids = lute_check::connectivity::quest_id_set(&docs);
@@ -277,7 +277,7 @@ pub(crate) struct FactGraph {
 impl FactGraph {
     pub(crate) fn of(
         group_full: &DocGroup,
-        docs: &[(PathBuf, lute_syntax::ast::Document)],
+        docs: &[lute_check::ProjectDoc<'_>],
         graph: &lute_check::connectivity::ConnGraph,
     ) -> Self {
         use lute_check::connectivity::NodeId;

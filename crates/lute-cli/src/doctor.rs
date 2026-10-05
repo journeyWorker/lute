@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::Domain;
 use lute_manifest::validate::{SLOT_REQUIRES_DEFAULT, SLOT_REQUIRES_EXITS};
-
+use lute_load::{build_input, find_lute_files, project_root_for};
 /// The seven vocabulary slots the language declares (dsl 0.9.0 D-A): six typed
 /// by `lute.core`'s staging directives, plus the content-line `emotion`. The
 /// core ships NO members for any of them, so each is declared by a document's
@@ -92,16 +92,16 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
 /// occasion vocabulary with the beats answering each occasion, and the
 /// DEDUPLICATED project-resolution problems resolution surfaced.
 ///
-/// Deliberately no second resolution path: this reuses `lute_model::build_input` —
+/// Deliberately no second resolution path: this reuses `lute_load::build_input` —
 /// the SAME per-document resolution `lute check`/`check-project` perform (each
-/// file's own project root via `lute_model::project_root_for`, its activated
+/// file's own project root via `lute_load::project_root_for`, its activated
 /// capability snapshot per plugin §4/§11, then its `uses:`/`extends:` schema
 /// imports per dsl §9.2) — and folds it through the SAME `merge_domains` the
 /// checker consults for `Type::Domain` resolution. So a slot `doctor` calls
 /// declared is a slot the checker resolves, and a plugin it calls active is a
 /// plugin some document's snapshot carries, by construction rather than by two
 /// implementations agreeing.
-/// `root` is the WALK ROOT handed to `lute_model::project_root_for`, i.e. the lower
+/// `root` is the WALK ROOT handed to `lute_load::project_root_for`, i.e. the lower
 /// bound of each file's own ancestor search. It MUST be the directory `doctor`
 /// was asked about, for the reason spelled out at the call site.
 ///
@@ -142,8 +142,8 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
     };
     let mut scan = ProjectScan::default();
     for file in lute_files {
-        let project = lute_model::project_root_for(file, root);
-        let Some(built) = lute_model::build_input(file, None, Some(&project), None) else {
+        let project = project_root_for(file, root);
+        let Some(built) = build_input(file, None, Some(&project), None) else {
             continue;
         };
         for m in &built.project_diags {
@@ -819,7 +819,7 @@ fn slot_entry(slot: &str, domain: &Domain) -> String {
 fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // Directory readability is the sole gating condition. `find_lute_files`
     // surfaces the same walk I/O errors `check-project` does.
-    let lute_files = match lute_model::find_lute_files(dir) {
+    let lute_files = match find_lute_files(dir) {
         Ok(files) => files,
         Err(_) => return None,
     };

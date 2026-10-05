@@ -299,6 +299,18 @@ pub const E_STATE_COLLECTION: &str = "E-STATE-COLLECTION";
 /// returns `None` so the caller can degrade to a safe default. On a YAML parse
 /// failure this returns `(None, [])` — the separate `E-META-PARSE` diagnostic
 /// surfaces from `parse_meta_kind`, never duplicated here.
+/// The document kind an AUTHORED frontmatter declares — [`resolve_doc_kind`]'s
+/// verdict without its diagnostics, over an already-parsed frontmatter (`None`
+/// when it did not parse, is not a mapping, or names no known kind).
+pub fn authored_doc_kind(yaml: Option<&serde_yaml::Value>) -> Option<DocKind> {
+    match yaml?.as_mapping()?.get(yaml_key("kind"))?.as_str()? {
+        "scene" => Some(DocKind::Scene),
+        "quest" => Some(DocKind::Quest),
+        "lore" => Some(DocKind::Lore),
+        _ => None,
+    }
+}
+
 pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
     let value: serde_yaml::Value = match serde_yaml::from_str(&meta.raw_yaml) {
         Ok(v) => v,

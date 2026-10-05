@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSnapshot;
-use lute_model::manifest_context;
+use lute_load::manifest_context;
 
 /// Re-stamp every provider snapshot in `dir` to the current `capabilityVersion`
 /// and clear `stale`, rewriting each file in place (plugin §10). A missing dir is

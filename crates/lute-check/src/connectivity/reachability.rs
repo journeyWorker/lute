@@ -1,10 +1,12 @@
 use super::identity::scene_identity;
 use super::*;
+use crate::ProjectDoc;
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, Assert, Document, Node};
+use lute_syntax::ast::{Arm, Assert, Node};
 use lute_syntax::datalog::FactPattern;
 use crate::check::CheckResult;
 use crate::meta::{resolve_doc_kind, DocKind};
@@ -340,9 +342,10 @@ pub(super) fn or_reach(a: Reachability, b: Reachability) -> Reachability {
 /// the "right" declaration. Provable-only discipline: `completed(Q)` for
 /// an ambiguous `Q` is always `Unknown`, never guessed either way. An
 /// empty id is skipped (that document's own `E-QUEST-ID-MISSING` problem).
-pub fn ambiguous_quest_ids(docs: &[(PathBuf, Document)]) -> BTreeSet<String> {
+pub fn ambiguous_quest_ids(docs: &[ProjectDoc<'_>]) -> BTreeSet<String> {
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    for (_, document) in docs {
+    for item in docs {
+        let document = item.doc;
         for quest in &document.quests {
             if quest.id.is_empty() {
                 continue;
@@ -384,7 +387,7 @@ pub fn ambiguous_quest_ids(docs: &[(PathBuf, Document)]) -> BTreeSet<String> {
 /// empty — that quest's own `E-QUEST-ID-MISSING` problem) contributes
 /// nothing, never a panic.
 pub fn unreachable_quest_ids(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     file_results: &[(PathBuf, CheckResult)],
 ) -> BTreeSet<String> {
     let ambiguous = ambiguous_quest_ids(docs);
@@ -395,8 +398,10 @@ pub fn unreachable_quest_ids(
     for (p, r) in file_results {
         results.entry(p.as_path()).or_insert(r);
     }
-    for (path, document) in docs {
-        let Some(result) = results.get(path.as_path()) else {
+    for item in docs {
+        let path = item.path;
+        let document = item.doc;
+        let Some(result) = results.get(path) else {
             continue;
         };
         for quest in &document.quests {
@@ -425,7 +430,7 @@ pub fn unreachable_quest_ids(
 /// grouping) — an assert site in one root can never seed a relation in a
 /// sibling root's `producible()` walk.
 pub fn live_assert_relations(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     reach: &BTreeMap<NodeId, Reachability>,
     ambiguous_quest_ids: &BTreeSet<String>,
     unreachable_quests: &BTreeSet<String>,
@@ -476,18 +481,20 @@ pub fn live_assert_relations(
 /// consumer skips them. Same root-scoping contract as
 /// [`live_assert_relations`].
 pub fn live_assert_sites<'d>(
-    docs: &'d [(PathBuf, Document)],
+    docs: &'d [ProjectDoc<'d>],
     reach: &BTreeMap<NodeId, Reachability>,
     ambiguous_quest_ids: &BTreeSet<String>,
     unreachable_quests: &BTreeSet<String>,
     effects: &crate::directive_facts::EffectDirectives,
 ) -> Vec<(&'d Path, Cow<'d, FactPattern>)> {
     let mut out = Vec::new();
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         let mut sites = Vec::new();
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
             let node_reach =
-                scene_identity(doc).and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
+                scene_identity(item.meta).and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
             if assert_site_is_live(node_reach) {
                 for shot in &doc.shots {
                     collect_asserted(&shot.body, effects, &mut sites);
@@ -517,7 +524,7 @@ pub fn live_assert_sites<'d>(
         for beat in &doc.beats {
             collect_asserted(&beat.body, effects, &mut sites);
         }
-        out.extend(sites.into_iter().map(|p| (path.as_path(), p)));
+        out.extend(sites.into_iter().map(|p| (path, p)));
     }
     out
 }
@@ -553,11 +560,13 @@ pub fn collect_asserted<'d>(
 /// still the answer to "where do I go to change this". Callers MUST pre-scope
 /// `docs` to one resolved root.
 pub fn assert_relations_per_doc(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     effects: &crate::directive_facts::EffectDirectives,
 ) -> BTreeMap<PathBuf, BTreeSet<String>> {
     let mut out = BTreeMap::new();
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         let mut sites = Vec::new();
         for shot in &doc.shots {
             collect_asserted(&shot.body, effects, &mut sites);
@@ -577,7 +586,7 @@ pub fn assert_relations_per_doc(
             .map(|p| p.relation.clone())
             .collect();
         if !rels.is_empty() {
-            out.insert(path.clone(), rels);
+            out.insert(path.to_path_buf(), rels);
         }
     }
     out

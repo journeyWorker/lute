@@ -9,9 +9,8 @@ use lute_core_span::Severity;
 
 use crate::cmd_check::{component_name_of, component_root_diag};
 use crate::compile_all;
-use lute_model::{
-    build_input, BuiltInput, ModelError, ModelOptions, ProjectModel,
-};
+use lute_load::{build_input, BuiltInput};
+use lute_model::{ModelError, ModelOptions, ProjectModel};
 use crate::loc;
 use crate::output::{pretty_json, render_diagnostics, severity_str, write_stdout, DenyPolicy};
 use crate::project::resolve_project;

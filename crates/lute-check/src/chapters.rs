@@ -28,8 +28,9 @@ use lute_manifest::project::{chain_label, Chain, ChapterAnchor, MetaDefaults, E_
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use lute_syntax::ast::Document;
 
+use crate::project_doc::ProjectDoc;
+use crate::DocKind;
 use crate::check::FoldedEnv;
-use crate::meta::DocKind;
 
 /// The line that separates a scene's authored frontmatter from the keys
 /// [`apply_chapters`] derived. A YAML comment, so the frontmatter still
@@ -404,7 +405,7 @@ pub fn locate_in_manifest(manifest: &str, anchor: &ChapterAnchor) -> std::ops::R
 /// documents, already desugared, parallel to `foldeds`.
 pub fn check_project_chapters(
     root: &Path,
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let Ok(Some(project)) = lute_manifest::project::load_project(root) else {
@@ -436,7 +437,7 @@ pub fn check_project_chapters(
 
 /// The desugared documents of one project root and their folds (parallel).
 struct ProjectScope<'a> {
-    docs: &'a [(PathBuf, Document)],
+    docs: &'a [ProjectDoc<'a>],
     foldeds: &'a [&'a FoldedEnv],
 }
 
@@ -445,22 +446,22 @@ impl ProjectScope<'_> {
         self.foldeds.first().map(|f| &f.occasions)
     }
     fn fold_of(&self, path: &Path) -> Option<&FoldedEnv> {
-        let i = self.docs.iter().position(|(p, _)| p == path)?;
+        let i = self.docs.iter().position(|d| d.path == path)?;
         self.foldeds.get(i).copied()
     }
     fn doc(&self, path: &Path) -> Option<&Document> {
-        self.docs.iter().find(|(p, _)| p == path).map(|(_, d)| d)
+        self.docs.iter().find(|d| d.path == path).map(|d| d.doc)
     }
     fn typed_of(&self, path: &Path) -> Option<&crate::meta::TypedMeta> {
-        let i = self.docs.iter().position(|(p, _)| p == path)?;
-        self.foldeds.get(i).map(|f| &f.typed)
+        self.docs.iter().find(|d| d.path == path).map(|d| d.meta)
     }
 }
 
 /// authored `on:`, an entry's or bundle beat's `on=` — with how many.
 fn answered_occasions(scope: &ProjectScope<'_>) -> BTreeMap<String, usize> {
     let mut out: BTreeMap<String, usize> = BTreeMap::new();
-    for ((_, doc), folded) in scope.docs.iter().zip(scope.foldeds) {
+    for (item, folded) in scope.docs.iter().zip(scope.foldeds) {
+        let doc = item.doc;
         let scene_on = folded.typed.beat.as_ref().map(|b| b.on.clone());
         let ons = scene_on.into_iter().chain(
                 doc.entries
@@ -492,11 +493,11 @@ fn not_a_scene(id: &str, label: &str, scope: &ProjectScope<'_>, scenes: &SceneKe
     }
     // An entry's key is its bare `id` (`entry.<id>.*`); a writer who
     // qualifies it by its document, as bundle beats are, means it too.
-    if scope.docs.iter().any(|(_, d)| {
-        let doc_id = crate::connectivity::bundle_id(d);
-        d.entries.iter().any(|e| {
+    if scope.docs.iter().any(|item| {
+        let doc_id = item.meta.id.as_deref();
+        item.doc.entries.iter().any(|e| {
             e.id == id
-                || doc_id.as_deref().is_some_and(|doc| {
+                || doc_id.is_some_and(|doc| {
                     id.strip_prefix(doc).and_then(|r| r.strip_prefix('.')) == Some(e.id.as_str())
                 })
         })
@@ -509,7 +510,7 @@ fn not_a_scene(id: &str, label: &str, scope: &ProjectScope<'_>, scenes: &SceneKe
     if scope
         .docs
         .iter()
-        .any(|(_, d)| crate::connectivity::bundle_id(d).as_deref() == Some(id))
+        .any(|item| item.meta.id.as_deref() == Some(id))
     {
         return format!(
             "{label} lists `{id}`, which is a quest or lore document, not a scene — \
@@ -559,13 +560,12 @@ fn requires_visited(f: &crate::prereq::PrereqFormula, id: &str) -> bool {
 /// derived cannot hold until `visited("<id>")` does — so a stop there is
 /// [`W_CHAPTER_STALL`]'s to report.
 pub fn waited_on(
-    docs: &[(PathBuf, Document)],
-    typed: &[&crate::meta::TypedMeta],
+    docs: &[ProjectDoc<'_>],
     id: &str,
 ) -> bool {
-    docs.iter().zip(typed.iter().copied()).any(|((_, d), typed)| {
-        derived(&d.meta, "after")
-            && effective(typed, "after")
+    docs.iter().any(|item| {
+        derived(&item.doc.meta, "after")
+            && effective(item.meta, "after")
                 .and_then(|a| crate::prereq::parse_prereq(&a, span_at(0, 0)).0)
                 .is_some_and(|f| requires_visited(&f, id))
     })
@@ -893,16 +893,17 @@ fn stall(
 /// value breaks the strictly descending order the list derives — against the
 /// effective (own or derived) priority of every other listed scene. `docs`
 /// are already desugared.
-fn check_chain_order(chain: &Chain, docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
+fn check_chain_order(chain: &Chain, docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagnostic)> {
     let scenes = crate::connectivity::scene_key_set(docs);
-    let priority = |yaml: &str| {
-        serde_yaml::from_str::<serde_yaml::Value>(yaml)
-            .ok()?
-            .get("priority")?
-            .as_f64()
+    let priority = |item: &crate::ProjectDoc<'_>| {
+        item.meta
+            .beat
+            .as_ref()
+            .filter(|_| !crate::chapters::derived(&item.doc.meta, "priority"))
+            .map(|beat| beat.priority as f64)
     };
     // (index in the list, path, doc, effective priority, own priority)
-    let listed: Vec<(usize, &PathBuf, &Document, f64, Option<f64>)> = chain
+    let listed: Vec<(usize, &Path, &Document, f64, Option<f64>)> = chain
         .scenes
         .iter()
         .enumerate()
@@ -912,15 +913,9 @@ fn check_chain_order(chain: &Chain, docs: &[(PathBuf, Document)]) -> Vec<(PathBu
                 .into_iter()
                 .flatten()
                 .filter_map(move |(path, _)| {
-                    let (p, doc) = docs.iter().find(|(p, _)| p == path)?;
-                    let effective = priority(&doc.meta.raw_yaml)?;
-                    Some((
-                        i,
-                        p,
-                        doc,
-                        effective,
-                        priority(authored_yaml(&doc.meta.raw_yaml)),
-                    ))
+                    let item = docs.iter().find(|item| item.path == path)?;
+                    let effective = item.meta.yaml()?.get("priority")?.as_f64()?;
+                    Some((i, item.path, item.doc, effective, priority(item)))
                 })
         })
         .collect();
@@ -935,7 +930,7 @@ fn check_chain_order(chain: &Chain, docs: &[(PathBuf, Document)]) -> Vec<(PathBu
         }
         let id = &chain.scenes[i];
         out.push((
-            path.clone(),
+            path.to_path_buf(),
             diag(
                 W_CHAPTER_ORDER,
                 Severity::Warning,

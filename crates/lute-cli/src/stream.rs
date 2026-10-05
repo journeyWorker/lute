@@ -8,6 +8,7 @@ use lute_compile::streaming::{ContinuationCompilation, ContinuationCompiler};
 use lute_compile::ExecutionIr;
 use lute_core_span::Diagnostic;
 use serde::Serialize;
+use lute_load::{build_input, discover_project};
 
 /// One wire event. Borrowing execution IR and diagnostics lets serialization write
 /// directly to stdout without building an intermediate JSON value or cloning a
@@ -46,9 +47,9 @@ pub fn run(
 ) -> ExitCode {
     // FS-F2: the same project `lute check` and `lute compile` resolve the
     // file against — `--project`, else the nearest manifest.
-    let discovered = crate::project::discover_project(file, project);
+    let discovered = discover_project(file, project);
     let project = project.or(discovered.as_deref());
-    let Some(built) = lute_model::build_input(file, providers, project, permission_profile) else {
+    let Some(built) = build_input(file, providers, project, permission_profile) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();

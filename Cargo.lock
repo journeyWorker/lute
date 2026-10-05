@@ -570,10 +570,11 @@ dependencies = [
 
 [[package]]
 name = "lute-bench"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "lute-check",
  "lute-model",
+ "lute-semantic",
  "lute-trace",
  "serde",
  "serde_json",
@@ -582,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "lute-cel"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "cel-parser",
  "lute-core-span",
@@ -591,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "lute-check"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "cel-parser",
  "insta",
@@ -608,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "lute-cli"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "cel-parser",
  "clap",
@@ -617,9 +618,11 @@ dependencies = [
  "lute-compile",
  "lute-core-span",
  "lute-lint",
+ "lute-load",
  "lute-manifest",
  "lute-model",
  "lute-resolve",
+ "lute-semantic",
  "lute-syntax",
  "lute-trace",
  "rayon",
@@ -630,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "lute-compile"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "cel-parser",
  "insta",
@@ -648,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "lute-core-span"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -656,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "lute-lint"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "cel-parser",
  "lute-cel",
@@ -669,8 +672,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "lute-load"
+version = "0.36.2"
+dependencies = [
+ "lute-check",
+ "lute-core-span",
+ "lute-manifest",
+ "lute-syntax",
+ "rayon",
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
 name = "lute-lsp"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "cel-parser",
  "dashmap",
@@ -679,9 +695,10 @@ dependencies = [
  "lute-check",
  "lute-core-span",
  "lute-lint",
+ "lute-load",
  "lute-manifest",
- "lute-model",
  "lute-resolve",
+ "lute-semantic",
  "lute-syntax",
  "lute-test-vocab",
  "serde_json",
@@ -693,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "lute-manifest"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "lute-core-span",
  "serde",
@@ -704,13 +721,15 @@ dependencies = [
 
 [[package]]
 name = "lute-model"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "lute-cel",
  "lute-check",
  "lute-compile",
  "lute-core-span",
+ "lute-load",
  "lute-manifest",
+ "lute-semantic",
  "lute-syntax",
  "rayon",
  "serde",
@@ -721,21 +740,30 @@ dependencies = [
 
 [[package]]
 name = "lute-resolve"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "lute-cel",
  "lute-check",
  "lute-core-span",
  "lute-manifest",
- "lute-model",
+ "lute-semantic",
  "lute-syntax",
  "serde",
  "serde_yaml",
 ]
 
 [[package]]
+name = "lute-semantic"
+version = "0.36.2"
+dependencies = [
+ "lute-core-span",
+ "lute-syntax",
+ "serde",
+]
+
+[[package]]
 name = "lute-syntax"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "lute-core-span",
  "lute-manifest",
@@ -744,14 +772,14 @@ dependencies = [
 
 [[package]]
 name = "lute-test-vocab"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "lute-manifest",
 ]
 
 [[package]]
 name = "lute-trace"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "cel-parser",
  "lute-cel",
@@ -767,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "lute-wasm"
-version = "0.36.1"
+version = "0.36.2"
 dependencies = [
  "console_error_panic_hook",
  "lute-check",

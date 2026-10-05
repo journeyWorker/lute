@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use lute_model::{apply_patch, apply_patch_to, ModelOptions, NodeKind, PatchBase, PatchEdit, PatchRequest, ProjectModel};
+use lute_model::{apply_patch, apply_patch_to, ModelOptions, PatchBase, PatchEdit, PatchRequest, ProjectModel};
+use lute_semantic::{NodeKey, NodeKind};
 
 /// A fresh directory per fixture. Tests run in parallel, so the name carries
 /// the process id and a per-process counter, not only a timestamp.
@@ -44,16 +45,16 @@ fn base(root: &Path) -> PatchBase {
     PatchBase { project: format!("sha256:{}", model.revisions().sha256), files: Default::default() }
 }
 
-fn node(root: &Path, kind: NodeKind, suffix: &str) -> lute_model::NodeKey {
+fn node(root: &Path, kind: NodeKind, suffix: &str) -> NodeKey {
     ProjectModel::build_single_root(root, &ModelOptions::default()).unwrap()
         .graph().nodes.keys().find(|key| key.kind == kind && key.key.ends_with(suffix)).cloned()
         .unwrap_or_else(|| panic!("missing {kind:?} node ending in {suffix}; keys: {:?}", ProjectModel::build_single_root(root, &ModelOptions::default()).unwrap().graph().nodes.keys().filter(|key| key.kind == kind).collect::<Vec<_>>()))
 }
-fn patch(root: &Path, targets: Vec<lute_model::NodeKey>, edits: Vec<PatchEdit>, preserve: Vec<lute_model::Preserve>) -> PatchRequest {
+fn patch(root: &Path, targets: Vec<NodeKey>, edits: Vec<PatchEdit>, preserve: Vec<lute_model::Preserve>) -> PatchRequest {
     PatchRequest { base: base(root), targets, edits, preserve }
 }
 
-fn line_info(root: &Path) -> (lute_model::NodeKey, lute_core_span::Span, String) {
+fn line_info(root: &Path) -> (NodeKey, lute_core_span::Span, String) {
     let model = ProjectModel::build_single_root(root, &ModelOptions::default()).unwrap();
     let graph = model.graph();
     let (key, node) = graph.nodes.iter().find(|(key, node)| key.kind == NodeKind::Line && node.file.is_some() && node.span.is_some()).unwrap();
@@ -72,7 +73,7 @@ fn request(root: &Path) -> PatchRequest {
     }
 }
 
-fn run_edit(root: &Path, target: lute_model::NodeKey, edit: PatchEdit, preserve: Vec<lute_model::Preserve>) -> Result<lute_model::PatchReport, lute_model::PatchRefusal> {
+fn run_edit(root: &Path, target: NodeKey, edit: PatchEdit, preserve: Vec<lute_model::Preserve>) -> Result<lute_model::PatchReport, lute_model::PatchRefusal> {
     let model = ProjectModel::build_single_root(root, &ModelOptions::default()).unwrap();
     apply_patch(root, PatchRequest {
         base: PatchBase { project: model.revisions().sha256.clone(), files: Default::default() },
@@ -115,7 +116,7 @@ fn stale_project_revision_refuses_before_staging() {
 fn target_and_edit_refusals_are_stable_and_atomic() {
     let root = project();
     let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
-    let unknown = PatchRequest { base: PatchBase { project: model.revisions().sha256.clone(), files: Default::default() }, targets: vec![lute_model::NodeKey::new(NodeKind::Line, "missing")], edits: vec![], preserve: vec![] };
+    let unknown = PatchRequest { base: PatchBase { project: model.revisions().sha256.clone(), files: Default::default() }, targets: vec![NodeKey::new(NodeKind::Line, "missing")], edits: vec![], preserve: vec![] };
     assert_eq!(apply_patch(&root, unknown, true).unwrap_err().code(), "E-PATCH-TARGET");
     let (line, span, file) = line_info(&root);
     let original = std::fs::read(root.join(&file)).unwrap();
@@ -196,7 +197,7 @@ fn mapped_preserve_id_accepts_renamed_quest_identity() {
                    <objective id=\"reach\" title=\"Reached\" done=\"true\"/>\n</quest>"
                 .into(),
         }],
-        vec![lute_model::Preserve::Ids(vec![lute_model::NodeKey::new(
+        vec![lute_model::Preserve::Ids(vec![NodeKey::new(
             NodeKind::Quest,
             "oldQuest",
         )])],
@@ -220,7 +221,7 @@ fn acceptance_refusal_matrix_has_named_cases() {
     cases.push(("stale file rev in replaceText", root, stale_file, "E-PATCH-EDIT"));
 
     let root = project();
-    cases.push(("unknown target", root.clone(), patch(&root, vec![lute_model::NodeKey::new(NodeKind::Line, "missing")], vec![], vec![]), "E-PATCH-TARGET"));
+    cases.push(("unknown target", root.clone(), patch(&root, vec![NodeKey::new(NodeKind::Line, "missing")], vec![], vec![]), "E-PATCH-TARGET"));
 
     let root = scene_project("## Opening\n\n<branch id=\"b\">\n<choice id=\"go\" label=\"Go\">\n@hero: A\n</choice>\n<choice id=\"go\" label=\"Go again\">\n@hero: B\n</choice>\n</branch>");
     let ambiguous = node(&root, NodeKind::Choice, ".go");
@@ -367,10 +368,10 @@ fn formatting_only_touched_regions_changes_and_far_noncanonical_bytes_remain() {
 #[test]
 fn acceptance_success_matrix_has_named_cases() {
     let cases = [
-        ("replaceNode", PatchEdit::ReplaceNode { node: lute_model::NodeKey::new(NodeKind::Line, "placeholder"), text: "@hero: Goodbye".into() }),
-        ("insertBefore", PatchEdit::InsertBefore { node: lute_model::NodeKey::new(NodeKind::Line, "placeholder"), text: "@hero: Before\n".into() }),
-        ("insertAfter", PatchEdit::InsertAfter { node: lute_model::NodeKey::new(NodeKind::Line, "placeholder"), text: "\n@hero: After".into() }),
-        ("removeNode", PatchEdit::RemoveNode { node: lute_model::NodeKey::new(NodeKind::Line, "placeholder") }),
+        ("replaceNode", PatchEdit::ReplaceNode { node: NodeKey::new(NodeKind::Line, "placeholder"), text: "@hero: Goodbye".into() }),
+        ("insertBefore", PatchEdit::InsertBefore { node: NodeKey::new(NodeKind::Line, "placeholder"), text: "@hero: Before\n".into() }),
+        ("insertAfter", PatchEdit::InsertAfter { node: NodeKey::new(NodeKind::Line, "placeholder"), text: "\n@hero: After".into() }),
+        ("removeNode", PatchEdit::RemoveNode { node: NodeKey::new(NodeKind::Line, "placeholder") }),
     ];
     for (name, operation) in cases {
         let root = project();
@@ -455,7 +456,7 @@ fn plugin_scene_project() -> PathBuf {
     root
 }
 
-fn shot_text(root: &Path) -> (lute_model::NodeKey, String) {
+fn shot_text(root: &Path) -> (NodeKey, String) {
     let model = ProjectModel::build_single_root(root, &ModelOptions::default()).unwrap();
     let graph = model.graph();
     let (key, node) = graph.nodes.iter()

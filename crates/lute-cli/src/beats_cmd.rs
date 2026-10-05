@@ -94,7 +94,7 @@ fn gate_marks(
         let Some(gate) = lute_check::gates::gate_of(&folded.occasions, ladder.occasion) else {
             continue;
         };
-        let facts = env.map(|e| (e, first.path.as_path(), first.anchor));
+        let facts = env.map(|e| (e, first.path, first.anchor));
         let dead = |c: &str| lute_check::gates::provably_false(c, folded, facts);
         let never_holds = |target: Option<&str>| {
             lute_check::gates::gate_never_holds(
@@ -142,7 +142,7 @@ pub(crate) fn names_beat(path: &Path, d: &Diagnostic, b: &ProjectBeat<'_>) -> bo
             .split_once(" share priority ")
             .is_some_and(|(names, _)| names.contains(&b.name()));
     }
-    path == b.path.as_path() && named_beat(&d.message) == Some(b.id.as_str())
+    path == b.path && named_beat(&d.message) == Some(b.id.as_str())
 }
 
 /// One root's rows and what the ladder cells print about them.
@@ -261,10 +261,7 @@ pub(crate) fn run_beats(
     let mut roots_json = Vec::new();
     let mut known_occasions: BTreeSet<String> = BTreeSet::new();
     for (root, group) in &by_root {
-        let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = group
-            .iter()
-            .map(|(p, d, _)| (p.clone(), d.clone()))
-            .collect();
+        let docs = lute_model::project_docs(group);
         let foldeds: Vec<&lute_check::FoldedEnv> = group.iter().map(|(_, _, f)| f).collect();
         // Selection order (dsl 0.26.0 §5, dsl 0.27.0 T3-10): priority
         // descending, member > sub-kind > kind, project order within.

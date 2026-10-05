@@ -1,198 +1,25 @@
 //! Deterministic project semantic dependency graph.
-use crate::{IdentityMetadata, ModelDocument, ProjectModel};
+use crate::{ModelDocument, ProjectModel};
 use lute_core_span::{Evidence, Span};
+use lute_semantic::{fact_node, IdentityMetadata, NodeKey, NodeKind, SemanticGraph};
 use lute_syntax::ast::{Arm, Node};
 use lute_syntax::datalog::FactTerm;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 
-/// The categories of nodes in the semantic dependency graph.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum NodeKind {
-    Project,
-    Document,
-    Scene,
-    Beat,
-    Shot,
-    Line,
-    Choice,
-    Quest,
-    Objective,
-    Reward,
-    Entry,
-    Occasion,
-    Relation,
-    State,
-    Def,
-    Component,
-    Expanded,
-    Fact,
-    Clock,
-    Engine,
-}
-impl NodeKind {
-    /// Return the stable serialized kind name.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Project => "project",
-            Self::Document => "document",
-            Self::Scene => "scene",
-            Self::Beat => "beat",
-            Self::Shot => "shot",
-            Self::Line => "line",
-            Self::Choice => "choice",
-            Self::Quest => "quest",
-            Self::Objective => "objective",
-            Self::Reward => "reward",
-            Self::Entry => "entry",
-            Self::Occasion => "occasion",
-            Self::Relation => "relation",
-            Self::State => "state",
-            Self::Def => "def",
-            Self::Component => "component",
-            Self::Expanded => "expanded",
-            Self::Fact => "fact",
-            Self::Clock => "clock",
-            Self::Engine => "engine",
-        }
+/// Build the deterministic graph for one project model.
+pub fn build(model: &ProjectModel) -> SemanticGraph {
+    let mut graph = SemanticGraph::default();
+    let project = NodeKey::new(NodeKind::Project, model.root().display().to_string());
+    graph.node(project.clone(), None, None);
+    for document in model.documents() {
+        add_document(&mut graph, model, document, &project);
     }
-}
-/// A stable kind/key identifier for a graph node.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct NodeKey {
-    pub kind: NodeKind,
-    pub key: String,
-}
-impl NodeKey {
-    /// Construct a node key from its kind and key text.
-    pub fn new(kind: NodeKind, key: impl Into<String>) -> Self {
-        Self {
-            kind,
-            key: key.into(),
-        }
-    }
-    /// Return the canonical `kind:key` spelling.
-    pub fn canonical(&self) -> String {
-        format!("{}:{}", self.kind.as_str(), self.key)
-    }
-}
-/// A graph node with its declaration location, when known.
-#[derive(Clone, Debug, PartialEq)]
-pub struct GraphNode {
-    pub id: NodeKey,
-    pub file: Option<PathBuf>,
-    pub span: Option<Span>,
-    /// Source speaker for line nodes; absent for all other node kinds.
-    pub speaker: Option<String>,
-    /// Canonical identity metadata. `addr` and byte spans are never stored.
-    pub identity: IdentityMetadata,
-}
-/// A directed dependency edge with source provenance.
-#[derive(Clone, Debug, PartialEq)]
-pub struct GraphEdge {
-    pub source: NodeKey,
-    pub target: NodeKey,
-    pub kind: String,
-    pub reason: String,
-    pub file: Option<PathBuf>,
-    pub span: Option<Span>,
-    pub evidence: Evidence,
-}
-/// The complete semantic graph and its reverse adjacency index.
-#[derive(Clone, Debug, Default)]
-pub struct SemanticGraph {
-    pub nodes: BTreeMap<NodeKey, GraphNode>,
-    pub edges: Vec<GraphEdge>,
-    pub outgoing: BTreeMap<NodeKey, Vec<usize>>,
-    /// Authored nodes whose canonical key occurs at multiple source spans.
-    /// Consumers must refuse these keys rather than silently selecting one.
-    pub ambiguous: BTreeSet<NodeKey>,
+    add_project_dependencies(&mut graph, model);
+    crate::derivation::add_derivations(&mut graph, model);
+    graph.rebuild_adjacency();
+    graph
 }
 
-impl SemanticGraph {
-    /// Build the deterministic graph for one project model.
-    pub fn build(model: &ProjectModel) -> Self {
-        let mut g = Self::default();
-        let project = NodeKey::new(NodeKind::Project, model.root().display().to_string());
-        g.node(project.clone(), None, None);
-        for doc in model.documents() {
-            add_document(&mut g, model, doc, &project);
-        }
-        add_project_dependencies(&mut g, model);
-        crate::derivation::add_derivations(&mut g, model);
-        g.rebuild_adjacency();
-        g
-    }
-    pub fn node(&mut self, id: NodeKey, file: Option<PathBuf>, span: Option<Span>) {
-        if let Some(existing) = self.nodes.get(&id) {
-            if existing.file.is_some()
-                && file.is_some()
-                && (existing.file != file || existing.span != span)
-            {
-                self.ambiguous.insert(id);
-            }
-            return;
-        }
-        self.nodes.insert(id.clone(), GraphNode {
-            identity: IdentityMetadata::computed(id.kind.as_str(), id.key.clone()),
-            id,
-            file,
-            span,
-            speaker: None,
-        });
-    }
-    /// Add a dependency edge and register both endpoint nodes.
-    pub fn edge(
-        &mut self,
-        source: NodeKey,
-        target: NodeKey,
-        kind: impl Into<String>,
-        reason: impl Into<String>,
-        file: Option<PathBuf>,
-        span: Option<Span>,
-        evidence: Evidence,
-    ) {
-        if !self.nodes.contains_key(&source) {
-            self.nodes.insert(
-                source.clone(),
-                GraphNode {
-                    identity: IdentityMetadata::computed(source.kind.as_str(), source.key.clone()),
-                    id: source.clone(),
-                    file: file.clone(),
-                    span,
-                    speaker: None,
-                },
-            );
-        }
-        if !self.nodes.contains_key(&target) {
-            self.nodes.insert(
-                target.clone(),
-                GraphNode {
-                    identity: IdentityMetadata::computed(target.kind.as_str(), target.key.clone()),
-                    id: target.clone(),
-                    file: file.clone(),
-                    span,
-                    speaker: None,
-                },
-            );
-        }
-        self.edges.push(GraphEdge {
-            source,
-            target,
-            kind: kind.into(),
-            reason: reason.into(),
-            file,
-            span,
-            evidence,
-        });
-    }
-    fn rebuild_adjacency(&mut self) {
-        self.outgoing.clear();
-        for (i, e) in self.edges.iter().enumerate() {
-            self.outgoing.entry(e.source.clone()).or_default().push(i);
-        }
-    }
-}
 
 fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, project: &NodeKey) {
     let doc_id = d.folded.typed.id.clone().unwrap_or_else(|| {
@@ -1140,6 +967,8 @@ fn component_use_sites(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use lute_semantic::fact_overlap;
 
     #[test]
     fn component_source_offsets_do_not_steal_host_dependency_owners() {
@@ -1293,48 +1122,4 @@ fn owner_for(owners: &[(Span, NodeKey)], span: Span, fallback: &NodeKey) -> Node
         .min_by_key(|(candidate, _)| candidate.byte_end - candidate.byte_start)
         .map(|(_, key)| key.clone())
         .unwrap_or_else(|| fallback.clone())
-}
-
-/// Build the canonical graph key for a fact pattern.
-pub fn fact_node(relation: &str, args: &[FactTerm]) -> NodeKey {
-    NodeKey::new(NodeKind::Fact, format_fact(relation, args))
-}
-
-/// Render a fact pattern using the graph's stable argument spelling.
-pub fn format_fact(relation: &str, args: &[FactTerm]) -> String {
-    let rendered = args
-        .iter()
-        .map(|arg| match arg {
-            FactTerm::Ident(value) => value.clone(),
-            FactTerm::Bool(value) => value.to_string(),
-            FactTerm::Wildcard => "_".to_string(),
-            FactTerm::Param(value) => format!("@{value}"),
-            FactTerm::Target => "occasion.target".to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join(",");
-    format!("{relation}({rendered})")
-}
-
-/// Determine whether two fact patterns overlap and classify the evidence.
-pub fn fact_overlap(a: &str, b: &str) -> Option<Evidence> {
-    let pa = lute_syntax::datalog::parse_fact(a).ok()?;
-    let pb = lute_syntax::datalog::parse_fact(b).ok()?;
-    if pa.relation != pb.relation || pa.args.len() != pb.args.len() {
-        return None;
-    }
-    let mut heuristic = false;
-    for (left, right) in pa.args.iter().zip(pb.args.iter()) {
-        match (&left.term, &right.term) {
-            (FactTerm::Ident(a), FactTerm::Ident(b)) if a != b => return None,
-            (FactTerm::Bool(a), FactTerm::Bool(b)) if a != b => return None,
-            (FactTerm::Param(_), _) | (_, FactTerm::Param(_)) => heuristic = true,
-            _ => {}
-        }
-    }
-    Some(if heuristic {
-        Evidence::Heuristic
-    } else {
-        Evidence::Proven
-    })
 }

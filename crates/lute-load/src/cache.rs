@@ -1,4 +1,4 @@
-//! Per-invocation memoization shared by model document assembly.
+//! Per-invocation memoization shared by input assembly.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

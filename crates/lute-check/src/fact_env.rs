@@ -42,6 +42,7 @@ use lute_manifest::relations::{KindShape, RelationDecl};
 use lute_manifest::snapshot::Domain;
 use lute_syntax::datalog::{BodyLiteral, FactPattern, FactTerm, Rule, RuleAtom, RuleTerm};
 
+use crate::ProjectDoc;
 use crate::rel_schema::RelVocab;
 
 /// A relation applied to members of its argument domains (§2):
@@ -327,14 +328,8 @@ impl RootVocab {
     /// template it names, or the one a misspelt name stands for. Nothing
     /// reading such a relation is called impossible for want of the dropped
     /// [`MaySet::build`].
-    pub fn note_unreadable_documents(
-        &mut self,
-        docs: &[(PathBuf, lute_syntax::ast::Document)],
-        typed: &[&crate::meta::TypedMeta],
-    ) {
-        self.incomplete |= docs
-            .iter()
-            .any(|(_, d)| !crate::meta::frontmatter_parses(&d.meta));
+    pub fn note_unreadable_documents(&mut self, docs: &[ProjectDoc<'_>]) {
+        self.incomplete |= docs.iter().any(|item| item.meta.yaml().is_none());
         fn body_asserts(d: &lute_syntax::ast::Document) -> Vec<&lute_syntax::ast::Assert> {
             let mut asserts = Vec::new();
             let bodies = d
@@ -349,7 +344,8 @@ impl RootVocab {
             }
             asserts
         }
-        for (_, d) in docs {
+        for item in docs {
+            let d = item.doc;
             self.unparsed_heads.extend(
                 body_asserts(d)
                     .iter()
@@ -367,7 +363,7 @@ impl RootVocab {
         }
         let refused: BTreeSet<&str> = docs
             .iter()
-            .flat_map(|(_, d)| &d.beats)
+            .flat_map(|item| &item.doc.beats)
             .filter_map(|b| b.template.as_ref().filter(|t| t.failed))
             .map(|t| t.name.as_str())
             .collect();
@@ -376,10 +372,9 @@ impl RootVocab {
         }
         let components: Vec<(String, &lute_syntax::ast::Document)> = docs
             .iter()
-            .zip(typed.iter().copied())
-            .filter_map(|((_, d), meta)| {
-                let name = meta.component.clone()?;
-                Some((name, d))
+            .filter_map(|item| {
+                let name = item.meta.component.clone()?;
+                Some((name, item.doc))
             })
             .collect();
         let names = || components.iter().map(|(n, _)| n.as_str());

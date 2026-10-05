@@ -10,11 +10,11 @@ use lute_check::connectivity::{
 };
 use lute_check::{
     check, check_fact_guards, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv,
-    MaySet, Mode, RootVocab, SchemaImports,
+    MaySet, Mode, ProjectDocs, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
-use lute_syntax::ast::Document;
+
 
 fn input(text: &str) -> CheckInput {
     let mut snapshot = lute_manifest::core::load_core_snapshot();
@@ -89,26 +89,26 @@ fn project(text: &str) -> Project {
     let (folded, _, _) = fold_env(&doc, &input);
     let result = check(&input);
     let mut per_file = result.diagnostics.clone();
-    let docs: Vec<(PathBuf, Document)> = vec![(path.clone(), doc)];
+    let docs = ProjectDocs::parse(vec![(path.clone(), doc)], &input.snapshot);
+    let views = docs.views();
     let results = vec![(path.clone(), result)];
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (graph, _) = assemble_graph(&docs, &key_set, &quest_ids);
-    let lifecycle = unreachable_quest_ids(&docs, &results);
-    let ambiguous = ambiguous_quest_ids(&docs);
+    let key_set = scene_key_set(&views);
+    let quest_ids = quest_id_set(&views);
+    let (graph, _) = assemble_graph(&views, &key_set, &quest_ids);
+    let lifecycle = unreachable_quest_ids(&views, &results);
+    let ambiguous = ambiguous_quest_ids(&views);
     let (reach, _) = check_reachability(&graph, &quest_ids, &ambiguous, &lifecycle);
     let mut vocab = RootVocab::default();
     vocab.add(&folded.env.rel_vocab, &folded.env.domains);
-    let typed = [&folded.typed];
-    vocab.note_unreadable_documents(&docs, &typed);
-    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
+    vocab.note_unreadable_documents(&views);
+    let facts = live_assert_sites(&views, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
         .flat_map(|(_, a)| vocab.asserted_facts(&a));
-    let may = MaySet::build(&vocab, facts, &stable_seeds(&docs, &vocab));
+    let may = MaySet::build(&vocab, facts, &stable_seeds(&views, &vocab));
     let foldeds: Vec<&FoldedEnv> = vec![&folded];
-    let must = compute_must(&docs, &foldeds, &graph, &vocab, &may);
+    let must = compute_must(&views, &foldeds, &graph, &vocab, &may);
     let env = FactEnv::new(may, must.slots);
-    let doc = &docs[0].1;
+    let doc = &docs.documents()[0].1;
     let project = check_fact_guards(Path::new(&path), doc, &folded, &env, &per_file);
     lute_check::fact_check::reconcile_member_matches(&mut per_file, &path, doc, &folded, &env);
     Project { per_file, project }
