@@ -577,3 +577,32 @@ Accepted, staged, starting with the first two cuts in the 0.36.2 wave 2:
    are recorded on an idle machine. If neither the dependency narrowing nor
    the build times improve, the cuts are reverted.
    `lute-analysis`/`lute-edit` are decided after that measurement.
+
+Cut 1 moved the stable semantic values into `lute-semantic`: identity metadata,
+graph node/edge/key values and deterministic fact helpers, source locations,
+and graph-independent rename diagnostics. Graph construction and
+project-dependent analyses remain in `lute-model`; all callers now import these
+values from the new crate.
+
+Cut 2 moved discovery, input assembly and caches, manifest loading, and
+parse-only project helpers into `lute-load`; LSP now depends on `lute-load`
+instead of `lute-model`, while resolver already has no model edge, so
+`cargo tree -p lute-resolve` contains neither `lute-model` nor `lute-compile`
+and `cargo tree -p lute-lsp` contains neither `lute-model` nor `lute-compile`.
+
+**Keep-or-revert result (2026-10-06): kept.** Both conditions improved.
+Dependency narrowing is as stated above. Build times were measured on an idle
+machine, debug profile (`CARGO_PROFILE_DEV_DEBUG=line-tables-only`,
+`CARGO_INCREMENTAL=0`), comparing the pre-cut commit `5a98618d` with the cut
+tree:
+
+| build | before | after |
+|---|---|---|
+| clean `-p lute-lsp` | 59 s | 53 s |
+| clean `-p lute-resolve` | 46 s | 39 s |
+| clean `-p lute-cli` | 70 s | 70 s |
+| `-p lute-lsp` after touching `lute-model/src/project.rs` | 15 s | 0 s |
+
+Byte-identity held against v0.36.1 over 148 CLI commands, 440 compiled files
+and 28 `context` outputs. `lute-analysis`/`lute-edit` stay unsplit; nothing
+in this measurement calls for them.

@@ -1,7 +1,7 @@
 use std::path::Path;
 use lute_check::{check_cel_slot, parse_meta_kind, translate_cel_parse, MetaKind, Mode};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
-use lute_model::{assemble_input_with_mode, InputCache};
+use lute_load::{assemble_input_with_mode, InputCache};
 use tower_lsp_server::ls_types::{Diagnostic as LspDiagnostic, Uri};
 use crate::convert::to_lsp_diagnostic;
 use super::{Backend, DocumentSnapshot};

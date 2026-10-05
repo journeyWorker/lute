@@ -13,7 +13,8 @@ use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::project::load_project;
 use rayon::prelude::*;
 
-use crate::{normalize_span_from_text, ByRoot, DocGroup};
+use lute_load::normalize_span_from_text;
+use crate::{ByRoot, DocGroup};
 
 /// The converged result of [`compute_conn_fixpoint`]'s monotone iteration
 /// (dsl 0.4.0 §4.2's relational-objective-liveness CLOSURE, connectivity

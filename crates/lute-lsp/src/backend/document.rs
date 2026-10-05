@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use lute_check::Mode;
-use lute_model::{assemble_input_with_mode, BuiltInput, InputCache};
+use lute_load::{assemble_input_with_mode, BuiltInput, InputCache};
 use tower_lsp_server::ls_types::Uri;
 use super::Backend;
 

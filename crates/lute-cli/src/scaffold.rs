@@ -17,7 +17,7 @@ use std::process::ExitCode;
 
 use lute_check::ident_from_name;
 use lute_manifest::project::MetaDefaults;
-use lute_model::manifest_context;
+use lute_load::{build_input, manifest_context};
 
 /// One scaffolded file: a path RELATIVE to the target directory and its
 /// verbatim contents.
@@ -1178,7 +1178,7 @@ fn created(path: &Path, hint: &str) -> ExitCode {
 /// accepted. A targeted occasion needs `--target`: a scene without one
 /// answers every target, which a new scene almost never means (T3-27).
 fn validate_beat(path: &Path, root: &Path, on: &str, target: Option<&str>) -> Result<(), String> {
-    let built = lute_model::build_input(path, None, Some(root), None)
+    let built = build_input(path, None, Some(root), None)
         .ok_or_else(|| format!("cannot read back `{}`", path.display()))?;
     let occasions = &built.input.snapshot.occasions;
     if occasions.is_empty() {

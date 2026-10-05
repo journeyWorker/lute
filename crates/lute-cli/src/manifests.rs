@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::project::{load_project, ProjectConfig};
+use lute_load::resolve_snapshot;
 
 /// The manifest file name, in one place.
 pub const MANIFEST_FILE: &str = "lute.project.yaml";
@@ -255,7 +256,7 @@ fn manifest_surface(
     lute_manifest::project::IdentityTemplates,
     lute_manifest::project::MetaDefaults,
 ) {
-    let snapshot = lute_model::resolve_snapshot(cfg);
+    let snapshot = resolve_snapshot(cfg);
     let identity = cfg.map(|c| c.identity.clone()).unwrap_or_default();
     let defaults = cfg.map(|c| c.defaults.clone()).unwrap_or_default();
     (snapshot.version, identity, defaults)

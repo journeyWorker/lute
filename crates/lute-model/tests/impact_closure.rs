@@ -1,5 +1,5 @@
 use lute_core_span::Evidence;
-use lute_model::graph::{NodeKey, NodeKind, SemanticGraph};
+use lute_semantic::{NodeKey, NodeKind, SemanticGraph};
 use lute_model::impact::{query_graph, ImpactTarget};
 
 fn graph_with(edges: &[(NodeKey, NodeKey, &str, Evidence)]) -> SemanticGraph {

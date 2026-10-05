@@ -3,18 +3,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use lute_core_span::Span;
 use lute_manifest::project::{IdentityRename, IdentityRenameDecl};
 
-use crate::graph::{NodeKey, NodeKind, SemanticGraph};
+use lute_semantic::{NodeKey, NodeKind, RenameError, SemanticGraph};
 
 /// A resolved, deterministic project identity migration sequence.
 pub type ResolvedRenames = Vec<IdentityRename>;
 
-/// One authored-ledger validation failure, retaining its manifest location.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RenameError {
-    pub code: &'static str,
-    pub message: String,
-    pub span: Option<Span>,
-}
 
 fn kind(name: &str) -> Option<NodeKind> {
     Some(match name {

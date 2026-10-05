@@ -14,7 +14,7 @@ use lute_core_span::{Evidence, Span};
 use lute_manifest::relations::KindShape;
 use lute_syntax::datalog::{BodyLiteral, FactPattern, FactTerm, RuleAtom, RuleTerm};
 
-use crate::graph::{fact_node, format_fact, NodeKey, NodeKind, SemanticGraph};
+use lute_semantic::{fact_node, format_fact, NodeKey, NodeKind, SemanticGraph};
 use crate::{ModelDocument, ProjectModel};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

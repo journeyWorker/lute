@@ -1,5 +1,5 @@
-//! Reverse dependency impact queries over [`crate::graph::SemanticGraph`].
-use crate::graph::{fact_overlap, NodeKey, NodeKind, SemanticGraph};
+//! Reverse dependency impact queries over [`lute_semantic::SemanticGraph`].
+use lute_semantic::{fact_overlap, NodeKey, NodeKind, SemanticGraph};
 use crate::ProjectModel;
 use lute_core_span::{Evidence, Span};
 use lute_syntax::datalog::parse_fact;
@@ -351,7 +351,7 @@ fn evidence_name(e: &Evidence) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{GraphEdge, SemanticGraph};
+    use lute_semantic::{GraphEdge, GraphNode, IdentityMetadata};
 
     #[test]
     fn reverse_closure_terminates_on_cycles_and_excludes_self_reads() {
@@ -360,22 +360,22 @@ mod tests {
         let mut graph = SemanticGraph::default();
         graph.nodes.insert(
             a.clone(),
-            crate::graph::GraphNode {
+            GraphNode {
                 id: a.clone(),
                 file: None,
                 span: None,
                 speaker: None,
-                identity: crate::IdentityMetadata::computed("state", "a"),
+                identity: IdentityMetadata::computed("state", "a"),
             },
         );
         graph.nodes.insert(
             b.clone(),
-            crate::graph::GraphNode {
+            GraphNode {
                 id: b.clone(),
                 file: None,
                 span: None,
                 speaker: None,
-                identity: crate::IdentityMetadata::computed("state", "b"),
+                identity: IdentityMetadata::computed("state", "b"),
             },
         );
         graph.edges = vec![

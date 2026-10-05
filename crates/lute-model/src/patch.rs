@@ -28,10 +28,8 @@ fn digest_equal(expected: &str, actual: &str) -> bool {
         == actual.strip_prefix("sha256:").unwrap_or(actual)
 }
 
-use crate::{
-    diff_models, ChangeKind, ModelOptions, NodeKey, NodeKind, ProjectModel, ProjectRevision,
-    SemanticChange,
-};
+use crate::{diff_models, ChangeKind, ModelOptions, ProjectModel, ProjectRevision, SemanticChange};
+use lute_semantic::{NodeKey, NodeKind};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -228,17 +226,6 @@ fn parse_node<E: de::Error>(value: Option<&Value>, name: &str) -> Result<NodeKey
     parse_node_key(&text).map_err(de::Error::custom)
 }
 
-impl Serialize for NodeKey {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.canonical().serialize(serializer)
-    }
-}
-impl<'de> Deserialize<'de> for NodeKey {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let text = String::deserialize(d)?;
-        parse_node_key(&text).map_err(de::Error::custom)
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Preserve {

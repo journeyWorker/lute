@@ -6,8 +6,8 @@ use std::process::ExitCode;
 
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_check::CheckInput;
+use lute_load::project_root_for;
 use lute_model::relocate_imported_diags;
-
 use crate::cmd_check::{engine_semantic_diags, merge_gate_diags};
 use crate::manifests;
 use crate::mockcheck;
@@ -114,7 +114,7 @@ pub(crate) fn run_check_project(
         }
         let imported_by = inputs
             .values()
-            .filter(|(root, _)| *root == lute_model::project_root_for(path, dir))
+            .filter(|(root, _)| *root == project_root_for(path, dir))
             .count();
         if imported_by > 0 {
             let message = diagnostic

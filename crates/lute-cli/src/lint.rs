@@ -26,8 +26,8 @@ use lute_lint::{lint, parse_config, LintConfig, LintDocInput, LintOutcome, LintS
 use lute_manifest::lint::namespace_active_lints;
 use lute_manifest::loader::load_plugins_dir;
 use lute_manifest::project::{project_providers, ProjectConfig};
+use lute_load::{build_input, find_lute_files, nearest_manifest_dir, project_root_for, read_document, BuiltInput};
 use lute_manifest::resolve::resolve_activation;
-
 /// clap `value_parser` for `lute lint --deny <CODE>`.
 ///
 /// Lint diagnostic codes are dynamic (`L-*` derived from plugin/custom rule
@@ -178,14 +178,14 @@ fn relative_display(file: &Path, root: &Path) -> PathBuf {
 /// the shared model input path used by `check-project` — a scene a `chapters:`
 /// chain lists carries the `on:` the chain derives, so lint classifies it as
 /// the beat every other surface reads — returned with the model's
-/// [`lute_model::BuiltInput`] for the root's project passes.
+/// [`lute_load::BuiltInput`] for the root's project passes.
 fn build_lint_input(
     file: &Path,
     root: &Path,
     with_project: bool,
-) -> Result<(LintDocInput, Option<lute_model::BuiltInput>), ExitCode> {
+) -> Result<(LintDocInput, Option<BuiltInput>), ExitCode> {
     let (text, doc, built) = if with_project {
-        let Some(built) = lute_model::build_input(file, None, Some(root), None) else {
+        let Some(built) = build_input(file, None, Some(root), None) else {
             return Err(ExitCode::from(2));
         };
         let text = built.input.text.clone();
@@ -198,7 +198,7 @@ fn build_lint_input(
         );
         (text, parsed.0, Some(built))
     } else {
-        let text = lute_model::read_document(file).map_err(|message| {
+        let text = read_document(file).map_err(|message| {
             eprintln!("{message}");
             ExitCode::from(2)
         })?;
@@ -262,19 +262,19 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
-        let root = lute_model::nearest_manifest_dir(path).unwrap_or(fallback);
+        let root = nearest_manifest_dir(path).unwrap_or(fallback);
         let mut m = BTreeMap::new();
         m.insert(root, vec![path.to_path_buf()]);
         m
     } else {
-        let files = lute_model::find_lute_files(path).map_err(|e| {
+        let files = find_lute_files(path).map_err(|e| {
             let e = lute_manifest::io_reason(&e);
             eprintln!("lute: cannot walk {}: {e}", path.display());
             ExitCode::from(2)
         })?;
         let mut m: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
         for f in files {
-            let root = lute_model::project_root_for(&f, path);
+            let root = project_root_for(&f, path);
             m.entry(root).or_default().push(f);
         }
         m
@@ -375,7 +375,7 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
 fn display_name_dups(
     root: &Path,
     plugins_dir: &Path,
-    builts: &[&lute_model::BuiltInput],
+    builts: &[&BuiltInput],
     inputs: &[LintDocInput],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let per_doc: Vec<_> = builts

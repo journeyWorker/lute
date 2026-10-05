@@ -36,6 +36,7 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::PathSegment;
 use lute_syntax::ast::{Arm, AttrValue, ClipNode, Directive, Document, Node, Reward};
 use serde_json::{json, Value as Json};
+use lute_load::resolve_snapshot;
 
 use crate::{ByRoot, DocGroup};
 
@@ -842,7 +843,7 @@ impl<'g> Producers<'g> {
         let project = lute_model::ProjectModel::build_single_root(root, &opts)
             .ok()
             .and_then(|model| model.manifest().cloned());
-        let snapshot = lute_model::resolve_snapshot(project.as_ref());
+        let snapshot = resolve_snapshot(project.as_ref());
         let components = group
             .iter()
             .filter_map(|(_, d, f)| f.typed.component.clone().map(|n| (n, d)))

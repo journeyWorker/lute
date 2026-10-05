@@ -8,7 +8,7 @@ pub mod symbols;
 
 
 use lute_core_span::Span;
-use lute_model::{IdentityMetadata, IdentitySource};
+use lute_semantic::{IdentityMetadata, IdentitySource};
 use lute_syntax::ast::{AttrValue, Document, Node};
 
 /// Canonical identity attached to a source cursor. LSP ranges remain span

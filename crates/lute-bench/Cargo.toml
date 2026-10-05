@@ -11,6 +11,7 @@ name = "lute-bench"
 [dependencies]
 lute-check = { path = "../lute-check" }
 lute-model = { path = "../lute-model" }
+lute-semantic = { path = "../lute-semantic" }
 lute-trace = { path = "../lute-trace" }
 serde = { workspace = true }
 serde_json = { workspace = true }

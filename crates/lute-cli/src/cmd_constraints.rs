@@ -3,6 +3,7 @@ use std::process::ExitCode;
 
 use lute_check::Mode;
 use lute_model::{constraints::ConstraintResult, ModelOptions};
+use lute_semantic::{NodeKey, NodeKind};
 
 /// Report every project constraint. `--run` records script witnesses when a
 /// play/test script contains an observed quest completion transition.
@@ -187,7 +188,7 @@ fn script_witness(root: &Path, script: &Path, quest: &str) -> bool {
 pub(crate) fn run_script_for_context(
     root: &Path,
     script: &Path,
-    target: &lute_model::NodeKey,
+    target: &NodeKey,
 ) -> bool {
     let Some(name) = script.file_name().and_then(|n| n.to_str()) else {
         return false;
@@ -202,12 +203,12 @@ pub(crate) fn run_script_for_context(
     let Ok(run) = crate::play::run_play_for_test(&project, script, true) else {
         return false;
     };
-    if target.kind == lute_model::NodeKind::Quest
+    if target.kind == NodeKind::Quest
         && run.completed_quests.contains(&target.key)
     {
         return true;
     }
-    if target.kind == lute_model::NodeKind::Choice {
+    if target.kind == NodeKind::Choice {
         let Some((document, tail)) = target.key.rsplit_once(':') else {
             return false;
         };

@@ -9,7 +9,8 @@ use lute_core_span::{Diagnostic, Severity, Span};
 
 use crate::reconcile::relocate_imported_diags;
 use crate::scenario::node_cycle_degraded;
-use crate::{normalize_span_from_text, ModelOptions, ProjectModel};
+use lute_load::normalize_span_from_text;
+use crate::{ModelOptions, ProjectModel};
 
 /// The reconciled project analysis for the compile/trace project-aware gate
 /// (connectivity design spec §5): per-document reconciled `CheckResult`s

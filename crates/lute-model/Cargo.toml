@@ -10,6 +10,8 @@ lute-manifest = { path = "../lute-manifest" }
 lute-check = { path = "../lute-check" }
 lute-compile = { path = "../lute-compile" }
 lute-cel = { path = "../lute-cel" }
+lute-load = { path = "../lute-load" }
+lute-semantic = { path = "../lute-semantic" }
 lute-syntax = { path = "../lute-syntax" }
 serde = { workspace = true }
 serde_json = { workspace = true }

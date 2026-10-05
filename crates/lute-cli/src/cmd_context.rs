@@ -13,7 +13,9 @@ use lute_manifest::types::{Literal, Type};
 use crate::context;
 use crate::project::resolve_project;
 use crate::output::{pretty_json, write_stdout};
-use lute_model::{build_input, BuiltInput, ModelOptions, ProjectModel};
+use lute_load::{build_input, discover_project, BuiltInput};
+use lute_model::{ModelOptions, ProjectModel};
+use lute_semantic::{GraphEdge, NodeKey, NodeKind, SemanticGraph};
 
 /// Emit the project-resolved AUTHORING SURFACE for `file`: everything an AI
 /// needs to WRITE valid Lute against THIS file's project — the resolved
@@ -245,7 +247,7 @@ fn run_task_context(
         .and_then(|source| node.span.map(|span| excerpt(&source, span)));
     let identity = {
         let mut value = serde_json::to_value(&node.identity).unwrap_or_default();
-        if key.kind == lute_model::NodeKind::Line {
+        if key.kind == NodeKind::Line {
             if let Some(scope) = model.documents().iter().filter_map(|document| document.artifact.as_ref())
                 .flat_map(|artifact| artifact.commands.iter())
                 .find_map(|command| match command {
@@ -320,7 +322,7 @@ fn run_position_context(
     // Preserve the legacy `--at` note: this path probed the nearest manifest
     // even when an explicit project was supplied, while the project still won.
     let root = if project.is_some() {
-        let discovered = crate::project::discover_project(&path, None);
+        let discovered = discover_project(&path, None);
         project.map(Path::to_path_buf).or(discovered)
     } else {
         resolve_project(&path, None)
@@ -413,7 +415,7 @@ fn excerpt(source: &str, span: lute_core_span::Span) -> String {
     source.get(start..end).unwrap_or_default().chars().take(512).collect()
 }
 
-fn edge_json(edge: &lute_model::GraphEdge, model: &ProjectModel, neighbor: &lute_model::NodeKey) -> serde_json::Value {
+fn edge_json(edge: &GraphEdge, model: &ProjectModel, neighbor: &NodeKey) -> serde_json::Value {
     serde_json::json!({"node":neighbor.canonical(),"kind":edge.kind,"reason":edge.reason,"evidence":edge.evidence,"file":edge.file.as_ref().map(|p|relative(model,p)),"span":edge.span})
 }
 
@@ -431,7 +433,7 @@ struct Scripts { tests: Vec<serde_json::Value>, plays: Vec<serde_json::Value> }
 
 fn related_scripts(
     model: &ProjectModel,
-    key: &lute_model::NodeKey,
+    key: &NodeKey,
     limit: usize,
     run: Option<&Path>,
     not_included: &mut Vec<serde_json::Value>,
@@ -504,8 +506,8 @@ fn related_scripts(
 
 fn vocabulary(
     model: &ProjectModel,
-    graph: &lute_model::SemanticGraph,
-    key: &lute_model::NodeKey,
+    graph: &SemanticGraph,
+    key: &NodeKey,
     limit: usize,
     not_included: &mut Vec<serde_json::Value>,
 ) -> serde_json::Value {
@@ -513,7 +515,7 @@ fn vocabulary(
     let mut state = Vec::new();
     let mut defs = Vec::new();
     let mut state_paths = BTreeSet::new();
-    if key.kind == lute_model::NodeKind::State {
+    if key.kind == NodeKind::State {
         state.push(serde_json::json!(key.key));
         state_paths.insert(key.key.clone());
     }
@@ -527,12 +529,12 @@ fn vocabulary(
             &edge.source
         };
         match other.kind {
-            lute_model::NodeKind::Relation => relations.push(serde_json::json!(other.key)),
-            lute_model::NodeKind::State => {
+            NodeKind::Relation => relations.push(serde_json::json!(other.key)),
+            NodeKind::State => {
                 state.push(serde_json::json!(other.key));
                 state_paths.insert(other.key.clone());
             }
-            lute_model::NodeKind::Def => defs.push(serde_json::json!(other.key)),
+            NodeKind::Def => defs.push(serde_json::json!(other.key)),
             _ => {}
         }
     }

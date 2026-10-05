@@ -574,6 +574,7 @@ version = "0.36.1"
 dependencies = [
  "lute-check",
  "lute-model",
+ "lute-semantic",
  "lute-trace",
  "serde",
  "serde_json",
@@ -617,9 +618,11 @@ dependencies = [
  "lute-compile",
  "lute-core-span",
  "lute-lint",
+ "lute-load",
  "lute-manifest",
  "lute-model",
  "lute-resolve",
+ "lute-semantic",
  "lute-syntax",
  "lute-trace",
  "rayon",
@@ -669,6 +672,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lute-load"
+version = "0.36.1"
+dependencies = [
+ "lute-check",
+ "lute-core-span",
+ "lute-manifest",
+ "lute-syntax",
+ "rayon",
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
 name = "lute-lsp"
 version = "0.36.1"
 dependencies = [
@@ -679,9 +695,10 @@ dependencies = [
  "lute-check",
  "lute-core-span",
  "lute-lint",
+ "lute-load",
  "lute-manifest",
- "lute-model",
  "lute-resolve",
+ "lute-semantic",
  "lute-syntax",
  "lute-test-vocab",
  "serde_json",
@@ -710,7 +727,9 @@ dependencies = [
  "lute-check",
  "lute-compile",
  "lute-core-span",
+ "lute-load",
  "lute-manifest",
+ "lute-semantic",
  "lute-syntax",
  "rayon",
  "serde",
@@ -727,10 +746,19 @@ dependencies = [
  "lute-check",
  "lute-core-span",
  "lute-manifest",
- "lute-model",
+ "lute-semantic",
  "lute-syntax",
  "serde",
  "serde_yaml",
+]
+
+[[package]]
+name = "lute-semantic"
+version = "0.36.1"
+dependencies = [
+ "lute-core-span",
+ "lute-syntax",
+ "serde",
 ]
 
 [[package]]

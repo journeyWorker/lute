@@ -30,8 +30,8 @@ use lute_check::{CheckInput, CheckResult};
 use lute_core_span::Severity;
 use lute_trace::{MockSet, Step, TraceExit, TraceReport, Value};
 use rayon::prelude::*;
+use lute_load::build_input;
 use serde_json::Value as Json;
-
 use lute_trace::datalog::Fact;
 use lute_trace::exec::{
     BridgeCall, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown, Pick, Seed,
@@ -906,7 +906,7 @@ fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> O
         };
         return Some(subject(rel, &document.doc, &document.folded, input, gate, artifact));
     }
-    let built = lute_model::build_input(file, None, project, None)?;
+    let built = build_input(file, None, project, None)?;
     let crate::BuiltInput {
         input, identity, ..
     } = built;

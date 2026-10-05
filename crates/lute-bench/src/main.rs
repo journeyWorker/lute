@@ -299,7 +299,7 @@ fn run_sample(
             loop_until(
                 root,
                 || {
-                    let graph = lute_model::SemanticGraph::build(&model);
+                    let graph = lute_model::graph::build(&model);
                     black_box(graph);
                     Ok(())
                 },

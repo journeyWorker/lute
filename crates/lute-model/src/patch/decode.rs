@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
-use crate::{NodeKey, NodeKind};
+use lute_semantic::{NodeKey, NodeKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum DecodeError {

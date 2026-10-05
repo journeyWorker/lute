@@ -1,5 +1,5 @@
 use super::*;
-
+use lute_load::build_input;
 pub fn run_test(
     dir: &Path,
     json: bool,
@@ -419,7 +419,7 @@ impl Shared {
 /// error. When `cov` is `Some`, the produced report is folded into it.
 ///
 /// `project` resolves the traced document EXACTLY as `lute trace --project`
-/// does (module docs): threaded straight into [`lute_model::build_input`], never
+/// does (module docs): threaded straight into [`lute_load::build_input`], never
 /// substituted for `None`. A project-resolution `E-` diagnostic
 /// (`resolve_error`) is therefore a build-failing error here too — `Err(1)`,
 /// never folded into a per-test `TestResult` where a caller filtering on
@@ -443,7 +443,7 @@ pub(crate) fn run_test_for_constraint(root: &Path, script: &Path, quest: &str) -
 pub(crate) fn run_test_for_context(
     root: &Path,
     script: &Path,
-    target: &lute_model::NodeKey,
+    target: &NodeKey,
 ) -> bool {
     let files = [script.to_path_buf()];
     let Ok(shared) = Shared::for_tests(&files, Some(root), None) else {
@@ -455,13 +455,13 @@ pub(crate) fn run_test_for_context(
     result_visits_target(&result, target)
 }
 
-fn result_visits_target(result: &TestResult, target: &lute_model::NodeKey) -> bool {
-    if target.kind == lute_model::NodeKind::Quest
+fn result_visits_target(result: &TestResult, target: &NodeKey) -> bool {
+    if target.kind == NodeKind::Quest
         && result.completed_quests.contains(&target.key)
     {
         return true;
     }
-    if target.kind == lute_model::NodeKind::Choice {
+    if target.kind == NodeKind::Choice {
         let Some((document, tail)) = target.key.rsplit_once(':') else {
             return false;
         };
@@ -730,7 +730,7 @@ fn run_one_test(
             );
             return Err(ExitCode::from(1));
         }
-        let Some(built) = lute_model::build_input(&lute_path, providers, None, None) else {
+        let Some(built) = build_input(&lute_path, providers, None, None) else {
             return Err(ExitCode::from(2));
         };
         built.report_project_diags();

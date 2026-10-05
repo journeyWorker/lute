@@ -1,5 +1,5 @@
 use lute_check::{check, Mode};
-use lute_model::{assemble_input_with_mode, InputCache};
+use lute_load::{assemble_input_with_mode, InputCache};
 use tower_lsp_server::ls_types::{Diagnostic as LspDiagnostic, Uri};
 use crate::convert::to_lsp_diagnostic;
 use super::{Backend, DocumentSnapshot};

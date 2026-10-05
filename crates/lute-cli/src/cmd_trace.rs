@@ -8,10 +8,10 @@ use lute_check::check;
 use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
 
 use crate::cmd_check::{component_name_of, component_root_diag};
-use lute_model::{build_input, BuiltInput};
+use lute_load::{build_input, discover_project, BuiltInput};
 use crate::output::{print_diagnostics, write_stdout, DenyPolicy};
 use lute_model::project_gate_result;
-use crate::project::{discover_project, project_assert_relations, project_quest_ids};
+use crate::project::{project_assert_relations, project_quest_ids};
 
 /// Run `trace` over one file (dsl 0.4.0 §4.3/§4.5): resolve the document
 /// IDENTICALLY to `check`/`compile` ([`build_input`]), load + merge the

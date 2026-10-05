@@ -1,4 +1,6 @@
-use lute_model::{assemble_input, InputCache, ModelOptions, NodeKind, ProjectModel};
+use lute_load::{assemble_input, InputCache};
+use lute_model::{ModelOptions, ProjectModel};
+use lute_semantic::{IdentityMetadata, NodeKind};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -52,7 +54,7 @@ fn stable_identity_policy_follows_project_manifest_and_defaults_off() {
     assert!(!stable_for(None));
 }
 
-fn graph_line_identity(code: Option<&str>) -> lute_model::IdentityMetadata {
+fn graph_line_identity(code: Option<&str>) -> IdentityMetadata {
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
         "lute_model_graph_identity_{}_{}",
