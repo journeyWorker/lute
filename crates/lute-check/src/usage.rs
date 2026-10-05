@@ -220,7 +220,7 @@ fn declaration(
         return Some((o.file.clone(), o.span));
     }
     docs.iter().find_map(|d| {
-        let map = serde_yaml::from_str::<serde_yaml::Mapping>(&d.doc.meta.raw_yaml).ok()?;
+        let map = d.folded.typed.yaml()?.as_mapping()?;
         map.get(serde_yaml::Value::String(block.to_string()))?
             .as_mapping()?
             .get(serde_yaml::Value::String(name.to_string()))?;

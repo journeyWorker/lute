@@ -820,7 +820,8 @@ fn may_set(group: &DocGroup, docs: &[(PathBuf, Document)]) -> (MaySet, lute_chec
     for (_, _, folded) in group {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
-    vocab.note_unreadable_documents(docs);
+    let typed: Vec<&lute_check::TypedMeta> = group.iter().map(|(_, _, f)| &f.typed).collect();
+    vocab.note_unreadable_documents(docs, &typed);
     let stable = lute_check::stable_seeds(docs, &vocab);
     let none = BTreeSet::new();
     let facts = lute_check::connectivity::live_assert_sites(

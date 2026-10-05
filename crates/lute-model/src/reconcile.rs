@@ -100,7 +100,9 @@ pub fn compute_conn_fixpoint(
     }
     // seven F3: a document whose frontmatter does not parse may produce facts
     // nothing here can see — no guard is dead for want of them.
-    root_vocab.note_unreadable_documents(group);
+    let typed: Vec<&lute_check::TypedMeta> =
+        group_full.iter().map(|(_, _, folded)| &folded.typed).collect();
+    root_vocab.note_unreadable_documents(group, &typed);
     // dsl 0.23.0 §9: seeds nothing can remove — a negated rule atom over one
     // of them never holds.
     let stable = lute_check::stable_seeds(group, &root_vocab);

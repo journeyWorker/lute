@@ -13,7 +13,7 @@ use lute_check::connectivity::{
 use lute_check::fact_env::{MustFact, Provenance};
 use lute_check::{
     check, check_fact_guards, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv,
-    GroundFact, MaySet, Mode, MustMap, RootVocab, SchemaImports,
+    GroundFact, MaySet, Mode, MustMap, RootVocab, SchemaImports, TypedMeta,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_syntax::ast::{Document, Node};
@@ -105,7 +105,8 @@ fn root(texts: &[(&str, &str)]) -> Root {
     for folded in &foldeds {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
-    vocab.note_unreadable_documents(&docs);
+    let typed: Vec<&TypedMeta> = foldeds.iter().map(|folded| &folded.typed).collect();
+    vocab.note_unreadable_documents(&docs, &typed);
     let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
         .flat_map(|(_, a)| vocab.asserted_facts(&a));

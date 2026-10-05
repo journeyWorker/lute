@@ -122,15 +122,12 @@ pub fn chained(occasion: &str, occasions: &BTreeMap<String, OccasionDecl>) -> bo
         .is_none_or(|d| d.select != OccasionSelect::Sequence)
 }
 
-/// The id of this (desugared) scene when its `after:` is one a chain
-/// derived — so a reason can say where an `after:` the scene never wrote
-/// comes from, and never says so of one it wrote.
-pub fn derived_after(doc: &Document) -> Option<String> {
+/// id is supplied by the already-folded metadata snapshot.
+pub fn derived_after(doc: &Document, typed: &crate::meta::TypedMeta) -> Option<String> {
     if !derived(&doc.meta, "after") {
         return None;
     }
-    let map: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
-    Some(map.get("id")?.as_str()?.trim().to_string())
+    Some(typed.yaml()?.get("id")?.as_str()?.trim().to_string())
 }
 
 /// Append the keys `defaults`' `chapters:` derives for this scene (dsl
@@ -454,19 +451,18 @@ impl ProjectScope<'_> {
     fn doc(&self, path: &Path) -> Option<&Document> {
         self.docs.iter().find(|(p, _)| p == path).map(|(_, d)| d)
     }
+    fn typed_of(&self, path: &Path) -> Option<&crate::meta::TypedMeta> {
+        let i = self.docs.iter().position(|(p, _)| p == path)?;
+        self.foldeds.get(i).map(|f| &f.typed)
+    }
 }
 
-/// Every occasion a beat of `docs` answers by its own hand — a scene's
 /// authored `on:`, an entry's or bundle beat's `on=` — with how many.
-fn answered_occasions(docs: &[(PathBuf, Document)]) -> BTreeMap<String, usize> {
+fn answered_occasions(scope: &ProjectScope<'_>) -> BTreeMap<String, usize> {
     let mut out: BTreeMap<String, usize> = BTreeMap::new();
-    for (_, doc) in docs {
-        let scene_on = serde_yaml::from_str::<serde_yaml::Value>(authored_yaml(&doc.meta.raw_yaml))
-            .ok()
-            .and_then(|v| v.get("on")?.as_str().map(str::to_string));
-        let ons = scene_on
-            .into_iter()
-            .chain(
+    for ((_, doc), folded) in scope.docs.iter().zip(scope.foldeds) {
+        let scene_on = folded.typed.beat.as_ref().map(|b| b.on.clone());
+        let ons = scene_on.into_iter().chain(
                 doc.entries
                     .iter()
                     .filter_map(|e| Some(e.on.as_ref()?.0.clone())),
@@ -534,9 +530,9 @@ fn not_a_scene(id: &str, label: &str, scope: &ProjectScope<'_>, scenes: &SceneKe
 type SceneKeys<'a> = BTreeMap<String, Vec<(PathBuf, Span)>>;
 
 /// A frontmatter's authored top-level scalar `key`, as text.
-fn own(doc: &Document, key: &str) -> Option<String> {
-    let v = serde_yaml::from_str::<serde_yaml::Value>(authored_yaml(&doc.meta.raw_yaml)).ok()?;
-    match v.get(key)? {
+fn own(typed: &crate::meta::TypedMeta, key: &str) -> Option<String> {
+    let v = typed.yaml()?.as_mapping()?;
+    match v.get(serde_yaml::Value::String(key.to_string()))? {
         serde_yaml::Value::String(s) => Some(s.trim().to_string()),
         serde_yaml::Value::Bool(b) => Some(b.to_string()),
         _ => None,
@@ -544,9 +540,8 @@ fn own(doc: &Document, key: &str) -> Option<String> {
 }
 
 /// A frontmatter's effective (authored or derived) top-level string `key`.
-fn effective(doc: &Document, key: &str) -> Option<String> {
-    let v = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml).ok()?;
-    Some(v.get(key)?.as_str()?.trim().to_string())
+fn effective(typed: &crate::meta::TypedMeta, key: &str) -> Option<String> {
+    typed.yaml()?.get(key)?.as_str().map(|s| s.trim().to_string())
 }
 
 /// Whether the `after:` formula cannot hold until `visited("<id>")` does.
@@ -563,10 +558,14 @@ fn requires_visited(f: &crate::prereq::PrereqFormula, id: &str) -> bool {
 /// Whether a chain waits on scene `id`: some scene's `after:` the chain
 /// derived cannot hold until `visited("<id>")` does — so a stop there is
 /// [`W_CHAPTER_STALL`]'s to report.
-pub fn waited_on(docs: &[(PathBuf, Document)], id: &str) -> bool {
-    docs.iter().any(|(_, d)| {
+pub fn waited_on(
+    docs: &[(PathBuf, Document)],
+    typed: &[&crate::meta::TypedMeta],
+    id: &str,
+) -> bool {
+    docs.iter().zip(typed.iter().copied()).any(|((_, d), typed)| {
         derived(&d.meta, "after")
-            && effective(d, "after")
+            && effective(typed, "after")
                 .and_then(|a| crate::prereq::parse_prereq(&a, span_at(0, 0)).0)
                 .is_some_and(|f| requires_visited(&f, id))
     })
@@ -699,7 +698,7 @@ fn check_chain(
                 ),
             ));
         } else if occasions.is_empty() {
-            let answered = answered_occasions(scope.docs);
+            let answered = answered_occasions(scope);
             if !answered.contains_key(on) {
                 let near =
                     lute_manifest::suggest::nearest(on, answered.keys().map(String::as_str), 2);
@@ -738,7 +737,10 @@ fn check_chain(
             let Some(doc) = scope.doc(path) else {
                 continue;
             };
-            let own_on = own(doc, "on").filter(|o| o != on);
+            let own_on = scope
+                .typed_of(path)
+                .and_then(|typed| own(typed, "on"))
+                .filter(|o| o != on);
             if let Some(own_on) = &own_on {
                 out.push((
                     None,
@@ -754,7 +756,9 @@ fn check_chain(
             }
             // T1-14: a scene without `target:` on a targeted occasion
             // answers every target — the chapter would replay at each one.
-            if decl.is_some_and(|d| d.target.takes_target()) && own(doc, "target").is_none() {
+            if decl.is_some_and(|d| d.target.takes_target())
+                && scope.typed_of(path).is_none_or(|typed| own(typed, "target").is_none())
+            {
                 out.push((
                     Some(path.clone()),
                     error(
@@ -772,7 +776,7 @@ fn check_chain(
             if own_on.is_some() || on_refused {
                 continue;
             }
-            if let Some(stall) = stall(index, chain, i, doc, is_chained, manifest, path, scope) {
+            if let Some(stall) = stall(index, chain, i, is_chained, manifest, path, scope) {
                 out.push((None, stall));
             }
         }
@@ -797,7 +801,6 @@ fn stall(
     index: usize,
     chain: &Chain,
     i: usize,
-    doc: &Document,
     is_chained: bool,
     manifest: &str,
     path: &Path,
@@ -808,10 +811,13 @@ fn stall(
     if !is_chained {
         return None;
     }
-    let when = own(doc, "when").filter(|w| w != "true")?;
+    let typed = scope.typed_of(path)?;
+    let when = own(typed, "when").filter(|w| w != "true")?;
     let scenes = crate::connectivity::scene_key_set(scope.docs);
-    let next_doc = scenes.get(next)?.iter().find_map(|(p, _)| scope.doc(p))?;
-    let after = effective(next_doc, "after")?;
+    let next_path = scenes.get(next)?.iter().find_map(|(p, _)| Some(p))?;
+    let next_doc = scope.doc(next_path)?;
+    let next_typed = scope.typed_of(next_path)?;
+    let after = effective(next_typed, "after")?;
     let formula = crate::prereq::parse_prereq(&after, span_at(0, 0)).0?;
     if !requires_visited(&formula, id) {
         return None;
@@ -840,8 +846,8 @@ fn stall(
                 let prev_id = chain.scenes[p].as_str();
                 let prev_when = scenes
                     .get(prev_id)
-                    .and_then(|homes| homes.iter().find_map(|(p, _)| scope.doc(p)))
-                    .and_then(|d| own(d, "when"));
+                    .and_then(|homes| homes.iter().find_map(|(p, _)| scope.typed_of(p)))
+                    .and_then(|typed| own(typed, "when"));
                 (prev_id, prev_when)
             });
             let (why, fix) = crate::clock_positions::chapter_window(
@@ -976,6 +982,14 @@ mod tests {
         serde_yaml::from_str(&doc.meta.raw_yaml).unwrap()
     }
 
+    fn typed(doc: &Document) -> crate::meta::TypedMeta {
+        crate::meta::parse_meta(
+            &doc.meta,
+            &lute_manifest::core::load_core_snapshot(),
+        )
+        .0
+    }
+
     #[test]
     fn listed_scenes_derive_on_after_and_descending_priority() {
         let mut first = scene("id: prologue\n");
@@ -996,7 +1010,10 @@ mod tests {
             Some("visited(\"counter\")")
         );
         assert_eq!(m.get("priority").unwrap().as_i64(), Some(10));
-        assert_eq!(derived_after(&third).as_deref(), Some("kitchen"));
+        assert_eq!(
+            derived_after(&third, &typed(&third)).as_deref(),
+            Some("kitchen")
+        );
     }
 
     #[test]
@@ -1026,7 +1043,7 @@ mod tests {
         // T3-18: an `after:` the scene wrote is its own, even when its text
         // is the one the chain would derive.
         assert!(!derived(&doc.meta, "after"));
-        assert_eq!(derived_after(&doc), None);
+        assert_eq!(derived_after(&doc, &typed(&doc)), None);
     }
 
     #[test]

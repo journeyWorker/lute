@@ -260,13 +260,13 @@ pub fn project_beats<'a>(
             .as_ref()
             .and_then(|b| Some((b, kind_cells(&b.on, b.target.as_deref())?)))
         {
-            let title = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml)
-                .ok()
-                .and_then(|m| {
-                    m.get(serde_yaml::Value::String("title".to_string()))?
-                        .as_str()
-                        .map(str::to_string)
-                });
+            let title = folded
+                .typed
+                .yaml()
+                .and_then(serde_yaml::Value::as_mapping)
+                .and_then(|m| m.get(serde_yaml::Value::String("title".into())))
+                .and_then(serde_yaml::Value::as_str)
+                .map(str::to_string);
             beats.push(ProjectBeat {
                 path,
                 kind: ProjectBeatKind::Scene,

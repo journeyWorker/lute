@@ -51,6 +51,7 @@ pub(crate) fn component_hint(src: &Path) -> String {
 /// which `check-project` reports once at that file) carries the note too.
 pub(crate) fn note_replaced_uses(
     doc: &Document,
+    typed: &crate::meta::TypedMeta,
     input: &CheckInput,
     mut diags: Vec<Diagnostic>,
 ) -> Vec<Diagnostic> {
@@ -58,8 +59,7 @@ pub(crate) fn note_replaced_uses(
     {
         return diags;
     }
-    let frontmatter = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml).ok();
-    let Some(paths) = replaced(frontmatter.as_ref(), input, "uses") else {
+    let Some(paths) = replaced(typed.yaml(), input, "uses") else {
         return diags;
     };
     let defaults =

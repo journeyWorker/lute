@@ -206,7 +206,10 @@ pub(crate) fn assemble_project_from_model(
             &input.defaults,
             &input.snapshot.occasions,
         );
-        chapter_afters.extend(lute_check::chapters::derived_after(&desugared));
+        chapter_afters.extend(lute_check::chapters::derived_after(
+            &desugared,
+            &source.folded.typed,
+        ));
         if !source.check.ok {
             failures.insert(
                 file.clone(),
