@@ -23,8 +23,9 @@ use cel_parser::ast::{operators as op, Expr, IdedExpr};
 use cel_parser::reference::Val;
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::clock::{Advance, ClockAt, ClockDecl, ClockValue};
-use lute_syntax::ast::{Document, Node, Objective};
+use lute_syntax::ast::{Node, Objective};
 
+use crate::project_doc::ProjectDoc;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
 use crate::decide::{decide, literal_truth, DecideCtx, Decided};
@@ -620,13 +621,15 @@ fn render(expr: &Expr) -> Option<String> {
 /// through its rules' guards, and `visited('<beat>')` from the earliest
 /// position that beat's `when` can hold. Anchored at the `by`.
 pub fn check_project_deadline_windows(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let params = Default::default();
     let beats = crate::beats::project_beats(docs, foldeds);
     let mut out = Vec::new();
-    for ((path, doc), folded) in docs.iter().zip(foldeds) {
+    for (item, folded) in docs.iter().zip(foldeds) {
+        let path = item.path;
+        let doc = item.doc;
         let Some(clock) = folded.env.state.clock.as_ref() else {
             continue;
         };
@@ -689,7 +692,7 @@ pub fn check_project_deadline_windows(
                 if let Some(message) = deadline_window(o, clock, &defs, &ctx, &reads) {
                     let by = o.by.as_ref().expect("a deadline window needs a `by`");
                     out.push((
-                        path.clone(),
+                        path.to_path_buf(),
                         crate::reachability::diag(
                             W_DEADLINE_BEFORE_WINDOW,
                             Severity::Warning,
@@ -1047,17 +1050,16 @@ struct Unraised {
 /// A scene a `chapters:` chain waits on is left to `W-CHAPTER-STALL`.
 /// Anchored at the beat's `on`.
 pub fn check_project_unraised(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
-    let typed: Vec<&crate::meta::TypedMeta> = foldeds.iter().map(|f| &f.typed).collect();
     let mut out = Vec::new();
     for pb in crate::beats::project_beats(docs, foldeds) {
         let Some(when) = pb.when_slot.map(|w| w.raw.trim()).filter(|w| !w.is_empty()) else {
             continue;
         };
         if pb.kind == crate::beats::ProjectBeatKind::Scene
-            && crate::chapters::waited_on(docs, &typed, &pb.id)
+            && crate::chapters::waited_on(docs, &pb.id)
         {
             continue;
         }
@@ -1074,7 +1076,7 @@ pub fn check_project_unraised(
             ("of it", ", so it never plays")
         };
         out.push((
-            pb.path.clone(),
+            pb.path.to_path_buf(),
             crate::reachability::diag(
                 W_BEAT_UNRAISED,
                 Severity::Warning,
@@ -1184,12 +1186,14 @@ pub struct ObjectiveSlotResult {
 /// Build the shared per-objective slot result used by both legacy warnings and
 /// project constraint projections. No path search is performed.
 pub fn project_objective_slot_results(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> Vec<ObjectiveSlotResult> {
     let beats = crate::beats::project_beats(docs, foldeds);
     let mut out = Vec::new();
-    for ((path, doc), folded) in docs.iter().zip(foldeds) {
+    for (item, folded) in docs.iter().zip(foldeds) {
+        let path = item.path;
+        let doc = item.doc;
         let Some(clock) = folded.env.state.clock.as_ref() else { continue };
         for q in &doc.quests {
             for node in &q.body {
@@ -1295,10 +1299,12 @@ fn collect_set_paths(nodes: &[Node], out: &mut BTreeSet<String>) {
 
 fn beat_set_paths(
     pb: &crate::beats::ProjectBeat<'_>,
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
 ) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         if path != pb.path {
             continue;
         }
@@ -1361,7 +1367,7 @@ fn objective_completion_beats<'a>(
     o: &Objective,
     folded: &'a FoldedEnv,
     beats: &'a [crate::beats::ProjectBeat<'a>],
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
 ) -> Vec<&'a crate::beats::ProjectBeat<'a>> {
     let defs = DefTable {
         bodies: &folded.def_bodies,
@@ -1384,7 +1390,7 @@ fn objective_completion_beats<'a>(
 /// clock movement. A `once: run`/`user`/`week`/`season:*` beat is naturally
 /// spent for the current cascade; `once: day` is also safe for a slot move.
 pub fn check_project_advance_cascades(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
@@ -1438,7 +1444,7 @@ pub fn check_project_advance_cascades(
             crate::beats::AdvanceSpec::Slots(n) => format!("{n} slots"),
         };
         out.push((
-            pb.path.clone(),
+            pb.path.to_path_buf(),
             crate::reachability::diag(
                 E_ADVANCE_CASCADE,
                 Severity::Error,
@@ -1466,13 +1472,14 @@ fn run_tier(q: &lute_syntax::ast::Quest) -> bool {
 
 /// Run W-OBJECTIVE-STRANDED and W-SLOT-CONTENTION over one project root.
 pub fn check_project_objective_clock_windows(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let beats = crate::beats::project_beats(docs, foldeds);
     let mut out = Vec::new();
     let mut parents = std::collections::BTreeMap::<String, String>::new();
-    for (_, doc) in docs {
+    for item in docs {
+        let doc = item.doc;
         for q in &doc.quests {
             for node in &q.body {
                 if let Node::Objective(o) = node {
@@ -1495,7 +1502,9 @@ pub fn check_project_objective_clock_windows(
         root
     };
     let mut singletons: Vec<(PathBuf, String, bool, Span, ClockAt)> = Vec::new();
-    for ((path, doc), folded) in docs.iter().zip(foldeds) {
+    for (item, folded) in docs.iter().zip(foldeds) {
+        let path = item.path;
+        let doc = item.doc;
         let Some(clock) = folded.env.state.clock.as_ref() else {
             continue;
         };
@@ -1552,12 +1561,12 @@ pub fn check_project_objective_clock_windows(
                     {
                         diagnostic.evidence = Some(evidence);
                     }
-                    out.push((path.clone(), diagnostic));
+                    out.push((path.to_path_buf(), diagnostic));
                 }
                 if positions.len() == 1
                     && windows.iter().all(|(pb, w)| pb.advances.is_some() && w.len() == 1)
                 {
-                    singletons.push((path.clone(), q.id.clone(), reset, o.span, first));
+                    singletons.push((path.to_path_buf(), q.id.clone(), reset, o.span, first));
                 }
             }
         }

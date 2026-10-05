@@ -153,13 +153,18 @@ fn print_path_set_with_writers(out: &mut String, paths: &BTreeSet<String>, write
 /// (`live_assert_relations`) the `check-project` fact envelope seeds from;
 /// this renders relation-level facts rather than deciding anything (#15,
 /// T4.7).
-fn print_facts_section(out: &mut String, scenario: &RootScenario, root: &Path) {
+fn print_facts_section(
+    out: &mut String,
+    scenario: &RootScenario,
+    docs: &[lute_check::ProjectDoc<'_>],
+    root: &Path,
+) {
     let vocab = &scenario.rel_vocab;
     if vocab.relations.is_empty() {
         return;
     }
     let live = lute_check::connectivity::live_assert_relations(
-        &scenario.docs,
+        docs,
         &scenario.reach,
         &scenario.ambiguous_quests,
         &scenario.unreachable_quests,
@@ -167,7 +172,7 @@ fn print_facts_section(out: &mut String, scenario: &RootScenario, root: &Path) {
     );
     let producible = lute_check::producible::producible(vocab, &live);
     let per_doc = lute_check::connectivity::assert_relations_per_doc(
-        &scenario.docs,
+        docs,
         &vocab.effect_directives,
     );
 
@@ -231,6 +236,7 @@ fn print_cycle_envelope_note(out: &mut String) {
 fn print_scene_envelope(
     out: &mut String,
     scenario: &RootScenario,
+    docs: &[lute_check::ProjectDoc<'_>],
     node_id: &lute_check::connectivity::NodeId,
     key: &str,
     root: &Path,
@@ -316,7 +322,7 @@ fn print_scene_envelope(
     if !any {
         outln!(out, "    (none)");
     }
-    print_facts_section(out, scenario, root);
+    print_facts_section(out, scenario, docs, root);
 }
 
 /// Print a quest node's envelope (T12 [`envelope::quest_envelope`]) — full
@@ -330,6 +336,7 @@ fn print_scene_envelope(
 fn print_quest_envelope(
     out: &mut String,
     scenario: &RootScenario,
+    docs: &[lute_check::ProjectDoc<'_>],
     id: &str,
     quest: &lute_syntax::ast::Quest,
     root: &Path,
@@ -390,7 +397,7 @@ fn print_quest_envelope(
              with the full project-resolved envelope."
         );
     }
-    print_facts_section(out, scenario, root);
+    print_facts_section(out, scenario, docs, root);
 }
 
 pub(crate) fn run_scenario_envelope(
@@ -405,7 +412,9 @@ pub(crate) fn run_scenario_envelope(
         Ok(v) => v,
         Err(code) => return code,
     };
-    outln!(out, "project root: {}", root.display());
+    let docs = lute_model::project_docs(
+        by_root.get(root).expect("resolved scenario root must have documents"),
+    );
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
         let node_id = node_ref_to_id(&node_ref);
         outln!(out, "envelope for {node_id}: unavailable -- {note}");
@@ -413,19 +422,18 @@ pub(crate) fn run_scenario_envelope(
     }
     match &node_ref {
         NodeRef::Scene(key) | NodeRef::Beat(key) => {
-            print_scene_envelope(out, &scenario, &node_ref_to_id(&node_ref), key, root)
+            print_scene_envelope(out, &scenario, &docs, &node_ref_to_id(&node_ref), key, root)
         }
         NodeRef::Quest(id) => {
-            let Some(quest) = scenario
-                .docs
+            let Some(quest) = docs
                 .iter()
-                .flat_map(|(_, d)| d.quests.iter())
+                .flat_map(|d| d.doc.quests.iter())
                 .find(|q| &q.id == id)
             else {
                 eprintln!("lute: internal error: quest `{id}` resolved but no declaration found");
                 return ExitCode::from(2);
             };
-            print_quest_envelope(out, &scenario, id, quest, root);
+            print_quest_envelope(out, &scenario, &docs, id, quest, root);
         }
     }
     ExitCode::SUCCESS

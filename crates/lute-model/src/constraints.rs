@@ -55,7 +55,7 @@ pub fn evaluate_constraints_with_foldeds(
         .iter()
         .map(|c| {
             let (verdict, evidence, scope, witnesses, counterexamples, related) = match c.kind {
-                ConstraintKind::Reachable => reachable(c, docs, scenario),
+                ConstraintKind::Reachable => reachable(c, docs, foldeds, scenario),
                 ConstraintKind::Completable => completable(c, docs, scenario),
                 ConstraintKind::SpeaksOnlyWhen => speaks(c, docs, foldeds),
                 ConstraintKind::NoSingleSlotProgress => slot_verdict(c, slots),
@@ -154,6 +154,7 @@ fn declaration_error(span: Span, message: &str) -> Diagnostic {
 fn reachable(
     c: &ConstraintDecl,
     docs: &[(PathBuf, Document)],
+    foldeds: &[&lute_check::FoldedEnv],
     scenario: &crate::scenario::RootScenario,
 ) -> (
     ConstraintVerdict,
@@ -179,7 +180,8 @@ fn reachable(
     };
     let Some((path, span)) = docs
         .iter()
-        .find_map(|(path, doc)| find_node(node, path, doc))
+        .enumerate()
+        .find_map(|(i, (path, doc))| find_node(node, path, doc, foldeds.get(i).map(|f| &f.typed)))
     else {
         return unknown();
     };
@@ -617,12 +619,18 @@ fn collect_lines(
     }
 }
 
-fn find_node(node: &str, path: &Path, doc: &Document) -> Option<(PathBuf, Span)> {
+fn find_node(
+    node: &str,
+    path: &Path,
+    doc: &Document,
+    meta: Option<&lute_check::meta::TypedMeta>,
+) -> Option<(PathBuf, Span)> {
     let (kind, id) = node.split_once(':')?;
     match kind {
-        "scene" => lute_check::connectivity::scene_key(doc)
-            .is_some_and(|key| key == id)
-            .then_some((path.to_path_buf(), doc.meta.span)),
+        "scene" => meta
+            .and_then(lute_check::connectivity::scene_key)
+            .filter(|key| key == id)
+            .map(|_| (path.to_path_buf(), doc.meta.span)),
         "quest" => doc
             .quests
             .iter()

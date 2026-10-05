@@ -147,9 +147,10 @@ fn run_json(
                 .iter()
                 .map(|(root, group_full)| {
                     let scenario = assemble_root_scenario(group_full, &file_results);
+                    let docs = lute_model::project_docs(group_full);
                     let facts = facts
-                        .then(|| crate::FactGraph::of(group_full, &scenario.docs, &scenario.graph));
-                    root_graph_json(root, &scenario, facts.as_ref())
+                        .then(|| crate::FactGraph::of(group_full, &docs, &scenario.graph));
+                    root_graph_json(root, &scenario, &docs, facts.as_ref())
                 })
                 .collect();
             let mut top = Map::new();
@@ -230,6 +231,7 @@ fn edge_kinds_json(graph: &ConnGraph, from: &NodeId, to: &NodeId) -> Value {
 fn root_graph_json(
     root: &Path,
     scenario: &RootScenario,
+    docs: &[lute_check::ProjectDoc<'_>],
     facts: Option<&crate::FactGraph>,
 ) -> Value {
     let nodes: Vec<Value> = scenario
@@ -310,7 +312,7 @@ fn root_graph_json(
     }
     let unanchored = unanchored_quests(&scenario.quest_ids, &scenario.graph);
     let when_visited =
-        lute_check::connectivity::when_visited_unanchored(&scenario.docs, &scenario.graph);
+        lute_check::connectivity::when_visited_unanchored(docs, &scenario.graph);
     if !unanchored.is_empty() || !when_visited.is_empty() {
         obj.insert(
             "unanchored".to_string(),
@@ -339,9 +341,8 @@ fn root_graph_json(
             ),
         );
     }
-    // dsl 0.23.0 §1: references not drawn because a quest has no `after=`.
     let omitted = lute_check::connectivity::omitted_refs(
-        &scenario.docs,
+        docs,
         &scenario.graph,
         &scenario.quest_ids,
     );
@@ -476,6 +477,9 @@ fn envelope_json(
         Ok(v) => v,
         Err(code) => return code,
     };
+    let docs = lute_model::project_docs(
+        by_root.get(root).expect("resolved scenario root must have documents"),
+    );
     let node_id = node_ref_to_id(&node_ref);
     let mut obj = Map::new();
     obj.insert(
@@ -522,10 +526,9 @@ fn envelope_json(
             (env, None, scenario.scene_must.get(key))
         }
         NodeRef::Quest(id) => {
-            let Some(quest) = scenario
-                .docs
+            let Some(quest) = docs
                 .iter()
-                .flat_map(|(_, d)| d.quests.iter())
+                .flat_map(|d| d.doc.quests.iter())
                 .find(|q| &q.id == id)
             else {
                 eprintln!("lute: internal error: quest `{id}` resolved but no declaration found");
@@ -627,8 +630,9 @@ fn run_dot(
     let mut out = String::new();
     for (root, group_full) in &by_root {
         let scenario = assemble_root_scenario(group_full, &file_results);
+        let docs = lute_model::project_docs(group_full);
         let facts =
-            facts.then(|| crate::FactGraph::of(group_full, &scenario.docs, &scenario.graph));
+            facts.then(|| crate::FactGraph::of(group_full, &docs, &scenario.graph));
         out.push_str(&root_dot(root, &scenario, facts.as_ref()));
     }
     write_or_io_error(&out)

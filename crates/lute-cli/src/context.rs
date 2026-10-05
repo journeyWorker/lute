@@ -391,12 +391,12 @@ fn engine_paths() -> Value {
 ///
 /// [`RESERVED_PATHS`]: lute_check::cel_paths::RESERVED_PATHS
 fn reserved_quest_paths(
-    docs: &[(PathBuf, lute_syntax::ast::Document)],
+    docs: &[(PathBuf, lute_syntax::ast::Document, lute_check::TypedMeta)],
     referenced: &std::collections::BTreeSet<String>,
 ) -> Value {
     use lute_check::cel_paths::{reserved_path, RESERVED_PATHS};
     let mut paths = referenced.clone();
-    for q in docs.iter().flat_map(|(_, d)| &d.quests) {
+    for q in docs.iter().flat_map(|(_, d, _)| &d.quests) {
         if q.id.is_empty() {
             continue;
         }
@@ -437,16 +437,19 @@ fn reserved_quest_paths(
 
 /// The documents of `project` (the same `.lute` walk `check-project` does),
 /// else `file` alone, parsed.
-fn project_docs(file: &Path, project: Option<&Path>) -> Vec<(PathBuf, lute_syntax::ast::Document)> {
+fn project_docs(file: &Path, project: Option<&Path>) -> Vec<(PathBuf, lute_syntax::ast::Document, lute_check::TypedMeta)> {
     let files: Vec<PathBuf> = match project {
         Some(dir) => crate::find_lute_files(dir).unwrap_or_default(),
         None => vec![file.to_path_buf()],
     };
+    let snapshot = lute_manifest::core::load_core_snapshot();
     files
         .into_iter()
         .filter_map(|path| {
             let text = std::fs::read_to_string(&path).ok()?;
-            Some((path, lute_syntax::parse(&text).0))
+            let doc = lute_syntax::parse(&text).0;
+            let (meta, _) = lute_check::parse_meta(&doc.meta, &snapshot);
+            Some((path, doc, meta))
         })
         .collect()
 }
@@ -459,21 +462,25 @@ fn project_docs(file: &Path, project: Option<&Path>) -> Vec<(PathBuf, lute_synta
 /// beats) — under `project` when given (the same `.lute` walk
 /// `check-project` does), else in `file` alone. Parse-only: ids are
 /// syntactic, and a document that does not check still declares them.
-fn project_ids(docs: &[(PathBuf, lute_syntax::ast::Document)]) -> Value {
-    let scenes: Vec<String> = lute_check::connectivity::scene_key_set(docs)
+fn project_ids(docs: &[(PathBuf, lute_syntax::ast::Document, lute_check::TypedMeta)]) -> Value {
+    let views: Vec<lute_check::ProjectDoc<'_>> = docs
+        .iter()
+        .map(|(p, d, m)| lute_check::ProjectDoc::new(p, d, m))
+        .collect();
+    let scenes: Vec<String> = lute_check::connectivity::scene_key_set(&views)
         .into_keys()
         .collect();
-    let quests: Vec<String> = lute_check::connectivity::quest_id_set(docs)
+    let quests: Vec<String> = lute_check::connectivity::quest_id_set(&views)
         .into_iter()
         .collect();
     let entries: std::collections::BTreeSet<String> = docs
         .iter()
-        .flat_map(|(_, doc)| doc.entries.iter())
+        .flat_map(|(_, doc, _)| doc.entries.iter())
         .filter(|e| !e.id.is_empty())
         .map(|e| e.id.clone())
         .collect();
     let mut ids = json!({ "scenes": scenes, "quests": quests, "entries": entries });
-    let beats: Vec<String> = lute_check::connectivity::bundle_beat_key_set(docs)
+    let beats: Vec<String> = lute_check::connectivity::bundle_beat_key_set(&views)
         .into_keys()
         .collect();
     if !beats.is_empty() {

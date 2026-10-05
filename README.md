@@ -221,6 +221,24 @@ harness live under [`editors/`](editors) (see [`editors/README.md`](editors/READ
 - **Neovim** — [`editors/nvim/`](editors/nvim) (filetype + LSP autostart + tree-sitter).
 - **Oh My Pi** — [`.omp/lsp.json`](.omp/lsp.json) auto-detects `lute-lsp` for `.lute`.
 
+## CI gates
+
+Pull requests that touch the Rust workspace run a public-API gate alongside the
+other test jobs. It builds rustdoc with `--no-deps` for every workspace library
+crate at the merge base and at the pull-request revision, then compares each
+crate's `all.html` item list. Removed public items fail the gate unless the
+pull request has the `api-change` label.
+
+To run the same check locally (the default base is the merge base with
+`origin/main`):
+
+```sh
+python3 scripts/check-public-api.py
+```
+
+Pass `--base <git-ref>` to compare against a specific release, or
+`--allow-removals` when reviewing an intentional breaking API change.
+
 ## Status
 
 Lute's status splits along three independent axes, held aligned at one visible number per

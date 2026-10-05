@@ -366,9 +366,13 @@ fn a_spent_by_holding_at_the_declared_defaults_is_reported() {
 fn ties(input: &CheckInput) -> Vec<String> {
     let (doc, _) = lute_syntax::parse(&input.text);
     let folded = lute_check::fold_env(&doc, input).0;
-    let docs = vec![(std::path::PathBuf::from("ward.lute"), doc)];
-    let producers = lute_check::cast::fact_producers(&docs, &Default::default());
-    lute_check::check_project_beats(&docs, &[&folded], &producers, None, &Default::default())
+    let docs = lute_check::ProjectDocs::parse(
+        vec![(std::path::PathBuf::from("ward.lute"), doc)],
+        &input.snapshot,
+    );
+    let views = docs.views();
+    let producers = lute_check::cast::fact_producers(&views, &Default::default());
+    lute_check::check_project_beats(&views, &[&folded], &producers, None, &Default::default())
         .into_iter()
         .filter(|(_, d)| d.code == "W-BEAT-PRIORITY-TIE")
         .map(|(_, d)| d.message)

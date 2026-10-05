@@ -17,7 +17,7 @@ pub enum ProjectBeatKind {
 /// listed.
 #[derive(Clone, Debug)]
 pub struct ProjectBeat<'a> {
-    pub path: &'a PathBuf,
+    pub path: &'a Path,
     pub kind: ProjectBeatKind,
     /// A scene's canonical key (`this scene` without one), an entry's id, a
     /// bundle beat's canonical `<document id>.<beat id>`.
@@ -212,11 +212,13 @@ pub fn in_selection_order(beats: Vec<ProjectBeat<'_>>) -> Vec<ProjectBeat<'_>> {
 /// document (a lore document's entry beats and bundle beats interleave by
 /// source position, as their compiled records do).
 pub fn project_beats<'a>(
-    docs: &'a [(PathBuf, Document)],
+    docs: &'a [crate::ProjectDoc<'a>],
     foldeds: &[&'a FoldedEnv],
 ) -> Vec<ProjectBeat<'a>> {
     let mut beats = Vec::new();
-    for ((path, doc), &folded) in docs.iter().zip(foldeds) {
+    for (item, &folded) in docs.iter().zip(foldeds) {
+        let path = item.path;
+        let doc = item.doc;
         let defs = DefTable {
             bodies: &folded.def_bodies,
             params: &folded.env.def_params,

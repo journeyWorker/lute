@@ -332,10 +332,15 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
         docs.push((PathBuf::from(format!("{i}.lute")), doc));
     }
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
+    let views: Vec<_> = docs
+        .iter()
+        .zip(&foldeds)
+        .map(|((path, doc), folded)| lute_check::ProjectDoc::new(path, doc, &folded.typed))
+        .collect();
     check_project_beats(
-        &docs,
+        &views,
         &refs,
-        &lute_check::cast::fact_producers(&docs, &Default::default()),
+        &lute_check::cast::fact_producers(&views, &Default::default()),
         None,
         &Default::default(),
     )

@@ -32,7 +32,7 @@ pub(super) fn check_share_once(beats: &[ProjectBeat<'_>]) -> Vec<(PathBuf, Diagn
                 continue;
             }
             out.push((
-                b.path.clone(),
+                b.path.to_path_buf(),
                 beat_diag(
                     E_BEAT_ATTR,
                     Severity::Error,
@@ -58,7 +58,7 @@ pub(super) fn check_share_once(beats: &[ProjectBeat<'_>]) -> Vec<(PathBuf, Diagn
 /// One beat of the project, in selection-tiebreak order, with what the
 /// selection passes judge about it.
 pub(super) struct Beat<'a> {
-    pub(super) path: &'a PathBuf,
+    pub(super) path: &'a Path,
     /// `scene `k`` / `entry `id`` — the beat as messages name it.
     pub(super) name: String,
     pub(super) on: &'a str,
@@ -143,7 +143,7 @@ pub type ReportedErrors = BTreeMap<PathBuf, Vec<std::ops::Range<usize>>>;
 /// or its document's frontmatter.
 pub(super) fn reported_in(
     pb: &ProjectBeat<'_>,
-    docs: &[(PathBuf, Document)],
+    docs: &[crate::ProjectDoc<'_>],
     errors: &ReportedErrors,
 ) -> bool {
     let Some(spans) = errors.get(pb.path) else {
@@ -151,8 +151,8 @@ pub(super) fn reported_in(
     };
     let meta = docs
         .iter()
-        .find(|(p, _)| p == pb.path)
-        .map(|(_, d)| d.meta.span.byte_start..d.meta.span.byte_end);
+        .find(|item| item.path == pb.path)
+        .map(|item| item.doc.meta.span.byte_start..item.doc.meta.span.byte_end);
     spans.iter().any(|s| {
         pb.extent.contains(&s.start) || meta.as_ref().is_some_and(|m| m.contains(&s.start))
     })
@@ -200,7 +200,7 @@ pub(super) fn reported_in(
 /// ranking of a beat the checker rejected would be judged on text the author
 /// is about to change.
 pub fn check_project_beats(
-    docs: &[(PathBuf, Document)],
+    docs: &[crate::ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
     producers: &crate::cast::FactProducers,
     env: Option<&FactEnv>,
@@ -211,7 +211,7 @@ pub fn check_project_beats(
     // since a beat may read a quest declared anywhere.
     let quest_tiers: BTreeMap<&str, bool> = docs
         .iter()
-        .flat_map(|(_, doc)| &doc.quests)
+        .flat_map(|item| &item.doc.quests)
         .filter(|q| !q.id.is_empty())
         .map(|q| {
             (
@@ -318,7 +318,7 @@ pub fn check_project_beats(
                     crate::gates::provably_false(
                         c,
                         folded,
-                        env.map(|e| (e, pb.path.as_path(), span)),
+                        env.map(|e| (e, pb.path, span)),
                     )
                 },
             );
@@ -377,7 +377,7 @@ pub fn check_project_beats(
     let mut out = share_diags;
     for b in beats.iter().filter(|b| b.run_once_user_when) {
         out.push((
-            b.path.clone(),
+            b.path.to_path_buf(),
             beat_diag(
                 W_BEAT_ONCE_RUN_USER,
                 Severity::Warning,
@@ -417,7 +417,7 @@ pub fn check_project_beats(
                 "`once: false`"
             };
             out.push((
-                b.path.clone(),
+                b.path.to_path_buf(),
                 beat_diag(
                     W_BEAT_SHADOWED,
                     Severity::Warning,
@@ -446,7 +446,7 @@ pub fn check_project_beats(
                     .map(|(t, a)| format!("`{t}`: {}", a.name))
                     .collect();
                 out.push((
-                    b.path.clone(),
+                    b.path.to_path_buf(),
                     beat_diag(
                         W_BEAT_SHADOWED,
                         Severity::Warning,

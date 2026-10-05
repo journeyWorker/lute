@@ -7,7 +7,8 @@ use std::path::PathBuf;
 
 use lute_check::connectivity::{quest_id_set, resolve_nodes, scene_key_set};
 use lute_check::{
-    check, check_project_beats, fold_env, CheckInput, CheckResult, Mode, SchemaImports,
+    check, check_project_beats, fold_env, CheckInput, CheckResult, Mode, ProjectDocs,
+    SchemaImports,
 };
 use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
@@ -176,11 +177,14 @@ fn beat_when_follows_the_scene_beat_rules() {
     assert!(!with_code(&undeclared, "E-UNDECLARED").is_empty());
 }
 
-fn project(files: &[(&str, &str)]) -> Vec<(PathBuf, lute_syntax::ast::Document)> {
-    files
-        .iter()
-        .map(|(p, t)| (PathBuf::from(p), lute_syntax::parse(t).0))
-        .collect()
+fn project(files: &[(&str, &str)]) -> ProjectDocs {
+    ProjectDocs::parse(
+        files
+            .iter()
+            .map(|(p, t)| (PathBuf::from(p), lute_syntax::parse(t).0))
+            .collect(),
+        &lute_manifest::core::load_core_snapshot(),
+    )
 }
 
 #[test]
@@ -189,12 +193,13 @@ fn an_always_eligible_repeatable_beat_shadows_a_later_one() {
         "<beat id=\"first\" on=\"talk\" once=\"false\">\n@n: a\n</beat>\n\
          <beat id=\"second\" on=\"talk\">\n@n: b\n</beat>\n",
     );
-    let docs = project(&[("interviews.lute", &text)]);
-    let folded = fold_env(&docs[0].1, &input(&text)).0;
+    let owned = project(&[("interviews.lute", &text)]);
+    let views = owned.views();
+    let folded = fold_env(&owned.documents()[0].1, &input(&text)).0;
     let out = check_project_beats(
-        &docs,
+        &views,
         &[&folded],
-        &lute_check::cast::fact_producers(&docs, &Default::default()),
+        &lute_check::cast::fact_producers(&views, &Default::default()),
         None,
         &Default::default(),
     );
@@ -224,7 +229,8 @@ fn visited_resolves_a_bundle_beat_in_a_condition_and_in_after() {
         ("l.lute", after),
         ("t.lute", typo),
     ]);
-    let out = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    let views = docs.views();
+    let out = resolve_nodes(&views, &scene_key_set(&views), &quest_id_set(&views));
     let at = |file: &str| -> Vec<&Diagnostic> {
         out.iter()
             .filter(|(p, _)| p == &PathBuf::from(file))

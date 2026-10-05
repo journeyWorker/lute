@@ -38,7 +38,7 @@ pub use reconcile::{
     compute_conn_fixpoint, reconcile_collected, relocate_imported_diags,
     rollup_component_body_diags,
 };
-pub use scenario::{assemble_root_scenario, node_cycle_degraded, RootScenario};
+pub use scenario::{assemble_root_scenario, node_cycle_degraded, project_docs, RootScenario};
 pub use gate::{
     gate_for_doc, project_gate_result, reconciled_project_results, ReconciledProject,
 };

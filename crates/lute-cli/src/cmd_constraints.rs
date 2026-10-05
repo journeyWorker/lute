@@ -54,13 +54,11 @@ pub(crate) fn run_constraints(
             .iter()
             .map(|d| (d.path.clone(), d.doc.clone()))
             .collect();
+        let project_docs = model.project_docs();
+        let folded_refs: Vec<_> = model.documents().iter().map(|d| &d.folded).collect();
         let slots = lute_check::clock_positions::project_objective_slot_results(
-            &docs,
-            &model
-                .documents()
-                .iter()
-                .map(|d| &d.folded)
-                .collect::<Vec<_>>(),
+            &project_docs,
+            &folded_refs,
         );
         let mut results = lute_model::constraints::evaluate_constraints_with_foldeds(
             model.root(),

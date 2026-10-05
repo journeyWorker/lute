@@ -12,8 +12,8 @@ use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use serde_json::{json, Value as Json};
 
 use crate::datalog::Fact;
+use crate::exec::store::{Store, StoreSchema};
 use crate::exec::BridgeReads;
-
 /// Everything the playthrough reads from the compiled project.
 pub struct ExecProject {
     /// project-relative path -> compiled artifact JSON.
@@ -56,6 +56,8 @@ pub struct ExecProject {
     /// A command-less artifact carrying the union rules + state table: the
     /// evaluator runner every `when` is decided by.
     pub eval_json: Json,
+    /// Schemas for both project derive modes; each is decoded once at assembly.
+    pub(crate) store_schemas: [std::sync::Arc<StoreSchema>; 2],
     /// Capability-declared world events, unioned across the documents — what
     /// an `event:` step may fire (dsl 0.22.0 §9).
     pub world_events: BTreeSet<String>,
@@ -395,12 +397,17 @@ impl ExecProject {
             "commands": [],
             "rules": rules.clone(),
             "entities": index.entities.clone(),
+            "relations": index.relations.clone(),
             "state": state_table.values().cloned().collect::<Vec<_>>(),
         });
         // dsl 0.24.0 §1: every `when` reads `clock.*` derived from the live clock.
         if let Some(clock) = &index.clock {
             eval_json["clock"] = serde_json::to_value(clock).unwrap_or(Json::Null);
         }
+        let store_schemas = [
+            Store::schema_for_project(&eval_json, false, &rules, &state_table),
+            Store::schema_for_project(&eval_json, true, &rules, &state_table),
+        ];
 
         let bridge_reads = std::sync::Arc::new(BridgeReads {
             result_types: bridge_types.result_types,
@@ -429,6 +436,7 @@ impl ExecProject {
             quest_objectives,
             objective_occasions,
             eval_json,
+            store_schemas,
             world_events,
             scene_ids,
             entry_ids,

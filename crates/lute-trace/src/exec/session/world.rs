@@ -137,6 +137,21 @@ impl World {
         );
         self.observe_machine(machine)
     }
+    /// Project evaluator using the schema decoded once by `ExecProject`.
+    pub(crate) fn evaluator_with_schema(
+        &self,
+        art: &Json,
+        schema: std::sync::Arc<crate::exec::store::StoreSchema>,
+    ) -> Machine<PlayDriver> {
+        let machine = Machine::resume_with_project_schema(
+            art,
+            Seed::from(&self.mock()),
+            self.carry(),
+            PlayDriver::default(),
+            schema,
+        );
+        self.observe_machine(machine)
+    }
 
     /// Attach this world's observer to a machine, if one was configured.
     pub fn observe_machine(&self, machine: Machine<PlayDriver>) -> Machine<PlayDriver> {
@@ -558,7 +573,10 @@ pub fn exclusive_violations(p: &ExecProject, w: &World) -> Vec<String> {
     if pairs.is_empty() {
         return Vec::new();
     }
-    let evaluator = w.evaluator(&p.eval_json);
+    let evaluator = w.evaluator_with_schema(
+        &p.eval_json,
+        p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+    );
     let facts = evaluator.all_facts();
     let mut out = Vec::new();
     for (a, b) in pairs {
@@ -614,11 +632,14 @@ pub struct ClockView {
 /// `done` and `failed` `false`.
 pub fn world_view(p: &ExecProject, w: &World, with_facts: bool) -> WorldView {
     let facts = if with_facts {
-        w.evaluator(&p.eval_json)
-            .all_facts()
-            .iter()
-            .map(render_fact)
-            .collect()
+        w.evaluator_with_schema(
+            &p.eval_json,
+            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+        )
+        .all_facts()
+        .iter()
+        .map(render_fact)
+        .collect()
     } else {
         BTreeSet::new()
     };

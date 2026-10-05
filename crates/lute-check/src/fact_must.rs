@@ -65,19 +65,19 @@
 
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use cel_parser::ast::{operators as op, Expr};
 use lute_core_span::Span;
 use lute_syntax::ast::{
-    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Document, Hub, Match, Node, Retract,
+    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Retract,
 };
 use lute_syntax::datalog::{FactPattern, FactTerm};
-
+use crate::ProjectDoc;
 use crate::cel_expand::{expand_cel, DefTable};
-use crate::check::FoldedEnv;
 use crate::connectivity::{ConnGraph, NodeId, PrereqState};
+use crate::check::FoldedEnv;
 use crate::fact_env::{
     GroundFact, MaySet, MustClosure, MustFact, MustMap, Provenance, QueryPattern, RootVocab,
 };
@@ -174,7 +174,7 @@ pub struct FactMust {
 /// vocabulary and may set (negated rule atoms are decided against `may`, so
 /// any sound — i.e. not smaller than the true — may set keeps this sound).
 pub fn compute_must(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
     graph: &ConnGraph,
     vocab: &RootVocab,
@@ -194,8 +194,8 @@ pub fn compute_must(
     // First index per path — `position`'s answer, without a scan per node.
     let mut doc_ix: std::collections::HashMap<&std::path::Path, usize> =
         std::collections::HashMap::with_capacity(docs.len());
-    for (idx, (p, _)) in docs.iter().enumerate() {
-        doc_ix.entry(p.as_path()).or_insert(idx);
+    for (idx, item) in docs.iter().enumerate() {
+        doc_ix.entry(item.path).or_insert(idx);
     }
     for id in &graph.topo_order {
         let NodeId::Scene(key) = id else {
@@ -236,12 +236,12 @@ pub fn compute_must(
     // Scenes on or past a cycle (absent from `topo_order`), duplicates and
     // unidentifiable scenes, bundle beats, quest and lore documents: seeds
     // only.
-    for (idx, doc) in docs.iter().enumerate() {
+    for (idx, item) in docs.iter().enumerate() {
         if !walked[idx] {
             walk_doc(
                 &root,
                 &closure,
-                doc,
+                item,
                 foldeds[idx],
                 root.start(),
                 &mut out.slots,
@@ -360,13 +360,13 @@ struct Root<'a> {
 /// facts both guarantee.
 fn entry_outcomes(
     root: &Root<'_>,
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> BTreeMap<String, FactMap> {
     let mut out: BTreeMap<String, FactMap> = BTreeMap::new();
-    for ((path, doc), folded) in docs.iter().zip(foldeds) {
-        for entry in doc.entries.iter().filter(|e| !e.id.is_empty()) {
-            let mut w = Walk::new(root, path, folded);
+    for (item, folded) in docs.iter().zip(foldeds) {
+        for entry in item.doc.entries.iter().filter(|e| !e.id.is_empty()) {
+            let mut w = Walk::new(root, item.path, folded);
             let mut flow = Some(root.start());
             if let Some(when) = &entry.when {
                 w.assume(when, &mut flow);
@@ -392,7 +392,7 @@ fn entry_outcomes(
 /// root — monotone and crossing, the set every must walk starts from.
 /// [`MaySet::build`] reads a negated rule atom over one of them as false.
 /// Stability reads the vocabulary and the root's writes, never a may set.
-pub fn stable_seeds(docs: &[(PathBuf, Document)], vocab: &RootVocab) -> BTreeSet<GroundFact> {
+pub fn stable_seeds(docs: &[ProjectDoc<'_>], vocab: &RootVocab) -> BTreeSet<GroundFact> {
     Root::new(docs, vocab, &MaySet::default())
         .seeds
         .keys()
@@ -407,7 +407,7 @@ pub fn stable_seeds(docs: &[(PathBuf, Document)], vocab: &RootVocab) -> BTreeSet
 /// writes with an unbound `@param` (`hasBadge(@badge)`): a specific atom
 /// (`hasBadge(stone)`) no `::use` produces yet has only that producer, so
 /// it counts as unproduced for its arguments.
-pub fn unproduced_relations(docs: &[(PathBuf, Document)], vocab: &RootVocab) -> BTreeSet<String> {
+pub fn unproduced_relations(docs: &[ProjectDoc<'_>], vocab: &RootVocab) -> BTreeSet<String> {
     let may = MaySet::default();
     let root = Root::new(docs, vocab, &may);
     let mut open = vocab.unproduced(&root.asserted);
@@ -420,7 +420,7 @@ pub fn unproduced_relations(docs: &[(PathBuf, Document)], vocab: &RootVocab) -> 
 }
 
 impl<'a> Root<'a> {
-    fn new(docs: &[(PathBuf, Document)], vocab: &'a RootVocab, may: &'a MaySet) -> Self {
+    fn new(docs: &[ProjectDoc<'_>], vocab: &'a RootVocab, may: &'a MaySet) -> Self {
         let mut retracts = Vec::new();
         let mut produced: BTreeMap<String, BTreeSet<Vec<String>>> = BTreeMap::new();
         let mut asserted = BTreeSet::new();
@@ -431,7 +431,8 @@ impl<'a> Root<'a> {
                 .or_default()
                 .insert(seed.args.clone());
         }
-        for (_, doc) in docs {
+        for item in docs {
+            let doc = item.doc;
             let bodies = doc
                 .shots
                 .iter()
@@ -457,7 +458,6 @@ impl<'a> Root<'a> {
                                 retracts.push(q);
                             }
                         }
-                        // dsl 0.27.0 §4: a call's declared fact effects.
                         Node::Directive(d) => {
                             let Some(facts) =
                                 crate::directive_facts::lookup(vocab.effect_directives(), d)
@@ -644,14 +644,16 @@ fn scan<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
 fn walk_doc(
     root: &Root<'_>,
     closure: &Arc<MustClosure>,
-    (path, doc): &(PathBuf, Document),
+    item: &ProjectDoc<'_>,
     folded: &FoldedEnv,
     entry: Facts,
     slots: &mut MustMap,
 ) -> Flow {
-    let mut w = Walk::new(root, path, folded);
+    let path = item.path;
+    let doc = item.doc;
     let mut flow = Some(entry);
-    if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
+    let mut w = Walk::new(root, path, folded);
+    if let Some(when) = item.meta.beat.as_ref().and_then(|b| b.when.as_ref()) {
         w.guard(when, &mut flow);
     }
     for shot in &doc.shots {

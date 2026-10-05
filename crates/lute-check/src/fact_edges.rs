@@ -18,12 +18,12 @@
 //! with several producers needs only one of them, as with a `||` in `after:`.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use cel_parser::ast::{operators as op, Expr};
-use lute_syntax::ast::Document;
 use lute_syntax::datalog::{BodyLiteral, RuleTerm};
 
+use crate::ProjectDoc;
 use crate::cast::FactProducers;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
@@ -57,17 +57,17 @@ fn show(rel: &str, args: &[Option<String>]) -> String {
 /// `foldeds`), readers restricted to `graph`'s nodes, in a stable order and
 /// without self-edges.
 pub fn fact_edges(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
     graph: &ConnGraph,
 ) -> Vec<FactEdge> {
     // dsl 0.27.0 §4: a directive call's declared asserts produce too.
     let effects = crate::directive_facts::root_table(foldeds.iter().copied());
     let producers = crate::cast::fact_producers(docs, &effects);
-    let units = unit_nodes(docs, foldeds, graph);
+    let units = unit_nodes(docs, graph);
     let mut out = BTreeSet::new();
-    for ((path, doc), folded) in docs.iter().zip(foldeds) {
-        for (reader, raw) in gates(path, doc, folded, graph) {
+    for (item, folded) in docs.iter().zip(foldeds) {
+        for (reader, raw) in gates(item, folded, graph) {
             let defs = DefTable {
                 bodies: &folded.def_bodies,
                 params: &folded.env.def_params,
@@ -104,8 +104,7 @@ pub fn fact_edges(
 /// [`FactProducers`] keys a site (`0` a scene's shots, else the quest's,
 /// entry's or bundle beat's span start).
 fn unit_nodes(
-    docs: &[(PathBuf, Document)],
-    foldeds: &[&FoldedEnv],
+    docs: &[ProjectDoc<'_>],
     graph: &ConnGraph,
 ) -> BTreeMap<(PathBuf, usize), NodeId> {
     let mut out = BTreeMap::new();
@@ -115,23 +114,25 @@ fn unit_nodes(
                 .or_insert_with(|| id.clone());
         }
     }
-    for ((path, doc), folded) in docs.iter().zip(foldeds) {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         for q in doc.quests.iter().filter(|q| !q.id.is_empty()) {
             out.insert(
-                (path.clone(), q.span.byte_start),
+                (path.to_path_buf(), q.span.byte_start),
                 NodeId::Quest(q.id.clone()),
             );
         }
         for e in doc.entries.iter().filter(|e| !e.id.is_empty()) {
             out.insert(
-                (path.clone(), e.span.byte_start),
+                (path.to_path_buf(), e.span.byte_start),
                 NodeId::Entry(e.id.clone()),
             );
         }
-        if let Some(doc_id) = folded.typed.id.as_deref() {
+        if let Some(doc_id) = item.meta.id.as_deref() {
             for b in doc.beats.iter().filter(|b| !b.id.is_empty()) {
                 out.insert(
-                    (path.clone(), b.span.byte_start),
+                    (path.to_path_buf(), b.span.byte_start),
                     NodeId::Beat(crate::bundles::bundle_beat_key(doc_id, &b.id)),
                 );
             }
@@ -143,11 +144,12 @@ fn unit_nodes(
 /// The gate conditions of `doc`'s graph nodes: each one's own `when` /
 /// `start`, and the gate of the occasion it answers ([`occasion_gate`]).
 fn gates(
-    path: &Path,
-    doc: &Document,
+    item: &ProjectDoc<'_>,
     folded: &FoldedEnv,
     graph: &ConnGraph,
 ) -> Vec<(NodeId, String)> {
+    let path = item.path;
+    let doc = item.doc;
     let node = |id: NodeId| graph.nodes.get(&id).filter(|i| i.path == path).map(|_| id);
     let on = |on: &Option<(String, lute_core_span::Span)>,
               target: &Option<(String, lute_core_span::Span)>| {
@@ -158,7 +160,7 @@ fn gates(
     for (id, info) in &graph.nodes {
         if let NodeId::Scene(_) = id {
             if info.path == path {
-                if let Some(b) = folded.typed.beat.as_ref() {
+                if let Some(b) = item.meta.beat.as_ref() {
                     out.extend(b.when.as_ref().map(|w| (id.clone(), w.raw.clone())));
                     out.extend(
                         occasion_gate(folded, &b.on, b.target.as_deref()).map(|g| (id.clone(), g)),
@@ -178,7 +180,7 @@ fn gates(
             out.extend(on(&e.on, &e.target).map(|g| (id, g)));
         }
     }
-    if let Some(doc_id) = folded.typed.id.as_deref() {
+    if let Some(doc_id) = item.meta.id.as_deref() {
         for b in &doc.beats {
             let key = crate::bundles::bundle_beat_key(doc_id, &b.id);
             if let Some(id) = node(NodeId::Beat(key)) {
@@ -344,7 +346,8 @@ mod tests {
                    ## One\n::assert{met(maud)}\n";
         let (doc, _) = lute_syntax::parse(text);
         let path = PathBuf::from("producer.lute");
-        let docs = vec![(path.clone(), doc)];
+        let meta = crate::meta::TypedMeta::default();
+        let docs = vec![ProjectDoc::new(path.as_path(), &doc, &meta)];
         let producers = crate::cast::fact_producers(&docs, &EffectDirectives::default());
         let vocab = RelVocab::default();
         let ask = Ask {

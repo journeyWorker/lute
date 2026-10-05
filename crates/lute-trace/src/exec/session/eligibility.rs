@@ -336,7 +336,9 @@ pub(super) fn candidates(
     target: Option<&str>,
     seam: Option<&RaiseSeam>,
 ) -> Vec<Candidate> {
-    let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
+    let mut eval = w
+        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .with_visited(&w.visited);
     let out: Vec<(usize, Candidate)> = answering(p, occasion, target)
         .into_iter()
         .map(|(idx, beat, member)| {
@@ -375,7 +377,9 @@ pub struct RaiseSeam(BTreeMap<(usize, Option<String>), Option<crate::exec::seam:
 impl RaiseSeam {
     /// Decide the seam of every candidate of `occasion` / `target` in `w`.
     pub fn decide(p: &ExecProject, w: &World, occasion: &str, target: Option<&str>) -> Self {
-        let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
+        let mut eval = w
+            .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+            .with_visited(&w.visited);
         RaiseSeam(
             answering(p, occasion, target)
                 .into_iter()
@@ -424,7 +428,9 @@ pub(super) fn rejudge(
         Some(m) => Some(m.as_str()),
         None => beat.answers(occasion, target).flatten(),
     };
-    let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
+    let mut eval = w
+        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .with_visited(&w.visited);
     let decided = Some(seam.of(idx, member));
     judge_with(p, w, &mut eval, beat, member, target, decided).verdict
 }

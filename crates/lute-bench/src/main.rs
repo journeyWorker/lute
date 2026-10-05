@@ -344,13 +344,14 @@ fn run_sample(
                     return failed_sample(tier, project, phase, sample, test_count, error);
                 }
             };
+            let docs = model.project_docs();
             let project_asserts = model
                 .reconciled()
                 .scenarios
                 .get(model.root())
                 .map(|scenario| {
                     lute_check::connectivity::live_assert_relations(
-                        &scenario.docs,
+                        &docs,
                         &scenario.reach,
                         &scenario.ambiguous_quests,
                         &scenario.unreachable_quests,

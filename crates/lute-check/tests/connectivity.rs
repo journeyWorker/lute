@@ -5,7 +5,7 @@
 //! `visited`/`completed` id actually exists in the project) is NOT resolved
 //! here — that is `check-project`'s job (Task 3+).
 
-use lute_check::{check, CheckInput, Mode, SchemaImports};
+use lute_check::{check, CheckInput, Mode, ProjectDocs, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 fn permissive_providers() -> ProviderSet {
@@ -121,14 +121,15 @@ fn quest_frontmatter_after_key_is_not_a_prereq_surface() {
 use lute_check::connectivity::{quest_id_set, resolve_nodes, scene_key_set};
 use std::path::PathBuf;
 
-fn docs_for(texts: &[(&str, &str)]) -> Vec<(PathBuf, lute_syntax::ast::Document)> {
-    texts
+fn docs_for(texts: &[(&str, &str)]) -> ProjectDocs {
+    let docs = texts
         .iter()
         .map(|(path, text)| {
             let (doc, _) = lute_syntax::parse(text);
             (PathBuf::from(*path), doc)
         })
-        .collect()
+        .collect();
+    ProjectDocs::parse(docs, &lute_manifest::snapshot::CapabilitySnapshot::default())
 }
 
 #[test]
@@ -137,9 +138,9 @@ fn unknown_visited_key_is_flagged() {
     // key exists anywhere in the project.
     let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'visited(\"nope.s99ep99\")'\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let res = resolve_nodes(&docs.views(), &key_set, &quest_ids);
     assert!(
         res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "expected E-CONN-UNKNOWN-NODE, got {res:?}"
@@ -153,9 +154,9 @@ fn known_visited_key_resolves_clean() {
     let text_a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'visited(\"b.s01ep01\")'\n---\n## Shot 1.\n@a: hi\n";
     let text_b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@b: hi\n";
     let docs = docs_for(&[("a.lute", text_a), ("b.lute", text_b)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let res = resolve_nodes(&docs.views(), &key_set, &quest_ids);
     assert!(
         !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "unexpected E-CONN-UNKNOWN-NODE for a known key, got {res:?}"
@@ -168,9 +169,9 @@ fn known_completed_quest_attribute_resolves_clean() {
     // quest id in the same doc.
     let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" follows=\"completed('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let res = resolve_nodes(&docs.views(), &key_set, &quest_ids);
     assert!(
         !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "unexpected E-CONN-UNKNOWN-NODE for a known quest id, got {res:?}"
@@ -185,14 +186,14 @@ fn unknown_completed_quest_attribute_is_flagged_and_anchored_on_quest_after() {
     // doc has no scene at all).
     let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" follows=\"completed('ghost')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let res = resolve_nodes(&docs.views(), &key_set, &quest_ids);
     let hit = res
         .iter()
         .find(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE")
         .unwrap_or_else(|| panic!("expected E-CONN-UNKNOWN-NODE, got {res:?}"));
-    let q2 = &docs[0].1.quests[1];
+    let q2 = &docs.documents()[0].1.quests[1];
     assert_eq!(q2.id, "q2");
     assert_eq!(
         hit.1.span, q2.follows_span,
@@ -215,7 +216,7 @@ fn authored_id_and_derived_key_collide_in_one_namespace() {
         ("authored.lute", text_authored),
         ("derived.lute", text_derived),
     ]);
-    let dups = lute_check::connectivity::check_conn_episode_dup(&docs);
+    let dups = lute_check::connectivity::check_conn_episode_dup(&docs.views());
     let hits: Vec<_> = dups
         .iter()
         .filter(|(_, d)| d.code == "E-CONN-EPISODE-ID-DUP")
@@ -244,12 +245,12 @@ fn authored_id_occurrence_anchors_at_id_key() {
     let text_a = "---\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@a: hi\n";
     let text_b = "---\ntitle: pilot\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@b: hi\n";
     let docs = docs_for(&[("a.lute", text_a), ("b.lute", text_b)]);
-    let dups = lute_check::connectivity::check_conn_episode_dup(&docs);
+    let dups = lute_check::connectivity::check_conn_episode_dup(&docs.views());
     let hit = dups
         .iter()
         .find(|(_, d)| d.code == "E-CONN-EPISODE-ID-DUP")
         .unwrap_or_else(|| panic!("expected a dup, got {dups:?}"));
-    let (path_b, doc_b) = &docs[1];
+    let (path_b, doc_b) = &docs.documents()[1];
     assert_eq!(&hit.0, path_b, "reported on the later occurrence");
     // The second doc's `id:` starts on line 3 (0-indexed byte offset). Verify
     // the diagnostic span points at exactly the `id` needle in the second doc.
@@ -271,7 +272,7 @@ fn quest_document_id_collides_with_a_scene_id() {
     let scene = "---\nkind: scene\nid: haven.mainChain\n---\n## Shot 1.\n@a: hi\n";
     let quest = "---\nkind: quest\nid: haven.mainChain\n---\n<quest id=\"q\">\n</quest>\n";
     let docs = docs_for(&[("a.lute", scene), ("b.lute", quest)]);
-    let dups = lute_check::connectivity::check_conn_episode_dup(&docs);
+    let dups = lute_check::connectivity::check_conn_episode_dup(&docs.views());
     assert_eq!(dups.len(), 1, "{dups:?}");
     let (path, d) = &dups[0];
     assert_eq!(path, &PathBuf::from("b.lute"));
@@ -283,7 +284,7 @@ fn quest_document_id_collides_with_a_scene_id() {
         "{}",
         d.message
     );
-    let doc_b = &docs[1].1;
+    let doc_b = &docs.documents()[1].1;
     let id_start = doc_b.meta.span.byte_start + 4 + doc_b.meta.raw_yaml.find("id:").unwrap();
     assert_eq!(
         d.span.byte_start, id_start,
@@ -293,7 +294,7 @@ fn quest_document_id_collides_with_a_scene_id() {
     // A bundle id is not a scene node: `visited('haven.mainChain')` resolves
     // only against scene keys.
     let quest_only = docs_for(&[("b.lute", quest)]);
-    assert!(scene_key_set(&quest_only).is_empty());
+    assert!(scene_key_set(&quest_only.views()).is_empty());
 }
 
 #[test]
@@ -306,7 +307,7 @@ fn lore_document_ids_collide_and_unauthored_bundles_do_not() {
     let dups = lute_check::connectivity::check_conn_episode_dup(&docs_for(&[
         ("a.lute", &a),
         ("b.lute", &b),
-    ]));
+    ]).views());
     assert_eq!(dups.len(), 1, "{dups:?}");
     assert_eq!(dups[0].0, PathBuf::from("b.lute"));
 
@@ -319,7 +320,7 @@ fn lore_document_ids_collide_and_unauthored_bundles_do_not() {
         lute_check::connectivity::check_conn_episode_dup(&docs_for(&[
             ("a.lute", scene),
             ("b.lute", &unauthored),
-        ]))
+        ]).views())
         .is_empty()
     );
 }
@@ -331,9 +332,9 @@ fn visited_resolves_against_authored_id() {
     let text_authored = "---\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@x: hi\n";
     let text_ref = "---\nkind: scene\nid: seq.two\nafter: 'visited(\"harbor.night\")'\n---\n## Shot 1.\n@y: hi\n";
     let docs = docs_for(&[("harbor.lute", text_authored), ("ref.lute", text_ref)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let res = resolve_nodes(&docs.views(), &key_set, &quest_ids);
     assert!(
         !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "authored id must resolve `visited(...)` clean: {res:?}"
@@ -348,9 +349,9 @@ fn unknown_visited_suggestion_includes_authored_id() {
     let text_authored = "---\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@x: hi\n";
     let text_typo = "---\nkind: scene\nid: seq.two\nafter: 'visited(\"harbour.night\")'\n---\n## Shot 1.\n@y: hi\n";
     let docs = docs_for(&[("harbor.lute", text_authored), ("typo.lute", text_typo)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let res = resolve_nodes(&docs.views(), &key_set, &quest_ids);
     let hit = res
         .iter()
         .find(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE")
@@ -372,9 +373,9 @@ fn two_node_cycle_is_flagged() {
     let text_a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'visited(\"b.s01ep01\")'\n---\n## Shot 1.\n@a: hi\n";
     let text_b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\")'\n---\n## Shot 1.\n@b: hi\n";
     let docs = docs_for(&[("a.lute", text_a), ("b.lute", text_b)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (_g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (_g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(
         diags.iter().any(|(_p, d)| d.code == "E-CONN-CYCLE"),
         "expected E-CONN-CYCLE, got {diags:?}"
@@ -388,9 +389,9 @@ fn three_node_cycle_is_flagged() {
     let text_y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\nafter: 'visited(\"z.s01ep01\")'\n---\n## Shot 1.\n@y: hi\n";
     let text_z = "---\nkind: scene\ncharacter: z\nseason: 1\nepisode: 1\nafter: 'visited(\"x.s01ep01\")'\n---\n## Shot 1.\n@z: hi\n";
     let docs = docs_for(&[("x.lute", text_x), ("y.lute", text_y), ("z.lute", text_z)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (_g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (_g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(
         diags.iter().any(|(_p, d)| d.code == "E-CONN-CYCLE"),
         "expected E-CONN-CYCLE for a 3-node cycle, got {diags:?}"
@@ -404,9 +405,9 @@ fn acyclic_graph_has_no_cycle_and_topo_order() {
     let text_b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\")'\n---\n## Shot 1.\n@b: hi\n";
     let text_c = "---\nkind: scene\ncharacter: c\nseason: 1\nepisode: 1\nafter: 'visited(\"b.s01ep01\")'\n---\n## Shot 1.\n@c: hi\n";
     let docs = docs_for(&[("a.lute", text_a), ("b.lute", text_b), ("c.lute", text_c)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
     assert_eq!(g.topo_order.len(), 3, "topo_order: {:?}", g.topo_order);
     assert_eq!(
@@ -437,9 +438,9 @@ fn independent_chain_survives_cycle() {
         ("p.lute", text_p),
         ("q.lute", text_q),
     ]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(
         diags.iter().any(|(_p, d)| d.code == "E-CONN-CYCLE"),
         "cycle must still be diagnosed, got {diags:?}"
@@ -487,9 +488,9 @@ fn downstream_of_cycle_excluded() {
         ("q.lute", text_q),
         ("d.lute", text_d),
     ]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(
         diags.iter().any(|(_p, d)| d.code == "E-CONN-CYCLE"),
         "cycle must still be diagnosed, got {diags:?}"
@@ -528,9 +529,9 @@ fn scene_and_quest_sharing_a_string_are_distinct_nodes() {
         ("referencer.lute", text_referencer),
         ("quests.lute", text_quests),
     ]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let scene_node = NodeId::Scene("shared.key".to_string());
@@ -577,9 +578,9 @@ fn completed_on_a_plain_after_less_quest_is_a_leaf_not_an_edge() {
     // dependency, resolved by Task 6's quest-lifecycle signal, not the DAG).
     let text = "---\nkind: quest\n---\n<quest id=\"plain\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"dependent\" start=\"true\" follows=\"completed('plain')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let plain_node = NodeId::Quest("plain".to_string());
@@ -616,9 +617,9 @@ fn absent_after_scene_prereq_is_absent() {
     // No `after:` key at all -- a valid entry node, `PrereqState::Absent`.
     let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let node = NodeId::Scene("a.s01ep01".to_string());
@@ -639,9 +640,9 @@ fn malformed_after_scene_prereq_is_invalid_not_absent() {
     // treating a malformed doc as a clean entry node.
     let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: '!visited(\"x\")'\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let node = NodeId::Scene("a.s01ep01".to_string());
@@ -670,9 +671,9 @@ fn nonstring_after_scene_prereq_is_invalid_not_absent() {
     // and contribute no outgoing edge.
     let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 42\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let node = NodeId::Scene("a.s01ep01".to_string());
@@ -699,9 +700,9 @@ fn empty_string_after_scene_prereq_is_absent() {
     // `Invalid` (empty CEL text fails to parse but is not malformed here).
     let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: ''\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let node = NodeId::Scene("a.s01ep01".to_string());
@@ -725,9 +726,9 @@ fn whitespace_only_after_scene_prereq_is_invalid_not_absent() {
     // `PrereqState::Invalid`.
     let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: '   '\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let node = NodeId::Scene("a.s01ep01".to_string());
@@ -750,9 +751,9 @@ fn quest_admitted_regardless_of_stale_quest_ids_set() {
     // ONLY on the quest itself declaring a nonempty `after`.
     let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" follows=\"completed('other')\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"other\" start=\"true\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let key_set = scene_key_set(&docs);
+    let key_set = scene_key_set(&docs.views());
     let stale_quest_ids: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let (g, diags) = assemble_graph(&docs, &key_set, &stale_quest_ids);
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &stale_quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let q_node = NodeId::Quest("q".to_string());
@@ -774,9 +775,9 @@ use std::collections::BTreeSet;
 fn entry_scene_is_reachable() {
     let text_a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text_a)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
@@ -799,9 +800,9 @@ fn node_behind_unreachable_completed_quest_is_unreachable() {
     let text_a =
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'completed(\"deadQ\")'\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text_a)]);
-    let key_set = scene_key_set(&docs);
+    let key_set = scene_key_set(&docs.views());
     let quest_ids: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
@@ -829,9 +830,9 @@ fn transitive_unreachability_propagates() {
     let text_b =
         "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\")'\n---\n## Shot 1.\n@b: hi\n";
     let docs = docs_for(&[("a.lute", text_a), ("b.lute", text_b)]);
-    let key_set = scene_key_set(&docs);
+    let key_set = scene_key_set(&docs.views());
     let quest_ids: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
@@ -863,9 +864,9 @@ fn or_arm_still_reachable_keeps_node_reachable() {
         "---\nkind: scene\ncharacter: alive\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@alive: hi\n";
     let text_gated = "---\nkind: scene\ncharacter: gated\nseason: 1\nepisode: 1\nafter: 'completed(\"deadQ\") || visited(\"alive.s01ep01\")'\n---\n## Shot 1.\n@gated: hi\n";
     let docs = docs_for(&[("alive.lute", text_alive), ("gated.lute", text_gated)]);
-    let key_set = scene_key_set(&docs);
+    let key_set = scene_key_set(&docs.views());
     let quest_ids: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
@@ -886,9 +887,9 @@ fn invalid_formula_is_unknown_not_flagged() {
     let text_a =
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: '!visited(\"x\")'\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text_a)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
@@ -907,10 +908,10 @@ fn unknown_visited_ref_does_not_cascade_to_false() {
     // into a false E-CONN-UNREACHABLE.
     let text_a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'visited(\"nonexistent.s99ep99\")'\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text_a)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
 
-    let unknown_diags = resolve_nodes(&docs, &key_set, &quest_ids);
+    let unknown_diags = resolve_nodes(&docs.views(), &key_set, &quest_ids);
     assert!(
         unknown_diags
             .iter()
@@ -918,7 +919,7 @@ fn unknown_visited_ref_does_not_cascade_to_false() {
         "fixture must trigger E-CONN-UNKNOWN-NODE (T4): {unknown_diags:?}"
     );
 
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
@@ -937,9 +938,9 @@ fn completed_on_known_quest_node_defaults_reachable() {
     // known graph node and NOT in `unreachable_quests` -> Reachable.
     let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\" follows=\"\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" follows=\"completed('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
@@ -965,9 +966,9 @@ fn oversized_formula_is_capped() {
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: '{formula}'\n---\n## Shot 1.\n@a: hi\n"
     );
     let docs = docs_for(&[("a.lute", &text_a)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
@@ -994,9 +995,9 @@ fn declared_plain_alive_quest_via_completed_is_reachable() {
     let quest_text = "---\nkind: quest\n---\n<quest id=\"plainQ\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n";
     let scene_text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'completed(\"plainQ\")'\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("quests.lute", quest_text), ("scene.lute", scene_text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
@@ -1023,9 +1024,9 @@ fn or_and_over_plain_and_dead_completed_quests() {
         ("or.lute", or_text),
         ("and.lute", and_text),
     ]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
@@ -1054,9 +1055,9 @@ fn transitive_unreachable_through_opted_in_quest_completed() {
     let quest_text = "---\nkind: quest\n---\n<quest id=\"deadQ\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"qOpt\" start=\"true\" follows=\"completed('deadQ')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let scene_text = "---\nkind: scene\ncharacter: s\nseason: 1\nepisode: 1\nafter: 'completed(\"qOpt\")'\n---\n## Shot 1.\n@s: hi\n";
     let docs = docs_for(&[("quests.lute", quest_text), ("scene.lute", scene_text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
@@ -1096,7 +1097,7 @@ fn unreachable_quest_ids_extracts_by_span_match() {
         result.diagnostics
     );
     let file_results = vec![(PathBuf::from("quests.lute"), result)];
-    let ids = unreachable_quest_ids(&docs, &file_results);
+    let ids = unreachable_quest_ids(&docs.views(), &file_results);
     assert_eq!(
         ids,
         ["deadQ".to_string()].into_iter().collect::<BTreeSet<_>>()
@@ -1110,7 +1111,7 @@ fn unreachable_quest_ids_ignores_paths_with_no_matching_result() {
     let text = "---\nkind: quest\n---\n<quest id=\"deadQ\" start=\"1 > 2\">\n\
          <objective id=\"o\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let ids = unreachable_quest_ids(&docs, &[]);
+    let ids = unreachable_quest_ids(&docs.views(), &[]);
     assert!(ids.is_empty());
 }
 
@@ -1137,11 +1138,11 @@ fn duplicate_quest_id_is_omitted_from_unreachable_set() {
     let file_results = vec![(PathBuf::from("quests.lute"), result)];
 
     assert_eq!(
-        ambiguous_quest_ids(&docs),
+        ambiguous_quest_ids(&docs.views()),
         ["dupQ".to_string()].into_iter().collect::<BTreeSet<_>>()
     );
 
-    let unreachable = unreachable_quest_ids(&docs, &file_results);
+    let unreachable = unreachable_quest_ids(&docs.views(), &file_results);
     assert!(
         !unreachable.contains("dupQ"),
         "a duplicate quest id must never be provably Unreachable: {unreachable:?}"
@@ -1164,14 +1165,14 @@ fn duplicate_quest_id_local_dead_completed_is_unknown() {
     let docs = docs_for(&[("quests.lute", quest_text), ("scene.lute", scene_text)]);
     let result = check(&input_for(quest_text));
     let file_results = vec![(PathBuf::from("quests.lute"), result)];
-    let unreachable_quests = unreachable_quest_ids(&docs, &file_results);
+    let unreachable_quests = unreachable_quest_ids(&docs.views(), &file_results);
     assert!(!unreachable_quests.contains("dupQ"));
 
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let ambiguous = ambiguous_quest_ids(&docs);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let ambiguous = ambiguous_quest_ids(&docs.views());
     assert!(ambiguous.contains("dupQ"));
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &ambiguous, &unreachable_quests);
@@ -1204,14 +1205,14 @@ fn duplicate_quest_id_graph_dead_completed_is_unknown() {
          <objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let scene_text = "---\nkind: scene\ncharacter: s\nseason: 1\nepisode: 1\nafter: 'completed(\"dupQ\")'\n---\n## Shot 1.\n@s: hi\n";
     let docs = docs_for(&[("quests.lute", quest_text), ("scene.lute", scene_text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let ambiguous = ambiguous_quest_ids(&docs);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let ambiguous = ambiguous_quest_ids(&docs.views());
     assert_eq!(
         ambiguous,
         ["dupQ".to_string()].into_iter().collect::<BTreeSet<_>>()
     );
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
@@ -1297,7 +1298,7 @@ fn parse_meta(
 /// project-wide diagnostics the fact-envelope guard pass and the scalar
 /// envelope contribute.
 fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, Diagnostic)> {
-    let mut docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::new();
+    let mut raw_docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::new();
     let mut foldeds: Vec<lute_check::FoldedEnv> = Vec::new();
     let mut file_results: Vec<(PathBuf, CheckResult)> = Vec::new();
     for (path, input) in &files {
@@ -1306,13 +1307,14 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         foldeds.push(folded);
         let result = check(input);
         file_results.push((path.clone(), result));
-        docs.push((path.clone(), doc));
+        raw_docs.push((path.clone(), doc));
     }
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (conn_graph, _cycle_diags) = assemble_graph(&docs, &key_set, &quest_ids);
-    let unreachable_quests = unreachable_quest_ids(&docs, &file_results);
-    let ambiguous_quests = ambiguous_quest_ids(&docs);
+    let docs = ProjectDocs::parse(raw_docs, &CapabilitySnapshot::default());
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (conn_graph, _cycle_diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
+    let unreachable_quests = unreachable_quest_ids(&docs.views(), &file_results);
+    let ambiguous_quests = ambiguous_quest_ids(&docs.views());
     let (reach, _reach_diags) = check_reachability(
         &conn_graph,
         &quest_ids,
@@ -1323,8 +1325,9 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
     for folded in &foldeds {
         root_vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
+    let doc_views = docs.views();
     let live_facts = lute_check::connectivity::live_assert_sites(
-        &docs,
+        &doc_views,
         &reach,
         &ambiguous_quests,
         &unreachable_quests,
@@ -1335,13 +1338,13 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
     let may = lute_check::MaySet::build(
         &root_vocab,
         live_facts,
-        &lute_check::stable_seeds(&docs, &root_vocab),
+        &lute_check::stable_seeds(&docs.views(), &root_vocab),
     );
     let folded_refs: Vec<&lute_check::FoldedEnv> = foldeds.iter().collect();
-    let must = lute_check::compute_must(&docs, &folded_refs, &conn_graph, &root_vocab, &may);
+    let must = lute_check::compute_must(&docs.views(), &folded_refs, &conn_graph, &root_vocab, &may);
     let fact_env = lute_check::FactEnv::new(may, must.slots);
     let mut out = Vec::new();
-    for (idx, (path, doc)) in docs.iter().enumerate() {
+    for (idx, (path, doc)) in docs.documents().iter().enumerate() {
         let reported = &file_results[idx].1.diagnostics;
         for d in lute_check::check_fact_guards(path, doc, &foldeds[idx], &fact_env, reported) {
             out.push((path.clone(), d));
@@ -1358,7 +1361,7 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
     let mut per_doc = lute_check::envelope::PerDocEffects::default();
     let mut d: BTreeSet<String> = BTreeSet::new();
     let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
-    for (idx, (_path, doc)) in docs.iter().enumerate() {
+    for (idx, (_path, doc)) in docs.documents().iter().enumerate() {
         let folded = &foldeds[idx];
         d.extend(lute_check::envelope::schema_defaults(&folded.env.state));
         for quest in &doc.quests {
@@ -1375,10 +1378,10 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         let Some((scene_path, _)) = occurrences.first() else {
             continue;
         };
-        let Some(idx) = docs.iter().position(|(p, _)| p == scene_path) else {
+        let Some(idx) = docs.documents().iter().position(|(p, _)| p == scene_path) else {
             continue;
         };
-        let (_, doc) = &docs[idx];
+        let (_, doc) = &docs.documents()[idx];
         let folded = &foldeds[idx];
         let all_nodes: Vec<lute_syntax::ast::Node> = doc
             .shots
@@ -1539,7 +1542,7 @@ fn assert_in_provably_unreachable_node_does_not_seed_producibility() {
         Reachability::Unreachable,
     );
     let live = lute_check::connectivity::live_assert_relations(
-        &docs,
+        &docs.views(),
         &reach,
         &BTreeSet::new(),
         &BTreeSet::new(),
@@ -1566,7 +1569,7 @@ fn assert_in_unknown_node_still_seeds_producibility() {
         Reachability::Unknown,
     );
     let live = lute_check::connectivity::live_assert_relations(
-        &docs,
+        &docs.views(),
         &reach,
         &BTreeSet::new(),
         &BTreeSet::new(),
@@ -1589,7 +1592,7 @@ fn assert_in_lifecycle_unreachable_quest_does_not_seed_producibility() {
     let docs = docs_for(&[("q.lute", text)]);
     let unreachable: BTreeSet<String> = ["q".to_string()].into_iter().collect();
     let live = lute_check::connectivity::live_assert_relations(
-        &docs,
+        &docs.views(),
         &BTreeMap::new(),
         &BTreeSet::new(),
         &unreachable,
@@ -2220,9 +2223,9 @@ fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachab
     let text_a =
         "---\nkind: scene\ncharacter: wa\nseason: 1\nepisode: 1\nafter: 'completed(\"deadQ\")'\n---\n## Shot 1.\n@narrator: hi\n";
     let docs = docs_for(&[("wa.lute", text_a)]);
-    let key_set = scene_key_set(&docs);
+    let key_set = scene_key_set(&docs.views());
     let quest_ids: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
-    let (g, cycle_diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let (g, cycle_diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(cycle_diags.is_empty(), "unexpected diags: {cycle_diags:?}");
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
     let (_reach, unreachable_diags) =
@@ -2281,16 +2284,16 @@ fn active_gated_three_node_chain_is_reachable() {
         <quest id=\"q2\" start=\"true\" follows=\"active('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n\
         <quest id=\"q3\" start=\"true\" follows=\"active('q2')\">\n<objective id=\"o3\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
 
-    let resolve = resolve_nodes(&docs, &key_set, &quest_ids);
+    let resolve = resolve_nodes(&docs.views(), &key_set, &quest_ids);
     assert!(
         !resolve.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "every `active` target is a declared quest: {resolve:?}"
     );
 
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(
         diags.is_empty(),
         "an acyclic active chain must be clean: {diags:?}"
@@ -2329,9 +2332,9 @@ fn cycle_through_active_edges_is_conn_cycle() {
         <quest id=\"pa\" start=\"true\" follows=\"active('pb')\">\n<objective id=\"oa\" done=\"true\"/>\n</quest>\n\
         <quest id=\"pb\" start=\"true\" follows=\"active('pa')\">\n<objective id=\"ob\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(
         diags.iter().any(|(_, d)| d.code == "E-CONN-CYCLE"),
         "an `active`-only cycle must still be E-CONN-CYCLE: {diags:?}"
@@ -2353,9 +2356,9 @@ fn active_on_an_undeclared_quest_is_unknown_node() {
         <quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n\
         <quest id=\"q2\" start=\"true\" follows=\"active('nope')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let res = resolve_nodes(&docs.views(), &key_set, &quest_ids);
     let hit = res
         .iter()
         .find(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE")
@@ -2377,9 +2380,9 @@ fn active_and_completed_on_one_target_record_both_edge_kinds() {
         <quest id=\"leaf\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n\
         <quest id=\"dep\" start=\"true\" follows=\"active('src') || completed('src')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let docs = docs_for(&[("quests.lute", text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
     let src = NodeId::Quest("src".to_string());
     let dep = NodeId::Quest("dep".to_string());
@@ -2474,9 +2477,9 @@ fn oversized_active_only_formula_is_capped() {
          <objective id=\"o\" done=\"true\"/>\n</quest>\n"
     );
     let docs = docs_for(&[("quests.lute", &text)]);
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (g, _diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let key_set = scene_key_set(&docs.views());
+    let quest_ids = quest_id_set(&docs.views());
+    let (g, _diags) = assemble_graph(&docs.views(), &key_set, &quest_ids);
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
     assert!(
         r_diags
@@ -2502,14 +2505,14 @@ fn an_unreadable_frontmatter_does_not_cascade_unknown_node_into_other_files() {
     let broken = "---\nkind: scene\nid: probe.bad\nwhen: 'run.day == 4 && run.slot == 'night''\n---\n## Shot 1.\n@a: hi\n";
     let referrer = "---\nkind: scene\nid: probe.ref\nafter: 'visited(\"probe.bad\")'\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("bad.lute", broken), ("ref.lute", referrer)]);
-    let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    let res = resolve_nodes(&docs.views(), &scene_key_set(&docs.views()), &quest_id_set(&docs.views()));
     assert!(
         !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "no cascade from an unreadable frontmatter: {res:?}"
     );
 
     let docs = docs_for(&[("ref.lute", referrer)]);
-    let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    let res = resolve_nodes(&docs.views(), &scene_key_set(&docs.views()), &quest_id_set(&docs.views()));
     assert!(
         res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "with every id readable the miss is real: {res:?}"
@@ -2622,7 +2625,7 @@ fn accepting_scene(id: &str, after: &str, quest: &str) -> String {
     format!("---\nkind: scene\nid: {id}\n{after}---\n## Shot 1.\n::accept{{quest=\"{quest}\"}}\n@a: hi\n")
 }
 
-fn graph_of(docs: &[(PathBuf, lute_syntax::ast::Document)]) -> lute_check::connectivity::ConnGraph {
+fn graph_of(docs: &[lute_check::ProjectDoc<'_>]) -> lute_check::connectivity::ConnGraph {
     let (g, diags) = assemble_graph(docs, &scene_key_set(docs), &quest_id_set(docs));
     assert!(diags.is_empty(), "{diags:?}");
     g
@@ -2647,20 +2650,20 @@ fn a_bundle_beat_is_a_legal_after_predecessor_of_a_quest_and_a_scene() {
         ("q.lute", quest),
         ("s.lute", scene),
     ]);
-    let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    let res = resolve_nodes(&docs.views(), &scene_key_set(&docs.views()), &quest_id_set(&docs.views()));
     assert!(
         !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "a bundle beat resolves in `after`: {res:?}"
     );
 
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let beat = NodeId::Beat("camp.talks.corvinScheme".into());
     let q = NodeId::Quest("scheme".into());
     let s = NodeId::Scene("camp.after".into());
     assert_eq!(kinds(&g, &beat, &q), Some(vec![EdgeKind::Visited]), "{g:?}");
     assert_eq!(kinds(&g, &beat, &s), Some(vec![EdgeKind::Visited]), "{g:?}");
     let (reach, diags) =
-        check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+        check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &BTreeSet::new());
     assert!(diags.is_empty(), "{diags:?}");
     assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
     assert_eq!(reach.get(&s), Some(&Reachability::Reachable));
@@ -2677,7 +2680,7 @@ fn an_accept_driven_quest_is_anchored_at_every_accepting_node() {
         <beat id=\"corvinScheme\" on=\"talk\">\n::accept{quest=\"helpVesna\"}\n@corvin: Listen.\n</beat>\n";
     let scene = accepting_scene("camp.night", "", "helpVesna");
     let docs = docs_for(&[("q.lute", quest), ("camp.lute", lore), ("s.lute", &scene)]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let q = NodeId::Quest("helpVesna".into());
     let info = g.nodes.get(&q).expect("the accepted quest is a node");
     let PrereqState::Anchored(anchors) = &info.prereq else {
@@ -2701,7 +2704,7 @@ fn an_accept_driven_quest_is_anchored_at_every_accepting_node() {
         );
     }
     let (reach, _) =
-        check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+        check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &BTreeSet::new());
     assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
 }
 
@@ -2715,7 +2718,7 @@ fn every_subquest_child_hangs_off_its_parent_and_an_accept_child_also_off_its_ac
     let scene = "---\nkind: scene\nid: camp.night\n---\n## Shot 1.\n\
         ::accept{quest=\"side\"}\n::accept{quest=\"auto\"}\n@a: hi\n";
     let docs = docs_for(&[("q.lute", quest), ("s.lute", scene)]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let (main, side, auto) = (
         NodeId::Quest("main".into()),
         NodeId::Quest("side".into()),
@@ -2737,7 +2740,7 @@ fn every_subquest_child_hangs_off_its_parent_and_an_accept_child_also_off_its_ac
         "an auto child is not accept-driven: {g:?}"
     );
     let (reach, _) =
-        check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+        check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &BTreeSet::new());
     assert_eq!(reach.get(&auto), Some(&Reachability::Reachable));
     assert_eq!(reach.get(&side), Some(&Reachability::Reachable));
 }
@@ -2748,9 +2751,9 @@ fn an_accept_anchor_reads_the_anchor_reachability_but_never_proves_the_quest_dea
         <quest id=\"deadQ\" start=\"true\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
     let scene = accepting_scene("camp.night", "after: \"completed('deadQ')\"\n", "helpVesna");
     let docs = docs_for(&[("q.lute", quest), ("s.lute", &scene)]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let dead = BTreeSet::from(["deadQ".to_string()]);
-    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &dead);
+    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &dead);
     assert_eq!(
         reach.get(&NodeId::Scene("camp.night".into())),
         Some(&Reachability::Unreachable)
@@ -2775,7 +2778,7 @@ fn a_quest_with_an_explicit_after_keeps_only_its_declared_edges() {
     let day = "---\nkind: scene\nid: camp.day\n---\n## Shot 1.\n@a: hi\n";
     let night = accepting_scene("camp.night", "", "helpVesna");
     let docs = docs_for(&[("q.lute", quest), ("d.lute", day), ("n.lute", &night)]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let q = NodeId::Quest("helpVesna".into());
     assert!(matches!(g.nodes[&q].prereq, PrereqState::Valid(_)));
     assert_eq!(
@@ -2800,7 +2803,7 @@ fn an_accept_anchor_that_would_close_a_cycle_is_not_drawn() {
         "helpVesna",
     );
     let docs = docs_for(&[("q.lute", quest), ("s.lute", &scene)]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let q = NodeId::Quest("helpVesna".into());
     let night = NodeId::Scene("camp.night".into());
     assert_eq!(kinds(&g, &q, &night), Some(vec![EdgeKind::Active]));
@@ -2817,7 +2820,7 @@ fn an_unresolvable_quest_after_suggests_dropping_after_not_when() {
         "---\nkind: quest\n---\n<quest id=\"scheme\" follows=\"visited('camp.talks.nope')\">\n\
         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
     let docs = docs_for(&[("camp.lute", CAMP_TALKS), ("q.lute", quest)]);
-    let res = resolve_nodes(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    let res = resolve_nodes(&docs.views(), &scene_key_set(&docs.views()), &quest_id_set(&docs.views()));
     let [(_, d)] = res.as_slice() else {
         panic!("one miss: {res:?}")
     };
@@ -2851,7 +2854,7 @@ fn start_conjuncts_that_read_a_node_anchor_the_quest() {
         ("q.lute", &road),
         ("p.lute", &prologue),
     ]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let q = NodeId::Quest("emberRoad".into());
     let (scene, entry, pro) = (
         NodeId::Scene("road.departure".into()),
@@ -2878,7 +2881,7 @@ fn start_conjuncts_that_read_a_node_anchor_the_quest() {
     assert_eq!(g.nodes[&entry].path, PathBuf::from("l.lute"));
     assert!(matches!(g.nodes[&pro].prereq, PrereqState::Absent));
     let (reach, _) =
-        check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &BTreeSet::new());
+        check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &BTreeSet::new());
     assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
 }
 
@@ -2901,7 +2904,7 @@ fn only_top_level_conjuncts_and_disjunctions_of_reads_anchor() {
         ("q.lute", &either),
         ("n.lute", &none),
     ]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let PrereqState::Anchored(anchors) = &g.nodes[&NodeId::Quest("either".into())].prereq else {
         panic!("{g:?}");
     };
@@ -2927,7 +2930,7 @@ fn an_explicit_after_replaces_start_anchors_but_keeps_the_subquest_edge() {
         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
     let ford = "---\nkind: scene\nid: road.ford\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("s.lute", DEPARTURE), ("f.lute", ford), ("q.lute", quest)]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let road = NodeId::Quest("road".into());
     assert_eq!(
         kinds(&g, &NodeId::Scene("road.departure".into()), &road),
@@ -2953,7 +2956,7 @@ fn a_start_anchor_never_proves_the_quest_dead_nor_closes_a_cycle() {
     let road = quest_with_start("road", "visited('road.departure')");
     let looped = "---\nkind: scene\nid: road.departure\nafter: \"active('road')\"\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("s.lute", looped), ("q.lute", &road)]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let (q, s) = (
         NodeId::Quest("road".into()),
         NodeId::Scene("road.departure".into()),
@@ -2965,9 +2968,9 @@ fn a_start_anchor_never_proves_the_quest_dead_nor_closes_a_cycle() {
     let dead = "---\nkind: scene\nid: road.departure\nafter: \"completed('deadQ')\"\n---\n## Shot 1.\n@a: hi\n";
     let dead_q = quest_with_start("deadQ", "true");
     let docs = docs_for(&[("s.lute", dead), ("q.lute", &road), ("d.lute", &dead_q)]);
-    let g = graph_of(&docs);
+    let g = graph_of(&docs.views());
     let dead_ids = BTreeSet::from(["deadQ".to_string()]);
-    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs), &BTreeSet::new(), &dead_ids);
+    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &dead_ids);
     assert_eq!(reach.get(&s), Some(&Reachability::Unreachable));
     assert_eq!(reach.get(&q), Some(&Reachability::Unknown));
     assert_eq!(diags.len(), 1, "only the dead scene: {diags:?}");

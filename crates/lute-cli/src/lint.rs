@@ -389,9 +389,12 @@ fn display_name_dups(
             )
         })
         .collect();
-    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = inputs
+    let docs: Vec<lute_check::ProjectDoc<'_>> = builts
         .iter()
-        .map(|i| (i.path.clone(), i.doc.clone()))
+        .zip(inputs)
+        .map(|(built, input)| {
+            lute_check::ProjectDoc::new(input.path.as_path(), &input.doc, &built.meta)
+        })
         .collect();
     let casts: Vec<_> = per_doc.iter().map(|(c, _, _)| c).collect();
     let use_lines: Vec<_> = per_doc.iter().map(|(_, u, _)| u).collect();

@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use lute_check::beats::ReportedErrors;
-use lute_check::{check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, SchemaImports};
+use lute_check::{check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, ProjectDoc, SchemaImports};
 use lute_core_span::Diagnostic;
 use lute_syntax::ast::Document;
 
@@ -38,8 +38,13 @@ fn project(texts: &[&str], errors: &ReportedErrors, code: &str) -> Vec<Diagnosti
         docs.push((PathBuf::from(format!("{i}.lute")), doc));
     }
     let refs: Vec<&FoldedEnv> = foldeds.iter().collect();
-    let producers = lute_check::cast::fact_producers(&docs, &Default::default());
-    check_project_beats(&docs, &refs, &producers, None, errors)
+    let views: Vec<_> = docs
+        .iter()
+        .zip(&foldeds)
+        .map(|((path, doc), folded)| ProjectDoc::new(path, doc, &folded.typed))
+        .collect();
+    let producers = lute_check::cast::fact_producers(&views, &Default::default());
+    check_project_beats(&views, &refs, &producers, None, errors)
         .into_iter()
         .map(|(_, d)| d)
         .filter(|d| d.code == code)

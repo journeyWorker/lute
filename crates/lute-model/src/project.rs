@@ -398,6 +398,14 @@ impl ProjectModel {
     pub fn root(&self) -> &Path { &self.root }
     pub fn manifest(&self) -> Option<&lute_manifest::project::ProjectConfig> { self.manifest.as_ref() }
     pub fn documents(&self) -> &[ModelDocument] { &self.documents }
+    /// Every document as a project view (path, AST, typed frontmatter),
+    /// borrowed from the model.
+    pub fn project_docs(&self) -> Vec<lute_check::ProjectDoc<'_>> {
+        self.documents
+            .iter()
+            .map(|d| lute_check::ProjectDoc::new(&d.path, &d.doc, &d.folded.typed))
+            .collect()
+    }
     pub fn project_diagnostics(&self) -> &[(PathBuf, Diagnostic)] { &self.project_diagnostics }
     pub fn index(&self) -> Option<&ProjectIndex> { self.index.as_ref() }
     pub fn identity_renames(&self) -> &[lute_manifest::project::IdentityRename] { &self.identity_renames }

@@ -11,7 +11,7 @@ use super::plugin::BridgeReads;
 use super::{Carry, Machine, Seed};
 use crate::exec::driver::Driver;
 use crate::exec::session::parse_ground_fact;
-use crate::exec::store::Store;
+use crate::exec::store::{Store, StoreSchema};
 use crate::Value;
 
 impl<D: Driver> Machine<D> {
@@ -22,7 +22,7 @@ impl<D: Driver> Machine<D> {
     /// the seed's own `state`/`facts` on top via [`Machine::apply_seeds`] —
     /// the one place that override rule lives.
     fn blank(art: &Json, seed: Seed, driver: D) -> Self {
-        Self::blank_with_overrides(art, seed, driver, None, None)
+        Self::blank_with_overrides(art, seed, driver, None, None, None)
     }
 
     fn blank_with_overrides(
@@ -31,6 +31,7 @@ impl<D: Driver> Machine<D> {
         driver: D,
         rules: Option<&Json>,
         state: Option<&BTreeMap<String, Json>>,
+        schema: Option<Arc<StoreSchema>>,
     ) -> Self {
         let kind = art
             .get("kind")
@@ -53,11 +54,14 @@ impl<D: Driver> Machine<D> {
         }
         addr_order.sort();
 
-        let mut store = match (rules, state) {
-            (Some(rules), Some(state)) => {
-                Store::of_artifact_with_project(art, seed.derive, rules, state)
-            }
-            _ => Store::of_artifact(art, seed.derive),
+        let mut store = match schema {
+            Some(schema) => Store::from_project_schema(art, schema),
+            None => match (rules, state) {
+                (Some(rules), Some(state)) => {
+                    Store::of_artifact_with_project(art, seed.derive, rules, state)
+                }
+                _ => Store::of_artifact(art, seed.derive),
+            },
         };
         // dsl 0.21.0 §7a.1: the seed's `visited` seeds the presented set.
         store.visit_all(&seed.visited);
@@ -120,7 +124,7 @@ impl<D: Driver> Machine<D> {
     /// carry's `state`, `base_facts`, `quest_status` and quest instance
     /// counters are read.
     pub fn resume(art: &Json, seed: Seed, carry: Carry, driver: D) -> Self {
-        Self::resume_with_overrides(art, seed, carry, driver, None, None)
+        Self::resume_with_overrides(art, seed, carry, driver, None, None, None)
     }
 
     /// Resume a play machine over one document's command tree while reading
@@ -134,7 +138,16 @@ impl<D: Driver> Machine<D> {
         rules: &Json,
         state: &BTreeMap<String, Json>,
     ) -> Self {
-        Self::resume_with_overrides(art, seed, carry, driver, Some(rules), Some(state))
+        Self::resume_with_overrides(art, seed, carry, driver, Some(rules), Some(state), None)
+    }
+    pub(crate) fn resume_with_project_schema(
+        art: &Json,
+        seed: Seed,
+        carry: Carry,
+        driver: D,
+        schema: Arc<StoreSchema>,
+    ) -> Self {
+        Self::resume_with_overrides(art, seed, carry, driver, None, None, Some(schema))
     }
 
     fn resume_with_overrides(
@@ -144,8 +157,9 @@ impl<D: Driver> Machine<D> {
         driver: D,
         rules: Option<&Json>,
         state: Option<&BTreeMap<String, Json>>,
+        schema: Option<Arc<StoreSchema>>,
     ) -> Self {
-        let mut m = Self::blank_with_overrides(art, seed, driver, rules, state);
+        let mut m = Self::blank_with_overrides(art, seed, driver, rules, state, schema);
         m.store.restore(carry.state, carry.base_facts);
         m.quest_status = carry.quest_status;
         m.quest_instances = carry.quest_instances;

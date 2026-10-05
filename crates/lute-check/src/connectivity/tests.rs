@@ -28,6 +28,9 @@
             span: span(0),
         }
     }
+    fn views(docs: Vec<(PathBuf, Document)>) -> crate::ProjectDocs {
+        crate::ProjectDocs::parse(docs, &lute_manifest::core::load_core_snapshot())
+    }
 
     #[test]
     fn identical_pair_in_same_root_is_dup() {
@@ -36,7 +39,7 @@
             (PathBuf::from("a.lute"), doc(raw)),
             (PathBuf::from("b.lute"), doc(raw)),
         ];
-        let out = check_conn_episode_dup(&docs);
+        let out = check_conn_episode_dup(&views(docs).views());
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].1.code, "E-CONN-EPISODE-ID-DUP");
     }
@@ -53,7 +56,7 @@
                 doc("kind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n"),
             ),
         ];
-        assert!(check_conn_episode_dup(&docs).is_empty());
+        assert!(check_conn_episode_dup(&views(docs).views()).is_empty());
     }
 
     #[test]
@@ -69,7 +72,7 @@
                 doc("kind: scene\ncharacter: a.b\nseason: 1\nepisode: 1\nepisodeId: c\n"),
             ),
         ];
-        assert_eq!(check_conn_episode_dup(&docs).len(), 1);
+        assert_eq!(check_conn_episode_dup(&views(docs).views()).len(), 1);
     }
 
     /// Regression (review note): a scene doc missing/mistyping
@@ -89,5 +92,5 @@
                 doc("kind: scene\nseason: 1\nepisode: 1\n"),
             ),
         ];
-        assert!(check_conn_episode_dup(&docs).is_empty());
+        assert!(check_conn_episode_dup(&views(docs).views()).is_empty());
     }

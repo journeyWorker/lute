@@ -120,7 +120,10 @@ impl<'p> Session<'p> {
         let beat = self.project.index.beats.iter().find(|b| b.id == id)?;
         let mut eval = self
             .world
-            .evaluator(&self.project.eval_json)
+            .evaluator_with_schema(
+                &self.project.eval_json,
+                self.project.store_schemas[self.world.derive.unwrap_or(true) as usize].clone(),
+            )
             .with_visited(&self.world.visited);
         Some(judge_beat(
             self.project,

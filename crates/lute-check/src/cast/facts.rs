@@ -1,7 +1,7 @@
 use super::*;
 
 pub fn occasions_before(
-    docs: &[(std::path::PathBuf, Document)],
+    docs: &[crate::ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
     graph: &crate::connectivity::ConnGraph,
 ) -> BTreeMap<std::path::PathBuf, BTreeMap<usize, BTreeSet<String>>> {
@@ -19,8 +19,8 @@ pub fn occasions_before(
     // A node's document index, unit key and the occasion it is presented on.
     let unit_of = |id: &NodeId| -> Option<(usize, usize, Option<&str>)> {
         let info = graph.nodes.get(id)?;
-        let i = docs.iter().position(|(p, _)| *p == info.path)?;
-        let doc = &docs[i].1;
+        let i = docs.iter().position(|d| d.path == info.path)?;
+        let doc = docs[i].doc;
         match id {
             NodeId::Scene(_) => Some((
                 i,
@@ -33,7 +33,7 @@ pub fn occasions_before(
                 .find(|x| x.id == *q)
                 .map(|x| (i, x.span.byte_start, None)),
             NodeId::Beat(key) => {
-                let doc_id = crate::connectivity::bundle_id(doc)?;
+                let doc_id = crate::connectivity::bundle_id(&foldeds[i].typed)?;
                 doc.beats
                     .iter()
                     .find(|b| crate::bundles::bundle_beat_key(&doc_id, &b.id) == *key)
@@ -74,7 +74,7 @@ pub fn occasions_before(
         }
         for to in seen {
             if let Some((i, key, _)) = unit_of(to) {
-                out.entry(docs[i].0.clone())
+                out.entry(docs[i].path.to_path_buf())
                     .or_default()
                     .entry(key)
                     .or_default()
@@ -109,11 +109,13 @@ impl FactProducers {
 /// ([`crate::component_effects::splice_component_effects`]) — so an unused
 /// component produces nothing and a used one only its bound arguments.
 pub fn fact_producers(
-    docs: &[(std::path::PathBuf, Document)],
+    docs: &[crate::ProjectDoc<'_>],
     effects: &crate::directive_facts::EffectDirectives,
 ) -> FactProducers {
     let mut out = FactProducers::default();
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         if crate::meta::infer_meta_kind_from_shape(&doc.meta, true)
             == Some(crate::meta::MetaKind::Component)
         {
@@ -140,7 +142,7 @@ pub fn fact_producers(
                 visit(body, &mut |node| match node {
                     Node::Assert(a) if !a.pattern.relation.is_empty() => {
                         out.0.entry(a.pattern.relation.clone()).or_default().push((
-                            path.clone(),
+                            path.to_path_buf(),
                             key,
                             pattern_args(&a.pattern),
                         ));
@@ -151,7 +153,7 @@ pub fn fact_producers(
                             .unwrap_or_default()
                         {
                             out.0.entry(p.relation.clone()).or_default().push((
-                                path.clone(),
+                                path.to_path_buf(),
                                 key,
                                 pattern_args(&p),
                             ));
@@ -184,11 +186,13 @@ pub(crate) struct FactWrite {
 /// alike, in document order. A component document's own sites are left out
 /// as in [`fact_producers`]: its host documents carry them spliced.
 pub(crate) fn fact_writes(
-    docs: &[(std::path::PathBuf, Document)],
+    docs: &[crate::ProjectDoc<'_>],
     effects: &crate::directive_facts::EffectDirectives,
 ) -> Vec<FactWrite> {
     let mut out = Vec::new();
-    for (path, doc) in docs {
+    for item in docs {
+        let path = item.path;
+        let doc = item.doc;
         if crate::meta::infer_meta_kind_from_shape(&doc.meta, true)
             == Some(crate::meta::MetaKind::Component)
         {
@@ -203,7 +207,7 @@ pub(crate) fn fact_writes(
                             args: pattern_args(p),
                             up,
                             text,
-                            path: path.clone(),
+                            path: path.to_path_buf(),
                             span,
                         });
                     }

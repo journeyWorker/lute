@@ -66,6 +66,7 @@ on:
       - "tree-sitter-lute/package.json"
       - "tree-sitter-lute/bun.lock"
       - ".github/workflows/test.yml"
+      - "scripts/check-public-api.py"
   workflow_dispatch:
 
 env:
@@ -208,6 +209,37 @@ jobs:
       # remember a `paths:` entry, which is the exact drift this job closes.
       - name: Docs consistency check (version parity, stale domain)
         run: python3 scripts/check-docs-consistency.py
+
+  public-api:
+    name: public Rust API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: lute-public-api-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Check public API against merge base
+        env:
+          ALLOW_REMOVALS: ${{ contains(github.event.pull_request.labels.*.name, 'api-change') }}
+        run: |
+          set -euo pipefail
+          if [[ "$ALLOW_REMOVALS" == "true" ]]; then
+            python3 scripts/check-public-api.py --allow-removals
+          else
+            python3 scripts/check-public-api.py
+          fi
 
   launcher-typecheck:
     name: typecheck @lute-lang/lute launcher (tsc --noEmit)

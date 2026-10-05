@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use lute_manifest::types::{type_str, Literal, Owner, Type};
-use lute_syntax::ast::Document;
+use crate::ProjectDoc;
 
 use crate::check::FoldedEnv;
 use crate::meta::StateDecl;
@@ -75,13 +75,15 @@ impl Decl<'_> {
 /// and never shared, so they are exempt. `foldeds` is index-aligned with
 /// `docs`.
 pub fn check_project_state_decls(
-    docs: &[(PathBuf, Document)],
+    docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut by_path: BTreeMap<&str, Vec<Decl<'_>>> = BTreeMap::new();
     let mut extends: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
-    for ((file, doc), folded) in docs.iter().zip(foldeds) {
-        let typed = &folded.typed;
+    for (item, folded) in docs.iter().zip(foldeds) {
+        let file = item.path;
+        let doc = item.doc;
+        let typed = item.meta;
         if let Ok(canon) = std::fs::canonicalize(file) {
             let dir = canon.parent().map(Path::to_path_buf).unwrap_or_default();
             let bases = typed
@@ -97,7 +99,7 @@ pub fn check_project_state_decls(
                 path,
                 decl,
                 typed.state_index.get(path),
-                (file.clone(), span),
+                (file.to_path_buf(), span),
             )
         });
         let imported = vocab.origins.state.iter().filter_map(|(path, origin)| {

@@ -1,6 +1,6 @@
 //! dsl 0.26.0 §5: a beat or entry targeting a whole kind (`target="kind:X"`)
 //! and the member it was raised for, `occasion.target`.
-use lute_check::{check, CheckInput, Mode, SchemaImports};
+use lute_check::{check, CheckInput, Mode, ProjectDoc, SchemaImports};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
 
 fn input(text: &str) -> CheckInput {
@@ -124,7 +124,10 @@ fn project_codes(kinds: &str, body: &str) -> Vec<(String, String)> {
     let input = input(&text);
     let (doc, _) = lute_syntax::parse(&input.text);
     let folded = lute_check::fold_env(&doc, &input).0;
-    let docs = vec![(std::path::PathBuf::from("dex.lute"), doc)];
+    let path = std::path::PathBuf::from("dex.lute");
+    let meta = folded.typed.clone();
+    let view = ProjectDoc::new(path.as_path(), &doc, &meta);
+    let docs = vec![view];
     lute_check::check_project_beats(
         &docs,
         &[&folded],

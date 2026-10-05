@@ -116,7 +116,7 @@ pub(super) fn tie_warnings(beats: &[Beat<'_>], ties: &[(usize, usize)]) -> Vec<(
             (_, many) => format!("give {} different priorities", and_list(many)),
         };
         out.push((
-            first.path.clone(),
+            first.path.to_path_buf(),
             beat_diag(
                 W_BEAT_PRIORITY_TIE,
                 Severity::Warning,
@@ -268,7 +268,7 @@ pub(super) fn spent_condition(
 /// beat, any of its key's flags. Keyed by document, then by the
 /// beat's `on` key/attribute offset ([`ProjectBeat::anchor`]).
 pub fn presence_ladder(
-    docs: &[(PathBuf, Document)],
+    docs: &[crate::ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> BTreeMap<PathBuf, BTreeMap<usize, Vec<String>>> {
     let pbs = in_selection_order(project_beats(docs, foldeds));
@@ -303,7 +303,7 @@ pub fn presence_ladder(
             .filter_map(|(_, _, spent)| spent.clone())
             .collect();
         if !spent.is_empty() {
-            out.entry(b.path.clone())
+            out.entry(b.path.to_path_buf())
                 .or_default()
                 .insert(b.anchor.byte_start, spent);
         }
@@ -461,7 +461,7 @@ pub(super) fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>, env: Option<&FactEn
             facts: env.zip(x.when_span).map(|(env, span)| FactScope {
                 env,
                 vocab: &x.folded.env.rel_vocab,
-                path: x.path.as_path(),
+                path: x.path,
                 span,
                 wip: false,
             }),

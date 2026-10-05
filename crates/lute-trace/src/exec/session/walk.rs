@@ -330,13 +330,12 @@ pub fn play_machine(
     carry: Carry,
     choose: &BTreeMap<String, Vec<String>>,
 ) -> Machine<PlayDriver> {
-    let machine = Machine::resume_with_project(
+    let machine = Machine::resume_with_project_schema(
         doc_json,
-        seed,
+        seed.clone(),
         carry,
         PlayDriver::new(choose, w),
-        &p.rules,
-        &p.state_table,
+        p.store_schemas[seed.derive as usize].clone(),
     )
     .with_visited(&w.visited)
     .with_bridge_reads(p.bridge_reads.clone());

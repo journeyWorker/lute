@@ -1527,7 +1527,12 @@ fn project_docs(dest: &Destination) -> Vec<(PathBuf, lute_syntax::ast::Document)
 /// The alphabetically first scene id in the project `dest`, `None` outside
 /// a project or before its first scene.
 fn first_scene_id(dest: &Destination) -> Option<String> {
-    lute_check::connectivity::scene_key_set(&project_docs(dest))
+    let snapshot = manifest_context(&dest.root)
+        .map(|context| context.snapshot)
+        .unwrap_or_else(|_| lute_manifest::core::load_core_snapshot());
+    let owned = lute_check::ProjectDocs::parse(project_docs(dest), &snapshot);
+    let views = owned.views();
+    lute_check::connectivity::scene_key_set(&views)
         .into_keys()
         .next()
 }
@@ -1536,14 +1541,19 @@ fn first_scene_id(dest: &Destination) -> Option<String> {
 /// quest or lore document of the project already declares: document ids are
 /// one namespace, so the new file would fail `check-project` at once.
 fn refuse_taken_id(dest: &Destination, id: &str) -> Result<(), ExitCode> {
-    let docs = project_docs(dest);
-    let taken = lute_check::connectivity::scene_key_set(&docs)
+    let snapshot = manifest_context(&dest.root)
+        .map(|context| context.snapshot)
+        .unwrap_or_else(|_| lute_manifest::core::load_core_snapshot());
+    let owned = lute_check::ProjectDocs::parse(project_docs(dest), &snapshot);
+    let views = owned.views();
+    let taken = lute_check::connectivity::scene_key_set(&views)
         .remove(id)
         .and_then(|sites| sites.into_iter().next().map(|(path, _)| path))
         .or_else(|| {
-            docs.iter()
-                .find(|(_, d)| lute_check::connectivity::bundle_id(d).as_deref() == Some(id))
-                .map(|(path, _)| path.clone())
+            views
+                .iter()
+                .find(|item| lute_check::connectivity::bundle_id(item.meta).as_deref() == Some(id))
+                .map(|item| item.path.to_path_buf())
         });
     let Some(path) = taken else {
         return Ok(());

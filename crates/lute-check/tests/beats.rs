@@ -13,7 +13,7 @@ use lute_check::connectivity::{
 };
 use lute_check::{
     check, check_fact_guards, check_project_beats, compute_must, fold_env, BeatOnce, CheckInput,
-    FactEnv, FoldedEnv, MaySet, Mode, RootVocab, SchemaImports,
+    FactEnv, FoldedEnv, MaySet, Mode, ProjectDoc, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
@@ -474,22 +474,27 @@ fn project(texts: &[(&str, &str)], snapshot: CapabilitySnapshot) -> Project {
         foldeds.push(folded);
         docs.push((PathBuf::from(path), doc));
     }
-    let key_set = scene_key_set(&docs);
-    let quest_ids = quest_id_set(&docs);
-    let (graph, _) = assemble_graph(&docs, &key_set, &quest_ids);
-    let lifecycle = unreachable_quest_ids(&docs, &results);
-    let ambiguous = ambiguous_quest_ids(&docs);
+    let views: Vec<_> = docs
+        .iter()
+        .zip(&foldeds)
+        .map(|((path, doc), folded)| ProjectDoc::new(path, doc, &folded.typed))
+        .collect();
+    let key_set = scene_key_set(&views);
+    let quest_ids = quest_id_set(&views);
+    let (graph, _) = assemble_graph(&views, &key_set, &quest_ids);
+    let lifecycle = unreachable_quest_ids(&views, &results);
+    let ambiguous = ambiguous_quest_ids(&views);
     let (reach, _) = check_reachability(&graph, &quest_ids, &ambiguous, &lifecycle);
     let mut vocab = RootVocab::default();
     for folded in &foldeds {
         vocab.add(&folded.env.rel_vocab, &folded.env.domains);
     }
-    let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
+    let facts = live_assert_sites(&views, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
         .flat_map(|(_, a)| vocab.asserted_facts(&a));
-    let may = MaySet::build(&vocab, facts, &lute_check::stable_seeds(&docs, &vocab));
+    let may = MaySet::build(&vocab, facts, &lute_check::stable_seeds(&views, &vocab));
     let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
-    let must = compute_must(&docs, &folded_refs, &graph, &vocab, &may);
+    let must = compute_must(&views, &folded_refs, &graph, &vocab, &may);
     let env = FactEnv::new(may, must.slots);
     Project {
         docs,
@@ -519,10 +524,16 @@ impl Project {
     /// tests in `harness_022.rs`).
     fn shadowed(&self) -> Vec<(PathBuf, Diagnostic)> {
         let refs: Vec<&FoldedEnv> = self.foldeds.iter().collect();
+        let views: Vec<_> = self
+            .docs
+            .iter()
+            .zip(&self.foldeds)
+            .map(|((path, doc), folded)| ProjectDoc::new(path, doc, &folded.typed))
+            .collect();
         check_project_beats(
-            &self.docs,
+            &views,
             &refs,
-            &lute_check::cast::fact_producers(&self.docs, &Default::default()),
+            &lute_check::cast::fact_producers(&views, &Default::default()),
             None,
             &Default::default(),
         )

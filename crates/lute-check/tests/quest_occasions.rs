@@ -11,7 +11,7 @@ use lute_check::{check, check_project_accepts, CheckInput, Mode, SchemaImports};
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::{Document, Node};
+use lute_syntax::ast::Node;
 
 fn core() -> CapabilitySnapshot {
     lute_manifest::core::load_core_snapshot()
@@ -84,15 +84,19 @@ fn scene_doc(id: &str, fm: &str, body: &str) -> String {
     )
 }
 
-fn docs(texts: &[(&str, &str)]) -> Vec<(PathBuf, Document)> {
-    texts
-        .iter()
-        .map(|(path, text)| (PathBuf::from(path), lute_syntax::parse(text).0))
-        .collect()
+fn docs(texts: &[(&str, &str)]) -> lute_check::ProjectDocs {
+    lute_check::ProjectDocs::parse(
+        texts
+            .iter()
+            .map(|(path, text)| (PathBuf::from(path), lute_syntax::parse(text).0))
+            .collect(),
+        &lute_manifest::core::load_core_snapshot(),
+    )
 }
 
 fn unknown_nodes(texts: &[(&str, &str)]) -> Vec<Diagnostic> {
-    let docs = docs(texts);
+    let owned = docs(texts);
+    let docs = owned.views();
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
     resolve_nodes(&docs, &key_set, &quest_ids)
@@ -366,7 +370,7 @@ fn accept_with_another_attribute_is_unknown_attr() {
 }
 
 fn accepts(texts: &[(&str, &str)]) -> Vec<Diagnostic> {
-    check_project_accepts(&docs(texts))
+    check_project_accepts(&docs(texts).views())
         .into_iter()
         .map(|(_, d)| d)
         .collect()

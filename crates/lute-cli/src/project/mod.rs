@@ -265,8 +265,9 @@ pub(crate) fn project_assert_relations(
     let (file_results, by_root) = collect_project_docs(root, providers, single_root).ok()?;
     let group = by_root.get(root)?;
     let scenario = assemble_root_scenario(group, &file_results);
+    let docs = lute_model::project_docs(group);
     Some(lute_check::connectivity::live_assert_relations(
-        &scenario.docs,
+        &docs,
         &scenario.reach,
         &scenario.ambiguous_quests,
         &scenario.unreachable_quests,
@@ -279,10 +280,7 @@ pub(crate) fn project_assert_relations(
 /// notes against. `None` when the project cannot be collected.
 pub(crate) fn project_quest_ids(root: &Path, providers: Option<&Path>) -> Option<BTreeSet<String>> {
     let (_, by_root) = collect_project_docs(root, providers, true).ok()?;
-    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = by_root
-        .get(root)?
-        .iter()
-        .map(|(p, d, _)| (p.clone(), d.clone()))
-        .collect();
+    let group = by_root.get(root)?;
+    let docs = lute_model::project_docs(group);
     Some(lute_check::connectivity::quest_id_set(&docs))
 }
