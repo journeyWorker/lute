@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.36.2`, the grammar and semantics the checker
+- **Language** — currently `0.36.3`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.36.2`) and gated on by consuming engines.
+  artifact (currently `0.36.3`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,58 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.36.3] - 2026-10-06
+
+### Syntax
+
+None.
+
+### Semantics
+
+None.
+
+### Plugin
+
+None.
+
+### CLI
+
+- **Fixed:** without `--project`, `lute trace`, `lute context` and
+  `lute compile-stream` again name the nearest project relative to the
+  working directory (`lute: note: using project proj (nearest
+  lute.project.yaml) …`, `.` when it is the working directory), as 0.36.1
+  did. 0.36.2 printed the canonical absolute path. The `lute-load` crate
+  split had pointed those three commands at a second, absolute-path
+  `discover_project`; that copy is removed, so a single helper prints the
+  note for every command. `crates/lute-cli/tests/project_note.rs` pins the
+  note text for all three.
+
+### Diagnostics
+
+None.
+
+### Identity
+
+None.
+
+### IR
+
+Version moves to 0.36.3; no shape or content change — a no-op for consumers.
+
+### Tooling
+
+- **Correction to 0.36.2:** its byte-identity claim was false for the note
+  above. The 0.36.2 matrix never ran `trace`/`context`/`compile-stream`
+  without `--project`. The 0.36.3 matrix adds those commands, `lute
+  calendar` (text, `--json`, `--csv`), and standalone `lute run` on each
+  game's compiled artifacts. Each binary runs against a corpus stamped at
+  its own version. Apart from version stamps, every row is byte-identical
+  to 0.36.1.
+- `lute-load`'s public API drops `discover_project`, which no other code
+  called.
+- `play/calendar/mod.rs` moves its per-cell evaluation (`columns`,
+  `evaluate`, `cell_facts`) to `calendar/cells.rs` (841 → 635 lines).
 
 ## [0.36.2] - 2026-10-06
 

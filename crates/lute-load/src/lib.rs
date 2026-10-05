@@ -11,7 +11,7 @@ pub mod manifest;
 
 pub use cache::InputCache;
 pub use discovery::{
-    discover_project, find_lute_files, nearest_manifest_dir, normalize_span_from_text,
+    find_lute_files, nearest_manifest_dir, normalize_span_from_text,
     parse_project_docs, project_root_for,
 };
 pub use input::{

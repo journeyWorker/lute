@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.36.2"
+luteVersion: "0.36.3"
 uses: act1.schema.yaml
 title: Act 1 — Emerald Grove
 state:

@@ -66,10 +66,3 @@ pub fn nearest_manifest_dir(file: &Path) -> Option<PathBuf> {
     let start = if abs.is_dir() { abs.as_path() } else { abs.parent()? };
     start.ancestors().find(|d| d.join("lute.project.yaml").is_file()).map(Path::to_path_buf)
 }
-
-pub fn discover_project(file: &Path, project: Option<&Path>) -> Option<PathBuf> {
-    if project.is_some() { return None; }
-    let dir = nearest_manifest_dir(file)?;
-    eprintln!("lute: note: using project {} (nearest lute.project.yaml); pass --project to choose another", dir.display());
-    Some(dir)
-}
