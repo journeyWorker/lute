@@ -1,3 +1,4 @@
+use super::identity::scene_identity;
 use super::*;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,7 +24,7 @@ pub enum Reachability {
 /// a pure fact about the AUTHORED graph's own self-consistency (no route
 /// exists in what you declared), never a claim about runtime engine
 /// behavior — so the hedge would misrepresent it, not merely soften it.
-pub(super) const E_CONN_UNREACHABLE: &str = "E-CONN-UNREACHABLE";
+pub const E_CONN_UNREACHABLE: &str = "E-CONN-UNREACHABLE";
 
 /// dsl §4.1: a defensive cap on one node's `after` formula atom count — a
 /// pragmatic guard against a pathological/degenerate formula, not the
@@ -32,7 +33,7 @@ pub(super) const E_CONN_UNREACHABLE: &str = "E-CONN-UNREACHABLE";
 /// (256) is generous for any realistic hand-authored `after` clause;
 /// crossing it is itself a strong signal something degenerate (e.g.
 /// machine-generated) reached the parser.
-pub(super) const E_CONN_FORMULA_TOO_COMPLEX: &str = "E-CONN-FORMULA-TOO-COMPLEX";
+pub const E_CONN_FORMULA_TOO_COMPLEX: &str = "E-CONN-FORMULA-TOO-COMPLEX";
 
 /// See [`E_CONN_FORMULA_TOO_COMPLEX`].
 pub(super) const MAX_FORMULA_ATOMS: usize = 256;
@@ -594,7 +595,7 @@ pub(super) fn assert_site_is_live(r: Option<Reachability>) -> bool {
 /// `reachability.rs`'s `walk_reach` recursion shape (match-arm /
 /// branch-choice / hub-choice / on / objective bodies). Also the producer
 /// half of `lute scenario knowledge` (dsl 0.23.0 §1).
-pub(crate) fn collect_asserts<'d>(nodes: &'d [Node], out: &mut Vec<&'d Assert>) {
+pub fn collect_asserts<'d>(nodes: &'d [Node], out: &mut Vec<&'d Assert>) {
     for node in nodes {
         match node {
             Node::Assert(a) => out.push(a),
