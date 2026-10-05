@@ -983,24 +983,38 @@ fn unify(terms: &[Term], args: &[String], binding: &Binding) -> Option<Binding> 
     if terms.len() != args.len() {
         return None;
     }
-    let mut b = binding.clone();
-    for (t, a) in terms.iter().zip(args) {
-        match t {
-            Term::Const(c) => {
-                if c != a {
+    // Reject a tuple before copying the binding. A join usually examines
+    // many tuples that disagree with a constant or an already-bound variable;
+    // cloning the complete environment for every rejected tuple dominates
+    // large rule closures.
+    for (i, (term, arg)) in terms.iter().zip(args).enumerate() {
+        match term {
+            Term::Const(value) if value != arg => return None,
+            Term::Var(var) => {
+                if let Some(value) = binding.get(var) {
+                    if value != arg {
+                        return None;
+                    }
+                } else if terms[..i]
+                    .iter()
+                    .zip(&args[..i])
+                    .any(|(prior, value)| matches!(prior, Term::Var(v) if v == var) && value != arg)
+                {
                     return None;
                 }
             }
-            Term::Var(v) => match b.get(v) {
-                Some(existing) if existing != a => return None,
-                Some(_) => {}
-                None => {
-                    b.insert(v.clone(), a.clone());
-                }
-            },
+            _ => {}
         }
     }
-    Some(b)
+    let mut out = binding.clone();
+    for (term, arg) in terms.iter().zip(args) {
+        if let Term::Var(var) = term {
+            if !out.contains_key(var) {
+                out.insert(var.clone(), arg.clone());
+            }
+        }
+    }
+    Some(out)
 }
 
 /// A rule-body CEL guard reads only scalar state and the ground terms the

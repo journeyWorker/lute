@@ -52,7 +52,11 @@ fn parse_key(raw: &str) -> Option<NodeKey> {
 }
 
 fn error(code: &'static str, message: impl Into<String>, span: Option<Span>) -> RenameError {
-    RenameError { code, message: message.into(), span }
+    RenameError {
+        code,
+        message: message.into(),
+        span,
+    }
 }
 
 fn descendants(graph: &SemanticGraph, root: &NodeKey) -> Vec<NodeKey> {
@@ -95,7 +99,8 @@ fn rewrite_descendant(from: &NodeKey, to: &NodeKey, descendant: &NodeKey) -> Opt
         }
     }
     let (start, end) = position?;
-    let mut rewritten = String::with_capacity(key.len() + from.key.len().saturating_sub(to.key.len()));
+    let mut rewritten =
+        String::with_capacity(key.len() + from.key.len().saturating_sub(to.key.len()));
     rewritten.push_str(&key[..start]);
     rewritten.push_str(&from.key);
     rewritten.push_str(&key[end..]);
@@ -117,7 +122,10 @@ pub fn resolve_ledger(
         let Some(from) = parse_key(&entry.rename.from) else {
             errors.push(error(
                 "E-RENAME-LEDGER",
-                format!("rename source `{}` is not a canonical NodeKey", entry.rename.from),
+                format!(
+                    "rename source `{}` is not a canonical NodeKey",
+                    entry.rename.from
+                ),
                 entry.span,
             ));
             continue;
@@ -125,7 +133,10 @@ pub fn resolve_ledger(
         let Some(to) = parse_key(&entry.rename.to) else {
             errors.push(error(
                 "E-RENAME-LEDGER",
-                format!("rename destination `{}` is not a canonical NodeKey", entry.rename.to),
+                format!(
+                    "rename destination `{}` is not a canonical NodeKey",
+                    entry.rename.to
+                ),
                 entry.span,
             ));
             continue;
@@ -133,14 +144,20 @@ pub fn resolve_ledger(
         if let Some(previous) = sources.insert(entry.rename.from.clone(), index) {
             errors.push(error(
                 "E-RENAME-LEDGER",
-                format!("rename source `{}` is declared more than once (entries {previous} and {index})", entry.rename.from),
+                format!(
+                    "rename source `{}` is declared more than once (entries {previous} and {index})",
+                    entry.rename.from
+                ),
                 entry.span,
             ));
         }
         if let Some(previous) = destinations.insert(entry.rename.to.clone(), index) {
             errors.push(error(
                 "E-RENAME-LEDGER",
-                format!("rename destination `{}` is declared more than once (entries {previous} and {index})", entry.rename.to),
+                format!(
+                    "rename destination `{}` is declared more than once (entries {previous} and {index})",
+                    entry.rename.to
+                ),
                 entry.span,
             ));
         }
@@ -156,7 +173,10 @@ pub fn resolve_ledger(
         if source_keys.contains(to) || from == to {
             errors.push(error(
                 "E-RENAME-LEDGER-CYCLE",
-                format!("rename `{}` → `{}` forms a chain, self-loop, or cycle", rename.from, rename.to),
+                format!(
+                    "rename `{}` → `{}` forms a chain, self-loop, or cycle",
+                    rename.from, rename.to
+                ),
                 *span,
             ));
         }
@@ -170,7 +190,12 @@ pub fn resolve_ledger(
             }
             errors.push(error(
                 "E-RENAME-LEDGER-STALE",
-                format!("rename `{}` → `{}` is stale: {}", rename.from, rename.to, reason.join(" and ")),
+                format!(
+                    "rename `{}` → `{}` is stale: {}",
+                    rename.from,
+                    rename.to,
+                    reason.join(" and ")
+                ),
                 *span,
             ));
         }
@@ -185,14 +210,22 @@ pub fn resolve_ledger(
             let Some(source) = rewrite_descendant(from, to, &descendant) else {
                 errors.push(error(
                     "E-RENAME-LEDGER-STALE",
-                    format!("cannot expand `{}` → `{}` to contained descendant `{}`", rename.from, rename.to, descendant.canonical()),
+                    format!(
+                        "cannot expand `{}` → `{}` to contained descendant `{}`",
+                        rename.from,
+                        rename.to,
+                        descendant.canonical()
+                    ),
                     *span,
                 ));
                 continue;
             };
             covered_sources.insert(source.canonical(), *span);
             expanded.push((
-                IdentityRename { from: source.canonical(), to: descendant.canonical() },
+                IdentityRename {
+                    from: source.canonical(),
+                    to: descendant.canonical(),
+                },
                 *span,
             ));
         }
@@ -201,7 +234,10 @@ pub fn resolve_ledger(
         if covered_sources.contains_key(&rename.from) {
             errors.push(error(
                 "E-RENAME-LEDGER",
-                format!("rename `{}` is already covered by an ancestor expansion", rename.from),
+                format!(
+                    "rename `{}` is already covered by an ancestor expansion",
+                    rename.from
+                ),
                 *span,
             ));
         }
@@ -209,21 +245,35 @@ pub fn resolve_ledger(
     let mut expanded_sources = BTreeMap::<String, Option<Span>>::new();
     let mut expanded_destinations = BTreeMap::<String, Option<Span>>::new();
     for (rename, span) in &expanded {
-        let Some(from) = parse_key(&rename.from) else { continue };
-        let Some(to) = parse_key(&rename.to) else { continue };
+        let Some(from) = parse_key(&rename.from) else {
+            continue;
+        };
+        let Some(to) = parse_key(&rename.to) else {
+            continue;
+        };
         if graph.nodes.contains_key(&from) || !graph.nodes.contains_key(&to) {
             errors.push(error(
                 "E-RENAME-LEDGER-STALE",
-                format!("expanded rename `{}` → `{}` is stale", rename.from, rename.to),
+                format!(
+                    "expanded rename `{}` → `{}` is stale",
+                    rename.from, rename.to
+                ),
                 *span,
             ));
         }
-        if expanded_sources.insert(rename.from.clone(), *span).is_some()
-            || expanded_destinations.insert(rename.to.clone(), *span).is_some()
+        if expanded_sources
+            .insert(rename.from.clone(), *span)
+            .is_some()
+            || expanded_destinations
+                .insert(rename.to.clone(), *span)
+                .is_some()
         {
             errors.push(error(
                 "E-RENAME-LEDGER",
-                format!("expanded rename `{}` → `{}` duplicates an endpoint", rename.from, rename.to),
+                format!(
+                    "expanded rename `{}` → `{}` duplicates an endpoint",
+                    rename.from, rename.to
+                ),
                 *span,
             ));
         }
@@ -253,11 +303,17 @@ mod tests {
         graph.node(NodeKey::new(NodeKind::Quest, "new"), None, None);
         let entries = vec![
             IdentityRenameDecl {
-                rename: IdentityRename { from: "quest:z".into(), to: "quest:new".into() },
+                rename: IdentityRename {
+                    from: "quest:z".into(),
+                    to: "quest:new".into(),
+                },
                 span: None,
             },
             IdentityRenameDecl {
-                rename: IdentityRename { from: "quest:a".into(), to: "quest:missing".into() },
+                rename: IdentityRename {
+                    from: "quest:a".into(),
+                    to: "quest:missing".into(),
+                },
                 span: None,
             },
         ];
@@ -269,11 +325,17 @@ mod tests {
         graph.node(NodeKey::new(NodeKind::Quest, "new-z"), None, None);
         let entries = vec![
             IdentityRenameDecl {
-                rename: IdentityRename { from: "quest:z".into(), to: "quest:new-z".into() },
+                rename: IdentityRename {
+                    from: "quest:z".into(),
+                    to: "quest:new-z".into(),
+                },
                 span: None,
             },
             IdentityRenameDecl {
-                rename: IdentityRename { from: "quest:a".into(), to: "quest:new-a".into() },
+                rename: IdentityRename {
+                    from: "quest:a".into(),
+                    to: "quest:new-a".into(),
+                },
                 span: None,
             },
         ];
@@ -288,11 +350,17 @@ mod tests {
         graph.node(NodeKey::new(NodeKind::Quest, "c"), None, None);
         let entries = vec![
             IdentityRenameDecl {
-                rename: IdentityRename { from: "quest:a".into(), to: "quest:b".into() },
+                rename: IdentityRename {
+                    from: "quest:a".into(),
+                    to: "quest:b".into(),
+                },
                 span: None,
             },
             IdentityRenameDecl {
-                rename: IdentityRename { from: "quest:b".into(), to: "quest:c".into() },
+                rename: IdentityRename {
+                    from: "quest:b".into(),
+                    to: "quest:c".into(),
+                },
                 span: None,
             },
         ];
@@ -309,17 +377,43 @@ mod tests {
         graph.node(quest.clone(), None, None);
         graph.node(objective.clone(), None, None);
         graph.node(state.clone(), None, None);
-        graph.edge(quest.clone(), objective, "contains", "quest owns objective", None, None, lute_core_span::Evidence::Proven);
-        graph.edge(quest, state, "contains", "quest owns state", None, None, lute_core_span::Evidence::Proven);
+        graph.edge(
+            quest.clone(),
+            objective,
+            "contains",
+            "quest owns objective",
+            None,
+            None,
+            lute_core_span::Evidence::Proven,
+        );
+        graph.edge(
+            quest,
+            state,
+            "contains",
+            "quest owns state",
+            None,
+            None,
+            lute_core_span::Evidence::Proven,
+        );
         let root = IdentityRenameDecl {
-            rename: IdentityRename { from: "quest:old".into(), to: "quest:new".into() },
+            rename: IdentityRename {
+                from: "quest:old".into(),
+                to: "quest:new".into(),
+            },
             span: None,
         };
-        let expanded = resolve_ledger(std::slice::from_ref(&root), &graph).expect("expanded ledger");
-        assert_eq!(expanded.iter().map(|r| r.from.as_str()).collect::<Vec<_>>(), vec!["objective:old.reach", "quest:old", "state:quest.old.state"]);
+        let expanded =
+            resolve_ledger(std::slice::from_ref(&root), &graph).expect("expanded ledger");
+        assert_eq!(
+            expanded.iter().map(|r| r.from.as_str()).collect::<Vec<_>>(),
+            vec!["objective:old.reach", "quest:old", "state:quest.old.state"]
+        );
         assert!(expanded.iter().any(|r| r.to == "objective:new.reach"));
         let duplicate = IdentityRenameDecl {
-            rename: IdentityRename { from: "objective:old.reach".into(), to: "objective:new.reach".into() },
+            rename: IdentityRename {
+                from: "objective:old.reach".into(),
+                to: "objective:new.reach".into(),
+            },
             span: None,
         };
         let errors = resolve_ledger(&[root, duplicate], &graph).expect_err("covered descendant");
@@ -331,10 +425,15 @@ mod tests {
         let mut graph = SemanticGraph::default();
         graph.node(NodeKey::new(NodeKind::Objective, "new.reach"), None, None);
         let entry = IdentityRenameDecl {
-            rename: IdentityRename { from: "objective:old.missing".into(), to: "objective:new.missing".into() },
+            rename: IdentityRename {
+                from: "objective:old.missing".into(),
+                to: "objective:new.missing".into(),
+            },
             span: None,
         };
         let errors = resolve_ledger(&[entry], &graph).expect_err("stale descendant");
-        assert!(errors.iter().any(|error| error.code == "E-RENAME-LEDGER-STALE"));
+        assert!(errors
+            .iter()
+            .any(|error| error.code == "E-RENAME-LEDGER-STALE"));
     }
 }

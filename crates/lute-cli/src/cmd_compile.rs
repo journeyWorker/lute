@@ -13,7 +13,8 @@ use lute_model::{
     build_input, BuiltInput, ModelError, ModelOptions, ProjectModel,
 };
 use crate::loc;
-use crate::output::{render_diagnostics, severity_str, write_stdout, DenyPolicy};
+use crate::output::{pretty_json, render_diagnostics, severity_str, write_stdout, DenyPolicy};
+use crate::project::resolve_project;
 use lute_model::project_gate_result;
 
 /// Route `lute compile` to the single-file ([`run_compile`]) or whole-project
@@ -132,9 +133,8 @@ fn run_compile(
     // `--project`, else the nearest manifest (its `defaults:`, profile and
     // `identity:` apply). Only an explicit `--project` switches the gate to
     // the reconciled project verdict below.
-    let discovered = crate::project::discover_project(file, project);
-    let resolved = project.or(discovered.as_deref());
-    let Some(built) = build_input(file, providers, resolved, permission_profile) else {
+    let resolved = resolve_project(file, project);
+    let Some(built) = build_input(file, providers, resolved.as_deref(), permission_profile) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();
@@ -181,7 +181,7 @@ fn run_compile(
         Ok(mut artifact) => {
             if let Err(code) = stamp_project_identity_renames(
                 &mut artifact,
-                resolved,
+                resolved.as_deref(),
                 providers,
                 permission_profile,
                 &identity_rename_decls,
@@ -205,10 +205,10 @@ fn run_compile(
                     return ExitCode::FAILURE;
                 }
             }
-            let mut s = match serde_json::to_string_pretty(&artifact) {
+            let mut s = match pretty_json(&artifact) {
                 Ok(s) => s,
-                Err(e) => {
-                    eprintln!("lute: failed to serialize execution IR: {e}");
+                Err(error) => {
+                    eprintln!("lute: failed to serialize execution IR: {error}");
                     return ExitCode::from(2);
                 }
             };
@@ -231,10 +231,10 @@ fn run_compile(
         }
         Err(diags) => {
             let s = if json {
-                let mut s = match serde_json::to_string_pretty(&diags) {
+                let mut s = match pretty_json(&diags) {
                     Ok(s) => s,
-                    Err(e) => {
-                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                    Err(error) => {
+                        eprintln!("lute: failed to serialize diagnostics: {error}");
                         return ExitCode::from(2);
                     }
                 };

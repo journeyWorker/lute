@@ -58,10 +58,10 @@ pub struct ManifestVerdict {
     pub dir: PathBuf,
     /// `None` when the file could not be read or deserialized at all.
     pub config: Option<ProjectConfig>,
-    /// The read/parse failure message, which already carries the path
-    /// (`load_project` formats `invalid <path>: …`). Kept as a string rather
-    /// than minting a diagnostic code the spec does not define.
-    pub load_error: Option<String>,
+    /// The read/parse failure; its `Display` already carries the path
+    /// (`invalid <path>: …`) and is printed as-is rather than minting a
+    /// diagnostic code the spec does not define.
+    pub load_error: Option<lute_manifest::project::ProjectLoadError>,
     /// Manifest-scoped diagnostics: `E-IDENTITY-TEMPLATE` today, plus
     /// `E-DEFAULTS-KEY` from Task 3 and `W-PROJECT-INERT` from Task 2.
     pub diags: Vec<Diagnostic>,

@@ -114,16 +114,40 @@ impl Store {
     /// The artifact's declared state table, defaults, seed facts, rules and
     /// exclusive pairs. `derive: false` leaves the rules unapplied.
     pub(crate) fn of_artifact(art: &Json, derive: bool) -> Self {
+        Self::of_artifact_with(art, derive, None, None)
+    }
+
+    /// Build a store from one document's commands while taking the
+    /// project-wide `rules` and `state` tables from the caller. This is the
+    /// play path's equivalent of widening the artifact JSON, without cloning
+    /// the document's command tree for every occasion.
+    pub(crate) fn of_artifact_with_project(
+        art: &Json,
+        derive: bool,
+        rules: &Json,
+        state: &BTreeMap<String, Json>,
+    ) -> Self {
+        Self::of_artifact_with(art, derive, Some(rules), Some(state))
+    }
+
+    fn of_artifact_with(
+        art: &Json,
+        derive: bool,
+        rules_override: Option<&Json>,
+        state_override: Option<&BTreeMap<String, Json>>,
+    ) -> Self {
+        let state_entries: Vec<&Json> = match state_override {
+            Some(state) => state.values().collect(),
+            None => art
+                .get("state")
+                .and_then(Json::as_array)
+                .map_or_else(Vec::new, |entries| entries.iter().collect()),
+        };
         let mut types = BTreeMap::new();
         let mut labels = BTreeMap::new();
         let mut label_forms = BTreeMap::new();
         let mut values = BTreeMap::new();
-        for e in art
-            .get("state")
-            .and_then(Json::as_array)
-            .into_iter()
-            .flatten()
-        {
+        for e in state_entries.iter().copied() {
             let path = e.get("path").and_then(Json::as_str).unwrap_or("");
             if path.is_empty() {
                 continue;
@@ -162,8 +186,9 @@ impl Store {
                 base.insert((rel.to_string(), args));
             }
         }
-        let program = Program::from_ir(art.get("rules"))
-            .with_kinds(crate::datalog::ir_kinds(art.get("entities")));
+        let rule_json = rules_override.or_else(|| art.get("rules"));
+        let program =
+            Program::from_ir(rule_json).with_kinds(crate::datalog::ir_kinds(art.get("entities")));
         let mut vocab = RelVocab::default();
         if !derive {
             let declared = art
@@ -173,8 +198,7 @@ impl Store {
                 .flatten()
                 .filter(|r| r.get("derive").and_then(Json::as_bool) == Some(true))
                 .filter_map(|r| r.get("name").and_then(Json::as_str));
-            let heads = art
-                .get("rules")
+            let heads = rule_json
                 .and_then(Json::as_array)
                 .into_iter()
                 .flatten()
@@ -320,6 +344,16 @@ impl Store {
         if self.values.remove(path).is_some() {
             self.dirty |= self.rules_read_state
                 && (path != lute_check::beats::OCCASION_TARGET || self.rules_read_occasion_target);
+        }
+    }
+
+    pub(crate) fn visit(&mut self, id: &str) {
+        self.visited.insert(id.to_string());
+    }
+
+    pub(crate) fn visit_all<'a>(&mut self, ids: impl IntoIterator<Item = &'a String>) {
+        for id in ids {
+            self.visit(id);
         }
     }
 
@@ -569,5 +603,24 @@ pub(crate) fn json_arg_to_string(j: &Json) -> String {
         Json::Bool(b) => b.to_string(),
         Json::Number(n) => n.to_string(),
         _ => j.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn visited_guard_cache_invalidates_when_visited_changes() {
+        let artifact = json!({
+            "state": [],
+            "rules": [],
+            "entities": []
+        });
+        let mut store = Store::of_artifact(&artifact, false);
+        assert_eq!(store.eval("visited('scene-a')").0, Value::Bool(false));
+        store.visit_all(&BTreeSet::from([String::from("scene-a")]));
+        assert_eq!(store.eval("visited('scene-a')").0, Value::Bool(true));
     }
 }

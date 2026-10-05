@@ -6,7 +6,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-const BIN: &str = env!("CARGO_BIN_EXE_lute");
+mod support;
+use support::BIN;
 
 fn temp_dir(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU32, Ordering};

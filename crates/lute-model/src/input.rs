@@ -1,8 +1,8 @@
 //! Shared source input assembly for CLI, LSP, and project models.
 
 use std::path::Path;
+use std::sync::Arc;
 
-use lute_check::rel_schema::PluginOrigins;
 use lute_check::{CheckInput, Mode};
 use lute_core_span::Diagnostic;
 use lute_manifest::project::{resolve_permissions, ResolveDiag};
@@ -77,7 +77,10 @@ pub fn assemble_input_with_mode(cache: &InputCache, file: &Path, text: String, p
     let loaded = root.map(|dir| cache.project(dir));
     let project = match loaded.as_deref() {
         Some(Ok(p)) => p.as_ref(),
-        Some(Err(e)) => { project_diags.push(e.clone()); None }
+        Some(Err(e)) => {
+            project_diags.push(e.to_string());
+            None
+        }
         None => None,
     };
     let providers = ProviderSet::clone(&cache.providers(providers, root, project));
@@ -109,9 +112,20 @@ pub fn assemble_input_with_mode(cache: &InputCache, file: &Path, text: String, p
     }
     let identity = project.as_ref().map(|p| p.identity.clone()).unwrap_or_default();
     let base = file.parent().unwrap_or_else(|| Path::new("."));
-    let mut imports = cache.imports.resolve(base, &meta0.uses, &meta0.extends, meta_span);
-    if let Some(p) = project { imports.plugin_origins = PluginOrigins::clone(&cache.plugin_origins(&p.plugins_dir)); }
-    let components = cache.imports.resolve_components(base, &meta0.components, meta_span);
+    let mut imports = Arc::unwrap_or_clone(cache.imports.resolve(
+        base,
+        &meta0.uses,
+        &meta0.extends,
+        meta_span,
+    ));
+    if let Some(p) = project {
+        imports.plugin_origins = Arc::unwrap_or_clone(cache.plugin_origins(&p.plugins_dir));
+    }
+    let components = Arc::unwrap_or_clone(cache.imports.resolve_components(
+        base,
+        &meta0.components,
+        meta_span,
+    ));
     let built = BuiltInput {
         input: CheckInput { text, uri: file.display().to_string(), snapshot, providers, mode, imports, components, defaults: defaults.clone() },
         resolve_error, resolve_blocks, project_diags, resolve_diags: rdiags, meta: meta0, defaults, identity,

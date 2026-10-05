@@ -11,8 +11,9 @@ use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
 
 use crate::context;
+use crate::project::resolve_project;
+use crate::output::{pretty_json, write_stdout};
 use lute_model::{build_input, BuiltInput, ModelOptions, ProjectModel};
-use crate::output::write_stdout;
 
 /// Emit the project-resolved AUTHORING SURFACE for `file`: everything an AI
 /// needs to WRITE valid Lute against THIS file's project — the resolved
@@ -62,9 +63,8 @@ fn run_authoring_context(
     permission_profile: Option<&str>,
 ) -> ExitCode {
     // FS-F2: the same project `lute check` resolves the file against.
-    let discovered = crate::project::discover_project(file, project);
-    let project = project.or(discovered.as_deref());
-    let Some(built) = build_input(file, providers, project, permission_profile) else {
+    let project = resolve_project(file, project);
+    let Some(built) = build_input(file, providers, project.as_deref(), permission_profile) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();
@@ -107,10 +107,10 @@ fn run_authoring_context(
         &input,
         &reserved_quest_paths,
         file,
-        project,
+        project.as_deref(),
     );
     if json {
-        match serde_json::to_string_pretty(&surface) {
+        match pretty_json(&surface) {
             Ok(s) => {
                 if write_stdout(&format!("{s}\n")).is_err() {
                     return ExitCode::from(2);
@@ -143,16 +143,12 @@ fn run_task_context(
     let Some(raw_target) = target else {
         return ExitCode::from(2);
     };
-    let discovered = crate::project::discover_project(file, project);
-    let root = project
-        .map(Path::to_path_buf)
-        .or(discovered)
-        .unwrap_or_else(|| {
-            file.parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-                .unwrap_or_else(|| Path::new("."))
-                .to_path_buf()
-        });
+    let root = resolve_project(file, project).unwrap_or_else(|| {
+        file.parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf()
+    });
     let opts = ModelOptions {
         providers: providers.map(Path::to_path_buf),
         permission_profile: permission_profile.map(str::to_string),
@@ -321,9 +317,15 @@ fn run_position_context(
         Ok(source) => source,
         Err(error) => { eprintln!("lute: cannot read {}: {error}", path.display()); return ExitCode::from(2); }
     };
-    let discovered = crate::project::discover_project(&path, None);
-    let root = project.or(discovered.as_deref());
-    let Some(built) = build_input(&path, providers, root, permission_profile) else { return ExitCode::from(2); };
+    // Preserve the legacy `--at` note: this path probed the nearest manifest
+    // even when an explicit project was supplied, while the project still won.
+    let root = if project.is_some() {
+        let discovered = crate::project::discover_project(&path, None);
+        project.map(Path::to_path_buf).or(discovered)
+    } else {
+        resolve_project(&path, None)
+    };
+    let Some(built) = build_input(&path, providers, root.as_deref(), permission_profile) else { return ExitCode::from(2); };
     let (doc, _) = lute_syntax::parse(&source);
     let Some(offset) = line_column_offset(&source, line, column) else {
         eprintln!("lute: --at coordinate is outside the source");
@@ -348,7 +350,7 @@ fn run_position_context(
 
 fn emit_context(value: serde_json::Value, json: bool) -> ExitCode {
     let text = if json {
-        match serde_json::to_string_pretty(&value) { Ok(s) => format!("{s}\n"), Err(error) => { eprintln!("lute: failed to serialize context: {error}"); return ExitCode::from(2); } }
+        match pretty_json(&value) { Ok(s) => format!("{s}\n"), Err(error) => { eprintln!("lute: failed to serialize context: {error}"); return ExitCode::from(2); } }
     } else {
         format!("{}\n", value)
     };

@@ -15,9 +15,8 @@
 //! params as a call site would, while `trace`/`compile` refuse the invocation.
 
 use std::path::PathBuf;
-use std::process::Command;
 
-const BIN: &str = env!("CARGO_BIN_EXE_lute");
+mod support;
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -33,7 +32,7 @@ fn temp_dir(tag: &str) -> PathBuf {
 }
 
 fn run(args: &[&str]) -> std::process::Output {
-    Command::new(BIN).args(args).output().unwrap()
+    support::run_cli(args)
 }
 
 /// Every diagnostic line (the `path:line:col: severity [CODE] message` form) a

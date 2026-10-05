@@ -1121,14 +1121,17 @@ fn canonicalise_entry(
             )?))
         }
         serde_yaml::Value::String(s) => vec![s.as_str()],
-        serde_yaml::Value::Sequence(items) => items
-            .iter()
-            .map(|i| {
-                i.as_str()
-                    .expect("shape already checked by defaults_shape_ok")
-            })
-            .collect(),
-        _ => unreachable!("shape already checked by defaults_shape_ok"),
+        serde_yaml::Value::Sequence(items) => {
+            let mut values = Vec::with_capacity(items.len());
+            for item in items {
+                let Some(value) = item.as_str() else {
+                    return Err("defaults entry must contain only string paths".to_string());
+                };
+                values.push(value);
+            }
+            values
+        }
+        _ => return Err("defaults entry must be a path or list of paths".to_string()),
     };
     let mut out: Vec<serde_yaml::Value> = Vec::with_capacity(items.len());
     let mut push = |p: String| {
@@ -1395,6 +1398,64 @@ fn chapter_origins(
 }
 
 
+/// An error loading a project manifest.
+#[derive(Debug)]
+pub enum ProjectLoadError {
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Yaml {
+        path: PathBuf,
+        line: usize,
+        column: usize,
+        message: String,
+        source: Box<serde_yaml::Error>,
+    },
+    Invalid {
+        path: PathBuf,
+        line: usize,
+        column: usize,
+        reason: String,
+    },
+}
+
+impl std::fmt::Display for ProjectLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io { path, source } => {
+                write!(f, "cannot read {}: {}", path.display(), crate::io_reason(source))
+            }
+            Self::Yaml {
+                path,
+                line,
+                column,
+                message,
+                .. } |
+            Self::Invalid {
+                path,
+                line,
+                column,
+                reason: message,
+            } => write!(
+                f,
+                "{}:{line}:{column}: error [{E_MANIFEST}] {message}",
+                path.display()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ProjectLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Yaml { source, .. } => Some(source.as_ref()),
+            Self::Io { source, .. } => Some(source),
+            Self::Invalid { .. } => None,
+        }
+    }
+}
+
 /// Read `<project_dir>/lute.project.yaml` into a [`ProjectConfig`].
 ///
 /// Distinguishes an absent config from a broken one (plugin §11): a missing
@@ -1403,36 +1464,39 @@ fn chapter_origins(
 /// `defaultProfile:` → `Err(msg)` so the caller can surface it instead of
 /// silently mis-validating (dsl 0.28.0: `<path>:<line>:<col>: error
 /// [E-MANIFEST] …`, in plain words); a valid file → `Ok(Some(cfg))`.
-///
-/// An unknown key, a malformed `identity:` template and a bad `defaults:`
-/// entry are NOT load failures: each is dropped and reported (located) on
-/// the config, so the project still resolves its plugins and both surfaces
-/// report the same diagnostic.
-pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String> {
+pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, ProjectLoadError> {
     let path = project_dir.join("lute.project.yaml");
     let text = match std::fs::read_to_string(&path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => {
-            return Err(format!(
-                "cannot read {}: {}",
-                path.display(),
-                crate::io_reason(&e)
-            ))
+            return Err(ProjectLoadError::Io {
+                path: path.clone(),
+                source: e,
+            })
         }
     };
     let fail = |offset: usize, message: &str| {
         let (line, col) = crate::yaml_text::line_col(&text, offset);
-        format!(
-            "{}:{line}:{col}: error [{E_MANIFEST}] {message}",
-            path.display()
-        )
+        ProjectLoadError::Invalid {
+            path: path.clone(),
+            line,
+            column: col,
+            reason: message.to_string(),
+        }
     };
     let value: serde_yaml::Value = match serde_yaml::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
             let fault = crate::yaml_text::yaml_fault(&text, &e);
-            return Err(fail(fault.offset, &fault.message));
+            let (line, column) = crate::yaml_text::line_col(&text, fault.offset);
+            return Err(ProjectLoadError::Yaml {
+                path: path.clone(),
+                line,
+                column,
+                message: fault.message,
+                source: Box::new(e),
+            });
         }
     };
     let mut map = match value {
@@ -1504,7 +1568,9 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
     }
     // Through text, not `from_value`: `Value`'s deserializer reads a `null`
     // as an empty mapping, which would accept `permissions: null`.
-    let cleaned = serde_yaml::to_string(&serde_yaml::Value::Mapping(map)).unwrap_or_default();
+    let cleaned = serde_yaml::to_string(&serde_yaml::Value::Mapping(map)).map_err(|e| {
+        fail(0, &format!("could not normalize manifest: {}", plain_serde(&e)))
+    })?;
     let raw: RawProject = serde_yaml::from_str(&cleaned).map_err(|e| {
         fail(
             0,

@@ -289,7 +289,7 @@ fn trace_pipeline(
         .flatten()
         .map(|mut p| {
             p.chapter_afters
-                .extend(lute_check::chapters::derived_after(&doc));
+                .extend(lute_check::chapters::derived_after(&doc, &folded.typed));
             p
         });
 

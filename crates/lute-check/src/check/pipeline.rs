@@ -1010,7 +1010,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let diags = collapse_same_root(diags);
     // A name the manifest's `defaults.uses` declares, missing because this
     // document's own `uses:` replaced that list: the error says so.
-    let mut diags = crate::defaults_note::note_replaced_uses(&doc, input, diags);
+    let mut diags =
+        crate::defaults_note::note_replaced_uses(&doc, &folded.typed, input, diags);
 
     // Some-vs-None policy for the resolved view.
     let structural_break = diags

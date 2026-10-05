@@ -326,9 +326,12 @@ impl RootVocab {
     /// every relation its template's body asserts is unbounded — the
     /// template it names, or the one a misspelt name stands for. Nothing
     /// reading such a relation is called impossible for want of the dropped
-    /// write (its own error is the one report). Call before
     /// [`MaySet::build`].
-    pub fn note_unreadable_documents(&mut self, docs: &[(PathBuf, lute_syntax::ast::Document)]) {
+    pub fn note_unreadable_documents(
+        &mut self,
+        docs: &[(PathBuf, lute_syntax::ast::Document)],
+        typed: &[&crate::meta::TypedMeta],
+    ) {
         self.incomplete |= docs
             .iter()
             .any(|(_, d)| !crate::meta::frontmatter_parses(&d.meta));
@@ -373,12 +376,9 @@ impl RootVocab {
         }
         let components: Vec<(String, &lute_syntax::ast::Document)> = docs
             .iter()
-            .filter_map(|(_, d)| {
-                let name = serde_yaml::from_str::<serde_yaml::Value>(&d.meta.raw_yaml)
-                    .ok()?
-                    .get("component")?
-                    .as_str()?
-                    .to_string();
+            .zip(typed.iter().copied())
+            .filter_map(|((_, d), meta)| {
+                let name = meta.component.clone()?;
                 Some((name, d))
             })
             .collect();
@@ -1482,7 +1482,7 @@ struct SlotFacts {
     own: Vec<MustFact>,
     closure: Option<Arc<MustClosure>>,
     /// The whole set, filled on the first read.
-    full: OnceLock<Vec<MustFact>>,
+    full: OnceLock<Arc<Vec<MustFact>>>,
 }
 
 impl SlotFacts {
@@ -1490,17 +1490,19 @@ impl SlotFacts {
         if self.shared.is_none() && self.closure.is_none() {
             return &self.own;
         }
-        self.full.get_or_init(|| {
-            let mut all = match &self.shared {
-                Some(shared) => merge_facts(shared, &self.own),
-                None => self.own.clone(),
-            };
-            if let Some(closure) = &self.closure {
-                let derived = closure.derived(&all);
-                all.extend(derived.iter().cloned());
-            }
-            all
-        })
+        self.full
+            .get_or_init(|| {
+                let mut all = match &self.shared {
+                    Some(shared) => merge_facts(shared, &self.own),
+                    None => self.own.clone(),
+                };
+                if let Some(closure) = &self.closure {
+                    let derived = closure.derived(&all);
+                    all.extend(derived.iter().cloned());
+                }
+                Arc::new(all)
+            })
+            .as_slice()
     }
 }
 

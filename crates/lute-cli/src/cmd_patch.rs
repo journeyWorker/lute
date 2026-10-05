@@ -31,12 +31,23 @@ fn refusal_json(refusal: &PatchRefusal) -> serde_json::Value {
             value["index"] = serde_json::json!(index);
             value["reason"] = serde_json::Value::String(reason.clone());
         }
-        PatchRefusal::Check(diagnostics) => value["diagnostics"] = serde_json::to_value(diagnostics).unwrap_or(serde_json::Value::Array(Vec::new())),
-        PatchRefusal::Preserve(changes) => value["changes"] = serde_json::Value::Array(changes.iter().map(|(preserve, change)| {
-            let mut item = serde_json::to_value(change).unwrap_or(serde_json::json!({}));
-            item["preserve"] = serde_json::Value::String(preserve.clone());
-            item
-        }).collect()),
+        PatchRefusal::Check(diagnostics) => {
+            value["diagnostics"] =
+                serde_json::to_value(diagnostics).unwrap_or(serde_json::Value::Array(Vec::new()))
+        }
+        PatchRefusal::Preserve(changes) => {
+            value["changes"] = serde_json::Value::Array(
+                changes
+                    .iter()
+                    .map(|(preserve, change)| {
+                        let mut item =
+                            serde_json::to_value(change).unwrap_or(serde_json::json!({}));
+                        item["preserve"] = serde_json::Value::String(preserve.clone());
+                        item
+                    })
+                    .collect(),
+            )
+        }
         PatchRefusal::Io { .. } => unreachable!(),
     }
     value
@@ -69,8 +80,11 @@ pub(crate) fn run(dir: &Path, patch: &Path, dry_run: bool, json: bool) -> ExitCo
                 "code": "E-PATCH-EDIT",
                 "message": format!("invalid patch JSON: {error}"),
             });
-            if json { println!("{}", serde_json::to_string_pretty(&refusal).unwrap()); }
-            else { eprintln!("lute patch: E-PATCH-EDIT: invalid patch JSON: {error}"); }
+            if json {
+                println!("{}", serde_json::to_string_pretty(&refusal).unwrap());
+            } else {
+                eprintln!("lute patch: E-PATCH-EDIT: invalid patch JSON: {error}");
+            }
             return ExitCode::from(2);
         }
     };
@@ -78,25 +92,50 @@ pub(crate) fn run(dir: &Path, patch: &Path, dry_run: bool, json: bool) -> ExitCo
         Ok(report) => {
             if json {
                 match report_json(&report) {
-                    Ok(text) => if crate::output::write_stdout(&text).is_err() { return ExitCode::from(2); },
-                    Err(error) => { eprintln!("lute patch: cannot serialize report: {error}"); return ExitCode::from(2); }
+                    Ok(text) => {
+                        if crate::output::write_stdout(&text).is_err() {
+                            return ExitCode::from(2);
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("lute patch: cannot serialize report: {error}");
+                        return ExitCode::from(2);
+                    }
                 }
             } else {
                 let mut out = String::new();
                 out.push_str(&format!("before: sha256:{}\n", report.before.sha256));
                 out.push_str(&format!("after: sha256:{}\n", report.after.sha256));
-                out.push_str(&format!("writes: {}\n", report.writes.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")));
+                out.push_str(&format!(
+                    "writes: {}\n",
+                    report
+                        .writes
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
                 out.push_str(&format!("changes: {}\n", report.diff.changes.len()));
-                if crate::output::write_stdout(&out).is_err() { return ExitCode::from(2); }
+                if crate::output::write_stdout(&out).is_err() {
+                    return ExitCode::from(2);
+                }
             }
-            if report.diff.changes.is_empty() { ExitCode::SUCCESS } else { ExitCode::from(1) }
+            if report.diff.changes.is_empty() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            }
         }
         Err(refusal) => {
             if json {
                 let value = refusal_json(&refusal);
                 let text = format!("{}\n", serde_json::to_string_pretty(&value).unwrap());
-                if crate::output::write_stdout(&text).is_err() { return ExitCode::from(2); }
-            } else { eprintln!("lute patch: {refusal}"); }
+                if crate::output::write_stdout(&text).is_err() {
+                    return ExitCode::from(2);
+                }
+            } else {
+                eprintln!("lute patch: {refusal}");
+            }
             ExitCode::from(2)
         }
     }

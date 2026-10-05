@@ -296,13 +296,17 @@ impl ImportCache {
         uses: &[String],
         extends: &[String],
         at: Span,
-    ) -> SchemaImports {
+    ) -> Arc<SchemaImports> {
         let key = (base_dir.to_path_buf(), uses.to_vec(), extends.to_vec());
-        let mut out = self.imports.get_or_init(key, || {
+        let cached = self.imports.get_or_init(key, || {
             resolve_imports(base_dir, uses, extends, AT_PLACEHOLDER)
         });
+        if at == AT_PLACEHOLDER {
+            return cached;
+        }
+        let mut out = (*cached).clone();
         anchor_at(&mut out.diags, at);
-        out
+        Arc::new(out)
     }
 
     /// [`crate::component_import::resolve_components`], memoized on
@@ -312,20 +316,27 @@ impl ImportCache {
         base_dir: &Path,
         components: &[String],
         at: Span,
-    ) -> crate::ComponentSet {
+    ) -> Arc<crate::ComponentSet> {
         let key = (base_dir.to_path_buf(), components.to_vec());
-        let mut out = self.components.get_or_init(key, || {
+        let cached = self.components.get_or_init(key, || {
             crate::component_import::resolve_components(base_dir, components, AT_PLACEHOLDER)
         });
+        if at == AT_PLACEHOLDER {
+            return cached;
+        }
+        let mut out = (*cached).clone();
         anchor_at(&mut out.diags, at);
-        out
+        Arc::new(out)
     }
 }
 
-/// A thread-safe compute-once map: the first caller for a key runs `init`,
-/// concurrent callers for the same key block on it, later callers read it.
+/// A per-invocation cache of immutable values.
+///
+/// Entries are stored behind `Arc`; cache hits clone only the pointer. The
+/// per-key `OnceLock` keeps unrelated keys independent while avoiding holding
+/// the map lock during an expensive parse.
 pub struct Memo<K, V> {
-    map: Mutex<HashMap<K, Arc<OnceLock<V>>>>,
+    map: Mutex<HashMap<K, Arc<OnceLock<Arc<V>>>>>,
 }
 
 impl<K, V> Default for Memo<K, V> {
@@ -336,16 +347,14 @@ impl<K, V> Default for Memo<K, V> {
     }
 }
 
-impl<K: Eq + std::hash::Hash, V: Clone> Memo<K, V> {
-    /// A clone of the value for `key`, computing it with `init` on first use.
-    /// The map lock is held only to find the key's cell, never while `init`
-    /// runs, so distinct keys compute concurrently.
-    pub fn get_or_init(&self, key: K, init: impl FnOnce() -> V) -> V {
+impl<K: Eq + std::hash::Hash, V> Memo<K, V> {
+    /// Return the shared value for `key`, computing it once on first use.
+    pub fn get_or_init(&self, key: K, init: impl FnOnce() -> V) -> Arc<V> {
         let cell = {
             let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
             map.entry(key).or_default().clone()
         };
-        cell.get_or_init(init).clone()
+        cell.get_or_init(|| Arc::new(init())).clone()
     }
 }
 

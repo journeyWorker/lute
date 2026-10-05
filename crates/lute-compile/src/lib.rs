@@ -395,7 +395,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.36.0";
+pub const LUTE_IR_VERSION: &str = "0.36.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -423,7 +423,7 @@ pub fn compile_with_check(
     result: CheckResult,
     identity: &IdentityTemplates,
 ) -> Result<ExecutionIr, Vec<Diagnostic>> {
-    compile_inner(input, result, identity, None)
+    compile_inner(input, result, identity, None, None)
 }
 
 /// [`compile_with_check`], plus the document's [`SourceMap`]: where every
@@ -435,16 +435,40 @@ pub fn compile_mapped(
     identity: &IdentityTemplates,
 ) -> Result<(ExecutionIr, SourceMap), Vec<Diagnostic>> {
     let mut map = SourceMap::default();
-    let artifact = compile_inner(input, result, identity, Some(&mut map))?;
+    let artifact = compile_inner(input, result, identity, Some(&mut map), None)?;
     Ok((artifact, map))
 }
 
-/// The one compile pipeline; `map` is filled when given.
+/// Compile an already checked, desugared document using its existing folded
+/// environment. The document MUST be at the same pre-component-splice
+/// boundary as the ordinary compiler input. Code generation intentionally
+/// reparses raw CEL fragments where it needs expression trees; `CelSlot::ast`
+/// handles from the check arena are not part of this API's input contract.
+///
+/// Project assembly has already paid for parsing, desugaring, and folding
+/// before its reconciled check gate is available. Keeping those parts alive
+/// avoids repeating the same work during code generation; the document is
+/// owned by this call because normalization mutates it.
+pub fn compile_mapped_parsed(
+    input: &CheckInput,
+    result: CheckResult,
+    identity: &IdentityTemplates,
+    doc: lute_syntax::ast::Document,
+    folded: FoldedEnv,
+) -> Result<(ExecutionIr, SourceMap), Vec<Diagnostic>> {
+    let mut map = SourceMap::default();
+    let artifact = compile_inner(input, result, identity, Some(&mut map), Some((doc, folded)))?;
+    Ok((artifact, map))
+}
+/// The one compile pipeline; `map` is filled when given. When `parts` is
+/// supplied, it contains the already parsed/desugared document and folded
+/// environment from the checker, avoiding a second parse on the model path.
 fn compile_inner(
     input: &CheckInput,
     result: CheckResult,
     identity: &IdentityTemplates,
     mut map: Option<&mut SourceMap>,
+    parts: Option<(lute_syntax::ast::Document, FoldedEnv)>,
 ) -> Result<ExecutionIr, Vec<Diagnostic>> {
     // D6 gate: codegen runs only on a clean check, so every pass below may
     // RELY on checker-proven invariants (declared paths, exhaustiveness,
@@ -461,15 +485,20 @@ fn compile_inner(
         return Err(permission_diagnostics);
     }
 
-    // Re-derive the parsed, CEL-filled document + the folded environment
-    // (fold diagnostics were already reported by the gate run; both fold
-    // streams are discarded here — the 3-tuple `fold_env` keeps them separate
-    // only to preserve `check()`'s byte-order contract).
-    let (mut doc, _) = lute_syntax::parse(&input.text);
-    let _ = lute_check::desugar_document(&mut doc, input);
-    let mut arena = CelArena::default();
-    let _ = lute_cel::fill_document(&mut arena, &mut doc);
-    let (folded, _, _) = fold_env(&doc, input);
+    // Reuse the parsed, CEL-filled document and folded environment when the
+    // model has already assembled them; standalone callers retain the original
+    // parse path and its diagnostics/order.
+    let (mut doc, folded) = match parts {
+        Some((doc, folded)) => (doc, folded),
+        None => {
+            let (mut doc, _) = lute_syntax::parse(&input.text);
+            lute_check::desugar_document(&mut doc, input);
+            let mut arena = CelArena::default();
+            let _ = lute_cel::fill_document(&mut arena, &mut doc);
+            let (folded, _, _) = fold_env(&doc, input);
+            (doc, folded)
+        }
+    };
 
     // §5 pass 2 — AST normalization (D8): components + persist.
     let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
@@ -1660,11 +1689,9 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.36.0 axis alignment (docs/versioning.md): AI edit loop, lossless
-        // source/project revisions, task context, semantic diff, and patching
-        // move the language and IR, and the workspace toolchain follows.
-        assert_eq!(super::LUTE_IR_VERSION, "0.36.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.36.0");
+        // 0.36.1 axis alignment (docs/versioning.md): toolchain-only quality
+        // work still re-aligns the language and IR presentation stamps.
+        assert_eq!(super::LUTE_IR_VERSION, "0.36.1");
     }
 
     #[test]
@@ -1673,8 +1700,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.36.0");
-        assert_eq!(v["irVersion"], "0.36.0");
+        assert_eq!(v["lute"], "0.36.1");
+        assert_eq!(v["irVersion"], "0.36.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

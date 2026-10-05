@@ -471,7 +471,7 @@ pub(super) fn check_use(
                 )
             }
             Ok(_) => "a boolean is no member id".to_string(),
-            Err(why) => why.clone(),
+            Err(why) => why.to_string(),
         };
         diags.push(use_diag(
             E_COMPONENT_ARG,

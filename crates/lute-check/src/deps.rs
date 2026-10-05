@@ -353,8 +353,6 @@ fn walk_expr(expr: &Expr, raw: &str, span: Span, negated: bool, out: &mut Depend
                     }
                     return;
                 }
-                // A malformed host query is not a reason to lose a valid query
-                // nested in one of its genuine CEL arguments.
             }
             if matches!(c.func_name.as_str(), "visited" | "completed" | "active")
                 && c.target.is_none()

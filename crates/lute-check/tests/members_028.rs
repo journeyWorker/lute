@@ -99,7 +99,8 @@ fn project(text: &str) -> Project {
     let (reach, _) = check_reachability(&graph, &quest_ids, &ambiguous, &lifecycle);
     let mut vocab = RootVocab::default();
     vocab.add(&folded.env.rel_vocab, &folded.env.domains);
-    vocab.note_unreadable_documents(&docs);
+    let typed = [&folded.typed];
+    vocab.note_unreadable_documents(&docs, &typed);
     let facts = live_assert_sites(&docs, &reach, &ambiguous, &lifecycle, &Default::default())
         .into_iter()
         .flat_map(|(_, a)| vocab.asserted_facts(&a));

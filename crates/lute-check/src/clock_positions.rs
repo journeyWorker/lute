@@ -1050,13 +1050,14 @@ pub fn check_project_unraised(
     docs: &[(PathBuf, Document)],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
+    let typed: Vec<&crate::meta::TypedMeta> = foldeds.iter().map(|f| &f.typed).collect();
     let mut out = Vec::new();
     for pb in crate::beats::project_beats(docs, foldeds) {
         let Some(when) = pb.when_slot.map(|w| w.raw.trim()).filter(|w| !w.is_empty()) else {
             continue;
         };
         if pb.kind == crate::beats::ProjectBeatKind::Scene
-            && crate::chapters::waited_on(docs, &pb.id)
+            && crate::chapters::waited_on(docs, &typed, &pb.id)
         {
             continue;
         }

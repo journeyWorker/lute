@@ -6,12 +6,13 @@ use std::sync::Arc;
 
 use lute_check::{ImportCache, Memo};
 use lute_manifest::project::{
-    load_project, project_providers, resolve_document_snapshot, ProjectConfig, ResolveDiag,
+    load_project, project_providers, resolve_document_snapshot, ProjectConfig, ProjectLoadError,
+    ResolveDiag,
 };
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 
-pub type LoadedProject = Arc<Result<Option<ProjectConfig>, String>>;
+pub type LoadedProject = Result<Option<ProjectConfig>, ProjectLoadError>;
 pub type ResolvedSnapshot = Arc<(CapabilitySnapshot, Vec<ResolveDiag>)>;
 
 type SnapshotKey = (Option<PathBuf>, Option<String>, BTreeMap<String, serde_yaml::Value>);
@@ -25,16 +26,16 @@ enum ProvidersKey {
 #[derive(Default)]
 pub struct InputCache {
     projects: Memo<PathBuf, LoadedProject>,
-    providers: Memo<ProvidersKey, Arc<ProviderSet>>,
-    snapshots: Memo<SnapshotKey, ResolvedSnapshot>,
-    plugin_origins: Memo<PathBuf, Arc<lute_check::rel_schema::PluginOrigins>>,
+    providers: Memo<ProvidersKey, ProviderSet>,
+    snapshots: Memo<SnapshotKey, (CapabilitySnapshot, Vec<ResolveDiag>)>,
+    plugin_origins: Memo<PathBuf, lute_check::rel_schema::PluginOrigins>,
     pub imports: ImportCache,
 }
 
 impl InputCache {
-    pub fn project(&self, dir: &Path) -> LoadedProject {
+    pub fn project(&self, dir: &Path) -> Arc<LoadedProject> {
         self.projects
-            .get_or_init(dir.to_path_buf(), || Arc::new(load_project(dir)))
+            .get_or_init(dir.to_path_buf(), || load_project(dir))
     }
 
     pub fn providers(
@@ -47,12 +48,12 @@ impl InputCache {
             Some(dir) => self
                 .providers
                 .get_or_init(ProvidersKey::Explicit(dir.to_path_buf()), || {
-                    Arc::new(ProviderSet::load(dir))
+                    ProviderSet::load(dir)
                 }),
             None => self
                 .providers
                 .get_or_init(ProvidersKey::Project(root.map(Path::to_path_buf)), || {
-                    Arc::new(project_providers(project))
+                    project_providers(project)
                 }),
         }
     }
@@ -69,9 +70,8 @@ impl InputCache {
             profile.map(str::to_string),
             plugins.clone(),
         );
-        self.snapshots.get_or_init(key, || {
-            Arc::new(resolve_document_snapshot(project, profile, plugins))
-        })
+        self.snapshots
+            .get_or_init(key, || resolve_document_snapshot(project, profile, plugins))
     }
 
     pub fn plugin_origins(
@@ -79,9 +79,7 @@ impl InputCache {
         plugins_dir: &Path,
     ) -> Arc<lute_check::rel_schema::PluginOrigins> {
         self.plugin_origins
-            .get_or_init(plugins_dir.to_path_buf(), || {
-                Arc::new(plugin_origins(plugins_dir))
-            })
+            .get_or_init(plugins_dir.to_path_buf(), || plugin_origins(plugins_dir))
     }
 }
 

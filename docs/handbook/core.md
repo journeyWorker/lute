@@ -9,7 +9,7 @@
 - **CEL conditions.** Every condition/value slot is standard CEL in the closed 0.32 profile; `@def` and match `$` expand at compile time. `has()` tests presence. Errors make guards false; erroneous sets abort without a partial write. See [DSL §1–4](../proposals/scenario-dsl/0.32.0.md#1-conditions-are-standard-cel).
 - **Execution IR and capabilities.** The compiler emits `cel` plus typed `expr`, `celEnv`, and sorted `requiredSemantics`; engines check capabilities before playback. Unknown required ids refuse loading, while plugin records remain `kind: "plugin"` and use `capabilityVersion`.
 - **Identity and addressing.** `addr` is positional; author ids, `lineId`, and `voiceKey` are stable joins. Source maps survive lowering. Duplicate or colliding ids are checker errors.
-## Identity table (0.36.0)
+## Identity table (0.36.1)
 
 `addr` is a build-local position and never a save, localization, patch, or
 identity key. Stability columns are **sibling insert / file move / parent

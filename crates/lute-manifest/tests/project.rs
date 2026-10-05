@@ -968,6 +968,7 @@ fn unreadable_manifest_is_one_located_e_manifest_in_plain_words() {
         let e = load_project(&dir).expect_err("the manifest must not load");
         fs::remove_dir_all(&dir).ok();
         let tail = e
+            .to_string()
             .split_once("lute.project.yaml:")
             .unwrap_or_else(|| panic!("names the file: {e}"))
             .1

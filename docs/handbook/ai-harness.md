@@ -1,11 +1,11 @@
 ---
-title: "AI harness surface — 0.36.0"
+title: "AI harness surface — 0.36.1"
 status: Draft
 ---
 
 # AI harness surface
 
-This page is the thin adapter contract for 0.36.0. The normative semantics are
+This page is the thin adapter contract for 0.36.1. The normative semantics are
 in `docs/proposals/scenario-dsl/0.36.0.md`; this page only gives a harness the
 stable command sequence and JSON boundaries. The CLI is the boundary, not a
 chat app, session manager, MCP server, or Lute-specific agent protocol

@@ -81,9 +81,12 @@ fn spent_beats<'d>(doc: &'d Document, folded: &'d FoldedEnv) -> Vec<SpentBeat<'d
                 code: crate::beats::E_BEAT_UNREACHABLE,
                 when: b.when.as_ref(),
                 spent: s,
+                once_written: folded
+                    .typed
+                    .yaml()
+                    .and_then(serde_yaml::Value::as_mapping)
+                    .is_some_and(|m| m.contains_key(serde_yaml::Value::String("once".into()))),
                 at: s.span,
-                once_written: serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml)
-                    .is_ok_and(|m| m.contains_key("once")),
             });
         }
     }

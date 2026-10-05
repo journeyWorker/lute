@@ -1,0 +1,576 @@
+//! Cross-file quest identity, import graph, and quest-reference contracts.
+
+use super::*;
+
+// --- gap #3: two quest docs, same id, NO import edge -----------------------
+
+#[test]
+fn standalone_check_on_either_unlinked_file_stays_clean_red_proof() {
+    // RED proof: BEFORE `check-project` existed, nothing caught this — `lute
+    // check` on either file alone is clean, because neither imports the
+    // other and `check()`'s own E-QUEST-ID-DUP is scoped to one document (or
+    // its own import graph).
+    let dir = temp_dir("red-proof");
+    let a = write(&dir, "a.lute", &clean_quest_doc("shared", "run.a"));
+    let b = write(&dir, "b.lute", &clean_quest_doc("shared", "run.b"));
+
+    let out_a = run(&["check", a.to_str().unwrap()]);
+    assert!(
+        out_a.status.success(),
+        "a.lute alone must stay clean (the gap): {}",
+        String::from_utf8_lossy(&out_a.stdout)
+    );
+    let out_b = run(&["check", b.to_str().unwrap()]);
+    assert!(
+        out_b.status.success(),
+        "b.lute alone must stay clean (the gap): {}",
+        String::from_utf8_lossy(&out_b.stdout)
+    );
+}
+
+#[test]
+fn check_project_flags_unlinked_cross_file_quest_id_dup() {
+    let dir = temp_dir("cross-file-dup");
+    write(&dir, "a.lute", &clean_quest_doc("shared", "run.a"));
+    write(&dir, "b.lute", &clean_quest_doc("shared", "run.b"));
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a project-wide dup must exit non-zero: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("E-QUEST-ID-DUP"), "{stdout}");
+    assert!(stdout.contains("a.lute"), "must name file a: {stdout}");
+    assert!(stdout.contains("b.lute"), "must name file b: {stdout}");
+}
+
+#[test]
+fn check_project_json_reports_ok_false_and_project_diagnostic_for_cross_file_dup() {
+    let dir = temp_dir("cross-file-dup-json");
+    write(&dir, "a.lute", &clean_quest_doc("shared", "run.a"));
+    write(&dir, "b.lute", &clean_quest_doc("shared", "run.b"));
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(1));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], false, "{v}");
+    let files = v["files"].as_array().expect("files array");
+    assert_eq!(files.len(), 2, "{v}");
+    // Neither per-file result carries its own E-QUEST-ID-DUP -- the
+    // project-wide pass is the sole authority (never a per-file copy AND a
+    // project-wide copy of the same collision).
+    for f in files {
+        let diags = f["diagnostics"].as_array().expect("diagnostics array");
+        assert!(
+            !diags.iter().any(|d| d["code"] == "E-QUEST-ID-DUP"),
+            "per-file result must not carry E-QUEST-ID-DUP: {v}"
+        );
+    }
+    let project_diags = v["project_diagnostics"]
+        .as_array()
+        .expect("project_diagnostics array");
+    assert_eq!(project_diags.len(), 1, "{v}");
+    assert_eq!(project_diags[0]["code"], "E-QUEST-ID-DUP");
+    assert!(
+        project_diags[0]["path"]
+            .as_str()
+            .is_some_and(|p| p.ends_with("b.lute")),
+        "anchored in the SECOND file: {v}"
+    );
+}
+
+// --- clean project (distinct ids) -------------------------------------------
+
+#[test]
+fn check_project_clean_project_with_distinct_quest_ids_exits_zero() {
+    let dir = temp_dir("clean");
+    write(&dir, "a.lute", &clean_quest_doc("questA", "run.a"));
+    // Nested subdirectory -- the walk must be recursive.
+    write(&dir, "sub/b.lute", &clean_quest_doc("questB", "run.b"));
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert!(
+        out.status.success(),
+        "distinct quest ids across files must exit zero: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    assert_eq!(v["files"].as_array().unwrap().len(), 2, "{v}");
+    assert!(
+        v["project_diagnostics"].as_array().unwrap().is_empty(),
+        "{v}"
+    );
+}
+
+// --- an unrelated per-file error still surfaces + fails the run ------------
+
+#[test]
+fn check_project_reports_unrelated_per_file_error_and_exits_nonzero() {
+    let dir = temp_dir("unrelated-error");
+    write(&dir, "ok.lute", &clean_quest_doc("questA", "run.a"));
+    // `run.missing` is never declared in `state:` -> E-UNDECLARED, nothing to
+    // do with quest-id uniqueness at all.
+    write(
+        &dir,
+        "bad.lute",
+        "---\nkind: quest\n---\n<quest id=\"questB\">\n\
+         <objective id=\"o\" done=\"run.missing\"/>\n</quest>\n",
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "an unrelated per-file error must still fail the run: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("E-UNDECLARED"), "{stdout}");
+    assert!(
+        stdout.contains("ok: ") && stdout.contains("ok.lute"),
+        "the clean file's per-file check must still pass: {stdout}"
+    );
+    assert!(
+        !stdout.contains("E-QUEST-ID-DUP"),
+        "distinct quest ids must never spuriously collide: {stdout}"
+    );
+}
+
+// --- import-linked collision: never double-reported ------------------------
+
+#[test]
+fn check_project_import_linked_dup_is_not_double_reported() {
+    // `a.lute` `uses:` `b.lute`; both declare `<quest id="q">`. Pre-0.2.1,
+    // `lute check a.lute` ALONE already reports this (F4, seeded via
+    // `imported_quest_ids`). `check-project`'s project-wide pass ALSO sees
+    // the same two files declaring `q` -- the SAME real-world collision must
+    // surface as exactly ONE E-QUEST-ID-DUP across the whole report, not a
+    // per-file copy plus a project-wide copy.
+    let dir = temp_dir("import-linked-dup");
+    // The `uses:` TARGET is a schema-shaped import (no `kind:`) that still
+    // happens to declare a `<quest>` -- `resolve_imports` reads `<quest>` ids
+    // from any successfully-parsed import target (kind-agnostic).
+    write(
+        &dir,
+        "b.lute",
+        "---\nstate:\n  run.b: { type: bool, default: false }\n---\n\
+         <quest id=\"q\">\n<objective id=\"ob\" done=\"run.b\"/>\n</quest>\n",
+    );
+    write(
+        &dir,
+        "a.lute",
+        "---\nkind: quest\nuses: b.lute\nstate:\n  run.a: { type: bool, default: false }\n\
+         ---\n<quest id=\"q\">\n<objective id=\"oa\" done=\"run.a\"/>\n</quest>\n",
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let dup_count = stdout.matches("E-QUEST-ID-DUP").count();
+    assert_eq!(
+        dup_count, 1,
+        "one real-world collision must be reported exactly once: {stdout}"
+    );
+
+    // Same assertion, structurally, via --json: sum diagnostics carrying
+    // E-QUEST-ID-DUP across EVERY file's own result plus the project-wide
+    // list.
+    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    let mut total = 0usize;
+    for f in v["files"].as_array().unwrap() {
+        total += f["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["code"] == "E-QUEST-ID-DUP")
+            .count();
+    }
+    total += v["project_diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "E-QUEST-ID-DUP")
+        .count();
+    assert_eq!(total, 1, "{v}");
+}
+
+// --- F1 (0.2.1 review): import-graph dup reaching OUTSIDE the walked dir ---
+
+#[test]
+fn check_project_flags_import_graph_dup_reaching_outside_walked_dir() {
+    // `scene.lute` (inside the walked dir) `uses:` TWO docs OUTSIDE the
+    // walked dir, both declaring `<quest id="q">`. Neither import target is
+    // ever seen by `check_project_quest_ids` (it only walks `dir`), so the
+    // ONLY surface that can catch this collision at all is `check()`'s own
+    // import-graph resolver (`resolve_imports`) running on `scene.lute`
+    // itself. RED before the fix: `run_check_project` blanket-stripped every
+    // per-file `E-QUEST-ID-DUP` and trusted the project-wide pass as sole
+    // authority, so this real collision was silently swallowed -> exit 0.
+    let root = temp_dir("f1-out-of-dir-dup");
+    let dir = root.join("proj");
+    write(
+        &root,
+        "outside/doc1.lute",
+        "---\nstate:\n  run.o1: { type: bool, default: false }\n---\n\
+         <quest id=\"q\">\n<objective id=\"o1\" done=\"run.o1\"/>\n</quest>\n",
+    );
+    write(
+        &root,
+        "outside/doc2.lute",
+        "---\nstate:\n  run.o2: { type: bool, default: false }\n---\n\
+         <quest id=\"q\">\n<objective id=\"o2\" done=\"run.o2\"/>\n</quest>\n",
+    );
+    write(
+        &dir,
+        "scene.lute",
+        "---\nkind: quest\nuses:\n  - ../outside/doc1.lute\n  - ../outside/doc2.lute\n\
+         state:\n  run.scene: { type: bool, default: false }\n---\n\
+         <quest id=\"scene_q\" start=\"true\">\n<objective id=\"oscene\" done=\"run.scene\"/>\n</quest>\n",
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "an import-graph collision reaching outside the walked dir must still fail the run: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("E-QUEST-ID-DUP"), "{stdout}");
+
+    // Structurally: the project-wide pass has NOTHING to say here (neither
+    // import target is in the walked set); the dup must come from
+    // scene.lute's own per-file result instead.
+    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    assert_eq!(v["ok"], false, "{v}");
+    assert!(
+        v["project_diagnostics"].as_array().unwrap().is_empty(),
+        "the project-wide pass cannot see either out-of-dir doc: {v}"
+    );
+    let files = v["files"].as_array().unwrap();
+    assert_eq!(files.len(), 1, "{v}");
+    assert!(
+        files[0]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-QUEST-ID-DUP"),
+        "scene.lute's own per-file result must carry the collision: {v}"
+    );
+}
+
+// --- F2 (0.2.1 review): a symlinked alias must not double-count a doc ------
+
+#[cfg(unix)]
+#[test]
+fn check_project_symlink_alias_does_not_fabricate_a_cross_file_dup() {
+    // `alias.lute` is a symlink to `a.lute` -- the SAME physical document
+    // reachable under two path strings. RED before the fix: `find_lute_files`
+    // pushed both path strings verbatim, so `check_project_quest_ids` saw the
+    // SAME `<quest id="q">` "twice" (once per path) and reported a false
+    // cross-file `E-QUEST-ID-DUP`.
+    let dir = temp_dir("f2-symlink-alias");
+    let real = write(&dir, "a.lute", &clean_quest_doc("q", "run.a"));
+    let alias = dir.join("alias.lute");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert!(
+        out.status.success(),
+        "a symlink alias to an already-walked doc must not fabricate a cross-file dup: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("E-QUEST-ID-DUP"),
+        "false dup from one physical doc counted twice: {stdout}"
+    );
+
+    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    assert_eq!(
+        v["files"].as_array().unwrap().len(),
+        1,
+        "the alias must be deduped to ONE physical doc, not checked twice: {v}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn check_project_broken_symlink_exits_two_not_panic() {
+    // A dangling symlink can't be canonicalized -- must surface as the SAME
+    // io-error convention as every other walk failure ("never silently
+    // under-report"), never panic.
+    let dir = temp_dir("f2-broken-symlink");
+    let missing = dir.join("missing.lute");
+    let broken = dir.join("broken.lute");
+    std::os::unix::fs::symlink(&missing, &broken).unwrap();
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "an unresolvable symlink must be an io error, not a panic or a silent skip: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+// --- misc CLI behavior -------------------------------------------------------
+
+#[test]
+fn check_project_nonexistent_dir_exits_two() {
+    let dir = temp_dir("missing");
+    std::fs::remove_dir_all(&dir).ok();
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+}
+
+#[test]
+fn check_project_empty_dir_exits_zero() {
+    let dir = temp_dir("empty");
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+// --- dsl 0.5.1 §1.4: `W-QUEST-REF-UNKNOWN` -----------------------------------
+
+/// A self-contained `kind: quest` doc declaring `<quest id quest_id>` with
+/// exactly one `<objective id objective_id>` (its own state decl + a `done`
+/// slot that reads it, and `start="true"` so W-QUEST-NEVER-ACCEPTED stays
+/// quiet — no other diagnostic fires).
+fn quest_doc_with(quest_id: &str, objective_id: &str, state_path: &str) -> String {
+    format!(
+        "---\nkind: quest\nstate:\n  {state_path}: {{ type: bool, default: false }}\n---\n\
+         <quest id=\"{quest_id}\" start=\"true\">\n<objective id=\"{objective_id}\" done=\"{state_path}\"/>\n</quest>\n"
+    )
+}
+
+/// A `kind: scene` doc exhaustively matching the reserved
+/// `quest.<quest_id>.state` path (dsl 0.2.0 §5.2 domain) -- check-clean on
+/// its own regardless of whether `quest_id` names a real project quest
+/// (single-file `check` never validates cross-document quest existence,
+/// dsl 0.5.1 §1.4).
+fn scene_matching_quest_state(quest_id: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <match on=\"quest.{quest_id}.state\">\n\
+         <when is=\"active\">\n@x: is-active\n</when>\n\
+         <when is=\"complete\">\n@x: is-complete\n</when>\n\
+         <when is=\"failed\">\n@x: is-failed\n</when>\n\
+         <when is=\"unset\">\n@x: is-unset\n</when>\n\
+         </match>\n"
+    )
+}
+
+/// A `kind: scene` doc exhaustively matching the reserved
+/// `quest.<quest_id>.objectives.<objective_id>.done` path.
+fn scene_matching_quest_objective_done(quest_id: &str, objective_id: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 2\n---\n## Shot 1.\n\
+         <match on=\"quest.{quest_id}.objectives.{objective_id}.done\">\n\
+         <when is=\"true\">\n@x: is-true\n</when>\n\
+         <when is=\"false\">\n@x: is-false\n</when>\n\
+         </match>\n"
+    )
+}
+
+#[test]
+fn check_project_quest_ref_to_a_defined_quest_state_emits_no_warning() {
+    let dir = temp_dir("quest-ref-known-state");
+    write(
+        &dir,
+        "heist.lute",
+        &quest_doc_with("heist", "steal", "run.steal"),
+    );
+    write(&dir, "scene.lute", &scene_matching_quest_state("heist"));
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    let project_diags = v["project_diagnostics"]
+        .as_array()
+        .expect("project_diagnostics array");
+    assert!(
+        !project_diags
+            .iter()
+            .any(|d| d["code"] == "W-QUEST-REF-UNKNOWN"),
+        "a reference to a quest the project actually defines must not warn: {v}"
+    );
+}
+
+#[test]
+fn check_project_flags_mistyped_quest_id_reference() {
+    // Project defines `heist`; the scene reads `quest.heits.state` (typo).
+    let dir = temp_dir("quest-ref-typo");
+    write(
+        &dir,
+        "heist.lute",
+        &quest_doc_with("heist", "steal", "run.steal"),
+    );
+    write(&dir, "scene.lute", &scene_matching_quest_state("heits"));
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a W-QUEST-REF-UNKNOWN warning must never flip the exit verdict to error: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("W-QUEST-REF-UNKNOWN"), "{stdout}");
+    assert!(
+        stdout.contains("scene.lute"),
+        "must name the referencing doc: {stdout}"
+    );
+    assert!(
+        stdout.contains("quest.heits.state"),
+        "must name the path: {stdout}"
+    );
+
+    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    let project_diags = v["project_diagnostics"]
+        .as_array()
+        .expect("project_diagnostics array");
+    assert_eq!(project_diags.len(), 1, "{v}");
+    assert_eq!(project_diags[0]["code"], "W-QUEST-REF-UNKNOWN");
+    assert_eq!(project_diags[0]["severity"], "warning");
+    assert!(
+        project_diags[0]["path"]
+            .as_str()
+            .is_some_and(|p| p.ends_with("scene.lute")),
+        "anchored in the referencing scene: {v}"
+    );
+}
+
+#[test]
+fn check_project_flags_reference_to_an_undefined_objective_under_a_defined_quest() {
+    // Project defines `heist` with objective `steal`; the scene reads
+    // `quest.heist.objectives.bogus.done` -- the quest exists, but that
+    // objective does not.
+    let dir = temp_dir("quest-ref-bad-objective");
+    write(
+        &dir,
+        "heist.lute",
+        &quest_doc_with("heist", "steal", "run.steal"),
+    );
+    write(
+        &dir,
+        "scene.lute",
+        &scene_matching_quest_objective_done("heist", "bogus"),
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let project_diags = v["project_diagnostics"]
+        .as_array()
+        .expect("project_diagnostics array");
+    assert_eq!(project_diags.len(), 1, "{v}");
+    assert_eq!(project_diags[0]["code"], "W-QUEST-REF-UNKNOWN");
+    assert!(
+        project_diags[0]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("bogus") && m.contains("heist")),
+        "{v}"
+    );
+}
+
+#[test]
+fn single_file_check_never_emits_quest_ref_unknown() {
+    // Standalone `lute check` has no cross-document quest graph (dsl 0.5.1
+    // §1.4: "Single-file `lute check` ... does not and cannot emit it").
+    let dir = temp_dir("quest-ref-single-file");
+    let scene = write(&dir, "scene.lute", &scene_matching_quest_state("heits"));
+
+    let out = run(&["check", scene.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("W-QUEST-REF-UNKNOWN"),
+        "single-file check must never emit the project-only warning: {stdout}"
+    );
+
+    let out_json = run(&["check", scene.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    let diags = v["diagnostics"].as_array().expect("diagnostics array");
+    assert!(
+        !diags.iter().any(|d| d["code"] == "W-QUEST-REF-UNKNOWN"),
+        "{v}"
+    );
+}
+
+#[test]
+fn check_project_clean_project_still_exits_zero_with_quest_refs_present() {
+    // Preserve existing behavior: a project with a valid quest and a scene
+    // that legitimately reads BOTH reserved shapes on it stays exit 0 with
+    // an empty project_diagnostics list.
+    let dir = temp_dir("quest-ref-clean");
+    write(
+        &dir,
+        "heist.lute",
+        &quest_doc_with("heist", "steal", "run.steal"),
+    );
+    write(
+        &dir,
+        "state-scene.lute",
+        &scene_matching_quest_state("heist"),
+    );
+    write(
+        &dir,
+        "objective-scene.lute",
+        &scene_matching_quest_objective_done("heist", "steal"),
+    );
+    // Both scenes voice `@x` lines coded 0010/0020 with different text: under
+    // the default `{speaker}-{code}` voiceKey that is E-DUP-VOICEKEY (0.21.1
+    // T1-9), which this quest-ref test is not about.
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         identity:\n  voiceKey: \"{prefix}.{speaker}-{code}\"\n",
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    assert!(
+        v["project_diagnostics"].as_array().unwrap().is_empty(),
+        "{v}"
+    );
+}

@@ -1108,14 +1108,37 @@ def compile_message_pattern(literal: str) -> re.Pattern[str] | None:
         return None
 
 
-def message_corpus(sources: dict[str, list[str]] | None = None) -> list[MessagePattern]:
-    """Every admitted message literal in `crates/*/src/**`, deduplicated."""
+#: `pub const E_BEAT_ATTR: &str = "E-BEAT-ATTR";` — a code named by a constant.
+CODE_CONST_RE = re.compile(r'\bconst\s+([A-Z][A-Z0-9_]*)\s*:\s*&(?:\'static\s+)?str\s*=\s*"([EW]-[A-Z0-9-]+)"')
+
+
+def message_corpus(
+    sources: dict[str, list[str]] | None = None,
+    texts: dict[str, str] | None = None,
+) -> list[MessagePattern]:
+    """Every admitted message literal in `crates/*/src/**`, deduplicated.
+
+    A literal belongs to the codes its file spells — as a string literal, or
+    through a code constant declared anywhere in the sources and named in the
+    file (`beat_diag(E_BEAT_ATTR, …)` in a module split off the one declaring
+    the constant).
+    """
     if sources is None:
-        sources = {}
+        sources, texts = {}, {}
         for f in sorted(ROOT.glob(MESSAGE_SOURCE_GLOB)):
-            sources[str(f.relative_to(ROOT))] = rust_string_literals(
-                f.read_text(encoding="utf-8")
-            )
+            rel = str(f.relative_to(ROOT))
+            texts[rel] = f.read_text(encoding="utf-8")
+            sources[rel] = rust_string_literals(texts[rel])
+    const_codes = {
+        name: code
+        for text in (texts or {}).values()
+        for name, code in CODE_CONST_RE.findall(text)
+    }
+    const_re = (
+        re.compile(r"\b(" + "|".join(sorted(map(re.escape, const_codes))) + r")\b")
+        if const_codes
+        else None
+    )
     owners: dict[str, set[str]] = {}
     codes_in: dict[str, set[str]] = {}
     for rel, lits in sources.items():
@@ -1123,6 +1146,12 @@ def message_corpus(sources: dict[str, list[str]] | None = None) -> list[MessageP
             owners.setdefault(lit, set()).add(rel)
             if CODE_LITERAL_RE.match(lit):
                 codes_in.setdefault(rel, set()).add(lit)
+        if const_re is not None and rel in (texts or {}):
+            # Production code only: a unit-test module quoting an expected
+            # message names the code too, and must not become a second owner.
+            production = texts[rel].split("#[cfg(test)]", 1)[0]
+            for name in const_re.findall(production):
+                codes_in.setdefault(rel, set()).add(const_codes[name])
     corpus: list[MessagePattern] = []
     for lit, rels in sorted(owners.items()):
         rx = compile_message_pattern(lit)

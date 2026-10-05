@@ -311,11 +311,11 @@ impl Backend {
             })
             .collect();
         let mut rdiags = built.resolve_diags;
-        if let Some(Err(message)) = loaded_project.as_deref() {
+        if let Some(Err(error)) = loaded_project.as_deref() {
             rdiags.push(lute_manifest::project::ResolveDiag {
                 span: None,
                 code: "E-PROJECT-CONFIG".to_string(),
-                message: message.clone(),
+                message: error.to_string(),
             });
         }
         diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
@@ -519,7 +519,7 @@ impl Backend {
             rdiags.push(lute_manifest::project::ResolveDiag {
                 span: None,
                 code: "E-PROJECT-CONFIG".to_string(),
-                message: message.clone(),
+                message: message.to_string(),
             });
         }
 

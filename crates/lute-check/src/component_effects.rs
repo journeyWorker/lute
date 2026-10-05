@@ -22,6 +22,7 @@
 //!   the kind's label for its argument ([`display_args`]).
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 use lute_core_span::Span;
 use lute_manifest::schema::CastMember;
@@ -30,6 +31,30 @@ use lute_manifest::types::Type;
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, Directive, Document, Line, Node};
 use lute_syntax::datalog::{FactPattern, FactTerm};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
+
+/// Why a component argument cannot be used as a ground fact term.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FactArgError {
+    InvalidName { value: String },
+    RuntimeExpression { expression: String },
+}
+
+impl fmt::Display for FactArgError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidName { value } => write!(
+                f,
+                "`{value}` is not a name: letters, digits, `_` and `-`, not starting with `-`"
+            ),
+            Self::RuntimeExpression { expression } => {
+                write!(f, "`{expression}` is an expression, decided only at runtime")
+            }
+        }
+    }
+}
+
+impl std::error::Error for FactArgError {}
+
 
 use crate::cel_expand::DefTable;
 use crate::component_import::{ComponentDef, ComponentSet};
@@ -211,7 +236,7 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
 /// `Err` names why any other argument — a CEL expression, a `@def`, a
 /// number, a string that is no name — cannot be a fact argument, which is
 /// ground.
-pub fn fact_arg_constant(arg: &AttrValue) -> Result<FactTerm, String> {
+pub fn fact_arg_constant(arg: &AttrValue) -> Result<FactTerm, FactArgError> {
     match arg {
         AttrValue::BoolTrue => Ok(FactTerm::Bool(true)),
         AttrValue::Str(s) => match s.as_str() {
@@ -221,14 +246,11 @@ pub fn fact_arg_constant(arg: &AttrValue) -> Result<FactTerm, String> {
             // runs for, bound when the write executes.
             crate::beats::OCCASION_TARGET => Ok(FactTerm::Target),
             _ if lute_manifest::ident::is_name(s) => Ok(FactTerm::Ident(s.clone())),
-            _ => Err(format!(
-                "`{s}` is not a name: letters, digits, `_` and `-`, not starting with `-`"
-            )),
+            _ => Err(FactArgError::InvalidName { value: s.clone() }),
         },
-        AttrValue::Ref(slot) => Err(format!(
-            "`{}` is an expression, decided only at runtime",
-            slot.raw.trim()
-        )),
+        AttrValue::Ref(slot) => Err(FactArgError::RuntimeExpression {
+            expression: slot.raw.trim().to_string(),
+        }),
     }
 }
 
