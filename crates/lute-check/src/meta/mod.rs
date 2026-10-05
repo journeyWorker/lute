@@ -19,17 +19,23 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use diagnostic_helpers::yaml_key;
-pub(super) use diagnostic_helpers::{err_at, scalar_span};
-pub(super) use diagnostics::*;
-pub(super) use kind::*;
-pub(super) use state::*;
+// Shared helpers the sibling submodules reach through `use super::*`.
+use diagnostic_helpers::{err_at, scalar_span};
+use diagnostics::*;
+use kind::*;
+use state::*;
 
-pub use types::*;
-pub use kind::*;
-pub use frontmatter::*;
-pub use diagnostics::{ident_from_name, infer_meta_kind_from_shape, meta_key_span, meta_path_span};
-pub(crate) use diagnostics::yaml_shape;
-pub use diagnostics::PendingPer;
-pub(crate) use diagnostics::expand_per_pending;
+pub use diagnostics::{
+    ident_from_name, infer_meta_kind_from_shape, meta_key_span, meta_path_span, PendingPer,
+};
+pub use frontmatter::{frontmatter_parses, parse_meta, parse_meta_kind, parse_meta_kind_with_defaults};
+pub use kind::{
+    apply_quest_tier_default, canonical_episode_id, canonical_episode_key, canonical_scene_key,
+    default_key_legal_on, resolve_doc_kind, resolve_doc_kind_with_defaults, DocKind, MetaKind,
+    E_KIND_MISSING, E_STATE_COLLECTION, E_UNKNOWN_KIND, SCENE_KEYS,
+};
+pub use types::{FactDecl, Namespace, RuleDecl, StateDecl, StateSchema, TypedMeta};
+
+pub(crate) use diagnostic_helpers::yaml_key;
+pub(crate) use diagnostics::{expand_per_pending, yaml_shape};
 pub(crate) use state::{engine_namespace, namespace_of};
