@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.36.0`, the grammar and semantics the checker
+- **Language** — currently `0.36.2`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.36.0`) and gated on by consuming engines.
+  artifact (currently `0.36.2`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,70 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.36.2] - 2026-10-06
+
+### Syntax
+
+None.
+
+### Semantics
+
+None.
+
+### Plugin
+
+None.
+
+### CLI
+
+None.
+
+### Diagnostics
+
+None.
+
+### Identity
+
+None.
+
+### IR
+
+Version moves to 0.36.2; no shape or content change — a no-op for consumers.
+
+### Tooling
+
+No behavior change: apart from version stamps, outputs are byte-identical to
+0.36.1 across 148 CLI commands (check-project text/json, test text/json, every
+play with `--json --dump-conditions` on all 14 games, `lute test
+docs/examples`, and conformance roots), compile --all (440 files), and 28
+`lute context` outputs. nextest passes 3987/3987.
+
+- **C1 ProjectDoc:** project passes read one shared `ProjectDoc` (path, AST,
+  typed frontmatter); the remaining frontmatter re-parses and Document clones
+  in project assembly are gone. Identity reads keep the authored YAML.
+  Regression tests are in `crates/lute-check/tests/project_doc_equivalence.rs`.
+- **C2 playback:** the read-set guard cache was measured and not shipped (see
+  the 0.36.2 follow-up plan's C2 outcome). Instead, `StoreSchema` is decoded
+  once per `ExecProject`: state declarations, rules and vocabulary are no
+  longer re-decoded from artifact JSON on every evaluator. CLI wall time versus
+  v0.36.1 (release, idle, interleaved x3): `lute play` monster-league spine
+  12.3 s → 10.8 s (0.88x), `lute test` monster-league 30.3 s → 27.3 s
+  (0.90x). `lute-bench` large tier: all phases within 2% of base.
+- **C3 cel_types gap:** keep the current skip (closed profile); tests pin it.
+- **C4 public API:** `scripts/check-public-api.py` plus a CI job compares
+  rustdoc item lists at the merge base and head. A removal fails unless the PR
+  has the `api-change` label.
+- **C5 wave-2 splits:** `lute-manifest` `schema/`, `lute-check`
+  `reachability/` and `project_check/`, `lute-lsp` `backend/`, `lute-cli`
+  `play/calendar/` and `codes/`, and `lute-trace` `trace/`. No file exceeds
+  about 800 lines in those modules except data-only `codes/registry.rs`.
+- **C6 crate split:** new crates `lute-semantic` and `lute-load`, split from
+  `lute-model` per `docs/design/lute-model-crate-split.md` (kept).
+  `lute-lsp` and `lute-resolve` no longer depend on `lute-model` or
+  `lute-compile`. The public-API gate lists exactly the 32 moved items, making
+  this an `api-change` PR. Rebuilding `lute-lsp` after touching `lute-model`:
+  15 s → 0 s.
 
 ## [0.36.1] - 2026-10-05
 

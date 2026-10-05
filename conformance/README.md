@@ -126,7 +126,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 
 The component-key uniqueness rule is intentionally strict: duplicate keys in
 mutually exclusive branches still conflict when they share one immediate
-owner (scenario DSL 0.36.1 §2.1). Checker tests cover that diagnostic; it is
+owner (scenario DSL 0.36.2 §2.1). Checker tests cover that diagnostic; it is
 not a runtime conformance fixture.
 
 The save format is engine-owned. `save-collision/migration-report.json` is the
@@ -140,7 +140,7 @@ fixtures. `command-staging` covers `background`, `music`, `sfx`, `vfx`, `sprite`
 `camera`, `cut`, `video`, and `barrier`; `command-lifecycle` covers `accept`,
 `beat`, and `retract`; `command-plugin` covers `plugin`. No requested kind is
 unsupported by the reference runner. The staging fixture uses a live
-`luteVersion: "0.36.1"` header, as do the lifecycle and plugin sources.
+`luteVersion: "0.36.2"` header, as do the lifecycle and plugin sources.
 
 ## Boundaries — what the reference runner deliberately does NOT implement
 
@@ -208,7 +208,7 @@ Invalid engine fixtures use `engine.yaml`, an artifact, and `expected-stderr`; t
 
 ## Edit-task suite
 
-The 0.36.1 AI edit-loop conformance suite is in
+The 0.36.2 AI edit-loop conformance suite is in
 [`edit-tasks/`](edit-tasks/). It contains 12 inspect/plan/patch/check cases;
 `REPORT.json` records the expected outcomes.
 

@@ -1,4 +1,4 @@
-//! Pin the 0.36.1 behavior of type checking below container expressions.
+//! Pin the 0.36.2 behavior of type checking below container expressions.
 //!
 //! `cel_types::check_types` deliberately treats map, struct, and comprehension
 //! nodes as opaque leaves.  These cases contain a scalar type error below that
