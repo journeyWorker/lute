@@ -11,9 +11,9 @@ use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
 
 use crate::context;
-use crate::project::resolve_project;
+use crate::project::{discover_project, resolve_project};
 use crate::output::{pretty_json, write_stdout};
-use lute_load::{build_input, discover_project, BuiltInput};
+use lute_load::{build_input, BuiltInput};
 use lute_model::{ModelOptions, ProjectModel};
 use lute_semantic::{GraphEdge, NodeKey, NodeKind, SemanticGraph};
 

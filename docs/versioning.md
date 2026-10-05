@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.36.2` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.36.2` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.36.2` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.36.schema.json`](../schemas/lute-ir-0.36.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.36.3` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.36.3` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.36.3` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.36.schema.json`](../schemas/lute-ir-0.36.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -933,6 +933,14 @@ byte-identical to `0.36.1` apart from version stamps. The language spec stack
 has no `0.36.2` delta, and the execution IR shape is unchanged; only the
 aligned presentation stamps move. The `lute-ir-0.36.schema.json` filename and
 `$id` therefore remain unchanged, following the patch precedent.
+
+**`0.36.3` aligns all three axes at `0.36.3`, a patch on the `0.36` line; the
+toolchain earns it, and language and IR are content no-ops.** It restores one
+stderr line `0.36.2` changed by mistake: without `--project`, `lute trace`,
+`lute context` and `lute compile-stream` again name the nearest project
+relative to the working directory, as `0.36.1` did. Every other output is
+byte-identical to `0.36.1` apart from version stamps. The
+`lute-ir-0.36.schema.json` filename and `$id` remain unchanged.
 
 ## Which bump when
 
