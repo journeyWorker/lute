@@ -19,7 +19,7 @@ use crate::rel_schema::RelVocab;
 /// Analysis mode. `Author` is the interactive LSP default (lenient about
 /// catalog staleness); `Ci` is the batch/build mode that later tasks may treat
 /// more strictly. T4.2 does not branch on it, but downstream tasks will.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Mode {
     #[default]
     Author,

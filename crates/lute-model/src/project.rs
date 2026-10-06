@@ -23,7 +23,7 @@ use crate::revision::{project_revision, ProjectRevision};
 pub type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, FoldedEnv)>;
 pub type ByRoot = BTreeMap<PathBuf, DocGroup>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ModelOptions {
     pub providers: Option<PathBuf>,
     pub permission_profile: Option<String>,
@@ -390,10 +390,17 @@ impl ProjectModel {
     }
 
     pub fn roots_under(dir: &Path, opts: &ModelOptions) -> Result<Vec<ProjectModel>, ModelError> {
+        Self::project_roots(dir)?
+            .iter()
+            .map(|root| Self::build_single_root(root, opts))
+            .collect()
+    }
+
+    /// The project roots of the `.lute` files under `dir`, in order: each
+    /// file's nearest manifest at or below `dir` ([`project_root_for`]).
+    pub fn project_roots(dir: &Path) -> Result<BTreeSet<PathBuf>, ModelError> {
         let files = find_lute_files(dir).map_err(|e| ModelError::Io(format!("lute: cannot walk {}: {}", dir.display(), lute_manifest::io_reason(&e))))?;
-        let mut roots = BTreeSet::new();
-        for file in files { roots.insert(project_root_for(&file, dir)); }
-        roots.into_iter().map(|root| Self::build_single_root(root.as_path(), opts)).collect()
+        Ok(files.iter().map(|file| project_root_for(file, dir)).collect())
     }
 
     pub fn root(&self) -> &Path { &self.root }

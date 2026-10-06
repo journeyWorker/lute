@@ -45,7 +45,10 @@ pub fn run_test(
     let mut results = Vec::new();
     let mut cov = CoverageAccum::default();
     let mut noted: BTreeSet<PathBuf> = BTreeSet::new();
-    let mut shared = match Shared::for_tests(&test_files, project, providers) {
+    // Every model this run builds, once: the tests' analysis, the gates,
+    // quest ids, producer sets and the plays' compile read the same project.
+    let memo = lute_model::ModelMemo::default();
+    let mut shared = match Shared::for_tests(&memo, &test_files, project, providers) {
         Ok(shared) => shared,
         Err(code) => return code,
     };
@@ -57,7 +60,7 @@ pub fn run_test(
         .collect();
     for root in play_roots {
         if !shared.gates.contains_key(&root) {
-            let rec = crate::reconciled_project_results(&root, providers).ok();
+            let rec = lute_model::reconciled_project_results_in(&memo, &root, providers).ok();
             shared.gates.insert(root, rec);
         }
     }
@@ -110,7 +113,7 @@ pub fn run_test(
         }
     }
 
-    shared.compile_plays(&play_files, project);
+    shared.compile_plays(&memo, &play_files, project);
     let runs: Vec<_> = play_files
         .par_iter()
         .map(|play_file| {
@@ -220,7 +223,7 @@ struct Shared {
     /// Retained project models, keyed by canonical project root. Every
     /// project test borrows its document input and analysis from one of these
     /// models for the entire run.
-    models: BTreeMap<String, ProjectModel>,
+    models: BTreeMap<String, std::sync::Arc<ProjectModel>>,
     /// The project May producer set per project root (T1-14), for every
     /// root a test mocking `facts:` resolves against — it costs a full
     /// project collection.
@@ -257,8 +260,10 @@ fn project_dir_of(file: &Path, project: Option<&Path>) -> Option<PathBuf> {
 }
 
 impl Shared {
-    /// Collect, once per root, what `test_files` read of their projects.
+    /// Collect, once per root, what `test_files` read of their projects,
+    /// each model built through `memo`.
     fn for_tests(
+        memo: &lute_model::ModelMemo,
         test_files: &[PathBuf],
         project: Option<&Path>,
         providers: Option<&Path>,
@@ -306,9 +311,9 @@ impl Shared {
             gates: BTreeMap::new(),
         };
         for root in model_roots {
-            let model = ProjectModel::build_single_root(&root, &opts).map_err(|error| {
+            let model = memo.single_root(&root, &opts).map_err(|error| {
                 eprintln!("lute: cannot build project {}: {error}", root.display());
-                match error {
+                match *error {
                     ModelError::Io(_) | ModelError::Input(_) => ExitCode::from(2),
                     ModelError::Resolve(_)
                     | ModelError::Compile { .. }
@@ -332,15 +337,15 @@ impl Shared {
             shared.models.insert(canonical_key(&root), model);
         }
         for (root, single_root) in producer_roots {
-            let set = crate::project_assert_relations(&root, single_root, providers);
+            let set = crate::project::project_assert_relations_in(memo, &root, single_root, providers);
             shared.producers.insert(root, set);
         }
         for root in quest_roots {
-            let ids = crate::project_quest_ids(&root, providers);
+            let ids = crate::project::project_quest_ids_in(memo, &root, providers);
             shared.quests.insert(root, ids);
         }
         for root in gate_roots {
-            let rec = crate::reconciled_project_results(&root, providers).ok();
+            let rec = lute_model::reconciled_project_results_in(memo, &root, providers).ok();
             shared.gates.insert(root, rec);
         }
         Ok(shared)
@@ -351,20 +356,20 @@ impl Shared {
         let key = canonical_key(path);
         self.models
             .values()
-            .flat_map(ProjectModel::documents)
+            .flat_map(|model| model.documents())
             .find(|document| canonical_key(&document.path) == key)
     }
 
     /// Compile, once per project, what the expect-carrying `play_files`
-    /// run over.
-    fn compile_plays(&mut self, play_files: &[PathBuf], project: Option<&Path>) {
+    /// run over, from `memo`'s models.
+    fn compile_plays(&mut self, memo: &lute_model::ModelMemo, play_files: &[PathBuf], project: Option<&Path>) {
         for play_file in play_files {
             if !matches!(scan_play(play_file), PlayScan::Expect { .. }) {
                 continue;
             }
             if let Some(dir) = project_dir_of(play_file, project) {
                 if !self.plays.contains_key(&dir) {
-                    let compiled = crate::play::PlayProject::compile(&dir);
+                    let compiled = crate::play::PlayProject::compile_in(memo, &dir);
                     self.plays.insert(dir, compiled);
                 }
             }
@@ -428,7 +433,7 @@ impl Shared {
 /// transition observed by its trace. Seeded `complete` status is not enough.
 pub(crate) fn run_test_for_constraint(root: &Path, script: &Path, quest: &str) -> bool {
     let files = [script.to_path_buf()];
-    let Ok(shared) = Shared::for_tests(&files, Some(root), None) else {
+    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, Some(root), None) else {
         return false;
     };
     let Ok(result) = run_one_test(script, None, Some(root), false, &shared, None) else {
@@ -446,7 +451,7 @@ pub(crate) fn run_test_for_context(
     target: &NodeKey,
 ) -> bool {
     let files = [script.to_path_buf()];
-    let Ok(shared) = Shared::for_tests(&files, Some(root), None) else {
+    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, Some(root), None) else {
         return false;
     };
     let Ok(result) = run_one_test(script, None, Some(root), false, &shared, None) else {

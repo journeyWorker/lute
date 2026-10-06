@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.36.5`, the grammar and semantics the checker
+- **Language** — currently `0.36.6`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.36.5`) and gated on by consuming engines.
+  artifact (currently `0.36.6`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,56 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.36.6] - 2026-10-06
+
+### Syntax
+
+None.
+
+### Semantics
+
+None.
+
+### Plugin
+
+None.
+
+### CLI
+
+None.
+
+### Diagnostics
+
+None.
+
+### Identity
+
+None.
+
+### IR
+
+Version moves to 0.36.6; no shape or content change — a no-op for consumers.
+
+### Tooling
+
+Performance release. Apart from version stamps, outputs are byte-identical to
+0.36.5 over 343 CLI commands on all 14 games: the 0.36.5 matrix plus `lute
+test` on single test files with and without `--project`, `lute test
+--coverage`, and `lute trace --project`.
+
+- **One project model per command.** `lute test` built the same project's
+  model five times: for the tests' analysis, the gate verdicts, the quest ids,
+  the producer set, and the play compile. `lute trace` built it up to four
+  times. A per-command `lute_model::ModelMemo` builds each (root, options)
+  once: two builds for `lute test` (checked, and compiled for quests and
+  plays), and each consumer still reports a failed build as before.
+  Monster-league, release, median of 5 interleaved runs against 0.36.5:
+
+  | command | wall 0.36.5 | wall 0.36.6 | wall ratio | CPU ratio |
+  |---|---|---|---|---|
+  | `lute test` (project) | 6.25 s | 4.10 s | 0.66 | 0.76 |
+  | `lute test` one test file | 1.16 s | 0.66 s | 0.57 | 0.54 |
 
 ## [0.36.5] - 2026-10-06
 

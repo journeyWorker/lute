@@ -128,9 +128,7 @@ pub(crate) use lute_model::{
 };
 pub(crate) use lute_load::BuiltInput;
 pub(crate) use output::{cwd_relative, render_diagnostics, severity_str, write_stdout, DenyPolicy};
-pub(crate) use lute_model::{
-    reconciled_project_results, reconcile_collected, ReconciledProject,
-};
+pub(crate) use lute_model::{reconcile_collected, ReconciledProject};
 pub(crate) use project::{
     collect_project_docs, find_lute_files, parse_project_docs, project_assert_relations,
     project_quest_ids, ByRoot, DocGroup,

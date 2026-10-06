@@ -16,6 +16,7 @@ pub mod derivation;
 pub mod patch;
 pub mod impact;
 pub mod rename;
+pub mod memo;
 
 pub use project::{
     ByRoot, DocGroup, ModelDocument, ModelError, ModelOptions, ProjectModel, ReconciledOutputs,
@@ -26,9 +27,12 @@ pub use reconcile::{
 };
 pub use scenario::{assemble_root_scenario, node_cycle_degraded, project_docs, RootScenario};
 pub use gate::{
-    gate_for_doc, project_gate_result, reconciled_project_results, ReconciledProject,
+    gate_for_doc, project_gate_result, project_gate_result_in, reconciled_project_results,
+    reconciled_project_results_in,
+    ReconciledProject,
 };
 
+pub use memo::{Built, ModelMemo};
 pub use rename::{resolve_ledger, ResolvedRenames};
 pub use impact::{ImpactItem, ImpactReport, ImpactTarget};
 pub use revision::{project_revision, FileRevision, ProjectRevision, RevisionError};
