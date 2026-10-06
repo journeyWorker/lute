@@ -43,7 +43,7 @@
 //! the [`PlayOutcome`](crate::play_expect::PlayOutcome) the walk fills; a miss exits 1.
 //!
 //! ## What is reused, never re-implemented
-//! - Whole-project compile + gate: [`crate::reconciled_project_results`] +
+//! - Whole-project compile + gate: [`lute_model::reconciled_project_results`] +
 //!   [`crate::gate_for_doc`] + `lute_compile::compile_with_check`, the loop
 //!   `compile --all` ([`crate::compile_all`]) runs, kept in memory.
 //! - Beat table and declaration union: `lute_compile::index::build_index` —
@@ -214,7 +214,7 @@ fn load(
     matrix: &crate::EngineMatrix,
 ) -> Result<Loaded, (ExitCode, String)> {
     let script = load_script(script_path)?;
-    let project = compile_play_project(dir, project::PLAY, matrix)?;
+    let project = compile_play_project(&lute_model::ModelMemo::default(), dir, project::PLAY, matrix)?;
     let (plan, world) = plan_script(&project, &script, script_path, no_derive)?;
     Ok(Loaded {
         script,
@@ -495,8 +495,13 @@ pub(crate) struct PlayProject(Result<ExecProject, String>);
 impl PlayProject {
     /// Compile the project at `dir` for play ([`compile_project`]).
     pub(crate) fn compile(dir: &Path) -> Self {
+        Self::compile_in(&lute_model::ModelMemo::default(), dir)
+    }
+
+    /// [`PlayProject::compile`] over `memo`'s model of the project.
+    pub(crate) fn compile_in(memo: &lute_model::ModelMemo, dir: &Path) -> Self {
         PlayProject(
-            compile_play_project(dir, project::TEST, &crate::EngineMatrix::reference()).map_err(|(_, msg)| {
+            compile_play_project(memo, dir, project::TEST, &crate::EngineMatrix::reference()).map_err(|(_, msg)| {
                 if msg.is_empty() {
                     "the project does not compile (diagnostics above)".to_string()
                 } else {

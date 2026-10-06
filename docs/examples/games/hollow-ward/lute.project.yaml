@@ -7,7 +7,7 @@ profiles:
 identity:
   requireStable: true
 defaults:
-  luteVersion: "0.36.5"
+  luteVersion: "0.36.6"
   uses:
     - schema/world.schema.yaml
     - schema/vocabulary.schema.yaml

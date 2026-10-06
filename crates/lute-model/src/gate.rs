@@ -91,6 +91,15 @@ pub fn reconciled_project_results(
     dir: &Path,
     providers: Option<&Path>,
 ) -> Result<ReconciledProject, ExitCode> {
+    reconciled_project_results_in(&crate::ModelMemo::default(), dir, providers)
+}
+
+/// [`reconciled_project_results`] over `memo`'s model of `dir`.
+pub fn reconciled_project_results_in(
+    memo: &crate::ModelMemo,
+    dir: &Path,
+    providers: Option<&Path>,
+) -> Result<ReconciledProject, ExitCode> {
     let opts = ModelOptions {
         providers: providers.map(Path::to_path_buf),
         permission_profile: None,
@@ -98,7 +107,7 @@ pub fn reconciled_project_results(
         compile: false,
         wip: false,
     };
-    let model = ProjectModel::build_single_root(dir, &opts).map_err(|error| {
+    let model = memo.single_root(dir, &opts).map_err(|error| {
         eprintln!("lute: cannot build project {}: {error}", dir.display());
         ExitCode::from(2)
     })?;
@@ -144,7 +153,17 @@ pub fn project_gate_result(
     dir: &Path,
     providers: Option<&Path>,
 ) -> Result<lute_check::CheckResult, ExitCode> {
-    let reconciled = reconciled_project_results(dir, providers)?;
+    project_gate_result_in(&crate::ModelMemo::default(), file, dir, providers)
+}
+
+/// [`project_gate_result`] over `memo`'s model of `dir`.
+pub fn project_gate_result_in(
+    memo: &crate::ModelMemo,
+    file: &Path,
+    dir: &Path,
+    providers: Option<&Path>,
+) -> Result<lute_check::CheckResult, ExitCode> {
+    let reconciled = reconciled_project_results_in(memo, dir, providers)?;
     if let Err(e) = std::fs::canonicalize(file) {
         let e = lute_manifest::io_reason(&e);
         eprintln!("lute: cannot read {}: {e}", file.display());

@@ -10,8 +10,8 @@ use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
 use crate::cmd_check::{component_name_of, component_root_diag};
 use lute_load::{build_input, BuiltInput};
 use crate::output::{print_diagnostics, write_stdout, DenyPolicy};
-use lute_model::project_gate_result;
-use crate::project::{discover_project, project_assert_relations, project_quest_ids};
+use lute_model::project_gate_result_in;
+use crate::project::{discover_project, project_assert_relations_in, project_quest_ids_in};
 
 /// Run `trace` over one file (dsl 0.4.0 §4.3/§4.5): resolve the document
 /// IDENTICALLY to `check`/`compile` ([`build_input`]), load + merge the
@@ -189,10 +189,13 @@ pub(crate) fn run_trace(
     };
 
     let mut mocks = merge(file_mocks, flag_mocks);
+    // The project models this trace consults (gate, quest ids, producers),
+    // each built once.
+    let memo = lute_model::ModelMemo::default();
     // dsl 0.26.0 §7 (T3-5): `--accept` / `accepts:` resolve against every
     // quest of the project, not only this document's.
     if !mocks.accepts.is_empty() {
-        mocks.project_quests = resolved.and_then(|dir| project_quest_ids(dir, providers));
+        mocks.project_quests = resolved.and_then(|dir| project_quest_ids_in(&memo, dir, providers));
     }
     // Project-aware gate (connectivity spec §5, mirrors `run_compile`): WITH
     // `--project <dir>` trace gates on the target's RECONCILED `check-project`
@@ -200,7 +203,7 @@ pub(crate) fn run_trace(
     // The D1 quarantine holds — reconciliation is pure graph math, never
     // CEL/Datalog evaluation.
     let gate = match project {
-        Some(dir) => match project_gate_result(file, dir, providers) {
+        Some(dir) => match project_gate_result_in(&memo, file, dir, providers) {
             Ok(gate) => gate,
             Err(code) => return code,
         },
@@ -240,8 +243,8 @@ pub(crate) fn run_trace(
         None
     } else {
         match (project, &discovered) {
-            (Some(dir), _) => project_assert_relations(dir, true, providers),
-            (None, Some(root)) => project_assert_relations(root, false, providers),
+            (Some(dir), _) => project_assert_relations_in(&memo, dir, true, providers),
+            (None, Some(root)) => project_assert_relations_in(&memo, root, false, providers),
             (None, None) => None,
         }
     };
@@ -257,7 +260,7 @@ pub(crate) fn run_trace(
     // T3-15: the project knows every quest — settle the
     // "existence is unverified" notes instead of repeating them.
     if !report.foreign_quests.is_empty() {
-        if let Some(declared) = resolved.and_then(|dir| project_quest_ids(dir, providers)) {
+        if let Some(declared) = resolved.and_then(|dir| project_quest_ids_in(&memo, dir, providers)) {
             report.verify_quests(&declared);
         }
     }

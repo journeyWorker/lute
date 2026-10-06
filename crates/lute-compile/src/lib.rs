@@ -395,7 +395,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.36.5";
+pub const LUTE_IR_VERSION: &str = "0.36.6";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1689,9 +1689,9 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.36.5 axis alignment (docs/versioning.md): toolchain-only quality
+        // 0.36.6 axis alignment (docs/versioning.md): toolchain-only quality
         // work still re-aligns the language and IR presentation stamps.
-        assert_eq!(super::LUTE_IR_VERSION, "0.36.5");
+        assert_eq!(super::LUTE_IR_VERSION, "0.36.6");
     }
 
     #[test]
@@ -1700,8 +1700,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.36.5");
-        assert_eq!(v["irVersion"], "0.36.5");
+        assert_eq!(v["lute"], "0.36.6");
+        assert_eq!(v["irVersion"], "0.36.6");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

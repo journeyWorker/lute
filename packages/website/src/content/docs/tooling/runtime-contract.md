@@ -47,7 +47,7 @@ The same holds for `visited('<scene id>')` (dsl 0.21.0): legal in every conditio
 that scene has been presented in this save — the visited set the engine already keeps for
 `after:` — and carried as `cel` text alone.
 
-## Identity migration (0.36.5)
+## Identity migration (0.36.6)
 
 Component scopes use the authored `instance` key:
 `::use{component="hearthFire" instance="opening"}` produces

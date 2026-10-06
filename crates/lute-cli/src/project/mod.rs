@@ -63,6 +63,16 @@ pub(crate) fn collect_project_docs(
     providers: Option<&Path>,
     single_root: bool,
 ) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
+    collect_project_docs_in(&lute_model::ModelMemo::default(), dir, providers, single_root)
+}
+
+/// [`collect_project_docs`] over `memo`'s models.
+pub(crate) fn collect_project_docs_in(
+    memo: &lute_model::ModelMemo,
+    dir: &Path,
+    providers: Option<&Path>,
+    single_root: bool,
+) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
     if !single_root {
         let opts = lute_model::ModelOptions {
             providers: providers.map(Path::to_path_buf),
@@ -73,7 +83,7 @@ pub(crate) fn collect_project_docs(
         };
         let mut file_results = Vec::new();
         let mut by_root = BTreeMap::new();
-        for model in lute_model::ProjectModel::roots_under(dir, &opts).map_err(|error| {
+        for model in memo.roots_under(dir, &opts).map_err(|error| {
             eprintln!("lute: cannot build project under {}: {error}", dir.display());
             ExitCode::from(2)
         })? {
@@ -88,7 +98,7 @@ pub(crate) fn collect_project_docs(
         return Ok((file_results, by_root));
     }
     let (file_results, by_root, _, resolve_errors) =
-        collect_project_inputs(dir, providers, single_root, false)?;
+        collect_project_inputs_in(memo, dir, providers, single_root, false)?;
     if resolve_errors > 0 && !single_root {
         return Err(ExitCode::from(1));
     }
@@ -113,7 +123,27 @@ pub(crate) fn collect_project_inputs(
     (
         Vec<(PathBuf, lute_check::CheckResult)>,
         ByRoot,
-        Vec<lute_model::ProjectModel>,
+        Vec<std::sync::Arc<lute_model::ProjectModel>>,
+        usize,
+    ),
+    ExitCode,
+> {
+    collect_project_inputs_in(&lute_model::ModelMemo::default(), dir, providers, single_root, wip)
+}
+
+/// [`collect_project_inputs`] over `memo`'s models.
+#[allow(clippy::type_complexity)]
+pub(crate) fn collect_project_inputs_in(
+    memo: &lute_model::ModelMemo,
+    dir: &Path,
+    providers: Option<&Path>,
+    single_root: bool,
+    wip: bool,
+) -> Result<
+    (
+        Vec<(PathBuf, lute_check::CheckResult)>,
+        ByRoot,
+        Vec<std::sync::Arc<lute_model::ProjectModel>>,
         usize,
     ),
     ExitCode,
@@ -126,12 +156,12 @@ pub(crate) fn collect_project_inputs(
         wip,
     };
     let models = if single_root {
-        vec![lute_model::ProjectModel::build_single_root(dir, &opts).map_err(|error| {
+        vec![memo.single_root(dir, &opts).map_err(|error| {
             eprintln!("lute: cannot build project {}: {error}", dir.display());
             ExitCode::from(2)
         })?]
     } else {
-        lute_model::ProjectModel::roots_under(dir, &opts).map_err(|error| {
+        memo.roots_under(dir, &opts).map_err(|error| {
             eprintln!("lute: cannot build project under {}: {error}", dir.display());
             ExitCode::from(2)
         })?
@@ -262,7 +292,17 @@ pub(crate) fn project_assert_relations(
     single_root: bool,
     providers: Option<&Path>,
 ) -> Option<BTreeSet<String>> {
-    let (file_results, by_root) = collect_project_docs(root, providers, single_root).ok()?;
+    project_assert_relations_in(&lute_model::ModelMemo::default(), root, single_root, providers)
+}
+
+/// [`project_assert_relations`] over `memo`'s models.
+pub(crate) fn project_assert_relations_in(
+    memo: &lute_model::ModelMemo,
+    root: &Path,
+    single_root: bool,
+    providers: Option<&Path>,
+) -> Option<BTreeSet<String>> {
+    let (file_results, by_root) = collect_project_docs_in(memo, root, providers, single_root).ok()?;
     let group = by_root.get(root)?;
     let scenario = assemble_root_scenario(group, &file_results);
     let docs = lute_model::project_docs(group);
@@ -279,7 +319,16 @@ pub(crate) fn project_assert_relations(
 /// root — what `lute trace --project` settles its "existence is unverified"
 /// notes against. `None` when the project cannot be collected.
 pub(crate) fn project_quest_ids(root: &Path, providers: Option<&Path>) -> Option<BTreeSet<String>> {
-    let (_, by_root) = collect_project_docs(root, providers, true).ok()?;
+    project_quest_ids_in(&lute_model::ModelMemo::default(), root, providers)
+}
+
+/// [`project_quest_ids`] over `memo`'s model.
+pub(crate) fn project_quest_ids_in(
+    memo: &lute_model::ModelMemo,
+    root: &Path,
+    providers: Option<&Path>,
+) -> Option<BTreeSet<String>> {
+    let (_, by_root) = collect_project_docs_in(memo, root, providers, true).ok()?;
     let group = by_root.get(root)?;
     let docs = lute_model::project_docs(group);
     Some(lute_check::connectivity::quest_id_set(&docs))

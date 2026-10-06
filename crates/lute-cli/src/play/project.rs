@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use lute_compile::ExecutionIr;
 use lute_manifest::schema::OccasionDecl;
 use lute_trace::exec::record::NeedleVocab;
-use lute_model::{relocate_imported_diags, ModelOptions, ProjectModel};
+use lute_model::{relocate_imported_diags, ModelMemo, ModelOptions, ProjectModel};
 use lute_load::nearest_manifest_dir;
 use lute_trace::exec::session::ExecProject;
 use lute_trace::exec::BridgeReads;
@@ -50,13 +50,22 @@ pub(crate) const TEST: Gate = Gate {
 
 /// Compile every non-component document under `project_dir` in memory with
 /// the `compile --all` gate — refusing to run `gate`'s command over a
-/// project that does not wholly compile — and build its index. `Err`
-/// carries the exit code after the diagnostics are printed.
-pub(super) fn compile_project(project_dir: &Path, gate: Gate, matrix: &crate::EngineMatrix) -> Result<ExecProject, ExitCode> {
+/// project that does not wholly compile — and build its index, over
+/// `memo`'s model of it. `Err` carries the exit code after the diagnostics
+/// are printed.
+pub(super) fn compile_project(
+    memo: &ModelMemo,
+    project_dir: &Path,
+    gate: Gate,
+    matrix: &crate::EngineMatrix,
+) -> Result<ExecProject, ExitCode> {
     let project_dir = nearest_manifest_dir(project_dir)
         .unwrap_or_else(|| project_dir.to_path_buf());
     manifest_gate(&project_dir, gate.cmd)?;
-    let source_model = build_model(&project_dir, gate.cmd)?;
+    let source_model = memo.single_root(&project_dir, &model_options()).map_err(|error| {
+        eprintln!("{}: cannot build {}: {error}", gate.cmd, project_dir.display());
+        ExitCode::from(1)
+    })?;
     assemble_project_from_model(&project_dir, gate, matrix, &source_model)
 }
 
@@ -90,24 +99,21 @@ pub(crate) fn manifest_gate(project_dir: &Path, cmd: &str) -> Result<(), ExitCod
 pub(crate) fn build_project_model(project_dir: &Path) -> Result<ProjectModel, ExitCode> {
     let project_dir = nearest_manifest_dir(project_dir)
         .unwrap_or_else(|| project_dir.to_path_buf());
-    build_model(&project_dir, "lute")
-}
-
-fn build_model(project_dir: &Path, cmd: &str) -> Result<ProjectModel, ExitCode> {
-    ProjectModel::build_single_root(
-        project_dir,
-        &ModelOptions {
-            providers: None,
-            permission_profile: None,
-            mode: lute_check::Mode::Ci,
-            compile: true,
-            wip: false,
-        },
-    )
-    .map_err(|error| {
-        eprintln!("{cmd}: cannot build {}: {error}", project_dir.display());
+    ProjectModel::build_single_root(&project_dir, &model_options()).map_err(|error| {
+        eprintln!("lute: cannot build {}: {error}", project_dir.display());
         ExitCode::from(1)
     })
+}
+
+/// The model a play compiles from: the project as `compile --all` sees it.
+fn model_options() -> ModelOptions {
+    ModelOptions {
+        providers: None,
+        permission_profile: None,
+        mode: lute_check::Mode::Ci,
+        compile: true,
+        wip: false,
+    }
 }
 
 pub(crate) fn assemble_project_from_model(
@@ -261,6 +267,7 @@ pub(crate) fn assemble_project_from_model(
 /// Compile the project `gate`'s command runs over ([`compile_project`]);
 /// `dir` must be a directory (exit 2 with the usage error).
 pub(super) fn compile_play_project(
+    memo: &ModelMemo,
     dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
@@ -271,5 +278,5 @@ pub(super) fn compile_play_project(
             format!("{} is not a project directory", dir.display()),
         ));
     }
-    compile_project(dir, gate, matrix).map_err(|code| (code, String::new()))
+    compile_project(memo, dir, gate, matrix).map_err(|code| (code, String::new()))
 }
