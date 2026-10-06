@@ -188,7 +188,7 @@ mod lute_version_tests {
     /// and the two clock-window diagnostics move all axes to the same number.
     #[test]
     fn language_ir_and_toolchain_are_aligned_at_0_36_1() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.36.4");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.36.4");
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.36.5");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.36.5");
     }
 }

@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.36.4`, the grammar and semantics the checker
+- **Language** — currently `0.36.5`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.36.4`) and gated on by consuming engines.
+  artifact (currently `0.36.5`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,80 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.36.5] - 2026-10-06
+
+### Syntax
+
+None.
+
+### Semantics
+
+None.
+
+### Plugin
+
+None.
+
+### CLI
+
+None.
+
+### Diagnostics
+
+None.
+
+### Identity
+
+None.
+
+### IR
+
+Version moves to 0.36.5; no shape or content change — a no-op for consumers.
+
+### Tooling
+
+Performance release. Apart from version stamps, outputs are byte-identical to
+0.36.4. The identity check covered 290 CLI commands on all 14 games, the same
+matrix as 0.36.4.
+
+Monster-league, release, median of 5 interleaved runs against 0.36.4. The
+machine was loaded (load average 30–100), so CPU time (user + sys) is the
+figure to read:
+
+| command | CPU 0.36.4 | CPU 0.36.5 | CPU ratio | wall ratio |
+|---|---|---|---|---|
+| `lute check-project` | 2.55 s | 1.98 s | 0.78 | 0.88 |
+| `lute play` spine (144 steps) | 4.61 s | 3.46 s | 0.75 | 0.75 |
+| `lute test` | 23.13 s | 17.40 s | 0.75 | 0.64 |
+| play project assembly (`calendar --until 1`) | 2.82 s | 2.28 s | 0.81 | 0.94 |
+
+- **Benchmark covers `lute play`.** lute-bench gains `play-assembly` (the
+  project `lute play`/`lute test` compile for play) and `play-replay` (every
+  `*.play.yaml` of the tier project over one compiled project). The existing
+  `playback` phase times the standalone trace runner, which shares none of
+  `lute play`'s session code. `lute-cli` now builds a library (`lute_cli::run`;
+  `lute_cli::bench` is the harness's entry, not a stable API).
+- **Benchmark gate.** `scripts/bench-ab.py` skips, with a note, a phase the
+  merge-base binary predates; `scripts/compare-bench.py` reports a head-only
+  cell instead of failing and still fails when the head loses one. The
+  `performance-approved` waiver reads the label and the PR body when the job
+  runs, so a label added after the PR opened counts on a re-run.
+- **Datalog closure reused across walks.** A playthrough builds a fresh
+  machine per walk, and about 75% of them start from exactly the previous
+  walk's world. `Store::derive` keeps the last closure per thread with the
+  schema, base facts and state it came from, and returns it on an exact
+  match (doubles compared by bit pattern).
+- **Walks start from the carried world.** A resumed machine no longer copies
+  the declared defaults and re-reads the artifact's seed facts only to
+  replace them with the carried world.
+- **Command streams shared.** Each project document's commands are decoded
+  once per compiled project and shared by every machine over it; a command
+  runs by reference instead of being copied first.
+- **Schema imports read once per file.** The import cache was keyed by the
+  importing document's directory, so the same schema file was parsed and
+  validated again for each directory that imports it (monster-league: 190
+  reads of 10 files). Each file is now read once per run.
 
 ## [0.36.4] - 2026-10-06
 

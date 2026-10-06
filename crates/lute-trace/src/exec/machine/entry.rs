@@ -2,6 +2,8 @@
 //! bundle `beat` (dsl 0.23.0 §4), each run as the body segment its head
 //! record opens.
 
+use std::sync::Arc;
+
 use serde_json::{json, Value as Json};
 
 use super::{addr, cel_raw, Machine, Site};
@@ -23,11 +25,12 @@ impl<D: Driver> Machine<D> {
     /// transcript event, not enforced: `--entry` asks for the presentation.
     pub(super) fn run_entry(&mut self) {
         let id = self.entry.clone().unwrap_or_default();
-        let Some(at) = self.commands.iter().position(|c| {
+        let Some(at) = self.code.commands.iter().position(|c| {
             c.get("kind").and_then(Json::as_str) == Some("entry")
                 && c.get("id").and_then(Json::as_str) == Some(id.as_str())
         }) else {
             let declared: Vec<&str> = self
+                .code
                 .commands
                 .iter()
                 .filter(|c| c.get("kind").and_then(Json::as_str) == Some("entry"))
@@ -39,7 +42,8 @@ impl<D: Driver> Machine<D> {
             ));
             return;
         };
-        let cmd = self.commands[at].clone();
+        let code = Arc::clone(&self.code);
+        let cmd = &code.commands[at];
         // dsl 0.28.0 (T1-6): a `for="kind:<kind>"` entry is read per member
         // — the member bound as `occasion.target` has its own first read.
         let member = match self.store.read(lute_check::beats::OCCASION_TARGET) {
@@ -55,15 +59,15 @@ impl<D: Driver> Machine<D> {
         let eligible = match cel_raw(cmd.get("when")) {
             None => Json::Bool(true),
             Some(raw) => {
-                let site = Site::new(SiteKind::EntryWhen, &id, addr(&cmd));
-                self.judge(&raw, site).map(Json::Bool).unwrap_or(Json::Null)
+                let site = Site::new(SiteKind::EntryWhen, &id, addr(cmd));
+                self.judge(raw, site).map(Json::Bool).unwrap_or(Json::Null)
             }
         };
         if self.stopped() {
             return;
         }
         self.driver.emit(json!({
-            "addr": addr(&cmd),
+            "addr": addr(cmd),
             "kind": "entry",
             "id": id,
             "firstRead": first_read,
@@ -91,11 +95,11 @@ impl<D: Driver> Machine<D> {
     /// Where the body segment of the lore head record at `at` ends: the next
     /// `entry` or `beat` head record, or the end of the artifact.
     fn segment_stop(&self, at: usize) -> usize {
-        self.commands[at + 1..]
+        self.code.commands[at + 1..]
             .iter()
             .position(|c| matches!(c.get("kind").and_then(Json::as_str), Some("entry" | "beat")))
             .map(|i| at + 1 + i)
-            .unwrap_or(self.commands.len())
+            .unwrap_or(self.code.commands.len())
     }
 
     /// Present ONE bundle beat (dsl 0.23.0 §4): its body segment runs like a
@@ -107,11 +111,11 @@ impl<D: Driver> Machine<D> {
     pub(super) fn run_bundle_beat(&mut self) {
         let id = self.bundle_beat.clone().unwrap_or_default();
         let suffix = format!(".{id}");
-        let beats: Vec<usize> = (0..self.commands.len())
-            .filter(|&i| self.commands[i].get("kind").and_then(Json::as_str) == Some("beat"))
+        let beats: Vec<usize> = (0..self.code.commands.len())
+            .filter(|&i| self.code.commands[i].get("kind").and_then(Json::as_str) == Some("beat"))
             .collect();
         let record_id = |i: usize| {
-            self.commands[i]
+            self.code.commands[i]
                 .get("id")
                 .and_then(Json::as_str)
                 .unwrap_or("")
@@ -134,7 +138,8 @@ impl<D: Driver> Machine<D> {
             ));
             return;
         };
-        let cmd = self.commands[at].clone();
+        let code = Arc::clone(&self.code);
+        let cmd = &code.commands[at];
         let canonical = cmd
             .get("id")
             .and_then(Json::as_str)
@@ -143,15 +148,15 @@ impl<D: Driver> Machine<D> {
         let eligible = match cel_raw(cmd.get("when")) {
             None => Json::Bool(true),
             Some(raw) => {
-                let site = Site::new(SiteKind::BeatWhen, &canonical, addr(&cmd));
-                self.judge(&raw, site).map(Json::Bool).unwrap_or(Json::Null)
+                let site = Site::new(SiteKind::BeatWhen, &canonical, addr(cmd));
+                self.judge(raw, site).map(Json::Bool).unwrap_or(Json::Null)
             }
         };
         if self.stopped() {
             return;
         }
         self.driver.emit(json!({
-            "addr": addr(&cmd),
+            "addr": addr(cmd),
             "kind": "beat",
             "id": cmd.get("id").cloned().unwrap_or(Json::Null),
             "eligible": eligible,

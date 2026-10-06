@@ -133,12 +133,14 @@ jobs:
       # Ratio failures can be waived only as an auditable exception: the
       # `performance-approved` label (applied by a maintainer) plus a PR-body
       # note naming the affected cell, e.g. `performance-approved:
-      # large/analysis`. Reports stay uploaded below either way.
+      # large/analysis`. Reports stay uploaded below either way. Label and
+      # body are read live, not from the event payload: a label added after
+      # the PR opened (or a body edited since) counts on a re-run.
       - name: Enforce benchmark gate or approved exception
         if: steps.base.outputs.available == 'true' && steps.compare.outputs.status != '0'
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PERFORMANCE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'performance-approved') }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           status="${{ steps.compare.outputs.status }}"
@@ -146,11 +148,12 @@ jobs:
             echo "Benchmark collection/comparison failed; only a ratio failure can use the exception." >&2
             exit 1
           fi
-          if [[ "$PERFORMANCE_APPROVED" != "true" ]]; then
+          pr_json=$(gh api "repos/${{ github.repository }}/pulls/$PR")
+          if ! jq -e '.labels | map(.name) | index("performance-approved")' <<<"$pr_json" >/dev/null; then
             echo "A performance regression requires the performance-approved label." >&2
             exit 1
           fi
-          if ! grep -Eiq 'performance-approved:[[:space:]]*(tiny|medium|large)/(cold-load|project-resolution|analysis|serialization|playback)' <<<"$PR_BODY"; then
+          if ! jq -r '.body // ""' <<<"$pr_json" | grep -Eiq 'performance-approved:[[:space:]]*(tiny|medium|large)/(cold-load|project-resolution|analysis|serialization|playback|play-assembly|play-replay)'; then
             echo "The PR body must name an approved tier/phase (performance-approved: tier/phase)." >&2
             exit 1
           fi

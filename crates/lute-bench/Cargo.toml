@@ -10,6 +10,7 @@ name = "lute-bench"
 
 [dependencies]
 lute-check = { path = "../lute-check" }
+lute-cli = { path = "../lute-cli" }
 lute-model = { path = "../lute-model" }
 lute-semantic = { path = "../lute-semantic" }
 lute-trace = { path = "../lute-trace" }

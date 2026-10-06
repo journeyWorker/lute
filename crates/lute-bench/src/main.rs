@@ -21,6 +21,8 @@ enum Phase {
     Analysis,
     Serialization,
     Playback,
+    PlayAssembly,
+    PlayReplay,
 }
 
 impl Phase {
@@ -31,16 +33,20 @@ impl Phase {
             Self::Analysis => "analysis",
             Self::Serialization => "serialization",
             Self::Playback => "playback",
+            Self::PlayAssembly => "play-assembly",
+            Self::PlayReplay => "play-replay",
         }
     }
 
-    fn all() -> [Self; 5] {
+    fn all() -> [Self; 7] {
         [
             Self::ColdLoad,
             Self::Resolution,
             Self::Analysis,
             Self::Serialization,
             Self::Playback,
+            Self::PlayAssembly,
+            Self::PlayReplay,
         ]
     }
 }
@@ -203,6 +209,8 @@ fn parse_args() -> Result<Config, String> {
         "analysis" => vec![Phase::Analysis],
         "serialization" | "serialize" => vec![Phase::Serialization],
         "playback" | "test" => vec![Phase::Playback],
+        "play-assembly" => vec![Phase::PlayAssembly],
+        "play-replay" => vec![Phase::PlayReplay],
         other => return Err(format!("invalid phase `{other}`")),
     };
     Ok(Config {
@@ -364,6 +372,45 @@ fn run_sample(
                 &mut iterations,
             )
         }
+        // The project `lute play` / `lute test` compile for play: model build,
+        // manifest gate and `ExecProject` assembly.
+        Phase::PlayAssembly => loop_until(root, || {
+            black_box(lute_cli::bench::compile(root)?);
+            Ok(())
+        }, &mut iterations),
+        // Every `*.play.yaml` of the project over one compiled project, as
+        // `lute test` runs them; a missed expectation is a failed sample.
+        Phase::PlayReplay => {
+            let compiled = match lute_cli::bench::compile(root) {
+                Ok(compiled) => compiled,
+                Err(error) => {
+                    return failed_sample(tier, project, phase, sample, test_count, error);
+                }
+            };
+            let plays = match load_play_paths(root) {
+                Ok(plays) if !plays.is_empty() => plays,
+                Ok(_) => {
+                    let error = "the project has no *.play.yaml".to_string();
+                    return failed_sample(tier, project, phase, sample, test_count, error);
+                }
+                Err(error) => {
+                    return failed_sample(tier, project, phase, sample, test_count, error);
+                }
+            };
+            loop_until(
+                root,
+                || {
+                    for play in &plays {
+                        let misses = lute_cli::bench::play(&compiled, play)?;
+                        if misses > 0 {
+                            return Err(format!("{}: {misses} missed expectation(s)", play.display()));
+                        }
+                    }
+                    Ok(())
+                },
+                &mut iterations,
+            )
+        }
     };
     match result {
         Ok(elapsed) => {
@@ -440,6 +487,18 @@ fn load_test_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
     visit_files(root, &mut |path| {
         if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".test.yaml")) {
+            paths.push(path.to_path_buf());
+        }
+        Ok(())
+    })?;
+    paths.sort();
+    Ok(paths)
+}
+
+fn load_play_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    visit_files(root, &mut |path| {
+        if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".play.yaml")) {
             paths.push(path.to_path_buf());
         }
         Ok(())
@@ -641,7 +700,15 @@ mod tests {
     fn report_uses_frozen_schema_and_stable_phase_order() {
         assert_eq!(
             Phase::all().map(Phase::name),
-            ["cold-load", "project-resolution", "analysis", "serialization", "playback"]
+            [
+                "cold-load",
+                "project-resolution",
+                "analysis",
+                "serialization",
+                "playback",
+                "play-assembly",
+                "play-replay",
+            ]
         );
         let report = Report {
             schema_version: "0.36.0.bench",

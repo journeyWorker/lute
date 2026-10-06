@@ -118,7 +118,7 @@ impl<D: Driver> Machine<D> {
     fn quest_program(&self) -> (Vec<QuestDecl>, Vec<Handler>, Vec<usize>) {
         let mut quests: Vec<QuestDecl> = Vec::new();
         let mut handlers: Vec<Handler> = Vec::new();
-        for cmd in &self.commands {
+        for cmd in &self.code.commands {
             match cmd.get("kind").and_then(Json::as_str) {
                 Some("quest") => quests.push(parse_quest(cmd)),
                 Some("on") => {
@@ -1124,7 +1124,7 @@ impl<D: Driver> Machine<D> {
             .iter()
             .find(|&&s| s > start)
             .copied()
-            .unwrap_or(self.commands.len());
+            .unwrap_or(self.code.commands.len());
         self.run_range(start, stop);
     }
 }

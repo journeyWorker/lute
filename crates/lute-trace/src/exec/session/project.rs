@@ -58,6 +58,9 @@ pub struct ExecProject {
     pub eval_json: Json,
     /// Schemas for both project derive modes; each is decoded once at assembly.
     pub(crate) store_schemas: [std::sync::Arc<StoreSchema>; 2],
+    /// Each artifact's command stream, decoded once: every Machine a
+    /// playthrough builds over a document shares it.
+    pub(crate) codes: BTreeMap<String, std::sync::Arc<crate::exec::machine::Code>>,
     /// Capability-declared world events, unioned across the documents — what
     /// an `event:` step may fire (dsl 0.22.0 §9).
     pub world_events: BTreeSet<String>,
@@ -408,6 +411,10 @@ impl ExecProject {
             Store::schema_for_project(&eval_json, false, &rules, &state_table),
             Store::schema_for_project(&eval_json, true, &rules, &state_table),
         ];
+        let codes = artifacts
+            .iter()
+            .map(|(doc, art)| (doc.clone(), std::sync::Arc::new(crate::exec::machine::Code::of(art))))
+            .collect();
 
         let bridge_reads = std::sync::Arc::new(BridgeReads {
             result_types: bridge_types.result_types,
@@ -437,6 +444,7 @@ impl ExecProject {
             objective_occasions,
             eval_json,
             store_schemas,
+            codes,
             world_events,
             scene_ids,
             entry_ids,

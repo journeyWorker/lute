@@ -318,20 +318,21 @@ pub fn walk_stop(
     }
 }
 
-/// A presentation or quest walk of `doc_json` — widened by
-/// [`play_artifact_json`] — resumed from `carry`, scripted by `choose`
-/// over `w`'s choice cursor and bridge answers, reading `w`'s presented
-/// scenes and the project's bridge-result readers.
+/// A presentation or quest walk of the project document `doc`, resumed from
+/// `carry`, scripted by `choose` over `w`'s choice cursor and bridge
+/// answers, reading `w`'s presented scenes and the project's bridge-result
+/// readers.
 pub fn play_machine(
     p: &ExecProject,
     w: &World,
-    doc_json: &Json,
+    doc: &str,
     seed: Seed,
     carry: Carry,
     choose: &BTreeMap<String, Vec<String>>,
 ) -> Machine<PlayDriver> {
     let machine = Machine::resume_with_project_schema(
-        doc_json,
+        &p.artifacts[doc],
+        std::sync::Arc::clone(&p.codes[doc]),
         seed.clone(),
         carry,
         PlayDriver::new(choose, w),

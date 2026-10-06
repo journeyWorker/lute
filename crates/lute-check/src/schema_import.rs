@@ -189,6 +189,7 @@ impl Edge {
 /// state paths, defs, project-authored domains, entity-kind/relation decls,
 /// seed facts/rules, and `<quest id>`s (the doc's own edges are consumed
 /// during traversal).
+#[derive(Clone)]
 struct ParsedDoc {
     state: BTreeMap<String, StateDecl>,
     /// dsl 0.28.0 (T3-1): the state paths whose own row this doc reported
@@ -286,6 +287,20 @@ const AT_PLACEHOLDER: Span = Span {
 pub struct ImportCache {
     imports: Memo<(PathBuf, Vec<String>, Vec<String>), SchemaImports>,
     components: Memo<(PathBuf, Vec<String>), crate::ComponentSet>,
+    /// Each imported file, read once: [`ImportCache::resolve`] is keyed by
+    /// the importer's directory, and importers in different directories
+    /// reach the same schema files.
+    files: Memo<PathBuf, ParsedFile>,
+}
+
+/// One imported file as [`read_and_parse`] reads it against
+/// [`AT_PLACEHOLDER`]: the parse, its own edges, and the diagnostics it adds.
+#[derive(Clone)]
+struct ParsedFile {
+    doc: ParsedDoc,
+    uses: Vec<String>,
+    extends: Vec<String>,
+    diags: Vec<Diagnostic>,
 }
 
 impl ImportCache {
@@ -299,7 +314,7 @@ impl ImportCache {
     ) -> Arc<SchemaImports> {
         let key = (base_dir.to_path_buf(), uses.to_vec(), extends.to_vec());
         let cached = self.imports.get_or_init(key, || {
-            resolve_imports(base_dir, uses, extends, AT_PLACEHOLDER)
+            resolve_imports_in(base_dir, uses, extends, AT_PLACEHOLDER, Some(&self.files))
         });
         if at == AT_PLACEHOLDER {
             return cached;
@@ -383,6 +398,19 @@ pub fn resolve_imports(
     extends: &[String],
     at: Span,
 ) -> SchemaImports {
+    resolve_imports_in(base_dir, uses, extends, at, None)
+}
+
+/// [`resolve_imports`], reading each imported file through `files` when
+/// given. A file's parse depends on its text and `at` alone, so `files` is
+/// only passed with `at` = [`AT_PLACEHOLDER`] ([`ImportCache::resolve`]).
+fn resolve_imports_in(
+    base_dir: &Path,
+    uses: &[String],
+    extends: &[String],
+    at: Span,
+    files: Option<&Memo<PathBuf, ParsedFile>>,
+) -> SchemaImports {
     let mut diags = Vec::new();
 
     // --- Phase 1: traverse the DAG, finalizing each file at its SHALLOWEST depth.
@@ -418,7 +446,24 @@ pub fn resolve_imports(
         if parsed.contains_key(&canon) {
             continue;
         }
-        let (doc, uses_refs, extends_refs) = read_and_parse(&canon, &mut diags, at);
+        let (doc, uses_refs, extends_refs) = match files {
+            Some(files) => {
+                debug_assert!(at == AT_PLACEHOLDER);
+                let file = files.get_or_init(canon.clone(), || {
+                    let mut diags = Vec::new();
+                    let (doc, uses, extends) = read_and_parse(&canon, &mut diags, at);
+                    ParsedFile {
+                        doc,
+                        uses,
+                        extends,
+                        diags,
+                    }
+                });
+                diags.extend(file.diags.iter().cloned());
+                (file.doc.clone(), file.uses.clone(), file.extends.clone())
+            }
+            None => read_and_parse(&canon, &mut diags, at),
+        };
         let dir = canon
             .parent()
             .unwrap_or_else(|| Path::new("."))

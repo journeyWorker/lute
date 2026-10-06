@@ -145,6 +145,7 @@ impl World {
     ) -> Machine<PlayDriver> {
         let machine = Machine::resume_with_project_schema(
             art,
+            std::sync::Arc::new(crate::exec::machine::Code::of(art)),
             Seed::from(&self.mock()),
             self.carry(),
             PlayDriver::default(),

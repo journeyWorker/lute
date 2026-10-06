@@ -88,10 +88,12 @@ def main(argv: list[str]) -> int:
             return fail("runner mismatch")
         base_cells = cells(base, base_path)
         head_cells = cells(head, head_path)
-        if set(base_cells) != set(head_cells):
-            only_base = sorted(set(base_cells) - set(head_cells))
-            only_head = sorted(set(head_cells) - set(base_cells))
-            return fail(f"tier/project/phase cells differ (base-only={only_base}, head-only={only_head})")
+        only_base = sorted(set(base_cells) - set(head_cells))
+        if only_base:
+            return fail(f"head lost tier/project/phase cells the base measures: {only_base}")
+        # A cell only the head measures is a phase newer than the merge base:
+        # reported, with nothing to compare against until the base has it.
+        only_head = sorted(set(head_cells) - set(base_cells))
 
         base_corpus = corpus(base)
         head_corpus = corpus(head)
@@ -108,6 +110,9 @@ def main(argv: list[str]) -> int:
         regression = False
         print(f"base report: {base_path}")
         print(f"head report: {head_path}")
+        for key in only_head:
+            head_median = statistics.median(row[1] for row in head_cells[key])
+            print(f"{key[0]}/{key[2]}: new cell, head median {head_median:.3f} us (no base)")
         for key in sorted(base_cells):
             base_values = [row[1] for row in base_cells[key]]
             head_values = [row[1] for row in head_cells[key]]

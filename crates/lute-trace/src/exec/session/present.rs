@@ -169,7 +169,7 @@ pub fn present(
         w.quests.clone(),
     );
     carry.quest_instances = w.quest_instances.clone();
-    let mut m = play_machine(p, w, doc_json, Seed::from(mock), carry, &mock.choose)
+    let mut m = play_machine(p, w, &beat.document, Seed::from(mock), carry, &mock.choose)
         .with_display_names(&p.display_names);
     m.bind_occasion_target(member);
     let mut m = match beat.kind {
