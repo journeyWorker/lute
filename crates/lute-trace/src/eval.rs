@@ -66,7 +66,7 @@ pub(crate) enum ReservedReadKind {
 #[derive(Clone)]
 pub struct EffectiveState<'a> {
     schema: &'a StateSchema,
-    seed: BTreeMap<String, Value>,
+    seed: std::borrow::Cow<'a, BTreeMap<String, Value>>,
     writes: BTreeMap<String, Value>,
     reserved_reads: Rc<RefCell<BTreeMap<String, ReservedReadKind>>>,
     read_log: Option<Rc<RefCell<Vec<(String, Read)>>>>,
@@ -77,6 +77,15 @@ impl<'a> EffectiveState<'a> {
     /// writes accumulate separately via [`EffectiveState::write`] as the
     /// walk (Task 19) proceeds.
     pub fn new(schema: &'a StateSchema, seed: BTreeMap<String, Value>) -> Self {
+        Self::with_seed(schema, std::borrow::Cow::Owned(seed))
+    }
+
+    /// [`Self::new`] over a seed the caller keeps: no copy of the map.
+    pub fn over(schema: &'a StateSchema, seed: &'a BTreeMap<String, Value>) -> Self {
+        Self::with_seed(schema, std::borrow::Cow::Borrowed(seed))
+    }
+
+    fn with_seed(schema: &'a StateSchema, seed: std::borrow::Cow<'a, BTreeMap<String, Value>>) -> Self {
         Self {
             schema,
             seed,

@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: celPresence
-luteVersion: "0.36.3"
+luteVersion: "0.36.4"
 title: CEL Presence
 uses: ./schema.yaml
 ---

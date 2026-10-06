@@ -1,6 +1,6 @@
 # Lute
 
-> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. The current language version is **0.36.3** and the current IR version is **0.36.3**.
+> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. The current language version is **0.36.4** and the current IR version is **0.36.4**.
 
 Lute is deliberately non-Turing: every document is a finite, terminating artifact, so the checker can prove reachability, definite-assignment, and envelope properties instead of guessing. The CLI (`lute`) is a headless checker, compiler, and preview tool; `lute context --json` emits the project-resolved authoring surface an AI or human needs to write valid Lute, and `lute check --json` gives a machine-readable diagnostic loop. Content vocabulary is the project's, not the compiler's: since language 0.9.0 the core declares seven *slots* (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) and ships zero members, so every `emotion=`/`action=`/`::music{mood}` value must be declared by the project first — an undeclared slot is the error `E-DOMAIN-UNKNOWN`. Below, each link points to a single documentation page on <https://lute-lang.vercel.app>.
 
@@ -72,10 +72,10 @@ the [0.33.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/propo
 - [Typed bridge directives](https://lute-lang.vercel.app/plugins/bridge/): How a plugin declares a typed runtime bridge, the directive that invokes it, and the declared result state it writes.
 - [Profiles & activation](https://lute-lang.vercel.app/plugins/profiles/): Selecting capability plugins with a source profile, layering typed options, and distinguishing activation from conjunctive project/host permission ceilings.
 
-### Specification 0.36.3
+### Specification 0.36.4
 
 - [Current specification](https://lute-lang.vercel.app/spec/current/): Current language and execution contract, including domain modules, semantic registry, `requiredSemantics`, engine matrices, exact-minor negotiation, and refusal diagnostics.
-- [Specification index](https://lute-lang.vercel.app/spec/): Versioned proposal stack through 0.36.3, including the AI edit-loop and lossless source tooling release.
+- [Specification index](https://lute-lang.vercel.app/spec/): Versioned proposal stack through 0.36.4, including the AI edit-loop and lossless source tooling release.
 
 ## Specification
 
@@ -89,7 +89,7 @@ the [0.33.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/propo
 - [Full-spec showcase](https://lute-lang.vercel.app/examples/showcase/): A walkthrough of the self-contained showcase project exercising every implemented Lute feature end-to-end.
 - [Example games](https://lute-lang.vercel.app/examples/games/): Fourteen complete games in the repository under `docs/examples/games/` — mysteries, roguelikes, visual novels, live-ops, a gacha, an Ink port — each its own project with a README naming the features it exercises, checked in CI with `check-project --deny-warnings` and run with its tests and plays.
 
-## 0.36.3 AI editing commands
+## 0.36.4 AI editing commands
 
 `lute fmt [--check] <path>…` deterministically formats Lute-owned source;
 YAML values are opaque. Exit 0 is canonical/success, 1 is noncanonical in

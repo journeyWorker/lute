@@ -447,7 +447,7 @@ impl Store {
         }
         self.dirty = false;
         if self.derive {
-            let eff = EffectiveState::new(&self.store_schema.state, self.values.clone());
+            let eff = EffectiveState::over(&self.store_schema.state, &self.values);
             let closure = self.program.fixpoint(&self.base, &eff);
             self.all = closure.facts;
             self.undecided = closure.undecided;
@@ -481,9 +481,9 @@ impl Store {
     pub(crate) fn eval_expr(&mut self, expr: &Expr) -> (Value, Vec<UnresolvedAtom>) {
         self.derive();
         let eff = if self.capture_reads {
-            EffectiveState::new(&self.store_schema.state, self.values.clone()).with_read_log()
+            EffectiveState::over(&self.store_schema.state, &self.values).with_read_log()
         } else {
-            EffectiveState::new(&self.store_schema.state, self.values.clone())
+            EffectiveState::over(&self.store_schema.state, &self.values)
         };
         let mut fs = FactStore::new(&self.vocab)
             .with_facts(&self.all)
@@ -519,7 +519,7 @@ impl Store {
         if self.all.contains(fact) {
             return Some(Vec::new());
         }
-        let eff = EffectiveState::new(&self.store_schema.state, self.values.clone());
+        let eff = EffectiveState::over(&self.store_schema.state, &self.values);
         let closure = crate::datalog::Closure::of_facts(self.all.clone());
         Some(match self.program.explain(&closure, fact, &eff) {
             crate::datalog::Explanation::Fails { attempts, .. } => attempts,
