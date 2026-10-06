@@ -126,7 +126,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 
 The component-key uniqueness rule is intentionally strict: duplicate keys in
 mutually exclusive branches still conflict when they share one immediate
-owner (scenario DSL 0.36.4 §2.1). Checker tests cover that diagnostic; it is
+owner (scenario DSL 0.36.0 §2.1). Checker tests cover that diagnostic; it is
 not a runtime conformance fixture.
 
 The save format is engine-owned. `save-collision/migration-report.json` is the
