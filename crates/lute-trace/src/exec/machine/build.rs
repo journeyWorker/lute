@@ -8,11 +8,24 @@ use std::sync::Arc;
 use serde_json::Value as Json;
 
 use super::plugin::BridgeReads;
-use super::{Carry, Machine, Seed};
+use super::{Carry, Code, Machine, Seed};
 use crate::exec::driver::Driver;
 use crate::exec::session::parse_ground_fact;
-use crate::exec::store::{Store, StoreSchema};
+use crate::exec::store::{Store, StoreSchema, World};
 use crate::Value;
+
+/// Where a Machine's [`Store`] reads its declarations from.
+enum StoreSource<'a> {
+    /// The artifact's own state table and rules.
+    Artifact,
+    /// The project's rules and state declarations, read off JSON.
+    Project {
+        rules: &'a Json,
+        state: &'a BTreeMap<String, Json>,
+    },
+    /// The project's schema, already decoded by its `ExecProject`.
+    Schema(Arc<StoreSchema>),
+}
 
 impl<D: Driver> Machine<D> {
     /// Build a Machine skeleton straight off an artifact: addr map, the
@@ -22,56 +35,35 @@ impl<D: Driver> Machine<D> {
     /// the seed's own `state`/`facts` on top via [`Machine::apply_seeds`] —
     /// the one place that override rule lives.
     fn blank(art: &Json, seed: Seed, driver: D) -> Self {
-        Self::blank_with_overrides(art, seed, driver, None, None, None)
+        Self::blank_over(art, None, seed, driver, StoreSource::Artifact, None)
     }
 
-    fn blank_with_overrides(
+    /// [`Machine::blank`] over `source`'s declarations: `code` is `art`'s
+    /// command stream when the caller already holds it, and `world` the live
+    /// world the Store starts from instead of the declared defaults.
+    fn blank_over(
         art: &Json,
+        code: Option<Arc<Code>>,
         seed: Seed,
         driver: D,
-        rules: Option<&Json>,
-        state: Option<&BTreeMap<String, Json>>,
-        schema: Option<Arc<StoreSchema>>,
+        source: StoreSource<'_>,
+        world: Option<World>,
     ) -> Self {
-        let kind = art
-            .get("kind")
-            .and_then(Json::as_str)
-            .unwrap_or("scene")
-            .to_string();
-        let commands = art
-            .get("commands")
-            .and_then(Json::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let code = code.unwrap_or_else(|| Arc::new(Code::of(art)));
 
-        let mut addr_index = BTreeMap::new();
-        let mut addr_order = Vec::new();
-        for (i, c) in commands.iter().enumerate() {
-            if let Some(a) = c.get("addr").and_then(Json::as_str) {
-                addr_index.insert(a.to_string(), i);
-                addr_order.push((a.to_string(), i));
+        let mut store = match source {
+            StoreSource::Schema(schema) => Store::from_project_schema(art, schema, world),
+            StoreSource::Project { rules, state } => {
+                Store::of_artifact_with_project(art, seed.derive, rules, state, world)
             }
-        }
-        addr_order.sort();
-
-        let mut store = match schema {
-            Some(schema) => Store::from_project_schema(art, schema),
-            None => match (rules, state) {
-                (Some(rules), Some(state)) => {
-                    Store::of_artifact_with_project(art, seed.derive, rules, state)
-                }
-                _ => Store::of_artifact(art, seed.derive),
-            },
+            StoreSource::Artifact => Store::of_artifact(art, seed.derive, world),
         };
         // dsl 0.21.0 §7a.1: the seed's `visited` seeds the presented set.
         store.visit_all(&seed.visited);
 
         Machine {
             driver,
-            kind,
-            commands,
-            addr_index,
-            addr_order,
+            code,
             display_names: BTreeMap::new(),
             occasion_target: None,
             store,
@@ -124,7 +116,7 @@ impl<D: Driver> Machine<D> {
     /// carry's `state`, `base_facts`, `quest_status` and quest instance
     /// counters are read.
     pub fn resume(art: &Json, seed: Seed, carry: Carry, driver: D) -> Self {
-        Self::resume_with_overrides(art, seed, carry, driver, None, None, None)
+        Self::resume_over(art, None, seed, carry, driver, StoreSource::Artifact)
     }
 
     /// Resume a play machine over one document's command tree while reading
@@ -138,29 +130,35 @@ impl<D: Driver> Machine<D> {
         rules: &Json,
         state: &BTreeMap<String, Json>,
     ) -> Self {
-        Self::resume_with_overrides(art, seed, carry, driver, Some(rules), Some(state), None)
+        Self::resume_over(art, None, seed, carry, driver, StoreSource::Project { rules, state })
     }
+
+    /// [`Machine::resume_with_project`] over a project's decoded schema and
+    /// the document's shared command stream (`code` is `art`'s).
     pub(crate) fn resume_with_project_schema(
         art: &Json,
+        code: Arc<Code>,
         seed: Seed,
         carry: Carry,
         driver: D,
         schema: Arc<StoreSchema>,
     ) -> Self {
-        Self::resume_with_overrides(art, seed, carry, driver, None, None, Some(schema))
+        Self::resume_over(art, Some(code), seed, carry, driver, StoreSource::Schema(schema))
     }
 
-    fn resume_with_overrides(
+    fn resume_over(
         art: &Json,
+        code: Option<Arc<Code>>,
         seed: Seed,
         carry: Carry,
         driver: D,
-        rules: Option<&Json>,
-        state: Option<&BTreeMap<String, Json>>,
-        schema: Option<Arc<StoreSchema>>,
+        source: StoreSource<'_>,
     ) -> Self {
-        let mut m = Self::blank_with_overrides(art, seed, driver, rules, state, schema);
-        m.store.restore(carry.state, carry.base_facts);
+        // The carried world replaces the artifact's defaults and seed facts
+        // outright, so the Store is built over it (never over a copy of the
+        // defaults it would drop).
+        let world = Some((carry.state, carry.base_facts));
+        let mut m = Self::blank_over(art, code, seed, driver, source, world);
         m.quest_status = carry.quest_status;
         m.quest_instances = carry.quest_instances;
         m.apply_seeds();

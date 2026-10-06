@@ -103,7 +103,7 @@ pub(crate) struct Store {
     /// Seeds ∪ asserted − retracted.
     base: BTreeSet<Fact>,
     /// `base` ∪ the derived least fixpoint (valid unless `dirty`).
-    all: BTreeSet<Fact>,
+    all: std::sync::Arc<BTreeSet<Fact>>,
     /// Derived relations whose last fixpoint read an undecided rule guard.
     undecided: BTreeMap<String, Vec<UnresolvedAtom>>,
     dirty: bool,
@@ -255,23 +255,14 @@ impl Store {
         })
     }
 
-    fn from_schema(art: &Json, schema: std::sync::Arc<StoreSchema>) -> Self {
-        let mut base = BTreeSet::new();
-        let seeds = art
-            .get("seedFacts")
-            .and_then(Json::as_array)
-            .filter(|_| schema.derive);
-        for s in seeds.into_iter().flatten() {
-            let rel = s.get("relation").and_then(Json::as_str).unwrap_or("");
-            let args: Vec<String> = s
-                .get("args")
-                .and_then(Json::as_array)
-                .map(|a| a.iter().map(json_arg_to_string).collect())
-                .unwrap_or_default();
-            if !rel.is_empty() {
-                base.insert((rel.to_string(), args));
-            }
-        }
+    /// A Store over `schema`. Its live world is `world` (a resumed walk's
+    /// carried state and base facts), or else the declared defaults and the
+    /// artifact's seed facts.
+    fn from_schema(art: &Json, schema: std::sync::Arc<StoreSchema>, world: Option<World>) -> Self {
+        let (values, base) = match world {
+            Some(world) => world,
+            None => (schema.defaults.clone(), seed_facts(art, schema.derive)),
+        };
         Self {
             store_schema: schema.clone(),
             types: schema.types.clone(),
@@ -279,14 +270,14 @@ impl Store {
             kind_labels: schema.kind_labels.clone(),
             label_forms: schema.label_forms.clone(),
             kind_label_forms: schema.kind_label_forms.clone(),
-            values: schema.defaults.clone(),
+            values,
             vocab: schema.vocab.clone(),
             program: schema.program.clone(),
             derive: schema.derive,
             rules_read_state: schema.rules_read_state,
             rules_read_occasion_target: schema.rules_read_occasion_target,
             base,
-            all: BTreeSet::new(),
+            all: std::sync::Arc::default(),
             undecided: BTreeMap::new(),
             dirty: true,
             visited: BTreeSet::new(),
@@ -308,15 +299,19 @@ impl Store {
         Self::schema_for(art, derive, Some(rules), Some(state))
     }
 
-    pub(crate) fn from_project_schema(art: &Json, schema: std::sync::Arc<StoreSchema>) -> Self {
-        Self::from_schema(art, schema)
+    pub(crate) fn from_project_schema(
+        art: &Json,
+        schema: std::sync::Arc<StoreSchema>,
+        world: Option<World>,
+    ) -> Self {
+        Self::from_schema(art, schema, world)
     }
 
     /// The artifact's declared state table, defaults, seed facts, rules and
     /// exclusive pairs. `derive: false` leaves the rules unapplied.
-    pub(crate) fn of_artifact(art: &Json, derive: bool) -> Self {
+    pub(crate) fn of_artifact(art: &Json, derive: bool, world: Option<World>) -> Self {
         let schema = Self::schema_for(art, derive, None, None);
-        Self::from_schema(art, schema)
+        Self::from_schema(art, schema, world)
     }
 
     /// Compatibility constructor for callers that do not retain a project
@@ -326,21 +321,16 @@ impl Store {
         derive: bool,
         rules: &Json,
         state: &BTreeMap<String, Json>,
+        world: Option<World>,
     ) -> Self {
         let schema = Self::schema_for_project(art, derive, rules, state);
-        Self::from_project_schema(art, schema)
+        Self::from_project_schema(art, schema, world)
     }
 
     pub(crate) fn enable_read_capture(&mut self) {
         self.capture_reads = true;
     }
 
-    /// Replace the live world with a carried one (`lute play`'s resume).
-    pub(crate) fn restore(&mut self, values: BTreeMap<String, Value>, base: BTreeSet<Fact>) {
-        self.values = values;
-        self.base = base;
-        self.dirty = true;
-    }
 
     /// Coerce a raw seed literal against the declared value-type. `prev.*`
     /// is the previous-run view of the corresponding `run.*` declaration.
@@ -447,12 +437,11 @@ impl Store {
         }
         self.dirty = false;
         if self.derive {
-            let eff = EffectiveState::over(&self.store_schema.state, &self.values);
-            let closure = self.program.fixpoint(&self.base, &eff);
-            self.all = closure.facts;
-            self.undecided = closure.undecided;
+            let (all, undecided) = LastClosure::get_or_derive(self);
+            self.all = all;
+            self.undecided = undecided;
         } else {
-            self.all = self.base.clone();
+            self.all = std::sync::Arc::new(self.base.clone());
             self.undecided.clear();
         }
     }
@@ -520,7 +509,7 @@ impl Store {
             return Some(Vec::new());
         }
         let eff = EffectiveState::over(&self.store_schema.state, &self.values);
-        let closure = crate::datalog::Closure::of_facts(self.all.clone());
+        let closure = crate::datalog::Closure::of_facts((*self.all).clone());
         Some(match self.program.explain(&closure, fact, &eff) {
             crate::datalog::Explanation::Fails { attempts, .. } => attempts,
             crate::datalog::Explanation::Holds(_) => Vec::new(),
@@ -641,6 +630,98 @@ pub(crate) fn json_to_value(j: &Json) -> Option<Value> {
     }
 }
 
+/// The last closure [`Store::derive`] computed on this thread, with the exact
+/// inputs it was computed from.
+///
+/// A playthrough builds a fresh [`Store`] per walk, and most are built over
+/// the same world as the walk before: on the largest dogfood project ~75% of
+/// closures repeat the previous one's schema, base facts and state exactly.
+/// The closure is a function of those three alone (the rules, the declared
+/// state types, `base`, and the state values the rule guards read), so an
+/// exact match returns the same closure the fixpoint would.
+struct LastClosure {
+    /// Held, not just compared by address, so a freed schema's address
+    /// cannot be reused by another.
+    schema: std::sync::Arc<StoreSchema>,
+    base: BTreeSet<Fact>,
+    values: BTreeMap<String, Value>,
+    all: std::sync::Arc<BTreeSet<Fact>>,
+    undecided: BTreeMap<String, Vec<UnresolvedAtom>>,
+}
+
+thread_local! {
+    static LAST_CLOSURE: RefCell<Option<LastClosure>> = const { RefCell::new(None) };
+}
+
+impl LastClosure {
+    fn matches(&self, store: &Store) -> bool {
+        std::sync::Arc::ptr_eq(&self.schema, &store.store_schema)
+            && self.base == store.base
+            && self.values.len() == store.values.len()
+            && self
+                .values
+                .iter()
+                .zip(&store.values)
+                .all(|((ka, va), (kb, vb))| ka == kb && same_value(va, vb))
+    }
+
+    /// `store`'s closure: the last one when its inputs are `store`'s, else a
+    /// fresh fixpoint (which becomes the last one).
+    fn get_or_derive(
+        store: &Store,
+    ) -> (std::sync::Arc<BTreeSet<Fact>>, BTreeMap<String, Vec<UnresolvedAtom>>) {
+        LAST_CLOSURE.with_borrow_mut(|last| {
+            if let Some(hit) = last.as_ref().filter(|l| l.matches(store)) {
+                return (std::sync::Arc::clone(&hit.all), hit.undecided.clone());
+            }
+            let eff = EffectiveState::over(&store.store_schema.state, &store.values);
+            let closure = store.program.fixpoint(&store.base, &eff);
+            let all = std::sync::Arc::new(closure.facts);
+            *last = Some(LastClosure {
+                schema: std::sync::Arc::clone(&store.store_schema),
+                base: store.base.clone(),
+                values: store.values.clone(),
+                all: std::sync::Arc::clone(&all),
+                undecided: closure.undecided.clone(),
+            });
+            (all, closure.undecided)
+        })
+    }
+}
+
+/// Value identity for [`LastClosure`]: doubles by bit pattern, so `0.0` and
+/// `-0.0` (which CEL `string()` spells differently) never share a closure.
+fn same_value(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Double(x), Value::Double(y)) => x.to_bits() == y.to_bits(),
+        _ => a == b,
+    }
+}
+
+/// A live world a Store starts from: state values and base facts.
+pub(crate) type World = (BTreeMap<String, Value>, BTreeSet<Fact>);
+
+/// The artifact's `seedFacts` as base facts (none when rules are unapplied).
+fn seed_facts(art: &Json, derive: bool) -> BTreeSet<Fact> {
+    let mut base = BTreeSet::new();
+    let seeds = art
+        .get("seedFacts")
+        .and_then(Json::as_array)
+        .filter(|_| derive);
+    for s in seeds.into_iter().flatten() {
+        let rel = s.get("relation").and_then(Json::as_str).unwrap_or("");
+        let args: Vec<String> = s
+            .get("args")
+            .and_then(Json::as_array)
+            .map(|a| a.iter().map(json_arg_to_string).collect())
+            .unwrap_or_default();
+        if !rel.is_empty() {
+            base.insert((rel.to_string(), args));
+        }
+    }
+    base
+}
+
 /// A fact-arg JSON scalar → its ground string (bools as `"true"`/`"false"`).
 pub(crate) fn json_arg_to_string(j: &Json) -> String {
     match j {
@@ -663,9 +744,61 @@ mod tests {
             "rules": [],
             "entities": []
         });
-        let mut store = Store::of_artifact(&artifact, false);
+        let mut store = Store::of_artifact(&artifact, false, None);
         assert_eq!(store.eval("visited('scene-a')").0, Value::Bool(false));
         store.visit_all(&BTreeSet::from([String::from("scene-a")]));
         assert_eq!(store.eval("visited('scene-a')").0, Value::Bool(true));
+    }
+
+    /// The closure memo is exact: a Store over a different world (another
+    /// base fact, or a state value a rule guard reads) never gets the
+    /// previous Store's closure, and the same world gets the same one.
+    #[test]
+    fn closure_memo_follows_base_facts_and_guarded_state() {
+        let artifact = json!({
+            "state": [{"path": "run.power", "type": "bool", "default": false}],
+            "rules": [
+                {
+                    "head": {"relation": "canEnter", "terms": [{"kind": "const", "value": "lift"}]},
+                    "body": [{"kind": "guard", "cel": {"cel": "run.power", "expr": {"path": "run.power"}}}],
+                    "raw": "canEnter(lift) :- cel(\"run.power\")"
+                },
+                {
+                    "head": {"relation": "lit", "terms": [{"kind": "var", "name": "R"}]},
+                    "body": [{"kind": "atom", "atom": {"relation": "lamp", "terms": [{"kind": "var", "name": "R"}]}, "negated": false}],
+                    "raw": "lit(R) :- lamp(R)"
+                }
+            ],
+            "entities": []
+        });
+        let schema = Store::schema_for(&artifact, true, None, None);
+        let lamp = |room: &str| ("lamp".to_string(), vec![room.to_string()]);
+        let world = |power: Value, lamps: &[&str]| -> World {
+            (
+                BTreeMap::from([("run.power".to_string(), power)]),
+                lamps.iter().map(|r| lamp(r)).collect(),
+            )
+        };
+        let closure = |w: World| {
+            let mut store = Store::from_schema(&artifact, std::sync::Arc::clone(&schema), Some(w));
+            store.derive();
+            store.all_facts().clone()
+        };
+        let can_enter = ("canEnter".to_string(), vec!["lift".to_string()]);
+        let lit = |room: &str| ("lit".to_string(), vec![room.to_string()]);
+
+        let off = closure(world(Value::Bool(false), &["hall"]));
+        assert!(off.contains(&lit("hall")) && !off.contains(&can_enter));
+        // Same facts, the guarded state flipped: the guard's head appears.
+        let on = closure(world(Value::Bool(true), &["hall"]));
+        assert!(on.contains(&can_enter));
+        // Same state, another base fact: its derived fact appears, the old one goes.
+        let moved = closure(world(Value::Bool(true), &["cellar"]));
+        assert!(moved.contains(&lit("cellar")) && !moved.contains(&lit("hall")));
+        // The same world twice: the same closure.
+        assert_eq!(moved, closure(world(Value::Bool(true), &["cellar"])));
+        // Doubles key by bit pattern: 0.0 and -0.0 are different worlds.
+        assert!(!same_value(&Value::Double(0.0), &Value::Double(-0.0)));
+        assert!(same_value(&Value::Double(1.5), &Value::Double(1.5)));
     }
 }

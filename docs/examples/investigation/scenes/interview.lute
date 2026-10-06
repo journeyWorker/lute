@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.36.4"
+luteVersion: "0.36.5"
 id: detective.s01ep02
 title: The Interview Room
 # Comes after the crime scene.

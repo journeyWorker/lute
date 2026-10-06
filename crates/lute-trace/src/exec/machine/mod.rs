@@ -206,6 +206,49 @@ impl Carry {
     }
 }
 
+/// An artifact's command stream as a [`Machine`] walks it: read-only, so the
+/// Machines a playthrough builds over one document can share it.
+#[derive(Debug)]
+pub(crate) struct Code {
+    pub(crate) kind: String,
+    pub(crate) commands: Vec<Json>,
+    /// `addr → index` in `commands`.
+    pub(crate) addr_index: BTreeMap<String, usize>,
+    /// `(addr, index)` in stream (== addr-sorted) order, for fall-through.
+    pub(crate) addr_order: Vec<(String, usize)>,
+}
+
+impl Code {
+    /// The command stream of `art` (`kind` defaults to `scene`).
+    pub(crate) fn of(art: &Json) -> Self {
+        let kind = art
+            .get("kind")
+            .and_then(Json::as_str)
+            .unwrap_or("scene")
+            .to_string();
+        let commands = art
+            .get("commands")
+            .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let mut addr_index = BTreeMap::new();
+        let mut addr_order = Vec::new();
+        for (i, c) in commands.iter().enumerate() {
+            if let Some(a) = c.get("addr").and_then(Json::as_str) {
+                addr_index.insert(a.to_string(), i);
+                addr_order.push((a.to_string(), i));
+            }
+        }
+        addr_order.sort();
+        Code {
+            kind,
+            commands,
+            addr_index,
+            addr_order,
+        }
+    }
+}
+
 /// A read-only snapshot supplied to an [`EvalObserver`].
 pub struct EvalSnapshot<'a> {
     pub state: &'a BTreeMap<String, Value>,
@@ -225,12 +268,8 @@ pub type EvalObserver =
     Box<dyn for<'a> FnMut(&str, &Value, &[UnresolvedAtom], EvalSnapshot<'a>)>;
 pub struct Machine<D: Driver> {
     driver: D,
-    kind: String,
-    commands: Vec<Json>,
-    /// `addr → index` in `commands`.
-    addr_index: BTreeMap<String, usize>,
-    /// `(addr, index)` in stream (== addr-sorted) order, for fall-through.
-    addr_order: Vec<(String, usize)>,
+    /// The artifact's command stream, shared by every Machine over it.
+    code: Arc<Code>,
     /// Prerelease N8: cast id -> display name, what an `occasionTarget`
     /// placeholder renders a member by (`lute play` and `lute trace` fill
     /// it; empty renders the id).
@@ -436,30 +475,30 @@ impl<D: Driver> Machine<D> {
     /// the map → fall through to the first command whose addr sorts after it,
     /// or the end of the stream.
     fn resolve(&self, addr: &str) -> usize {
-        if let Some(&i) = self.addr_index.get(addr) {
+        if let Some(&i) = self.code.addr_index.get(addr) {
             return i;
         }
-        for (a, i) in &self.addr_order {
+        for (a, i) in &self.code.addr_order {
             if a.as_str() > addr {
                 return *i;
             }
         }
-        self.commands.len()
+        self.code.commands.len()
     }
 
     /// Drive the whole walk: `lute run` once per artifact; `lute play` (dsl
     /// 0.21.0 §6) once per presented beat, then [`Machine::into_carry`].
     pub fn run(&mut self) -> Result<(), String> {
-        if self.kind == "quest" {
+        if self.code.kind == "quest" {
             self.run_quest();
-        } else if self.kind == "lore" {
+        } else if self.code.kind == "lore" {
             if self.bundle_beat.is_some() {
                 self.run_bundle_beat();
             } else {
                 self.run_entry();
             }
         } else {
-            self.run_range(0, self.commands.len());
+            self.run_range(0, self.code.commands.len());
         }
         self.store.derive();
         match self.fatal.take() {
@@ -480,7 +519,7 @@ impl<D: Driver> Machine<D> {
 
     /// The artifact's `kind` (`scene` when absent).
     pub fn kind(&self) -> &str {
-        &self.kind
+        &self.code.kind
     }
 
     /// Live state (path → value).
@@ -557,8 +596,8 @@ impl<D: Driver> Machine<D> {
         }
         let mut pc = start;
         let mut guard = 0usize;
-        let limit = self.commands.len() * 64 + 1024;
-        while pc >= start && pc < stop && pc < self.commands.len() {
+        let limit = self.code.commands.len() * 64 + 1024;
+        while pc >= start && pc < stop && pc < self.code.commands.len() {
             guard += 1;
             if guard > limit {
                 self.fatal = Some("execution did not terminate (control-flow cycle?)".into());
@@ -581,35 +620,38 @@ impl<D: Driver> Machine<D> {
 
     /// Dispatch one command; returns the next index (or `Halt`).
     fn step(&mut self, pc: usize) -> Step {
-        let cmd = self.commands[pc].clone();
+        // The command is read through a handle on the shared stream, not
+        // copied: executing it needs `self` mutably.
+        let code = Arc::clone(&self.code);
+        let cmd = &code.commands[pc];
         let kind = cmd.get("kind").and_then(Json::as_str).unwrap_or("");
         match kind {
             "line" => {
-                self.rec_line(&cmd);
+                self.rec_line(cmd);
                 Step::Next(pc + 1)
             }
             "background" | "music" | "sfx" | "vfx" | "sprite" | "camera" | "cut" | "video" => {
-                self.rec_stage(&cmd, kind);
+                self.rec_stage(cmd, kind);
                 Step::Next(pc + 1)
             }
             "plugin" if !self.apply_effects => {
-                self.rec_skipped_plugin(&cmd);
+                self.rec_skipped_plugin(cmd);
                 Step::Next(pc + 1)
             }
             "set" | "assert" | "retract" if !self.apply_effects => {
-                self.rec_skipped(&cmd, kind);
+                self.rec_skipped(cmd, kind);
                 Step::Next(pc + 1)
             }
             "set" => {
-                self.exec_set(&cmd);
+                self.exec_set(cmd);
                 Step::Next(pc + 1)
             }
             "assert" => {
-                self.exec_assert(&cmd);
+                self.exec_assert(cmd);
                 Step::Next(pc + 1)
             }
             "retract" => {
-                self.exec_retract(&cmd);
+                self.exec_retract(cmd);
                 Step::Next(pc + 1)
             }
             "jump" => {
@@ -620,11 +662,11 @@ impl<D: Driver> Machine<D> {
                 let t = cmd.get("target").and_then(Json::as_str).unwrap_or("");
                 Step::Next(self.resolve(t))
             }
-            "choice" => self.do_choice(&cmd),
-            "hub" => self.do_hub(&cmd),
-            "match" => self.do_match(&cmd),
+            "choice" => self.do_choice(cmd),
+            "hub" => self.do_hub(cmd),
+            "match" => self.do_match(cmd),
             "barrier" => {
-                self.rec_barrier(&cmd);
+                self.rec_barrier(cmd);
                 Step::Next(pc + 1)
             }
             // dsl 0.8.0: the walk terminator. `Halt` unwinds THIS range; the
@@ -632,18 +674,18 @@ impl<D: Driver> Machine<D> {
             // quest segment) so the walk stops exactly as it would by running
             // off the end of `commands`.
             "end" => {
-                self.rec_end(&cmd);
+                self.rec_end(cmd);
                 Step::Halt
             }
             "plugin" => {
-                if self.exec_plugin(&cmd) {
+                if self.exec_plugin(cmd) {
                     Step::Next(pc + 1)
                 } else {
                     Step::Halt
                 }
             }
             "accept" => {
-                self.exec_accept(&cmd);
+                self.exec_accept(cmd);
                 Step::Next(pc + 1)
             }
             // Declarations — inert in a linear walk (a quest artifact is driven

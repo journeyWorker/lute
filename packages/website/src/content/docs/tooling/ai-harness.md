@@ -202,7 +202,7 @@ Diagnostics carry fixits with a `kind`. `kind: "migrate"` is machine-applicable 
 
 Run `lute tag scene.lute` at the pipeline end to back-fill a stable `code` into every untagged line. Never let the model hand-write `code=` values — line identity is the tool's job, not the model's.
 
-## Inspect → Plan → Patch → Check → Replay → Review (0.36.4)
+## Inspect → Plan → Patch → Check → Replay → Review (0.36.5)
 
 ```console
 $ lute tag /tmp/drowned-crown

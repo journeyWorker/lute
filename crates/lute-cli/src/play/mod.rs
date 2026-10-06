@@ -505,6 +505,11 @@ impl PlayProject {
             }),
         )
     }
+
+    /// Why no play can run over this project, if it did not compile.
+    pub(crate) fn error(&self) -> Option<&str> {
+        self.0.as_ref().err().map(String::as_str)
+    }
 }
 
 /// Run `script` over the compiled `project` in process for `lute test`.

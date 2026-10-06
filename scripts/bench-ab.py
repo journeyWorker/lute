@@ -28,6 +28,8 @@ PHASES = (
     "analysis",
     "serialization",
     "playback",
+    "play-assembly",
+    "play-replay",
 )
 SCHEMA = "0.36.0.bench"
 
@@ -56,6 +58,18 @@ def parser() -> argparse.ArgumentParser:
 def error(message: str) -> NoReturn:
     print(f"bench-ab: ERROR: {message}", file=sys.stderr)
     raise SystemExit(2)
+
+
+def supports_phase(binary: Path, root: Path, phase: str) -> bool:
+    """Whether `binary` knows `phase`. A merge-base binary that predates a
+    phase rejects it with `invalid phase`; the head must know every phase."""
+    completed = subprocess.run(
+        [str(binary), "--root", str(root), "--tier", "tiny", "--phase", phase, "--samples", "1", "--json", "-"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return not (completed.returncode == 2 and f"invalid phase `{phase}`" in completed.stderr)
 
 
 def run_sample(
@@ -159,11 +173,21 @@ def main(arguments: list[str]) -> int:
     merged_samples: dict[str, list[dict[str, Any]]] = {"base": [], "head": []}
     runner: dict[str, Any] | None = None
 
+    for phase in PHASES:
+        if not supports_phase(options.head, options.head_root, phase):
+            error(f"head does not know phase {phase}")
+    base_phases = {phase for phase in PHASES if supports_phase(options.base, options.base_root, phase)}
+    for phase in PHASES:
+        if phase not in base_phases:
+            print(f"bench-ab: base predates phase {phase}; head-only samples")
+
     for tier, project in TIERS:
         for phase in PHASES:
             for sample in range(options.samples):
                 order = ("base", "head") if sample % 2 == 0 else ("head", "base")
                 for label in order:
+                    if label == "base" and phase not in base_phases:
+                        continue
                     binary, root = binaries[label]
                     report = run_sample(label, binary, root, tier, project, phase)
                     reports[label].append(report)
