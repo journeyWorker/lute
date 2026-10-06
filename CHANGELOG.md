@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.36.3`, the grammar and semantics the checker
+- **Language** — currently `0.36.4`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.36.3`) and gated on by consuming engines.
+  artifact (currently `0.36.4`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,70 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.36.4] - 2026-10-06
+
+### Syntax
+
+None.
+
+### Semantics
+
+None.
+
+### Plugin
+
+None.
+
+### CLI
+
+None.
+
+### Diagnostics
+
+None.
+
+### Identity
+
+None.
+
+### IR
+
+Version moves to 0.36.4; no shape or content change — a no-op for consumers.
+
+### Tooling
+
+Performance release. Apart from version stamps, outputs are byte-identical to
+0.36.3. Covered: 290 CLI commands on all 14 games (check-project text/json,
+test text/json, every play with `--json --dump-conditions`, `context`,
+`trace`, `calendar` text/json/csv, `compile --all` file sets, standalone
+`run`). Each binary ran on a corpus stamped at its own version.
+
+Monster-league, release, median of 5 interleaved runs against 0.36.3
+(wall / CPU):
+
+| command | 0.36.3 | 0.36.4 | ratio |
+|---|---|---|---|
+| `lute check-project` | 2.03 s | 1.02 s | 0.50 / 0.54 |
+| `lute play` spine (144 steps) | 5.95 s | 2.89 s | 0.49 / 0.51 |
+| `lute test` | 12.65 s | 6.23 s | 0.49 / 0.44 |
+| play project assembly (`calendar --until 1`) | 1.95 s | 1.33 s | 0.68 / 0.60 |
+
+Profiling (macOS `sample`) found three redundant computations:
+
+- **CEL parsed ~35 times per fragment.** One project check ran cel-parser
+  48,183 times over 1,377 distinct texts, about half of the checker's busy
+  CPU. `lute-cel` now keeps one parse per thread, keyed by the prepared text
+  and holding at most 4,096 fragments of ≤ 1 KiB each. Spans and arena
+  handles are still computed per call.
+- **A quadratic objective pass.** W-OBJECTIVE-STRANDED / W-SLOT-CONTENTION
+  rescanned every document for each objective × beat pair to collect that
+  beat's `::set` paths; that was most of project reconciliation. Those paths
+  are now computed once per beat.
+- **State copied on every evaluation.** Every guard evaluation during
+  playback cloned the store's whole state map into an `EffectiveState` and
+  dropped it again, which was most of the per-step cost. The new
+  `EffectiveState::over` borrows the map instead.
 
 ## [0.36.3] - 2026-10-06
 

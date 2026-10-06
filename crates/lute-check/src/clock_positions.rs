@@ -1190,6 +1190,10 @@ pub fn project_objective_slot_results(
     foldeds: &[&FoldedEnv],
 ) -> Vec<ObjectiveSlotResult> {
     let beats = crate::beats::project_beats(docs, foldeds);
+    // Each beat's `::set` paths, once: objectives × beats lookups below would
+    // otherwise rescan every document per pair.
+    let beat_paths: Vec<BTreeSet<String>> =
+        beats.iter().map(|pb| beat_set_paths(pb, docs)).collect();
     let mut out = Vec::new();
     for (item, folded) in docs.iter().zip(foldeds) {
         let path = item.path;
@@ -1199,7 +1203,7 @@ pub fn project_objective_slot_results(
             for node in &q.body {
                 let Node::Objective(o) = node else { continue };
                 if o.optional || o.id.is_empty() { continue; }
-                let candidates = objective_completion_beats(o, folded, &beats, docs);
+                let candidates = objective_completion_beats(o, folded, &beats, &beat_paths);
                 let mut windows = Vec::new();
                 let mut candidate_beats = Vec::new();
                 let mut bounded = true;
@@ -1367,7 +1371,7 @@ fn objective_completion_beats<'a>(
     o: &Objective,
     folded: &'a FoldedEnv,
     beats: &'a [crate::beats::ProjectBeat<'a>],
-    docs: &[ProjectDoc<'_>],
+    beat_paths: &[BTreeSet<String>],
 ) -> Vec<&'a crate::beats::ProjectBeat<'a>> {
     let defs = DefTable {
         bodies: &folded.def_bodies,
@@ -1377,13 +1381,15 @@ fn objective_completion_beats<'a>(
     let paths = done_paths(&o.done.raw, &defs);
     beats
         .iter()
-        .filter(|pb| {
+        .zip(beat_paths)
+        .filter(|(pb, set)| {
             o.on
                 .as_ref()
                 .is_some_and(|(on, _)| pb.on == on)
                 || visited.contains(&pb.id)
-                || !paths.is_disjoint(&beat_set_paths(pb, docs))
+                || !paths.is_disjoint(set)
         })
+        .map(|(pb, _)| pb)
         .collect()
 }
 /// Find an unguarded beat that can be raised again after its own declared
@@ -1476,6 +1482,10 @@ pub fn check_project_objective_clock_windows(
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let beats = crate::beats::project_beats(docs, foldeds);
+    // Each beat's `::set` paths, once: objectives × beats lookups below would
+    // otherwise rescan every document per pair.
+    let beat_paths: Vec<BTreeSet<String>> =
+        beats.iter().map(|pb| beat_set_paths(pb, docs)).collect();
     let mut out = Vec::new();
     let mut parents = std::collections::BTreeMap::<String, String>::new();
     for item in docs {
@@ -1516,7 +1526,7 @@ pub fn check_project_objective_clock_windows(
                 }
                 let has_deadline = o.until.as_ref().is_some_and(|x| !x.raw.trim().is_empty())
                     || o.by.as_ref().is_some_and(|x| !x.raw.trim().is_empty());
-                let candidates = objective_completion_beats(o, folded, &beats, docs);
+                let candidates = objective_completion_beats(o, folded, &beats, &beat_paths);
                 if candidates.is_empty() {
                     continue;
                 }

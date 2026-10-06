@@ -303,30 +303,15 @@ pub fn parse_slot(
     // Length-preserving substitution (`@`->' ', `$`->'_') so byte offsets in the
     // prepared string line up 1:1 with `raw`.
     let prepared = substitute_dsl_tokens(raw);
-    // cel-parser 0.10.1 (source-verified): `Parser::parse(mut self, &str) ->
-    // Result<IdedExpr, ParseErrors>` consumes `self`, so build a fresh parser
-    // per call. No free `cel_parser::parse` exists.
-    //
-    // ROBUSTNESS: cel-parser's antlr4rust backend hits an `unreachable!()` panic
-    // (not an `Err`) on many transient-malformed inputs an LSP sees every
-    // keystroke (e.g. "", "1 +", "1 == ", "(", "a &&", "'unterminated"). We
-    // MUST NOT let that crash the server, so we run the parse under
-    // `catch_unwind` and treat a panic as an unrecoverable parse of the whole
-    // slot. `silence_antlr_panic()` keeps the log clean for exactly that panic.
-    silence_antlr_panic();
-    let parsed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        cel_parser::Parser::new().parse(&prepared)
-    }));
-    match parsed {
-        Ok(Ok(expr)) => {
+    match parse_prepared(&prepared) {
+        Parsed::Expr(expr) => {
             let h = CelAstHandle(arena.asts.len() as u32);
             arena.asts.push(expr);
             Ok(h)
         }
-        Ok(Err(errs)) => {
-            // `ParseErrors.errors` is pre-sorted by position; take the primary one.
-            let (msg, byte) = match errs.errors.first() {
-                Some(e) => (e.msg.clone(), linecol_to_byte(raw, e.pos.0, e.pos.1)),
+        Parsed::Error(first) => {
+            let (msg, byte) = match first {
+                Some((msg, (line, column))) => (msg, linecol_to_byte(raw, line, column)),
                 None => ("CEL parse error".to_string(), 0),
             };
             let start = base_byte + byte;
@@ -342,7 +327,7 @@ pub fn parse_slot(
             })
         }
         // Backend panic: no usable position — flag the whole slot.
-        Err(_) => Err(CelParseError {
+        Parsed::Panic => Err(CelParseError {
             message: "invalid CEL expression".to_string(),
             span: Span {
                 byte_start: base_byte,
@@ -353,6 +338,71 @@ pub fn parse_slot(
             },
         }),
     }
+}
+
+/// One cel-parser run over a prepared fragment, as [`parse_prepared`] keeps it.
+#[derive(Clone)]
+enum Parsed {
+    Expr(cel_parser::ast::IdedExpr),
+    /// The primary error's message and 1-based (line, column) in the prepared
+    /// text, when the parser names one (`ParseErrors.errors` is sorted by
+    /// position).
+    Error(Option<(String, (isize, isize))>),
+    /// The antlr4rust backend panicked instead of returning an error.
+    Panic,
+}
+
+/// How many prepared fragments [`parse_prepared`] keeps per thread before
+/// starting over: a long-running LSP sees a new fragment on every keystroke.
+const PARSE_MEMO_CAP: usize = 4096;
+
+/// The longest fragment [`parse_prepared`] keeps, so the memo's footprint is
+/// bounded by size and not only by count. Authored fragments are far shorter:
+/// the largest dogfood project's longest is 240 bytes (median 39).
+const PARSE_MEMO_MAX_LEN: usize = 1024;
+
+/// Parse one prepared (token-substituted) fragment, once per thread.
+///
+/// Parsing is pure, so the result depends on the text alone; a project check
+/// parses each distinct fragment ~35 times (one large project: 48,183 parses
+/// of 1,377 texts), which made cel-parser the largest share of the checker's
+/// CPU.
+///
+/// cel-parser 0.10.1 (source-verified): `Parser::parse(mut self, &str) ->
+/// Result<IdedExpr, ParseErrors>` consumes `self`, so a fresh parser runs per
+/// miss. No free `cel_parser::parse` exists.
+///
+/// ROBUSTNESS: cel-parser's antlr4rust backend hits an `unreachable!()` panic
+/// (not an `Err`) on many transient-malformed inputs an LSP sees every
+/// keystroke (e.g. "", "1 +", "1 == ", "(", "a &&", "'unterminated"). We MUST
+/// NOT let that crash the server, so the parse runs under `catch_unwind` and a
+/// panic is an unrecoverable parse of the whole slot. `silence_antlr_panic()`
+/// keeps the log clean for exactly that panic.
+fn parse_prepared(prepared: &str) -> Parsed {
+    thread_local! {
+        static MEMO: std::cell::RefCell<std::collections::HashMap<String, Parsed>> =
+            std::cell::RefCell::default();
+    }
+    if let Some(hit) = MEMO.with_borrow(|m| m.get(prepared).cloned()) {
+        return hit;
+    }
+    silence_antlr_panic();
+    let parsed = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        cel_parser::Parser::new().parse(prepared)
+    })) {
+        Ok(Ok(expr)) => Parsed::Expr(expr),
+        Ok(Err(errs)) => Parsed::Error(errs.errors.first().map(|e| (e.msg.clone(), e.pos))),
+        Err(_) => Parsed::Panic,
+    };
+    if prepared.len() <= PARSE_MEMO_MAX_LEN {
+        MEMO.with_borrow_mut(|m| {
+            if m.len() >= PARSE_MEMO_CAP {
+                m.clear();
+            }
+            m.insert(prepared.to_string(), parsed.clone());
+        });
+    }
+    parsed
 }
 
 /// Identifier prefix that [`parse_slot_marked_refs`] substitutes for a DSL `@`
@@ -374,17 +424,13 @@ pub const REF_MARKER: &str = "__lute_at_ref__";
 /// already reported malformed CEL via [`parse_slot`]).
 pub fn parse_slot_marked_refs(arena: &mut CelArena, raw: &str) -> Option<CelAstHandle> {
     let prepared = substitute_marking_refs(raw);
-    silence_antlr_panic();
-    let parsed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        cel_parser::Parser::new().parse(&prepared)
-    }));
-    match parsed {
-        Ok(Ok(expr)) => {
+    match parse_prepared(&prepared) {
+        Parsed::Expr(expr) => {
             let h = CelAstHandle(arena.asts.len() as u32);
             arena.asts.push(expr);
             Some(h)
         }
-        _ => None,
+        Parsed::Error(_) | Parsed::Panic => None,
     }
 }
 
@@ -588,6 +634,28 @@ mod tests {
             assert_eq!(err.span.byte_start, base, "raw={raw:?}");
             assert_eq!(err.span.byte_end, base + raw.len(), "raw={raw:?}");
         }
+    }
+
+    #[test]
+    fn repeated_fragment_maps_spans_at_each_call_site() {
+        // The parse memo keys on the fragment text, so the same text at two
+        // offsets must still get each call's own document-relative spans, and
+        // each success its own arena handle.
+        let mut arena = CelArena::default();
+        for (raw, base) in [("1 2", 10usize), ("1 2", 400), ("1 2", 10)] {
+            let err = parse_slot(&mut arena, raw, base).unwrap_err();
+            let fresh = parse_slot(&mut CelArena::default(), raw, base).unwrap_err();
+            assert_eq!(err.span, fresh.span, "base={base}");
+            assert!(err.span.byte_start >= base && err.span.byte_end == base + raw.len());
+        }
+        for base in [0usize, 50] {
+            let err = parse_slot(&mut arena, "(", base).unwrap_err();
+            assert_eq!((err.span.byte_start, err.span.byte_end), (base, base + 1));
+        }
+        let a = parse_slot(&mut arena, "run.day >= 2", 0).unwrap();
+        let b = parse_slot(&mut arena, "run.day >= 2", 0).unwrap();
+        assert_ne!(a, b);
+        assert_eq!(arena.get(a).map(|e| &e.expr), arena.get(b).map(|e| &e.expr));
     }
 
     #[test]

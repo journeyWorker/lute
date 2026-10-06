@@ -151,7 +151,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.36.3 and the AI edit-loop
+contract; the repository's current release is 0.36.4 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -778,13 +778,13 @@ $ lute version [--json]
 
 Print the three independent version axes ([versioning](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)): the **toolchain** version (this CLI and the workspace crates), the **language** version (the grammar/semantics the checker enforces), and the **IR** schema version (stamped as `irVersion` in every compiled artifact). Distinct from clap's built-in `--version`, which prints only the toolchain version; the language server answers the same flag, `lute-lsp --version` printing `lute-lsp <version>` (which [`doctor`](#doctor) compares against this CLI). `--json` prints one object `{"toolchain":…,"language":…,"ir":…}`; human mode prints one labeled line each. Always exits **0**.
 
-## `lute fmt` (0.36.3)
+## `lute fmt` (0.36.4)
 
-## `lute diff` (0.36.3)
+## `lute diff` (0.36.4)
 
-## `lute patch` (0.36.3)
+## `lute patch` (0.36.4)
 
-## `lute context` edit surface (0.36.3)
+## `lute context` edit surface (0.36.4)
 
 ```console
 $ lute fmt [--check] <path>…
@@ -794,7 +794,7 @@ $ lute context <dir> --target <kind:key> [--max-items N] [--run <FILE>] [--json]
 
 $ lute context <dir> --at <file>:<line>:<column> [--max-items N] [--run <FILE>] [--json]
 ```
-### Identity migration in `tag` and `diff` (0.36.3)
+### Identity migration in `tag` and `diff` (0.36.4)
 
 `lute tag <path>` now back-fills missing line `code` values and missing
 component invocation keys. It preserves every authored value, writes
