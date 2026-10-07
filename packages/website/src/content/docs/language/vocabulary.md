@@ -1,6 +1,6 @@
 ---
 title: Content vocabulary
-description: "The compiler declares the content-vocabulary slots and ships no members — how a project declares its own emotions, actions, anchors, moods and VFX types, the three declaration routes and their precedence, and the exits:/default: member semantics."
+description: "The compiler declares the content-vocabulary slots and ships no members — how a project declares its own emotions, actions, anchors, costumes, camera framings and moves, transitions, CG layouts, sequences, music playback, moods, VFX types and text styles, the three declaration routes and their precedence, and the exits:/default: member semantics."
 ---
 
 Lute is a general authoring toolchain; your game is a consumer of it. So a concrete list of
@@ -17,34 +17,42 @@ block in this document's own frontmatter, in a project schema reached through `u
 plugin's `enums` export before using `emotion`
 ```
 
-Before `0.9.0` six of these slots carried closed members no route could extend, and `action` — the
-seventh — was skipped by the checker entirely whenever nothing declared it, so a misspelling like
+Before `0.9.0` six of the original slots carried closed members no route could extend, and
+`action` was skipped by the checker entirely whenever nothing declared it, so a misspelling like
 `action="step-foward"` shipped silently. Both special cases are gone.
 
-## The seven slots
+## The slots
 
 A *slot* is a named domain the language binds to an authoring position. The name is the language's;
 the members are yours.
 
 | Slot | Bound at |
 |---|---|
-| `emotion` | content line `emotion=` |
-| `action` | content line `action=`, `::auto{action}` |
-| `anchor` | `::auto{anchor}` |
+| `emotion` | content line `emotion=`, `::actor{emotion}` |
+| `action` | content line `action=`, `::actor{action}` |
+| `anchor` | `::actor{anchor}` |
+| `costume` | `::actor{costume}` |
+| `framing` | `::camera{framing}` |
+| `cameraMove` | `::camera{move}` |
+| `transition` | `::camera{transition}` |
+| `cgLayout` | `::cg{layout}` |
+| `sequence` | `::sequence{name}` |
 | `mood` | `::music{mood}` |
 | `volume` | `::music{volume}` |
-| `musicAction` | `::music{action}` |
+| `musicPlayback` | `::music{playback}` |
 | `vfxType` | `::vfx{type}` |
+| `textStyle` | an [inline style span](/language/dialogue-and-cast/#inline-text-modifiers) `:name[…]` in line text |
 
-`::music{action}` fills the `musicAction` slot — the slot name and the attribute name differ, and the
-diagnostic names the slot. Two of these bindings are new in `0.9.0`: `::auto{action}` and
-`::music{mood}` used to be free `string`s, which is why `mood` had been declared-but-inert since it
-shipped and `action` went unchecked.
+Where the slot name and the attribute name differ (`::camera{move}` fills `cameraMove`,
+`::music{playback}` fills `musicPlayback`), the diagnostic names the slot. The camera, CG, costume
+and sequence slots are how a project expresses staging the core does not hard-code: a project whose
+camera shakes declares `cameraMove: [shake]` and writes `::camera{move="shake"}`; see
+[Core directives](/language/directives/#staging-vocabulary-is-the-projects).
 
-**Not vocabulary.** `::cut{action}` and `::video{action}` stay `{ enum: [show, hide] }` declared
+**Not vocabulary.** `::cg{display}` and `::video{display}` stay `{ enum: [show, hide] }` declared
 inline on the directive — a two-member pairing the engine dispatches on, not a shared vocabulary. The
-delivery flags `{mono}` / `{os}` / `{vo}`, the reserved `narrator` speaker, and the `::end` tag are
-grammar.
+delivery flags `{mono}` / `{os}` / `{vo}`, the reserved `narrator` speaker, the core text modifiers
+`:pause` / `:speed`, and the `::end` tag are grammar.
 
 ## Declaring a vocabulary
 
@@ -62,8 +70,12 @@ enums:
     exits: [fadeOut, hide]
   mood: [peaceful, tense, romantic, sad, upbeat]
   volume: [silent, down, normal, up, full]
-  musicAction: [start, change, stop, resume, fadeOut]
+  musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
+  framing: [wide, medium, close]
+  cameraMove: [pushIn, pullOut, shake]
+  transition: [cut, dissolve, fade]
+  textStyle: [emphasis, whisper]
 ```
 
 There are **three routes** to that block, and all three go through the same parser and the same
@@ -82,7 +94,7 @@ validator.
    route an engine or genre pack uses to ship a vocabulary to every project that activates it.
    [`showcase.pack`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/plugins/showcase.pack/enums/vocabulary.yaml)
    is one. Unlike the other two it surfaces on the capability snapshot — it lands under
-   `lute context --json`'s `enums` and so moves `capabilityVersion`, where the two project routes
+   `lute context --json`'s `enums` and so moves `capabilitySnapshot`, where the two project routes
    land under the separate `projectEnums` key and move neither.
 
 Declaration is **per project root** — a directory with a `lute.project.yaml`. A sibling root's
@@ -139,10 +151,10 @@ This is deliberately **not** `E-DOMAIN-DUP`. That code is reserved for clashes i
 Two slots have members the compiler *branches on*, and it will not guess which.
 
 - **A declaration of `action` MUST supply `exits:`** — the members that end a character's presence on
-  stage. A member listed there lowers to a `sprite` record carrying `exit: true`; a member not listed
+  stage. A member listed there lowers to an `actor` record carrying `exit: true`; a member not listed
   does not.
 - **A declaration of `anchor` MUST supply `default:`** — the member used when a character is shown
-  without an explicit anchor. It is injected as a `sprite` record with
+  without an explicit anchor. It is injected as an `actor` record with
   `provenance.by: "auto-anchor-on-show"`.
 
 Both used to be hardcoded: exits were detected by name (`fadeOut*` / `exit*` / `hide`) in two
@@ -151,7 +163,7 @@ Omission is now an error rather than a fallback, because a silent fallback to a 
 exactly the hidden coupling `0.9.0` removes. The language owns the knowledge that these two slots
 need member semantics; it does not know which members satisfy them.
 
-For the other five slots `exits:` and `default:` are meaningless and **rejected**, so a typo cannot
+For every other slot `exits:` and `default:` are meaningless and **rejected**, so a typo cannot
 hide in an ignored key. `default:` and every `exits:` entry must itself be a declared member.
 
 | Code | Fires when |
@@ -162,13 +174,14 @@ hide in an ignored key. `default:` and every `exits:` entry must itself be a dec
 | `E-ENUM-EXITS-NOT-MEMBER` | an `exits:` entry is not one of `members:` |
 
 Neither key is serialized into the artifact. The compiler has already resolved them into
-`sprite.exit` and the emitted anchor, so an engine needs no member semantics at runtime.
+`actor.exit` and the emitted anchor, so an engine needs no member semantics at runtime.
 
 ## Tooling
 
-`lute init` scaffolds a starter vocabulary covering all seven slots into a
-`vocabulary.schema.yaml` the generated scene imports — an opinionated template, not a rule, in a file
-you own and edit.
+`lute init` scaffolds a starter vocabulary covering `emotion`, `anchor`, `action`, `mood`,
+`volume`, `musicPlayback` and `vfxType` into a `vocabulary.schema.yaml` the generated scene
+imports — an opinionated template, not a rule, in a file you own and edit. Add the camera, CG,
+costume, sequence and text-style slots when the project first stages one.
 
 `lute doctor <dir>` reports which slots a root has declared, with the member semantics inline:
 
@@ -181,7 +194,7 @@ lute doctor — demo
   ✓ lute.project.yaml: found at demo/lute.project.yaml
   ✓ content documents: 1 `.lute` file(s) under demo
   • provider snapshots: no providers/ directory (core-only project)
-  • vocabulary slots declared: emotion, action (exits: fadeOut/hide), anchor (default: center), mood, volume, musicAction, vfxType
+  • vocabulary slots declared: emotion, action (exits: fadeOut/hide), anchor (default: center), mood, volume, musicPlayback, vfxType
   • VS Code extension: not detectable from the CLI
 ```
 
@@ -190,7 +203,7 @@ A root that declares nothing reports `vocabulary slots declared: none`.
 For a project that declares inline or through `uses:`/`extends:`, the compiled artifact's `enums`
 array becomes populated — the artifact is self-describing about the vocabulary it was compiled
 against. A plugin-supplied vocabulary does **not** appear there; it is capability surface, and shows
-up in `capabilityVersion` and `lute context --json`'s `enums` instead. Either way this is an
+up in `capabilitySnapshot` and `lute context --json`'s `enums` instead. Either way this is an
 artifact-*content* change only: the vocabulary work added, renamed, and moved no IR field.
 (`irVersion` reads `"0.10.0"`; the shape change that number carries is a single
 provenance-field rename, unrelated to vocabulary.)

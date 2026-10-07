@@ -266,7 +266,7 @@ beat:
 
 @@who: {{@intro}}
 ::battle{foe=@who kind="trainer" resultKey="fight"}
-<match on="scene.battle.fight.won">
+<match subject="scene.battle.fight.won">
   <when is="true">
     @@who: {{@win}}
     ::assert{defeated(@who)}
@@ -312,10 +312,10 @@ once: run
 ---
 
 /* CONTRACT (seeded by the lead, owned by north): the id, occasion and target
-   stay; it produces hasItem(lampOil). Rewrite the lines, add shots, branches
+   stay; it produces hasItem(lampOil). Rewrite the lines, add sections, branches
    and after: edges freely. */
 
-## Shot 1
+## The keeper
 
 @keeper: You came for the oil. Everyone does, eventually.
 ::use{component="obtain" item="lampOil" who="keeper"}

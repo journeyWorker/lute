@@ -1,31 +1,94 @@
 # Timeline semantics
 
-A `<timeline>` stages parallel `<track>`s of `<clip>`s onto a shared **local
+A `<timeline>` stages parallel `<track>`s of clips onto a shared **local
 clock** (`crates/lute-check/src/timeline.rs`). The compiler flattens each
 timeline during stage resolution (`crates/lute-compile/src/schedule.rs`) and
-emits its clips as ordinary command records **plus timing stamps**, closed by a
-`barrier` record. The engine replays that pre-scheduled stream on its own clock;
-the compiler has already done the scheduling math.
+emits its clips as ordinary command records **with a `timing` object**, closed
+by a `barrier` record. The engine replays that pre-scheduled stream on its own
+clock; the compiler has already done the scheduling math.
 
 ## What the IR carries
 
-Records emitted inside a timeline carry the cross-cutting `Stamp` fields
-(`ir.rs::Stamp`, flattened onto the record):
+Records emitted inside a timeline carry these members of their `timing`
+object (`ir.rs::Timing`), beside whatever `wait` the directive resolved:
 
-- `timeline` — an opaque per-document **timeline ordinal** (`u32`), assigned in
-  document order starting at `1`; treat it as a correlation key, not an index
-  (`stage.rs` pre-increments the counter, so `0` is unreachable by
-  construction);
+- `timeline` — the **timeline ordinal** (`u32`): zero-based, assigned in
+  document order (`stage.rs`), so the first `<timeline>` in a document is `0`.
+  It is an ordinal, not a second count; treat it as a correlation key that
+  ties clips to their barrier within one artifact, never as a durable
+  identity;
 - `at` — the record's **absolute start time** on the timeline's local clock
   (seconds);
-- `duration` — the record's resolved duration, when known;
-- `delay` — a relative nudge, when authored.
+- `duration` — the record's resolved duration in seconds, when known;
+- `delay` — a relative nudge in seconds, when authored.
 
-The timeline is closed by a **`barrier` command** (`ir.rs::BarrierCmd`, no
-stamp): `{ kind: "barrier", addr, timeline, at }`, where `at` is the barrier
-time. Clips are emitted in deterministic **`(at, track index)` order**
+The timeline is closed by a **`barrier` command** (`ir.rs::BarrierCmd`,
+`family: "control"`, no `timing`): `{ kind, family, position, timeline, at }`,
+where `timeline` is the same ordinal and `at` is the barrier time in seconds.
+The barrier's `timeline` and `at` are direct fields, never inside a `timing`
+object. Clips are emitted in deterministic **`(at, track index)` order**
 (`schedule.rs` sorts by `at`, then track index, stable on ties so same-`(at,
 track)` clips keep document order).
+
+```lute check
+---
+kind: scene
+id: dock-timeline
+title: Dock timeline
+enums:
+  framing: [wide]
+---
+
+## Dock
+
+<timeline>
+  <track subject="camera">
+    ::camera{focus="hero" framing="wide" duration="1.5"}
+  </track>
+  <track subject="sfx">
+    ::sfx{sound="bell" at="0.5" duration="0.5"}
+  </track>
+</timeline>
+@narrator{code="after"}: The bell fades.
+```
+
+compiles to (`lute compile`, first three records):
+
+```json
+[
+  {
+    "kind": "camera",
+    "family": "staging",
+    "position": "001-0100",
+    "focus": "hero",
+    "framing": "wide",
+    "timing": {
+      "wait": false,
+      "duration": 1.5,
+      "at": 0.0,
+      "timeline": 0
+    }
+  },
+  {
+    "kind": "sfx",
+    "family": "staging",
+    "position": "001-0200",
+    "sound": "bell",
+    "timing": {
+      "duration": 0.5,
+      "at": 0.5,
+      "timeline": 0
+    }
+  },
+  {
+    "kind": "barrier",
+    "family": "control",
+    "position": "001-0300",
+    "timeline": 0,
+    "at": 1.5
+  }
+]
+```
 
 ## The local clock and per-track cursors
 
@@ -90,8 +153,8 @@ Given the above, an engine has two sound options for a timeline, and the
 write-conflict guarantee makes both equivalent in observable state:
 
 1. **Replay the pre-scheduled order.** Play the emitted records in their
-   `(at, track)` order, honoring `at`/`duration`/`delay` against its clock,
-   then apply the `barrier` join.
+   `(at, track)` order, honoring `timing.at` / `timing.duration` /
+   `timing.delay` against its clock, then apply the `barrier` join.
 2. **Run tracks concurrently.** Drive each track's clips on the local clock in
    parallel; because no two tracks write the same target at overlapping times,
    there is no write race, and the `barrier` synchronizes them before
@@ -99,6 +162,6 @@ write-conflict guarantee makes both equivalent in observable state:
 
 The DSL fixes the *scheduling* (cursor math, barrier time) and the *write
 invariants*; it does **not** mandate a threading model. Anything beyond
-"honor `at`/`duration`, respect the barrier, trust the no-conflict guarantee"
+"honor `timing.at`/`timing.duration`, respect the barrier, trust the no-conflict guarantee"
 — frame pacing, interpolation between keyframes, audio mixing — is engine
 policy and is left unspecified here.

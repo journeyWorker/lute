@@ -25,7 +25,7 @@ uses: ../base.schema.yaml
 
 ## A Familiar Face
 
-::auto{character=@who action="fadeInUp"}
+::actor{character=@who action="fadeInUp"}
 @narrator: A familiar face steps into the light.
 ```
 
@@ -77,7 +77,7 @@ is checked where it lands:
 
 - for an enum param, every value the def body can produce must be a member, else `E-COMPONENT-ARG`
   (`@mood` = `"run.n > 2 ? 'warm' : 'hot'"` against `{ enum: [cold, warm] }` fails on `hot`);
-- in a `<match on="@tier">`, it dispatches at run time like any subject;
+- in a `<match subject="@tier">`, it dispatches at run time like any subject;
 - in content text, `{{@n}}` stays a placeholder naming the caller's def, and the engine evaluates it (an
   `int`, `double`, bool, or enum param; a `string` param that a line interpolates takes only a
   literal, [below](#sentences-in-string-params));
@@ -158,7 +158,7 @@ uses: ../base.schema.yaml
 
 ## The Tiered Greeting
 
-<match on="@tier">
+<match subject="@tier">
   <when is="fond">
     @marina{emotion="delighted"}: You remembered!
   </when>
@@ -201,7 +201,7 @@ entities:
 ## A Nod
 
 @narrator: {{@who}} nods.
-<match on="@who">
+<match subject="@who">
   <when is="isolde">
     ::set{run.approval.isolde += @delta}
   </when>
@@ -232,8 +232,8 @@ only the arm the argument selects. In a scene `camp.fire` whose cast names `corv
 `::use{component="nod" who="corvin" delta="2"}` compiles to:
 
 ```json
-{"kind": "line", "addr": "001-0200", "role": "narration", "speaker": "narrator", "text": "Corvin Hale nods.", "lineId": "camp.fire.nod#1.narrator_0010"}
-{"kind": "set", "addr": "001-0300", "path": "run.approval.corvin", "op": "+=", "value": "2", "expr": {"lit": 2.0}}
+{"kind": "line", "family": "content", "position": "001-0100", "role": "narration", "speaker": "narrator", "text": "Corvin Hale nods.", "lineId": "camp.fire.nod#1.narrator_0010", "voiceKey": "camp.fire.nod#1.narrator-0010", "source": {"component": "nod"}}
+{"kind": "set", "family": "state", "position": "001-0200", "path": "run.approval.corvin", "op": "+=", "value": {"cel": "2", "expr": {"int": 2}}, "source": {"component": "nod"}}
 ```
 
 A fact atom in the body may take params as arguments, `::assert{gifted(@who, @item)}` or the same
@@ -263,8 +263,8 @@ A param typed **`speaker`** (dsl 0.24.0 §4) takes a cast id, as `who` does in `
   line attribute (`as="{{@who}}, again"` compiles to `"as": "Corvin Hale, again"`) (dsl 0.26.0
   §3.1). Before 0.26.0 `as=@who` shipped the id and the braces in an attribute string stayed
   literal.
-- Other attributes (`::auto{character=@who}`, a plugin directive's `foe=@who`) and
-  `<match on="@who">` see the id. The match ranges over the declared cast plus
+- Other attributes (`::actor{character=@who}`, a plugin directive's `foe=@who`) and
+  `<match subject="@who">` see the id. The match ranges over the declared cast plus
   `narrator`, so arms named after cast members check against it: a typo arm is
   `E-WHEN-LITERAL-DOMAIN`, and a match with neither every member nor `<otherwise>` is
   `E-NONEXHAUSTIVE` (`narrator` counts as a member).
@@ -275,6 +275,10 @@ A param typed **`speaker`** (dsl 0.24.0 §4) takes a cast id, as `who` does in `
 - A component may pass its own speaker on, `::use{component="nod" who=@who}`: the id the outer
   `::use` gives is the inner one's too, and the host judges it where it binds it (cast membership,
   and the member of a `per:` family the inner body writes).
+- A `mono` line in the body is judged at each `::use`, in the **caller's** point of view: the
+  speaker it resolves to must be the host's effective `pov` or listed in its `monoSpeakers`
+  (see [Frontmatter & profiles](/language/frontmatter-and-profiles/#optional-keys)). Each `::use`
+  is checked on its own, so the same component may pass in one host and fail in another.
 
 ### Speaking as a param: `@@who:`
 
@@ -302,6 +306,12 @@ portrait, voice and line identity, as if the host had written `@mira: Morning.`.
 checks are judged at the `::use`: an `emotion=` outside its `emotions:` is `E-BAD-ENUM`, a line its
 `present:` does not cover is `W-CAST-ABSENT` (once per member and guard), and a line after the member
 left the stage is `W-STAGE-ABSENT`.
+
+A `mono` line follows the same rule. `@@who{mono}: Not again.` in a component `aside` passes at
+`::use{component="aside" who="fixer"}` in a host whose effective POV is `fixer`, and
+`::use{component="aside" who="corvin"}` in the same host is `E-MONO-POV` unless the host lists
+`corvin` in `monoSpeakers:`. The error is reported at that `::use`, names the component file and
+line, and carries the component line as a related location.
 
 `@@x` for a param that is not a `speaker` param, for a name that is no param, or in a document that
 is no component is `E-COMPONENT-ARG`:
@@ -352,7 +362,7 @@ params:
 
 @@who: {{@intro}}
 ::battle{foe=@who resultKey="fight"}
-<match on="scene.battle.fight.won">
+<match subject="scene.battle.fight.won">
   <when is="true">
     @@who: {{@win}}
     ::assert{defeated(@who)}

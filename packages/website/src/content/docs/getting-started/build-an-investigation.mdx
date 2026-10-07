@@ -113,11 +113,12 @@ Create `scenes/crime-scene.lute`:
 ```lute check="docs/examples/investigation/scenes/crime-scene.lute"
 ---
 kind: scene
-luteVersion: "0.30.0"
+luteVersion: "0.36.6"
 id: detective.s01ep01
 title: The Study
 # No `after:`, so this scene is where the case starts.
 uses: ../world.schema.yaml
+pov: detective
 ---
 
 ## The Study
@@ -139,14 +140,16 @@ uses: ../world.schema.yaml
 ```
 
 The frontmatter names the scene with `id:`. The other scenes refer to it by that
-name; `detective.s01ep01` is just a name, and any dotted name works. The scene
+name; `detective.s01ep01` is just a name, and any dotted name works. `pov:` names
+the player character: `{mono}`, the inner voice the detective's thoughts use, is
+reserved for that character and any speaker listed in `monoSpeakers:`. The scene
 has **no `after:`**, so it is the graph root — where the case starts. It writes
 relational-fact deltas with `::assert{ foundClue(...) }` and bumps a scalar
 counter the quest gates on.
 
 The last line, *"Both threads pull toward one name"*, deliberately carries
 **no** guard. `when="holds('points', ['blake'])"` would be redundant: both clues are
-asserted on the only route through this shot and `implicates(ledger, blake)` is
+asserted on the only route through this scene and `implicates(ledger, blake)` is
 a seed, so the rule derives `points(blake)` before the line on every
 playthrough — and `check-project` proves exactly that kind of claim (step 8).
 
@@ -157,12 +160,13 @@ Create `scenes/interview.lute`:
 ```lute check="docs/examples/investigation/scenes/interview.lute"
 ---
 kind: scene
-luteVersion: "0.30.0"
+luteVersion: "0.36.6"
 id: detective.s01ep02
 title: The Interview Room
 # Comes after the crime scene.
 after: 'visited("detective.s01ep01")'
 uses: ../world.schema.yaml
+pov: detective
 ---
 
 ## The Interview Room
@@ -170,27 +174,27 @@ uses: ../world.schema.yaml
 @narrator: Three chairs, one table, and the smell of cold coffee.
 
 <hub id="interrogate">
-  <choice id="pressLedger" label="Press them on the ledger">
+  <choice id="pressLedger" text="Press them on the ledger">
     @detective: These numbers were bled dry. Explain them.
     ::set{ run.suspectFocus = "blake" }
     ::set{ run.leadStrength += 1 }
   </choice>
-  <choice id="pressLetter" label="Press them on the letter">
+  <choice id="pressLetter" text="Press them on the letter">
     @detective: You signed this, then you tried to unsign it.
     ::set{ run.suspectFocus = "blake" }
     ::set{ run.leadStrength += 1 }
   </choice>
-  <choice id="askAlibi" label="Ask for an alibi" once>
+  <choice id="askAlibi" text="Ask for an alibi" once>
     @detective: Walk me through last night. Slowly.
   </choice>
-  <choice id="leave" label="End the interview" exit>
+  <choice id="leave" text="End the interview" exit>
     @detective: We're done here. For now.
   </choice>
 </hub>
 
 ## Reading the Room
 
-<match on="run.suspectFocus">
+<match subject="run.suspectFocus">
   <when is="blake">
     @detective{mono}: Blake keeps surfacing. A thread worth pulling.
   </when>
@@ -222,7 +226,7 @@ Create `quests/identify-killer.lute`:
 ```lute check="docs/examples/investigation/quests/identify-killer.lute"
 ---
 kind: quest
-luteVersion: "0.30.0"
+luteVersion: "0.36.6"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---
@@ -255,12 +259,13 @@ Create `scenes/confrontation.lute`:
 ```lute check="docs/examples/investigation/scenes/confrontation.lute"
 ---
 kind: scene
-luteVersion: "0.30.0"
+luteVersion: "0.36.6"
 id: detective.s01ep03
 title: The Confrontation
 # Comes after the interview.
 after: 'visited("detective.s01ep02")'
 uses: ../world.schema.yaml
+pov: detective
 ---
 
 ## The Confrontation
@@ -269,13 +274,13 @@ uses: ../world.schema.yaml
 @detective{mono}: One name. I only get to say one.
 
 <branch id="accuse">
-  <choice id="accuseBlake" label="Accuse Blake" into="run.accused" value="blake">
+  <choice id="accuseBlake" text="Accuse Blake" into="run.accused" value="blake">
     @detective: Blake. The ledger and the letter were both yours.
   </choice>
-  <choice id="accuseCass" label="Accuse Cass" into="run.accused" value="cass">
+  <choice id="accuseCass" text="Accuse Cass" into="run.accused" value="cass">
     @detective: Cass. You balanced these books in blood.
   </choice>
-  <choice id="accuseDana" label="Accuse Dana" into="run.accused" value="dana">
+  <choice id="accuseDana" text="Accuse Dana" into="run.accused" value="dana">
     @detective: Dana. You were never as far away as you claimed.
   </choice>
 </branch>
@@ -341,11 +346,11 @@ case for a guard, and silent. Put the guards back to see it. In
 nobody ever logs, `when="holds('foundClue', ['knife'])"`:
 
 ```lute
-  <choice id="pressLedger" label="Press them on the ledger" when="holds('foundClue', ['ledger'])">
+  <choice id="pressLedger" text="Press them on the ledger" when="holds('foundClue', ['ledger'])">
 ```
 
 ```lute
-  <choice id="pressLetter" label="Press them on the letter" when="holds('foundClue', ['knife'])">
+  <choice id="pressLetter" text="Press them on the letter" when="holds('foundClue', ['knife'])">
 ```
 
 Run `lute check-project .` again. It now exits `1`, and among its output are
@@ -353,12 +358,12 @@ these two project-wide diagnostics:
 
 {/* lute-diagnostics */}
 ```
-./scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds('foundClue', ['ledger'])` is redundant: `foundClue(ledger)` is asserted on every route to here (./scenes/crime-scene.lute:15)
+./scenes/interview.lute:17:66: warning [W-FACT-GUARANTEED] guard `holds('foundClue', ['ledger'])` is redundant: `holds('foundClue', ['ledger'])` is asserted on every route to here (./scenes/crime-scene.lute:16)
 ```
 
 {/* lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" */}
 ```
-./scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds('foundClue', ['knife'])` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes
+./scenes/interview.lute:22:3: error [E-ARM-DEAD] choice can never fire: guard `holds('foundClue', ['knife'])` is provably false — no seed, assert, rule, or engine relation produces `holds('foundClue', ['knife'])` under your declared routes
 ```
 
 The first guard can never close — the crime scene asserts the fact on its only
@@ -445,13 +450,13 @@ trace: scenes/confrontation.lute  (seeds: 1 paths, 0 facts; 1 selection)
     @detective  Blake. The ledger and the letter were both yours.
     ::set  run.accused = blake  (into sugar)
   ## The Verdict
-  <match run.accused == run.trueKiller>   -> arm 1 ($)
+  guard `run.accused == run.trueKiller`: taken
     @narrator  The cuffs close on the right wrists. Case closed.
-  <match run.accused == run.trueKiller>   -> arm 1 ($)
+  guard `run.accused == run.trueKiller`: taken
     @detective{mono}  Booked. The file can finally rest.
-  <match run.accused != run.trueKiller>   -> otherwise
-  <match run.accused != run.trueKiller>   -> otherwise
-trace complete: 5 decisions; choices 1/3 (accuse), arms 1/2 (run.accused == run.trueKiller @30:1), arms 1/2 (run.accused == run.trueKiller @31:1), arms 1/2 (run.accused != run.trueKiller @32:1), arms 1/2 (run.accused != run.trueKiller @33:1)
+  guard `run.accused != run.trueKiller`: skipped
+  guard `run.accused != run.trueKiller`: skipped
+trace complete: 5 decisions; choices 1/3 (accuse), guard `run.accused == run.trueKiller` @31:1: taken, guard `run.accused == run.trueKiller` @32:1: taken, guard `run.accused != run.trueKiller` @33:1: skipped, guard `run.accused != run.trueKiller` @34:1: skipped
 ```
 
 Accuse the **wrong** suspect → the failure ending. Same document, same seeded
@@ -470,18 +475,18 @@ trace: scenes/confrontation.lute  (seeds: 1 paths, 0 facts; 1 selection)
     @detective  Cass. You balanced these books in blood.
     ::set  run.accused = cass  (into sugar)
   ## The Verdict
-  <match run.accused == run.trueKiller>   -> otherwise
-  <match run.accused == run.trueKiller>   -> otherwise
-  <match run.accused != run.trueKiller>   -> arm 1 ($)
+  guard `run.accused == run.trueKiller`: skipped
+  guard `run.accused == run.trueKiller`: skipped
+  guard `run.accused != run.trueKiller`: taken
     @narrator  The wrong suspect walks free. Somewhere, the real one exhales.
-  <match run.accused != run.trueKiller>   -> arm 1 ($)
+  guard `run.accused != run.trueKiller`: taken
     @detective{mono}  I got it wrong. The file stays open.
-trace complete: 5 decisions; choices 1/3 (accuse), arms 1/2 (run.accused == run.trueKiller @30:1), arms 1/2 (run.accused == run.trueKiller @31:1), arms 1/2 (run.accused != run.trueKiller @32:1), arms 1/2 (run.accused != run.trueKiller @33:1)
+trace complete: 5 decisions; choices 1/3 (accuse), guard `run.accused == run.trueKiller` @31:1: skipped, guard `run.accused == run.trueKiller` @32:1: skipped, guard `run.accused != run.trueKiller` @33:1: taken, guard `run.accused != run.trueKiller` @34:1: taken
 ```
 
-The `##` lines are the scene's shot headings. Each guarded verdict line shows up
-as a `<match>` step: `arm 1` when its `when=` held and the line played,
-`otherwise` when it did not. Both traces exit `0` — a complete walk — and reach
+The `##` lines are the scene's section headings. Each guarded verdict line shows up
+as a `guard` step: `taken` when its `when=` held and the line played, `skipped`
+when it did not. Both traces exit `0` — a complete walk — and reach
 visibly different endings. Trace also loads the schema's seed facts and applies
 its rule by default, so a fact-gated line would be decided with no extra flags;
 these endings turn only on run state. See the [tracing guide](/tooling/tracing/)
@@ -552,9 +557,9 @@ lute test
 
 ```
 lute: note: scenario tests use project . (nearest lute.project.yaml); pass --project to choose another
-PASS  ./tests/accuse-correctly.test.yaml  (./tests/../scenes/confrontation.lute)
-PASS  ./tests/accuse-wrongly.test.yaml  (./tests/../scenes/confrontation.lute)
-PASS  ./tests/interview-press-ledger.test.yaml  (./tests/../scenes/interview.lute)
+PASS  ./tests/accuse-correctly.test.yaml  (./scenes/confrontation.lute)
+PASS  ./tests/accuse-wrongly.test.yaml  (./scenes/confrontation.lute)
+PASS  ./tests/interview-press-ledger.test.yaml  (./scenes/interview.lute)
 
 3 passed, 0 failed
 ```

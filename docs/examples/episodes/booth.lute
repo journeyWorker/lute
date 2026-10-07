@@ -10,7 +10,7 @@ state:
   run.metMira: { type: bool }
 ---
 
-## The Counter
+## The Counter {#counter}
 
 @mira{emotion="content" variant="0" when="run.metMira"}: Back again. You know where you sit.
 

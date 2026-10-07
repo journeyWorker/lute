@@ -63,7 +63,8 @@ bunx @lute-lang/lute check scene.lute
 
 대사, 플레이어 선택, 상태 기반 콜백 — 아래 분기는 언제나 번호를 얻지만, 부드럽게
 물으면 그녀의 마음이 조금 누그러집니다. `<match>`는 첫 일치가 우선이며 `<otherwise>`가
-필수라서, 모든 분기는 total합니다.
+필수라서, 모든 분기는 total합니다. `{mono}` 속마음 줄은 frontmatter `pov`로 지정한 시점 인물
+(여기서는 `fixer`)만 말할 수 있습니다.
 
 ```lute check
 ---
@@ -77,12 +78,13 @@ state:
   scene.affect.marina: { type: int, default: 0 }
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+  framing: [wide, medium, closeUp]
 defs:
   fond: { type: bool, cel: "scene.affect.marina >= 1" }
 ---
 
-## The Hostess with a Name
-::camera{focus="marina" zoom="1.1" duration="0.5"}
+## The Hostess with a Name {#hostess}
+::camera{focus="marina" framing="closeUp" duration="0.5"}
 
 @marina{emotion="surprised"}: Oh!
 @marina{emotion="delighted"}: Mr. Fixer!
@@ -90,17 +92,17 @@ defs:
 
 /* a choice of TONE — both paths get the number; the gentle ask warms her */
 <branch id="number">
-  <choice id="blunt" label="Just ask, flatly">
+  <choice id="blunt" text="Just ask, flatly">
     @fixer: Marina. Your number.
   </choice>
-  <choice id="soft" label="Ask gently">
+  <choice id="soft" text="Ask gently">
     @fixer: Marina — would you mind terribly if I had your number?
     ::set{scene.affect.marina += 1}
   </choice>
 </branch>
 
 /* state-driven callback — first-match-wins; <otherwise> is mandatory */
-<match on="scene.choices.number">
+<match subject="scene.choices.number">
   <when test="@fond">
     @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
@@ -111,7 +113,8 @@ defs:
 ```
 
 정교하게 안무된 하나의 순간, 여러 개의 동시 트랙 — 하나의 대상을 속성별 트랙
-(`pos`, `opacity`)으로 나누고, 독립적인 카메라 트랙과 나란히 배치합니다:
+(`pos`, `opacity`)으로 나누고, 독립적인 카메라 트랙과 나란히 배치합니다. 카메라의
+`framing`과 `move` 값은 프로젝트가 선언한 도메인의 멤버입니다:
 
 ```lute check
 ---
@@ -122,20 +125,22 @@ episode: 1
 enums:
   anchor: { members: [left, center, right], default: center }
   action: { members: [slideInLeft, fadeInUp, fadeOut], exits: [fadeOut] }
+  framing: [wide, medium, closeUp]
+  cameraMove: [pushIn, shake]
 ---
 
 ## Beat
 
 <timeline duration="1.2">
   <track subject="marina" property="pos">
-    ::auto{character="marina" anchor="left" action="slideInLeft"}
+    ::actor{character="marina" anchor="left" action="slideInLeft"}
   </track>
   <track subject="marina" property="opacity">
-    ::auto{character="marina" action="fadeInUp"}
+    ::actor{character="marina" action="fadeInUp"}
   </track>
   <track subject="camera">
-    ::camera{focus="marina" zoom="1.2" duration="0.6"}
-    ::camera{shake="0.4" duration="0.3" at="0.7"}
+    ::camera{focus="marina" framing="closeUp" move="pushIn" duration="0.6"}
+    ::camera{move="shake" duration="0.3" at="0.7"}
   </track>
 </timeline>
 ```

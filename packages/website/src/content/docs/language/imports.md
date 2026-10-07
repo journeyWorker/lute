@@ -20,7 +20,7 @@ uses: state.schema.yaml
 
 @narrator: Previously, a choice was made.
 
-<match on="run.choseHelp">
+<match subject="run.choseHelp">
   <when is="true">
     @elena: Thanks for helping me back then.
   </when>

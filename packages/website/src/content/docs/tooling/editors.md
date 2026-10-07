@@ -36,7 +36,7 @@ Once the server is running you get:
 - **Hover** — types and docs for directives, refs, state paths, and attributes.
 - **Completion** — directives, attributes, `@ref`s, state paths, choice ids. Directive candidates forbidden by the document's effective project/profile permissions are omitted; a bridge directive is omitted when either its directive name or its `service/operation` is denied.
 - **Go-to-definition / references** — defs, components, schema declarations.
-- **Folding & document symbols** — shots, timelines, branches, matches.
+- **Folding & document symbols** — sections, timelines, branches, matches.
 - **Semantic tokens** — layer-aware highlighting (content / staging / logic).
 
 The LSP resolves the document's project, `global`/ancestor/selected profile

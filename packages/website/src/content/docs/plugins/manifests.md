@@ -104,7 +104,7 @@ An occasion takes these keys, and no others: `select`, `target`, `description`, 
 
 An occasion's `select:` says what the engine presents when it is raised. `first` (the default) presents the single winning beat, plus any eligible [`also`](/language/beats/#side-remarks-with-also) beat after it. `all` offers every eligible beat and the player picks one. `sequence` (dsl 0.23.0) presents every eligible beat in selection order, such as an evening routine followed by the day's event (see [Composing an occasion](/language/beats/#composing-an-occasion)). A beat's `also: true` on an `all` or `sequence` occasion is `E-BEAT-ATTR`. When a world event of the same name is also declared under `events:`, every raise of the occasion fires that event after the beats, before the occasion judges its `on=` objectives (see [Occasions](/language/beats/#occasions)).
 
-An occasion's `judge:` (dsl 0.24.0 §2) says when a raise judges the quest objectives that name it with `on=`. The default `after` judges them after the beats are presented, the order since 0.21.0. `before` judges them and settles the quests before the beats are decided, so an epilogue on `dayEnd` can read how its quests ended (`quest.<id>.failedBy`, see [Quests & scenes](/language/quests-and-scenes/)). Only the judging moves. The `<on>` handler bodies the raise answers, both the same-named `<on event>` handlers and the `questComplete` / `questFailed` handlers of the quests it settles, still run after the beats, so their narration follows the scene. Any other value is `E-PLUGIN-PARSE`. An occasion without `judge: before` keeps the `capabilityVersion` stamp it had.
+An occasion's `judge:` (dsl 0.24.0 §2) says when a raise judges the quest objectives that name it with `on=`. The default `after` judges them after the beats are presented, the order since 0.21.0. `before` judges them and settles the quests before the beats are decided, so an epilogue on `dayEnd` can read how its quests ended (`quest.<id>.failedBy`, see [Quests & scenes](/language/quests-and-scenes/)). Only the judging moves. The `<on>` handler bodies the raise answers, both the same-named `<on event>` handlers and the `questComplete` / `questFailed` handlers of the quests it settles, still run after the beats, so their narration follows the scene. Any other value is `E-PLUGIN-PARSE`. An occasion without `judge: before` keeps the `capabilitySnapshot` stamp it had.
 
 An occasion's `target:` says what it is raised for. Absent or `false`, it is untargeted. `true` keeps its 0.21.0 meaning: the occasion is raised for some dotted id, and a beat's target is checked for shape only. A **domain** `{ prefix, entity }` (dsl 0.22.0) also closes the set: a target is `<prefix>.<member>`, where `entity` names an entity kind the *project* declares under `entities:` in its schema. The plugin supplies the prefix and the kind, and the project supplies the members (or declares the kind `open:` for engine-populated members). A beat target outside the domain is `E-BEAT-ATTR`, with a did-you-mean when a member is close, and so is every target of an occasion whose kind the document's schema does not declare (see [Beats](/language/beats/#target-domains)). A `target:` that is neither a bool nor a `{ prefix, entity }` map (with an optional `members:`) fails the plugin load with `E-PLUGIN-PARSE`.
 
@@ -119,7 +119,7 @@ An occasion's **`payload:`** declares the typed values each raise hands its beat
 
 An occasion's **`outsideRun: true`** marks a moment that lives outside any run, a title screen or a gallery between runs: the engine raises it even after the project's [`terminal:`](/state/schemas/#the-end-of-the-game-terminal) holds, and the checker does not judge its beats under `!terminal`. The compiled artifact lists such occasions under `outsideRun`.
 
-Occasions are part of the capability snapshot, so they fold into `capabilityVersion`. Declaring a domain restamps, and so does adding or changing its `members:` list; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0. Likewise, `select: sequence` and `raisedWhen` change the stamp only for a snapshot that declares them.
+Occasions are part of the capability snapshot, so they fold into `capabilitySnapshot`. Declaring a domain restamps, and so does adding or changing its `members:` list; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0. Likewise, `select: sequence` and `raisedWhen` change the stamp only for a snapshot that declares them.
 
 ```yaml
 # rewardkinds/game.yaml
@@ -140,7 +140,7 @@ lints:
     options: { max: 6 }
 ```
 
-`enums/` is the third route a project gets its [content vocabulary](/language/vocabulary/) from, and the only one that is *capability* rather than project data: `lute.core` declares the seven slots and exports an **empty** `enums`, so an engine or genre pack ships members to every project that activates it. Its entries take the same long form as an author's `enums:` block — a bare sequence is shorthand for `{ members: [...] }`, and `action` must carry `exits:` while `anchor` must carry `default:`.
+`enums/` is the third route a project gets its [content vocabulary](/language/vocabulary/) from, and the only one that is *capability* rather than project data: `lute.core` declares the vocabulary slots and exports an **empty** `enums`, so an engine or genre pack ships members to every project that activates it. Its entries take the same long form as an author's `enums:` block — a bare sequence is shorthand for `{ members: [...] }`, and `action` must carry `exits:` while `anchor` must carry `default:`.
 
 ### Occasion gates: `raisedWhen`
 
@@ -352,7 +352,7 @@ cast:
   vesna: {}
 ```
 
-A `cast` export (dsl 0.23.0) declares the speakers an engine pack is built for: each map key is a speaker id, and every field is optional. `name` is the display name. Since 0.24.0 an entry may also declare `present:`, the condition under which the character is with the player, `emotions:`, the `emotion=` values their lines may use, and `assume: true`, which lets the presence check take the engine's `reserved:` facts that `present:` negates as absent. A line whose guards do not imply `present:` is `W-CAST-ABSENT`, and an `emotion=` outside `emotions:` is `E-BAD-ENUM` (see [The cast](/language/dialogue-and-cast/#the-cast)). Any other key is `E-PLUGIN-PARSE`. Once any cast is declared, by a plugin or by a schema document's `cast:` key, a content line whose speaker is outside it is `E-CAST-UNKNOWN` with a did-you-mean, and so is an `::auto{character}` or `::camera{focus}` that names someone outside it. The plugin casts and the schema casts a document imports are unioned, and a plugin's entry wins an id they share, because it carries the engine's display name. Two active plugins declaring the same id is `E-PLUGIN-DUP-ACROSS` at assembly. A non-empty cast folds into `capabilityVersion`; a plugin that exports none leaves the stamp alone, and a cast that uses none of the 0.24.0 keys keeps the stamp it had under 0.23.
+A `cast` export (dsl 0.23.0) declares the speakers an engine pack is built for: each map key is a speaker id, and every field is optional. `name` is the display name. Since 0.24.0 an entry may also declare `present:`, the condition under which the character is with the player, `emotions:`, the `emotion=` values their lines may use, and `assume: true`, which lets the presence check take the engine's `reserved:` facts that `present:` negates as absent. A line whose guards do not imply `present:` is `W-CAST-ABSENT`, and an `emotion=` outside `emotions:` is `E-BAD-ENUM` (see [The cast](/language/dialogue-and-cast/#the-cast)). Any other key is `E-PLUGIN-PARSE`. Once any cast is declared, by a plugin or by a schema document's `cast:` key, a content line whose speaker is outside it is `E-CAST-UNKNOWN` with a did-you-mean, and so is an `::actor{character}` or `::camera{focus}` that names someone outside it. The plugin casts and the schema casts a document imports are unioned, and a plugin's entry wins an id they share, because it carries the engine's display name. Two active plugins declaring the same id is `E-PLUGIN-DUP-ACROSS` at assembly. A non-empty cast folds into `capabilitySnapshot`; a plugin that exports none leaves the stamp alone, and a cast that uses none of the 0.24.0 keys keeps the stamp it had under 0.23.
 
 Since dsl 0.26.0 §2.8 an entry may also say `sharedName: true`: its `name` is a role name several speakers share on purpose, such as a villain team's rank and file (`grunt1: { name: Eclipse Grunt, sharedName: true }`). `check-project` and `lute lint` report two speakers shown under exactly the same name as the advisory `W-DISPLAY-NAME-DUP`, and a `sharedName` entry is not counted (see [Display names shared by two speakers](/language/dialogue-and-cast/#display-names-shared-by-two-speakers)).
 
@@ -368,25 +368,25 @@ stampAttrs:
 
 Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default? }` shape a directive attr uses — but they are admissible on **every** directive *and* on content lines (`@speaker{…}: text`), on top of that surface's own attributes. Resolution is strict: the surface's own declarations win, then `stampAttrs`, then `E-UNKNOWN-ATTR`. Value typing rides the existing attribute path, so a mistyped one is a plain `E-ATTR-TYPE` / `E-BAD-ENUM` — no new rules.
 
-`::sfx{sound="chime" bonusId="b-02"}` followed by `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.` compiles to two records that each carry the attribute **flattened into the record's stamp**, beside the reserved timing keys — never in the record's own `fields`:
+`::sfx{sound="chime" bonusId="b-02"}` followed by `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.` compiles to two records that each carry the attribute **flattened onto the record's top level**, beside the core keys (`kind`, `family`, `position`, `timing`) — never in the record's own `fields`:
 
 ```json
-{ "kind": "sfx", "addr": "001-0100", "sound": "chime", "bonusId": "b-02" }
-{ "kind": "line", "addr": "001-0200", "role": "dialogue", "speaker": "marina",
-  "text": "Welcome back.", "lineId": "marina.s01ep01.marina_0010",
-  "voiceKey": "marina.s01ep01.marina-0010", "bonusId": "b-01", "bonusScore": 7.0 }
+{ "kind": "sfx", "family": "staging", "position": "001-0100", "sound": "chime", "bonusId": "b-02" }
+{ "kind": "line", "family": "content", "position": "001-0200", "role": "dialogue",
+  "speaker": "marina", "text": "Welcome back.", "lineId": "marina.s01ep01.marina_0010",
+  "voiceKey": "marina.s01ep01.marina-0010", "bonusId": "b-01", "bonusScore": 7 }
 ```
 
-An **unauthored** stamp attribute is not injected — not even when its declaration carries a `default`. Absent means absent, so declaring a cross-cutting vocabulary and authoring none of it leaves the artifact byte-identical. The declaration is not free, though: `stampAttrs` participates in `capabilityVersion`, because a changed cross-cutting vocabulary is a changed capability surface and an engine must be able to refuse the mismatch.
+An **unauthored** stamp attribute is not injected — not even when its declaration carries a `default`. Absent means absent, so declaring a cross-cutting vocabulary and authoring none of it leaves the artifact byte-identical. The declaration is not free, though: `stampAttrs` participates in `capabilitySnapshot`, because a changed cross-cutting vocabulary is a changed capability surface and an engine must be able to refuse the mismatch.
 
 ### Reserved stamp keys
 
-The core stamp owns seven names — `at`, `duration`, `delay`, `wait`, `timeline`, `provenance`, `source`. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**:
+The core stamp owns eight names — `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**:
 
 <!-- lute-diagnostics -->
 ```
 $ lute check scene.lute --project .
-lute: E-PLUGIN-RESERVED-STAMP-ATTR: plugin `arcia.bonus` declares reserved stamp attribute `duration`; `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source` are owned by the core stamp (plugin §14)
+lute: E-PLUGIN-RESERVED-STAMP-ATTR: plugin `arcia.bonus` declares reserved stamp attribute `duration`; `at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source` are owned by the core stamp (plugin §14)
 ```
 
 Both surfaces are covered — the `stampAttrs` export *and* an ordinary per-directive `attrs` entry — so a plugin cannot reach a reserved key through either door. The offending declaration is dropped rather than merged; its non-reserved siblings still land. This is why a blocking plugin directive names its own flag `sync` and not `wait` (see [Bridge](/plugins/bridge/)).
@@ -400,14 +400,14 @@ lower: { record: <kind>, fields: { … } }   # a finite attrs → one core recor
 lower: { kind: builtin, name: <hook> }     # a named core hook
 ```
 
-A `builtin` name must be one of the hooks the core registers for its own directives: `autoStage`, `cameraTransform`, `clearStage`, `end`, `mark`, `next`. Any other name is `E-PLUGIN-PARSE` when the plugin loads, with a did-you-mean for a near miss and the advice to omit `lower:` for the passthrough. Before 0.24.0 an unregistered name lowered as a silent passthrough, and the shipped bridge examples named hooks that never existed (`bridgeMinigame`, `bridgeServe`, …). A bridge directive needs no `lower:`; its `bridge: { service, operation }` binds the call (see [Bridge](/plugins/bridge/)).
+A `builtin` name must be one of the hooks the core registers for its own directives: `actorStage`, `cameraTransform`, `clearStage`, `end`, `jump`, `label`, `sequence`. Any other name is `E-PLUGIN-PARSE` when the plugin loads, with a did-you-mean for a near miss and the advice to omit `lower:` for the passthrough. Before 0.24.0 an unregistered name lowered as a silent passthrough, and the shipped bridge examples named hooks that never existed (`bridgeMinigame`, `bridgeServe`, …). A bridge directive needs no `lower:`; its `bridge: { service, operation }` binds the call (see [Bridge](/plugins/bridge/)).
 
 <!-- lute-diagnostics unverified="built in crates/lute-manifest/src/schema.rs from several format! pieces and wrapped in the loader's E-PLUGIN-PARSE line; copied verbatim from lute check --project output" -->
 ```
-./plugins/demo.pack/directives/d.yaml:6:5: error [E-PLUGIN-PARSE] directives[1]: `clearStag` is not a builtin lowering hook (did you mean `clearStage`?); the core registers autoStage, cameraTransform, clearStage, end, mark, next; omit `lower:` for the generic `kind: "plugin"` passthrough
+./plugins/demo.pack/directives/d.yaml:6:5: error [E-PLUGIN-PARSE] directives[1]: `clearStag` is not a builtin lowering hook (did you mean `clearStage`?); the core registers actorStage, cameraTransform, clearStage, end, jump, label, sequence; omit `lower:` for the generic `kind: "plugin"` passthrough
 ```
 
-The `record` form targets one of the eight **non-control-flow staging kinds** — `background`, `music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video` — binding each target field to a `fromAttr` reference or a literal:
+The `record` form targets one of the nine **non-control-flow staging kinds** — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence` — binding each target field to a `fromAttr` reference or a literal:
 
 ```yaml
 directives:
@@ -416,34 +416,34 @@ directives:
       - { name: img,  required: true, type: string }
       - { name: time, type: string }
     lower:
-      record: background
+      record: bg
       fields:
         assetId: { fromAttr: img }
         time:    { fromAttr: time }
 ```
 
-`::backdrop{img="bg.lounge" time="night"}` then compiles to a real `background` record — not a `kind: "plugin"` passthrough:
+`::backdrop{img="bg.lounge" time="night"}` then compiles to a real `bg` record — not a `kind: "plugin"` passthrough:
 
 ```json
-{ "kind": "background", "addr": "001-0100", "time": "night", "assetId": "bg.lounge", "wait": true }
+{ "kind": "bg", "family": "staging", "position": "001-0300", "time": "night", "assetId": "bg.lounge", "timing": { "wait": true } }
 ```
 
-The emitted record inherits the **target kind's** `wait` default (`background` and `video` block, `cut` and `camera` do not, the rest omit the key), so it is indistinguishable from the core directive an author could have written by hand. An optional source attribute that was not authored leaves its target field absent.
+The emitted record inherits the **target kind's** `wait` default (`bg`, `video` and `sequence` block, `cg` and `camera` do not, the rest omit the key), so it is indistinguishable from the core directive an author could have written by hand. An optional source attribute that was not authored leaves its target field absent.
 
-Those eight are the whole vocabulary, and the exclusion is principled rather than a shortlist: control-flow kinds (`jump`, `choice`, `match`, `hub`, `barrier`, `end`, `quest`, `on`) carry addresses the compiler's own passes resolve, and content kinds (`line`) carry identity — `lineId` / `voiceKey` — derived from the authored `code`. Neither is a finite attrs→fields mapping, so neither is data.
+Those nine are the whole vocabulary, and the exclusion is principled rather than a shortlist: control-flow kinds (`jump`, `choice`, `match`, `hub`, `barrier`, `end`, `quest`, `on`) carry positions the compiler's own passes resolve, and content kinds (`line`) carry identity — `lineId` / `voiceKey` — derived from the authored `code`. Neither is a finite attrs→fields mapping, so neither is data.
 
 Like the core staging directive it stands for, a directive with a `lower:` record refuses the [`when=` guard](/language/directives/#guarding-a-directive-when) (`E-UNKNOWN-ATTR`); a passthrough or bridge directive takes it. Since dsl 0.26.0 §4 `when` is that guard on every directive, so a plugin attribute of that name can no longer be written: a use of it is `E-UNKNOWN-ATTR`, asking to rename the attribute in the plugin.
 
 Both failures are caught at **assembly**, before anything is lowered — a declaration that fails validation never reaches the compiler:
 
-- **`E-LOWER-RECORD-UNKNOWN`** — `record:` names something outside the eight.
+- **`E-LOWER-RECORD-UNKNOWN`** — `record:` names something outside the nine.
 - **`E-LOWER-RECORD-FIELD`** — a target field the record kind does not have, or a `fromAttr` naming an attribute the directive never declares.
 
 <!-- lute-diagnostics -->
 ```
 $ lute check scene.lute --project .
-lute: E-LOWER-RECORD-FIELD: directive `::backdrop` lowers to record `background`: unknown target field `mood` (record `background` binds: location, time, assetId)
-lute: E-LOWER-RECORD-UNKNOWN: directive `::sting` lowers to unknown record `line`; declarative lowering targets the staging kinds (background, music, sfx, vfx, sprite, camera, cut, video)
+lute: E-LOWER-RECORD-FIELD: directive `::backdrop` lowers to record `bg`: unknown target field `mood` (record `bg` binds: location, time, assetId)
+lute: E-LOWER-RECORD-UNKNOWN: directive `::sting` lowers to unknown record `line`; declarative lowering targets the staging kinds (bg, music, sfx, vfx, actor, camera, cg, video, sequence)
 ```
 
 ### Passthrough ownership and dispatch
@@ -453,20 +453,25 @@ When a directive declares no `lower:`, the compiler emits a generic passthrough 
 ```json
 {
   "kind": "plugin",
-  "addr": "001-0100",
-  "plugin": "game.presentation",
+  "family": "plugin",
+  "position": "001-0400",
   "tag": "host-panel",
-  "fields": {}
+  "plugin": "game.presentation",
+  "fields": {
+    "assetId": "CG.chapter_one.first_choice",
+    "resultKey": "first-choice",
+    "text": "First choice"
+  }
 }
 ```
 
 The optional `plugin` field is the resolved owning plugin package id. It is assembly metadata, not
 an authored attribute, so source cannot override it. Hosts route extension operations by
-**`(plugin, tag)`**; older artifacts may omit `plugin`, and core or unresolved passthrough records
-omit it. Plugin ids never become dynamic `kind` values.
+**`(plugin, tag)`**; core or unresolved passthrough records omit it. Plugin ids never become
+dynamic `kind` values.
 
 This does not change declarative presentation lowering: a directive with
-`lower: { record: background, fields: ... }` still emits a stable core `background` record (and
+`lower: { record: bg, fields: ... }` still emits a stable core `bg` record (and
 likewise for the other permitted staging kinds), not a `kind: "plugin"` record. The owner metadata
 applies only to generic passthrough plugin records.
 
@@ -493,4 +498,4 @@ profiles:
 
 Given the same installed plugins, selected profile, and scene frontmatter, resolution produces a **byte-identical** capability snapshot. It applies, in exact order: `lute.core` → `profiles.global` → the selected profile's `extends` chain (parent first) → the selected profile → scene-local `plugins:` → the dependency closure. Scalar options override, maps deep-merge, lists replace.
 
-The snapshot is one immutable artifact carrying `plugins`, `enums`, `providers`, `stateShapes`, `stateTemplates`, `assetKinds`, `directives`, `bridgeCapabilities`, `frontmatter`, `events`, `stampAttrs`, `diagnostics`, and more. Its `capabilityVersion` is a content hash over that whole resolved surface — plugin ids+versions and their merged option objects, and every directive, enum, provider, state shape, bridge capability, def, frontmatter key and stamp attribute in it. Any drift in a populated field yields a different version, and adding a directive to `lute.core` moves it for every project. Every generated artifact is stamped with the `capabilityVersion` it targets, and a consumer refuses mismatched stamps. Providers are **snapshot-first**: the compiler fails if required catalog data is missing but never blocks on the network, and the LSP keeps a stale snapshot with a *catalog-stale* diagnostic rather than false *unknown-id* errors.
+The snapshot is one immutable artifact carrying `plugins`, `enums`, `providers`, `stateShapes`, `stateTemplates`, `assetKinds`, `directives`, `bridgeCapabilities`, `frontmatter`, `events`, `stampAttrs`, `diagnostics`, and more. Its `capabilitySnapshot` is a content hash over that whole resolved surface — plugin ids+versions and their merged option objects, and every directive, enum, provider, state shape, bridge capability, def, frontmatter key and stamp attribute in it. Any drift in a populated field yields a different hash, and adding a directive to `lute.core` moves it for every project. Every generated artifact is stamped with the `capabilitySnapshot` it targets, and a consumer refuses mismatched stamps. Providers are **snapshot-first**: the compiler fails if required catalog data is missing but never blocks on the network, and the LSP keeps a stale snapshot with a *catalog-stale* diagnostic rather than false *unknown-id* errors.

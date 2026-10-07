@@ -24,7 +24,7 @@ project envelope. `lute check-project` proves it; single-file `lute check`
 on booth.lute alone cannot, which is exactly the point Part 5 makes.
 */
 
-## The Counter
+## The Counter {#counter}
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 

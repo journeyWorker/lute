@@ -3,10 +3,10 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the execution IR
-described by the current schema (`0.36.6`; the file is
-`lute-ir-0.36.schema.json`). It runs no CEL, no Datalog fixpoint, keeps no
-fact store, and fires no bridge at compile time. Everything on the far side of
-the execution IR is the engine's job.
+described by the current schema (`schemas/lute-ir-0.37.schema.json`). It runs
+no CEL, no Datalog fixpoint, keeps no fact store, and fires no bridge at
+compile time. Everything on the far side of the execution IR is the engine's
+job.
 These documents describe that job, grounded in `crates/lute-compile` and
 `crates/lute-check`.
 
@@ -30,23 +30,21 @@ One execution IR is produced per `.lute` document (`lute compile <file>` →
 `crates/lute-compile/src/lib.rs::compile`). Its shape is the `ExecutionIr`
 struct (`ir.rs`):
 
-
-
-- an **envelope** — `kind` (`"scene"` | `"quest"`), `lute` (language version),
-  `irVersion` (the version you gate on), `capabilityVersion` (a snapshot hash),
-  and `meta`. `meta.id` (present since dsl 0.15.0 §2) is the **canonical scene
-  key** engines and tools join on — the string a `visited("…")` prereq
-  resolves to, the prefix every `lineId` / `voiceKey` was derived from, and
-  what `project.index.json` keys documents by. A quest keeps its authored quest
-  id as identity in the same slot. The legacy scene-meta fields
-  (`character` / `season` / `episode` / `episodeId`) are now optional and
-  purely descriptive — emitted only when the source supplied them, never
-  something a runtime rederives an id from. A scene whose `meta.beat` is
-  present (dsl 0.21.0) is a **beat**: besides explicit flow, the engine may
-  select it when it raises the named occasion (see
+- an **envelope** — `kind` (`"scene"` | `"quest"` | `"lore"`), `lute`
+  (language version), `irVersion` (the version you gate on),
+  `capabilitySnapshot` (a hash of the capability snapshot the artifact was
+  compiled against), and `meta`. `meta.id` is the **canonical scene key**
+  engines and tools join on — the string a `visited("…")` prereq resolves to,
+  the prefix every `lineId` / `voiceKey` was derived from, and what
+  `project.index.json` keys documents by. A quest keeps its authored quest id
+  as identity in the same slot. The descriptive scene-meta fields
+  (`character` / `season` / `episode` / `episodeId`, `title`) are emitted only
+  when the source supplied them, never something a runtime rederives an id
+  from. A scene whose `meta.beat` is present is a **beat**: besides explicit
+  flow, the engine may select it when it raises the named occasion (see
   [beats-and-occasions.md](./beats-and-occasions.md));
-  an envelope field **`requiredSemantics`** immediately after
-  `capabilityVersion`: a compiler-derived, sorted, duplicate-free list of
+- an envelope field **`requiredSemantics`** immediately after
+  `capabilitySnapshot`: a compiler-derived, sorted, duplicate-free list of
   semantic ids used by this artifact. Every executable artifact includes
   `lute.core/1`; authors cannot provide, remove, or reorder the list. The
   registry and trigger mapping are normative in the
@@ -57,17 +55,21 @@ struct (`ir.rs`):
   `rules`, emitted as data; each is omitted when empty. `entities` /
   `relations` / `seedFacts` / `rules` feed your Datalog evaluator (see
   [cel-and-facts.md](./cel-and-facts.md)). **`enums` carries both** the
-  relational enum domains AND, since dsl 0.9.0, the document's declared
-  **content** vocabulary (`emotion`, `action`, `anchor`, `mood`, `volume`,
-  `musicAction`, `vfxType`) when the project declares it in a schema the
-  document imports — the compiler ships no members of its own, so the artifact
-  is self-describing about the vocabulary it was compiled against. Each entry is
-  `{ name, members }`; member-level semantics (`exits:`/`default:`) are **not**
-  serialized, because the compiler has already resolved them into `sprite.exit`
-  and the emitted anchor. A vocabulary supplied by a plugin `enums` export does
-  **not** appear here — it is part of `capabilityVersion` instead. None of this
-  changes the artifact *shape*, and an engine that ignores `enums` is unaffected;
+  relational enum domains AND the document's declared **content and staging**
+  vocabulary (`emotion`, `action`, `anchor`, `costume`, `mood`, `volume`,
+  `musicPlayback`, `vfxType`, `framing`, `cameraMove`, `transition`,
+  `cgLayout`, `sequence`, `textStyle`) when the project declares it in a
+  schema the document imports — the compiler ships no members of its own, so
+  the artifact is self-describing about the vocabulary it was compiled
+  against. Each entry is `{ name, members }`; member-level semantics
+  (`exits:`/`default:`) are **not** serialized, because the compiler has
+  already resolved them into `actor.exit` and the emitted anchor. A vocabulary
+  supplied by a plugin `enums` export does **not** appear here — it is part of
+  `capabilitySnapshot` instead. An engine that ignores `enums` is unaffected;
 - a flat, ordered **`commands: Command[]`** stream — the executable body;
+- a descriptive **`sections`** table — one `{ section, heading, id? }` entry
+  per `## ` section, in document order (see
+  [Addressing](#addressing));
 - an advisory **`prereqEdges`** graph (this document's raw `after` / quest `follows` formulas;
   connectivity T13 — see [quest-lifecycle.md](./quest-lifecycle.md) for how
   cross-document reachability is out of scope for a single artifact).
@@ -108,7 +110,7 @@ contributing document/span.
 
 The project index carries `requiredSemantics`, the sorted union of its
 document artifacts, so an engine can negotiate before opening every document.
-Plugin snapshot compatibility remains the exact `capabilityVersion` check; it
+Plugin snapshot compatibility remains the exact `capabilitySnapshot` check; it
 is not part of the semantic matrix. The complete registry, trigger table,
 matrix format, and version rules live in the
 [0.33.0 proposal](../proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry),
@@ -167,99 +169,430 @@ error means the arm is not satisfied.
 > shape, so engines pin the exact `irVersion` minor until 1.0. After 1.0,
 > compatibility is governed by that major line's policy.
 
-**IR `0.10.0` changes the shape** — one field rename, the first since `0.8.0`.
-The injection provenance stamp's `reason` becomes **`explanation`**:
-`{ injected: true, by: "auto-pose-reset", explanation: "…" }`. The old name
-collided with `end.reason`, which is an opaque author token you dispatch on,
-while this field is human-readable English the compiler wrote and nothing
-dispatches on. Nothing else moves — no field added or retyped, no new command
-`kind`, and `Provenance.injected` is retained but is now constant-`true`, so do
-not read a `true` as distinguishing anything. The rename is published in the
-current schema above; `schemas/lute-ir-0.9.schema.json` is the one older schema
-file still kept in the repo, for an engine that has not crossed the rename. An
-engine that reads the provenance stamp and consumes artifacts from both sides
-of `0.10.0` must handle the rename itself; the version gate no longer refuses
-on its behalf.
+## Addressing
 
-## Addressing and control flow
+Every command carries a **`position`** (`address.rs`), a string
+`"{section}-{(index+1)*100}"` (e.g. `"001-0300"`). The first segment is the
+one-based position of the record's `## ` section in document order; the second
+is the record's order within that section. `position` is **regenerated on
+every compile** — it is build-local execution position, never identity, and
+never a localization, patch, or save key.
 
-Every executable record carries an `addr` (`address.rs`), a position string
-`"{shot}-{(index+1)*100}"` (e.g. `"001-0300"`). `addr` is **regenerated on
-every compile** — it is a position, not an identity. The stable content joins
-are `lineId` / `voiceKey`, derived from per-speaker `code` (dsl §12), and are
-what you key localization and voice assets on. Under the default templates
-(dsl 0.22.0 §11) a line's `lineId` is `{prefix}.{speaker}_{code}` and its
-`voiceKey` `{prefix}.{speaker}-{code}`, with `{prefix}` = `meta.id`; a line
-expanded from a component `::use` is minted under
-`{prefix}.{component}#{instance}`, where `instance` is the authored key from
-`instance="…"`, not a sibling ordinal. Missing keys are warning-bearing
-positional fallbacks until `lute tag` writes them. A project may re-template
-both (`identity:` in `lute.project.yaml` — a pinned
-`voiceKey: "{speaker}-{code}"` restores the 0.21 keys), so treat them as
-opaque keys and never parse them.
+**Field width.** Both segments are zero-padded to a width computed from the
+document — at least `3` for the section and `4` for the index, wider when the
+document needs it — and that width is **uniform across the whole artifact**.
+Therefore, *within one artifact, lexicographic order over every emitted
+`position` equals execution order.*
 
-Artifacts may carry `identityRenames`, an optional sorted list of
-`{from, to}` canonical `NodeKey` pairs. Engines apply these authored migrations
-when loading save-shaped identity; they MUST NOT infer renames from position,
-text, spans, or `addr`. The same list is exposed by `project.index.json`.
+The stable joins are:
+
+- **`lineId` / `voiceKey`** on every `line`, derived from per-speaker `code`.
+  They are what you key localization and voice assets on. Every line carries
+  both, whatever its role — narration and `mono` included; a `voiceKey` is a
+  join, not a claim that a recording exists. Under the default templates a
+  line's `lineId` is `{prefix}.{speaker}_{code}` and its `voiceKey`
+  `{prefix}.{speaker}-{code}`, with `{prefix}` = `meta.id`; a line expanded
+  from a component `::use` is minted under `{prefix}.{component}#{instance}`,
+  where `instance` is the authored key from `instance="…"`, not a sibling
+  ordinal. Missing keys are warning-bearing positional fallbacks until
+  `lute tag` writes them. A project may re-template both (`identity:` in
+  `lute.project.yaml`), so treat them as opaque keys and never parse them.
+- **`selectionKey`** on every `choice` and `hub` — the state path that
+  records the pick (`scene.choices.<branch or hub id>`).
+- **Section ids.** The `sections` table describes the document's sections:
+  `{ "section": <one-based position>, "heading": <text>, "id"?: <token> }`.
+  `id` is present when the author wrote `## Heading {#id}`; it is identity
+  metadata only and is never a jump target. A section without an `id` has
+  only its position, which is not stable across edits.
 
 ```lute check
 ---
 kind: scene
 id: identity-runtime
 ---
-## Opening
+## Opening {#opening}
 @narrator{code="intro"}: Stable content.
 ```
 
-**Field width (IR 0.8.0, dsl 0.8.0 §2).** Both segments are zero-padded to a
-width computed from the document — at least `3` for the shot and `4` for the
-index, wider when the document needs it — and that width is **uniform across
-the whole artifact**. Therefore, *within one artifact, lexicographic order over
-every emitted `addr` equals execution order.*
+```json
+"sections": [
+  {
+    "section": 1,
+    "heading": "Opening",
+    "id": "opening"
+  }
+]
+```
 
-> Before 0.8.0 the index field was fixed at 4 digits, so a shot with 100+
-> records emitted `001-11500` beside `001-1400` and string comparison reported
-> `"001-11500" < "001-1400"` — an engine ordering or range-checking addresses
-> lexicographically would rewind into already-played content. If you may load
-> artifacts built by a 0.7-or-earlier toolchain, **compare `addr` segment-wise
-> numerically**, never as a plain string.
+Artifacts may carry `identityRenames`, an optional sorted list of
+`{from, to}` canonical `NodeKey` pairs. Engines apply these authored migrations
+when loading save-shaped identity; they MUST NOT infer renames from `position`,
+text, or spans. The same list is exposed by `project.index.json`.
+
+## Control flow
 
 The `commands` array is already in **final execution order**. The engine walks
 it with a program counter, resolving control-flow targets — which are all
-`addr` strings — against an `addr → index` map:
+`position` strings — against a `position → index` map:
 
-- **`jump.target`** — unconditional transfer.
+- **`jump.target`** — unconditional transfer. An authored
+  `::jump{to="name"}` resolves to the position of the first record after the
+  matching `::label{name="name"}`; a label emits no record of its own.
 - **`choice` / `hub`** — each option carries a `target` (taken when the option
-  is chosen) and the record carries a `converge` addr (where control resumes
-  after the construct). A `converge` may point "one past the last record" of
-  the addressing unit, i.e. fall-through.
-- **`match`** — each arm carries a `target`, plus an optional `otherwise` and a
-  `converge`; an `is` field marks the semantic shorthand. When the subject is
-  an unset bare state path, `is` values other than `"unset"` are definitely
-  false, while `is: "unset"` is satisfied. Other arms evaluate normally;
-  evaluation errors are not satisfied.
+  is chosen) and the record carries a `converge` position (where control
+  resumes after the construct); a `hub` may also carry `return`. A `converge`
+  may point "one past the last record" of the addressing unit, i.e.
+  fall-through.
+- **`match`** — `subject` is the matched CEL slot; each arm carries a
+  `target`, plus an optional `otherwise` and a `converge`; an `is` field marks
+  the semantic shorthand. When the subject is an unset bare state path, `is`
+  values other than `"unset"` are definitely false, while `is: "unset"` is
+  satisfied. Other arms evaluate normally; evaluation errors are not satisfied.
 - **`quest` / `on`** — declaration heads: `objective.body` and `on.body` are
-  `addr` targets into separately-emitted body segments (see
-  [quest-lifecycle.md](./quest-lifecycle.md)).
-- **`end`** — terminates the walk (dsl 0.8.0 §3); carries an optional free-form
-  `reason`. Equivalent to running off the end of `commands`, except the reason
-  is available to the host.
+  position targets into separately-emitted body segments (see
+  [quest-lifecycle.md](./quest-lifecycle.md)); `entry.body` and `beat.body`
+  likewise (see [lore-entries.md](./lore-entries.md)).
+- **`end`** — terminates the walk; carries an optional free-form `reason`.
+  Equivalent to running off the end of `commands`, except the reason is
+  available to the host.
 - **`barrier`** — a timeline join (see
   [timeline-semantics.md](./timeline-semantics.md)).
 
-All control-flow targets are resolved to concrete addrs at compile time
+All control-flow targets are resolved to concrete positions at compile time
 (`Command::for_each_target`); an unresolved label is a compiler bug, never
-shipped.
+shipped. The position-bearing fields are exactly: every command's `position`;
+`choice.converge` and `choice.options[].target`; `hub.converge`, `hub.return`
+and `hub.options[].target`; `match.converge`, `match.otherwise` and
+`match.arms[].target`; `jump.target`; `quest.objectives[].body` (`null` for an
+empty body); `on.body`; `entry.body`; and `beat.body`. No other field holds a
+position.
+
+## Command records
+
+Every command is a JSON object whose first three keys are `kind`, `family`,
+and `position`, followed by the record's own fields and the optional common
+siblings `timing`, `provenance`, and `source`. An absent optional is omitted,
+never `null`.
+
+### The `family` marker
+
+`family` groups the kinds by what the engine has to do with them. It is fixed
+per kind:
+
+| `family` | `kind`s |
+|---|---|
+| `content` | `line` |
+| `staging` | `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence` |
+| `state` | `set`, `assert`, `retract` |
+| `control` | `choice`, `match`, `hub`, `jump`, `end`, `barrier` |
+| `declaration` | `quest`, `on`, `entry`, `accept`, `beat` |
+| `plugin` | `plugin` |
+
+An engine dispatches on `family` first and then on `kind`. A presentation layer
+can route every `staging` record to the stage without enumerating kinds, and a
+headless consumer (a test harness, a text-only reader) can skip `staging`
+wholesale. `family` never replaces `kind`: an unknown `kind` is still a hard
+error, even inside a known family. `accept` is a `declaration` that executes
+in flow: reaching it activates its quest (see
+[quest-lifecycle.md](./quest-lifecycle.md)).
+
+### Common siblings: `timing`, `provenance`, `source`
+
+- **`timing`** — the record's resolved blocking and scheduling, in one object:
+  `wait` (boolean), `duration` / `delay` / `at` (seconds), and `timeline` (the
+  zero-based ordinal of the `<timeline>` the record was emitted from — an
+  ordinal, not seconds). Each member is omitted when absent, and `timing`
+  itself is omitted when every member is. An engine reads timing only from this
+  object. A `barrier` has no `timing`: its `timeline` and `at` are direct
+  fields (see [timeline-semantics.md](./timeline-semantics.md)).
+- **`provenance`** — present only on a record the compiler injected:
+  `{ "by": "<rule>", "explanation": "<English>" }`. `by` names the rule
+  (`auto-anchor-on-show`, `auto-pose-reset`, …); `explanation` is
+  human-readable text nothing dispatches on.
+- **`source`** — `{ "component": "<name>" }` on a record expanded from a
+  component `::use`.
+
+A plugin may declare cross-cutting stamp attributes; they are flattened beside
+these siblings and read like the declaring plugin's directive fields.
+
+### Staging records
+
+Staging records (`family: "staging"`) are the presentation stream. Each
+`kind` is named after the directive that produces it. A field the table marks
+with a domain holds a member of that project-declared domain (listed in the
+envelope's `enums`); the engine maps each member to its own assets and
+effects.
+
+| `kind` | Fields |
+|---|---|
+| `bg` | optional `location`, `time`, `assetId` |
+| `music` | optional `playback` (domain `musicPlayback`), `mood` (domain `mood`), `volume` (domain `volume`), `assetId` |
+| `sfx` | optional `sound`, `assetId` |
+| `vfx` | required `type` (domain `vfxType`); optional `label`, `transition` |
+| `actor` | required `character`; optional `anchor` (domain `anchor`), `action` (domain `action`), `exit`, `emotion` (domain `emotion`), `costume` (domain `costume`); injected-only `posReset`, `preload` |
+| `camera` | optional `focus` (a cast reference), `framing` (domain `framing`), `move` (domain `cameraMove`), `transition` (domain `transition`) — at least one is present |
+| `cg` | required `assetId`, required `display` (`show` \| `hide`); optional `layout` (domain `cgLayout`) |
+| `video` | required `assetId`, required `display` (`show` \| `hide`) |
+| `sequence` | required `name` (domain `sequence`) |
+
+- **`actor`** carries `exit: true` when its `action` is one of the domain's
+  `exits:` members; the character leaves the stage. An omitted authored
+  `anchor` resolves to the `anchor` domain's `default:`, emitted as an
+  injected `actor` record (`by: "auto-anchor-on-show"`). An authored `emotion`
+  updates the character's stage emotion exactly like a line's `emotion`.
+- **`camera`** values are opaque domain members; there is no numeric
+  transform to interpret, and camera state is not part of save data.
+- **`cg`** and **`video`** always carry their resolved `display`; an omitted
+  authored value is `show`.
+- **`sequence`** is a reference to an engine-owned cinematic by name. Its
+  `timing.wait` defaults to `true`: the engine plays the named sequence and
+  blocks until it finishes. The reference runner records the reference and
+  does not simulate the sequence.
+
+The staging, line, and locale examples in this section are the real
+`lute compile` output of this document:
+
+```lute check
+---
+kind: scene
+id: harbor-night
+title: Harbor night
+pov: mira
+enums:
+  musicPlayback: [start, stop]
+  sequence: [harborOpening]
+  framing: [close, wide]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fadeIn, fadeOut]
+    exits: [fadeOut]
+  emotion: [calm, smile]
+  textStyle: [emphasis, whisper]
+---
+
+## Arrival {#arrival}
+
+::sequence{name="harborOpening"}
+::music{playback="start" assetId="BGM.harbor"}
+::actor{character="mira" action="fadeIn" emotion="calm"}
+::camera{focus="mira" framing="close" duration="0.5"}
+::cg{assetId="CG.harbor"}
+@mira{code="greet"}: :emphasis[Hello] :pause{s=0.5}:speed[{{userName}}!]{rate=1.25}
+::actor{character="mira" action="fadeOut"}
+```
+
+Its staging records — note the injected anchor after the authored `actor`,
+the resolved `display` on `cg`, and `exit` on the closing `actor`:
+
+```json
+[
+  {
+    "kind": "sequence",
+    "family": "staging",
+    "position": "001-0100",
+    "name": "harborOpening",
+    "timing": {
+      "wait": true
+    }
+  },
+  {
+    "kind": "music",
+    "family": "staging",
+    "position": "001-0200",
+    "playback": "start",
+    "assetId": "BGM.harbor"
+  },
+  {
+    "kind": "actor",
+    "family": "staging",
+    "position": "001-0300",
+    "character": "mira",
+    "action": "fadeIn",
+    "emotion": "calm"
+  },
+  {
+    "kind": "actor",
+    "family": "staging",
+    "position": "001-0400",
+    "character": "mira",
+    "anchor": "center",
+    "provenance": {
+      "by": "auto-anchor-on-show",
+      "explanation": "`mira` shown without an explicit anchor; defaulting to `center`"
+    }
+  },
+  {
+    "kind": "camera",
+    "family": "staging",
+    "position": "001-0500",
+    "focus": "mira",
+    "framing": "close",
+    "timing": {
+      "wait": false,
+      "duration": 0.5
+    }
+  },
+  {
+    "kind": "cg",
+    "family": "staging",
+    "position": "001-0600",
+    "assetId": "CG.harbor",
+    "display": "show",
+    "timing": {
+      "wait": false
+    }
+  },
+  {
+    "kind": "actor",
+    "family": "staging",
+    "position": "001-0800",
+    "character": "mira",
+    "action": "fadeOut",
+    "exit": true
+  }
+]
+```
+
+### Content lines
+
+A `line` (`family: "content"`) carries `role`, `speaker`, `text`, `lineId`,
+and `voiceKey`, plus optional presentation attributes (`emotion`, `variant`,
+`action`, `dialogMotion`, `as`), `placeholders`, `segments`, `texts`, and
+`localeSegments`.
+
+`role` is one of `dialogue` (the default), `narration` (the narrator
+speaker), `mono` (interior monologue — only the effective POV character, or
+a speaker the document allow-lists in `monoSpeakers`), `os` (off-screen),
+or `vo` (voice-over).
+
+`text` is always the **plain text** of the line in the source language:
+inline modifier markup is removed, escapes are decoded, and `{{…}}`
+interpolation markers stay verbatim for the engine to substitute from
+`placeholders`. Backlog, text-to-speech, search, and any consumer that does not
+render presentation markup read `text` alone.
+
+### Inline text modifiers: `segments`
+
+An author may mark up a line's text with inline modifiers: `:pause{s=0.5}`
+(a pause, in seconds), `:speed[…]{rate=1.25}` (a delivery rate for the span),
+and `:name[…]` for any member of the project's `textStyle` domain (for example
+`:emphasis[…]`). A line that uses at least one modifier carries
+**`segments`**, its presentation as an ordered list of runs; a line without
+modifiers has no `segments`, and the engine renders `text`.
+
+Each segment is one of:
+
+| Segment | Meaning |
+|---|---|
+| `{ "text": "…", "styles"?: […], "rate"?: <number> }` | A text run. `styles` lists the active `textStyle` members, outermost first; `rate` is the active speed multiplier (the innermost `speed` when spans nest). Each is omitted when absent. |
+| `{ "pause": <seconds> }` | A pause leaf: stop for that many seconds before the next run. |
+
+Adjacent runs with the same styles and rate are coalesced, and empty runs are
+omitted, so the text runs concatenate to exactly `text`. `{{…}}` markers stay
+verbatim inside the runs; substitute them from `placeholders` in plain-text
+order. Style names are project vocabulary: the engine maps each `textStyle`
+member to its own rendering. `pause` and `rate` are presentation timing only
+and change no state. The reference runner keeps no wall clock and does not
+wait out a pause; `lute play --json` carries each line's `segments` with the
+markers already substituted.
+
+The `greet` line of the example document above compiles to:
+
+```json
+{
+  "kind": "line",
+  "family": "content",
+  "position": "001-0700",
+  "role": "dialogue",
+  "speaker": "mira",
+  "text": "Hello {{userName}}!",
+  "lineId": "harbor-night.mira_greet",
+  "voiceKey": "harbor-night.mira-greet",
+  "placeholders": [
+    {
+      "kind": "reserved",
+      "token": "userName"
+    }
+  ],
+  "segments": [
+    {
+      "text": "Hello",
+      "styles": [
+        "emphasis"
+      ]
+    },
+    {
+      "text": " "
+    },
+    {
+      "pause": 0.5
+    },
+    {
+      "text": "{{userName}}!",
+      "rate": 1.25
+    }
+  ]
+}
+```
+
+### Localized lines: `texts` and `localeSegments`
+
+When an artifact is compiled with a locale bundle (`lute compile --locales`),
+each translated line gains **`texts`**: locale tag → the translation's plain
+text, keyed on the line's `lineId`. `text` remains the source-language
+string. A line with inline modifiers additionally gains
+**`localeSegments`**: locale tag → that translation's segments, in the same
+shape as `segments`. Every translated locale always appears in `texts`, so
+plain-text consumers never need to derive it.
+
+`lute loc export` hands translators the source markup (not the plain text),
+and each translation keeps that markup. The merge requires the translation's
+modifiers (name, span or leaf form, and attributes) to match the source's as a
+multiset — positions may move — and rejects a mismatch with
+`E-L10N-MODIFIERS` rather than emit it. An engine can therefore render
+`localeSegments[locale]` with the same style and timing vocabulary as the
+source. Merging the `ja-JP` translation
+`:emphasis[こんにちは]、:pause{s=0.5}:speed[{{userName}}!]{rate=1.25}` into the
+`greet` line above adds:
+
+```json
+"texts": {
+  "ja-JP": "こんにちは、{{userName}}!"
+},
+"localeSegments": {
+  "ja-JP": [
+    {
+      "text": "こんにちは",
+      "styles": [
+        "emphasis"
+      ]
+    },
+    {
+      "text": "、"
+    },
+    {
+      "pause": 0.5
+    },
+    {
+      "text": "{{userName}}!",
+      "rate": 1.25
+    }
+  ]
+}
+```
+
+An unmodified line gets only its `texts` entry.
 
 ## Dispatcher loop
 
-A minimal engine is a program counter over `commands`, dispatching on `kind`.
-The kinds below are exactly the `Command` variants (`ir.rs`); an unknown `kind`
-must halt with an error.
+A minimal engine is a program counter over `commands`, dispatching on `family`
+and then `kind`. The kinds below are exactly the `Command` variants (`ir.rs`);
+an unknown `kind` must halt with an error.
 
 ```ts
-type Addr = string;
+type Position = string;
 
 // Every CEL slot carries its verbatim source under its own key — `option.when`,
 // `arm.test`, `set.value` — and the lowered portable `expr` AST (IR A7) ONLY
@@ -270,63 +603,84 @@ const evalSlot = (cel, expr, state, facts) =>
   expr !== undefined ? evalExpr(expr, state) : evalCel(cel, state, facts);
 
 function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
-  assertExactMinorCompatible(artifact.irVersion); // pre-1.0 0.33.* gate
+  assertExactMinorCompatible(artifact.irVersion); // pre-1.0 exact-minor gate
   assertRequiredSemantics(artifact.requiredSemantics, engineMatrix);
 
-  // scene: one continuous command stream. quest: see quest-lifecycle.md —
-  // `quest`/`on` records are declarations the lifecycle driver consults, not
-  // sequential steps.
-  const index = new Map<Addr, number>();
-  artifact.commands.forEach((c, i) => index.set(c.addr, i));
+  // scene: one continuous command stream. quest / lore: see
+  // quest-lifecycle.md and lore-entries.md — declaration heads are consulted
+  // by the lifecycle and occasion drivers, not walked as sequential steps.
+  const index = new Map<Position, number>();
+  artifact.commands.forEach((c, i) => index.set(c.position, i));
 
   let pc = 0;
   while (pc < artifact.commands.length) {
     const cmd = artifact.commands[pc];
-    let next: Addr | null = null; // null ⇒ fall through to pc + 1
+    let next: Position | null = null; // null ⇒ fall through to pc + 1
 
-    switch (cmd.kind) {
-      // ── content & staging (all carry the optional Stamp fields:
-      //    wait, duration, delay, at, timeline, provenance, source) ──
-      case "line":       present(cmd, state); break; // substitute cmd.placeholders
-      case "background": stageBackground(cmd); break;
-      case "music":      stageMusic(cmd); break;
-      case "sfx":        stageSfx(cmd); break;
-      case "vfx":        stageVfx(cmd); break;
-      case "sprite":     stageSprite(cmd); break; // cmd.stamp.provenance ⇒ injected
-      case "camera":     stageCamera(cmd); break;
-      case "cut":        stageCut(cmd); break;
-      case "video":      stageVideo(cmd); break;
-
-      // ── state & facts ──
-      case "set":     writeState(state, cmd.path, cmd.op, evalSlot(cmd.value, cmd.expr, state, facts)); break;
-      case "assert":  facts.assert(cmd.relation, cmd.args); break;   // positive delta
-      case "retract": facts.retract(cmd.relation, cmd.args); break;  // negative delta (args may be "_")
-
-      // ── control flow ──
-      case "choice":
-      case "hub": {
-        const opt = pickOption(cmd, state); // per option: evalSlot(o.when, o.expr, …)
-        next = opt ? opt.target : cmd.converge;
+    switch (cmd.family) {
+      case "content": // line; honor cmd.timing, render cmd.segments when present
+        present(cmd, state); // substitute cmd.placeholders into text / segments
         break;
-      }
-      case "match": {
-        const arm = cmd.arms.find(a => truthy(evalSlot(a.test, a.expr, state, facts)));
-        next = arm ? arm.target : (cmd.otherwise ?? cmd.converge);
+
+      case "staging": // honor cmd.timing (wait, duration, delay, at)
+        switch (cmd.kind) {
+          case "bg":       stageBg(cmd); break;
+          case "music":    stageMusic(cmd); break;    // cmd.playback
+          case "sfx":      stageSfx(cmd); break;
+          case "vfx":      stageVfx(cmd); break;      // cmd.type
+          case "actor":    stageActor(cmd); break;    // cmd.provenance ⇒ injected
+          case "camera":   stageCamera(cmd); break;   // focus / framing / move / transition
+          case "cg":       stageCg(cmd); break;       // cmd.display, cmd.layout
+          case "video":    stageVideo(cmd); break;    // cmd.display
+          case "sequence": playSequence(cmd); break;  // blocks while cmd.timing.wait
+          default: throw new UnknownCommandKind(cmd.kind);
+        }
         break;
-      }
-      case "jump":    next = cmd.target; break;
-      case "end":     finish(cmd.reason); return;      // dsl 0.8.0 §3 — terminate the walk
-      case "barrier": joinTimeline(cmd.timeline, cmd.at); break; // see timeline-semantics.md
 
-      // ── quest-kind declarations (consumed by the lifecycle driver) ──
-      case "quest": registerQuest(cmd); break;
-      case "on":    registerHandler(cmd); break;
+      case "state":
+        switch (cmd.kind) {
+          case "set":     writeState(state, cmd.path, cmd.op, evalSlot(cmd.value, cmd.expr, state, facts)); break;
+          case "assert":  facts.assert(cmd.relation, cmd.args); break;   // positive delta
+          case "retract": facts.retract(cmd.relation, cmd.args); break;  // negative delta (args may be "_")
+          default: throw new UnknownCommandKind(cmd.kind);
+        }
+        break;
 
-      // ── quest acceptance (dsl 0.21.0 §7a.3; quest-lifecycle.md) ──
-      case "accept": acceptQuest(cmd.quest); break; // activates it iff `unset`
+      case "control":
+        switch (cmd.kind) {
+          case "choice":
+          case "hub": {
+            // per option: evalSlot(o.when, o.expr, …); record the pick under cmd.selectionKey
+            const opt = pickOption(cmd, state);
+            next = opt ? opt.target : cmd.converge;
+            break;
+          }
+          case "match": {
+            const arm = cmd.arms.find(a => truthy(evalSlot(a.test, a.expr, state, facts)));
+            next = arm ? arm.target : (cmd.otherwise ?? cmd.converge);
+            break;
+          }
+          case "jump":    next = cmd.target; break;
+          case "end":     finish(cmd.reason); return;  // terminate the walk
+          case "barrier": joinTimeline(cmd.timeline, cmd.at); break; // see timeline-semantics.md
+          default: throw new UnknownCommandKind(cmd.kind);
+        }
+        break;
 
-      // ── plugin passthrough (bridge calls + resolved effects) ──
-      case "plugin": callBridgeAndApplyEffects(cmd, state); break; // see bridge-protocol.md
+      case "declaration":
+        switch (cmd.kind) {
+          case "quest":  registerQuest(cmd); break;     // quest-lifecycle.md
+          case "on":     registerHandler(cmd); break;
+          case "entry":  registerEntry(cmd); break;     // lore-entries.md
+          case "beat":   registerBeat(cmd); break;      // beats-and-occasions.md
+          case "accept": acceptQuest(cmd.quest); break; // activates it iff `unset`
+          default: throw new UnknownCommandKind(cmd.kind);
+        }
+        break;
+
+      case "plugin": // bridge calls + resolved effects; see bridge-protocol.md
+        callBridgeAndApplyEffects(cmd, state);
+        break;
 
       default:
         throw new UnknownCommandKind(cmd.kind); // version-negotiation: hard error
@@ -340,4 +694,3 @@ function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
 may additionally use the typed `expr` walker for inspection or evaluation.
 Facts remain the Datalog store and bridge commands remain host operations.
 The execution IR is inert data; behavior begins in this dispatcher.
-

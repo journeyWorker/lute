@@ -130,10 +130,10 @@ extra:
   arc: main
 ---
 
-## Shot 1.
+## The service {#service}
 ::minigame{kind="rhythm" id="marina_service_01" resultKey="service01" sync="true"}
 
-<match on="scene.minigame.service01.rank">
+<match subject="scene.minigame.service01.rank">
   <when is="gold">
     @marina{code="0030" emotion="delighted" variant="1"}: Wonderful! A perfect service!
   </when>
@@ -148,7 +148,7 @@ A quest — conditions and rewards as data (`inParty`/`ownsItem` are project-dec
 
 ```lute
 <quest id="hunt" title="The Hunt" start="holds('inParty', ['shadowheart'])" fail="run.dawnBroke">
-  <reward kind="XP" amount="300"/>
+  <reward id="huntXp" kind="XP" amount="300"/>
   <reward kind="SHARD" amount="1..5" when="run.bonusMet"/>
   <reward kind="SHARD" amount="2" outcome="failed"/>
   <objective id="track" done="count('ownsItem', ['tracks']) >= 3">

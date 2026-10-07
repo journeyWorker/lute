@@ -14,7 +14,7 @@ lute context scene.lute --json --project . \
   --permission-profile generated
 ```
 
-It emits the project-resolved directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, imported components, effective permission layers, and a `capabilityVersion`. In JSON, `permissions` is `{ "layers": [...] }`, `bridges` contains allowed bridge objects, `rewardKinds` is the allowed name-keyed object, and `questsAllowed` is a boolean; `directives` also excludes entries blocked by directive or bridge policy. Read-only external state remains visible. It is a capability **query**, not validation: it emits regardless of the document's own diagnostics (exit `0`), and — the key property — **works on an empty file**, because the surface comes from the resolved project and plugins, not the document body. Use `capabilityVersion` as a prompt-cache key: restrictive effective permissions change it, while policy-free projects retain their prior hashes byte-for-byte.
+It emits the project-resolved directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, imported components, inline `textModifiers`, effective permission layers, and a `capabilitySnapshot`. In JSON, `permissions` is `{ "layers": [...] }`, `bridges` contains allowed bridge objects, `rewardKinds` is the allowed name-keyed object, and `questsAllowed` is a boolean; `directives` also excludes entries blocked by directive or bridge policy. Read-only external state remains visible. It is a capability **query**, not validation: it emits regardless of the document's own diagnostics (exit `0`), and — the key property — **works on an empty file**, because the surface comes from the resolved project and plugins, not the document body. Use `capabilitySnapshot` as a prompt-cache key: restrictive effective permissions change it, while policy-free projects retain their prior hashes byte-for-byte.
 
 Since 0.22.0 the surface also carries what a model otherwise reads out of sibling files or guesses:
 
@@ -24,6 +24,7 @@ Since 0.22.0 the surface also carries what a model otherwise reads out of siblin
 - On `relations`, each relation's `tier` and whether it is `reserved`; on `stateSchema`, `owner: "engine"` for a path the engine writes (a content `::set` of it is `E-ENGINE-OWNED-WRITE`).
 - On `occasions`, each occasion's `description` and its `target` — `false`, `true` (shape-only), or a `{ prefix, entity }` domain whose beat targets must be `<prefix>.<member>`.
 - **Component signatures** in the human outline — each imported component with its parameters and their types, as JSON `components` already carried them — so a model writes `::use{component="…" …}` against the signature, not just the name.
+- **`textModifiers`** — the inline modifier surface a line's text may use: the core `:pause{s=…}` leaf and `:speed[…]{rate=…}` span, each with its `syntax` and `meaning`, plus how a modified line lowers. Any other `:name[…]` must be a member of the project's `textStyle` domain (in `projectEnums`/`enums`); never invent one.
 
 The human outline prints the same additions — `defs (N):`, `builtinDirectives (N):`, the `scenes`/`quests`/`entries` id lists, `run.day: int (owner: engine)`, `knows/1(item) [run]`, and `talk (select: first, target: npc.<npc>)`.
 
@@ -53,7 +54,7 @@ lute check scene.lute --json --deny W-LUTE-VERSION-STALE --deny-warnings
 For an append-only generated continuation, do not invent a model-specific JSON
 grammar and do not treat parser framing as compilation. Give
 [`lute compile-stream`](/tooling/continuation-compiler/) a host-owned, checked
-scene template and stream ordinary final-shot Lute body text on stdin:
+scene template and stream ordinary final-section Lute body text on stdin:
 
 ```sh
 lute compile-stream scene.lute --project . \
@@ -140,7 +141,31 @@ $ lute context docs/examples/property-tracks.lute --project docs/examples --json
   "emotion": ["neutral", "surprised", "delighted", "shy", "content", "angry", "sad"], … } }
 ```
 
-Both keys are folded into `capabilityVersion`, so the prompt-cache key already moves when a vocabulary does. If the union is empty for a slot the document needs, the fix is a *declaration*, not a different attribute value — see [Content vocabulary](/language/vocabulary/) for the three routes. Two follow-on codes catch a model writing the declaration itself: `E-ENUM-MISSING-SEMANTICS` (`action` declared without `exits:`, or `anchor` without `default:` — the compiler branches on those members and no longer infers them from a name prefix) and `E-DOMAIN-DUP` (one slot declared by both a plugin and a project route in the same root; pick one route per slot).
+Both keys are folded into `capabilitySnapshot`, so the prompt-cache key already moves when a vocabulary does. If the union is empty for a slot the document needs, the fix is a *declaration*, not a different attribute value — see [Content vocabulary](/language/vocabulary/) for the three routes. Two follow-on codes catch a model writing the declaration itself: `E-ENUM-MISSING-SEMANTICS` (`action` declared without `exits:`, or `anchor` without `default:` — the compiler branches on those members and no longer infers them from a name prefix) and `E-DOMAIN-DUP` (one slot declared by both a plugin and a project route in the same root; pick one route per slot).
+
+**`E-MONO-POV` / `E-MONO-NO-POV` — `mono` belongs to the POV.** A `{mono}` line (inner monologue) is valid only when its speaker is the effective POV — frontmatter `pov:`, falling back to the project's `defaults.pov` — or is listed in the effective `monoSpeakers` (frontmatter or project defaults). Any other speaker is `E-MONO-POV`; when no POV resolves at all it is `E-MONO-NO-POV`. A model that wants another character's thoughts must not reach for `mono`: write the line as `dialogue`, `os`, or `vo`, or have the author add the speaker to `monoSpeakers`. Never let the generator choose `pov:` or `monoSpeakers` itself — those are corpus-owner decisions, and `lute fix` will not guess them either. Component lines are checked at each `::use` site against that caller's POV and allow-list.
+
+```lute expect="E-MONO-POV"
+---
+kind: scene
+character: mira
+season: 1
+episode: 1
+pov: mira
+---
+
+## The Counter
+
+@mira{mono}: He is lying.
+@jun{mono}: She knows.
+```
+
+<!-- lute-diagnostics -->
+```console
+$ lute check scene.lute
+scene.lute:12:6: error [E-MONO-POV] `@jun{mono}` is an interior monologue, but `jun` is not this document's point of view (`mira`) and not in `monoSpeakers:` (which lists none) — only the POV character and the speakers `monoSpeakers:` lists may speak `mono`; add `jun` to `monoSpeakers:`, or write the line as dialogue, `{os}` or `{vo}`
+failed: scene.lute (1 error(s), 0 warning(s))
+```
 
 **`E-STATE-COLLECTION`.** Author `state:` is scalar: `bool | int | double | string | enum`. A `list`, `record`, or `map` declaration is rejected. Models reach for `type: { list: string }` constantly, and this was the single case where a document clean under 0.7.0 newly failed at 0.8.0. The fix is never to coerce the type — it is to model the collection as [`relations:`](/state/facts-and-datalog/), which is what the relational layer exists for. Feed the diagnostic back verbatim; it names the remedy.
 
@@ -166,7 +191,7 @@ scene.lute:7:3: error [E-STATE-COLLECTION] state path `run.inventory` cannot dec
 failed: scene.lute (1 error(s), 0 warning(s))
 ```
 
-**`W-CODE-AFTER-END`** — content after `::end` in the same straight-line body (shot body, `<choice>` body, `<when>` arm, objective body, `<on>` body) is unreachable. Reported once per body, at the first such node. A generator that emits a terminator and then keeps writing produces exactly this. Promote it with `--deny W-CODE-AFTER-END` if dead content should block the loop.
+**`W-CODE-AFTER-END`** — content after `::end` in the same straight-line body (section body, `<choice>` body, `<when>` arm, objective body, `<on>` body) is unreachable. Reported once per body, at the first such node. A generator that emits a terminator and then keeps writing produces exactly this. Promote it with `--deny W-CODE-AFTER-END` if dead content should block the loop.
 
 **`E-IDENTITY-TEMPLATE`** — a `lute.project.yaml` `identity:` template using a token other than `{prefix}`, `{speaker}`, `{code}`. Project-level, so it arrives on the `lute:` channel (see above), not in JSON.
 
@@ -178,7 +203,7 @@ failed: scene.lute (1 error(s), 0 warning(s))
 |---|---|---|
 | `E-PLUGIN-OPTION-UNKNOWN` | an activated option name the plugin manifest never declares | `lute:` |
 | `E-PLUGIN-OPTION-TYPE` | a merged option value that fails its declared type | `lute:` |
-| `E-PLUGIN-RESERVED-STAMP-ATTR` | an attr named `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source` — reserved stamp keys, on both the `stampAttrs` and per-directive surfaces | `lute:` |
+| `E-PLUGIN-RESERVED-STAMP-ATTR` | an attr named `at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source` — reserved stamp keys, on both the `stampAttrs` and per-directive surfaces | `lute:` |
 | `E-LOWER-RECORD-UNKNOWN` | `lower: { record }` naming something that is not a core staging kind | `lute:` |
 | `E-LOWER-RECORD-FIELD` | `lower: { fields }` naming a field the record kind lacks, a `fromAttr` the directive never declares, or a literal that cannot fill the field | `lute:` |
 | `E-FRONTMATTER-SCHEMA` | a plugin-owned frontmatter key whose value violates the declared schema | JSON, with a span |

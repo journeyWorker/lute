@@ -62,7 +62,7 @@ occasions:
   establishes it.
 
 Occasion declarations are not in the artifact; they are part of the capability
-snapshot (`capabilityVersion`), where an occasion's `target` serializes as
+snapshot (`capabilitySnapshot`), where an occasion's `target` serializes as
 `false`, `true`, `{ "prefix", "entity" }`, or `{ "prefix", "entity",
 "members" }`. A domain changes the stamp, and so does its member list; a
 domain without `members` keeps its 0.22 stamp, and an occasion declared only
@@ -142,7 +142,8 @@ body segment follows it:
 ```ts
 type BeatCmd = {
   kind: "beat";
-  addr: Addr;
+  family: "declaration";
+  position: Position;
   id: string;             // canonical: `<document id>.<beat id>`
   on: string;
   target?: string;
@@ -155,14 +156,14 @@ type BeatCmd = {
   share?: string;         // dsl 0.25.0 §2
   spentBy?: CelPair;      // dsl 0.27.0 §5
   after?: string;         // dsl 0.25.0 §3: raw `after=`, a scene `after:`'s grammar
-  body: Addr;             // first record of the body segment
+  body: Position;         // first record of the body segment
 };
 ```
 
 The canonical `id` is the beat's `ProjectIndex.beats` row id, its key in the
 presentation record, and its `visited()` key. The body segment runs from
 `body` to the next `entry` or `beat` record, or the end of the artifact, and
-holds what a scene shot holds (lines, choices, hubs, matches, staging,
+holds what a scene section holds (lines, choices, hubs, matches, staging,
 writes). A bundle beat is otherwise a **scene beat**: its eligibility is its
 `after=` (dsl 0.25.0 §3; the artifact's `prereqEdges` carries the same text
 in a row whose `node` is the beat's `id`), its `when`, and its `once` against
@@ -472,7 +473,7 @@ history, not user state.
   runs in; the playthrough goes on with the next step. A step `end: true`
   ends the playthrough: exit 0, and every later step is listed as skipped
   (`skipped: [{ step, label }]` in `--json`). The transcript prints staging as
-  authored (`::bg{…}`, `::auto{…}`, a plugin directive by its own name); `--ir`
+  authored (`::bg{…}`, `::actor{…}`, a plugin directive by its own name); `--ir`
   prints the lowered records instead, compiler-injected ones included.
 - `lute calendar <dir> --script <play.yaml>` starts every cell from the
   script's save with its steps replayed as `lute play` plays them; `--until

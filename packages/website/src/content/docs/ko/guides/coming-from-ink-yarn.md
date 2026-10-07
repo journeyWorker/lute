@@ -21,10 +21,10 @@ Ink와 Yarn Spinner는 흐름(flow)입니다: 텍스트가 위에서 아래로 �
 | Ink | Yarn Spinner | Lute |
 |---|---|---|
 | `=== knot ===` | 노드(`title:` … `===`) | 장면: 자기 `.lute` 파일 하나, 프런트매터에 `kind: scene`과 `id:` |
-| `= stitch` | — | 장면 안의 `## 제목` |
+| `= stitch` | — | 장면 안의 `## 제목` 섹션(섹션은 점프 대상이 아닙니다) |
 | 이야기의 다음 부분으로 가는 `-> knot` | `<<jump Node>>` | 계기(`on:`)에 응답하는 다른 장면. 순서는 `after:`나 `chapters:` |
 | 플레이어가 돌아오는 메뉴로 가는 `-> knot` | 허브 노드로 돌아가는 `<<jump>>` | `<hub>`: 선택지 하나가 끝날 때마다 다시 묻고, `exit` 선택지에서 끝납니다 |
-| 아래쪽의 이름 붙은 gather로 가는 `-> label` | — | 아래쪽 `::mark{id="label"}`로 가는 `::next{to="label"}`. 앞으로만 |
+| 아래쪽의 이름 붙은 gather로 가는 `-> label` | — | 아래쪽 `::label{name="label"}`로 가는 `::jump{to="label"}`. 앞으로만 |
 | 한 번만 고르는 `* [choice]` | `-> option <<once>>` | 허브의 `<choice … once>`. `<branch>`는 어차피 한 번만 묻습니다 |
 | 계속 남는 `+ [choice]` | `-> option` | `<hub>` 안의 평범한 `<choice>` |
 | `- gather` | 선택지 다음 줄들 | `</branch>` 다음 줄들. 어느 선택지를 골랐든 실행됩니다 |
@@ -98,9 +98,9 @@ state:
   <return>
     @narrator: The lamp room again. The dark is closer.
   </return>
-  <choice id="ledger" label="Read the ledger">
+  <choice id="ledger" text="Read the ledger">
     ::set{scene.ledgerReads += 1}
-    <match on="scene.ledgerReads">
+    <match subject="scene.ledgerReads">
       <when is="1">
         @narrator: The last entry is three weeks old. "Oil low. Ship due."
       </when>
@@ -112,11 +112,11 @@ state:
       </otherwise>
     </match>
   </choice>
-  <choice id="stores" label="Go down to the stores" once>
+  <choice id="stores" text="Go down to the stores" once>
     @narrator: You find two more cans of oil.
     ::set{run.oil += 2}
   </choice>
-  <choice id="dusk" label="Wait for dark" exit>
+  <choice id="dusk" text="Wait for dark" exit>
     @narrator{when="run.oil >= 3"}: The lamp catches.
     @narrator{when="run.oil < 3"}: The wick sputters.
   </choice>
@@ -202,9 +202,9 @@ defs:
 ## The Harbor
 
 <hub id="harbor">
-  <choice id="look" label="Look at the sea">
+  <choice id="look" text="Look at the sea">
     ::set{scene.looks += 1}
-    <match on="@weather">
+    <match subject="@weather">
       <when is="1">
         @narrator: Fog on the water.
       </when>
@@ -216,7 +216,7 @@ defs:
       </otherwise>
     </match>
   </choice>
-  <choice id="leave" label="Walk inland" exit>
+  <choice id="leave" text="Walk inland" exit>
     @narrator: You turn your back on the sea.
   </choice>
 </hub>
@@ -237,10 +237,11 @@ Ink의 `{cond: -> a | -> b}`는 같은 계기에 응답하는 장면 두 개이�
 성립할 수 없으면 검사기는 둘을 같은 priority로 받아들입니다. [장면을 이야기로
 잇기](/ko/getting-started/connect-scenes/)가 바로 이것을 만듭니다.
 
-장면 안에서 `::next{to="…"}`는 아래쪽의 `::mark{id="…"}`(또는 줄의 `id=`)로 앞으로 뜁니다. 뒤로는 결코
+장면 안에서 `::jump{to="…"}`는 같은 문서 아래쪽의 `::label{name="…"}`로 앞으로 뜁니다. 뒤로는 결코
 뛰지 않습니다: 플레이어가 돌아오는 메뉴는 `<hub>`이고, 다시 재생되는 장면은 자기 계기에 다시 응답합니다.
-제목은 점프 대상이 아니며, 선택지 id(Ink의 이름 붙은 선택지 `* (inside)`)도 아닙니다. 선택지 id는 고른
-것의 이름이지 텍스트 안의 자리가 아닙니다.
+`## 제목` 섹션은 점프 대상이 아닙니다 — `{#id}` 접미사를 단 섹션도 마찬가지입니다. 그 id는 안정적인 식별
+정보일 뿐이므로, 뛰어가고 싶은 제목 아래에 `::label`을 두세요. 선택지 id(Ink의 이름 붙은 선택지
+`* (inside)`)도 대상이 아닙니다. 선택지 id는 고른 것의 이름이지 텍스트 안의 자리가 아닙니다.
 
 `visited('<scene id>')`는 장면이 한 번이라도 제시되었는지 묻습니다. 횟수가 아니라 참/거짓이고, 세이브
 전체에 걸칩니다: 새 런이 시작되어도 참으로 남습니다.
@@ -263,7 +264,7 @@ terminal: "run.fate == 'drowned'"
 ```
 
 ```lute
-<choice id="leap" label="Climb the rail toward the light" once>
+<choice id="leap" text="Climb the rail toward the light" once>
   @narrator: The rail is wet. The light is very far away.
   ::set{run.fate = "drowned"}
   ::end
@@ -307,10 +308,10 @@ ink.lute:11:1: error [E-UNCLASSIFIED] unrecognized line: `= stitch` is an Ink st
 ink.lute:12:1: error [E-UNCLASSIFIED] unrecognized line: `VAR` declares an Ink global; Lute declares state under `state:` in the frontmatter (`run.oil: { type: int, default: 1 }`) and writes it with `::set{…}`
 ink.lute:13:1: error [E-UNCLASSIFIED] unrecognized line: `~ run.oil = run.oil + 2` is Ink logic; Lute writes state with `::set{run.oil = run.oil + 2}`, and the path is declared under `state:` in the frontmatter
 ink.lute:14:1: error [E-UNCLASSIFIED] unrecognized line: a content line needs a speaker: narration is `@narrator: …`, dialogue `@<speaker>: …`
-ink.lute:15:1: error [E-UNCLASSIFIED] unrecognized line: `* [Read the ledger]` is an Ink choice; Lute choices are `<choice id="…" label="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice); Ink's once-only `*` in a loop is a `<hub>` choice with the `once` flag
-ink.lute:16:1: error [E-UNCLASSIFIED] unrecognized line: `+ [Wait for dark]` is an Ink choice; Lute choices are `<choice id="…" label="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice); Ink's sticky `+` is a plain `<hub>` choice
+ink.lute:15:1: error [E-UNCLASSIFIED] unrecognized line: `* [Read the ledger]` is an Ink choice; Lute choices are `<choice id="…" text="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice); Ink's once-only `*` in a loop is a `<hub>` choice with the `once` flag
+ink.lute:16:1: error [E-UNCLASSIFIED] unrecognized line: `+ [Wait for dark]` is an Ink choice; Lute choices are `<choice id="…" text="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice); Ink's sticky `+` is a plain `<hub>` choice
 ink.lute:17:1: error [E-UNCLASSIFIED] unrecognized line: `- gather` is an Ink gather; Lute has no gathers: after a `<branch>` or `<hub>` closes, the lines below it run whichever choice was taken, so write the gathered text there as an ordinary line (`@narrator: …`)
-ink.lute:18:1: error [E-UNCLASSIFIED] unrecognized line: `-> ledger` is an Ink divert; Lute has no diverts: `::next{to="ledger"}` jumps forward to a `::mark{id="ledger"}` later in this document, a `<hub>` repeats its choices until an `exit` choice, and another scene is reached through the occasion it answers (`on:` in its frontmatter)
+ink.lute:18:1: error [E-UNCLASSIFIED] unrecognized line: `-> ledger` is an Ink divert; Lute has no diverts: `::jump{to="ledger"}` jumps forward to a `::label{name="ledger"}` later in this document, a `<hub>` repeats its choices until an `exit` choice, and another scene is reached through the occasion it answers (`on:` in its frontmatter)
 ink.lute:19:1: error [E-UNCLASSIFIED] unrecognized line: `-> END` is an Ink divert; it ends the whole story, which in Lute is the schema's `terminal:` condition: a scene makes it hold with an ordinary `::set{…}` (`::end` is Ink's `-> DONE`: it ends only this scene)
 failed: ink.lute (10 error(s), 0 warning(s))
 ```
@@ -322,14 +323,14 @@ Yarn도 마찬가지입니다:
 $ lute check yarn.lute
 yarn.lute:10:1: error [E-UNCLASSIFIED] unrecognized line: `<<declare $oil = 1>>` is a Yarn declaration; Lute declares state under `state:` in the frontmatter (`run.oil: { type: int, default: 1 }`) and writes it with `::set{…}`
 yarn.lute:11:1: error [E-UNCLASSIFIED] unrecognized line: `<<set $oil to 3>>` is a Yarn command; Lute writes state with `::set{run.oil = 3}`, and the path is declared under `state:` in the frontmatter
-yarn.lute:12:1: error [E-UNCLASSIFIED] unrecognized line: `<<if $oil > 2>>` is a Yarn conditional; Lute chooses between lines with `<match on="…">` and its `<when is="…">`/`<when test="…">` arms, or guards one line: `@narrator{when="run.oil > 2"}: …`
-yarn.lute:13:1: error [E-UNCLASSIFIED] unrecognized line: `<<jump Lamp_Room>>` is a Yarn jump; Lute has no diverts: `::next{to="Lamp_Room"}` jumps forward to a `::mark{id="Lamp_Room"}` later in this document, a `<hub>` repeats its choices until an `exit` choice, and another scene is reached through the occasion it answers (`on:` in its frontmatter)
-yarn.lute:14:1: error [E-UNCLASSIFIED] unrecognized line: `-> Read the ledger` is a Yarn option; Lute choices are `<choice id="…" label="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice)
+yarn.lute:12:1: error [E-UNCLASSIFIED] unrecognized line: `<<if $oil > 2>>` is a Yarn conditional; Lute chooses between lines with `<match subject="…">` and its `<when is="…">`/`<when test="…">` arms, or guards one line: `@narrator{when="run.oil > 2"}: …`
+yarn.lute:13:1: error [E-UNCLASSIFIED] unrecognized line: `<<jump Lamp_Room>>` is a Yarn jump; Lute has no diverts: `::jump{to="Lamp_Room"}` jumps forward to a `::label{name="Lamp_Room"}` later in this document, a `<hub>` repeats its choices until an `exit` choice, and another scene is reached through the occasion it answers (`on:` in its frontmatter)
+yarn.lute:14:1: error [E-UNCLASSIFIED] unrecognized line: `-> Read the ledger` is a Yarn option; Lute choices are `<choice id="…" text="…">` blocks inside a `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice)
 failed: yarn.lute (5 error(s), 0 warning(s))
 ```
 
 다른 언어의 마크업으로 쓴 텍스트는 문자 그대로 쓴 것일 수도 있으므로 오류가 아니라 경고입니다. 한 겹 중괄호,
-줄 끝의 주석이나 태그, 대괄호를 쓴 선택지 label:
+줄 끝의 주석이나 태그, 대괄호를 쓴 선택지 텍스트:
 
 <!-- lute-diagnostics unverified="byte-exact lute check output; W-TEXT-SINGLE-BRACE prints a literal … (a shortened quote, Ink's {~…|…} notation) that the matcher reads as an elision" -->
 ```
@@ -338,24 +339,24 @@ text.lute:10:21: warning [W-TEXT-SINGLE-BRACE] `{run.oil}` is literal line text:
 text.lute:11:12: warning [W-TEXT-SINGLE-BRACE] `{run.oil > 0: A can of oil sits by the…}` is literal line text: single braces are not read, so the player sees them — Lute has no inline conditional text; guard the whole line instead (`@narrator{when="run.oil > 0"}: …`), or choose between lines with `<match>`
 text.lute:12:12: warning [W-TEXT-SINGLE-BRACE] `{~Fog|Mist|Rain}` is literal line text: single braces are not read, so the player sees them — Lute has no inline alternatives (Ink's `{~…|…}` shuffle, `{&…|…}` cycle, `{!…|…}` once-only, `{…|…}` sequence); choose between whole lines with `<match>` or guarded lines (`when="…"`)
 text.lute:13:17: warning [W-TEXT-SINGLE-BRACE] `{$oil}` is literal line text: single braces are not read, so the player sees them — Yarn's `{$oil}` is an interpolation of a declared state path in Lute, `{{run.oil}}`
-text.lute:14:48: warning [W-TEXT-COMMENT-LIKE] `# mood:cold` is part of the line text, so the player sees it — Lute has no line tags; keep a note as a `// …` comment on a line of its own
-text.lute:15:30: warning [W-TEXT-COMMENT-LIKE] `// TODO darker` is part of the line text, so the player sees it — a comment is `// …` on a line of its own (or after a directive), never after text
-text.lute:17:3: warning [W-TEXT-BRACKET-LABEL] choice label `[Go inside]` shows its brackets on the button — a label is shown exactly as written (Lute has no Ink-style bracket suppression); write `label="Go inside"`
+text.lute:14:41: warning [W-TEXT-COMMENT-LIKE] `# mood:cold` is part of the line text, so the player sees it — Lute has no line tags; keep a note as a `// …` comment on a line of its own
+text.lute:15:33: warning [W-TEXT-COMMENT-LIKE] `// TODO darker` is part of the line text, so the player sees it — a comment is `// …` on a line of its own (or after a directive), never after text
+text.lute:17:25: warning [W-TEXT-BRACKET-LABEL] choice text `[Go inside]` shows its brackets on the button — choice text is shown exactly as written (Lute has no Ink-style bracket suppression); write `text="Go inside"`
 ok: text.lute (7 warning(s))
 ```
 
-디렉티브처럼 쓴 divert, 뒤로 가는 점프, 점프 대상으로 쓴 제목, 조건 안의 Ink·Yarn 습관:
+디렉티브처럼 쓴 divert, 뒤로 가는 점프, 점프 대상으로 쓴 섹션 제목, 조건 안의 Ink·Yarn 습관:
 
-<!-- lute-diagnostics unverified="byte-exact lute check output; the did-you-mean and E-CEL-TYPE reasons are composed outside the file that declares their code, and E-NEXT-UNDEFINED matches two literals" -->
+<!-- lute-diagnostics unverified="byte-exact lute check output; the did-you-mean and E-CEL-TYPE reasons are composed outside the file that declares their code, and E-JUMP-UNDEFINED matches two literals" -->
 ```
 $ lute check flow.lute
-flow.lute:12:1: error [E-UNKNOWN-DIRECTIVE] unknown directive `::goto` — did you mean `::next{to="…"}`? It jumps forward to a `::mark{id="…"}`
-flow.lute:13:12: error [E-NEXT-BACKWARD] `::next` targets mark `top`, which is not forward of this `::next` in document order — `::next` only jumps forward; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
-flow.lute:18:12: error [E-NEXT-UNDEFINED] `::next` targets `Gallery`, which no `::mark` or line `id=` in this document declares — `Gallery` is the `## Gallery` heading, not a mark; a `::next` target is a `::mark{id="…"}` (or a line's `id=`) later in this document, so put `::mark{id="Gallery"}` under that heading
+flow.lute:12:1: error [E-UNKNOWN-DIRECTIVE] unknown directive `::goto` — did you mean `::jump{to="…"}`? It jumps forward to a `::label{name="…"}`
+flow.lute:13:12: error [E-JUMP-BACKWARD] `::jump` targets label `top`, which is not forward of this `::jump` in document order — `::jump` only jumps forward; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
+flow.lute:18:12: error [E-JUMP-UNDEFINED] `::jump` targets `Gallery`, which no `::label` in this document declares — `Gallery` is the `## Gallery` heading, not a label; a `::jump` target is a `::label{name="…"}` later in this document, so put `::label{name="Gallery"}` under that heading
 failed: flow.lute (3 error(s), 0 warning(s))
 $ lute check cond.lute
 cond.lute:5:7: error [E-CEL-PROFILE] `once` is not a condition: how often a beat plays is its own key, `once` — `once: run` (once per run, the default), `once: user` (once ever) or `once: false` (every time); on a `<beat>` or `<entry>` it is `once="run"` — drop this `when`
-cond.lute:12:17: error [E-CEL-TYPE] `visited('gallery') > 2`: `>` compares numbers, and `visited('gallery')` is a bool — `visited('gallery')` is a bool, whether the scene was ever presented, not how often; count visits in an `int` path you `::set` (for example `::set{run.visits += 1}`)
+cond.lute:12:17: error [E-CEL-TYPE] `visited('gallery') > 2`: `>` compares numbers (int/double), and `visited('gallery')` is a bool — `visited('gallery')` is a bool, whether the scene was ever presented, not how often; count visits in an `int` path you `::set` (for example `::set{run.visits += 1}`)
 cond.lute:13:17: error [E-CEL-PROFILE] `$oil`: a state path takes no `$` (`$` alone is the `<match>` subject) — write the path with its tier — did you mean `run.oil`?
 cond.lute:14:17: error [E-CEL-TYPE] `run.oil == true` compares an int with a bool, so it is never true
 failed: cond.lute (4 error(s), 0 warning(s))

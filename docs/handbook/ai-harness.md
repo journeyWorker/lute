@@ -36,7 +36,10 @@ writes nothing.
 
 The context result contains `schemaVersion`, `projectRevision`, `files`,
 `target`, `declared`, `references.in`/`out`, `affected`, `tests`, `plays`,
-`vocabulary`, and `notIncluded`. Static tests/plays are only scripts whose
+`vocabulary`, and `notIncluded`. The authoring-surface form
+(`lute context <file> --json`) reports the `capabilitySnapshot` its vocabulary
+was resolved under, the same value as the compiled IR envelope.
+Static tests/plays are only scripts whose
 steps or expectations name the target (scene/beat/entry/quest ID or lineId).
 `witnessed` is reserved for scripts actually executed with `--run`; all other
 scripts are listed in `notIncluded` with a count and reason. The result is
@@ -100,7 +103,7 @@ semantic fields; formatting-only changes produce an empty array. Guards compare
 as exact-profile canonical CEL ASTs (literal kind preserved); unparsable
 conditions produce `conditionUnparsable` and fail relevant preserve checks.
 Scheduling inputs and authored-content reward identity are compared as
-specified by the proposal. Spans and build-local `addr` do not make a
+specified by the proposal. Spans and build-local command `position` do not make a
 semantic change.
 
 Consumers MUST pin the returned JSON `schemaVersion`, treat refusal as a

@@ -187,18 +187,35 @@ The index carries the document table plus the **union** of every artifact's `ent
 ```json
 {
   "irVersion": "0.10.0",
-  "capabilityVersion": "…",
-  "documents": [
-    { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",
-      "kind": "quest", "key": "findkai" },
-    { "path": "scenes/opening.lute", "artifact": "scenes/opening.lute.json",
-      "kind": "scene", "key": "narrator.s01ep01" }
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.quest.lifecycle/1"
   ],
-  "entities": [], "enums": [], "relations": [], "seedFacts": [], "rules": [], "prereqEdges": []
+  "documents": [
+    {
+      "path": "quests/findKai.lute",
+      "artifact": "quests/findKai.lute.json",
+      "kind": "quest",
+      "key": "findKai"
+    },
+    {
+      "path": "scenes/opening.lute",
+      "artifact": "scenes/opening.lute.json",
+      "kind": "scene",
+      "key": "opening"
+    }
+  ],
+  "entities": [],
+  "enums": [],
+  "relations": [],
+  "seedFacts": [],
+  "rules": [],
+  "prereqEdges": []
 }
 ```
 
-`path` is the source, relative to the project root; `artifact` is its compiled output, relative to the output directory; `key` is the document's canonical node id — a scene's `{character}.{episodeId}`, or a quest document's **first** declared `<quest id>` (a quest pack's remaining ids stay recoverable from its own artifact's `quest` records). All paths are forward-slash relative, never absolute, so an index survives being copied between machines or packed into a game archive.
+`path` is the source, relative to the project root; `artifact` is its compiled output, relative to the output directory; `key` is the document's canonical node id — a scene's `id:`, or a quest document's **first** declared `<quest id>` (a quest pack's remaining ids stay recoverable from its own artifact's `quest` records). All paths are forward-slash relative, never absolute, so an index survives being copied between machines or packed into a game archive.
 
 `documents` is sorted by `path` and every vocabulary array is deduplicated and totally ordered, so the index is byte-stable across runs. Unlike an artifact, which omits an empty vocabulary array, the index always emits all six — an engine unions them unconditionally, and an absent key would force it to distinguish "no relations" from "index too old to carry them".
 
@@ -224,7 +241,7 @@ An `E-`-severity capability-resolution diagnostic (a bad plugin option, identity
 
 ### `--locales` — merge a translation bundle
 
-`--locales <bundle.json>` merges a locale bundle (see [`loc import`](#loc-import)) into the artifact: `texts` on every line record and `labels` on every choice/hub option, both keyed by `lineId`. The source-language `text`/`label` is never overwritten, and both maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A bundle entry matching nothing in this document is ignored; a bundle legitimately spans a whole project. It composes with `--all`, merging the one bundle into every artifact.
+`--locales <bundle.json>` merges a locale bundle (see [`loc import`](#loc-import)) into the artifact: a `texts` map on every line record and on every choice/hub option, keyed by `lineId`, plus `localeSegments` on a line that uses inline modifiers. The source-language `text` is never overwritten, and the maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A bundle entry matching nothing in this document is ignored; a bundle legitimately spans a whole project. It composes with `--all`, merging the one bundle into every artifact. A translation whose inline modifiers (name, form, and attributes, as a multiset) differ from the source line's is not merged: `E-L10N-MODIFIERS`, and no artifact is emitted.
 
 A translatable record missing a locale the bundle declares is `W-L10N-MISSING`, one per `(lineId, locale)` pair, written to stderr. It is a warning: the artifact still emits, carrying the source-language string. `--deny W-L10N-MISSING` (or `--deny-warnings`) promotes it, so CI can require a complete translation before anything ships:
 
@@ -244,7 +261,7 @@ $ lute compile-stream <scene.lute> [--project <DIR>] [--providers <DIR>]
 
 Resolve and check a complete scene template once — against `--project`, else the nearest
 `lute.project.yaml` above it (0.27.0) — then read append-only ordinary
-Lute shot-body text from stdin. Each complete accepted line/directive/block is
+Lute section-body text from stdin. Each complete accepted line/directive/block is
 compiled through the existing cumulative whole-document pipeline and flushed to
 stdout as NDJSON: `start` with the initial full artifact, one `update` with a
 full artifact per unit, then `finish` on successful EOF. A rejection writes an
@@ -282,9 +299,9 @@ A mock can also start from a save (dsl 0.22.0): `quests: { <id>: unset | active 
 
 `--beat <ID>` (dsl 0.23.0) presents **one** [bundle beat](/tooling/play/#bundle-beats) of a lore document, by its local id or its canonical `<document id>.<beat id>`: its body is walked like a scene's (`--choose` decides its branches), every effect applies, and its `when` is noted, not enforced. A lore document takes `--entry` or `--beat`, not both; naming no beat of the document, or a document with no `<beat>`, is `E-TRACE-BEAT` (exit **1**). An occasion can be raised **for a target** as `--occasion <name>@<target>` (or `occasions: [talk@npc.oskar]` in the mock), which also judges the `<objective on="<name>" target="<target>">` objectives; a raise without the target leaves those alone. See [Bundle beats](/tooling/tracing/#bundle-beats) and [Targets, deadlines, and the previous run](/tooling/tracing/#targets-deadlines-and-the-previous-run).
 
-Since dsl 0.24.0: a `<match on="@def">` subject, a guard, and the coverage summary print a def reference as authored (`<match @weekday>`, `-> old (@atLeast(3))`), and `--expand` prints the expansion instead (`--json` keeps the expansion and adds `authoredId` / `authoredGuard` / `authoredLabel`). A mock's `bridges:` answers plugin calls that read a bridge result; an unanswered one leaves its result slots unknown, so a guard over them halts the walk with a `bridges:` hint. `--accept` takes an `activate="accept"` child quest, a `complete="any"` parent's untaken alternative reads `superseded from quest.<parent>`, a raise `E@target` runs the `<on event="E" target="…">` handlers for that target, and with a project trace settles whether a read quest exists. See [Tracing](/tooling/tracing/).
+Since dsl 0.24.0: a `<match subject="@def">` subject, a guard, and the coverage summary print a def reference as authored (`<match @weekday>`, `-> old (@atLeast(3))`), and `--expand` prints the expansion instead (`--json` keeps the expansion and adds `authoredId` / `authoredGuard` / `authoredLabel`). A mock's `bridges:` answers plugin calls that read a bridge result; an unanswered one leaves its result slots unknown, so a guard over them halts the walk with a `bridges:` hint. `--accept` takes an `activate="accept"` child quest, a `complete="any"` parent's untaken alternative reads `superseded from quest.<parent>`, a raise `E@target` runs the `<on event="E" target="…">` handlers for that target, and with a project trace settles whether a read quest exists. See [Tracing](/tooling/tracing/).
 
-Since dsl 0.26.0: a taken `::next` is followed to its mark (`<next -> hall>`, JSON `{"kind": "jump", "to": "hall"}`), so `trace complete` means the walk reached the end of the document; an `::accept` in a quest `<on>` handler activates a quest of the same document, as in play; with a project `--accept` / `accepts:` resolve any quest of the project, and a quest document may seed its own `quest.<id>.*`; `--entry` also takes `<document id>.<entry id>`; and a [kind beat](/tooling/play/#kind-targets) reads its member from `--state occasion.target=<member>`. See [Following a taken `::next`](/tooling/tracing/#following-a-taken-next).
+Since dsl 0.26.0: a taken `::jump` is followed to its `::label` (`<jump -> hall>`, JSON `{"kind": "jump", "to": "hall"}`), so `trace complete` means the walk reached the end of the document; an `::accept` in a quest `<on>` handler activates a quest of the same document, as in play; with a project `--accept` / `accepts:` resolve any quest of the project, and a quest document may seed its own `quest.<id>.*`; `--entry` also takes `<document id>.<entry id>`; and a [kind beat](/tooling/play/#kind-targets) reads its member from `--state occasion.target=<member>`. See [Following a taken `::jump`](/tooling/tracing/#following-a-taken-jump).
 
 ## scenario
 
@@ -309,7 +326,7 @@ Read-only reporting over the connectivity layer. With no subcommand, prints the 
 
 An unanchored quest (dsl 0.21.0 §7a.5) sits in no layer and on no edge, but it is not missing from the report: `reach quest:<id>` gives it the verdict ``Unanchored — a quest with no declared `follows` edge: available from the start of play; …`` (JSON `"reach": "unanchored"`), and its `after:` line reads `(none declared) — unanchored: this quest is in no prerequisite graph layer and on no edge; it is available from the start of play.` A quest anchored without `follows=` — by the `::accept`s that take it up, its parent (a subquest), or its `start` conjuncts (dsl 0.25.0 §4) — lists its anchors instead, `[start] entry(keeperLog)` one per line (`anchors` in JSON, each `{ kind, from }`).
 
-Since 0.23.0 the graph view also ends with a `note:` listing the `completed()`/`active()`/`visited()` references it did not draw — a quest's edges come from its `follows`, its subquest tree, its `start` conjuncts and its `::accept`s, so a `completed()` naming a quest on no edge, and a quest's `visited()` read outside its anchoring `start` conjuncts, are listed (`omitted` in `--format json`); see [What the scenario graph leaves out](/tooling/overviews/#what-the-scenario-graph-leaves-out). `knowledge [--for <node>]` traces every fact-guarded condition through the rules to the producers of its facts — asserting documents, seed facts, `reserved`, or `NO PRODUCER`. Since dsl 0.24.0 it covers every guard slot — beat, entry and objective guards, line `when=`, `<choice when>`, `<when>` arm tests, `::next`/`::set` `when`, `<on when>`, reward `when`, quest `start`/`fail` and objective `until` — grouped by document with each guard's source line; a negation reads "holds unless defeated" with one `defeated when …` line per defeater — a derived defeater with every derivation route, `⇐ … / ⇐ …` (dsl 0.25.0 §9) — or "always holds (…) — cannot be defeated", and a derived atom's rules print once (later mentions say `traced above under …`). `knowledge` takes `--format text` or `json` (before the subcommand; JSON elements carry `for` and `line`); `--for` takes a scene (every guard in it), a bundle beat, an entry id, `<quest>.<objective>`, `quest:<id>`, or `<scene>#<branch>.<choice>` for one choice, and an unmatched one is exit **2** with a did-you-mean. A rule's premises are traced too: an entity-kind atom reads as membership (`person(ada) — entity kind `person`; ada is a member`, not an undeclared relation), and a `cel(…)` premise names the state it reads (`cel("run.slot == 'evening'") — state condition on run.slot, decided at run time`); in `--format json` a rule's premises are `{ relation, negated? }`, `{ entityKind }`, or `{ cel }`. `envelope`'s Facts rows use the same producer wording (`seed facts …`, `reserved — the engine asserts it`, `derived by 1 rule`). Both are described, with real output, in [Story overviews](/tooling/overviews/#lute-scenario-knowledge).
+Since 0.23.0 the graph view also ends with a `note:` listing the `completed()`/`active()`/`visited()` references it did not draw — a quest's edges come from its `follows`, its subquest tree, its `start` conjuncts and its `::accept`s, so a `completed()` naming a quest on no edge, and a quest's `visited()` read outside its anchoring `start` conjuncts, are listed (`omitted` in `--format json`); see [What the scenario graph leaves out](/tooling/overviews/#what-the-scenario-graph-leaves-out). `knowledge [--for <node>]` traces every fact-guarded condition through the rules to the producers of its facts — asserting documents, seed facts, `reserved`, or `NO PRODUCER`. Since dsl 0.24.0 it covers every guard slot — beat, entry and objective guards, line `when=`, `<choice when>`, `<when>` arm tests, `::jump`/`::set` `when`, `<on when>`, reward `when`, quest `start`/`fail` and objective `until` — grouped by document with each guard's source line; a negation reads "holds unless defeated" with one `defeated when …` line per defeater — a derived defeater with every derivation route, `⇐ … / ⇐ …` (dsl 0.25.0 §9) — or "always holds (…) — cannot be defeated", and a derived atom's rules print once (later mentions say `traced above under …`). `knowledge` takes `--format text` or `json` (before the subcommand; JSON elements carry `for` and `line`); `--for` takes a scene (every guard in it), a bundle beat, an entry id, `<quest>.<objective>`, `quest:<id>`, or `<scene>#<branch>.<choice>` for one choice, and an unmatched one is exit **2** with a did-you-mean. A rule's premises are traced too: an entity-kind atom reads as membership (`person(ada) — entity kind `person`; ada is a member`, not an undeclared relation), and a `cel(…)` premise names the state it reads (`cel("run.slot == 'evening'") — state condition on run.slot, decided at run time`); in `--format json` a rule's premises are `{ relation, negated? }`, `{ entityKind }`, or `{ cel }`. `envelope`'s Facts rows use the same producer wording (`seed facts …`, `reserved — the engine asserts it`, `derived by 1 rule`). Both are described, with real output, in [Story overviews](/tooling/overviews/#lute-scenario-knowledge).
 
 Since dsl 0.26.0 §6 a rule body may count (`canPass(earthGymDoor) :- count(hasBadge(_)) >= 7`), and `knowledge` traces such a premise as `count(hasBadge(_)) >= 7 — counts:` with the producers of the counted facts beneath it.
 
@@ -355,9 +372,34 @@ $ lute context <file> [--json] [--providers <DIR>] [--project <DIR>]
                       [--permission-profile <NAME>]
 ```
 
-Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, effective permission layers, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. Without `--project`, the nearest `lute.project.yaml` above the file is the project (0.27.0), as for `check`. With `--permission-profile`, JSON `permissions` is `{ "layers": [...] }`, `bridges` contains only allowed bridge capability objects, `rewardKinds` is the allowed name-keyed object (empty when rewards are denied), and `questsAllowed` is a boolean. `directives` excludes both directive-denied entries and bridge directives whose `service/operation` is denied. External read-only state remains visible. Text output describes a compile-time authoring restriction and explicitly does not claim runtime sandboxing. Exit **0** on success, **2** on I/O; project/profile resolution errors are surfaced rather than treated as unrestricted.
+Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, delivery flags, inline text modifiers, referenced reserved quest paths, effective permission layers, and `capabilitySnapshot`. A capability query, not validation — it emits regardless of document diagnostics. Without `--project`, the nearest `lute.project.yaml` above the file is the project (0.27.0), as for `check`. With `--permission-profile`, JSON `permissions` is `{ "layers": [...] }`, `bridges` contains only allowed bridge capability objects, `rewardKinds` is the allowed name-keyed object (empty when rewards are denied), and `questsAllowed` is a boolean. `directives` excludes both directive-denied entries and bridge directives whose `service/operation` is denied. External read-only state remains visible. Text output describes a compile-time authoring restriction and explicitly does not claim runtime sandboxing. Exit **0** on success, **2** on I/O; project/profile resolution errors are surfaced rather than treated as unrestricted.
 
-Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `type`, `params`, and `body`), the language's built-in directives under `builtinDirectives` (`::set`, `::assert`, `::retract`, `::accept`, `::use`, each with its `syntax` and `meaning`), and `ids` — every scene, quest, and lore entry id in the `--project` (`{ scenes, quests, entries }`; without `--project`, the document's own). A relation reports its `tier` and whether it is `reserved`, a state path declared `owner: engine` says so, an occasion carries its `description` and its `target` (`false`, `true`, or a `{ prefix, entity }` domain — human: `talk (select: first, target: npc.<npc>)`), and the human outline prints each imported component's parameters with their types. See the [AI harness guide](/tooling/ai-harness/#prompt-context-lute-context---json).
+Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `type`, `params`, and `body`), the language's built-in directives under `builtinDirectives` (`::set`, `::assert`, `::retract`, `::accept`, `::use`, `::body`, `::jump`, `::label`, `::end`, `::clear`, each with its `syntax` and `meaning`), and `ids` — every scene, quest, and lore entry id in the `--project` (`{ scenes, quests, entries }`; without `--project`, the document's own). A relation reports its `tier` and whether it is `reserved`, a state path declared `owner: engine` says so, an occasion carries its `description` and its `target` (`false`, `true`, or a `{ prefix, entity }` domain — human: `talk (select: first, target: npc.<npc>)`), and the human outline prints each imported component's parameters with their types. See the [AI harness guide](/tooling/ai-harness/#prompt-context-lute-context---json).
+
+`directives` lists each core and plugin directive with its `attrs` (`name`, `type`, `required`) and `semantics`; a domain-valued attribute's `type` is `domain:<name>` (human outline: `camera: focus: string, framing: domain:framing, move: domain:cameraMove, transition: domain:transition, …`, `music: playback: domain:musicPlayback, …`). `deliveryFlags` lists `{mono}`, `{os}`, and `{vo}` with their meanings — `mono` is only for the effective `pov` or a speaker in `monoSpeakers`. `textModifiers` is the inline modifier surface of a content line's text: the core `pause` and `speed`, the project's `textStyle` members (or a note that the domain is not declared), and how a modified line lowers. The core-only `--json` excerpt:
+
+```json
+{
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "textModifiers": {
+    "core": [
+      {
+        "form": "leaf",
+        "meaning": "a pause of `s` seconds (required, non-negative) at that point of the line",
+        "name": "pause",
+        "syntax": ":pause{s=0.5}"
+      },
+      {
+        "form": "span",
+        "meaning": "the wrapped text is delivered at `rate` (required, positive); a nested speed uses the innermost rate",
+        "name": "speed",
+        "syntax": ":speed[text]{rate=1.25}"
+      }
+    ],
+    "lowering": "the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves"
+  }
+}
+```
 
 ## tag
 
@@ -382,10 +424,108 @@ lute: tagged 8 line(s) in 5 of 5 file(s)
 ## fix
 
 ```console
-$ lute fix <path>
+$ lute fix <path>…
 ```
 
-Apply the mechanical, meaning-preserving migrations in place — `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, choice `as="…"` → `into="…"`, and a literal-comparison `<when test="$ == 'gold'">` → `<when is="gold">` (`W-WHEN-TEST-LITERAL`, dsl 0.18.0). Byte-exact and comment-preserving; writes back only when something changed. Like [`tag`](#tag), `<path>` may be a directory: every `.lute` file under it, recursively and in sorted order, each changed file on its own line, then a summary (`lute: applied N fix(es) in M of K file(s)`). Exit **0** on success, **2** on I/O — for a directory, the worst outcome across its files.
+Apply the mechanical, meaning-preserving migrations in place. Byte-exact and comment-preserving; writes back only when something changed, and running it again applies nothing. Each `<path>` is a `.lute` file, a project/schema YAML file, or a directory — every `.lute` and YAML file under it, recursively and in sorted order; several paths are migrated in the order given. Each changed file gets its own line, then a summary (`lute: applied N fix(es) in M of K file(s)`); a single file with nothing to change prints `lute: nothing to fix`. Exit **0** on success, **2** on I/O — the worst outcome across the files.
+
+The 0.37 surface rewrites, each of which `lute check` reports with the new spelling and a note that `lute fix` rewrites it:
+
+| Before | After |
+| ------ | ----- |
+| `::auto{…}` | `::actor{…}` |
+| `::cut{…}` | `::cg{…}` |
+| `::next{to="x"}` | `::jump{to="x"}` |
+| `::mark{id="x"}` | `::label{name="x"}` |
+| `::music{action=…}` | `::music{playback=…}` |
+| `::cg{action=…}` / `::video{action=…}` | `::cg{display=…}` / `::video{display=…}` |
+| `<match on="…">` | `<match subject="…">` |
+| `<choice label="…">` | `<choice text="…">` |
+| `@speaker{id="x"}: …` | `::label{name="x"}` on the line before, and the line without `id=` |
+
+An author key in snake case becomes lowerCamelCase only where the rewrite is unambiguous. Inline text modifiers are never invented; an existing one is kept byte for byte. The earlier migrations still apply: `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, choice `as="…"` → `into="…"`, a literal-comparison `<when test="$ == 'gold'">` → `<when is="gold">` (`W-WHEN-TEST-LITERAL`), and 0.31 CEL fact-query and presence calls to their standard-CEL forms.
+
+A 0.36 scene:
+
+```lute expect="E-MATCH-NO-SUBJECT,E-RENAMED-ATTR,E-RENAMED-DIRECTIVE,E-RENAMED-TAG-ATTR"
+---
+kind: scene
+id: pier
+title: The pier
+state:
+  run.day: { type: int, default: 1 }
+---
+## Arrival
+::cut{action="show" assetId="cg.pier"}
+<branch id="ask">
+  <choice id="stay" label="Stay">
+    ::next{to="farewell"}
+  </choice>
+  <choice id="go" label="Leave">
+    @mara: Fine.
+  </choice>
+</branch>
+<match on="run.day">
+  <when is="1">
+    @narrator: The first morning.
+  </when>
+  <otherwise>
+    @narrator: Another morning.
+  </otherwise>
+</match>
+@mara{id="farewell"}: Safe travels.
+```
+
+```console
+$ lute fix scenes/pier.lute lore
+lute: scenes/pier.lute: applied 8 fix(es)
+lute: lore/dock.lute: applied 8 fix(es)
+lute: applied 16 fix(es) in 2 of 2 file(s)
+$ lute fix scenes/pier.lute lore
+lute: applied 0 fix(es) in 0 of 2 file(s)
+```
+
+The scene now checks clean:
+
+```lute check
+---
+kind: scene
+id: pier
+title: The pier
+state:
+  run.day: { type: int, default: 1 }
+---
+## Arrival
+::cg{display="show" assetId="cg.pier"}
+<branch id="ask">
+  <choice id="stay" text="Stay">
+    ::jump{to="farewell"}
+  </choice>
+  <choice id="go" text="Leave">
+    @mara: Fine.
+  </choice>
+</branch>
+<match subject="run.day">
+  <when is="1">
+    @narrator: The first morning.
+  </when>
+  <otherwise>
+    @narrator: Another morning.
+  </otherwise>
+</match>
+::label{name="farewell"}
+@mara: Safe travels.
+```
+
+`lute fix` never guesses intent. These are reported by `lute check` and migrated by hand:
+
+- camera `zoom`, `moveX`, `moveY`, `shake`, `reset`, and `easing` (`E-CAMERA-REMOVED`) — declare `framing`, `cameraMove`, or `transition` members and write `framing=`, `move=`, or `transition=`;
+- cg `full` (`E-CG-LAYOUT`) — declare a `cgLayout` member and write `layout=`;
+- music `track` and sfx `name` (`E-REMOVED-ATTR`) — use `assetId` (and `sound` for a sound effect);
+- a declared `musicAction` domain — rename it `musicPlayback` in every document, schema, and plugin that declares it (`E-DOMAIN-UNKNOWN` otherwise);
+- a `{mono}` line whose speaker is neither the effective `pov` nor listed in `monoSpeakers` (`E-MONO-POV`, `E-MONO-NO-POV`) — set `pov:` or `monoSpeakers:` in the document or the project `defaults:`;
+- project `sequence:` (`E-REMOVED-PROJECT-KEY`) and a `<scene>` tag (`E-REMOVED-TAG`);
+- a body `# Title` heading (`E-INERT-TITLE`) — move it to frontmatter `title:`.
 
 ## catalog refresh
 
@@ -393,7 +533,7 @@ Apply the mechanical, meaning-preserving migrations in place — `:line[speaker]
 $ lute catalog refresh <dir> [--project <DIR>]
 ```
 
-Re-stamp every pinned provider snapshot in `<dir>` against the current `capabilityVersion` and clear its `stale` flag (see [providers & catalog](/tooling/providers-and-catalog/)). Exit **0** on success, **2** on I/O.
+Re-stamp every pinned provider snapshot in `<dir>` against the current `capabilitySnapshot` and clear its `stale` flag (see [providers & catalog](/tooling/providers-and-catalog/)). Exit **0** on success, **2** on I/O.
 
 ## init
 
@@ -531,7 +671,7 @@ lute doctor — .
   • provider snapshots: no pinned provider snapshots
   • active plugins: game.occasions 0.1.0
   • occasions (beats answering): 3 declared, 7 beat(s) — dayEnd (1), townVisit (2), talk (4)
-  • vocabulary slots declared: emotion, action (exits: fadeOut/hide), anchor (default: center), mood, volume, musicAction, vfxType
+  • vocabulary slots declared: emotion, action (exits: fadeOut/hide), anchor (default: center), mood, volume, musicPlayback, vfxType
   • VS Code extension: not detectable from the CLI
   ✗ lute-lsp on PATH: /usr/local/bin/lute-lsp reports no version (older than 0.22.0) — differs from lute 0.22.0
       → reinstall the language server from this toolchain (`cargo install --path crates/lute-lsp`) and restart the editor
@@ -557,7 +697,7 @@ Execute a **compiled artifact** (`lute compile` output) headlessly against a moc
 
 Since dsl 0.24.0 the mock's `bridges: { <tag>: [ {<field>: value}, … ] }` answers plugin calls that read a bridge result, one answer per call of the tag in call order: the answered values are written to the result slots and the `plugin` record carries `"answered": [{"field", "value"}, …]` (human: `plugin check (bridge answered: passed=true, margin=3)`). A call with no answer keeps its record's `unresolvedEffects` and the walk goes on. A failing `quest` record carries `failedBy`, and a quest failure prints its reason (`quest X -> failed (by)`, `(until)`, `(fail)`, `(cascade)`, `(superseded)`).
 
-For a quest artifact, `--occasion <O>` (repeatable, dsl 0.21.0) raises an occasion after the walk settles — after the mock's own `occasions:`, in CLI order — judging the `<objective on="O">` objectives of every active quest; each raise is an `{"kind": "occasion", "occasion": "O"}` record (human: `  occasion O`). A quest with no `start` is accept-driven here as in an engine: it stays `unset` until the mock's `accepts:` names it or an `accept` record runs. A scene's `::accept{quest="<id>"}` is an `{"kind": "accept", "quest": "<id>"}` record (human: `<address>  quest <id> accepted`); when the walk already knows the quest to be past `unset`, the record carries `"ignored": "already <state>"` and the line ends ` (already <state> — ignored)`. The mock's `visited:` list seeds the scenes `visited('<id>')` reads as presented.
+For a quest artifact, `--occasion <O>` (repeatable, dsl 0.21.0) raises an occasion after the walk settles — after the mock's own `occasions:`, in CLI order — judging the `<objective on="O">` objectives of every active quest; each raise is an `{"kind": "occasion", "occasion": "O"}` record (human: `  occasion O`). A quest with no `start` is accept-driven here as in an engine: it stays `unset` until the mock's `accepts:` names it or an `accept` record runs. A scene's `::accept{quest="<id>"}` is an `{"kind": "accept", "position": "<position>", "quest": "<id>"}` record (human: `<position>  quest <id> accepted`); when the walk already knows the quest to be past `unset`, the record carries `"ignored": "already <state>"` and the line ends ` (already <state> — ignored)`. The mock's `visited:` list seeds the scenes `visited('<id>')` reads as presented.
 
 `--entry <ID>` presents one `entry` record of a **lore artifact** (dsl 0.19.0; [engine contract](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md)): the transcript reports whether it is a first read and whether its `when` holds, runs its body segment, applies first-read effects (or records them as skipped once `entry.<id>.read` is seeded `true`), and then sets `entry.<id>.read`. It is required for a lore artifact and refused on any other kind (both exit **2**).
 
@@ -655,7 +795,7 @@ A needle with no attribute block matches a line whatever its delivery attributes
 
 **An incomplete walk fails.** When an unknown guard halts the trace, the expectations after it were never walked, so the test fails — whatever else it asserts — unless it declares `expect: { end: incomplete }`. Derivation is on (see [trace](#trace)): a rule-derived fact follows from the test's `facts:` and the project's seed facts, with no need to mock the conclusion. **Migration from 0.21:** a test that relied on an unmocked derived atom being unknown (exit `incomplete`), or on a seeded relation reading empty, now sees the derived or seeded answer; pin `derive: false` to keep the old verdict.
 
-**`end: complete` means the end of the document** (dsl 0.26.0 §7). The walk follows a taken `::next` to its mark, as play does, so `end: complete` holds only when the walk reached the end — not when it stopped at a jump — and the transcript and state expectations see what play sees (see [Following a taken `::next`](/tooling/tracing/#following-a-taken-next)). The walk also applies an `::accept` in a quest `<on>` handler to a quest of the same document, so `expect: { quests: { second: active } }` holds as it does in play; `accepts:` resolves quests project-wide, a quest another document declares included; and a quest document may seed its own `quest.<id>.*` — `quests: { lampOut: active }` in a test of `quests/lamp.lute` — which starts the quest there. Before 0.26.0 each of these disagreed with `lute play`.
+**`end: complete` means the end of the document** (dsl 0.26.0 §7). The walk follows a taken `::jump` to its `::label`, as play does, so `end: complete` holds only when the walk reached the end — not when it stopped at a jump — and the transcript and state expectations see what play sees (see [Following a taken `::jump`](/tooling/tracing/#following-a-taken-jump)). The walk also applies an `::accept` in a quest `<on>` handler to a quest of the same document, so `expect: { quests: { second: active } }` holds as it does in play; `accepts:` resolves quests project-wide, a quest another document declares included; and a quest document may seed its own `quest.<id>.*` — `quests: { lampOut: active }` in a test of `quests/lamp.lute` — which starts the quest there. Before 0.26.0 each of these disagreed with `lute play`.
 
 `file:` may name a lore document when the test says what to present: `entry: <id>`, or `entries: [ids]` to present several in order with the read flags set between them, so a repeated id is a re-read that skips first-read effects — or `beat: <id>`, one [bundle beat](/tooling/tracing/#bundle-beats) by its bare or canonical `<document id>.<beat id>`, walked as `lute trace --beat` walks it. A test takes `beat:` or `entry:`/`entries:`, not both (exit **2**), and a lore test that names none is `E-TEST-LORE`, which lists the declared entry ids and beat ids. Two entries, read in order:
 
@@ -708,7 +848,7 @@ A mismatch fails as `quests holdLine: expected "complete", got "active"`; a valu
 $ lute lint [<path>] [--json] [--config <FILE>] [--deny <CODE>]… [--deny-warnings]
 ```
 
-Run the advisory content lints — line length, dialogue ratio, emotion streaks, missing assets, and project-local rules — over a file or a directory tree (default: the current directory). The linear-VN norms (`L-SHOT-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO`, `L-SCENE-LENGTH-SPREAD`) judge only linear scenes, never beats, components, quests, or lore. Documents are grouped by their nearest `lute.project.yaml`, and each project's `lute.lint.yaml` (or `--config <FILE>`) sets rule levels, thresholds, ignore globs, and `custom:` rules. Findings are `L-*` codes, separate from `lute check`: lints never enter the capability snapshot or change an artifact. `--deny`/`--deny-warnings` promote findings as in `check`. Exit **0** clean or only sub-error findings, **1** any error-severity finding (including `E-LINT-CONFIG`/`E-LINT-EXPR`), **2** on I/O, malformed YAML, or usage. Rules, metrics, and the config format: [Linting](/tooling/linting/).
+Run the advisory content lints — line length, dialogue ratio, emotion streaks, missing assets, and project-local rules — over a file or a directory tree (default: the current directory). The linear-VN norms (`L-SECTION-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO`, `L-SCENE-LENGTH-SPREAD`) judge only linear scenes, never beats, components, quests, or lore. Documents are grouped by their nearest `lute.project.yaml`, and each project's `lute.lint.yaml` (or `--config <FILE>`) sets rule levels, thresholds, ignore globs, and `custom:` rules. Findings are `L-*` codes, separate from `lute check`: lints never enter the capability snapshot or change an artifact. `--deny`/`--deny-warnings` promote findings as in `check`. Exit **0** clean or only sub-error findings, **1** any error-severity finding (including `E-LINT-CONFIG`/`E-LINT-EXPR`), **2** on I/O, malformed YAML, or usage. Rules, metrics, and the config format: [Linting](/tooling/linting/).
 
 Since dsl 0.26.0 lint also reports `W-DISPLAY-NAME-DUP`, the advisory `check-project` reports too: two speakers the dialogue box would show under one name — two cast entries with the same `name:`, a cast name equal to a `::use{… name="…"}` display string, or two such strings for different speakers (`who=`). A cast entry marked `sharedName: true` is an intended role name several speakers share and is not counted. The code is not a `lute.lint.yaml` rule; `--deny W-DISPLAY-NAME-DUP` makes it an error. See [Linting](/tooling/linting/#display-names).
 
@@ -718,7 +858,7 @@ Since dsl 0.26.0 lint also reports `W-DISPLAY-NAME-DUP`, the advisory `check-pro
 $ lute loc export <dir> [--format json|csv] [-o <FILE>]
 ```
 
-Extract every translatable content line — the stable `code`, speaker, text, and choice labels — across a project to a localization export. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file instead of stdout. Exit **0** on success, **2** on I/O.
+Extract every translatable content line — the stable `code`, speaker, text, and choice text — across a project to a localization export. The exported `text` keeps the source markup: inline modifiers (`:pause{s=0.5}`, `:speed[…]{rate=…}`, text-style spans) and `{{…}}` interpolations, which a translation must carry over with the same modifier set. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file instead of stdout. Exit **0** on success, **2** on I/O.
 
 Each row also carries the `lineId` the compiler will stamp on that record — the join `loc import` and `compile --locales` key on. It is `null` (JSON) or empty (CSV) for a line with no authored `code`, whose id the compiler back-fills from the post-expansion command stream and which no source-only walk can reproduce: run `lute tag` first, and the advisory `N lines untagged — run lute tag` on stderr goes away with it.
 
@@ -730,7 +870,7 @@ $ lute loc import <file>… [-o <FILE>]
 
 Canonicalize translated `loc export` files into one **locale bundle** — the reverse direction, consumed by `lute compile --locales`. Exit **0** on success, **1** on `E-LOCALE-BUNDLE`, **2** on I/O.
 
-Input is exactly what `export` writes, in either format (`.csv` → CSV, anything else → JSON). `export` carries no locale, because it extracts the *source* language — so the normal workflow is **one file per locale**: copy the export to `ja-JP.json`, translate the `text`/`label` values, and the file **stem** is the locale tag. A row carrying its own non-empty `locale` field (JSON) or `locale` column (CSV) overrides that, so a single merged file spanning every locale also works.
+Input is exactly what `export` writes, in either format (`.csv` → CSV, anything else → JSON). `export` carries no locale, because it extracts the *source* language — so the normal workflow is **one file per locale**: copy the export to `ja-JP.json`, translate the `text` values, and the file **stem** is the locale tag. A row carrying its own non-empty `locale` field (JSON) or `locale` column (CSV) overrides that, so a single merged file spanning every locale also works.
 
 ```json
 {

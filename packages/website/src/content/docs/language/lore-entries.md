@@ -37,7 +37,7 @@ state:
 </entry>
 
 <entry id="rustyKey" target="item.rusty_key" category="item">
-  <match on="run.labBurned">
+  <match subject="run.labBurned">
     <when is="true">
       @narrator: A scorched key. Someone's name has melted into the grip.
     </when>
@@ -49,8 +49,8 @@ state:
 ```
 
 The top level is `<entry>` declarations and, since dsl 0.23.0, `<beat>` blocks (see
-[Entries and beats in one file](#entries-and-beats-in-one-file)), and nothing else — no `# ` title
-heading, no `## ` shots, no `<quest>`.
+[Entries and beats in one file](#entries-and-beats-in-one-file)), and nothing else — no `## `
+sections, no `<quest>`. The document's title is its frontmatter `title:`.
 
 ## `<entry>` attributes
 
@@ -201,7 +201,7 @@ An `::assert` is exempt: its fact holds for the rest of the run either way.
   `<beat on="morning" for="kind:npc" once="false">`).
 - **Once per run is what you meant.** Write `once="run"` on the entry.
 - **The write belongs to the first read on purpose.** Guard it with
-  `when="!entry.<id>.read"`, on the `::set` or on a `<match on="entry.<id>.read">` arm
+  `when="!entry.<id>.read"`, on the `::set` or on a `<match subject="entry.<id>.read">` arm
   `is="false"`. The guard says so to the reader and silences the warning.
 
 `entry.<id>.read` is a reserved `bool` any document can read: gate the next page of a series
@@ -285,10 +285,10 @@ title: Ship's records
 <beat id="tomaAtTheLog" on="examine" target="item.bridge_log" title="Toma at the log" when="entry.bridgeLog.read">
   @toma: You found it too.
   <branch id="heading">
-    <choice id="tell" label="Tell her what it says">
+    <choice id="tell" text="Tell her what it says">
       @toma: Then we are not going home.
     </choice>
-    <choice id="hide" label="Say it is nothing">
+    <choice id="hide" text="Say it is nothing">
       @toma: Your hands say otherwise.
     </choice>
   </branch>
@@ -308,8 +308,9 @@ The two kinds of block share a file but keep their own rules:
 | Read by conditions | `entry.<id>.read`, `entry.<id>.everRead` | `visited('<document id>.<beat id>')` |
 
 Entries and beats may come in any order. In the compiled lore artifact each one heads its own
-addressing unit, in source order: an `entry` or `beat` record, then its body, which runs to the
-next `entry` or `beat` record. Beat bodies get lineIds under the canonical id
+position unit, in source order — the first segment of `position`, `001`, `002`, … — holding an
+`entry` or `beat` record, then its body, which runs to the next `entry` or `beat` record. Beat
+bodies get lineIds under the canonical id
 (`shipRecords.tomaAtTheLog.toma_0010`). The [Beats](/language/beats/#beat-bundles) page covers
 the `<beat>` attributes, the canonical id, and how a bundle beat is checked and selected.
 

@@ -15,8 +15,7 @@ param은 `E-TEMPLATE`). 메시지는 그 낱말이 이미 무슨 뜻인지 말�
 제시한다. 멤버라면 `theClock`, 선택지라면 `yes` 같은 이름이다.
 `lute --explain E-RESERVED-NAME`은 같은 표를 터미널에 찍는다.
 
-0.32부터 조건은 제한된 표준 CEL 프로필을 사용하며 숫자 타입은 `int`와
-`double`입니다(`number`는 제거됨). 사실 함수는
+조건은 제한된 표준 CEL 프로필을 사용하며 숫자 타입은 `int`와 `double`입니다. 사실 함수는
 `holds('관계', ['인자', '_'])` 같은 list 형식으로 씁니다.
 
 ## 표
@@ -38,8 +37,8 @@ param은 `E-TEMPLATE`). 메시지는 그 낱말이 이미 무슨 뜻인지 말�
 | `narrator` | cast id | 내장 내레이션 화자. `@narrator:` 줄은 내레이션이므로 이 cast 항목은 보이지 않고, 그 `present:`가 모든 내레이션 줄에 걸린다 | E-RESERVED-NAME, E-PLUGIN-RESERVED-NAME |
 | `questActive` `questComplete` `questFailed` | plugin occasion; plugin event | 엔진 수명 주기 이벤트(`<on event="questComplete">`) | E-PLUGIN-RESERVED-NAME |
 | `occasion` `newRun` `engine` `event` `advance` `end` | plugin occasion | play 스크립트 스텝 키. `- newRun: true`는 새 run을 시작하고 `- end: true`는 play를 끝낼 뿐, 그 이름의 occasion을 올리지 않는다 | E-PLUGIN-RESERVED-NAME |
-| `set` `assert` `retract` `accept` `use` `body` `cut` | plugin directive | core 문장(`::set{…}`, `::use{component=…}`). 콘텐츠는 늘 core 쪽으로 읽는다 | E-PLUGIN-RESERVED-NAME |
-| `scene` `on` `quest` `objective` `match` `branch` `hub` `choice` `when` `otherwise` `entry` `beat` `timeline` `track` `reward` `return` | plugin directive | core 블록 태그(`<match>`, `<quest>`). 콘텐츠는 늘 core 쪽으로 읽는다 | E-PLUGIN-RESERVED-NAME |
+| `set` `assert` `retract` `accept` `use` `body` | plugin directive | core 문장(`::set{…}`, `::use{component=…}`). 콘텐츠는 늘 core 쪽으로 읽는다 | E-PLUGIN-RESERVED-NAME |
+| `on` `quest` `objective` `match` `branch` `hub` `choice` `when` `otherwise` `entry` `beat` `timeline` `track` `reward` `return` | plugin directive | core 블록 태그(`<match>`, `<quest>`). 콘텐츠는 늘 core 쪽으로 읽는다 | E-PLUGIN-RESERVED-NAME |
 | `id` `use` `on` `target` `for` `title` `priority` `once` `share` `after` `when` `spentBy` `also` | beat 템플릿 param | beat 머리 키. `<beat use=… when=…>`는 param이 아니라 beat 자신의 `when`을 정한다 | E-TEMPLATE |
 | `component` `when` | component param | `::use` 자신의 키(`::use{component=… when=…}`). 그 param은 넘길 수 없다 | E-TEMPLATE |
 

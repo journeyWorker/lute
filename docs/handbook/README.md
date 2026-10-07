@@ -15,7 +15,7 @@ detailed engine contract and host obligations.
 
 - [Core](core.md) — baseline declarations, state, CEL, IR and identity.
 - [Narrative](narrative.md) — scenes, lines, choices, hubs, matches and components.
-- [Staging](staging.md) — presentation directives, sprites, media and stage lifetime.
+- [Staging](staging.md) — staging vocabulary, actors, camera, media, sequences and stage lifetime.
 - [Timeline](timeline.md) — tracks, clips, timing and barriers.
 - [Quest](quest.md) — lifecycle, objectives, accepts, deadlines, handlers and rewards.
 - [Time](time.md) — clock, cadence, seasons and resets.
@@ -25,7 +25,7 @@ detailed engine contract and host obligations.
 
 ## Shared rules
 
-Lute source plus project declarations are authoritative. Compilation lowers checked source to the **execution IR**; engines interpret that IR and must refuse an artifact before playback when its `requiredSemantics` are unsupported. Authors cannot override required semantics. `addr` is build-local position; declared ids, `meta.id`, `lineId` and `voiceKey` are the stable joins described by [execution addressing](../runtime/execution-model.md#addressing).
+Lute source plus project declarations are authoritative. Compilation lowers checked source to the **execution IR**; engines interpret that IR and must refuse an artifact before playback when its `requiredSemantics` are unsupported. Authors cannot override required semantics. Every command record carries `kind`, `family` (`content`, `staging`, `state`, `control`, `declaration` or `plugin`) and `position`; `position` is build-local, while declared ids, `meta.id`, `lineId` and `voiceKey` are the stable joins described by [execution addressing](../runtime/execution-model.md#addressing).
 
 Conditions use the closed standard-CEL profile in [DSL 0.32 §1](../proposals/scenario-dsl/0.32.0.md#1-conditions-are-standard-cel). A condition error is not satisfied; an erroneous `::set` halts without a partial write. State owned by the engine is readable but not content-writable.
 

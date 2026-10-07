@@ -47,7 +47,8 @@ pov: fixer
   가리킵니다. 이름(글자, 숫자, `_`, `-`로 이루어지고 `-`로 시작하지 않는 이름)을 `.`으로 이은 것입니다
   (`door-notes`와 `doorNotes` 모두 됩니다). `mira.s01ep01`은 "Mira, 시즌 1,
   에피소드 1"로 읽히지만 어떤 이름이든 됩니다(`prologue`, `diner.opening`).
-- `title` — 도구와 검색을 위한 사람이 읽는 제목입니다.
+- `title` — 도구와 검색을 위한 사람이 읽는 제목입니다. 문서 제목은 이 키 하나뿐입니다: 본문에
+  `# 제목` 헤딩을 쓰면 `E-INERT-TITLE` 오류가 나며, 메시지가 frontmatter `title:`로 옮기라고 알려 줍니다.
 - `pov` — 플레이어 캐릭터의 id(플레이어가 조종하는 주인공).
 
 위의 `E-META-MISSING` 오류가 요구하는 것이 바로 `id:` 줄입니다. 메시지의 `opening`은 예시 이름일
@@ -82,7 +83,7 @@ ok: my-scene.lute (0 warning(s))
   `when: "run.accused == "ruben""`이라고 쓰면 문자열이 두 번째 `"`에서 끝납니다: `lute check`는 그
   줄에 `E-META-PARSE`를 보고하며 안쪽에 작은따옴표를 쓰라고 제안합니다. 안쪽 한 쌍을 바꾸세요.
 - **곧은 따옴표만.** 워드 프로세서와 메모 앱은 `"`를 둥근 `“ ”`로 바꿉니다. Lute는 프런트매터에서도,
-  `label="…"` 같은 태그 속성에서도 곧은 `"`와 `'`만 읽습니다. 태그 속성의 둥근 따옴표는
+  `text="…"` 같은 태그 속성에서도 곧은 `"`와 `'`만 읽습니다. 태그 속성의 둥근 따옴표는
   `E-ATTR-QUOTE`이며, 다시 입력하라고 알려 줍니다.
 
 `.lute` 본문 안의 태그 속성은 언제나 큰따옴표로 감싸므로, 그 안의 조건은 작은따옴표를 씁니다:
@@ -101,11 +102,11 @@ ok: my-scene.lute (0 warning(s))
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
+my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SECTION] content lives inside a section; add a `## <title>` heading above it
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
-기억해야 할 규칙: **모든 내용은 헤딩 아래에 있습니다.** Lute 문서는 "샷"의 나열입니다 — 장면의
+기억해야 할 규칙: **모든 내용은 헤딩 아래에 있습니다.** Lute 문서는 **섹션**의 나열입니다 — 장면의
 비트(beat) — 그리고 대사, 내레이션, 연출의 모든 줄은 그중 하나 안에 들어갑니다. 그 줄 앞에
 헤딩을 추가하세요:
 
@@ -116,8 +117,10 @@ failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 (헤딩은 `## ` 뒤의 자유 텍스트입니다 — `## The Counter`, `## Scene 1. The diner`, `## Prologue` 모두
-유효합니다. `The Counter`, `The Regular`, … 는 여전히 좋은 관례이지만 숫자는 문법이 아닙니다. 샷은 문서
-순서대로 번호가 매겨집니다.)
+유효합니다. `The Counter`, `The Regular`, … 는 여전히 좋은 관례이지만 숫자는 문법이 아닙니다. 섹션은 문서
+순서대로 번호가 매겨집니다. 헤딩 끝에 `{#counter}`처럼 `{#id}` 접미사를 붙이면 섹션에 안정적인 id가
+생깁니다: `## The Counter {#counter}`. id는 문서 안에서 유일해야 하고(`E-SECTION-DUP`), 헤딩
+텍스트에서는 빠지며, 점프 대상이 아니라 순서가 바뀌어도 유지되는 식별 정보일 뿐입니다.)
 
 ```
 $ lute check my-scene.lute
@@ -140,6 +143,11 @@ ok: my-scene.lute (0 warning(s))
 - `{{userName}}`은 **보간(interpolation)**입니다 — 이중 중괄호로 감싼 텍스트는 런타임에
   채워집니다. `{{userName}}`은 항상 사용 가능한 것입니다: 플레이어 자신의 이름입니다.
 
+줄 텍스트에는 **인라인 수식자**도 쓸 수 있습니다: `:pause{s=0.5}`는 그 자리에서 0.5초 쉬고,
+`:speed[천천히]{rate=0.8}`은 감싼 텍스트의 전달 속도를 바꿉니다. 수식자는 콘텐츠 줄의 텍스트에서만
+유효하며, 컴파일된 줄의 `text`에는 표시가 빠진 평문이 남습니다. 이 튜토리얼에서는 쓰지 않습니다 —
+자세한 내용은 [치트시트](/ko/reference/cheatsheet/)를 보세요.
+
 저장하고 검사해 보세요. 이번에는 **통과하지 않습니다**:
 
 <!-- lute-diagnostics -->
@@ -150,10 +158,12 @@ failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 오타가 아닙니다 — **슬롯은 Lute가 정하고, 멤버는 당신이 정한다**는 규칙 때문입니다. `emotion`은
-언어가 아는 일곱 개의 어휘 슬롯(`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`,
-`vfxType`) 중 하나이지만, 당신의 캐릭터가 어떤 감정을 갖는지에 대해 컴파일러는 아무 의견도 갖지
-않습니다. 그것은 당신 이야기의 몫이므로, 선언하기 전까지는 어떤 값도 유효하지 않습니다. 멤버는
-문서에 관한 다른 모든 것을 선언하는 곳 — 프런트매터 — 에 선언합니다:
+언어가 아는 어휘 슬롯 중 하나입니다: 대사와 배우용 `emotion`, `action`, `anchor`, `costume`, 소리와
+효과용 `mood`, `volume`, `musicPlayback`, `vfxType`, 카메라·CG·시퀀스용 `framing`, `cameraMove`,
+`transition`, `cgLayout`, `sequence`, 그리고 인라인 스타일용 `textStyle`. 하지만 당신의 캐릭터가 어떤
+감정을 갖는지에 대해 컴파일러는 아무 의견도 갖지 않습니다. 그것은 당신 이야기의 몫이므로, 선언하기
+전까지는 어떤 값도 유효하지 않습니다. 멤버는 문서에 관한 다른 모든 것을 선언하는 곳 — 프런트매터 —
+에 선언합니다:
 
 ```yaml
 enums:
@@ -162,10 +172,11 @@ enums:
 
 장면이 실제로 쓰는 슬롯만 선언하세요. 이 장면이 쓰는 것은 `emotion` 하나뿐입니다. (선언할 때
 필수 의미를 함께 요구하는 슬롯이 둘 있습니다: `action`은 캐릭터를 무대에서 내보내는 멤버를
-나열하는 `exits:`가, `anchor`는 `default:`가 필요합니다. `lute init`은 일곱 슬롯 전부를 시작용
-멤버와 함께 공유 `vocabulary.schema.yaml`에 만들어 주고, 장면들은 `uses:`로 그것을 끌어옵니다 —
-여러 파일이 하나의 어휘를 공유하게 되면 그 형태가 맞습니다. 튜토리얼처럼 파일이 하나라면
-프런트매터가 더 간단합니다.)
+나열하는 `exits:`가, `anchor`는 `default:`가 필요합니다. `lute init`은 자주 쓰는 일곱 슬롯
+(`emotion`, `anchor`, `action`, `mood`, `volume`, `musicPlayback`, `vfxType`)을 시작용 멤버와 함께
+공유 `vocabulary.schema.yaml`에 만들어 주고, 장면들은 `uses:`로 그것을 끌어옵니다 — 여러 파일이
+하나의 어휘를 공유하게 되면 그 형태가 맞습니다. 튜토리얼처럼 파일이 하나라면 프런트매터가 더
+간단합니다.)
 
 다시 검사하세요:
 
@@ -182,10 +193,30 @@ ok: my-scene.lute (0 warning(s))
 
 `{mono}`는 **전달 플래그(delivery flag)**입니다: 중괄호 안의 맨 단어(`=value` 없이)로, 줄이
 전달되는 방식을 바꿉니다. `{mono}`는 속마음(interior monologue)을 뜻합니다 — 말이 아니라 생각으로
-렌더링되며 어떤 캐릭터에게도 적용됩니다. 다른 전달 플래그가 두 개 더 있습니다: `{os}`는 줄을
-**화면 밖(off-screen)**으로 표시하고(화자의 소리는 들리지만 무대에는 없음), `{vo}`는
-**보이스오버(voiceover)**로 표시합니다(장면 위에 겹쳐지는 내레이션 방식의 전달). 셋은 모두
-상호 배타적입니다 — 한 줄에 최대 하나 — 그리고 `@narrator`에는 어느 것도 허용되지 않습니다.
+렌더링됩니다. 다른 전달 플래그가 두 개 더 있습니다: `{os}`는 줄을 **화면 밖(off-screen)**으로
+표시하고(화자의 소리는 들리지만 무대에는 없음), `{vo}`는 **보이스오버(voiceover)**로 표시합니다(장면
+위에 겹쳐지는 내레이션 방식의 전달). 셋은 모두 상호 배타적입니다 — 한 줄에 최대 하나 — 그리고
+`@narrator`에는 어느 것도 허용되지 않습니다.
+
+검사해 보면 이 줄이 걸립니다:
+
+<!-- lute-diagnostics -->
+```
+$ lute check my-scene.lute
+my-scene.lute:16:7: error [E-MONO-POV] `@mira{mono}` is an interior monologue, but `mira` is not this document's point of view (`fixer`) and not in `monoSpeakers:` (which lists none) — only the POV character and the speakers `monoSpeakers:` lists may speak `mono`; add `mira` to `monoSpeakers:`, or write the line as dialogue, `{os}` or `{vo}`
+failed: my-scene.lute (1 error(s), 0 warning(s))
+```
+
+속마음은 기본적으로 **시점 인물**의 것입니다 — frontmatter `pov:`(없으면 프로젝트의
+`defaults.pov`)가 가리키는 캐릭터입니다. 이 장면의 시점은 `fixer`인데, 여기서는 의도적으로 Mira의
+생각을 들려주고 싶습니다. 그럴 때는 그 화자를 `monoSpeakers:` 목록에 올립니다:
+
+```yaml
+monoSpeakers: [mira]
+```
+
+`monoSpeakers:`도 `pov:`처럼 프로젝트 `defaults`에 둘 수 있습니다. 시점이 아예 정해지지 않은 문서에서
+목록에 없는 화자가 `{mono}`를 쓰면 `E-MONO-NO-POV`가 됩니다.
 
 지금까지의 파일:
 
@@ -195,6 +226,7 @@ kind: scene
 id: mira.s01ep01
 title: A Quiet Table
 pov: fixer
+monoSpeakers: [mira]
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 ---
@@ -211,7 +243,7 @@ enums:
 ## Part 3 — 플레이어에게 선택지 주기
 
 `<branch>`는 플레이어에게 메뉴를 제시합니다. 그 안의 각 `<choice>`는 하나의 선택지로, 고유한
-`id`, `label`(버튼 텍스트), 그리고 플레이어가 그것을 골랐을 때 재생되는 줄들을 가집니다.
+`id`, `text`(버튼 텍스트), 그리고 플레이어가 그것을 골랐을 때 재생되는 줄들을 가집니다.
 
 때로는 특정 조건에서만 선택지가 나타나야 합니다 — 예를 들어 플레이어가 Mira를 전에 만난 적이
 있을 때만. 그것이 **가드(guard)**입니다: `when="<condition>"`. 가드는 선언된 **상태(state)** —
@@ -226,10 +258,10 @@ state:
 
 ```lute
 <branch id="orderChoice">
-  <choice id="black" label="Order it black">
+  <choice id="black" text="Order it black">
     @mira{emotion="content" variant="0"}: Good. No nonsense in a cup.
   </choice>
-  <choice id="familiar" label="Say hi like an old friend" when="scene.knowsMira">
+  <choice id="familiar" text="Say hi like an old friend" when="scene.knowsMira">
     @mira{emotion="surprised" variant="0"}: You remembered. That's new.
   </choice>
 </branch>
@@ -253,7 +285,7 @@ state:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text`; `lute fix` applies this migration automatically
+my-scene.lute:19:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text`; `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -290,7 +322,10 @@ $ lute compile my-scene.lute
   "kind": "scene",
   "lute": "0.36.6",
   "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1"
+  ],
   "meta": {
     "id": "mira.s01ep01",
     "title": "A Quiet Table"
@@ -300,15 +335,18 @@ $ lute compile my-scene.lute
   "commands": [
     {
       "kind": "line",
-      "addr": "001-0100",
+      "family": "content",
+      "position": "001-0100",
       "role": "narration",
       "speaker": "narrator",
       "text": "The diner is empty at this hour, and Mira likes it that way.",
-      "lineId": "mira.s01ep01.narrator_0010"
+      "lineId": "mira.s01ep01.narrator_0010",
+      "voiceKey": "mira.s01ep01.narrator-0010"
     },
     {
       "kind": "line",
-      "addr": "001-0200",
+      "family": "content",
+      "position": "001-0200",
       "role": "dialogue",
       "speaker": "mira",
       "text": "{{userName}}, you made it.",
@@ -320,23 +358,28 @@ $ lute compile my-scene.lute
     },
     …
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "The Counter"
     }
-  ]
+  ],
+  …
 }
 ```
 
 (`…`는 지면을 위해 잘라낸 자리이고, 나머지는 출력 그대로입니다.) 당신이 선언한 `enums:`는
 산출물의 **`enums`** 블록으로 그대로 실려 가므로, 엔진은 체커가 쓴 것과 똑같은 어휘로 값을
 해석합니다. 당신의 `id:`는 모든 `lineId`와 `voiceKey`의 접두사이므로, 이 장면의 모든 줄은 다른
-장면의 줄이 가질 수 없는 이름을 갖습니다. 그 밖에 한눈에 알아둘 필드가 둘 있습니다. **`addr`**는
-레코드의 주소로 `{shot}-{index}` 형태이며, 하나의 산출물 안의 모든
-`addr`는 같은 너비로 채워집니다 — 그래서 `addr` 문자열을 정렬하기만 하면 실행 순서가 나옵니다.
-파싱할 필요가 없습니다. **`shots`**는 당신이 쓴 `## ` 헤딩을 산출물까지 실어 나르므로, 하위
-도구가 어떤 레코드가 *어느 비트에* 속하는지 여전히 말할 수 있습니다.
+장면의 줄이 가질 수 없는 이름을 갖습니다. 내레이션과 속마음을 포함한 **모든 줄**이 `voiceKey`를
+갖습니다 — 녹음 파일이 있다는 뜻이 아니라, 녹음과 대사를 이어 주는 조인 키입니다. 그 밖에 한눈에
+알아둘 필드가 셋 있습니다. **`family`**는 레코드의 큰 갈래(`content`, `staging`, `state`,
+`control`, `declaration`, `plugin`)로, 엔진은 `family`와 `kind`를 보고 레코드를 처리합니다.
+**`position`**은 레코드의 실행 위치로 `{section}-{index}` 형태이며, 하나의 산출물 안의 모든
+`position`은 같은 너비로 채워집니다 — 그래서 `position` 문자열을 정렬하기만 하면 실행 순서가
+나옵니다. 파싱할 필요가 없습니다. 다만 소스 순서가 바뀌면 다시 매겨지므로 저장이나 번역의 식별자로
+쓰면 안 됩니다. **`sections`**는 당신이 쓴 `## ` 헤딩(그리고 `{#id}`를 붙였다면 그 `id`)을
+산출물까지 실어 나르므로, 하위 도구가 어떤 레코드가 *어느 비트에* 속하는지 여전히 말할 수 있습니다.
 
 이 파일은 절대 손으로 편집하지 않습니다 — 엔진이 소비하는 컴파일된 산출물입니다. 오류 없이
 컴파일되었다는 것은 그 장면이 **정적으로 유효함**을 증명합니다: 모든 구성이 올바르게
@@ -442,10 +485,10 @@ profiles:
     plugins: {}
 ```
 
-(0.22.0 이전에는 기본값이 접두사 없는 `{speaker}-{code}`여서 두 대사가 모두 `mira-0010`이
-되었습니다 — 녹음 하나를 두 대사가 나눠 쓰게 되고, `check-project`는 이를 `E-DUP-VOICEKEY`로
-거부합니다. 옛 키로 이미 음성을 녹음한 프로젝트는 `lute.project.yaml`에
-`identity: { voiceKey: "{speaker}-{code}" }`를 고정해 그 키를 유지합니다.)
+(키 템플릿은 `lute.project.yaml`의 `identity: { voiceKey: "…" }`로 바꿀 수 있습니다. 접두사 없는
+`{speaker}-{code}`를 고정하면 두 대사가 모두 `mira-0010`이 되어 녹음 하나를 나눠 쓰게 됩니다 —
+`check-project`는 같은 키 아래 수식자를 걷어낸 텍스트가 서로 다른 줄을 `E-DUP-VOICEKEY`로
+거부합니다.)
 
 ```lute check-project="docs/examples/episodes/booth.lute"
 ---
@@ -542,7 +585,7 @@ expect:
 
 ```
 $ lute test episodes --project episodes
-PASS  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+PASS  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 
 1 passed, 0 failed
 ```
@@ -552,9 +595,9 @@ PASS  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
 <!-- lute-diagnostics unverified="lute test respells the walk.rs literal `--choose {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
 ```
 $ lute test episodes --project episodes
-FAIL  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+FAIL  episodes/tests/diner.test.yaml  (episodes/diner.lute)
       trace refused:
-        episodes/tests/../diner.lute:25:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard `scene.knowsMira` decided false: `scene.knowsMira` is false (mock `state: { scene.knowsMira: <value> }`)
+        episodes/diner.lute:26:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard `scene.knowsMira` decided false: `scene.knowsMira` is false (mock `state: { scene.knowsMira: <value> }`)
 
 0 passed, 1 failed
 ```
@@ -574,28 +617,41 @@ FAIL  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
 한 줄과 플레이 스크립트 하나를 더하면, `lute play`가 플레이어처럼 이야기를 따라갑니다.
 
 **무엇을 쓸 수 있는지 확실하지 않으신가요?** `lute context <file>`는 프로젝트가 허용하는 어휘를
-정확히 출력합니다 — 연출 디렉티브, 그 속성, 현재 유효한 어휘 멤버(예: 당신의 `emotion` 목록),
-선언된 상태, 전달 플래그 어휘, 언어 자체의 내장 디렉티브, `visited(…)`로 가리킬 수 있는 장면
-id — 당신이 지정한 특정 파일에 맞게 해석하여:
+정확히 출력합니다 — CEL 조건 규칙, 연출 디렉티브와 그 속성, 현재 유효한 어휘 멤버(예: 당신의
+`emotion` 목록), 선언된 상태, 전달 플래그와 인라인 텍스트 수식자, 언어 자체의 내장 디렉티브,
+`visited(…)`로 가리킬 수 있는 장면 id — 당신이 지정한 특정 파일에 맞게 해석하여:
 
 ```
 $ lute context episodes/diner.lute
 lute: note: using project episodes (nearest lute.project.yaml); pass --project to choose another
-capabilityVersion: f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225
+
+CEL conditions (standard CEL profile):
+  numbers: int and double are distinct; arithmetic/comparison do not mix them; use int(x) or double(x) explicitly; int / int truncates toward zero; % is int-only
+  presence: has(path) tests whether path has an effective value; "key" in map tests key presence
+  host functions:
+    holds(string, list(dyn)) -> bool
+    count(string, list(dyn)) -> int
+    countDistinct(string, list(dyn), int) -> int
+    validAt(string, list(dyn), int) -> bool
+    now() -> int
+    visited(string) -> bool
+  relation arguments: use list form, e.g. holds('inParty', ['elena', '_']); single quotes are required inside double-quoted attributes
+capabilitySnapshot: babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a
 permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
-directives (12):
-  auto: character: string, anchor: domain:anchor, action: domain:action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
+directives (13):
+  actor: character: string (required), anchor: domain:anchor, action: domain:action, emotion: domain:emotion, costume: domain:costume   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location: string, time: string, assetId: string   [mutatesScene]
-  camera: focus: string, zoom: double, moveX: double, moveY: double, shake: double, reset: bool, duration: double, easing: string, delay: double, wait: bool
+  camera: focus: string, framing: domain:framing, move: domain:cameraMove, transition: domain:transition, duration: double, delay: double, wait: bool
+  cg: assetId: string (required), display: enum[show, hide], layout: domain:cgLayout
   clear:    [reads.onStage mayExitCharacter]
-  cut: assetId: string, action: enum[show, hide], full: bool
   end: reason: string   [terminatesWalk]
-  mark: id: string (required)
-  music: action: domain:musicAction, mood: domain:mood, volume: domain:volume, assetId: string, track: string   [mutatesScene]
-  next: to: string (required), when: string
-  sfx: sound: string, assetId: string, name: string
+  jump: to: string (required), when: string
+  label: name: string (required)
+  music: playback: domain:musicPlayback, mood: domain:mood, volume: domain:volume, assetId: string   [mutatesScene]
+  sequence: name: domain:sequence (required), wait: bool
+  sfx: sound: string, assetId: string
   vfx: type: domain:vfxType, label: string, transition: string
-  video: assetId: string, action: enum[show, hide], wait: bool
+  video: assetId: string (required), display: enum[show, hide], wait: bool
 bridges (0):
 rewardKinds (0):
 occasions (0):
@@ -607,9 +663,14 @@ stateSchema (4):
   scene.choices.orderChoice: enum [black, familiar, unset] (owner: engine)
   scene.knowsMira: bool
 deliveryFlags (3):
-  {mono}: interior monologue / thought (not spoken aloud in-scene)
+  {mono}: interior monologue / thought (not spoken aloud in-scene); only the document's point of view (`pov:`, else the project's `defaults.pov`) or a speaker its `monoSpeakers:` lists may speak it (E-MONO-POV / E-MONO-NO-POV)
   {os}: off-screen: the speaker is heard but not currently staged/visible
   {vo}: voiceover: narration-style delivery layered over the scene
+textModifiers (inline, content-line text only):
+  :pause{s=0.5} [leaf]: a pause of `s` seconds (required, non-negative) at that point of the line
+  :speed[text]{rate=1.25} [span]: the wrapped text is delivered at `rate` (required, positive); a nested speed uses the innermost rate
+  textStyle: not declared (declare `textStyle` in `enums:` for style spans)
+  the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
 builtinDirectives (10):
@@ -619,8 +680,8 @@ builtinDirectives (10):
   ::accept{quest="<questId>" [at="nextRun"] [when="<condition>"]} — accept a quest that has no `start` condition; `at="nextRun"` queues it until after the next new run
   ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
   ::body — in a component with a `beat:` header, at the top level of its body: where a `<beat use=…>`'s own body goes
-  ::next{to="<string>" [when="<condition>"]} — jump forward to the `::mark` named by `to` (only while `when` holds)
-  ::mark{id="<string>" [when="<condition>"]} — name the position a `::next{to=…}` jumps to
+  ::jump{to="<string>" [when="<condition>"]} — jump forward to the `::label` named by `to` (only while `when` holds)
+  ::label{name="<string>" [when="<condition>"]} — name the position a `::jump{to=…}` jumps to
   ::end{[reason="<string>"] [when="<condition>"]} — end this presentation here
   ::clear{[when="<condition>"]} — take every character on stage off it; takes no attributes
 directiveAttrs (5; beyond each directive's own):
@@ -629,7 +690,7 @@ directiveAttrs (5; beyond each directive's own):
   delay: double — every directive but ::clear
   wait: bool — every directive but ::clear
   at: time — a directive inside a <track> clip only
-beatKeys (11; scene frontmatter `key: value`; <entry> / <beat> attributes `key="value"`):
+beatKeys (12; scene frontmatter `key: value`; <entry> / <beat> attributes `key="value"`):
   on: <occasion> — the occasion the beat answers
   target: <prefix>.<member> | kind:<kind> — the one target it answers, or every member of a kind (read as occasion.target)
   for: kind:<kind> — on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, binding occasion.target
@@ -641,6 +702,7 @@ beatKeys (11; scene frontmatter `key: value`; <entry> / <beat> attributes `key="
   share: <key> — beats with one `share` key spend one `once` together
   after: <prerequisite> — scene and bundle beats: eligible once it holds, e.g. visited("<id>")
   use: <component> — bundle `<beat>`: its header from the component's `beat:` template, the component's params as attributes
+  advances: slot | day | <whole number ≥ 1> — moves the clock after this beat presents
 questKeys (10; <quest> attributes):
   id="<questId>" — read as quest.<id>.state
   title="<text>" — the quest's name
@@ -663,7 +725,8 @@ objectiveKeys (10; <objective> attributes):
   by="<condition>" — a deadline: the first time it holds while not done, the objective fails
   target="<prefix>.<member>" — with `on`: judged only for a raise for that target
   until="<condition>" — with `on`: a deadline judged only when the objective's occasion is raised, after `done`
-rewardKeys (5; <reward> attributes):
+rewardKeys (6; <reward> attributes):
+  id="<token>" — the reward's stable identity, unique among its quest's rewards
   kind="<rewardKind>" — what the engine pays
   target="<id>" — what the reward is for, per its kind
   amount="<integer> | <N>..<M>" — how much
@@ -690,6 +753,10 @@ scenes (2; read as visited("<id>")):
 `enums (0)`은 버그가 아닙니다: 그 줄은 활성화된 *플러그인*이 제공하는 멤버를 세는데, 이 파일은
 플러그인을 하나도 쓰지 않습니다. 당신이 직접 선언한 것은 **`projectEnums`** 아래에 나옵니다 —
 `emotion="content"`를 실제로 해석해 주는 어휘입니다.
+
+`deliveryFlags`의 `{mono}` 줄은 Part 2에서 만난 시점 규칙을 그대로 적어 두고, `textModifiers`는 줄
+텍스트에 쓸 수 있는 인라인 수식자(`:pause`, `:speed`, 그리고 `textStyle`을 선언했다면 그 멤버)를
+보여 줍니다.
 
 `stateSchema`도 상태에 대해 같은 이야기입니다: 당신이 직접 선언한 것(Part 3의 `scene.knowsMira`,
 Part 5의 `run.metMira`), 뒤따르는 구성이 플레이어가 어느 선택지를 골랐는지 읽을 수 있도록

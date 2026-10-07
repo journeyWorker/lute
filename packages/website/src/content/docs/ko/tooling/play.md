@@ -91,7 +91,7 @@ occasions:
 계기에 `target`을 붙이면 `E-BEAT-ATTR`입니다. 대상 도메인이 있는 계기에서 그 밖의 비트 대상 —
 `npc.achilles` 대신 쓴 `npc.achiles` — 은 did-you-mean과 함께 `E-BEAT-ATTR`이며, 프로젝트가 선언하지 않은 엔티티
 종류를 가리키는 도메인도 마찬가지입니다. 이 export는 가드된 섹션으로 캐퍼빌리티 스냅샷에 접히므로,
-플러그인이 계기를 선언하지 않는 프로젝트는 `capabilityVersion`이 그대로입니다. 대상 도메인은 스냅샷의
+플러그인이 계기를 선언하지 않는 프로젝트는 `capabilitySnapshot`이 그대로입니다. 대상 도메인은 스냅샷의
 일부이며, `target: true`는 0.21과 정확히 같게 해시됩니다.
 
 계기에서 판정되는 퀘스트 목표(`<objective on="runEnd">`)는 `on=`을 받고, 0.23.0부터는 선택적인
@@ -318,8 +318,8 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive
   약 1.5초로 줄었고, 긴 플레이의 시간은 로드가 아니라 스텝이 정합니다.
 - `--script <FILE>` — 필수: 플레이 스크립트, `*.play.yaml` 파일.
 - `--json` — 같은 트랜스크립트를 stdout에 JSON 객체 하나로 출력합니다.
-- `--ir` — 스테이징을 작성한 그대로의 지시어 대신 낮춰진 IR 레코드(`::background`, `::sprite`, 그리고
-  컴파일러가 주입한 프리로드와 포즈 리셋)로 출력합니다. [트랜스크립트](#트랜스크립트)를 보세요.
+- `--ir` — 스테이징을 작성한 그대로의 지시어 대신 낮춰진 IR 레코드(`::bg`, `::actor`, 그리고 컴파일러가
+  주입한 프리로드와 포즈 리셋)로 출력합니다. [트랜스크립트](#트랜스크립트)를 보세요.
 - `--quiet` — 각 발생에서 적격이 아니었던 후보를 빼고 출력합니다. 승자, 대사, 퀘스트, 기대값은 그대로
   출력됩니다(dsl 0.27.0, round-5 T3-16). 이 플래그가 없으면 한 발생에서 `when: false`인 후보가 다섯 개
   이상일 때 한 줄로 접힙니다: `✗ 8 beats — when: false: a, b, c, …`. `--json`은 언제나 모든 후보를 나열합니다.
@@ -1178,7 +1178,7 @@ expect:
 ```
 ── step 2 · engine ──────────────
   set run.slot = "morning"
-── halted: step 2: `engine:` moves the clock backward, from day 1 (Mon) afternoon to day 1 (Mon) morning (clock.index 1 → 0) — the clock only moves forward (dsl 0.24.0 §1); `advance:` moves it, a `newRun` starts it over ──────────────
+── halted: step 2: `engine:` moves the clock backward, from day 1 (Mon) afternoon to day 1 (Mon) morning (clock.index 1 → 0) — the clock only moves forward; `advance:` moves it, a `newRun` starts it over ──────────────
 ```
 
 `newRun`은 run 등급의 나머지와 함께 시계를 초기화합니다. 시계를 선언하지 않은 프로젝트의 `advance:`,
@@ -1271,7 +1271,7 @@ advance의 `by`는 `"to night"`이나 `"to Fri morning"`입니다. 시계가 선
   → ward.dawn
 @narrator: Dawn breaks on night 1.
 ── step 3 · advance slot: day 1 h05 → day 1 h05 ──────────────
-── halted: step 3: `advance:` past the clock's last position (day 1 h05) — the clock ended; a `newRun` starts it over (E-CLOCK-END) ──────────────
+── halted: s.play.yaml:4:5: step 3: `advance:` past the clock's last position (day 1 h05) — the clock ended; a `newRun` starts it over (E-CLOCK-END) ──────────────
 ```
 
 **일과 나눠 쓰기.** `include: <file>`(동작이 `include`인 스텝. 0.27.0부터 `repeat`, `choose`, `bridges`도 함께 쓸 수 있음)은 다른 파일의 스텝을 그 자리에 끼워
@@ -1802,7 +1802,7 @@ steps:
 - 하위 퀘스트의 `<quest activate="accept">` — 부모와 함께 활성화되지 않습니다: `::accept`를 기다리고, 부모가
   `active`인 동안에만 활성화됩니다. 부모가 활성이 아닐 때의 수락은 아무 효과 없이 소비되며, 트랜스크립트는
   제시 아래에 그렇다고 알립니다 — 수락 방식 부모 `market`보다 먼저 수락된 하위 퀘스트 `haggle`이라면:
-  `` note: accept of quest haggle spent — its parent quest market is not active yet; an `activate="accept"` child activates only while its parent is active (dsl 0.24.0 §2) ``
+  `` note: accept of quest haggle spent — its parent quest market is not active yet; an `activate="accept"` child activates only while its parent is active ``
   (`--json`: 스텝의 `quests` 안의 `acceptSpent` 레코드,
   `{ "kind": "acceptSpent", "quest": "haggle", "parent": "market", "parentStatus": "unset" }`).
 - 부모의 `<quest complete="any">` — 필수 목표 중 **아무거나** 하나가 완료되면 완료되고, 아직 `active`인 다른
@@ -1853,7 +1853,7 @@ steps:
 `chapterEnd`에 응답하는 씬은 `toll`이 왜 끝났는지 읽습니다:
 
 ```lute
-<match on="quest.toll.failedBy">
+<match subject="quest.toll.failedBy">
   <when is="superseded">
     @maud: You talked your way over. Keep your silver.
   </when>
@@ -1983,7 +1983,7 @@ expect:
   prev.run.floor = 0
   quest climb -> unset (tier: run; was active)
   quest relic -> unset (tier: run; was active)
-  note: quest relic was accepted this run and is still active with no objective done or failed — the reset discards it; a run-tier quest taken between runs is `::accept{quest="relic" at="nextRun"}` (dsl 0.24.0 §2)
+  note: quest relic was accepted this run and is still active with no objective done or failed — the reset discards it; a run-tier quest taken between runs is `::accept{quest="relic" at="nextRun"}`
   quest climb -> active
 ```
 
@@ -2003,7 +2003,7 @@ priority 50으로 응답하는 씬 `gate.guards`는 판정을 두 번 하며, �
 
 ```lute
 ::check{skill="persuasion" dc="12" resultKey="guards"}
-<match on="scene.check.guards.passed">
+<match subject="scene.check.guards.passed">
   <when is="true">
     @narrator: The guards wave you through.
     @narrator{when="scene.check.guards.margin > 5"}: They barely look up.
@@ -2013,7 +2013,7 @@ priority 50으로 응답하는 씬 `gate.guards`는 판정을 두 번 하며, �
   </when>
 </match>
 ::check{skill="stealth" dc="10" resultKey="sneak"}
-<match on="scene.check.sneak.passed">
+<match subject="scene.check.sneak.passed">
   <when is="true">
     @narrator: Nobody sees you slip past the stalls.
   </when>
@@ -2040,11 +2040,15 @@ steps:
   ✓ town.welcome [scene, priority 10]
   ✗ town.morning [scene, priority 0] — when: false
   → gate.guards
-::check{skill="persuasion" dc="12" resultKey="guards"}        (bridge answered: passed=true, margin=3)
+::check{skill="persuasion" dc=12 resultKey="guards"}        (bridge answered: passed=true, margin=3)
+  set scene.check.guards.passed = true  (effect of ::check)
+  set scene.check.guards.margin = 3  (effect of ::check)
   match -> arm 1
 @narrator: The guards wave you through.
   skip @narrator "They barely look up." — when: false
-::check{skill="stealth" dc="10" resultKey="sneak"}        (bridge answered: passed=false, margin=-2)
+::check{skill="stealth" dc=10 resultKey="sneak"}        (bridge answered: passed=false, margin=-2)
+  set scene.check.sneak.passed = false  (effect of ::check)
+  set scene.check.sneak.margin = -2  (effect of ::check)
   match -> arm 2
 @narrator: A stallholder shouts after you.
 ── end: complete (1 step) ──────────────
@@ -2056,11 +2060,11 @@ steps:
   없다면 `- { passed: true }`로 충분하고 아래의 힌트도 `passed`만 요구합니다. 읽지 않는 필드를 주어도 됩니다.
   알 수 없는 태그, 어떤 효과도 읽지 않는 필드, 콘텐츠가 읽는데 빠진 필드, 맞지 않는 값은 아무것도 재생하기
   전의 사용법 오류(종료 코드 2)입니다:
-  `` top level: `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <int> }` (dsl 0.25.0 §7) ``.
+  `` top level: `bridges.check` answer 1 lacks `margin`, which content reads — an answer gives every bridge result `::check` content reads: `{ passed: <bool>, margin: <number> }` ``.
   철자가 틀린 태그에는 did-you-mean이 붙습니다.
 - **스텝의 응답이 먼저.** 스텝 자신의 `bridges:`는 최상위 대기열보다 먼저 그 스텝의 호출이 소비합니다.
   스텝이 소비하지 않고 남긴 응답은 스텝을 실패시킵니다(종료 코드 1) — 무언가를 정하려고 쓴 응답이 아무것도
-  정하지 않은 것입니다: `── halted: step 1: its `bridges:` answers were not all consumed — no plugin call of the step took `check` {passed: false, margin: 9}`.
+  정하지 않은 것입니다. 이 멈춤은 스크립트에서 그 스텝의 위치를 댑니다: ``── halted: <play>:<line>:<col>: step 1: its `bridges:` answers were not all consumed — no plugin call of the step took `check` {passed: false, margin: 9}``.
 - **`scene.*`으로.** 응답은 씬의 결과 슬롯에 들어갑니다 — 스크립트가 `scene.*`을 쓰는 유일한 길입니다.
   결과 슬롯의 `state:` 시드는 아무것도 재생하기 전에 거부됩니다(종료 코드 2:
   `` `state.scene.check.guards.passed` is `scene.*`, which resets at every scene boundary and cannot be written ``).
@@ -2073,7 +2077,7 @@ steps:
   거부는 워크를 멈춥니다(종료 코드 2):
 
 ```
-── halted: scene `ping.s` (scenes/ping.lute): the `bridges.ping` answer to plugin call `ping`: `ok` lands on `scene.ping.k.ok`, which no state slot of this artifact declares, and no bridge capability declares a `result:` type for it — an untyped answer is refused (dsl 0.26.0 §3.1) ──────────────
+── halted: scene `ping.s` (scenes/ping.lute): the `bridges.ping` answer to plugin call `ping`: `ok` lands on `scene.ping.k.ok`, which no state slot of this artifact declares, and no bridge capability declares a `result:` type for it — an untyped answer is refused ──────────────
 ```
 
 - **응답이 없으면 추측도 없음.** 남은 응답이 없는 호출은 워크를 **그 호출에서** 미완료(종료 코드 3)로
@@ -2082,8 +2086,8 @@ steps:
 
 ```
   → gate.guards
-::check{skill="persuasion" dc="12" resultKey="guards"}        (bridge unanswered: passed, margin)
-── halted: scene `gate.guards` (scenes/gate/guards.lute): plugin call `check` reads a bridge result and has no answer — give one with `bridges: { check: [ { passed: <bool>, margin: <int> } ] }` (top level or on the step) ──────────────
+::check{skill="persuasion" dc=12 resultKey="guards"}        (bridge unanswered: passed, margin)
+── halted: scene `gate.guards` (scenes/gate/guards.lute): plugin call `check` reads a bridge result and has no answer — give one with `bridges: { check: [ { passed: <bool>, margin: <number> } ] }` (top level or on the step) ──────────────
 ```
 
 `--json`에서 호출의 `plugin` 레코드에는 `"answered": [{ "field": "passed", "value": true }, …]`가, 워크가
@@ -2308,13 +2312,14 @@ explain safe(warden): holds
   skip @narrator "Elias walks on." — when: false
   assert calm(maren)
   ✗ exclusive: calm(maren) and panicked(maren) both hold
-── halted: scene `dawn` (scenes/dawn.lute): exclusive relations hold together — calm(maren) and panicked(maren) both hold (dsl 0.25.0 §1) ──────────────
+── halted: scene `dawn` (scenes/dawn.lute): exclusive relations hold together — calm(maren) and panicked(maren) both hold ──────────────
 ```
 
 짝은 알파벳 순서로 나옵니다. 선택이 둘을 함께 성립시키지 않는 스크립트는 조용히 계속됩니다. 규칙이 도출하는
 팩트도 같은 검사를 받으므로, 다른 관계를 배제하는 파생 관계는 그 규칙을 발화시킨 쓰기에서 잡힙니다. 두 배타
-팩트를 함께 성립시키는 `engine:` 스텝은 그 스텝에서 멈추고(``── halted: step <n>: exclusive relations hold together — …``),
-스크립트 자신의 `facts:`(프로젝트의 시드와 규칙이 거기서 도출한 것 포함)가 이미 배타를 깨면 스텝 1 전에 멈춥니다.
+팩트를 함께 성립시키는 `engine:` 스텝은 그 스텝에서 멈추고(``── halted: <play>:<line>:<col>: step <n>: exclusive relations hold together — …``),
+스크립트 자신의 `facts:`(프로젝트의 시드와 규칙이 거기서 도출한 것 포함)가 이미 배타를 깨면 스텝 1 전에 멈춥니다:
+``── halted: the script's seeded world holds exclusive relations together before step 1 — …; fix the script's `facts:` (or the `excludes:` declaration)``.
 [`lute trace`](/tooling/tracing/#exclusive-relations)와 `lute test`는 같은 쓰기에서 워크를 거부합니다.
 
 ### 사용법 오류
@@ -2529,7 +2534,7 @@ explain safe(warden): holds
   같은 식입니다: `skip ::give{item="potion"} — when: false`, `skip assert metWren(wren) — when: false`, 그리고
   확장을 하나도 재생하지 않는 `::use`는 `skip ::use{component="…" …} — when: false`. 연출 디렉티브는 작가가
   쓴 그대로 나옵니다 —
-  `::bg{location="parlor"}`, `::auto{character="maud" anchor="left"}`, `::vfx{type=…}`, 그리고
+  `::bg{location="parlor"}`, `::actor{character="maud" anchor="left"}`, `::vfx{type=…}`, 그리고
   플러그인 자신의 디렉티브는 그 이름 그대로 — 컴파일러가 주입한 연출(프리로드, 포즈 리셋, `::bg` 자동
   숨김)은 빠집니다. 참조 플레이어가 실행할 수 없는 플러그인 디렉티브에는 `(plugin call, not invoked)`가
   붙고, `bridges:` 응답이 브리지 결과를 정한 호출에는 `(bridge answered: passed=true, margin=3)`이, 워크를
@@ -2548,11 +2553,13 @@ explain safe(warden): holds
   만든 호출을 댑니다: `set scene.check.sneak.passed = false  (effect of ::check)`,
   `assert holding(brassKey)  (effect of ::give)`, `retract holding(lamp)  (effect of ::give)` — 철회가 먼저,
   그다음 호출의 단언. `--json`에서는 그 레코드에 `"effectOf": "<tag>"`가 붙습니다.
-- `--ir`은 대신 낮춰진 레코드를 출력합니다: 각 연출 레코드를 IR 형태의 `::<kind>{…}`로(`::bg`라면
-  `::background{location="parlor" wait=true}`), 컴파일러가 주입한 레코드도 포함해 `(injected: <by>)`를
-  붙여서, 번들 비트의 `beat` 레코드는 `beat` 줄로. `--ir`은 출력만 바꿉니다: `transcriptContains` /
-  `transcriptLacks`는 언제나 콘텐츠 줄로 판정하며, `--json`은 어느 쪽이든 모든 레코드를
-  담습니다.
+- `--ir`은 대신 낮춰진 레코드를 출력합니다: 각 연출 레코드를 IR 형태의 `::<kind>{…}`로 — 속성은 IR 필드
+  이름순이며 `position`, `kind`, `family`는 빠집니다(`::actor{character="mara" anchor="left" action="sway"}`라면
+  `::actor{action="sway" anchor="left" character="mara"}`) —, 컴파일러가 주입한 레코드도 포함해
+  `(injected: <by>)`를 붙여서(`::bg`가 바뀔 때 무대를 비우는 퇴장이라면
+  `::actor{character="mara" exit=true}        (injected: stage-bookkeeping)`), 번들 비트의 `beat` 레코드는
+  `beat` 줄로. `--ir`은 출력만 바꿉니다: `transcriptContains` / `transcriptLacks`는 언제나 콘텐츠 줄로
+  판정하며, `--json`은 어느 쪽이든 모든 레코드를 담습니다.
 - `engine:` 스텝은 쓰기를 나열합니다: `set <path> = <value>`, `assert <atom>`, `retract <atom>` — 팩트가
   아니었으면 `retract <atom> (did not hold)` — 그리고 dsl 0.26.0부터 `accept:`마다 `quest <id> accepted (engine)`,
   이미 활성·완료·실패한 퀘스트라면 아무것도 바꾸지 않는 `note: quest <id> is already active — engine accept ignored`.
@@ -2565,9 +2572,10 @@ explain safe(warden): holds
 - `event:` 스텝은 실행된 핸들러를 출력하고, 이미 정착한 퀘스트에는
   `<on event=<name>> of quest <id> skipped — quest complete`를 출력합니다. 라이프사이클 전이는 모든 종류의
   스텝 뒤에 따라옵니다.
-- `--json`에서 `presented.commands`의 줄 레코드는 해당하는 경우 `role`, `lineId`, `voiceKey`, `as`,
-  `emotion`을 담고, choice와 hub 레코드는 제시되지 않은 선택지를 `ineligible`에, 이미 고른 `once`
-  선택지를 `spent`에 나열합니다.
+- `--json`에서 `presented.commands`의 모든 레코드는 문서 안의 자기 `position`을 담습니다. 줄 레코드는
+  `role`(`dialogue`, `narration`, `mono`, `os`, `vo` 중 하나), `lineId`, `voiceKey` — 내레이션을 포함해 모든 줄에
+  `voiceKey`가 있습니다 — 와 해당하는 경우 `as`, `emotion`을 담고, choice와 hub 레코드는 제시되지 않은
+  선택지를 `ineligible`에, 이미 고른 `once` 선택지를 `spent`에 나열합니다.
 - 워크는 `── end: complete (<n> steps)` — 모든 반복을 셈 — 로, `end` 스텝 뒤에는
   ``── end: `end: true` at step <n> (<k> later steps skipped)``로, 마지막 스텝 뒤에 게임이 끝나 있으면
   ``── end: terminal — `terminal: <condition>` holds``로(dsl 0.27.0 §4), 중간에 멈추면 `── halted: <message>`로
@@ -2822,21 +2830,22 @@ defs:
 
 ```lute
 <branch id="maraAsk" prompt="What do you say?">
-  <choice id="lamp" label="Offer to find out why">
+  <choice id="lamp" text="Offer to find out why">
     @mara{emotion="delighted"}: Would you? Tomas keeps the oil. Ask him.
     ::set{ user.bond.mara += 1 }
     ::accept{quest="lampOut"}
   </choice>
-  <choice id="leave" label="Say nothing">
+  <choice id="leave" text="Say nothing">
     @mara: Suit yourself.
   </choice>
 </branch>
 ```
 
-그 선택지가 수락하는 퀘스트 `quests/lamp.lute`는 엔진이 하루를 닫아야만 끝납니다:
+그 선택지가 수락하는 퀘스트 `quests/lamp.lute`는 엔진이 하루를 닫아야만 끝나며, 이번 런의 것(`tier="run"`)이라
+새 런이 시작되면 처음부터 다시 시작합니다:
 
 ```lute
-<quest id="lampOut" title="The lamp by the door">
+<quest id="lampOut" title="The lamp by the door" tier="run">
   <objective id="ask" title="Ask Tomas about the oil" done="holds('knows', ['lamp'])"/>
   <objective id="wait" title="Wait for the day to end" on="dayEnd" done="run.day >= 2"/>
   <on event="questComplete">
@@ -3027,6 +3036,7 @@ expect:
 ── step 1 (the engine starts run two on day 3) · new run ──────────────
   run.* state, run-tier facts and once: run reset; prev.run.* holds the ended run (1 value)
   prev.run.day = 1
+  quest lampOut -> unset (tier: run; was complete)
   set run.day = 3
 ── step 2 · townVisit ──────────────
   ✓ town.morning [scene, priority 0]
@@ -3058,10 +3068,10 @@ expect:
 ```
 
 - **세이브** — `presented.user`가 `once: user` 씬 둘을 소진시키고, `quests:`가 `lampOut`을 완료 상태로
-  이어받으며(그래서 기름 엔트리의 `when`이 거짓), `user.bond.mara` 시드 덕분에 마라의 `@trusted` 대사가
-  재생됩니다.
+  이어받으며, `user.bond.mara` 시드 덕분에 마라의 `@trusted` 대사가 재생됩니다.
 - **스텝 1** — 긴 형태의 `newRun`이 새 런을 시드합니다: 끝난 런의 `run.day`가 스냅숏되고(`prev.run.day = 1`),
-  `run.day`가 기본값으로 초기화된 뒤 시드가 3으로 설정합니다.
+  run 등급 퀘스트 `lampOut`이 `unset`으로 돌아가며(그래서 기름 엔트리의 `when`이 거짓), `run.day`가 기본값으로
+  초기화된 뒤 시드가 3으로 설정합니다.
 - **스텝 5** — `engine:` 스텝 하나를 반복: 각 반복은 자신의 레코드이고, 런은 `run.day`가 5인 채로
   끝납니다.
 
@@ -3075,8 +3085,8 @@ $ lute test . --project .
 ```
 
 ```
-PASS  ./tests/lamp-quest.test.yaml  (./tests/../quests/lamp.lute)
-PASS  ./tests/mara-first.test.yaml  (./tests/../scenes/talk/mara-first.lute)
+PASS  ./tests/lamp-quest.test.yaml  (./quests/lamp.lute)
+PASS  ./tests/mara-first.test.yaml  (./scenes/talk/mara-first.lute)
 PASS  ./plays/first-day.play.yaml  (play of .)
 PASS  ./plays/returning.play.yaml  (play of .)
 FAIL  ./plays/say-nothing.play.yaml  (play of .)
@@ -3090,17 +3100,19 @@ FAIL  ./plays/say-nothing.play.yaml  (play of .)
 스캐폴드 자신의 플레이만 있을 때, `lute test . --project . --coverage`는 그것도 테스트로 셉니다:
 
 ```
-PASS  ./tests/lamp-quest.test.yaml  (./tests/../quests/lamp.lute)
-PASS  ./tests/mara-first.test.yaml  (./tests/../scenes/talk/mara-first.lute)
+PASS  ./tests/lamp-quest.test.yaml  (./quests/lamp.lute)
+PASS  ./tests/mara-first.test.yaml  (./scenes/talk/mara-first.lute)
 PASS  ./plays/first-day.play.yaml  (play of .)
 
 3 passed, 0 failed
 
 coverage over 2 traced path(s) and 1 play(s) (plays count toward what they presented and the choices they picked, not match arms):
   branch/hub maraAsk (scenes/talk/mara-first.lute:maraAsk): 1/2 chosen [lamp]; never chosen [leave]
-  1 untested unit(s) under . — no *.test.yaml presents them and no play presents them:
+  2 untested unit(s) under . — no *.test.yaml presents them and no play presents them:
+    lore/tomas.lute: tomasBusy
     scenes/talk/mara-idle.lute
+  every other beat under . is presented by a play
 ```
 
-플레이가 환영 인사, 아침, 밤 씬, 마라와의 첫 만남, 토마스의 엔트리를 제시했으므로 남은 것은
-`mara-idle.lute`뿐입니다 — `plays/returning.play.yaml`이 커버하는 씬입니다.
+플레이가 환영 인사, 아침, 밤 씬, 마라와의 첫 만남, 토마스의 기름 엔트리를 제시했으므로 남은 것은
+`mara-idle.lute`와 엔트리 `tomasBusy`뿐입니다 — 둘 다 `plays/returning.play.yaml`이 커버합니다.

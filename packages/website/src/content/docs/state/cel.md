@@ -9,14 +9,14 @@ Every condition and every `::set` right-hand side in Lute is [CEL](https://cel.d
 
 CEL text sits in every guard and value slot:
 
-- `<match on="S">` subject, `<when test="…">` guards, `<choice when="…">` and `when=` content-line gates
+- `<match subject="S">` subject, `<when test="…">` guards, `<choice when="…">` and `when=` content-line gates
 - `::set{path = celExpr}` right-hand sides, and since 0.24.0 a `::set`'s own `when="…"` guard
 - quest `<quest start="…" fail="…">` and `<objective done="…" visibleWhen="…" by="…" until="…">` predicates, `<on when="…">` handlers
 - beat `when:` / `when=` eligibility conditions
 - a cast entry's `present:` condition (0.24.0, see [The cast](/language/dialogue-and-cast/#the-cast))
 
 ```lute
-<match on="scene.affect.elena">
+<match subject="scene.affect.elena">
   <when is="3..">
     @elena: …
   </when>

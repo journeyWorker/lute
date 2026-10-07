@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.36.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.37.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -99,7 +99,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 
 | fixture | contract surface exercised |
 |---|---|
-| `choice-basic` | `choice` control flow — the mock forces one branch option; the chosen id lands in the `recordKey` slot and the option body runs to the converge |
+| `choice-basic` | `choice` control flow — the mock forces one branch option; the chosen id lands in the `selectionKey` slot and the option body runs to the converge |
 | `match-otherwise` | `match` precedence — the seeded subject matches no arm, so the `otherwise` target is taken (execution-model.md `arm ?? otherwise ?? converge`) |
 | `match-range` | `match` over a numeric subject with range arms (dsl 0.18.0) — `..0`, `1..3`, `4..` lower to `>=`/`<=`/`&&` comparisons in `expr`; the seeded score `3` sits on the inclusive upper bound of `1..3`, so arm 2 is taken |
 | `hub-once-exit` | `hub` re-presentation — the mock forces `[probe, probe, leave]`; `probe` is `once` (the second force is refused) and `leave` is the `exit` option that leaves the hub |
@@ -110,7 +110,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `lore-entry` | a **lore entry, first read** (dsl 0.19.0, lore-entries.md) — `entry.txt` names `scientistLog1`, so the run presents that one `entry` record: the `entry` event carries `firstRead: true` and `eligible`, the body segment runs to the next `entry` record (its `match` picks arm 1 from the seeded `run.labBurned: true`), the first-read `assert`/`set` apply, and the engine then sets `entry.scientistLog1.read` — the sibling `scientistLog2` is never presented and its `read` path stays `false` |
 | `lore-entry-reread` | the same entry **re-read** — the mock seeds `entry.scientistLog1.read: true`, so the text presents (the `otherwise` arm) and the `assert`/`set` records are recorded as `skipped` events (`effect` + the record's `path`/`fact`/`pattern`) without changing state or facts |
 
-| `command-staging` | staging/timeline command records: `background` (`::bg`), `music`, `sfx`, `vfx`, `sprite` (`::auto`), `camera`, `cut`, `video`, plus the timeline `barrier`; all are compiled and replayed in one linear scene |
+| `command-staging` | staging/timeline command records: `bg` (`::bg`), `music` (`playback`), `sfx`, `vfx` (`type`), `actor` (`::actor`), `camera` (`focus`/`framing`/`move`/`transition`), `cg` (`display`), `video` (`display`), plus the timeline `barrier`; all are compiled and replayed in one linear scene |
 | `command-lifecycle` | lore beat presentation (`beat`), quest acceptance (`accept`), and fact retraction (`retract`) in a beat selected by `beat.txt` |
 | `command-plugin` | a local capability plugin's mock bridge (`plugin`) with an unanswered bridge result; the runner records the external call without host invocation |
 | `cel-numbers` | typed `int`/`double` CEL literals and arithmetic, including truncating division, modulo, conversions, and numeric rendering |
@@ -136,8 +136,8 @@ and MAY coalesce equal values.
 
 The command inventory is intentionally explicit: every currently supported runtime
 command kind is covered by at least one fixture above or by the pre-existing
-fixtures. `command-staging` covers `background`, `music`, `sfx`, `vfx`, `sprite`,
-`camera`, `cut`, `video`, and `barrier`; `command-lifecycle` covers `accept`,
+fixtures. `command-staging` covers `bg`, `music`, `sfx`, `vfx`, `actor`,
+`camera`, `cg`, `video`, and `barrier`; `command-lifecycle` covers `accept`,
 `beat`, and `retract`; `command-plugin` covers `plugin`. No requested kind is
 unsupported by the reference runner. The staging fixture uses a live
 `luteVersion: "0.36.6"` header, as do the lifecycle and plugin sources.

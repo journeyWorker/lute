@@ -14,10 +14,10 @@ into the reserved path `scene.choices.<branchId>`, which a later `<match>` can r
 
 ```lute
 <branch id="number">
-  <choice id="blunt" label="Just ask, flatly">
+  <choice id="blunt" text="Just ask, flatly">
     @fixer{code="0050"}: Marina. Your number.
   </choice>
-  <choice id="soft" label="Ask gently">
+  <choice id="soft" text="Ask gently">
     @fixer{code="0052"}: Marina — would you mind terribly if I had your number?
     ::set{scene.affect.marina += 1}
   </choice>
@@ -33,12 +33,12 @@ guards, the `into=` run-record sugar, and revisit `<hub>`s — are covered in
 
 ## `<match>` — state dispatch
 
-A `<match on="S">` evaluates the subject expression `S` and runs the first matching `<when>` arm,
+A `<match subject="S">` evaluates the subject expression `S` and runs the first matching `<when>` arm,
 falling through to `<otherwise>` if none match. No player input is involved — this is how a scene
 reacts to a choice made earlier, a fact, or a plugin result.
 
 ```lute
-<match on="scene.choices.number">
+<match subject="scene.choices.number">
   <when test="@fond">
     @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
@@ -62,7 +62,7 @@ A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or bot
   `1..3`), and the keyword `unset`. Matching is equality on the subject (range membership for a
   range). `<when is="joyful|playful">`, `<when is="unset">`, `<when is="1 | 2 | 3">`,
   `<when is="..0 | 10..">`.
-- **`test`** is a CEL guard, with the `$` subject in scope (`$` is the value of `on`). `$` may only
+- **`test`** is a CEL guard, with the `$` subject in scope (`$` is the value of `subject`). `$` may only
   appear inside a `<match>`. Use it for conditions a pattern cannot say (`$ > 2`, `@fond`); a
   plain literal comparison such as `test="$ == 'gold'"` is `W-WHEN-TEST-LITERAL`, and `lute fix`
   rewrites it to `is="gold"`.
@@ -70,7 +70,7 @@ A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or bot
 - A `<when>` with neither is `E-WHEN-PATTERN`.
 
 ```lute
-<match on="scene.mood">
+<match subject="scene.mood">
   <when is="calm">
     @fixer{mono}: Steady breathing. Nothing to prove tonight.
   </when>
@@ -91,7 +91,7 @@ On an `int` or `double` subject, `is` takes ranges. Both bounds are inclusive; e
 The descending-threshold cascade reads top to bottom, first match wins:
 
 ```lute
-<match on="scene.affect.marina">
+<match subject="scene.affect.marina">
   <when is="3..">
     ::use{component="reaction" tier="fond"}
   </when>
@@ -128,7 +128,7 @@ reading `app.rating` in a release build is a hard content gate that must cover `
 
 ### Matching on a def
 
-A `<match on="@def">` (see [Definitions & params](/language/params/)) has a domain like any other
+A `<match subject="@def">` (see [Definitions & params](/language/params/)) has a domain like any other
 subject. A def whose body is one state path (`today: "run.wd"`) matches exactly like that path. Any
 other def takes its declared or inferred type, so a def typed `{ enum: [early, late] }` ranges over
 those members:
@@ -148,7 +148,7 @@ defs:
 
 ## Square
 
-<match on="@today">
+<match subject="@today">
   <when is="mon">
     @narrator: Market day.
   </when>
@@ -157,7 +157,7 @@ defs:
   </when>
 </match>
 
-<match on="@shift">
+<match subject="@shift">
   <when is="early">
     @narrator: The stalls are still going up.
   </when>
@@ -173,13 +173,13 @@ both were `E-NONEXHAUSTIVE`. An arm outside the domain, such as a typo `is="lat"
 enum-typed subject, such as `test="$ == 'lat'"` on a match over a path.
 
 A def whose body queries facts — `count(…)`, `holds(…)`, directly or through another def — is no
-subject at all: `<match on="@badgeCount">` over `badgeCount: "count('hasBadge', ['_'])"` is
+subject at all: `<match subject="@badgeCount">` over `badgeCount: "count('hasBadge', ['_'])"` is
 `E-MATCH-RELATION-SUBJECT`, although a count is an `int`. Test the query in the arms of a `<match>`
-with no `on` instead (below).
+with no `subject` instead (below).
 
-### Matching on facts: `<match>` with no `on`
+### Matching on facts: `<match>` with no `subject`
 
-A `<match>` without `on` has no subject: each arm's `test` is a plain condition, and there is no `$`.
+A `<match>` without `subject` has no subject: each arm's `test` is a plain condition, and there is no `$`.
 It is the form for a fact query, which may only ever be a guard:
 
 ```lute
@@ -200,8 +200,8 @@ Arms are tried top to bottom as usual. The checker cannot prove `test` guards co
 the `<otherwise>` is required.
 
 Every arm of such a `<match>` is a `test`. An `is` compares against the subject, and there is none,
-so `<when is="ren">` or `<when is="run.lamps >= 3">` inside a `<match>` with no `on` is
-`E-MATCH-NO-SUBJECT`: add `on="…"` to the `<match>` (the message names the declared path the
+so `<when is="ren">` or `<when is="run.lamps >= 3">` inside a `<match>` with no `subject` is
+`E-MATCH-NO-SUBJECT`: add `subject="…"` to the `<match>` (the message names the declared path the
 literal belongs to, when exactly one does), or write the condition as `test="run.lamps >= 3"`.
 
 ### Arms narrow their subject
@@ -216,7 +216,7 @@ proof for reads of the subject inside them:
   `<otherwise>` can see the subject unset, so they read it as set.
 
 ```lute
-<match on="run.rival">
+<match subject="run.rival">
   <when is="unset">
     @narrator: Nobody has taken your measure yet.
   </when>
@@ -261,7 +261,7 @@ state:
 
 @narrator: The run ended {{run.outcome}}.
 
-<match on="run.outcome">
+<match subject="run.outcome">
   <when is="surfaced">
     @narrator: You surfaced with air to spare.
   </when>
@@ -344,7 +344,7 @@ This is exact sugar for a one-arm match **wherever the guard is a legal `<match>
 line of its own, because there is no inline `<when>…</when>` form:
 
 ```lute
-<match on="run.metHelpfully">
+<match subject="run.metHelpfully">
   <when test="$">
     @elena: You helped me back then. I've been meaning to thank you.
   </when>
@@ -353,14 +353,14 @@ line of its own, because there is no inline `<when>…</when>` form:
 </match>
 ```
 
-*(That file keeps both forms, one shot each, so they stay visibly interchangeable.)*
+*(That file keeps both forms, one section each, so they stay visibly interchangeable.)*
 
 A **fact query** is the exception. `@elena{when="holds('awake', ['toma'])"}: …` checks clean on a
-content line; the same guard as a subject — `<match on="holds('awake', ['toma'])">` — is
+content line; the same guard as a subject — `<match subject="holds('awake', ['toma'])">` — is
 `E-MATCH-RELATION-SUBJECT`: a fact query is only ever a guard, and the message shows the fix, a
-`<match>` with no `on` whose arms test the query (see
-[Matching on facts](#matching-on-facts-match-with-no-on)). The one-arm twin above works for the
-scalar and enum subjects a `<match on>` can take — which is why the file above uses one.
+`<match>` with no `subject` whose arms test the query (see
+[Matching on facts](#matching-on-facts-match-with-no-subject)). The one-arm twin above works for the
+scalar and enum subjects a `<match subject>` can take — which is why the file above uses one.
 
 ### Guarded writes
 

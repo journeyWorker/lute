@@ -5,24 +5,29 @@ description: How a plugin declares a typed runtime bridge, the directive that in
 
 A **bridge** is a typed runtime call the engine owns — a minigame, a service, an external beat. The DSL emits only data; the engine executes the bridge; and story control-flow observes **only the declared state** a directive writes, never raw bridge output. This is what keeps the language total: a bridge call is data, not an arbitrary tool call.
 A passthrough plugin directive that has no declarative `lower: { record, fields }` or named core
-builtin lowering emits a generic `kind: "plugin"` record. It may carry an optional `plugin` owner id
-resolved from capability assembly (never authored in the scene), alongside its `tag`, typed `fields`,
-and any declared `effects`:
+builtin lowering emits a generic `kind: "plugin"` record (`family: "plugin"`). It may carry an
+optional `plugin` owner id resolved from capability assembly (never authored in the scene),
+alongside its `tag`, typed `fields`, and any declared `effects`:
 
 ```json
 {
   "kind": "plugin",
-  "addr": "001-0100",
-  "plugin": "game.presentation",
+  "family": "plugin",
+  "position": "001-0400",
   "tag": "host-panel",
-  "fields": {}
+  "plugin": "game.presentation",
+  "fields": {
+    "assetId": "CG.chapter_one.first_choice",
+    "resultKey": "first-choice",
+    "text": "First choice"
+  }
 }
 ```
 
-Hosts dispatch these extension records by the pair **`(plugin, tag)`**. Older artifacts may omit
-`plugin`, and it is omitted for core or unresolved ownership. Presentation directives that declare
-`lower: { record: ... }` still lower to their stable core staging record kinds; the owner field is
-specific to passthrough plugin records.
+Hosts dispatch these extension records by the pair **`(plugin, tag)`**. `plugin` is omitted for
+core or unresolved ownership. Presentation directives that declare `lower: { record: ... }` still
+lower to their stable core staging record kinds; the owner field is specific to passthrough plugin
+records.
 
 
 ## Declaring the bridge capability
@@ -65,16 +70,16 @@ directives:
     bridge: { service: minigame, operation: play }
 ```
 
-Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`. `at`, `duration`, `delay`, `wait`, `timeline`, `provenance` and `source` are the seven names the core stamp owns; a plugin declaring an attribute under any of them is rejected at assembly with [`E-PLUGIN-RESERVED-STAMP-ATTR`](/plugins/manifests/).
+Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`. `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance` and `source` are the eight names the core stamp owns; a plugin declaring an attribute under any of them is rejected at assembly with [`E-PLUGIN-RESERVED-STAMP-ATTR`](/plugins/manifests/).
 
-## Worked example: `::minigame` and the match on its result slot
+## Worked example: `::minigame` and the match over its result slot
 
 The scene writes nothing by hand. It runs the bridge, then reads the declared slot:
 
 ```lute
 ::minigame{kind="rhythm" id="marina_service_01" resultKey="service01" sync="true"}
 
-<match on="scene.minigame.service01.rank">
+<match subject="scene.minigame.service01.rank">
   <when is="gold">
     @marina{code="0030" emotion="delighted"}: Wonderful! A perfect service!
     ::set{scene.affect.marina += 2}

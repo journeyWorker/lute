@@ -11,7 +11,7 @@ removed. The compiled **execution IR** carries `owner: "engine"` for
 engine-owned declarations, and runtimes refuse content writes to those paths.
 | Namespace | Reset boundary | Typical use |
 |---|---|---|
-| `scene.*` | episode end (one `.lute` document; survives across its shots) | on-stage state, `scene.choices.*`, `scene.visited.*` |
+| `scene.*` | episode end (one `.lute` document; survives across its sections) | on-stage state, `scene.choices.*`, `scene.visited.*` |
 | `run.*` | new run — one attempt, a sequence of episodes | per-attempt flags, affect, cross-episode carry within an attempt |
 | `user.*` | profile/account wipe — survives runs | level, unlocks, meta-progression |
 | `app.*` | app uninstall — identity-independent | language, age rating, settings |
@@ -97,7 +97,7 @@ entities:
   room: { members: [chapel, ward, cellar] }
 ```
 
-A condition compares it with a member, `run.stalker == 'ward'`, and in a beat that answers a whole kind it compares with the member the occasion was raised for, `run.stalker == occasion.target` (see [Kind targets](/language/beats/#kind-targets)). A `<match on="run.stalker">` covers every member of the kind or has an `<otherwise>` (`E-NONEXHAUSTIVE`). Whether `domain:` names an enum or a kind, a literal must be one of its members: `run.stalker == 'wrd'` is `E-WHEN-LITERAL-DOMAIN` with a did-you-mean, and a `::set` of a non-member into such a path is `E-SET-TYPE`. The path counts as a read of the kind, so the kind draws no `W-DOMAIN-UNREAD`.
+A condition compares it with a member, `run.stalker == 'ward'`, and in a beat that answers a whole kind it compares with the member the occasion was raised for, `run.stalker == occasion.target` (see [Kind targets](/language/beats/#kind-targets)). A `<match subject="run.stalker">` covers every member of the kind or has an `<otherwise>` (`E-NONEXHAUSTIVE`). Whether `domain:` names an enum or a kind, a literal must be one of its members: `run.stalker == 'wrd'` is `E-WHEN-LITERAL-DOMAIN` with a did-you-mean, and a `::set` of a non-member into such a path is `E-SET-TYPE`. The path counts as a read of the kind, so the kind draws no `W-DOMAIN-UNREAD`.
 
 ### One path per entity: `per:`
 
@@ -117,7 +117,7 @@ This declares `run.approval.isolde` and `run.approval.corvin`, each `{ type: int
 - A component, or a beat template's header, names it through a param, `F[@param]`. A component with `effects: true` writes `::set{run.approval[@who] += @delta}`, and each `::use` writes the member its argument names; an argument outside the kind is `E-COMPONENT-ARG` (see [Components](/language/components-and-extends/)). A [beat template](/language/beats/#beat-templates-use) header reads `when: "run.approval[@who] >= 3"`; the dot form `run.approval.@who` also works there, with a `W-TEMPLATE-DOT-PARAM` hint toward the brackets.
 - A beat or entry that targets a kind (`target="kind:<kind>"`) or runs once for each member of one (`for="kind:<kind>"`) names the member it runs for as `occasion.target`: it reads `when="run.approval[occasion.target] >= 3"` and `{{run.approval[occasion.target]}}`, and writes `::set{run.approval[occasion.target] += 1}` (see [Kind targets](/language/beats/#kind-targets)). Anywhere else `occasion.target` is `E-UNDECLARED`.
 
-Nothing else indexes a family. A `::set` indexed by a state path is `E-SET-SHAPE`: `` `run.approval[run.fav]`: a `::set` path is indexed only by `[occasion.target]` (in a beat or entry that targets a kind or runs for each member of one) or a component's `[@param]` ``, and so is a read in `{{…}}` (`E-CEL-PROFILE`); pick the member with a `<match on="run.fav">` instead.
+Nothing else indexes a family. A `::set` indexed by a state path is `E-SET-SHAPE`: `` `run.approval[run.fav]`: a `::set` path is indexed only by `[occasion.target]` (in a beat or entry that targets a kind or runs for each member of one) or a component's `[@param]` ``, and so is a read in `{{…}}` (`E-CEL-PROFILE`); pick the member with a `<match subject="run.fav">` instead.
 
 `per:` names a **closed** entity kind, one with `members:`, declared in the same document as the path. A kind declared `open:`, a kind the document does not declare, or a malformed one is `E-STATE-DECL`, because the checker cannot list the paths it would declare. The kind may be a [sub-kind](/state/facts-and-datalog/#sub-kinds-subsetof). Indexing a path by a kind counts as reading the kind, so it draws no `W-DOMAIN-UNREAD`.
 
@@ -159,7 +159,7 @@ Give `run.best` a default, or guard the read with `has(run.best)`. The `when=` i
 
 ## Paths the engine writes
 
-Some paths belong to the engine. Content reads them anywhere it reads state — a guard, a `<match on>` subject, an interpolation — and never writes them:
+Some paths belong to the engine. Content reads them anywhere it reads state — a guard, a `<match subject>`, an interpolation — and never writes them:
 
 | Path | Written by | A `::set` of it |
 |---|---|---|
@@ -174,7 +174,7 @@ Some paths belong to the engine. Content reads them anywhere it reads state — 
 
 The quest and entry paths are reserved by name: every document may read them without declaring them, and declaring one in `state:` is `E-QUEST-RESERVED-DECL`. The two entry flags are `bool`s, `false` until the entry is first presented (see [Lore entries](/language/lore-entries/)). `entry.<id>.read` resets with the run, so a new run's first read applies the entry's effects again; `entry.<id>.everRead` (0.22.0) is set on the first read ever and no new run resets it.
 
-Two quest paths say why something failed. `quest.<id>.failedBy` reads `unset` until the quest fails, then names the cause: `fail` (its `fail` predicate), `by` or `until` (an objective's deadline), `subquest` (a required subquest failed), `cascade` (its parent failed), or `superseded` (its `complete="any"` parent completed through another alternative). `quest.<id>.objectives.<o>.failed` is `true` once the objective's `by` or `until` has failed it. An epilogue can therefore tell a missed deadline from a road not taken with `<match on="quest.hunt.failedBy">`. A run-tier quest's reset clears both.
+Two quest paths say why something failed. `quest.<id>.failedBy` reads `unset` until the quest fails, then names the cause: `fail` (its `fail` predicate), `by` or `until` (an objective's deadline), `subquest` (a required subquest failed), `cascade` (its parent failed), or `superseded` (its `complete="any"` parent completed through another alternative). `quest.<id>.objectives.<o>.failed` is `true` once the objective's `by` or `until` has failed it. An epilogue can therefore tell a missed deadline from a road not taken with `<match subject="quest.hunt.failedBy">`. A run-tier quest's reset clears both.
 
 The `clock.*` paths exist only when a schema declares a `clock:`. Without one, reading `clock.index` is `E-UNDECLARED`. `clock.index` counts positions from the start of day 1 (slots, or whole days for a clock without slots), so it only ever grows, and `clock.weekday` / `clock.weekdayLabel` need the clock's `week:`. See [The clock](/language/clock/).
 
@@ -223,11 +223,9 @@ state:
   run.outcome: { type: { enum: [fell, fled, won] } }
 ---
 
-# The hearth
+## The hearth
 
-## Shot 1.
-
-<match on="prev.run.outcome">
+<match subject="prev.run.outcome">
   <when is="fell">
     @wren: You fell, last time. Slower, this time.
   </when>

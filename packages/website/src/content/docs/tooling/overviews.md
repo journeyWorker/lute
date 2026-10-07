@@ -663,7 +663,7 @@ Exit **0** on success, **1** when the project does not compile, **2** on an I/O 
 $ lute scenario <dir> [--format text|json] knowledge [--for <node>]
 ```
 
-List every condition that queries a fact — `holds(…)`, `count(…)`, `countDistinct(…)`, or `validAt(…)` — in every guard slot (dsl 0.24.0): beat, entry and objective guards, line `when=`, `<choice when>`, `<when>` arm tests, `::next`/`::set` `when`, `<on when>`, reward `when`, quest `start`/`fail`, and objective `until`. Conditions are grouped by document, each with its source line, and each queried atom is traced back to what can produce it. A derived atom is followed **through the rules**, with the rule head's variables bound to the atom's constants, so each premise is shown as the ground atom it needs; a base atom ends at its producers:
+List every condition that queries a fact — `holds(…)`, `count(…)`, `countDistinct(…)`, or `validAt(…)` — in every guard slot (dsl 0.24.0): beat, entry and objective guards, line `when=`, `<choice when>`, `<when>` arm tests, `::jump`/`::set` `when`, `<on when>`, reward `when`, quest `start`/`fail`, and objective `until`. Conditions are grouped by document, each with its source line, and each queried atom is traced back to what can produce it. A derived atom is followed **through the rules**, with the rule head's variables bound to the atom's constants, so each premise is shown as the ground atom it needs; a base atom ends at its producers:
 
 - **asserted by** — the scenes (by scene key), quests, entries and bundle beats (by canonical id `<document id>.<beat id>`) whose `::assert` can produce it, with their documents;
 - **seed facts** — the schema's `facts:` that match it;
