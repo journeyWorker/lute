@@ -203,7 +203,7 @@ pub fn normalize_document(
     // One ordinal counter per identity scope (see `COMPONENT_SCOPE_ATTR`):
     // shots share one, each quest and each entry gets its own.
     let mut shot_uses = UseIdentityState::default();
-    for shot in &mut doc.shots {
+    for shot in &mut doc.sections {
         expand_target_uses(&mut shot.body, targets);
         normalize_nodes(
             &mut shot.body,
@@ -930,8 +930,7 @@ fn expand_use(
         return Vec::new();
     }
     let mut body: Vec<Node> = def
-        .body
-        .shots
+        .body.sections
         .iter()
         .flat_map(|s| s.body.iter().cloned())
         .collect();
@@ -1449,7 +1448,7 @@ mod tests {
         );
         assert!(diags.is_empty(), "{diags:#?}");
 
-        let body = &doc.shots[0].body;
+        let body = &doc.sections[0].body;
         // ::use replaced by: begin sentinel, ::auto (param bound), line, end sentinel, then the scene's own line.
         let tags: Vec<String> = body
             .iter()
@@ -1565,7 +1564,7 @@ components: [greet.component.lute]
             "diagnostic should name component + mismatched params: {msg:?}"
         );
         // No expansion leaked: no sentinels, no `::auto` body, no `::use` remnant.
-        let body = &doc.shots[0].body;
+        let body = &doc.sections[0].body;
         assert!(
             body.iter().all(|n| !matches!(n, Node::Directive(d)
                 if d.tag == COMPONENT_BEGIN
@@ -1638,7 +1637,7 @@ episode: 1
         );
         assert!(diags.is_empty(), "{diags:#?}");
 
-        let Node::Branch(b) = &doc.shots[0].body[0] else {
+        let Node::Branch(b) = &doc.sections[0].body[0] else {
             panic!("branch")
         };
         let last_set = |i: usize| -> (&str, &str, &str) {

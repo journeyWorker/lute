@@ -338,9 +338,9 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 명세: [dsl §2.1](/spec/)
 
-### E-CONTENT-OUTSIDE-SHOT
+### E-CONTENT-OUTSIDE-SECTION
 
-`@speaker…`, `::directive`, `<tag>` 같은 콘텐츠 형태의 줄이 문서의 첫 `## ` 샷 제목보다 앞에 나왔습니다. 콘텐츠는 샷 본문 안에만 있을 수 있습니다.
+`@speaker…`, `::directive`, `<tag>` 같은 콘텐츠 형태의 줄이 문서의 첫 `## ` 섹션 제목보다 앞에 나왔습니다. 콘텐츠는 섹션 본문 안에만 있을 수 있습니다.
 
 명세: [dsl 0.5.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.0.md), [dsl 0.6.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md)
 
@@ -1248,6 +1248,13 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 ### E-SEASON-DECL
 
 명세: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+
+### E-SECTION-SUFFIX
+
+섹션 제목의 끝에 있는 `{#id}` 식별자 접미사가 형식에 맞지 않습니다.
+
+명세: [dsl §3.1](/spec/)
+
 ### E-SEMANTICS-UNKNOWN
 
 실행 아티팩트 또는 엔진 매트릭스가 알 수 없는 의미 ID를 지정합니다.
@@ -1389,6 +1396,18 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 ### E-TEST-NO-EXPECT
 
 `*.test.yaml`이 인식되는 `expect:` 키를 하나도 선언하지 않아, 이 테스트는 아무것도 단언하지 않으므로 통과할 수 없습니다.
+
+### E-TEXT-ESCAPE
+
+인라인 텍스트 수식에서 정의되지 않은 백슬래시 이스케이프를 사용했습니다.
+
+명세: [dsl §3.6](/spec/)
+
+### E-TEXT-MODIFIER
+
+인라인 텍스트 수식의 중첩이 잘못되었거나 스팬 또는 속성 본문이 닫히지 않았습니다.
+
+명세: [dsl §3.6](/spec/)
 
 ### E-TIME-RESOLUTION
 

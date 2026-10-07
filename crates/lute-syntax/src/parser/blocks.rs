@@ -1297,7 +1297,7 @@ mod tests {
             "`<choice>` from line 3 is never closed: `</branch>` on line 5 closes the enclosing \
              `<branch>` — add `</choice>` above it"
         );
-        let body = &doc.shots[0].body;
+        let body = &doc.sections[0].body;
         assert_eq!(
             body.len(),
             2,
@@ -1323,8 +1323,8 @@ mod tests {
             "`<choice>` from line 3 is never closed: the next `<choice>` opens on line 5 — add \
              `</choice>` above it"
         );
-        let Node::Branch(b) = &doc.shots[0].body[0] else {
-            panic!("{:?}", doc.shots[0].body)
+        let Node::Branch(b) = &doc.sections[0].body[0] else {
+            panic!("{:?}", doc.sections[0].body)
         };
         assert_eq!(b.choices.len(), 2);
 
@@ -1332,8 +1332,8 @@ mod tests {
                    <otherwise>\n@narrator: B.\n</otherwise>\n</match>\n";
         let (doc, diags) = parse(src);
         assert_eq!(diags.len(), 1, "{diags:?}");
-        let Node::Match(m) = &doc.shots[0].body[0] else {
-            panic!("{:?}", doc.shots[0].body)
+        let Node::Match(m) = &doc.sections[0].body[0] else {
+            panic!("{:?}", doc.sections[0].body)
         };
         assert_eq!(m.arms.len(), 2);
     }
@@ -1352,7 +1352,7 @@ mod tests {
             "`</whem>` closes no open block — the block open here is `<when>` from line 3, \
              which `</when>` closes"
         );
-        let Node::Match(m) = &doc.shots[0].body[0] else {
+        let Node::Match(m) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(m.arms.len(), 1);
@@ -1389,7 +1389,7 @@ mod tests {
                 "{open}: {}",
                 diags[0].message
             );
-            let body = &doc.shots[0].body;
+            let body = &doc.sections[0].body;
             assert_eq!(body.len(), 1, "{open}: only `after` remains: {body:?}");
             assert!(matches!(&body[0], Node::Line(_)), "{open}: {body:?}");
         }
@@ -1400,7 +1400,7 @@ mod tests {
         let src = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"a\" label=\"Ask\" once>\n@marina: Sure.\n</choice>\n<choice id=\"leave\" label=\"Go\" exit>\n@fixer: Bye.\n</choice>\n</hub>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Hub(h) = &doc.shots[0].body[0] else {
+        let Node::Hub(h) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(h.choices.len(), 2);
@@ -1422,7 +1422,7 @@ mod tests {
         let src = "## S\n<hub id=\"lamp\">\n<return>\n@narrator: The lamp room again.\n</return>\n<choice id=\"a\" label=\"A\">\n@narrator: a\n</choice>\n<choice id=\"b\" label=\"B\" exit>\n@narrator: b\n</choice>\n</hub>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Hub(h) = &doc.shots[0].body[0] else {
+        let Node::Hub(h) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(h.choices.len(), 2);
@@ -1449,7 +1449,7 @@ mod tests {
             "{diags:?}"
         );
         assert!(diags[0].message.contains("at most one `<return>`"));
-        let Node::Hub(h) = &doc.shots[0].body[0] else {
+        let Node::Hub(h) = &doc.sections[0].body[0] else {
             panic!()
         };
         let r = h.on_return.as_ref().expect("the first <return>");
@@ -1483,7 +1483,7 @@ mod tests {
                 "{open}: {}",
                 diags[0].message
             );
-            let choices = match &doc.shots[0].body[0] {
+            let choices = match &doc.sections[0].body[0] {
                 Node::Branch(b) => b.choices.len(),
                 Node::Hub(h) => h.choices.len(),
                 n => panic!("{n:?}"),
@@ -1499,14 +1499,14 @@ mod tests {
         let src = "## Shot 1.\n<hub id=\"outer\">\n<choice id=\"a\" label=\"A\">\n<hub id=\"inner\">\n<choice id=\"x\" label=\"X\">\n@marina: hi\n</choice>\n</hub>\n</choice>\n</hub>\n<branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n<hub id=\"h2\">\n<choice id=\"y\" label=\"Y\">\n@fixer: yo\n</choice>\n</hub>\n</choice>\n</branch>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Hub(outer) = &doc.shots[0].body[0] else {
+        let Node::Hub(outer) = &doc.sections[0].body[0] else {
             panic!("expected outer Hub")
         };
         let Node::Hub(inner) = &outer.choices[0].body[0] else {
             panic!("expected inner Hub")
         };
         assert_eq!(inner.choices.len(), 1);
-        let Node::Branch(br) = &doc.shots[0].body[1] else {
+        let Node::Branch(br) = &doc.sections[0].body[1] else {
             panic!("expected Branch")
         };
         let Node::Hub(h2) = &br.choices[0].body[0] else {
@@ -1521,8 +1521,8 @@ mod tests {
             "## Shot 1.\n<on event=\"combatEnd\" when=\"run.dead\">\n@narrator: silence.\n</on>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::On(on) = &doc.shots[0].body[0] else {
-            panic!("{:?}", doc.shots[0].body)
+        let Node::On(on) = &doc.sections[0].body[0] else {
+            panic!("{:?}", doc.sections[0].body)
         };
         assert_eq!(on.event, "combatEnd");
         assert!(on.when.is_some());
@@ -1535,7 +1535,7 @@ mod tests {
             "## Shot 1.\n<objective id=\"reach\" title=\"Reach\" done=\"run.here\"/>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Objective(o) = &doc.shots[0].body[0] else {
+        let Node::Objective(o) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(o.id, "reach");
@@ -1548,7 +1548,7 @@ mod tests {
     #[test]
     fn objective_optional_flag_parses() {
         let (doc, _) = crate::parse("## Shot 1.\n<objective id=\"x\" done=\"a\" optional/>\n");
-        let Node::Objective(o) = &doc.shots[0].body[0] else {
+        let Node::Objective(o) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert!(o.optional);
@@ -1563,7 +1563,7 @@ mod tests {
             let (doc, _) = crate::parse(&format!(
                 "## Shot 1.\n<objective id=\"x\" done=\"a\" {attr}/>\n"
             ));
-            let Node::Objective(o) = &doc.shots[0].body[0] else {
+            let Node::Objective(o) = &doc.sections[0].body[0] else {
                 panic!()
             };
             o.clone()
@@ -1586,7 +1586,7 @@ mod tests {
             "## Shot 1.\n<objective id=\"x\" done=\"a\">\n::set{run.x = 1}\n</objective>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Objective(o) = &doc.shots[0].body[0] else {
+        let Node::Objective(o) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(o.body.len(), 1);
@@ -1654,7 +1654,7 @@ mod tests {
         // misplaced and dropped.
         let src = "## Shot 1.\n<reward kind=\"gold\" amount=\"1\"/>\n";
         let (doc, diags) = crate::parse(src);
-        assert!(doc.shots[0].body.is_empty());
+        assert!(doc.sections[0].body.is_empty());
         assert_eq!(diags.len(), 1, "{diags:?}");
         assert_eq!(diags[0].code, "E-LOGIC-CONTENT");
         assert!(

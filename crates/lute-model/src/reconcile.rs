@@ -683,8 +683,7 @@ pub fn reconcile_collected(
             else {
                 continue;
             };
-            let all_nodes: Vec<lute_syntax::ast::Node> = doc
-                .shots
+            let all_nodes: Vec<lute_syntax::ast::Node> = doc.sections
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();

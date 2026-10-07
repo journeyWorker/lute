@@ -37,7 +37,7 @@ use tower_lsp_server::ls_types::{FoldingRange, FoldingRangeKind};
 /// before the ranges of the blocks nested inside it.
 pub fn folding_ranges(doc: &Document, idx: &TextIndex) -> Vec<FoldingRange> {
     let mut out = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         push_fold(&mut out, &shot.span, idx);
         fold_nodes(&shot.body, idx, &mut out);
     }
@@ -145,7 +145,7 @@ mod tests {
         let idx = TextIndex::new(text);
         let ml = |s: &Span| idx.position(s.byte_end).line > idx.position(s.byte_start).line;
         let (mut shots, mut timelines, mut tracks, mut branches, mut matches) = (0, 0, 0, 0, 0);
-        for shot in &doc.shots {
+        for shot in &doc.sections {
             if ml(&shot.span) {
                 shots += 1;
             }

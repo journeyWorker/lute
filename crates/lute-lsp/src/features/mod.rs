@@ -84,7 +84,7 @@ pub fn identity_at(doc: &Document, off: usize) -> Option<IdentityAt> {
         }
         None
     }
-    doc.shots.iter().find_map(|shot| scan(&shot.body, off))
+    doc.sections.iter().find_map(|shot| scan(&shot.body, off))
         .or_else(|| doc.quests.iter().find_map(|quest| scan(&quest.body, off)))
         .or_else(|| doc.entries.iter().find_map(|entry| scan(&entry.body, off)))
         .or_else(|| doc.beats.iter().find_map(|beat| scan(&beat.body, off)))

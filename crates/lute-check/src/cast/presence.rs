@@ -164,7 +164,7 @@ pub fn check_presence(
         scene_ladder,
         scene_absent,
         &scene_after,
-        doc.shots.iter().map(|s| &s.body[..]),
+        doc.sections.iter().map(|s| &s.body[..]),
     );
     for quest in &doc.quests {
         let mut conds = Vec::new();

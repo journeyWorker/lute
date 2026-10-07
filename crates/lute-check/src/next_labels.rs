@@ -265,7 +265,7 @@ fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
             .flat_map(char::to_lowercase)
             .collect()
     };
-    if let Some(shot) = doc.shots.iter().find(|s| fold(&s.heading) == fold(to)) {
+    if let Some(shot) = doc.sections.iter().find(|s| fold(&s.heading) == fold(to)) {
         return Some(format!(
             "`{to}` is the `## {}` heading, not a mark; {TARGET}, so put `::mark{{id=\"{to}\"}}` \
              under that heading",
@@ -305,8 +305,7 @@ fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
                 })
         })
     }
-    let bodies = doc
-        .shots
+    let bodies = doc.sections
         .iter()
         .map(|s| s.body.as_slice())
         .chain(doc.quests.iter().map(|q| q.body.as_slice()))
@@ -354,7 +353,7 @@ fn collect(doc: &Document) -> Collector {
         dups: Vec::new(),
         nexts: Vec::new(),
     };
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         c.walk(&shot.body);
     }
     for quest in &doc.quests {

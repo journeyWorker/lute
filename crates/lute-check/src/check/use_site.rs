@@ -535,7 +535,7 @@ fn component_bound_params(
                     }
                     stack.push(name.to_string());
                     let (mut inner_facts, mut inner_index) = (Out::new(), Out::new());
-                    for shot in &def.body.shots {
+                    for shot in &def.body.sections {
                         walk(
                             &shot.body,
                             components,
@@ -571,7 +571,7 @@ fn component_bound_params(
         }
     }
     let (mut facts, mut index) = (Out::new(), Out::new());
-    for shot in &body.shots {
+    for shot in &body.sections {
         walk(
             &shot.body,
             components,
@@ -593,8 +593,7 @@ pub(super) fn check_use_speaker_args(
     enclosing: &[String],
 ) -> Vec<Diagnostic> {
     let mut dirs = Vec::new();
-    for body in doc
-        .shots
+    for body in doc.sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
@@ -1018,7 +1017,7 @@ fn typed_param_sinks(
             }
         }
     }
-    for shot in &def.body.shots {
+    for shot in &def.body.sections {
         walk(&shot.body, &mut directive, out);
     }
 }
@@ -1040,8 +1039,7 @@ fn component_interpolates(
     let Some(def) = components.table.get(comp) else {
         return false;
     };
-    def.body
-        .shots
+    def.body.sections
         .iter()
         .any(|s| body_interpolates(&s.body, components, param, seen))
 }
@@ -1089,8 +1087,7 @@ fn body_interpolates(
 /// judged by both (a header `when` and a body `::assert`) is one report.
 pub(super) fn dedup_guarded_use_reports(doc: &Document, diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     let mut dirs = Vec::new();
-    for body in doc
-        .shots
+    for body in doc.sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
@@ -1137,15 +1134,14 @@ pub fn use_speaker_lines(
     components: &ComponentSet,
 ) -> std::collections::BTreeMap<usize, Vec<lute_syntax::ast::Line>> {
     let speaks = |def: &crate::component_import::ComponentDef| {
-        def.body.shots.iter().any(|s| body_speaks_as_param(&s.body))
+        def.body.sections.iter().any(|s| body_speaks_as_param(&s.body))
     };
     let mut out = std::collections::BTreeMap::new();
     if !components.table.values().any(speaks) {
         return out;
     }
     let mut dirs = Vec::new();
-    for body in doc
-        .shots
+    for body in doc.sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
@@ -1232,8 +1228,7 @@ pub(super) fn check_use_def_enum_args(
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut dirs = Vec::new();
-    for body in doc
-        .shots
+    for body in doc.sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))

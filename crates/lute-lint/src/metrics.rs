@@ -216,8 +216,8 @@ pub fn compute_doc_tables(
         kind: doc_kind(&doc.meta.raw_yaml),
         ..Walker::default()
     };
-    for shot in &doc.shots {
-        walker.visit_shot(shot);
+    for section in &doc.sections {
+        walker.visit_section(section);
     }
     for quest in &doc.quests {
         walker.visit_nodes(&quest.body);
@@ -372,17 +372,17 @@ struct ShotAccum {
 }
 
 impl Walker {
-    fn visit_shot(&mut self, shot: &lute_syntax::ast::Shot) {
+    fn visit_section(&mut self, section: &lute_syntax::ast::Section) {
         self.shot_count += 1;
         self.current_shot = Some(ShotAccum {
             index: self.shot_count,
-            title: shot.heading.clone(),
+            title: section.heading.clone(),
             dialogueLines: 0,
             words: 0,
             firstStagingTag: String::new(),
-            span: shot.span,
+            span: section.span,
         });
-        self.visit_nodes(&shot.body);
+        self.visit_nodes(&section.body);
         if let Some(acc) = self.current_shot.take() {
             self.shots.push(ShotRow {
                 index: acc.index,

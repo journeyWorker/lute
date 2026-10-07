@@ -827,20 +827,22 @@ fn code_line(speaker: &str, code: Option<&str>, byte: usize) -> Node {
         text: "…".into(),
         text_span: sp,
         interps: Vec::new(),
+        inline: Vec::new(),
         span: sp,
     })
 }
 
 fn doc_with(body: Vec<Node>) -> Document {
-    use lute_syntax::ast::{Meta, Shot};
+    use lute_syntax::ast::{Meta, Section};
     Document {
         meta: Meta {
             raw_yaml: String::new(),
             span: span(),
         },
         title: None,
-        shots: vec![Shot {
+        sections: vec![Section {
             heading: "Shot 1".into(),
+            id: None,
             body,
             span: span(),
         }],

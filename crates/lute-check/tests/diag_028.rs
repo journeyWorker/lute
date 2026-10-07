@@ -275,13 +275,13 @@ fn content_before_the_first_shot_is_one_report() {
         .diagnostics
         .iter()
         .filter(|d| {
-            d.code == "E-CONTENT-OUTSIDE-SHOT"
+            d.code == "E-CONTENT-OUTSIDE-SECTION"
                 || d.code == "E-UNCLOSED-TAG"
                 || d.code == "E-UNCLASSIFIED"
         })
         .collect();
     assert_eq!(region.len(), 1, "{:?}", out.diagnostics);
-    assert_eq!(region[0].code, "E-CONTENT-OUTSIDE-SHOT");
+    assert_eq!(region[0].code, "E-CONTENT-OUTSIDE-SECTION");
     assert!(
         region[0].message.ends_with("(this covers lines 6–13)"),
         "{}",

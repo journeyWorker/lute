@@ -21,7 +21,7 @@
                 span: span(0),
             },
             title: None,
-            shots: Vec::new(),
+            sections: Vec::new(),
             quests: Vec::new(),
             entries: Vec::new(),
             beats: Vec::new(),

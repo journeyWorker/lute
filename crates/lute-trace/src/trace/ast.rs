@@ -24,7 +24,7 @@ pub(super) struct AstIndex {
 impl AstIndex {
     pub(super) fn of(doc: &Document) -> Self {
         let mut ix = AstIndex::default();
-        for shot in &doc.shots {
+        for shot in &doc.sections {
             ix.nodes(&shot.body);
         }
         for q in &doc.quests {

@@ -59,7 +59,7 @@ impl ContinuationCompiler {
         let checked = check(&input);
         let mut initial_diagnostics = checked.diagnostics.clone();
         let artifact = compile_with_check(&input, checked, &identity)?;
-        if !matches!(artifact.kind, DocKind::Scene) || document.shots.is_empty() {
+        if !matches!(artifact.kind, DocKind::Scene) || document.sections.is_empty() {
             initial_diagnostics.push(service_diagnostic(
                 E_STREAM_TEMPLATE,
                 "continuation template must be a scene with at least one shot",

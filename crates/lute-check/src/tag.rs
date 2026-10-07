@@ -29,7 +29,7 @@ pub fn tag_document(text: &str) -> TagOutcome {
     let bytes = text.as_bytes();
     let mut inserts: Vec<(usize, String)> = Vec::new();
     let mut scene_lines = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_lines(&shot.body, &mut scene_lines);
     }
     tag_scope(scene_lines, bytes, &mut inserts);
@@ -281,7 +281,7 @@ pub fn retag_document(text: &str) -> RetagOutcome {
     let mut skipped = 0usize;
 
     let mut scene_lines: Vec<&Line> = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_lines(&shot.body, &mut scene_lines);
     }
     retag_scope(

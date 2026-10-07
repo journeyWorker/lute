@@ -126,12 +126,11 @@ fn fold_use(
     // `p` to (a nested `::use`'s arguments pass the binding through).
     let bound: Vec<Vec<Node>>;
     let bodies: Vec<&[Node]> = if def.speakers.is_empty() {
-        def.body.shots.iter().map(|s| s.body.as_slice()).collect()
+        def.body.sections.iter().map(|s| s.body.as_slice()).collect()
     } else {
         let args = crate::component_effects::use_args_for(d, def);
         bound = def
-            .body
-            .shots
+            .body.sections
             .iter()
             .map(|s| {
                 let mut body = s.body.clone();

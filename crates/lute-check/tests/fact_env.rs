@@ -624,7 +624,7 @@ fn non_member_argument_is_left_to_fact_domain() {
 
 /// The `when` slot of the `n`-th top-level line of the first shot.
 fn line_when(doc: &Document, n: usize) -> lute_core_span::Span {
-    let lines: Vec<_> = doc.shots[0]
+    let lines: Vec<_> = doc.sections[0]
         .body
         .iter()
         .filter_map(|node| match node {

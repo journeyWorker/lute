@@ -119,7 +119,7 @@ pub enum QuestConstruct {
 /// when the offset lands on structural trivia (headings, whitespace, the
 /// frontmatter).
 pub fn resolve(doc: &Document, off: usize) -> Option<Cursor<'_>> {
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         if span_contains(shot.span, off) {
             if let Some(c) = resolve_nodes(&shot.body, off) {
                 return Some(c);
@@ -815,7 +815,7 @@ pub fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
         }
         None
     }
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         if span_contains(shot.span, off) {
             if let Some(a) = scan(&shot.body, off) {
                 return Some(a);
@@ -907,7 +907,7 @@ pub fn is_state_path(path: &str) -> bool {
 /// Document span of the `<branch id=…>` declaring `id`, searched depth-first
 /// through nested bodies (a branch may live in a match arm / another choice).
 pub fn branch_span(doc: &Document, id: &str) -> Option<Span> {
-    doc.shots
+    doc.sections
         .iter()
         .find_map(|s| branch_span_nodes(&s.body, id))
         .or_else(|| {
@@ -1076,7 +1076,7 @@ fn hub_decl_id(h: &Hub) -> Option<&str> {
 /// `id` (the checker's unfolded -> INFINITE -> no-domain case).
 fn branch_choice_ids(doc: &Document, id: &str) -> Option<Vec<String>> {
     let mut latest = None;
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         branch_choice_ids_nodes(&shot.body, id, &mut latest);
     }
     latest
@@ -1135,7 +1135,7 @@ fn is_visited_bool(doc: &Document, path: &str) -> bool {
     if choice.contains('.') {
         return false;
     }
-    doc.shots
+    doc.sections
         .iter()
         .any(|s| visited_in_nodes(&s.body, hub, choice))
 }
@@ -1255,7 +1255,7 @@ pub fn ref_uses(doc: &Document, name: &str) -> Vec<Span> {
             }
         }
     }
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_line_interps(
             &shot.body,
             &|i| i.kind == InterpKind::Ref && interp_ref_name(&i.raw).as_deref() == Some(name),
@@ -1270,7 +1270,7 @@ pub fn ref_uses(doc: &Document, name: &str) -> Vec<Span> {
 /// (bare or quoted, [`path_tokens`]), plus content-line `{{path}}` interps.
 pub fn path_uses(doc: &Document, path: &str) -> Vec<Span> {
     let mut out = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_set_paths(&shot.body, path, &mut out);
         collect_line_interps(
             &shot.body,

@@ -251,7 +251,7 @@ fn visit_nodes(doc: &Document, f: &mut impl FnMut(&Node)) {
             }
         }
     }
-    for shot in &doc.shots { body(&shot.body, f); }
+    for shot in &doc.sections { body(&shot.body, f); }
     for q in &doc.quests { body(&q.body, f); }
     for e in &doc.entries { body(&e.body, f); }
     for b in &doc.beats { body(&b.body, f); }

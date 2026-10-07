@@ -125,13 +125,13 @@ pub fn check_fact_guards(
                 if members.is_none() {
                     g.push_guaranteed(&v, "`when` guard", when, &mut out);
                 }
-                for shot in &doc.shots {
+                for shot in &doc.sections {
                     member_arms.extend(g.member_arms(doc, &shot.body, when, &per_member));
                 }
             }
         }
     }
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         g.walk(&shot.body, &mut out);
     }
     for quest in &doc.quests {
@@ -305,7 +305,7 @@ pub fn reconcile_member_matches(
     // Each beat's `when`, element span and bodies.
     let mut beats: Vec<(Option<&CelSlot>, Span, Vec<&[Node]>)> = Vec::new();
     if let Some(b) = &folded.typed.beat {
-        let shots = doc.shots.iter().map(|s| s.body.as_slice()).collect();
+        let shots = doc.sections.iter().map(|s| s.body.as_slice()).collect();
         beats.push((
             b.when.as_ref(),
             crate::beats::top_value_span(&doc.meta, "on"),

@@ -50,7 +50,7 @@ mod tests {
                 span: span(0),
             },
             title: None,
-            shots: Vec::new(),
+            sections: Vec::new(),
             quests,
             entries: Vec::new(),
             beats: Vec::new(),

@@ -865,7 +865,7 @@ mod tests {
             diags.iter().all(|d| d.severity != Severity::Error),
             "{diags:#?}"
         );
-        doc.shots[0].body.clone()
+        doc.sections[0].body.clone()
     }
 
     fn snap() -> CapabilitySnapshot {

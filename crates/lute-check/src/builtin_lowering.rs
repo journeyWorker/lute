@@ -60,7 +60,7 @@ pub fn canonicalize_builtin_directives(doc: &mut Document, snapshot: &Capability
             }
         }
     }
-    for shot in &mut doc.shots {
+    for shot in &mut doc.sections {
         walk(&mut shot.body, &retag);
     }
     for q in &mut doc.quests {

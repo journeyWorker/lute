@@ -283,7 +283,7 @@ fn fold_document(
     let via = scene
         .as_ref()
         .map_or_else(|| document.to_string(), |k| format!("scene `{k}`"));
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         reveal(&shot.body, Source::Document, &via);
     }
     for quest in &doc.quests {

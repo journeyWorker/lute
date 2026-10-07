@@ -290,7 +290,7 @@ impl WhenTestRewrite {
 /// match arm and never visited. `src` is the text `doc` was parsed from.
 pub(crate) fn when_test_rewrites(doc: &Document, src: &str) -> Vec<WhenTestRewrite> {
     let mut out = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect(&shot.body, src.as_bytes(), &mut out);
     }
     for quest in &doc.quests {

@@ -86,7 +86,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
     // identity is document + owning branch/hub id + option id; it is stable
     // across unrelated source movement and is the spelling used by context
     // targets (for example `choice:scene.key:branch.option`).
-    for shot in &d.doc.shots {
+    for shot in &d.doc.sections {
         let parent = NodeKey::new(NodeKind::Shot, format!("{doc_id}:{}", shot.heading));
         add_choice_nodes(g, d, &doc_id, &parent, &shot.body, &mut owners);
     }
@@ -96,7 +96,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
     }
 
     let mut line_nodes: Vec<(Span, NodeKey)> = Vec::new();
-    for shot in &d.doc.shots {
+    for shot in &d.doc.sections {
         let key = NodeKey::new(NodeKind::Shot, format!("{doc_id}:{}", shot.heading));
         g.node(key.clone(), Some(d.path.clone()), Some(shot.span));
         g.edge(
@@ -501,7 +501,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
             }
         }
     };
-    for shot in &d.doc.shots {
+    for shot in &d.doc.sections {
         lute_check::directive_facts::for_each_call(&shot.body, &mut directive_effects);
     }
     for quest in &d.doc.quests {
@@ -909,7 +909,7 @@ fn authored_line_spans(doc: &lute_syntax::ast::Document) -> BTreeSet<(usize, usi
         }
     }
     let mut out = BTreeSet::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         walk(&shot.body, &mut out);
     }
     for quest in &doc.quests {

@@ -338,7 +338,7 @@ A content line's attributes are written with `[…]` instead of the required `{�
 
 Spec: [dsl §2.1](/spec/)
 
-### E-CONTENT-OUTSIDE-SHOT
+### E-CONTENT-OUTSIDE-SECTION
 
 A content-shaped line (`@speaker…`, `::directive`, a `<tag>`) appears before the document's first `## ` shot heading, since content only belongs inside a shot body.
 
@@ -1252,6 +1252,12 @@ A `seasons:` declaration is malformed (an entry that is not a map, a missing or 
 
 Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
 
+### E-SECTION-SUFFIX
+
+A section heading has a malformed trailing `{#id}` identity suffix.
+
+Spec: [dsl §3.1](/spec/)
+
 ### E-SEMANTICS-UNKNOWN
 
 An execution artifact or engine matrix names an unknown semantic id.
@@ -1393,6 +1399,18 @@ A `*.test.yaml`'s `transcriptContains`/`transcriptLacks` needle names a speaker 
 ### E-TEST-NO-EXPECT
 
 A `*.test.yaml` declares no recognized `expect:` key, so the test asserts nothing and cannot pass.
+
+### E-TEXT-ESCAPE
+
+An inline text modifier uses a backslash escape that is not one of the defined punctuation escapes.
+
+Spec: [dsl §3.6](/spec/)
+
+### E-TEXT-MODIFIER
+
+An inline text modifier has malformed nesting or an unterminated span or attribute body.
+
+Spec: [dsl §3.6](/spec/)
 
 ### E-TIME-RESOLUTION
 

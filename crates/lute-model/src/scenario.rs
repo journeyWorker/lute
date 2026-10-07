@@ -59,7 +59,7 @@ pub fn assemble_root_scenario(
     for (key, occurrences) in &key_set {
         let Some((scene_path, _)) = occurrences.first() else { continue };
         let Some((_, doc, folded)) = group_ix.get(scene_path.as_path()).map(|&i| &group_full[i]) else { continue };
-        let all_nodes: Vec<_> = doc.shots.iter().flat_map(|shot| shot.body.iter().cloned()).collect();
+        let all_nodes: Vec<_> = doc.sections.iter().flat_map(|shot| shot.body.iter().cloned()).collect();
         let scope = defassign::Scope::of(folded);
         let beat_when = folded.typed.beat.as_ref().and_then(|beat| beat.when.as_ref());
         let (_, assigned, reads) = check_definite_assignment(&all_nodes, &scope, beat_when);

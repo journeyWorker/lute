@@ -566,7 +566,7 @@ mod tests {
 
     fn first_choice_label(src: &str) -> String {
         let (doc, _) = parse(src);
-        doc.shots[0]
+        doc.sections[0]
             .body
             .iter()
             .find_map(|n| match n {
@@ -593,7 +593,7 @@ mod tests {
     #[test]
     fn other_escapes_pass_through_to_the_value() {
         let (doc, _) = parse("## Shot 1.\n::sfx{note=\"a\\'b\\\\\" tail=\"x\"}\n");
-        let crate::ast::Node::Directive(d) = &doc.shots[0].body[0] else {
+        let crate::ast::Node::Directive(d) = &doc.sections[0].body[0] else {
             panic!("directive expected");
         };
         let note = d.attrs.iter().find(|a| a.key == "note").expect("note");
@@ -642,7 +642,7 @@ mod tests {
             1,
             "{diags:?}"
         );
-        let crate::ast::Node::Branch(b) = &doc.shots[0].body[0] else {
+        let crate::ast::Node::Branch(b) = &doc.sections[0].body[0] else {
             panic!("branch expected");
         };
         assert_eq!(b.choices[0].label, "Hi there");
@@ -674,7 +674,7 @@ mod tests {
             (3, 22),
             "anchored at the curly quote"
         );
-        let crate::ast::Node::Branch(b) = &doc.shots[0].body[0] else {
+        let crate::ast::Node::Branch(b) = &doc.sections[0].body[0] else {
             panic!("branch expected");
         };
         assert_eq!(b.choices[0].label, "Open the oven");
@@ -703,7 +703,7 @@ mod tests {
             assert_eq!(codes, ["E-ATTR-QUOTE"], "{src}: {diags:?}");
         }
         let (doc, _) = parse("## Shot 1.\n::sfx{sound=‘a b’ note=\"n\"}\n");
-        let crate::ast::Node::Directive(d) = &doc.shots[0].body[0] else {
+        let crate::ast::Node::Directive(d) = &doc.sections[0].body[0] else {
             panic!("directive expected");
         };
         let sound = d.attrs.iter().find(|a| a.key == "sound").expect("sound");

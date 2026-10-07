@@ -40,8 +40,7 @@ pub fn check_speakers(doc: &Document, cast: &BTreeMap<String, CastMember>) -> Ve
     }
     let mut lines: Vec<&Line> = Vec::new();
     let mut staged: Vec<(&str, &str, Span)> = Vec::new();
-    let bodies = doc
-        .shots
+    let bodies = doc.sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))

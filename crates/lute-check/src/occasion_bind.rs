@@ -392,7 +392,7 @@ pub fn payload_decls(
     for q in &doc.quests {
         raised_regions(&q.body, occasions, &mut regions, &mut between);
     }
-    for s in &doc.shots {
+    for s in &doc.sections {
         raised_regions(&s.body, occasions, &mut regions, &mut between);
     }
     let mut decls = std::collections::BTreeMap::new();

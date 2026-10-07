@@ -457,7 +457,7 @@ fn a_headless_template_plays_and_beats_notes_the_when_a_use_replaces() {
     );
     let (code, out) = run(&dir, &["check-project", "."]);
     assert_eq!(code, Some(0), "{out}");
-    assert!(!out.contains("E-CONTENT-OUTSIDE-SHOT"), "{out}");
+    assert!(!out.contains("E-CONTENT-OUTSIDE-SECTION"), "{out}");
     let (_, beats) = run(&dir, &["beats", "."]);
     assert!(
         beats.contains(

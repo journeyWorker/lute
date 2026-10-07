@@ -1383,8 +1383,7 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         };
         let (_, doc) = &docs.documents()[idx];
         let folded = &foldeds[idx];
-        let all_nodes: Vec<lute_syntax::ast::Node> = doc
-            .shots
+        let all_nodes: Vec<lute_syntax::ast::Node> = doc.sections
             .iter()
             .flat_map(|s| s.body.iter().cloned())
             .collect();
@@ -2039,8 +2038,7 @@ fn parsed_scene(text: &str) -> (Vec<lute_syntax::ast::Node>, lute_check::FoldedE
     let input = input_for(text);
     let (doc, _) = lute_syntax::parse(&input.text);
     let (folded, _, _) = fold_env(&doc, &input);
-    let nodes: Vec<lute_syntax::ast::Node> = doc
-        .shots
+    let nodes: Vec<lute_syntax::ast::Node> = doc.sections
         .iter()
         .flat_map(|s| s.body.iter().cloned())
         .collect();

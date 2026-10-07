@@ -53,7 +53,7 @@ fn a_missing_operator_is_an_error_with_the_meant_operator() {
 fn an_unspaced_minus_assign_is_the_operator() {
     let (doc, diags) = lute_syntax::parse(&format!("{HDR}::set{{ run.clues-=1 }}\n"));
     assert!(diags.is_empty(), "{diags:?}");
-    let set = doc.shots[0]
+    let set = doc.sections[0]
         .body
         .iter()
         .find_map(|n| match n {
@@ -102,7 +102,7 @@ fn prose_that_is_not_path_op_value_names_the_shape() {
             "{set}"
         );
         assert!(
-            !doc.shots[0]
+            !doc.sections[0]
                 .body
                 .iter()
                 .any(|n| matches!(n, lute_syntax::ast::Node::Set(_))),
@@ -138,7 +138,7 @@ fn a_param_as_a_dotted_segment_names_the_indexed_form() {
         errs[0].message
     );
     // The node recovers as the indexed path, so nothing cascades.
-    let set = doc.shots[0]
+    let set = doc.sections[0]
         .body
         .iter()
         .find_map(|n| match n {
@@ -154,7 +154,7 @@ fn a_param_as_a_dotted_segment_names_the_indexed_form() {
 
 fn set_node(set: &str) -> (Option<(String, String)>, Vec<String>) {
     let (doc, diags) = lute_syntax::parse(&format!("{HDR}{set}\n"));
-    let node = doc.shots[0].body.iter().find_map(|n| match n {
+    let node = doc.sections[0].body.iter().find_map(|n| match n {
         lute_syntax::ast::Node::Set(s) => Some((s.path.clone(), s.op.clone())),
         _ => None,
     });

@@ -135,7 +135,7 @@ const STRUCTURAL_CODES: &[&str] = &[
     // dsl 0.5.0 §2.1: split off E-UNCLASSIFIED / E-UNCLOSED-TAG — each
     // corrupts the node stream the SAME way its parent code did (a dropped
     // line, or a tag whose attrs/close never resolve as intended).
-    "E-CONTENT-OUTSIDE-SHOT",
+    "E-CONTENT-OUTSIDE-SECTION",
     "E-CONTENT-LINE-BRACKET",
     "E-TAG-NOT-ONE-LINE",
     // dsl §2.3: an inline `<tag …>body</tag>` body is DROPPED from the node
@@ -382,7 +382,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                 cast: &own_cast,
                 own: component_own_slots(&doc, &input.snapshot, &input.components),
             };
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 walk_component_body(
                     &shot.body,
                     &input.snapshot,
@@ -418,9 +418,9 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     .diags
                     .extend(check_beat_when(spent_by, &arena, &base_ctx, &scope));
             }
-            let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
+            let shots: Vec<&[Node]> = doc.sections.iter().map(|s| s.body.as_slice()).collect();
             walker.assume = walker.assumption(beat_when.as_ref(), &shots, &env.state);
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 walker.walk(&shot.body, &base_ctx);
             }
         }
@@ -585,8 +585,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let mut exhaustive_subject_spans: Vec<Span> = Vec::new();
     let defassign_diags: Vec<Diagnostic> = match folded.doc_kind {
         crate::meta::DocKind::Scene => {
-            let all_nodes: Vec<Node> = doc
-                .shots
+            let all_nodes: Vec<Node> = doc.sections
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();
@@ -690,7 +689,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let line_code_diags =
         crate::match_check::check_line_codes_with_policy(&doc, input.snapshot.identity_require_stable);
     let mut instance_diags = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         super::use_site::check_instance_scope(&shot.body, &mut instance_diags);
     }
     for quest in &doc.quests {
@@ -732,7 +731,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let mut inject_state = StageState::default();
     let mut injections = Vec::new();
     let mut using = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         fold_injections(
             &shot.body,
             &mut inject_state,
@@ -761,8 +760,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // the quest arm reuses it verbatim — no wildcard, both surfaces summarized
     // identically.
     let commands_preview: Vec<String> = match folded.doc_kind {
-        crate::meta::DocKind::Scene => doc
-            .shots
+        crate::meta::DocKind::Scene => doc.sections
             .iter()
             .flat_map(|s| s.body.iter().map(node_summary))
             .collect(),

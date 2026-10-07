@@ -409,7 +409,7 @@ fn document_units(
         templates,
         components,
     };
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         walk_nodes(&cx, &shot.body, None, cx.prefix, out);
     }
     for quest in &doc.quests {

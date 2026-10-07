@@ -135,7 +135,7 @@ pub(crate) fn validate_member(
 /// bodies, lore entries and bundle beats (the bodies [`check_speakers`]
 /// visits).
 pub(crate) fn doc_bodies(doc: &Document) -> impl Iterator<Item = &Vec<Node>> {
-    doc.shots
+    doc.sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))

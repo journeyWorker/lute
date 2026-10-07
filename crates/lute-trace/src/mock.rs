@@ -1317,7 +1317,7 @@ pub(crate) fn hub_id(h: &Hub) -> Option<String> {
 /// `<on>`/`<objective>` quest arm, or another choice's body).
 fn collect_choice_ids(doc: &Document) -> BTreeMap<String, Vec<String>> {
     let mut out = BTreeMap::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_choice_ids_nodes(&shot.body, &mut out);
     }
     for quest in &doc.quests {

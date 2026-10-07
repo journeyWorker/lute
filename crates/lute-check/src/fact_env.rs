@@ -332,8 +332,7 @@ impl RootVocab {
         self.incomplete |= docs.iter().any(|item| item.meta.yaml().is_none());
         fn body_asserts(d: &lute_syntax::ast::Document) -> Vec<&lute_syntax::ast::Assert> {
             let mut asserts = Vec::new();
-            let bodies = d
-                .shots
+            let bodies = d.sections
                 .iter()
                 .map(|s| &s.body)
                 .chain(d.quests.iter().map(|q| &q.body))

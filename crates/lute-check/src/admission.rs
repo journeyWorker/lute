@@ -211,7 +211,7 @@ pub fn check_admission(
             }
             reject_entries(doc, "scene", &mut diags);
             reject_beats(doc, "scene", &mut diags);
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 walk(
                     &shot.body,
                     DocKind::Scene,
@@ -230,7 +230,7 @@ pub fn check_admission(
                     *title_span,
                 ));
             }
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 diags.push(diag(
                     format!(
                         "a `{}` heading is not admitted in a quest document; the quest kind \
@@ -271,7 +271,7 @@ pub fn check_admission(
                     *title_span,
                 ));
             }
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 diags.push(diag(
                     format!(
                         "a `{}` heading is not admitted in a lore document; the lore kind \
@@ -397,7 +397,7 @@ fn reject_beats(doc: &Document, kind: &str, diags: &mut Vec<Diagnostic>) {
 ///   each `shot.body`, plus the whole-body `check_line_codes` (Task 7c) and
 ///   `check_reachability_in` (Task 7e) passes. A shot's `heading` is required
 ///   scaffolding, not content — the parser refuses body content outside a shot
-///   (`E-CONTENT-OUTSIDE-SHOT`) — and is discarded on `::use` expansion by
+///   (`E-CONTENT-OUTSIDE-SECTION`) — and is discarded on `::use` expansion by
 ///   design, since an expanded component contributes nodes to the consuming
 ///   shot rather than a shot of its own.
 /// * `quests` — UNWALKED: the instance this pass reports.
@@ -415,7 +415,7 @@ pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
     let Document {
         meta: _,
         title: _,
-        shots: _,
+        sections: _,
         quests,
         entries,
         beats,

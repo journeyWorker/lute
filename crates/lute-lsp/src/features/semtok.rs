@@ -125,7 +125,7 @@ struct AbsTok {
 /// Classify `doc` into DELTA-encoded [`SemanticToken`]s (LSP wire order).
 pub fn semantic_tokens(doc: &Document, idx: &TextIndex) -> Vec<SemanticToken> {
     let mut raw = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         walk_nodes(&shot.body, idx.text(), &mut raw);
     }
     // `<quest>` is a top-level declaration (dsl 0.2.0 §6.3), not a `Node` — it

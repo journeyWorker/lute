@@ -914,6 +914,7 @@ mod tests {
             text: "…".to_string(),
             text_span: span(),
             interps: Vec::new(),
+            inline: Vec::new(),
             span: span(),
         })
     }

@@ -73,10 +73,9 @@ pub const E_DATALOG_PARSE: &str = "E-DATALOG-PARSE";
 /// function term (dsl 0.3.0 §7.1).
 pub const E_DATALOG_FUNCTION: &str = "E-DATALOG-FUNCTION";
 /// Diagnostic code (dsl 0.5.0 §2.1): a content-shaped line (`@speaker…`,
-/// `::directive`, `<tag>`) appears before the first `## ` shot heading —
-/// content belongs inside a shot body (`0.6.0 §3.3`). Split off the
-/// [`E_UNCLASSIFIED`] catch-all so the message names the real problem.
-pub const E_CONTENT_OUTSIDE_SHOT: &str = "E-CONTENT-OUTSIDE-SHOT";
+/// `::directive`, `<tag>`) appears before the first `## ` section heading —
+/// content belongs inside a section body (`0.6.0 §3.3`). Split off the
+pub const E_CONTENT_OUTSIDE_SECTION: &str = "E-CONTENT-OUTSIDE-SECTION";
 /// Diagnostic code (dsl 0.5.0 §2.1): a content line uses `[…]` where
 /// attribute braces `{…}` are expected (e.g. `@mira[emotion="x"]: …`,
 /// `0.1 §7.1`). Split off the missing-second-colon path so the message names
@@ -96,6 +95,12 @@ pub const E_TAG_NOT_ONE_LINE: &str = "E-TAG-NOT-ONE-LINE";
 /// itself names the (fixable) deprecation instead of the residual
 /// "unrecognized line" bucket.
 pub const E_LEGACY_CONTENT_SIGIL: &str = "E-LEGACY-CONTENT-SIGIL";
+/// A section heading contained a malformed trailing `{#id}` suffix.
+pub const E_SECTION_SUFFIX: &str = "E-SECTION-SUFFIX";
+/// A content-line modifier or nested span was malformed.
+pub const E_TEXT_MODIFIER: &str = "E-TEXT-MODIFIER";
+/// An inline modifier body used an undefined backslash escape.
+pub const E_TEXT_ESCAPE: &str = "E-TEXT-ESCAPE";
 /// Diagnostic code (dsl §2.3): an element's body — and, in the worst case, its
 /// matching `</tag>` close — was written on the opener's own physical line
 /// (`<tag …>body</tag>`). That single-line form is deliberately **not**
@@ -125,14 +130,14 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         &frame.raw_yaml,
         diags,
     );
-    let (title, shots, quests, entries, beats) = p.parse_document_inner();
+    let (title, sections, quests, entries, beats) = p.parse_document_inner();
     let doc = Document {
         meta: Meta {
             raw_yaml: frame.raw_yaml,
             span: frame.meta_span,
         },
         title,
-        shots,
+        sections,
         quests,
         entries,
         beats,
@@ -327,7 +332,7 @@ pub(crate) fn parse_body_fragment(text: &str) -> (Vec<Node>, Vec<Diagnostic>) {
         hoisted: Vec::new(),
         open_blocks: Vec::new(),
     };
-    let nodes = parser.parse_shot_body();
+    let nodes = parser.parse_section_body();
     (nodes, parser.diags)
 }
 
@@ -477,13 +482,13 @@ impl Parser<'_> {
         &mut self,
     ) -> (
         Option<(String, Span)>,
-        Vec<Shot>,
+        Vec<Section>,
         Vec<Quest>,
         Vec<Entry>,
         Vec<BundleBeat>,
     ) {
         let mut title = None;
-        let mut shots = Vec::new();
+        let mut sections = Vec::new();
         let mut quests = Vec::new();
         let mut entries = Vec::new();
         let mut beats = Vec::new();
@@ -517,7 +522,7 @@ impl Parser<'_> {
                 continue;
             }
             if trimmed.starts_with("## ") {
-                shots.push(self.parse_shot());
+                sections.push(self.parse_section());
             } else if trimmed.starts_with('<')
                 && open_tag_name(&trimmed).as_deref() == Some("quest")
             {
@@ -529,7 +534,7 @@ impl Parser<'_> {
             } else if trimmed.starts_with('<') && open_tag_name(&trimmed).as_deref() == Some("beat")
             {
                 beats.push(self.parse_bundle_beat());
-            } else if trimmed.starts_with("# ") && shots.is_empty() && title.is_none() {
+            } else if trimmed.starts_with("# ") && sections.is_empty() && title.is_none() {
                 title = Some(self.parse_title());
             } else if trimmed.starts_with("# ") {
                 // §6.2/I1: a `# ` title is well-placed only once, before the
@@ -546,7 +551,7 @@ impl Parser<'_> {
                 // RC1 (dsl 0.5.0 §2.1): a top-level stray `</tag>` close is
                 // never content — mirror `parse_shot_body`'s in-shot handling
                 // (an unmatched close is always `E-UNCLOSED-TAG`, not
-                // `E-CONTENT-OUTSIDE-SHOT`).
+                // `E-CONTENT-OUTSIDE-SECTION`).
                 self.report_stray_close();
                 self.cursor += 1;
             } else if let Some(name) = self
@@ -555,7 +560,7 @@ impl Parser<'_> {
                 .filter(|_| is_content_shaped_line(&trimmed))
             {
                 // A beat template's body is a beat body: it needs no shot.
-                shots.push(self.parse_headless_shot(name));
+                sections.push(self.parse_headless_section(name));
             } else if is_content_shaped_line(&trimmed) {
                 // dsl 0.5.0 §2.1: a content-shaped line reached here only
                 // because no shot/scene is currently open (this loop never
@@ -571,7 +576,7 @@ impl Parser<'_> {
                     _ => "content lives inside a shot; add a `## <title>` heading above it",
                 };
                 outside = Some((self.diags.len(), self.cursor, self.cursor));
-                self.emit_line(E_CONTENT_OUTSIDE_SHOT, msg, self.cursor, Layer::Content);
+                self.emit_line(E_CONTENT_OUTSIDE_SECTION, msg, self.cursor, Layer::Content);
                 self.cursor += 1;
             } else {
                 self.emit_unclassified(self.cursor, Layer::Content);
@@ -588,10 +593,10 @@ impl Parser<'_> {
             }
         }
         self.close_outside_region(outside);
-        (title, shots, quests, entries, beats)
+        (title, sections, quests, entries, beats)
     }
 
-    /// Widen a region's one `E-CONTENT-OUTSIDE-SHOT` over every line folded
+    /// Widen a region's one `E-CONTENT-OUTSIDE-SECTION` over every line folded
     /// into it and name that extent.
     fn close_outside_region(&mut self, region: Option<(usize, usize, usize)>) {
         let Some((at, first, last)) = region else {
@@ -630,19 +635,68 @@ impl Parser<'_> {
     /// §3.2). The non-empty guarantee is structural, not enforced here: the
     /// `## ` detector runs on the trimmed line (which carries no trailing
     /// whitespace), so a bare `## ` never matches and no empty-title shot forms.
-    fn parse_shot(&mut self) -> Shot {
+    fn parse_section(&mut self) -> Section {
         let i = self.cursor;
         let cstart = self.line_content_start(i);
         let head_end = self.line_content_end(i);
         let full = self.trimmed(i);
-        let heading = full.strip_prefix("## ").unwrap_or(&full).trim().to_string();
+        let heading_source = full.strip_prefix("## ").unwrap_or(&full);
+        let heading_text = heading_source.trim();
+        let mut heading = heading_text.to_string();
+        let mut id = None;
+        if let Some(open) = heading_source.rfind(" {#") {
+            let candidate = &heading_source[open + 3..];
+            if candidate.ends_with('}') {
+                let token = &candidate[..candidate.len() - 1];
+                let valid = !token.is_empty()
+                    && token.len() <= 64
+                    && token.as_bytes()[0].is_ascii_alphabetic()
+                    && token
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+                if valid {
+                    heading = heading_source[..open].trim_end().to_string();
+                    let id_start = cstart + 3 + open + 3;
+                    id = Some((token.to_string(), self.span(id_start, id_start + token.len())));
+                } else {
+                    let suffix_start = cstart + 3 + open;
+                    self.emit_o(
+                        E_SECTION_SUFFIX,
+                        "section id suffix must be `{#id}` with an ASCII id matching [A-Za-z][A-Za-z0-9_-]{0,63}".into(),
+                        self.orig(suffix_start),
+                        self.orig(self.line_content_end(i)),
+                        Layer::Content,
+                    );
+                }
+            } else {
+                let suffix_start = cstart + 3 + open;
+                self.emit_o(
+                    E_SECTION_SUFFIX,
+                    "section id suffix must be the final ` {#id}` portion of the heading".into(),
+                    self.orig(suffix_start),
+                    self.orig(self.line_content_end(i)),
+                    Layer::Content,
+                );
+            }
+        } else if heading_source.contains("{#") {
+            let open = heading_source.rfind("{#").unwrap_or(0);
+            let suffix_start = cstart + 3 + open;
+            self.emit_o(
+                E_SECTION_SUFFIX,
+                "section id suffix must be the final ` {#id}` portion of the heading".into(),
+                self.orig(suffix_start),
+                self.orig(self.line_content_end(i)),
+                Layer::Content,
+            );
+        }
         let start_o = self.orig(cstart);
         let head_end_o = self.orig(head_end);
         self.cursor += 1;
-        let body = self.parse_shot_body();
+        let body = self.parse_section_body();
         let end_o = body.last().map(node_end).unwrap_or(head_end_o);
-        Shot {
+        Section {
             heading,
+            id,
             body,
             span: self.span_o(start_o, end_o),
         }
@@ -651,18 +705,19 @@ impl Parser<'_> {
     /// A beat template's body written without a `## ` heading: the shot
     /// runs from the content line at `cursor` to the next heading, headed
     /// by the component's name (`heading`).
-    fn parse_headless_shot(&mut self, heading: String) -> Shot {
+    fn parse_headless_section(&mut self, heading: String) -> Section {
         let start_o = self.orig(self.line_content_start(self.cursor));
-        let body = self.parse_shot_body();
+        let body = self.parse_section_body();
         let end_o = body.last().map(node_end).unwrap_or(start_o);
-        Shot {
+        Section {
             heading,
+            id: None,
             body,
             span: self.span_o(start_o, end_o),
         }
     }
 
-    fn parse_shot_body(&mut self) -> Vec<Node> {
+    fn parse_section_body(&mut self) -> Vec<Node> {
         let mut nodes = Vec::new();
         loop {
             self.skip_blanks();
@@ -1367,13 +1422,13 @@ fn split_lines(body: &str) -> Vec<(usize, usize)> {
 /// True when `trimmed` has the SHAPE of a content-shaped body construct —
 /// `@speaker…`, a legacy `:speaker…`/`:line[…]` sigil, an `::directive`, or a
 /// `<tag …>` open — regardless of whether it parses cleanly (dsl 0.5.0 §2.1
-/// `E-CONTENT-OUTSIDE-SHOT`). Mirrors the content-line shape test in
+/// `E-CONTENT-OUTSIDE-SECTION`). Mirrors the content-line shape test in
 /// `next_node` plus the `::`/`<` shapes; a truly unrecognized line (matching
 /// none of these) stays the residual `E-UNCLASSIFIED` catch-all. A `</tag>`
 /// CLOSE is explicitly excluded (RC1): it is never "content", so a stray
 /// top-level close must reach the `E-UNCLOSED-TAG` check in
 /// `parse_document_inner` instead of being misdiagnosed as
-/// `E-CONTENT-OUTSIDE-SHOT`.
+/// `E-CONTENT-OUTSIDE-SECTION`.
 fn is_content_shaped_line(trimmed: &str) -> bool {
     if trimmed.starts_with("</") {
         return false;

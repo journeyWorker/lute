@@ -276,7 +276,7 @@ pub(crate) fn check_document_ids(doc: &Document, typed: &TypedMeta, text: &str) 
         diags.extend(refuse(&[Slot::Id], &b.id, "a beat", b.id_span));
         walk(&b.body, text, &mut diags);
     }
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         walk(&shot.body, text, &mut diags);
     }
     diags

@@ -433,8 +433,7 @@ impl<'a> Root<'a> {
         }
         for item in docs {
             let doc = item.doc;
-            let bodies = doc
-                .shots
+            let bodies = doc.sections
                 .iter()
                 .map(|s| &s.body)
                 .chain(doc.quests.iter().map(|q| &q.body))
@@ -656,7 +655,7 @@ fn walk_doc(
     if let Some(when) = item.meta.beat.as_ref().and_then(|b| b.when.as_ref()) {
         w.guard(when, &mut flow);
     }
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         w.walk(&shot.body, &mut flow);
     }
     let mut end = w.exit.take();

@@ -1,11 +1,11 @@
 use super::*;
-use crate::ast::Node;
+use crate::ast::{InlineNode, Node};
 
 #[test]
 fn classifies_set_before_generic_directive() {
     let (doc, diags) = parse("---\ncharacter: x\n---\n## Shot 1.\n::set{scene.a = 1}\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let body = &doc.shots[0].body;
+    let body = &doc.sections[0].body;
     assert!(
         matches!(body[0], Node::Set(_)),
         "::set must classify as Set, not Directive"
@@ -16,7 +16,7 @@ fn only_set(src_body: &str) -> Set {
     let src = format!("---\ncharacter: x\n---\n## Shot 1.\n{src_body}\n");
     let (doc, diags) = parse(&src);
     assert!(diags.is_empty(), "{diags:?}");
-    match &doc.shots[0].body[0] {
+    match &doc.sections[0].body[0] {
         Node::Set(s) => {
             // Slot spans index the source text verbatim.
             assert_eq!(
@@ -74,7 +74,7 @@ fn set_when_in_a_track_clip_is_timeline_content() {
         diags.iter().any(|d| d.code == E_TIMELINE_CONTENT),
         "{diags:?}"
     );
-    let Node::Timeline(t) = &doc.shots[0].body[0] else {
+    let Node::Timeline(t) = &doc.sections[0].body[0] else {
         panic!("expected timeline");
     };
     let crate::ast::ClipNode::Set(s) = &t.tracks[0].clips[0].node else {
@@ -86,7 +86,7 @@ fn set_when_in_a_track_clip_is_timeline_content() {
 #[test]
 fn line_text_is_opaque_to_eol() {
     let (doc, _) = parse("---\ncharacter: x\n---\n## Shot 1.\n@narrator: (a) <b> : c\n");
-    if let Node::Line(l) = &doc.shots[0].body[0] {
+    if let Node::Line(l) = &doc.sections[0].body[0] {
         assert_eq!(l.text, "(a) <b> : c");
         assert_eq!(l.speaker, "narrator");
     } else {
@@ -101,18 +101,18 @@ fn unrecognized_line_is_error() {
 }
 
 // RC1: a top-level stray `</quest>` is not content, so it must never be
-// diagnosed as `E-CONTENT-OUTSIDE-SHOT` — it belongs on the same
+// diagnosed as `E-CONTENT-OUTSIDE-SECTION` — it belongs on the same
 // `E-UNCLOSED-TAG` path as an in-shot stray close.
 #[test]
-fn top_level_stray_close_is_unclosed_tag_not_content_outside_shot() {
+fn top_level_stray_close_is_unclosed_tag_not_content_outside_section() {
     let (_doc, diags) = parse("</quest>\n## Shot 1.\n@narrator: hi.\n");
     assert!(
         diags.iter().any(|d| d.code == E_UNCLOSED_TAG),
         "stray top-level close must be E-UNCLOSED-TAG: {diags:?}"
     );
     assert!(
-        !diags.iter().any(|d| d.code == E_CONTENT_OUTSIDE_SHOT),
-        "stray top-level close must NOT be misdiagnosed as E-CONTENT-OUTSIDE-SHOT: {diags:?}"
+        !diags.iter().any(|d| d.code == E_CONTENT_OUTSIDE_SECTION),
+        "stray top-level close must NOT be misdiagnosed as E-CONTENT-OUTSIDE-SECTION: {diags:?}"
     );
 }
 
@@ -165,7 +165,7 @@ fn an_unclosed_entry_before_siblings_is_reported_once_plus_its_close() {
 fn lore_content_outside_an_entry_gets_no_heading_advice() {
     let (_doc, diags) = parse("---\nkind: lore\ntitle: T\n---\n@narrator: stray.\n");
     assert_eq!(diags.len(), 1, "{diags:?}");
-    assert_eq!(diags[0].code, E_CONTENT_OUTSIDE_SHOT);
+    assert_eq!(diags[0].code, E_CONTENT_OUTSIDE_SECTION);
     assert!(!diags[0].message.contains("##"), "{}", diags[0].message);
     assert!(
         diags[0].message.contains("`<entry>`"),
@@ -190,9 +190,9 @@ fn free_shot_headings_parse_clean() {
     ] {
         let (doc, diags) = parse(&format!("{good}\n@narrator: hi.\n"));
         assert!(diags.is_empty(), "{good}: {diags:?}");
-        assert_eq!(doc.shots.len(), 1, "{good}: one shot");
+        assert_eq!(doc.sections.len(), 1, "{good}: one section");
         assert_eq!(
-            doc.shots[0].heading,
+            doc.sections[0].heading,
             good.strip_prefix("## ").unwrap(),
             "heading kept opaque: {good}"
         );
@@ -272,7 +272,7 @@ fn free_form_headings_parse() {
         let (doc, diags) = parse(&format!("{good}\n@narrator: hi.\n"));
         assert!(diags.is_empty(), "{good}: {diags:?}");
         assert_eq!(
-            doc.shots[0].heading,
+            doc.sections[0].heading,
             good.strip_prefix("## ").unwrap(),
             "heading kept opaque: {good}"
         );
@@ -290,7 +290,7 @@ fn otherwise_attrs_are_retained_not_a_parse_error() {
         !diags.iter().any(|d| d.code == "E-LOGIC-CONTENT"),
         "the attribute arm is the checker's now: {diags:?}"
     );
-    let Node::Match(m) = &doc.shots[0].body[0] else {
+    let Node::Match(m) = &doc.sections[0].body[0] else {
         panic!()
     };
     let Arm::Otherwise { attrs, .. } = &m.arms[1] else {
@@ -312,8 +312,8 @@ fn match_when_otherwise_retain_residual_attrs() {
                <otherwise junk=\"z\">\n@narrator: b.\n</otherwise>\n\
                </match>\n";
     let (doc, _) = parse(src);
-    let Node::Match(m) = &doc.shots[0].body[0] else {
-        panic!("expected a <match>: {:?}", doc.shots[0].body[0]);
+    let Node::Match(m) = &doc.sections[0].body[0] else {
+        panic!("expected a <match>: {:?}", doc.sections[0].body[0]);
     };
     assert_eq!(
         m.attrs.iter().map(|a| a.key.as_str()).collect::<Vec<_>>(),
@@ -342,7 +342,7 @@ fn match_when_otherwise_retain_residual_attrs() {
 fn attr_quote_protects_structural_chars() {
     let (doc, _) =
         parse("---\ncharacter: x\n---\n## Shot 1.\n::sfx{sound=\"a } b\" name=\"n\"}\n");
-    if let Node::Directive(d) = &doc.shots[0].body[0] {
+    if let Node::Directive(d) = &doc.sections[0].body[0] {
         assert_eq!(d.attrs.len(), 2);
         assert_eq!(d.attrs[0].key, "sound");
     } else {
@@ -394,7 +394,7 @@ fn no_unterminated_diag_from_block_comment_inside_content_text() {
         !diags.iter().any(|d| d.code == E_COMMENT_UNTERMINATED),
         "opaque Text must not raise E-COMMENT-UNTERMINATED: {diags:?}"
     );
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!("expected Line")
     };
     assert!(
@@ -411,7 +411,7 @@ fn escaped_backslash_attr_value_text_stays_opaque() {
     // (§4.2 exclusion 2). The `Text` keeps its `/* … */` verbatim.
     let (doc, diags) = parse("## Shot 1.\n@marina{u=\"\\\\\"}: keep /* literal */\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!("expected Line")
     };
     assert_eq!(l.text, "keep /* literal */");
@@ -429,7 +429,7 @@ fn attr_derived_celslot_span_bounds_raw() {
         let got = &src[s.span.byte_start..s.span.byte_end];
         assert_eq!(got, s.raw, "src[span] must equal raw for kind {:?}", s.kind);
     };
-    if let Node::Match(m) = &doc.shots[0].body[0] {
+    if let Node::Match(m) = &doc.sections[0].body[0] {
         assert_eq!(m.subject.raw, "scene.choices.number");
         slot_ok(&m.subject);
         if let Arm::When { test, .. } = &m.arms[0] {
@@ -450,7 +450,7 @@ fn when_is_pattern_preserved_without_test() {
     // an empty synthesized CelSlot when absent).
     let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft | curt\">\n@narrator: hi\n</when>\n</match>\n";
     let (doc, _diags) = parse(src);
-    let Node::Match(m) = &doc.shots[0].body[0] else {
+    let Node::Match(m) = &doc.sections[0].body[0] else {
         panic!("expected Match")
     };
     let Arm::When { is, test, .. } = &m.arms[0] else {
@@ -467,7 +467,7 @@ fn when_is_and_test_both_preserved() {
     // neither clobbers the other.
     let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"gold\" test=\"$ != 'x'\">\n@narrator: hi\n</when>\n</match>\n";
     let (doc, _diags) = parse(src);
-    let Node::Match(m) = &doc.shots[0].body[0] else {
+    let Node::Match(m) = &doc.sections[0].body[0] else {
         panic!("expected Match")
     };
     let Arm::When { is, test, .. } = &m.arms[0] else {
@@ -482,7 +482,7 @@ fn when_without_is_has_none() {
     // A test-only `<when>` carries no `is` pattern.
     let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when test=\"$ == 1\">\n@narrator: hi\n</when>\n</match>\n";
     let (doc, _diags) = parse(src);
-    let Node::Match(m) = &doc.shots[0].body[0] else {
+    let Node::Match(m) = &doc.sections[0].body[0] else {
         panic!("expected Match")
     };
     let Arm::When { is, test, .. } = &m.arms[0] else {
@@ -499,7 +499,7 @@ fn match_with_is_arm_and_otherwise_preserves_is() {
     // the pattern is not dropped at the parse layer (dsl §7.3.1).
     let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft\">\n@narrator: soft\n</when>\n<otherwise>\n@narrator: else\n</otherwise>\n</match>\n";
     let (doc, _diags) = parse(src);
-    let Node::Match(m) = &doc.shots[0].body[0] else {
+    let Node::Match(m) = &doc.sections[0].body[0] else {
         panic!("expected Match")
     };
     assert_eq!(m.arms.len(), 2);
@@ -539,7 +539,7 @@ fn stray_directive_under_match_is_diagnosed() {
 fn content_line_short_form() {
     let (doc, diags) = parse("## Shot 1.\n@marina{code=\"0010\"}: Hello!\n@narrator: Quiet.\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let body = &doc.shots[0].body;
+    let body = &doc.sections[0].body;
     let Node::Line(l) = &body[0] else { panic!() };
     assert_eq!(l.speaker, "marina");
     assert_eq!(l.text, "Hello!");
@@ -584,14 +584,14 @@ fn content_line_missing_second_colon_is_error() {
 fn line_comment_leading_is_trivia() {
     let (doc, diags) = parse("## Shot 1.\n// a note\n@marina: Hi.\n");
     assert!(diags.is_empty(), "{diags:?}");
-    assert_eq!(doc.shots[0].body.len(), 1);
+    assert_eq!(doc.sections[0].body.len(), 1);
 }
 
 #[test]
 fn line_comment_mid_line_is_not_a_comment() {
     // dsl §4.2: `//` only at line start; inside Text it is literal.
     let (doc, _) = parse("## Shot 1.\n@marina: see https://example.com // really\n");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     assert!(l.text.contains("https://example.com // really"));
@@ -602,7 +602,7 @@ fn block_comment_not_recognized_inside_text() {
     // dsl §4.2 exclusion 2: Text is truly opaque after the second colon.
     let (doc, diags) = parse("## Shot 1.\n@marina: I love /* this */ you.\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     assert_eq!(l.text, "I love /* this */ you.");
@@ -621,7 +621,7 @@ fn interps_are_scanned_and_classified() {
     let (doc, diags) =
         parse("## Shot 1.\n@marina: Hi {{userName}}, you have {{run.coins}} and {{@fond}}.\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     let kinds: Vec<_> = l.interps.iter().map(|p| (p.kind, p.raw.as_str())).collect();
@@ -639,7 +639,7 @@ fn interps_are_scanned_and_classified() {
 fn escaped_and_unterminated_interp() {
     let (doc, diags) =
         parse("## Shot 1.\n@marina: literal \\{{ stays.\n@fixer: broken {{run.coins\n");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     assert!(l.interps.is_empty());
@@ -650,7 +650,7 @@ fn escaped_and_unterminated_interp() {
 fn interp_inner_whitespace_is_trimmed() {
     let (doc, diags) = parse("## Shot 1.\n@marina: You have {{ run.coins }} left.\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     assert_eq!(l.interps.len(), 1);
@@ -664,7 +664,7 @@ fn empty_interp_is_scanned_as_empty_path() {
     // with empty `raw`; the checker rejects the empty referent (Plan B).
     let (doc, diags) = parse("## Shot 1.\n@marina: nothing here {{}} really.\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     assert_eq!(l.interps.len(), 1);
@@ -677,7 +677,7 @@ fn escaped_then_real_interp_same_line() {
     // `\{{` is a literal (no interp); a later unescaped `{{later}}` still scans.
     let (doc, diags) = parse("## Shot 1.\n@marina: braces \\{{ then {{later}}.\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     let kinds: Vec<_> = l.interps.iter().map(|p| (p.kind, p.raw.as_str())).collect();
@@ -693,7 +693,7 @@ fn interp_format_hint_is_split_off_the_referent() {
         "## Shot 1.\n@marina: {{user.deaths:ordinal}} {{ @nth(run.a ? 1 : 2) : ordinal }} {{run.n:plural}} {{run.n}}\n",
     );
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     let got: Vec<_> = l
@@ -721,7 +721,7 @@ fn interp_format_hint_is_split_off_the_referent() {
 #[test]
 fn a_colon_inside_a_call_or_before_a_non_identifier_is_not_a_hint() {
     let (doc, _) = parse("## Shot 1.\n@marina: {{@f(a ? b : c)}} {{run.n:}} {{run.n:1}}\n");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     let got: Vec<_> = l
@@ -747,7 +747,7 @@ fn interp_span_after_multibyte_is_utf8_safe() {
     let src = "## Shot 1.\n@marina: 안녕 {{userName}}!\n";
     let (doc, diags) = parse(src);
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(l) = &doc.shots[0].body[0] else {
+    let Node::Line(l) = &doc.sections[0].body[0] else {
         panic!()
     };
     assert_eq!(l.interps.len(), 1);
@@ -771,7 +771,7 @@ fn quest_doc_collects_top_level_quests() {
     assert_eq!(doc.quests.len(), 2);
     assert_eq!(doc.quests[0].id, "q1");
     assert_eq!(doc.quests[0].body.len(), 1); // one <objective> Node
-    assert!(doc.shots.is_empty());
+    assert!(doc.sections.is_empty());
 }
 
 #[test]
@@ -819,7 +819,7 @@ fn entry_with_every_attr_parses_into_fields() {
                </entry>\n";
     let (doc, diags) = parse(src);
     assert!(diags.is_empty(), "{diags:?}");
-    assert!(doc.shots.is_empty() && doc.quests.is_empty());
+    assert!(doc.sections.is_empty() && doc.quests.is_empty());
     assert_eq!(doc.entries.len(), 1);
     let e = &doc.entries[0];
     assert_eq!(e.id, "scientistLog1");
@@ -997,7 +997,7 @@ fn unclosed_entry_is_unclosed_tag() {
 fn content_before_first_heading_is_content_outside_shot() {
     let (_, diags) = parse("@narrator: hello before any shot\n");
     assert!(
-        diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SHOT"),
+        diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SECTION"),
         "{diags:?}"
     );
     assert!(
@@ -1014,7 +1014,7 @@ fn directive_and_tag_before_first_heading_are_also_content_outside_shot() {
     ] {
         let (_, diags) = parse(src);
         assert!(
-            diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SHOT"),
+            diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SECTION"),
             "{src}: {diags:?}"
         );
     }
@@ -1029,7 +1029,7 @@ fn genuinely_unrecognized_line_outside_shot_stays_unclassified() {
         "{diags:?}"
     );
     assert!(
-        !diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SHOT"),
+        !diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SECTION"),
         "{diags:?}"
     );
 }
@@ -1103,15 +1103,15 @@ fn newline_inside_quoted_attr_value_is_tag_not_one_line() {
     // a desync would either drop it or fabricate extra nodes from the
     // wrongly-consumed/re-consumed line.
     assert_eq!(
-        doc.shots[0].body.len(),
+        doc.sections[0].body.len(),
         1,
         "exactly one On node, no duplicate/dropped nodes from a desync: {:?}",
-        doc.shots[0].body
+        doc.sections[0].body
     );
     assert!(
-        matches!(doc.shots[0].body[0], Node::On(_)),
+        matches!(doc.sections[0].body[0], Node::On(_)),
         "expected an On node: {:?}",
-        doc.shots[0].body
+        doc.sections[0].body
     );
 }
 
@@ -1156,10 +1156,51 @@ fn inline_tag_body_is_named() {
     // The element IS complete on its line, so recovery keeps the arm
     // stream intact: both arms still reach the checker, which is what
     // denies the spurious exhaustiveness verdict a basis to fire.
-    let Node::Match(m) = &doc.shots[0].body[0] else {
-        panic!("expected a Match node: {:?}", doc.shots[0].body);
+    let Node::Match(m) = &doc.sections[0].body[0] else {
+        panic!("expected a Match node: {:?}", doc.sections[0].body);
     };
     assert_eq!(m.arms.len(), 2, "both arms recovered: {:?}", m.arms);
+}
+#[test]
+fn section_suffix_is_parsed_and_heading_is_preserved_without_it() {
+    let (doc, diags) = parse("## The Alley {#stable-id}\n@n: hi\n## No Suffix\n");
+    assert!(diags.is_empty(), "{diags:?}");
+    assert_eq!(doc.sections[0].heading, "The Alley");
+    assert_eq!(doc.sections[0].id.as_ref().map(|(id, _)| id.as_str()), Some("stable-id"));
+    assert_eq!(doc.sections[1].heading, "No Suffix");
+    assert!(doc.sections[1].id.is_none());
+}
+
+#[test]
+fn malformed_section_suffix_is_diagnosed() {
+    let (_, diags) = parse("## Alley {#not valid}\n");
+    assert!(diags.iter().any(|d| d.code == E_SECTION_SUFFIX), "{diags:?}");
+}
+
+#[test]
+fn inline_modifiers_nest_and_derive_plain_text() {
+    let (doc, diags) = parse(
+        "## Section\n@n: :speed[Hello :emphasis[world] {{user.name}}]{rate=1.25}:pause{s=0.5}!\n",
+    );
+    assert!(diags.is_empty(), "{diags:?}");
+    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    assert_eq!(line.plain_text(), "Hello world {{user.name}}!");
+    assert_eq!(line.inline.len(), 3);
+}
+
+#[test]
+fn inline_escapes_and_non_modifying_colons_are_plain_text() {
+    let (doc, diags) = parse("## Section\n@n: \\: \\[x\\] \\{y\\} \\\\ http://host:8080\n");
+    assert!(diags.is_empty(), "{diags:?}");
+    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    assert_eq!(line.plain_text(), ": [x] {y} \\ http://host:8080");
+    assert!(line.inline.iter().all(|n| !matches!(n, InlineNode::Modifier(_))));
+}
+
+#[test]
+fn inline_unterminated_span_and_attributes_are_diagnosed() {
+    let (_, diags) = parse("## Section\n@n: :speed[hello\n@n: :pause{s=0.5\n");
+    assert!(diags.iter().any(|d| d.code == E_TEXT_MODIFIER), "{diags:?}");
 }
 
 #[test]
@@ -1178,6 +1219,50 @@ fn block_form_tag_body_stays_clean() {
          </match>\n",
     );
     assert!(diags.is_empty(), "block form must parse clean: {diags:?}");
+}
+#[test]
+fn suffix_fragment_must_be_final() {
+    let (_, diags) = parse("## Alley {#ok} trailing\n");
+    assert!(diags.iter().any(|d| d.code == E_SECTION_SUFFIX), "{diags:?}");
+}
+
+#[test]
+fn plain_text_preserves_interpolation_source_bytes() {
+    let (doc, diags) = parse("## Section\n@n: :speed[{{ user.name : ordinal }}]{rate=2}\n");
+    assert!(diags.is_empty(), "{diags:?}");
+    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    assert_eq!(line.plain_text(), "{{ user.name : ordinal }}");
+}
+
+#[test]
+fn unknown_modifier_escape_is_diagnosed_but_plain_escape_is_ordinary() {
+    let (_, diags) = parse("## Section\n@n: :speed[a\\q]{rate=2}\n@n: a\\q\n");
+    assert!(diags.iter().any(|d| d.code == E_TEXT_ESCAPE), "{diags:?}");
+}
+#[test]
+fn modifier_escape_parity_is_respected() {
+    let (_, even) = parse("## Section\n@n: :speed[a\\\\q]{rate=2}\n");
+    assert!(!even.iter().any(|d| d.code == E_TEXT_ESCAPE), "{even:?}");
+    let (_, odd) = parse("## Section\n@n: :speed[a\\q]{rate=2}\n");
+    assert!(odd.iter().any(|d| d.code == E_TEXT_ESCAPE), "{odd:?}");
+    let (_, triple) = parse("## Section\n@n: :speed[a\\\\\\q]{rate=2}\n");
+    assert!(triple.iter().any(|d| d.code == E_TEXT_ESCAPE), "{triple:?}");
+}
+
+#[test]
+fn section_id_span_excludes_heading_whitespace() {
+    let (doc, diags) = parse("##   Heading {#id}\n");
+    assert!(diags.is_empty(), "{diags:?}");
+    let (_, span) = doc.sections[0].id.as_ref().unwrap();
+    assert_eq!(&"##   Heading {#id}"[span.byte_start..span.byte_end], "id");
+}
+
+#[test]
+fn escaped_interpolation_matches_legacy_scan() {
+    let (doc, diags) = parse("## Section\n@n: \\{{x}} and \\\\{{y}}\n");
+    assert!(diags.is_empty(), "{diags:?}");
+    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    assert_eq!(line.interps.len(), 0);
 }
 
 #[test]

@@ -35,7 +35,7 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
     let mut em = Emitter::default();
     let state = walk_seq(
         &mut em,
-        &doc.shots[0].body,
+        &doc.sections[0].body,
         StageState::default(),
         &mut cx,
         &[],

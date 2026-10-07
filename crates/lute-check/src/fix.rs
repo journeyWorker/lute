@@ -118,7 +118,7 @@ pub fn fix_document(text: &str) -> FixResult {
     }
 
     let mut choices: Vec<&Choice> = Vec::new();
-    for shot in &doc2.shots {
+    for shot in &doc2.sections {
         collect_choices(&shot.body, &mut choices);
     }
     // Quest bodies (dsl 0.2.0 §6.7) can nest `<branch>`/`<choice as=>` too —
@@ -138,7 +138,7 @@ pub fn fix_document(text: &str) -> FixResult {
         collect_choices(&beat.body, &mut choices);
     }
     let mut lines: Vec<&Line> = Vec::new();
-    for shot in &doc2.shots {
+    for shot in &doc2.sections {
         collect_lines(&shot.body, &mut lines);
     }
     for quest in &doc2.quests {
@@ -208,7 +208,7 @@ pub fn fix_document(text: &str) -> FixResult {
     // and the bare form is a valid free title. `Shot.span.byte_start` is the
     // heading line's leading `#`. Byte-exact, comment-preserving, idempotent
     // (a stripped title no longer matches the prefix shape).
-    for shot in &doc2.shots {
+    for shot in &doc2.sections {
         if let Some((start, end)) = shot_prefix_delete(bytes1, shot.span.byte_start) {
             edits2.push((start, end, String::new()));
         }

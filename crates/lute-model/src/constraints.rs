@@ -350,7 +350,7 @@ fn speaks(
                 scene_guards.push(target);
             }
         }
-        for shot in &doc.shots {
+        for shot in &doc.sections {
             collect_lines(&shot.body, &scene_guards, path, speaker, &mut lines);
         }
         for quest in &doc.quests {

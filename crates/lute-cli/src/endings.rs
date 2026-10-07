@@ -376,7 +376,7 @@ fn rows(
 fn beat_body<'d>(item: &lute_check::ProjectDoc<'d>, b: &ProjectBeat<'_>) -> Option<Vec<&'d [Node]>> {
     let doc = item.doc;
     match b.kind {
-        ProjectBeatKind::Scene => Some(doc.shots.iter().map(|s| s.body.as_slice()).collect()),
+        ProjectBeatKind::Scene => Some(doc.sections.iter().map(|s| s.body.as_slice()).collect()),
         ProjectBeatKind::Entry => doc
             .entries
             .iter()
@@ -873,7 +873,7 @@ impl<'g> Producers<'g> {
             };
             if let Some(key) = lute_check::connectivity::scene_key(&folded.typed) {
                 let origin = at("scene", key);
-                for shot in &doc.shots {
+                for shot in &doc.sections {
                     p.walk(&shot.body, &origin, &none, 0);
                 }
             }
@@ -1025,7 +1025,7 @@ impl<'g> Producers<'g> {
             if inner.via.is_none() {
                 inner.via = Some(name.clone());
             }
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 self.walk(&shot.body, &inner, &args, depth + 1);
             }
             return;
@@ -1079,7 +1079,7 @@ impl<'g> Producers<'g> {
                         && matches!(&a.value, AttrValue::Str(n) if self
                             .components
                             .get(n)
-                            .is_some_and(|doc| doc.shots.iter().any(|s| self.nodes_end(&s.body, depth + 1))))
+                            .is_some_and(|doc| doc.sections.iter().any(|s| self.nodes_end(&s.body, depth + 1))))
                 })
         };
         nodes.iter().any(|node| match node {

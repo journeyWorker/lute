@@ -282,7 +282,7 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl §2.1"],
     },
     Code {
-        code: "E-CONTENT-OUTSIDE-SHOT",
+        code: "E-CONTENT-OUTSIDE-SECTION",
         summary: "A content-shaped line (`@speaker…`, `::directive`, a `<tag>`) appears before the document's first `## ` shot heading, since content only belongs inside a shot body.",
         spec: &["dsl 0.5.0 §2.1", "dsl 0.6.0 §3.3"],
     },
@@ -1107,6 +1107,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.27.0 §5"],
     },
     Code {
+        code: "E-SECTION-SUFFIX",
+        summary: "A section heading has a malformed trailing `{#id}` identity suffix.",
+        spec: &["dsl §3.1"],
+    },
+    Code {
         code: "E-SEMANTICS-UNKNOWN",
         summary: "An execution artifact or engine matrix names an unknown semantic id.",
         spec: &["dsl 0.33.0 §4"],
@@ -1240,6 +1245,16 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-TEST-NO-EXPECT",
         summary: "A `*.test.yaml` declares no recognized `expect:` key, so the test asserts nothing and cannot pass.",
         spec: &[],
+    },
+    Code {
+        code: "E-TEXT-ESCAPE",
+        summary: "An inline text modifier uses a backslash escape that is not one of the defined punctuation escapes.",
+        spec: &["dsl §3.6"],
+    },
+    Code {
+        code: "E-TEXT-MODIFIER",
+        summary: "An inline text modifier has malformed nesting or an unterminated span or attribute body.",
+        spec: &["dsl §3.6"],
     },
     Code {
         code: "E-TIME-RESOLUTION",

@@ -550,7 +550,7 @@ fn compile_inner(
             let meta = artifact_meta(&doc, &folded, &input.snapshot, beat);
             let prefix = meta.id.clone();
             let mut shots = Vec::new();
-            for (i, shot) in doc.shots.iter().enumerate() {
+            for (i, shot) in doc.sections.iter().enumerate() {
                 let mut em = cfg::Emitter::new(map.is_some());
                 // Top-level per-shot walk: no CFG continuation past the shot end.
                 state = stage::walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut diags);
@@ -883,7 +883,7 @@ fn source_side_tables(
 /// 0.7.0. Quest documents have no shots (their addressing unit is the
 /// `<quest>`), so this returns empty for them.
 fn shot_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::ShotEntry> {
-    doc.shots
+    doc.sections
         .iter()
         .enumerate()
         .filter_map(|(i, s)| {
@@ -1530,7 +1530,7 @@ fn state_entries(
 /// the RAW parsed document and get the same paths the folded schema was built on.
 pub fn collect_branch_paths(doc: &Document) -> BTreeSet<String> {
     let mut paths = BTreeSet::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_branch_paths_nodes(&shot.body, &mut paths);
     }
     for quest in &doc.quests {

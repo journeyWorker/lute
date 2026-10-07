@@ -646,8 +646,7 @@ fn arg_text(value: &AttrValue) -> (String, bool) {
 
 /// Does `def`'s body hold a top-level `::body` (the use's body's place)?
 pub fn has_body_marker(def: &ComponentDef) -> bool {
-    def.body
-        .shots
+    def.body.sections
         .iter()
         .flat_map(|s| &s.body)
         .any(|n| matches!(n, Node::Directive(d) if d.tag == BODY_DIRECTIVE))
@@ -1138,7 +1137,7 @@ pub fn check_body_markers(doc: &Document, template_component: bool) -> Vec<Diagn
     };
     let mut nested = Vec::new();
     let mut top_seen = false;
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         for node in &shot.body {
             match node {
                 Node::Directive(d) if d.tag == BODY_DIRECTIVE => {

@@ -632,7 +632,7 @@ fn state_path_items(meta: &lute_check::TypedMeta) -> Vec<CompletionItem> {
 /// `scene.choices.<id>` ids from every `<branch>` (for a `<match on=…>` subject).
 fn choice_path_items(doc: &Document) -> Vec<CompletionItem> {
     let mut ids = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_branch_ids(&shot.body, &mut ids);
     }
     for quest in &doc.quests {
@@ -767,7 +767,7 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
         }
     }
     let mut out = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         scan(&shot.body, off, &mut out);
     }
     for quest in &doc.quests {

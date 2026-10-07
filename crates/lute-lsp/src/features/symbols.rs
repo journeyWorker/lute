@@ -28,7 +28,7 @@
 //! symbol positions carry the same UTF-16-correct ranges as every other surface.
 
 use lute_core_span::TextIndex;
-use lute_syntax::ast::{Arm, BundleBeat, Document, Entry, Match, Node, Quest, Shot};
+use lute_syntax::ast::{Arm, BundleBeat, Document, Entry, Match, Node, Quest, Section};
 use tower_lsp_server::ls_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::backend::{byte_to_position, span_to_range};
@@ -37,7 +37,7 @@ use lute_resolve::cursor::byte_span;
 /// The document outline: one shot symbol per shot, with its `<branch>`/`<match>`
 /// blocks nested as children.
 pub fn document_symbols(doc: &Document, idx: &TextIndex) -> Vec<DocumentSymbol> {
-    let mut out: Vec<DocumentSymbol> = doc.shots.iter().map(|s| shot_symbol(s, idx)).collect();
+    let mut out: Vec<DocumentSymbol> = doc.sections.iter().map(|s| section_symbol(s, idx)).collect();
     out.extend(doc.quests.iter().map(|q| quest_symbol(q, idx)));
     let mut lore: Vec<(usize, DocumentSymbol)> = doc
         .entries
@@ -55,16 +55,16 @@ pub fn document_symbols(doc: &Document, idx: &TextIndex) -> Vec<DocumentSymbol> 
 }
 
 /// A shot → a MODULE symbol named by its heading, children = nested blocks.
-fn shot_symbol(shot: &Shot, idx: &TextIndex) -> DocumentSymbol {
-    let range = span_to_range(&shot.span, idx);
-    // Selection = the `## <heading>` line: from the shot start across `## ` + text.
-    let head_start = shot.span.byte_start;
-    let head_end = head_start + "## ".len() + shot.heading.len();
+fn section_symbol(section: &Section, idx: &TextIndex) -> DocumentSymbol {
+    let range = span_to_range(&section.span, idx);
+    // Selection = the `## <heading>` line.
+    let head_start = section.span.byte_start;
+    let head_end = head_start + "## ".len() + section.heading.len();
     let selection_range = span_to_range(&byte_span(head_start, head_end), idx);
     let mut children = Vec::new();
-    collect_children(&shot.body, idx, &mut children);
+    collect_children(&section.body, idx, &mut children);
     symbol(
-        shot.heading.clone(),
+        section.heading.clone(),
         SymbolKind::MODULE,
         range,
         selection_range,

@@ -262,7 +262,7 @@ fn hyphen_path_ident_span_is_key_aware() {
 
 #[test]
 fn new_split_codes_are_structural_and_suppress_the_resolved_view() {
-    // dsl 0.5.0 §2.1 / §2.3: E-CONTENT-OUTSIDE-SHOT / E-CONTENT-LINE-BRACKET /
+    // dsl 0.5.0 §2.1 / §2.3: E-CONTENT-OUTSIDE-SECTION / E-CONTENT-LINE-BRACKET /
     // E-TAG-NOT-ONE-LINE / E-TAG-INLINE-BODY all corrupt the node stream the
     // same way their parent E-UNCLASSIFIED/E-UNCLOSED-TAG did, so `resolved`
     // stays `None` (the Some-vs-None structural-break policy). The inline-body
@@ -270,7 +270,7 @@ fn new_split_codes_are_structural_and_suppress_the_resolved_view() {
     // parser consumes whole lines, so the body sharing the opener's line is
     // DROPPED — a resolved view built from it would be missing content.
     for (code, text) in [
-        ("E-CONTENT-OUTSIDE-SHOT", "@narrator: hi before any shot\n"),
+        ("E-CONTENT-OUTSIDE-SECTION", "@narrator: hi before any shot\n"),
         (
             "E-CONTENT-LINE-BRACKET",
             "## Shot 1.\n@mira[emotion=\"x\"]: hi\n",

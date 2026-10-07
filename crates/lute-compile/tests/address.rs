@@ -34,7 +34,7 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
     };
     let mut state = StageState::default();
     let mut shots = Vec::new();
-    for (i, shot) in doc.shots.iter().enumerate() {
+    for (i, shot) in doc.sections.iter().enumerate() {
         let mut em = Emitter::default();
         state = walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut Vec::new());
         // dsl 0.6.0 §3.2: positional 1-based shot number.

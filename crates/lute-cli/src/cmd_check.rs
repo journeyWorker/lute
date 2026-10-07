@@ -46,7 +46,7 @@ fn callers_of_component(root: &Path, name: &str) -> Vec<PathBuf> {
 /// `<beat use="name">` applies it as a beat template (dsl 0.27.0 §6). Reads
 /// the same attribute `lute_check`'s `fold_use` reads.
 fn document_uses_component(doc: &lute_syntax::ast::Document, name: &str) -> bool {
-    doc.shots
+    doc.sections
         .iter()
         .any(|shot| nodes_use_component(&shot.body, name))
         || doc

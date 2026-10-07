@@ -35,7 +35,7 @@ fn flatten(body: &str) -> (Vec<Rec>, Vec<Label>) {
     let mut em = Emitter::default();
     let _ = walk_seq(
         &mut em,
-        &doc.shots[0].body,
+        &doc.sections[0].body,
         StageState::default(),
         &mut cx,
         &[],

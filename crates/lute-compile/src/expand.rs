@@ -25,7 +25,7 @@ use crate::ir::{CelPair, Command, Placeholder};
 /// `@`/`$`-free by construction.
 pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for shot in &mut doc.shots {
+    for shot in &mut doc.sections {
         expand_nodes(&mut shot.body, defs, None, &mut diags);
     }
     for quest in &mut doc.quests {
@@ -346,7 +346,7 @@ fn expand_slot(
 /// the expanded tree without it.
 pub fn fold_attr_refs(doc: &mut Document, schema: &StateSchema) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for shot in &mut doc.shots {
+    for shot in &mut doc.sections {
         fold_nodes(&mut shot.body, schema, &mut diags);
     }
     for quest in &mut doc.quests {
@@ -591,7 +591,7 @@ mod tests {
         };
         let ediags = expand_document(&mut doc, &defs);
         assert!(ediags.is_empty(), "{ediags:#?}");
-        let lute_syntax::ast::Node::Match(m) = &doc.shots[0].body[0] else {
+        let lute_syntax::ast::Node::Match(m) = &doc.sections[0].body[0] else {
             panic!("first node is the match");
         };
         let tests: Vec<&str> = m

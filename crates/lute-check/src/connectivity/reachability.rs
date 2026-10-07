@@ -496,7 +496,7 @@ pub fn live_assert_sites<'d>(
             let node_reach =
                 scene_identity(item.meta).and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
             if assert_site_is_live(node_reach) {
-                for shot in &doc.shots {
+                for shot in &doc.sections {
                     collect_asserted(&shot.body, effects, &mut sites);
                 }
             }
@@ -568,7 +568,7 @@ pub fn assert_relations_per_doc(
         let path = item.path;
         let doc = item.doc;
         let mut sites = Vec::new();
-        for shot in &doc.shots {
+        for shot in &doc.sections {
             collect_asserted(&shot.body, effects, &mut sites);
         }
         for quest in &doc.quests {

@@ -4,7 +4,7 @@ use lute_core_span::{Span, StableId};
 pub struct Document {
     pub meta: Meta,
     pub title: Option<(String, Span)>,
-    pub shots: Vec<Shot>,
+    pub sections: Vec<Section>,
     pub quests: Vec<Quest>,
     /// Top-level `<entry>` declarations (dsl 0.19.0 §2), in document order.
     pub entries: Vec<Entry>,
@@ -21,8 +21,9 @@ pub struct Meta {
 } // parsed into typed form in check
 
 #[derive(Clone, Debug)]
-pub struct Shot {
+pub struct Section {
     pub heading: String,
+    pub id: Option<(String, Span)>,
     pub body: Vec<Node>,
     pub span: Span,
 }
@@ -46,16 +47,61 @@ pub enum Node {
 pub struct Line {
     pub speaker: String,
     pub attrs: Vec<Attr>,
-    /// The gated-line guard (dsl 0.4.0 §7.2): `@s{when="G"}: T` emits the
-    /// line iff `G` holds — a `CelKind::Condition` slot, extracted from the
-    /// `when` attr the same way `Choice.when` is (`take_cel`, parser.rs). `$`
-    /// is NOT in scope (matches `<on when>`). `None` when no `when=` attr was
-    /// authored (the common case — B1: parse-identical to pre-0.4.0 docs).
+    /// The gated-line guard (dsl 0.4.0 §7.2): `@s{when="G"}: T`.
     pub when: Option<CelSlot>,
     pub text: String,
     pub text_span: Span,
     pub interps: Vec<Interp>,
+    /// Ordered inline text syntax, including nested modifiers and text.
+    pub inline: Vec<InlineNode>,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum InlineNode {
+    Text { text: String, span: Span },
+    Interpolation(Interp),
+    Modifier(InlineModifier),
+}
+
+#[derive(Clone, Debug)]
+pub struct InlineModifier {
+    pub name: String,
+    pub attrs: Vec<InlineAttr>,
+    pub children: Vec<InlineNode>,
+    pub span: Span,
+    pub content_span: Option<Span>,
+}
+
+#[derive(Clone, Debug)]
+pub struct InlineAttr {
+    pub key: String,
+    pub value: String,
+    pub span: Span,
+    pub value_span: Span,
+}
+
+impl Line {
+    /// Derive source text with inline delimiters, attributes, and escapes removed.
+    pub fn plain_text(&self) -> String {
+        inline_plain_text(&self.inline)
+    }
+}
+
+fn inline_plain_text(nodes: &[InlineNode]) -> String {
+    let mut out = String::new();
+    for node in nodes {
+        match node {
+            InlineNode::Text { text, .. } => out.push_str(text),
+            InlineNode::Interpolation(i) => {
+                out.push_str("{{");
+                out.push_str(&i.source);
+                out.push_str("}}");
+            }
+            InlineNode::Modifier(m) => out.push_str(&inline_plain_text(&m.children)),
+        }
+    }
+    out
 }
 
 #[derive(Clone, Debug)]
@@ -562,6 +608,8 @@ pub struct Interp {
     /// The referent, trimmed (e.g. `run.coins`, `@fond`, `userName`) — the
     /// interior text without any `:hint` suffix ([`Interp::format`]).
     pub raw: String,
+    /// Exact interior source bytes between `{{` and `}}`, including whitespace.
+    pub source: String,
     /// Span of the whole `{{…}}` in the original source.
     pub span: Span,
     /// dsl 0.24.0 §4: the format hint after the referent, trimmed —
@@ -799,6 +847,7 @@ pub fn interp_from_inner(inner: &str, span: Span) -> Interp {
     Interp {
         kind: classify_interp(referent),
         raw: referent.to_string(),
+        source: inner.to_string(),
         span,
         format,
         forms,

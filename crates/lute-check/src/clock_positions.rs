@@ -1314,7 +1314,7 @@ fn beat_set_paths(
         }
         match pb.kind {
             crate::beats::ProjectBeatKind::Scene => {
-                for shot in &doc.shots {
+                for shot in &doc.sections {
                     collect_set_paths(&shot.body, &mut out);
                 }
             }

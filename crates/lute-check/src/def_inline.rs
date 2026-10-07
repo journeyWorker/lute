@@ -141,7 +141,7 @@ pub(crate) fn check_def_inlining(
         domains: &folded.domains,
         diags: Vec::new(),
     };
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         cx.nodes(&shot.body);
     }
     for quest in &doc.quests {
@@ -344,8 +344,7 @@ fn param_attr_use(
         return None;
     }
     let def = set.table.get(component)?;
-    def.body
-        .shots
+    def.body.sections
         .iter()
         .find_map(|s| body_attr_use(set, &s.body, param, seen))
 }

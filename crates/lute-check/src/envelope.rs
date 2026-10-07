@@ -719,7 +719,7 @@ mod tests {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
-        doc.shots
+        doc.sections
             .into_iter()
             .next()
             .map(|s| s.body)
@@ -748,8 +748,7 @@ mod tests {
             &doc.meta,
             &lute_manifest::snapshot::CapabilitySnapshot::default(),
         );
-        let nodes = doc
-            .shots
+        let nodes = doc.sections
             .into_iter()
             .next()
             .map(|s| s.body)
