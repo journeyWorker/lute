@@ -617,6 +617,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.6.0 §2.2"],
     },
     Code {
+        code: "E-IR-REMOVED-FIELD",
+        summary: "`lute run` received an execution IR that still carries a field 0.37 removed or renamed (such as `addr`, `capabilityVersion`, `recordKey`, `shots`, a flattened `wait`/`duration`/`delay`/`at`/`timeline` stamp, or `provenance.injected`), or a command with no `position`. Recompile the source with the current toolchain.",
+        spec: &["dsl 0.37.0 §4", "dsl 0.37.0 §5.3"],
+    },
+    Code {
         code: "E-JUMP-BACKWARD",
         summary: "A `::jump{to}` names a label that is not forward of the `::jump` in document order — jumps must go forward only.",
         spec: &["dsl 0.12.0"],

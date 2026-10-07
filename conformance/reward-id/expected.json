@@ -1,0 +1,63 @@
+{
+  "commands": [
+    {
+      "kind": "quest",
+      "quest": "rescue",
+      "state": "active"
+    },
+    {
+      "done": true,
+      "kind": "objective",
+      "objective": "arrive",
+      "quest": "rescue"
+    },
+    {
+      "index": 0,
+      "instance": 1,
+      "kind": "grant",
+      "objective": "arrive",
+      "quest": "rescue",
+      "reward": {
+        "amount": 1,
+        "kind": "GOLD"
+      }
+    },
+    {
+      "kind": "quest",
+      "quest": "rescue",
+      "state": "complete"
+    },
+    {
+      "index": 0,
+      "instance": 1,
+      "kind": "grant",
+      "quest": "rescue",
+      "reward": {
+        "amount": 100,
+        "kind": "XP"
+      }
+    },
+    {
+      "index": 1,
+      "instance": 1,
+      "kind": "grant",
+      "quest": "rescue",
+      "reward": {
+        "amount": 5,
+        "kind": "GOLD"
+      }
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.36",
+  "kind": "quest",
+  "quests": {
+    "rescue": "complete"
+  },
+  "state": {
+    "quest.rescue.objectives.arrive.done": true,
+    "quest.rescue.state": "complete",
+    "run.atGoal": true
+  }
+}

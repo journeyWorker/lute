@@ -1,0 +1,4 @@
+{
+  "error": "E-IR-REMOVED-FIELD: command 1 (`actor`) carries removed field `provenance.injected`",
+  "exit": 2
+}

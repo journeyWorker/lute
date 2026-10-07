@@ -1,0 +1,4 @@
+enums:
+  textStyle: [emphasis, whisper]
+state:
+  run.guest: { type: string, default: "Mira" }

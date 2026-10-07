@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "locales": [
+    "ja-JP"
+  ],
+  "entries": {
+    "hero.s01ep01.hero_0010": {
+      "ja-JP": ":speed[やあ :emphasis[大きな :whisper[世界]] {{run.guest}}]{rate=1.25}:pause{s=0.5}!"
+    },
+    "hero.s01ep01.hero_0020": {
+      "ja-JP": "ふつうの \\: 行と \\[括弧\\]。"
+    },
+    "hero.s01ep01.hero_0030": {
+      "ja-JP": ":speed[:speed[d]{rate=2}]{rate=0.5} c :emphasis[b]:emphasis[a]"
+    }
+  }
+}

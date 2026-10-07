@@ -1,0 +1,4 @@
+# artifact.json is the compiled source with the removed 0.36 `injected: true`
+# put back on the injected anchor record's `provenance`.
+# `lute run` refuses it before any command executes.
+{}

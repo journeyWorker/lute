@@ -6,7 +6,7 @@ expression: json
   "kind": "scene",
   "lute": "0.36.6",
   "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1",
     "lute.staging/1",
@@ -76,6 +76,12 @@ expression: json
       ]
     },
     {
+      "name": "cameraMove",
+      "members": [
+        "shake"
+      ]
+    },
+    {
       "name": "emotion",
       "members": [
         "neutral",
@@ -85,6 +91,13 @@ expression: json
         "content",
         "angry",
         "sad"
+      ]
+    },
+    {
+      "name": "framing",
+      "members": [
+        "close",
+        "tight"
       ]
     },
     {
@@ -98,7 +111,7 @@ expression: json
       ]
     },
     {
-      "name": "musicAction",
+      "name": "musicPlayback",
       "members": [
         "start",
         "change",
@@ -132,46 +145,56 @@ expression: json
   ],
   "commands": [
     {
-      "kind": "background",
-      "addr": "001-0100",
+      "kind": "bg",
+      "family": "staging",
+      "position": "001-0100",
       "location": "family_restaurant",
       "time": "afternoon",
       "assetId": "BG.space.family_restaurant.interior.afternoon",
-      "wait": true
+      "timing": {
+        "wait": true
+      }
     },
     {
       "kind": "music",
-      "addr": "001-0200",
-      "action": "start",
+      "family": "staging",
+      "position": "001-0200",
+      "playback": "start",
       "mood": "peaceful",
       "volume": "down",
       "assetId": "sound-bgm-common-vn-mood-peaceful-0.mp3"
     },
     {
       "kind": "sfx",
-      "addr": "001-0300",
+      "family": "staging",
+      "position": "001-0300",
       "sound": "drink_bar_hum",
       "assetId": "PLACEHOLDER_drink_bar_hum"
     },
     {
       "kind": "line",
-      "addr": "001-0400",
+      "family": "content",
+      "position": "001-0400",
       "role": "narration",
       "speaker": "narrator",
       "text": "Venny's. The chain restaurant that has never offended anyone, no matter how hard it tries. Soft overhead lighting, a faint jazz cover loop from somewhere over the ceiling tiles, the gentle white-noise of a drink-bar fountain.",
-      "lineId": "marina.s01ep02.narrator_0010"
+      "lineId": "marina.s01ep02.narrator_0010",
+      "voiceKey": "marina.s01ep02.narrator-0010"
     },
     {
       "kind": "line",
-      "addr": "001-0500",
+      "family": "content",
+      "position": "001-0500",
       "role": "narration",
       "speaker": "narrator",
       "text": "I stepped up to the welcome stand.",
-      "lineId": "marina.s01ep02.narrator_0020"
+      "lineId": "marina.s01ep02.narrator_0020",
+      "voiceKey": "marina.s01ep02.narrator-0020"
     },
     {
       "kind": "line",
-      "addr": "001-0600",
+      "family": "content",
+      "position": "001-0600",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "...",
@@ -179,43 +202,50 @@ expression: json
       "voiceKey": "marina.s01ep02.fixer-0010"
     },
     {
-      "kind": "sprite",
-      "addr": "002-0100",
+      "kind": "actor",
+      "family": "staging",
+      "position": "002-0100",
       "character": "marina",
       "anchor": "center",
       "action": "fadeInUp"
     },
     {
-      "kind": "sprite",
-      "addr": "002-0200",
+      "kind": "actor",
+      "family": "staging",
+      "position": "002-0200",
       "character": "marina",
-      "preload": true,
       "emotion": "surprised",
+      "preload": true,
       "provenance": {
-        "injected": true,
         "by": "entry-emotion-lookahead",
         "explanation": "pre-loading `marina`'s first emotion `surprised` seen ahead of the entrance"
       }
     },
     {
       "kind": "camera",
-      "addr": "002-0300",
+      "family": "staging",
+      "position": "002-0300",
       "focus": "marina",
-      "zoom": 1.1,
-      "wait": false,
-      "duration": 0.5
+      "framing": "close",
+      "timing": {
+        "wait": false,
+        "duration": 0.5
+      }
     },
     {
       "kind": "line",
-      "addr": "002-0400",
+      "family": "content",
+      "position": "002-0400",
       "role": "narration",
       "speaker": "narrator",
       "text": "A hostess walked over with a menu pressed to her chest. Her face caught.",
-      "lineId": "marina.s01ep02.narrator_0030"
+      "lineId": "marina.s01ep02.narrator_0030",
+      "voiceKey": "marina.s01ep02.narrator-0030"
     },
     {
       "kind": "line",
-      "addr": "002-0500",
+      "family": "content",
+      "position": "002-0500",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Oh!",
@@ -226,7 +256,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "002-0600",
+      "family": "content",
+      "position": "002-0600",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Mr. Fixer!",
@@ -237,7 +268,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "002-0700",
+      "family": "content",
+      "position": "002-0700",
       "role": "dialogue",
       "speaker": "marina",
       "text": "From the ramen counter! You eat at Mechageki too, isn't it wonderful?",
@@ -248,15 +280,18 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "002-0800",
+      "family": "content",
+      "position": "002-0800",
       "role": "narration",
       "speaker": "narrator",
       "text": "That was the face. It had a name now, and the name worked here.",
-      "lineId": "marina.s01ep02.narrator_0040"
+      "lineId": "marina.s01ep02.narrator_0040",
+      "voiceKey": "marina.s01ep02.narrator-0040"
     },
     {
       "kind": "line",
-      "addr": "002-0900",
+      "family": "content",
+      "position": "002-0900",
       "role": "dialogue",
       "speaker": "marina",
       "text": "I'm Marina.",
@@ -267,7 +302,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "002-1000",
+      "family": "content",
+      "position": "002-1000",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Pleased to meet you, properly this time. Please follow me, won't you?",
@@ -278,15 +314,18 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "002-1100",
+      "family": "content",
+      "position": "002-1100",
       "role": "narration",
       "speaker": "narrator",
       "text": "She brightened by an absurd amount.",
-      "lineId": "marina.s01ep02.narrator_0050"
+      "lineId": "marina.s01ep02.narrator_0050",
+      "voiceKey": "marina.s01ep02.narrator-0050"
     },
     {
       "kind": "line",
-      "addr": "002-1200",
+      "family": "content",
+      "position": "002-1200",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "Marina.",
@@ -295,23 +334,28 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "002-1300",
+      "family": "content",
+      "position": "002-1300",
       "role": "narration",
       "speaker": "narrator",
       "text": "So the woman from the ramen counter had a name and a job, and the job came with a menu pressed to her chest. I followed.",
-      "lineId": "marina.s01ep02.narrator_0060"
+      "lineId": "marina.s01ep02.narrator_0060",
+      "voiceKey": "marina.s01ep02.narrator-0060"
     },
     {
       "kind": "line",
-      "addr": "003-0100",
+      "family": "content",
+      "position": "003-0100",
       "role": "narration",
       "speaker": "narrator",
       "text": "Halfway down the aisle, between two empty booths, her steps stopped. Her gaze dropped to the corner of the skirting board. A small grey shadow was paused there.",
-      "lineId": "marina.s01ep02.narrator_0070"
+      "lineId": "marina.s01ep02.narrator_0070",
+      "voiceKey": "marina.s01ep02.narrator-0070"
     },
     {
       "kind": "line",
-      "addr": "003-0200",
+      "family": "content",
+      "position": "003-0200",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Oh, a mouse.",
@@ -322,7 +366,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "003-0300",
+      "family": "content",
+      "position": "003-0300",
       "role": "dialogue",
       "speaker": "marina",
       "text": "They do carry the bubonic plague, you know.",
@@ -333,73 +378,96 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "003-0400",
+      "family": "content",
+      "position": "003-0400",
       "role": "narration",
       "speaker": "narrator",
       "text": "The line was delivered in her ordinary register, soft and precise, almost informational. I had not finished hearing it before her index finger came up.",
-      "lineId": "marina.s01ep02.narrator_0080"
+      "lineId": "marina.s01ep02.narrator_0080",
+      "voiceKey": "marina.s01ep02.narrator-0080"
     },
     {
       "kind": "camera",
-      "addr": "003-0500",
+      "family": "staging",
+      "position": "003-0500",
       "focus": "marina",
-      "zoom": 1.35,
-      "wait": false,
-      "duration": 0.4,
-      "at": 0.0,
-      "timeline": 1
+      "framing": "tight",
+      "timing": {
+        "wait": false,
+        "duration": 0.4,
+        "at": 0.0,
+        "timeline": 0
+      }
     },
     {
       "kind": "camera",
-      "addr": "003-0600",
-      "shake": 0.6,
-      "wait": false,
-      "duration": 0.3,
-      "at": 0.5,
-      "timeline": 1
+      "family": "staging",
+      "position": "003-0600",
+      "move": "shake",
+      "timing": {
+        "wait": false,
+        "duration": 0.3,
+        "at": 0.5,
+        "timeline": 0
+      }
     },
     {
-      "kind": "cut",
-      "addr": "003-0700",
+      "kind": "cg",
+      "family": "staging",
+      "position": "003-0700",
       "assetId": "CUT.scenarios.marina.s01ep02.01",
-      "wait": false,
-      "at": 0.5,
-      "timeline": 1
+      "display": "show",
+      "timing": {
+        "wait": false,
+        "at": 0.5,
+        "timeline": 0
+      }
     },
     {
       "kind": "vfx",
-      "addr": "003-0800",
-      "vfxType": "whiteOut",
+      "family": "staging",
+      "position": "003-0800",
+      "type": "whiteOut",
       "transition": "flash",
-      "at": 0.5,
-      "timeline": 1
+      "timing": {
+        "at": 0.5,
+        "timeline": 0
+      }
     },
     {
       "kind": "sfx",
-      "addr": "003-0900",
+      "family": "staging",
+      "position": "003-0900",
       "sound": "finger_beam_flash",
       "assetId": "PLACEHOLDER_finger_beam_flash",
-      "at": 0.5,
-      "timeline": 1
+      "timing": {
+        "at": 0.5,
+        "timeline": 0
+      }
     },
     {
-      "kind": "cut",
-      "addr": "003-1000",
+      "kind": "cg",
+      "family": "staging",
+      "position": "003-1000",
       "assetId": "CUT.scenarios.marina.s01ep02.01",
-      "action": "hide",
-      "wait": false,
-      "at": 1.1,
-      "timeline": 1
+      "display": "hide",
+      "timing": {
+        "wait": false,
+        "at": 1.1,
+        "timeline": 0
+      }
     },
     {
       "kind": "barrier",
-      "addr": "003-1100",
-      "timeline": 1,
+      "family": "control",
+      "position": "003-1100",
+      "timeline": 0,
       "at": 1.4
     },
     {
       "kind": "set",
-      "addr": "003-1200",
+      "family": "state",
+      "position": "003-1200",
       "path": "scene.flags.saw_beam",
       "op": "=",
       "value": {
@@ -411,15 +479,18 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "003-1300",
+      "family": "content",
+      "position": "003-1300",
       "role": "narration",
       "speaker": "narrator",
       "text": "I flinched. I blinked. When I opened my eyes, where the mouse had been there was only a small black smudge.",
-      "lineId": "marina.s01ep02.narrator_0090"
+      "lineId": "marina.s01ep02.narrator_0090",
+      "voiceKey": "marina.s01ep02.narrator-0090"
     },
     {
       "kind": "line",
-      "addr": "003-1400",
+      "family": "content",
+      "position": "003-1400",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "The mouse.",
@@ -428,7 +499,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "003-1500",
+      "family": "content",
+      "position": "003-1500",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "The mouse just disappeared!",
@@ -437,15 +509,18 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "003-1600",
+      "family": "content",
+      "position": "003-1600",
       "role": "narration",
       "speaker": "narrator",
       "text": "Marina brought her fingertip to her lips and blew a small puff of air across the tip with the satisfaction of a chef sending off a perfect plate.",
-      "lineId": "marina.s01ep02.narrator_0100"
+      "lineId": "marina.s01ep02.narrator_0100",
+      "voiceKey": "marina.s01ep02.narrator-0100"
     },
     {
       "kind": "line",
-      "addr": "003-1700",
+      "family": "content",
+      "position": "003-1700",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Ta-da!",
@@ -456,7 +531,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "003-1800",
+      "family": "content",
+      "position": "003-1800",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Behold the performance of all-purpose Marina, isn't it wonderful?",
@@ -467,51 +543,60 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "003-1900",
+      "family": "content",
+      "position": "003-1900",
       "role": "narration",
       "speaker": "narrator",
       "text": "I took one step back. My central nervous system briefly logged out and logged back in.",
-      "lineId": "marina.s01ep02.narrator_0110"
+      "lineId": "marina.s01ep02.narrator_0110",
+      "voiceKey": "marina.s01ep02.narrator-0110"
     },
     {
       "kind": "line",
-      "addr": "003-2000",
-      "role": "monologue",
+      "family": "content",
+      "position": "003-2000",
+      "role": "mono",
       "speaker": "fixer",
       "text": "An android, then. Which would, on reflection, explain the ramen.",
-      "lineId": "marina.s01ep02.fixer_0080"
+      "lineId": "marina.s01ep02.fixer_0080",
+      "voiceKey": "marina.s01ep02.fixer-0080"
     },
     {
       "kind": "line",
-      "addr": "004-0100",
-      "role": "monologue",
+      "family": "content",
+      "position": "004-0100",
+      "role": "mono",
       "speaker": "fixer",
       "text": "If I do not handle this android properly, something is going to go very badly wrong.",
-      "lineId": "marina.s01ep02.fixer_0090"
+      "lineId": "marina.s01ep02.fixer_0090",
+      "voiceKey": "marina.s01ep02.fixer-0090"
     },
     {
       "kind": "line",
-      "addr": "004-0200",
+      "family": "content",
+      "position": "004-0200",
       "role": "narration",
       "speaker": "narrator",
       "text": "The thought arrived fully formed. It did not ask permission. I reached for my phone.",
-      "lineId": "marina.s01ep02.narrator_0120"
+      "lineId": "marina.s01ep02.narrator_0120",
+      "voiceKey": "marina.s01ep02.narrator-0120"
     },
     {
       "kind": "choice",
-      "addr": "004-0300",
+      "family": "control",
+      "position": "004-0300",
       "branchId": "number",
-      "recordKey": "scene.choices.number",
+      "selectionKey": "scene.choices.number",
       "options": [
         {
           "id": "blunt",
-          "label": "Just ask, flatly",
+          "text": "Just ask, flatly",
           "lineId": "marina.s01ep02.number.blunt",
           "target": "004-0400"
         },
         {
           "id": "soft",
-          "label": "Ask gently",
+          "text": "Ask gently",
           "lineId": "marina.s01ep02.number.soft",
           "target": "004-0600"
         }
@@ -520,7 +605,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-0400",
+      "family": "content",
+      "position": "004-0400",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "Marina. Your number.",
@@ -529,12 +615,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "004-0500",
+      "family": "control",
+      "position": "004-0500",
       "target": "004-0900"
     },
     {
       "kind": "line",
-      "addr": "004-0600",
+      "family": "content",
+      "position": "004-0600",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "Marina — would you mind terribly if I had your number?",
@@ -543,7 +631,8 @@ expression: json
     },
     {
       "kind": "set",
-      "addr": "004-0700",
+      "family": "state",
+      "position": "004-0700",
       "path": "scene.affect.marina",
       "op": "+=",
       "value": {
@@ -555,12 +644,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "004-0800",
+      "family": "control",
+      "position": "004-0800",
       "target": "004-0900"
     },
     {
       "kind": "line",
-      "addr": "004-0900",
+      "family": "content",
+      "position": "004-0900",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Oh!",
@@ -571,7 +662,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-1000",
+      "family": "content",
+      "position": "004-1000",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Of course! Right away, Mr. Fixer.",
@@ -582,21 +674,25 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-1100",
+      "family": "content",
+      "position": "004-1100",
       "role": "narration",
       "speaker": "narrator",
       "text": "She produced her own phone at a velocity that suggested she had been hoping someone would ask. She held it up to mine.",
-      "lineId": "marina.s01ep02.narrator_0130"
+      "lineId": "marina.s01ep02.narrator_0130",
+      "voiceKey": "marina.s01ep02.narrator-0130"
     },
     {
       "kind": "sfx",
-      "addr": "004-1200",
+      "family": "staging",
+      "position": "004-1200",
       "sound": "phone_chime",
       "assetId": "sound-sfx-common-phone-0.mp3"
     },
     {
       "kind": "line",
-      "addr": "004-1300",
+      "family": "content",
+      "position": "004-1300",
       "role": "dialogue",
       "speaker": "marina",
       "text": "We can walk around together when my shift is done, perhaps?",
@@ -607,7 +703,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-1400",
+      "family": "content",
+      "position": "004-1400",
       "role": "dialogue",
       "speaker": "marina",
       "text": "There's so much I haven't seen yet, you see. I would like that very much.",
@@ -618,7 +715,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-1500",
+      "family": "content",
+      "position": "004-1500",
       "role": "dialogue",
       "speaker": "marina",
       "text": "I was decommissioned not long ago, you see.",
@@ -629,7 +727,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-1600",
+      "family": "content",
+      "position": "004-1600",
       "role": "dialogue",
       "speaker": "marina",
       "text": "I am still very much in the middle of my civilian acclimation.",
@@ -640,7 +739,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-1700",
+      "family": "content",
+      "position": "004-1700",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "When does your shift end.",
@@ -649,7 +749,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-1800",
+      "family": "content",
+      "position": "004-1800",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Five-thirty, Mr. Fixer!",
@@ -660,7 +761,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-1900",
+      "family": "content",
+      "position": "004-1900",
       "role": "dialogue",
       "speaker": "marina",
       "text": "I'll meet you at the entrance.",
@@ -671,39 +773,44 @@ expression: json
     },
     {
       "kind": "music",
-      "addr": "005-0100",
-      "action": "fadeOut"
+      "family": "staging",
+      "position": "005-0100",
+      "playback": "fadeOut"
     },
     {
       "kind": "line",
-      "addr": "005-0200",
+      "family": "content",
+      "position": "005-0200",
       "role": "narration",
       "speaker": "narrator",
       "text": "She led me to the booth. I sat. She handed me a menu and skipped, very lightly, back toward the kitchen. The mouse-shaped smudge was still on the carpet three booths away, plainly visible to anyone walking past.",
-      "lineId": "marina.s01ep02.narrator_0140"
+      "lineId": "marina.s01ep02.narrator_0140",
+      "voiceKey": "marina.s01ep02.narrator-0140"
     },
     {
-      "kind": "sprite",
-      "addr": "005-0300",
+      "kind": "actor",
+      "family": "staging",
+      "position": "005-0300",
       "character": "kenshi",
       "anchor": "left",
       "action": "fadeInSlow"
     },
     {
-      "kind": "sprite",
-      "addr": "005-0400",
+      "kind": "actor",
+      "family": "staging",
+      "position": "005-0400",
       "character": "kenshi",
-      "preload": true,
       "emotion": "neutral",
+      "preload": true,
       "provenance": {
-        "injected": true,
         "by": "entry-emotion-lookahead",
         "explanation": "pre-loading `kenshi`'s first emotion `neutral` seen ahead of the entrance"
       }
     },
     {
       "kind": "line",
-      "addr": "005-0500",
+      "family": "content",
+      "position": "005-0500",
       "role": "dialogue",
       "speaker": "kenshi",
       "text": "Welcome, sir.",
@@ -714,7 +821,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "005-0600",
+      "family": "content",
+      "position": "005-0600",
       "role": "dialogue",
       "speaker": "kenshi",
       "text": "...A stain has appeared, three booths down. Marina-san. See to it before the dinner rush, please.",
@@ -725,7 +833,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "005-0700",
+      "family": "content",
+      "position": "005-0700",
       "role": "dialogue",
       "speaker": "marina",
       "text": "At once, manager!",
@@ -736,15 +845,18 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "005-0800",
+      "family": "content",
+      "position": "005-0800",
       "role": "narration",
       "speaker": "narrator",
       "text": "She skipped back across the floor with a cloth in hand. I watched the manager file the smudge as some customer-side mishap and continue his perimeter walk.",
-      "lineId": "marina.s01ep02.narrator_0150"
+      "lineId": "marina.s01ep02.narrator_0150",
+      "voiceKey": "marina.s01ep02.narrator-0150"
     },
     {
       "kind": "line",
-      "addr": "005-0900",
+      "family": "content",
+      "position": "005-0900",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "...",
@@ -753,7 +865,8 @@ expression: json
     },
     {
       "kind": "match",
-      "addr": "005-1000",
+      "family": "control",
+      "position": "005-1000",
       "subject": {
         "cel": "scene.choices.number",
         "expr": {
@@ -800,83 +913,96 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "005-1100",
-      "role": "monologue",
+      "family": "content",
+      "position": "005-1100",
+      "role": "mono",
       "speaker": "fixer",
       "text": "I am taking that woman on a walking tour of the neighbourhood this evening. I asked nicely, which I am electing not to examine.",
-      "lineId": "marina.s01ep02.fixer_0100"
+      "lineId": "marina.s01ep02.fixer_0100",
+      "voiceKey": "marina.s01ep02.fixer-0100"
     },
     {
       "kind": "jump",
-      "addr": "005-1200",
+      "family": "control",
+      "position": "005-1200",
       "target": "005-1700"
     },
     {
       "kind": "line",
-      "addr": "005-1300",
-      "role": "monologue",
+      "family": "content",
+      "position": "005-1300",
+      "role": "mono",
       "speaker": "fixer",
       "text": "I am taking that woman on a walking tour of the neighbourhood this evening.",
-      "lineId": "marina.s01ep02.fixer_0110"
+      "lineId": "marina.s01ep02.fixer_0110",
+      "voiceKey": "marina.s01ep02.fixer-0110"
     },
     {
       "kind": "jump",
-      "addr": "005-1400",
+      "family": "control",
+      "position": "005-1400",
       "target": "005-1700"
     },
     {
       "kind": "line",
-      "addr": "005-1500",
-      "role": "monologue",
+      "family": "content",
+      "position": "005-1500",
+      "role": "mono",
       "speaker": "fixer",
       "text": "I am, apparently, taking that woman somewhere this evening.",
-      "lineId": "marina.s01ep02.fixer_0120"
+      "lineId": "marina.s01ep02.fixer_0120",
+      "voiceKey": "marina.s01ep02.fixer-0120"
     },
     {
       "kind": "jump",
-      "addr": "005-1600",
+      "family": "control",
+      "position": "005-1600",
       "target": "005-1700"
     },
     {
       "kind": "line",
-      "addr": "005-1700",
+      "family": "content",
+      "position": "005-1700",
       "role": "narration",
       "speaker": "narrator",
       "text": "The part of me that catalogues life events was already cataloguing.",
-      "lineId": "marina.s01ep02.narrator_0160"
+      "lineId": "marina.s01ep02.narrator_0160",
+      "voiceKey": "marina.s01ep02.narrator-0160"
     },
     {
-      "kind": "sprite",
-      "addr": "005-1800",
+      "kind": "actor",
+      "family": "staging",
+      "position": "005-1800",
       "character": "marina",
       "action": "fadeOut",
       "exit": true
     },
     {
       "kind": "music",
-      "addr": "005-1900",
-      "action": "stop"
+      "family": "staging",
+      "position": "005-1900",
+      "playback": "stop"
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "Arrival at Venny's"
     },
     {
-      "shot": 2,
+      "section": 2,
       "heading": "The Hostess with a Name"
     },
     {
-      "shot": 3,
+      "section": 3,
       "heading": "The Vanishing Mouse"
     },
     {
-      "shot": 4,
+      "section": 4,
       "heading": "Trading Numbers"
     },
     {
-      "shot": 5,
+      "section": 5,
       "heading": "Filed as a Mishap"
     }
   ],

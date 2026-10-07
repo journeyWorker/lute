@@ -6,7 +6,7 @@ expression: json
   "kind": "scene",
   "lute": "0.36.6",
   "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1",
     "lute.staging/1"
@@ -53,6 +53,12 @@ expression: json
       ]
     },
     {
+      "name": "cameraMove",
+      "members": [
+        "shake"
+      ]
+    },
+    {
       "name": "emotion",
       "members": [
         "neutral",
@@ -62,6 +68,13 @@ expression: json
         "content",
         "angry",
         "sad"
+      ]
+    },
+    {
+      "name": "framing",
+      "members": [
+        "close",
+        "tight"
       ]
     },
     {
@@ -75,7 +88,7 @@ expression: json
       ]
     },
     {
-      "name": "musicAction",
+      "name": "musicPlayback",
       "members": [
         "start",
         "change",
@@ -109,8 +122,9 @@ expression: json
   ],
   "commands": [
     {
-      "kind": "sprite",
-      "addr": "001-0100",
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0100",
       "character": "marina",
       "action": "fadeInUp",
       "source": {
@@ -118,12 +132,12 @@ expression: json
       }
     },
     {
-      "kind": "sprite",
-      "addr": "001-0200",
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0200",
       "character": "marina",
       "anchor": "center",
       "provenance": {
-        "injected": true,
         "by": "auto-anchor-on-show",
         "explanation": "`marina` shown without an explicit anchor; defaulting to `center`"
       },
@@ -133,27 +147,31 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "001-0300",
+      "family": "content",
+      "position": "001-0300",
       "role": "narration",
       "speaker": "narrator",
       "text": "A familiar face steps into the light.",
       "lineId": "demo.s01ep02.greet#1.narrator_0010",
+      "voiceKey": "demo.s01ep02.greet#1.narrator-0010",
       "source": {
         "component": "greet"
       }
     },
     {
       "kind": "line",
-      "addr": "001-0400",
+      "family": "content",
+      "position": "001-0400",
       "role": "narration",
       "speaker": "narrator",
       "text": "And the scene carries on.",
-      "lineId": "demo.s01ep02.narrator_0010"
+      "lineId": "demo.s01ep02.narrator_0010",
+      "voiceKey": "demo.s01ep02.narrator-0010"
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "Greeting by Component"
     }
   ],

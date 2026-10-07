@@ -1,0 +1,249 @@
+{
+  "kind": "scene",
+  "lute": "0.36.6",
+  "irVersion": "0.36.6",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Jump and label"
+  },
+  "state": [
+    {
+      "path": "run.hasKey",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.visits",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "path": "scene.choices.door",
+      "type": "enum",
+      "domain": [
+        "knock",
+        "leave",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:door"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The gate is shut.",
+      "lineId": "hero.s01ep01.narrator_0010",
+      "voiceKey": "hero.s01ep01.narrator-0010"
+    },
+    {
+      "kind": "match",
+      "family": "control",
+      "position": "001-0200",
+      "subject": {
+        "cel": "run.hasKey",
+        "expr": {
+          "path": "run.hasKey"
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "run.hasKey",
+            "expr": {
+              "path": "run.hasKey"
+            },
+            "authored": "$"
+          },
+          "target": "001-0300"
+        }
+      ],
+      "otherwise": "001-0500",
+      "converge": "001-0600"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0300",
+      "target": "001-0700"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0400",
+      "target": "001-0600"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0500",
+      "target": "001-0600"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0600",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "You wait outside.",
+      "lineId": "hero.s01ep01.narrator_0020",
+      "voiceKey": "hero.s01ep01.narrator-0020"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0700",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The gate swings open.",
+      "lineId": "hero.s01ep01.narrator_0030",
+      "voiceKey": "hero.s01ep01.narrator-0030"
+    },
+    {
+      "kind": "choice",
+      "family": "control",
+      "position": "001-0800",
+      "branchId": "door",
+      "selectionKey": "scene.choices.door",
+      "options": [
+        {
+          "id": "knock",
+          "text": "Knock",
+          "lineId": "hero.s01ep01.door.knock",
+          "target": "001-0900"
+        },
+        {
+          "id": "leave",
+          "text": "Leave",
+          "lineId": "hero.s01ep01.door.leave",
+          "target": "001-1100"
+        }
+      ],
+      "converge": "001-1300"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0900",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Hello?",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero.s01ep01.hero-0010"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-1000",
+      "target": "001-1300"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-1100",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Never mind.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero.s01ep01.hero-0020"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-1200",
+      "target": "001-1300"
+    },
+    {
+      "kind": "match",
+      "family": "control",
+      "position": "001-1300",
+      "subject": {
+        "cel": "run.visits",
+        "expr": {
+          "path": "run.visits"
+        }
+      },
+      "arms": [
+        {
+          "is": "2..",
+          "test": {
+            "cel": "(run.visits >= 2)",
+            "expr": {
+              "op": ">=",
+              "l": {
+                "path": "run.visits"
+              },
+              "r": {
+                "int": 2
+              }
+            },
+            "authored": "is=2.."
+          },
+          "target": "001-1400"
+        }
+      ],
+      "otherwise": "001-1600",
+      "converge": "001-1800"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-1400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Welcome back.",
+      "lineId": "hero.s01ep01.narrator_0040",
+      "voiceKey": "hero.s01ep01.narrator-0040"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-1500",
+      "target": "001-1800"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-1600",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "First time here.",
+      "lineId": "hero.s01ep01.narrator_0050",
+      "voiceKey": "hero.s01ep01.narrator-0050"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-1700",
+      "target": "001-1800"
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "Gate"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

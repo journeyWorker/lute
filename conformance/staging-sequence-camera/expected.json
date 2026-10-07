@@ -1,0 +1,95 @@
+{
+  "commands": [
+    {
+      "kind": "bg",
+      "position": "001-0100"
+    },
+    {
+      "kind": "music",
+      "position": "001-0200"
+    },
+    {
+      "kind": "sfx",
+      "position": "001-0300"
+    },
+    {
+      "kind": "vfx",
+      "position": "001-0400"
+    },
+    {
+      "kind": "sequence",
+      "position": "001-0500"
+    },
+    {
+      "kind": "actor",
+      "position": "001-0600"
+    },
+    {
+      "kind": "actor",
+      "position": "001-0700"
+    },
+    {
+      "kind": "actor",
+      "position": "001-0800"
+    },
+    {
+      "kind": "camera",
+      "position": "001-0900"
+    },
+    {
+      "kind": "cg",
+      "position": "001-1000"
+    },
+    {
+      "kind": "cg",
+      "position": "001-1100"
+    },
+    {
+      "kind": "video",
+      "position": "001-1200"
+    },
+    {
+      "kind": "actor",
+      "position": "001-1300"
+    },
+    {
+      "kind": "line",
+      "position": "001-1400",
+      "speaker": "hero",
+      "text": "The ferry is late."
+    },
+    {
+      "kind": "camera",
+      "position": "001-1500"
+    },
+    {
+      "kind": "sfx",
+      "position": "001-1600"
+    },
+    {
+      "at": 2.0,
+      "kind": "barrier",
+      "note": "timeline join — no real clock simulated",
+      "position": "001-1700",
+      "timeline": 0
+    },
+    {
+      "kind": "sequence",
+      "position": "001-1800"
+    },
+    {
+      "kind": "actor",
+      "position": "001-1900"
+    },
+    {
+      "kind": "music",
+      "position": "001-2000"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.36",
+  "kind": "scene",
+  "quests": {},
+  "state": {}
+}

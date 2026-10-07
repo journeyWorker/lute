@@ -194,13 +194,30 @@ fn run_compile(
             // which is the ONLY key a bundle joins on.
             if let Some(bundle) = &bundle {
                 let merged = lute_compile::locale::merge_locales(&mut artifact, bundle);
+                let refused = merged.iter().any(|d| d.severity == Severity::Error);
+                // dsl 0.37.0 §6: a refused translation (`E-L10N-MODIFIERS`)
+                // fails the build outright — a failed gate, so `--json`
+                // prints the merge diagnostics as JSON on stdout, exactly as
+                // a failed check gate does below.
+                if refused && json {
+                    let mut s = match pretty_json(&merged) {
+                        Ok(s) => s,
+                        Err(error) => {
+                            eprintln!("lute: failed to serialize diagnostics: {error}");
+                            return ExitCode::from(2);
+                        }
+                    };
+                    s.push('\n');
+                    if write_stdout(&s).is_err() {
+                        return ExitCode::from(2);
+                    }
+                    return ExitCode::FAILURE;
+                }
                 // STDERR, not stdout: without `-o` the execution IR itself is on
                 // stdout, and a warning line in the middle of it would make
                 // the compile output unparseable.
                 eprint!("{}", render_diagnostics(file, &merged, policy));
-                // dsl 0.37.0 §6: a refused translation (`E-L10N-MODIFIERS`)
-                // fails the build outright.
-                if merged.iter().any(|d| d.severity == Severity::Error) {
+                if refused {
                     eprintln!("locale merge failed; no execution IR emitted");
                     return ExitCode::FAILURE;
                 }

@@ -1,0 +1,28 @@
+{
+  "commands": [
+    {
+      "kind": "line",
+      "position": "001-0100",
+      "speaker": "narrator",
+      "text": "The ferry docks."
+    },
+    {
+      "kind": "line",
+      "position": "002-0100",
+      "speaker": "narrator",
+      "text": "Nobody waits on the quay."
+    },
+    {
+      "kind": "line",
+      "position": "003-0100",
+      "speaker": "narrator",
+      "text": "The ferry leaves again."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.36",
+  "kind": "scene",
+  "quests": {},
+  "state": {}
+}

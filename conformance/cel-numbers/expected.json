@@ -1,46 +1,46 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
       "kind": "match",
+      "position": "001-0100",
       "result": "arm 1"
     },
     {
-      "addr": "001-0200",
       "kind": "line",
+      "position": "001-0200",
       "speaker": "narrator",
       "text": "arithmetic"
     },
     {
-      "addr": "001-0500",
       "kind": "match",
+      "position": "001-0500",
       "result": "arm 1"
     },
     {
-      "addr": "001-0600",
       "kind": "line",
+      "position": "001-0600",
       "speaker": "narrator",
       "text": "integer division"
     },
     {
-      "addr": "001-0900",
       "kind": "match",
+      "position": "001-0900",
       "result": "arm 1"
     },
     {
-      "addr": "001-1000",
       "kind": "line",
+      "position": "001-1000",
       "speaker": "narrator",
       "text": "ternary"
     },
     {
-      "addr": "001-1300",
       "kind": "match",
+      "position": "001-1300",
       "result": "arm 1"
     },
     {
-      "addr": "001-1400",
       "kind": "line",
+      "position": "001-1400",
       "speaker": "narrator",
       "text": "unary and list"
     }

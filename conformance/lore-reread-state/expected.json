@@ -1,32 +1,32 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
       "eligible": true,
       "firstRead": true,
       "id": "scientistLog1",
-      "kind": "entry"
+      "kind": "entry",
+      "position": "001-0100"
     },
     {
-      "addr": "001-0200",
       "kind": "match",
+      "position": "001-0200",
       "result": "otherwise"
     },
     {
-      "addr": "001-0500",
       "kind": "line",
+      "position": "001-0500",
       "speaker": "scientist",
       "text": "Day three. Subject E does not respond to light."
     },
     {
-      "addr": "001-0700",
       "fact": "knows(vesna, project_lumen)",
-      "kind": "assert"
+      "kind": "assert",
+      "position": "001-0700"
     },
     {
-      "addr": "001-0800",
       "kind": "set",
       "path": "run.logsRead",
+      "position": "001-0800",
       "value": 1
     }
   ],

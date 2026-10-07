@@ -2,7 +2,7 @@
   "kind": "scene",
   "lute": "0.36.6",
   "irVersion": "0.36.6",
-  "capabilityVersion": "250eb0ca8d10dc71752999a7e82ca5174c1d6e5da107f1ba2040199004d4d23a",
+  "capabilitySnapshot": "5ebe2b0f197c8f87fc0b8fd986aa4638eaf94cbc2c5f481b76605f5cefb444bb",
   "requiredSemantics": [
     "lute.core/1"
   ],
@@ -18,7 +18,8 @@
   "commands": [
     {
       "kind": "plugin",
-      "addr": "001-0100",
+      "family": "plugin",
+      "position": "001-0100",
       "tag": "demo",
       "plugin": "bridge.demo",
       "fields": {
@@ -29,16 +30,18 @@
     },
     {
       "kind": "line",
-      "addr": "001-0200",
+      "family": "content",
+      "position": "001-0200",
       "role": "narration",
       "speaker": "narrator",
       "text": "The bridge is recorded.",
-      "lineId": "hero.s01ep01.narrator_0010"
+      "lineId": "hero.s01ep01.narrator_0010",
+      "voiceKey": "hero.s01ep01.narrator-0010"
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "Bridge"
     }
   ],

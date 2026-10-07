@@ -1,0 +1,91 @@
+{
+  "kind": "scene",
+  "lute": "0.36.6",
+  "irVersion": "0.36.6",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Line roles"
+  },
+  "state": [],
+  "commands": [
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Rain on the window.",
+      "lineId": "hero.s01ep01.narrator_0010",
+      "voiceKey": "hero.s01ep01.narrator-0010"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0200",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Are you there?",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero.s01ep01.hero-0010"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0300",
+      "role": "mono",
+      "speaker": "hero",
+      "text": "She will not answer.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero.s01ep01.hero-0020"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0400",
+      "role": "mono",
+      "speaker": "mira",
+      "text": "I should answer.",
+      "lineId": "hero.s01ep01.mira_0010",
+      "voiceKey": "hero.s01ep01.mira-0010"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0500",
+      "role": "os",
+      "speaker": "mira",
+      "text": "I am here.",
+      "lineId": "hero.s01ep01.mira_0020",
+      "voiceKey": "hero.s01ep01.mira-0020"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0600",
+      "role": "vo",
+      "speaker": "radio",
+      "text": "Storm warning in effect.",
+      "lineId": "hero.s01ep01.radio_0010",
+      "voiceKey": "hero.s01ep01.radio-0010"
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "Roles"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

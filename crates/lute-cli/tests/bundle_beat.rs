@@ -52,24 +52,24 @@ const ARTIFACT: &str = r#"{
     { "path": "run.porterTrust", "type": "int", "default": 0 }
   ],
   "commands": [
-    { "kind": "entry", "position": "001-0100", "id": "porterNote", "target": "item.porter_note", "body": "001-0200" },
-    { "kind": "line", "position": "001-0200", "role": "narration", "speaker": "narrator", "text": "A note about the porter." },
-    { "kind": "beat", "position": "002-0100", "id": "interviews.porter", "on": "talk", "target": "npc.porter",
+    { "kind": "entry", "family": "declaration", "position": "001-0100", "id": "porterNote", "target": "item.porter_note", "body": "001-0200" },
+    { "kind": "line", "family": "content", "position": "001-0200", "role": "narration", "speaker": "narrator", "text": "A note about the porter." },
+    { "kind": "beat", "family": "declaration", "position": "002-0100", "id": "interviews.porter", "on": "talk", "target": "npc.porter",
       "when": { "cel": "run.porterTrust >= 0" }, "priority": 0, "once": "run", "body": "002-0200" },
-    { "kind": "line", "position": "002-0200", "role": "dialogue", "speaker": "porter", "text": "You again." },
-    { "kind": "choice", "position": "002-0300", "branchId": "porterTalk", "recordKey": "scene.choices.porterTalk",
+    { "kind": "line", "family": "content", "position": "002-0200", "role": "dialogue", "speaker": "porter", "text": "You again." },
+    { "kind": "choice", "family": "control", "position": "002-0300", "branchId": "porterTalk", "selectionKey": "scene.choices.porterTalk",
       "options": [
-        { "id": "ask", "label": "Ask about the night", "target": "002-0400" },
-        { "id": "leave", "label": "Leave", "target": "002-0700" }
+        { "id": "ask", "text": "Ask about the night", "target": "002-0400" },
+        { "id": "leave", "text": "Leave", "target": "002-0700" }
       ],
       "converge": "002-0900" },
-    { "kind": "line", "position": "002-0400", "role": "dialogue", "speaker": "porter", "text": "I saw nothing." },
-    { "kind": "set", "position": "002-0500", "path": "run.porterTrust", "op": "+=", "value": { "cel": "1", "expr": { "int": 1 } } },
-    { "kind": "jump", "position": "002-0600", "target": "002-0900" },
-    { "kind": "line", "position": "002-0700", "role": "dialogue", "speaker": "porter", "text": "Good." },
-    { "kind": "jump", "position": "002-0800", "target": "002-0900" },
-    { "kind": "entry", "position": "003-0100", "id": "lastNote", "body": "003-0200" },
-    { "kind": "line", "position": "003-0200", "role": "narration", "speaker": "narrator", "text": "The last note." }
+    { "kind": "line", "family": "content", "position": "002-0400", "role": "dialogue", "speaker": "porter", "text": "I saw nothing." },
+    { "kind": "set", "family": "state", "position": "002-0500", "path": "run.porterTrust", "op": "+=", "value": { "cel": "1", "expr": { "int": 1 } } },
+    { "kind": "jump", "family": "control", "position": "002-0600", "target": "002-0900" },
+    { "kind": "line", "family": "content", "position": "002-0700", "role": "dialogue", "speaker": "porter", "text": "Good." },
+    { "kind": "jump", "family": "control", "position": "002-0800", "target": "002-0900" },
+    { "kind": "entry", "family": "declaration", "position": "003-0100", "id": "lastNote", "body": "003-0200" },
+    { "kind": "line", "family": "content", "position": "003-0200", "role": "narration", "speaker": "narrator", "text": "The last note." }
   ]
 }"#;
 

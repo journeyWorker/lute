@@ -1,0 +1,19 @@
+---
+kind: scene
+luteVersion: "0.36.6"
+character: hero
+season: 1
+episode: 1
+title: Line roles
+pov: hero
+monoSpeakers: [mira]
+---
+
+## Roles
+
+@narrator: Rain on the window.
+@hero: Are you there?
+@hero{mono}: She will not answer.
+@mira{mono}: I should answer.
+@mira{os}: I am here.
+@radio{vo}: Storm warning in effect.

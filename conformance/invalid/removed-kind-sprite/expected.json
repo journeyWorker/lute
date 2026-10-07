@@ -1,0 +1,4 @@
+{
+  "error": "unknown command kind \"sprite\" (a new capability the runner cannot fake)",
+  "exit": 2
+}

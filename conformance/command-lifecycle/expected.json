@@ -1,24 +1,24 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
       "eligible": true,
       "id": "lifecycle.signal",
-      "kind": "beat"
+      "kind": "beat",
+      "position": "001-0100"
     },
     {
-      "addr": "001-0200",
       "kind": "accept",
+      "position": "001-0200",
       "quest": "signalQuest"
     },
     {
-      "addr": "001-0300",
       "kind": "retract",
-      "pattern": "seen(hero)"
+      "pattern": "seen(hero)",
+      "position": "001-0300"
     },
     {
-      "addr": "001-0400",
       "kind": "line",
+      "position": "001-0400",
       "speaker": "narrator",
       "text": "The signal is received."
     }

@@ -1,0 +1,32 @@
+{
+  "diagnostics": [
+    {
+      "code": "E-SECTION-DUP",
+      "layer": "content",
+      "message": "section id `{#dock}` is already used by section 1 (line 10) — a section id is unique within its document",
+      "severity": "error",
+      "span": {
+        "byte_end": 176,
+        "byte_start": 172,
+        "column": 16,
+        "line": 14,
+        "utf16_range": [
+          172,
+          176
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.1"
+      ]
+    }
+  ],
+  "ok": false,
+  "resolved": {
+    "commands_preview": [
+      ":narrator",
+      ":narrator"
+    ],
+    "injections": [],
+    "timeline_tables": []
+  }
+}

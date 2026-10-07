@@ -2,7 +2,7 @@
   "kind": "lore",
   "lute": "0.36.6",
   "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1",
     "lute.knowledge.facts/1",
@@ -57,7 +57,8 @@
   "commands": [
     {
       "kind": "beat",
-      "addr": "001-0100",
+      "family": "declaration",
+      "position": "001-0100",
       "id": "lifecycle.signal",
       "on": "talk",
       "target": "npc.hero",
@@ -69,12 +70,14 @@
     },
     {
       "kind": "accept",
-      "addr": "001-0200",
+      "family": "declaration",
+      "position": "001-0200",
       "quest": "signalQuest"
     },
     {
       "kind": "retract",
-      "addr": "001-0300",
+      "family": "state",
+      "position": "001-0300",
       "relation": "seen",
       "args": [
         "mira",
@@ -83,11 +86,13 @@
     },
     {
       "kind": "line",
-      "addr": "001-0400",
+      "family": "content",
+      "position": "001-0400",
       "role": "narration",
       "speaker": "narrator",
       "text": "The signal is received.",
-      "lineId": "lifecycle.signal.narrator_0010"
+      "lineId": "lifecycle.signal.narrator_0010",
+      "voiceKey": "lifecycle.signal.narrator-0010"
     }
   ],
   "outsideRun": [],

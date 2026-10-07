@@ -1,19 +1,19 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
-      "kind": "camera"
+      "kind": "camera",
+      "position": "001-0100"
     },
     {
-      "addr": "001-0200",
       "at": 1.0,
       "kind": "barrier",
       "note": "timeline join — no real clock simulated",
-      "timeline": 1
+      "position": "001-0200",
+      "timeline": 0
     },
     {
-      "addr": "001-0300",
       "kind": "line",
+      "position": "001-0300",
       "speaker": "narrator",
       "text": "Timed."
     }

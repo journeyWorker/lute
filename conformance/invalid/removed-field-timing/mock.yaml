@@ -1,0 +1,3 @@
+# artifact.json is the compiled source with the camera record's `timing` members flattened back onto the record (the removed 0.36 stamp).
+# `lute run` refuses it before any command executes.
+{}

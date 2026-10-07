@@ -1,0 +1,3 @@
+# artifact.json is the compiled source with the `actor` record's kind renamed to the removed 0.36 `sprite`.
+# `lute run` refuses it before any command executes.
+{}

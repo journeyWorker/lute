@@ -1,0 +1,31 @@
+{
+  "diagnostics": [
+    {
+      "code": "E-MONO-POV",
+      "layer": "content",
+      "message": "`@mira{mono}` is an interior monologue, but `mira` is not this document's point of view (`hero`) and not in `monoSpeakers:` (which lists none) — only the POV character and the speakers `monoSpeakers:` lists may speak `mono`; add `mira` to `monoSpeakers:`, or write the line as dialogue, `{os}` or `{vo}`",
+      "severity": "error",
+      "span": {
+        "byte_end": 141,
+        "byte_start": 137,
+        "column": 7,
+        "line": 13,
+        "utf16_range": [
+          137,
+          141
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.4"
+      ]
+    }
+  ],
+  "ok": false,
+  "resolved": {
+    "commands_preview": [
+      ":mira"
+    ],
+    "injections": [],
+    "timeline_tables": []
+  }
+}

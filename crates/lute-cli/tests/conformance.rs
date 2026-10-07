@@ -415,6 +415,70 @@ fn invalid_engine_matrices_are_rejected() {
     }
 }
 
+/// Checker-diagnostic fixtures (dsl 0.37.0 §8): `conformance/diagnostics/*/`
+/// pins the exact `--json` diagnostics an invalid source produces, byte for
+/// byte, with exit 1. The command follows the fixture's files, as in
+/// `conformance/regenerate.sh`: a `lute.project.yaml` selects `check-project
+/// .`; a `loc/` translation set selects `compile --locales locales.json`;
+/// otherwise `check source.lute`. The command runs from the fixture
+/// directory and the directory's absolute prefix is removed, so recorded
+/// paths are fixture-relative.
+#[test]
+fn every_diagnostic_fixture_reproduces() {
+    let root = corpus_dir().join("diagnostics");
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(&root)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", root.display()))
+        .map(|entry| entry.expect("diagnostics dir entry").path())
+        .filter(|path| path.join("expected.json").is_file())
+        .collect();
+    dirs.sort();
+    assert!(!dirs.is_empty(), "no diagnostic fixtures under {}", root.display());
+
+    let mut failures: Vec<String> = Vec::new();
+    for dir in &dirs {
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        let args: &[&str] = if dir.join("lute.project.yaml").is_file() {
+            &["check-project", ".", "--json"]
+        } else if dir.join("loc").is_dir() {
+            &["compile", "source.lute", "--locales", "locales.json", "--json"]
+        } else {
+            &["check", "source.lute", "--json"]
+        };
+        let out = Command::new(BIN)
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap_or_else(|e| panic!("diagnostics/{name}: cannot spawn {BIN}: {e}"));
+        if out.status.code() != Some(1) {
+            failures.push(format!(
+                "diagnostics/{name}: exit {:?}, want 1\n  stderr: {}",
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr).trim(),
+            ));
+            continue;
+        }
+        let prefix = format!("{}/", dir.canonicalize().unwrap().display());
+        let got = format!(
+            "{}\n",
+            String::from_utf8_lossy(&out.stdout).trim_end().replace(&prefix, "")
+        );
+        let want = read(&dir.join("expected.json"));
+        if got != want {
+            failures.push(format!(
+                "diagnostics/{name}: output is NOT byte-identical to expected.json\n{}",
+                first_difference(&got, &want),
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of {} diagnostic fixture(s) failed:\n\n{}",
+        failures.len(),
+        dirs.len(),
+        failures.join("\n\n"),
+    );
+}
+
 /// A standalone compile must carry the same expanded ledger and semantic
 /// requirement as the project-wide artifact for the same document.
 #[test]

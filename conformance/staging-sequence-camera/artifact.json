@@ -1,0 +1,313 @@
+{
+  "kind": "scene",
+  "lute": "0.36.6",
+  "irVersion": "0.36.6",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.staging/1",
+    "lute.timeline/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Staging sequence camera"
+  },
+  "state": [],
+  "enums": [
+    {
+      "name": "action",
+      "members": [
+        "fadeIn",
+        "fadeOut"
+      ]
+    },
+    {
+      "name": "anchor",
+      "members": [
+        "left",
+        "center",
+        "right"
+      ]
+    },
+    {
+      "name": "cameraMove",
+      "members": [
+        "pan",
+        "shake"
+      ]
+    },
+    {
+      "name": "cgLayout",
+      "members": [
+        "full",
+        "inset"
+      ]
+    },
+    {
+      "name": "costume",
+      "members": [
+        "coat"
+      ]
+    },
+    {
+      "name": "emotion",
+      "members": [
+        "calm",
+        "shy"
+      ]
+    },
+    {
+      "name": "framing",
+      "members": [
+        "close",
+        "wide"
+      ]
+    },
+    {
+      "name": "mood",
+      "members": [
+        "calm"
+      ]
+    },
+    {
+      "name": "musicPlayback",
+      "members": [
+        "start",
+        "stop"
+      ]
+    },
+    {
+      "name": "sequence",
+      "members": [
+        "harborArrival",
+        "ferryLeaves"
+      ]
+    },
+    {
+      "name": "transition",
+      "members": [
+        "cut",
+        "fade"
+      ]
+    },
+    {
+      "name": "vfxType",
+      "members": [
+        "whiteOut"
+      ]
+    },
+    {
+      "name": "volume",
+      "members": [
+        "normal"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "kind": "bg",
+      "family": "staging",
+      "position": "001-0100",
+      "location": "harbor",
+      "time": "dusk",
+      "assetId": "BG.harbor",
+      "timing": {
+        "wait": true
+      }
+    },
+    {
+      "kind": "music",
+      "family": "staging",
+      "position": "001-0200",
+      "playback": "start",
+      "mood": "calm",
+      "volume": "normal",
+      "assetId": "BGM.harbor"
+    },
+    {
+      "kind": "sfx",
+      "family": "staging",
+      "position": "001-0300",
+      "sound": "gull",
+      "assetId": "SFX.gull"
+    },
+    {
+      "kind": "vfx",
+      "family": "staging",
+      "position": "001-0400",
+      "type": "whiteOut",
+      "transition": "flash"
+    },
+    {
+      "kind": "sequence",
+      "family": "staging",
+      "position": "001-0500",
+      "name": "harborArrival",
+      "timing": {
+        "wait": true
+      }
+    },
+    {
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0600",
+      "character": "hero",
+      "action": "fadeIn",
+      "emotion": "calm",
+      "costume": "coat"
+    },
+    {
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0700",
+      "character": "hero",
+      "anchor": "center",
+      "provenance": {
+        "by": "auto-anchor-on-show",
+        "explanation": "`hero` shown without an explicit anchor; defaulting to `center`"
+      }
+    },
+    {
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0800",
+      "character": "hero",
+      "emotion": "shy"
+    },
+    {
+      "kind": "camera",
+      "family": "staging",
+      "position": "001-0900",
+      "focus": "hero",
+      "framing": "close",
+      "move": "pan",
+      "transition": "fade",
+      "timing": {
+        "wait": false,
+        "duration": 0.5,
+        "delay": 0.25
+      }
+    },
+    {
+      "kind": "cg",
+      "family": "staging",
+      "position": "001-1000",
+      "assetId": "CG.harbor",
+      "display": "show",
+      "timing": {
+        "wait": false
+      }
+    },
+    {
+      "kind": "cg",
+      "family": "staging",
+      "position": "001-1100",
+      "assetId": "CG.harbor.inset",
+      "display": "hide",
+      "layout": "inset",
+      "timing": {
+        "wait": false
+      }
+    },
+    {
+      "kind": "video",
+      "family": "staging",
+      "position": "001-1200",
+      "assetId": "VID.harbor",
+      "display": "show",
+      "timing": {
+        "wait": true
+      }
+    },
+    {
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-1300",
+      "character": "hero",
+      "posReset": true,
+      "provenance": {
+        "by": "auto-pose-reset",
+        "explanation": "`hero` had a dirty pose before a plain line; resetting to neutral"
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-1400",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "The ferry is late.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero.s01ep01.hero-0010"
+    },
+    {
+      "kind": "camera",
+      "family": "staging",
+      "position": "001-1500",
+      "framing": "wide",
+      "move": "shake",
+      "timing": {
+        "wait": false,
+        "duration": 1.0,
+        "at": 0.0,
+        "timeline": 0
+      }
+    },
+    {
+      "kind": "sfx",
+      "family": "staging",
+      "position": "001-1600",
+      "sound": "horn",
+      "timing": {
+        "at": 1.0,
+        "timeline": 0
+      }
+    },
+    {
+      "kind": "barrier",
+      "family": "control",
+      "position": "001-1700",
+      "timeline": 0,
+      "at": 2.0
+    },
+    {
+      "kind": "sequence",
+      "family": "staging",
+      "position": "001-1800",
+      "name": "ferryLeaves",
+      "timing": {
+        "wait": false
+      }
+    },
+    {
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-1900",
+      "character": "hero",
+      "action": "fadeOut",
+      "exit": true
+    },
+    {
+      "kind": "music",
+      "family": "staging",
+      "position": "001-2000",
+      "playback": "stop"
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "Harbor",
+      "id": "harbor"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

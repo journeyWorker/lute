@@ -1,0 +1,46 @@
+{
+  "commands": [
+    {
+      "kind": "line",
+      "position": "001-0100",
+      "speaker": "narrator",
+      "text": "Rain on the window."
+    },
+    {
+      "kind": "line",
+      "position": "001-0200",
+      "speaker": "hero",
+      "text": "Are you there?"
+    },
+    {
+      "kind": "line",
+      "position": "001-0300",
+      "speaker": "hero",
+      "text": "She will not answer."
+    },
+    {
+      "kind": "line",
+      "position": "001-0400",
+      "speaker": "mira",
+      "text": "I should answer."
+    },
+    {
+      "kind": "line",
+      "position": "001-0500",
+      "speaker": "mira",
+      "text": "I am here."
+    },
+    {
+      "kind": "line",
+      "position": "001-0600",
+      "speaker": "radio",
+      "text": "Storm warning in effect."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.36",
+  "kind": "scene",
+  "quests": {},
+  "state": {}
+}

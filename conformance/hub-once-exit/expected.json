@@ -1,38 +1,38 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
       "chose": "probe",
       "hub": "talk",
-      "kind": "hub"
+      "kind": "hub",
+      "position": "001-0100"
     },
     {
-      "addr": "001-0200",
       "kind": "line",
+      "position": "001-0200",
       "speaker": "hero",
       "text": "Tell me more."
     },
     {
-      "addr": "001-0300",
       "kind": "set",
       "path": "run.probes",
+      "position": "001-0300",
       "value": 1
     },
     {
-      "addr": "001-0100",
       "chose": "leave",
       "hub": "talk",
-      "kind": "hub"
+      "kind": "hub",
+      "position": "001-0100"
     },
     {
-      "addr": "001-0400",
       "kind": "line",
+      "position": "001-0400",
       "speaker": "hero",
       "text": "We're done here."
     },
     {
-      "addr": "001-0600",
       "kind": "line",
+      "position": "001-0600",
       "speaker": "narrator",
       "text": "The interview is over."
     }

@@ -6,7 +6,7 @@ expression: json
   "kind": "scene",
   "lute": "0.36.6",
   "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
   ],
@@ -40,7 +40,8 @@ expression: json
   "commands": [
     {
       "kind": "line",
-      "addr": "001-0100",
+      "family": "content",
+      "position": "001-0100",
       "role": "dialogue",
       "speaker": "vesna",
       "text": "The fog is lifting.",
@@ -49,13 +50,14 @@ expression: json
     },
     {
       "kind": "hub",
-      "addr": "001-0200",
+      "family": "control",
+      "position": "001-0200",
       "id": "look",
-      "recordKey": "scene.choices.look",
+      "selectionKey": "scene.choices.look",
       "options": [
         {
           "id": "shore",
-          "label": "The shore",
+          "text": "The shore",
           "lineId": "haven.s01ep05.look.shore",
           "once": true,
           "exit": false,
@@ -63,7 +65,7 @@ expression: json
         },
         {
           "id": "leave",
-          "label": "Head back",
+          "text": "Head back",
           "lineId": "haven.s01ep05.look.leave",
           "once": false,
           "exit": true,
@@ -75,7 +77,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "001-0300",
+      "family": "content",
+      "position": "001-0300",
       "role": "dialogue",
       "speaker": "vesna",
       "text": "Nothing but driftwood.",
@@ -84,7 +87,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "001-0400",
+      "family": "content",
+      "position": "001-0400",
       "role": "dialogue",
       "speaker": "vesna",
       "text": "Let's go.",
@@ -93,13 +97,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "001-0500",
+      "family": "control",
+      "position": "001-0500",
       "target": "001-0600"
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "The ridge"
     }
   ],

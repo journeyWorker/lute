@@ -2,7 +2,7 @@
   "kind": "scene",
   "lute": "0.36.6",
   "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
   ],
@@ -13,41 +13,47 @@
   "commands": [
     {
       "kind": "line",
-      "addr": "001-0100",
+      "family": "content",
+      "position": "001-0100",
       "role": "narration",
       "speaker": "narrator",
       "text": "Spark",
       "lineId": "identity.explicit.spark#use-001.narrator_0010",
+      "voiceKey": "identity.explicit.spark#use-001.narrator-0010",
       "source": {
         "component": "spark"
       }
     },
     {
       "kind": "line",
-      "addr": "001-0200",
+      "family": "content",
+      "position": "001-0200",
       "role": "narration",
       "speaker": "narrator",
       "text": "Spark",
       "lineId": "identity.explicit.spark#use-002.narrator_0010",
+      "voiceKey": "identity.explicit.spark#use-002.narrator-0010",
       "source": {
         "component": "spark"
       }
     },
     {
       "kind": "line",
-      "addr": "001-0300",
+      "family": "content",
+      "position": "001-0300",
       "role": "narration",
       "speaker": "narrator",
       "text": "Spark",
       "lineId": "identity.explicit.nested#outer.spark#child.narrator_0010",
+      "voiceKey": "identity.explicit.nested#outer.spark#child.narrator-0010",
       "source": {
         "component": "spark"
       }
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "Opening"
     }
   ],

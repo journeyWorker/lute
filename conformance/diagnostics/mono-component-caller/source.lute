@@ -1,0 +1,14 @@
+---
+kind: scene
+luteVersion: "0.36.6"
+character: hero
+season: 1
+episode: 1
+title: Mono in a component
+pov: hero
+components: [thought.component.lute]
+---
+
+## Opening
+
+::use{component="thought" instance="first"}

@@ -1,0 +1,8 @@
+# `run.hasKey` is seeded true, so the forward `::jump` skips to the `inside`
+# label; the branch takes `knock` (its option `text` is "Knock"); the match
+# `subject` reads the seeded visit count.
+state:
+  run.hasKey: true
+  run.visits: 2
+choose:
+  door: knock

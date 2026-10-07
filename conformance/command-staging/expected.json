@@ -1,69 +1,69 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
-      "kind": "background"
+      "kind": "bg",
+      "position": "001-0100"
     },
     {
-      "addr": "001-0200",
-      "kind": "music"
+      "kind": "music",
+      "position": "001-0200"
     },
     {
-      "addr": "001-0300",
-      "kind": "sfx"
+      "kind": "sfx",
+      "position": "001-0300"
     },
     {
-      "addr": "001-0400",
-      "kind": "vfx"
+      "kind": "vfx",
+      "position": "001-0400"
     },
     {
-      "addr": "001-0500",
-      "kind": "sprite"
+      "kind": "actor",
+      "position": "001-0500"
     },
     {
-      "addr": "001-0600",
-      "kind": "camera"
+      "kind": "camera",
+      "position": "001-0600"
     },
     {
-      "addr": "001-0700",
-      "kind": "cut"
+      "kind": "cg",
+      "position": "001-0700"
     },
     {
-      "addr": "001-0800",
-      "kind": "video"
+      "kind": "video",
+      "position": "001-0800"
     },
     {
-      "addr": "001-0900",
-      "kind": "camera"
+      "kind": "camera",
+      "position": "001-0900"
     },
     {
-      "addr": "001-1000",
       "at": 1.0,
       "kind": "barrier",
       "note": "timeline join — no real clock simulated",
-      "timeline": 1
+      "position": "001-1000",
+      "timeline": 0
     },
     {
-      "addr": "001-1100",
       "kind": "line",
+      "position": "001-1100",
       "speaker": "narrator",
       "text": "The harbor waits."
     },
     {
-      "addr": "001-1200",
-      "kind": "camera"
+      "kind": "camera",
+      "position": "001-1200"
     },
     {
-      "addr": "001-1300",
-      "kind": "cut"
+      "kind": "cg",
+      "position": "001-1300"
     },
     {
-      "addr": "001-1400",
-      "kind": "video"
+      "kind": "video",
+      "position": "001-1400"
     },
     {
-      "addr": "001-1500",
-      "kind": "music"
+      "kind": "music",
+      "position": "001-1500"
     }
   ],
   "exit": "complete",

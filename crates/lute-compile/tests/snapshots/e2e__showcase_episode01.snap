@@ -6,7 +6,7 @@ expression: json
   "kind": "scene",
   "lute": "0.36.6",
   "irVersion": "0.36.6",
-  "capabilityVersion": "78d59b6eecff9af7a879a6964fdd66579ce6cd468fdf79efd55d2fccee16b035",
+  "capabilitySnapshot": "11d39f42612b95230ef20f0bee5a37093e0b3e8313ff41cb3c7c323db5b2e3b9",
   "requiredSemantics": [
     "lute.core/1",
     "lute.staging/1",
@@ -117,67 +117,76 @@ expression: json
   ],
   "commands": [
     {
-      "kind": "background",
-      "addr": "001-0100",
+      "kind": "bg",
+      "family": "staging",
+      "position": "001-0100",
       "location": "family_restaurant",
       "time": "evening",
       "assetId": "BG.space.family_restaurant.interior.evening",
-      "wait": true
+      "timing": {
+        "wait": true
+      }
     },
     {
       "kind": "music",
-      "addr": "001-0200",
-      "action": "start",
+      "family": "staging",
+      "position": "001-0200",
+      "playback": "start",
       "mood": "bright",
       "volume": "normal",
       "assetId": "sound-bgm-common-vn-mood-bright-0.mp3"
     },
     {
       "kind": "sfx",
-      "addr": "001-0300",
+      "family": "staging",
+      "position": "001-0300",
       "sound": "drink_bar_hum",
       "assetId": "PLACEHOLDER_drink_bar_hum"
     },
     {
-      "kind": "sprite",
-      "addr": "001-0400",
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0400",
       "character": "marina",
       "action": "fadeInUp"
     },
     {
-      "kind": "sprite",
-      "addr": "001-0500",
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0500",
       "character": "marina",
       "anchor": "center",
       "provenance": {
-        "injected": true,
         "by": "auto-anchor-on-show",
         "explanation": "`marina` shown without an explicit anchor; defaulting to `center`"
       }
     },
     {
-      "kind": "sprite",
-      "addr": "001-0600",
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0600",
       "character": "marina",
-      "preload": true,
       "emotion": "delighted",
+      "preload": true,
       "provenance": {
-        "injected": true,
         "by": "entry-emotion-lookahead",
         "explanation": "pre-loading `marina`'s first emotion `delighted` seen ahead of the entrance"
       }
     },
     {
       "kind": "line",
-      "addr": "001-0700",
+      "family": "content",
+      "position": "001-0700",
       "role": "narration",
       "speaker": "narrator",
       "text": "Venny's again. The chain restaurant that has never offended anyone.",
-      "lineId": "marina.s01ep01.narrator_0010"
+      "lineId": "marina.s01ep01.narrator_0010",
+      "voiceKey": "marina.s01ep01.narrator-0010"
     },
     {
       "kind": "line",
-      "addr": "001-0800",
+      "family": "content",
+      "position": "001-0800",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Mr. Fixer! You came back!",
@@ -188,7 +197,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "001-0900",
+      "family": "content",
+      "position": "001-0900",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "I did.",
@@ -196,67 +206,88 @@ expression: json
       "voiceKey": "marina.s01ep01.fixer-0010"
     },
     {
-      "kind": "sprite",
-      "addr": "002-0100",
+      "kind": "actor",
+      "family": "staging",
+      "position": "002-0100",
       "character": "marina",
       "anchor": "left",
       "action": "slideInLeft",
-      "at": 0.0,
-      "timeline": 1
+      "timing": {
+        "at": 0.0,
+        "timeline": 0
+      }
     },
     {
-      "kind": "sprite",
-      "addr": "002-0200",
+      "kind": "actor",
+      "family": "staging",
+      "position": "002-0200",
       "character": "marina",
       "action": "fadeInUp",
-      "at": 0.0,
-      "timeline": 1
+      "timing": {
+        "at": 0.0,
+        "timeline": 0
+      }
     },
     {
       "kind": "camera",
-      "addr": "002-0300",
+      "family": "staging",
+      "position": "002-0300",
       "focus": "marina",
-      "zoom": 1.2,
-      "wait": false,
-      "duration": 0.6,
-      "at": 0.0,
-      "timeline": 1
+      "framing": "close",
+      "timing": {
+        "wait": false,
+        "duration": 0.6,
+        "at": 0.0,
+        "timeline": 0
+      }
     },
     {
-      "kind": "cut",
-      "addr": "002-0400",
+      "kind": "cg",
+      "family": "staging",
+      "position": "002-0400",
       "assetId": "CUT.showcase.debut.01",
-      "wait": false,
-      "at": 0.5,
-      "timeline": 1
+      "display": "show",
+      "timing": {
+        "wait": false,
+        "at": 0.5,
+        "timeline": 0
+      }
     },
     {
       "kind": "camera",
-      "addr": "002-0500",
-      "shake": 0.4,
-      "wait": false,
-      "duration": 0.3,
-      "at": 0.7,
-      "timeline": 1
+      "family": "staging",
+      "position": "002-0500",
+      "move": "shake",
+      "timing": {
+        "wait": false,
+        "duration": 0.3,
+        "at": 0.7,
+        "timeline": 0
+      }
     },
     {
-      "kind": "cut",
-      "addr": "002-0600",
+      "kind": "cg",
+      "family": "staging",
+      "position": "002-0600",
       "assetId": "CUT.showcase.debut.01",
-      "action": "hide",
-      "wait": false,
-      "at": 1.1,
-      "timeline": 1
+      "display": "hide",
+      "timing": {
+        "wait": false,
+        "at": 1.1,
+        "timeline": 0
+      }
     },
     {
       "kind": "barrier",
-      "addr": "002-0700",
-      "timeline": 1,
+      "family": "control",
+      "position": "002-0700",
+      "timeline": 0,
       "at": 1.4
     },
     {
       "kind": "set",
-      "addr": "002-0800",
+      "family": "state",
+      "position": "002-0800",
       "path": "scene.saw_demo",
       "op": "=",
       "value": {
@@ -268,15 +299,18 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "002-0900",
-      "role": "monologue",
+      "family": "content",
+      "position": "002-0900",
+      "role": "mono",
       "speaker": "fixer",
       "text": "A rehearsed entrance. She has been practising.",
-      "lineId": "marina.s01ep01.fixer_0064"
+      "lineId": "marina.s01ep01.fixer_0064",
+      "voiceKey": "marina.s01ep01.fixer-0064"
     },
     {
       "kind": "plugin",
-      "addr": "003-0100",
+      "family": "plugin",
+      "position": "003-0100",
       "tag": "serve",
       "plugin": "showcase.pack",
       "fields": {
@@ -316,7 +350,8 @@ expression: json
     },
     {
       "kind": "match",
-      "addr": "003-0200",
+      "family": "control",
+      "position": "003-0200",
       "subject": {
         "cel": "scene.serve.debut.rank",
         "expr": {
@@ -376,7 +411,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "003-0300",
+      "family": "content",
+      "position": "003-0300",
       "role": "dialogue",
       "speaker": "marina",
       "text": "A perfect service!",
@@ -387,7 +423,8 @@ expression: json
     },
     {
       "kind": "set",
-      "addr": "003-0400",
+      "family": "state",
+      "position": "003-0400",
       "path": "scene.affect.marina",
       "op": "+=",
       "value": {
@@ -399,12 +436,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "003-0500",
+      "family": "control",
+      "position": "003-0500",
       "target": "003-1100"
     },
     {
       "kind": "line",
-      "addr": "003-0600",
+      "family": "content",
+      "position": "003-0600",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Not bad at all, Mr. Fixer.",
@@ -415,7 +454,8 @@ expression: json
     },
     {
       "kind": "set",
-      "addr": "003-0700",
+      "family": "state",
+      "position": "003-0700",
       "path": "run.affection",
       "op": "+=",
       "value": {
@@ -427,12 +467,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "003-0800",
+      "family": "control",
+      "position": "003-0800",
       "target": "003-1100"
     },
     {
       "kind": "line",
-      "addr": "003-0900",
+      "family": "content",
+      "position": "003-0900",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Shall we try once more?",
@@ -443,32 +485,36 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "003-1000",
+      "family": "control",
+      "position": "003-1000",
       "target": "003-1100"
     },
     {
       "kind": "line",
-      "addr": "004-0100",
-      "role": "monologue",
+      "family": "content",
+      "position": "004-0100",
+      "role": "mono",
       "speaker": "fixer",
       "text": "I should ask for her number before the shift swallows her.",
-      "lineId": "marina.s01ep01.fixer_0074"
+      "lineId": "marina.s01ep01.fixer_0074",
+      "voiceKey": "marina.s01ep01.fixer-0074"
     },
     {
       "kind": "choice",
-      "addr": "004-0200",
+      "family": "control",
+      "position": "004-0200",
       "branchId": "approach",
-      "recordKey": "scene.choices.approach",
+      "selectionKey": "scene.choices.approach",
       "options": [
         {
           "id": "blunt",
-          "label": "Just ask, flatly",
+          "text": "Just ask, flatly",
           "lineId": "marina.s01ep01.approach.blunt",
           "target": "004-0300"
         },
         {
           "id": "soft",
-          "label": "Ask gently",
+          "text": "Ask gently",
           "lineId": "marina.s01ep01.approach.soft",
           "when": {
             "cel": "(true)",
@@ -481,7 +527,7 @@ expression: json
         },
         {
           "id": "linger",
-          "label": "Ask, and linger a while",
+          "text": "Ask, and linger a while",
           "lineId": "marina.s01ep01.approach.linger",
           "when": {
             "cel": "(user.level >= 1)",
@@ -503,7 +549,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "004-0300",
+      "family": "content",
+      "position": "004-0300",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "Marina. Your number.",
@@ -512,12 +559,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "004-0400",
+      "family": "control",
+      "position": "004-0400",
       "target": "004-1300"
     },
     {
       "kind": "line",
-      "addr": "004-0500",
+      "family": "content",
+      "position": "004-0500",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "Marina — would you mind terribly if I had your number?",
@@ -526,7 +575,8 @@ expression: json
     },
     {
       "kind": "set",
-      "addr": "004-0600",
+      "family": "state",
+      "position": "004-0600",
       "path": "scene.affect.marina",
       "op": "+=",
       "value": {
@@ -538,7 +588,8 @@ expression: json
     },
     {
       "kind": "set",
-      "addr": "004-0700",
+      "family": "state",
+      "position": "004-0700",
       "path": "run.metHelpfully",
       "op": "=",
       "value": {
@@ -550,12 +601,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "004-0800",
+      "family": "control",
+      "position": "004-0800",
       "target": "004-1300"
     },
     {
       "kind": "line",
-      "addr": "004-0900",
+      "family": "content",
+      "position": "004-0900",
       "role": "dialogue",
       "speaker": "fixer",
       "text": "And perhaps I'll stay through your break.",
@@ -564,7 +617,8 @@ expression: json
     },
     {
       "kind": "set",
-      "addr": "004-1000",
+      "family": "state",
+      "position": "004-1000",
       "path": "run.affection",
       "op": "+=",
       "value": {
@@ -576,7 +630,8 @@ expression: json
     },
     {
       "kind": "set",
-      "addr": "004-1100",
+      "family": "state",
+      "position": "004-1100",
       "path": "run.sofaOutcome",
       "op": "=",
       "value": {
@@ -588,12 +643,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "004-1200",
+      "family": "control",
+      "position": "004-1200",
       "target": "004-1300"
     },
     {
       "kind": "line",
-      "addr": "004-1300",
+      "family": "content",
+      "position": "004-1300",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Of course! Right away, Mr. Fixer.",
@@ -604,13 +661,15 @@ expression: json
     },
     {
       "kind": "sfx",
-      "addr": "004-1400",
+      "family": "staging",
+      "position": "004-1400",
       "sound": "phone_chime",
       "assetId": "sound-sfx-common-phone-0.mp3"
     },
     {
       "kind": "match",
-      "addr": "005-0100",
+      "family": "control",
+      "position": "005-0100",
       "subject": {
         "cel": "scene.choices.approach",
         "expr": {
@@ -657,46 +716,56 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "005-0200",
-      "role": "monologue",
+      "family": "content",
+      "position": "005-0200",
+      "role": "mono",
       "speaker": "fixer",
       "text": "I asked nicely, which I am electing not to examine.",
-      "lineId": "marina.s01ep01.fixer_0084"
+      "lineId": "marina.s01ep01.fixer_0084",
+      "voiceKey": "marina.s01ep01.fixer-0084"
     },
     {
       "kind": "jump",
-      "addr": "005-0300",
+      "family": "control",
+      "position": "005-0300",
       "target": "005-0800"
     },
     {
       "kind": "line",
-      "addr": "005-0400",
-      "role": "monologue",
+      "family": "content",
+      "position": "005-0400",
+      "role": "mono",
       "speaker": "fixer",
       "text": "Straight to the point. It worked.",
-      "lineId": "marina.s01ep01.fixer_0094"
+      "lineId": "marina.s01ep01.fixer_0094",
+      "voiceKey": "marina.s01ep01.fixer-0094"
     },
     {
       "kind": "jump",
-      "addr": "005-0500",
+      "family": "control",
+      "position": "005-0500",
       "target": "005-0800"
     },
     {
       "kind": "line",
-      "addr": "005-0600",
-      "role": "monologue",
+      "family": "content",
+      "position": "005-0600",
+      "role": "mono",
       "speaker": "fixer",
       "text": "Whatever it was, it is done.",
-      "lineId": "marina.s01ep01.fixer_0104"
+      "lineId": "marina.s01ep01.fixer_0104",
+      "voiceKey": "marina.s01ep01.fixer-0104"
     },
     {
       "kind": "jump",
-      "addr": "005-0700",
+      "family": "control",
+      "position": "005-0700",
       "target": "005-0800"
     },
     {
       "kind": "match",
-      "addr": "005-0800",
+      "family": "control",
+      "position": "005-0800",
       "subject": {
         "cel": "run.metHelpfully",
         "expr": {
@@ -743,7 +812,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "005-0900",
+      "family": "content",
+      "position": "005-0900",
       "role": "dialogue",
       "speaker": "marina",
       "text": "You were kind about it. I noticed.",
@@ -754,12 +824,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "005-1000",
+      "family": "control",
+      "position": "005-1000",
       "target": "005-1300"
     },
     {
       "kind": "line",
-      "addr": "005-1100",
+      "family": "content",
+      "position": "005-1100",
       "role": "dialogue",
       "speaker": "marina",
       "text": "There you are.",
@@ -770,12 +842,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "005-1200",
+      "family": "control",
+      "position": "005-1200",
       "target": "005-1300"
     },
     {
       "kind": "match",
-      "addr": "005-1300",
+      "family": "control",
+      "position": "005-1300",
       "subject": {
         "cel": "run.sofaOutcome",
         "expr": {
@@ -806,7 +880,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "005-1400",
+      "family": "content",
+      "position": "005-1400",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Staying? That would be lovely.",
@@ -817,12 +892,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "005-1500",
+      "family": "control",
+      "position": "005-1500",
       "target": "005-1800"
     },
     {
       "kind": "line",
-      "addr": "005-1600",
+      "family": "content",
+      "position": "005-1600",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Some other evening, then.",
@@ -833,12 +910,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "005-1700",
+      "family": "control",
+      "position": "005-1700",
       "target": "005-1800"
     },
     {
       "kind": "match",
-      "addr": "006-0100",
+      "family": "control",
+      "position": "006-0100",
       "subject": {
         "cel": "app.rating",
         "expr": {
@@ -869,33 +948,40 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "006-0200",
+      "family": "content",
+      "position": "006-0200",
       "role": "narration",
       "speaker": "narrator",
       "text": "A gentle evening, suitable for all.",
-      "lineId": "marina.s01ep01.narrator_0020"
+      "lineId": "marina.s01ep01.narrator_0020",
+      "voiceKey": "marina.s01ep01.narrator-0020"
     },
     {
       "kind": "jump",
-      "addr": "006-0300",
+      "family": "control",
+      "position": "006-0300",
       "target": "006-0600"
     },
     {
       "kind": "line",
-      "addr": "006-0400",
+      "family": "content",
+      "position": "006-0400",
       "role": "narration",
       "speaker": "narrator",
       "text": "The night deepens.",
-      "lineId": "marina.s01ep01.narrator_0030"
+      "lineId": "marina.s01ep01.narrator_0030",
+      "voiceKey": "marina.s01ep01.narrator-0030"
     },
     {
       "kind": "jump",
-      "addr": "006-0500",
+      "family": "control",
+      "position": "006-0500",
       "target": "006-0600"
     },
     {
       "kind": "match",
-      "addr": "006-0600",
+      "family": "control",
+      "position": "006-0600",
       "subject": {
         "cel": "scene.affect.marina",
         "expr": {
@@ -941,47 +1027,57 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "006-0700",
-      "role": "monologue",
+      "family": "content",
+      "position": "006-0700",
+      "role": "mono",
       "speaker": "fixer",
       "text": "She has earned a veteran's welcome.",
-      "lineId": "marina.s01ep01.fixer_0114"
+      "lineId": "marina.s01ep01.fixer_0114",
+      "voiceKey": "marina.s01ep01.fixer-0114"
     },
     {
       "kind": "jump",
-      "addr": "006-0800",
+      "family": "control",
+      "position": "006-0800",
       "target": "006-1300"
     },
     {
       "kind": "line",
-      "addr": "006-0900",
-      "role": "monologue",
+      "family": "content",
+      "position": "006-0900",
+      "role": "mono",
       "speaker": "fixer",
       "text": "Seasoned enough for what comes next.",
-      "lineId": "marina.s01ep01.fixer_0124"
+      "lineId": "marina.s01ep01.fixer_0124",
+      "voiceKey": "marina.s01ep01.fixer-0124"
     },
     {
       "kind": "jump",
-      "addr": "006-1000",
+      "family": "control",
+      "position": "006-1000",
       "target": "006-1300"
     },
     {
       "kind": "line",
-      "addr": "006-1100",
-      "role": "monologue",
+      "family": "content",
+      "position": "006-1100",
+      "role": "mono",
       "speaker": "fixer",
       "text": "Early days yet.",
-      "lineId": "marina.s01ep01.fixer_0134"
+      "lineId": "marina.s01ep01.fixer_0134",
+      "voiceKey": "marina.s01ep01.fixer-0134"
     },
     {
       "kind": "jump",
-      "addr": "006-1200",
+      "family": "control",
+      "position": "006-1200",
       "target": "006-1300"
     },
     {
       "kind": "music",
-      "addr": "006-1300",
-      "action": "change",
+      "family": "staging",
+      "position": "006-1300",
+      "playback": "change",
       "mood": "tense",
       "source": {
         "component": "stinger"
@@ -989,8 +1085,9 @@ expression: json
     },
     {
       "kind": "vfx",
-      "addr": "006-1400",
-      "vfxType": "whiteOut",
+      "family": "staging",
+      "position": "006-1400",
+      "type": "whiteOut",
       "label": "tense",
       "transition": "fade",
       "source": {
@@ -999,29 +1096,34 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "006-1500",
+      "family": "content",
+      "position": "006-1500",
       "role": "narration",
       "speaker": "narrator",
       "text": "A beat of silence, then the moment lands.",
       "lineId": "marina.s01ep01.stinger#1.narrator_0010",
+      "voiceKey": "marina.s01ep01.stinger#1.narrator-0010",
       "source": {
         "component": "stinger"
       }
     },
     {
       "kind": "vfx",
-      "addr": "006-1600",
-      "vfxType": "petals",
+      "family": "staging",
+      "position": "006-1600",
+      "type": "petals",
       "transition": "fade"
     },
     {
       "kind": "music",
-      "addr": "006-1700",
-      "action": "stop"
+      "family": "staging",
+      "position": "006-1700",
+      "playback": "stop"
     },
     {
       "kind": "match",
-      "addr": "006-1800",
+      "family": "control",
+      "position": "006-1800",
       "subject": {
         "cel": "app.lang",
         "expr": {
@@ -1052,54 +1154,60 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "006-1900",
+      "family": "content",
+      "position": "006-1900",
       "role": "narration",
       "speaker": "narrator",
       "text": "Subtitles render in Korean.",
-      "lineId": "marina.s01ep01.narrator_0040"
+      "lineId": "marina.s01ep01.narrator_0040",
+      "voiceKey": "marina.s01ep01.narrator-0040"
     },
     {
       "kind": "jump",
-      "addr": "006-2000",
+      "family": "control",
+      "position": "006-2000",
       "target": "006-2300"
     },
     {
       "kind": "line",
-      "addr": "006-2100",
+      "family": "content",
+      "position": "006-2100",
       "role": "narration",
       "speaker": "narrator",
       "text": "Subtitles render in English.",
-      "lineId": "marina.s01ep01.narrator_0050"
+      "lineId": "marina.s01ep01.narrator_0050",
+      "voiceKey": "marina.s01ep01.narrator-0050"
     },
     {
       "kind": "jump",
-      "addr": "006-2200",
+      "family": "control",
+      "position": "006-2200",
       "target": "006-2300"
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "Venny's Again"
     },
     {
-      "shot": 2,
+      "section": 2,
       "heading": "The Rehearsed Entrance"
     },
     {
-      "shot": 3,
+      "section": 3,
       "heading": "The Service Bridge"
     },
     {
-      "shot": 4,
+      "section": 4,
       "heading": "The Approach"
     },
     {
-      "shot": 5,
+      "section": 5,
       "heading": "What Was Recorded"
     },
     {
-      "shot": 6,
+      "section": 6,
       "heading": "Content Gates"
     }
   ],

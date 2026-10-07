@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "locales": [
+    "ja-JP"
+  ],
+  "entries": {
+    "hero.s01ep01.hero_0010": {
+      "ja-JP": "やあ :emphasis[そこ]"
+    }
+  }
+}

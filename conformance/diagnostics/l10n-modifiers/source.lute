@@ -1,0 +1,13 @@
+---
+kind: scene
+luteVersion: "0.36.6"
+character: hero
+season: 1
+episode: 1
+title: Locale modifier mismatch
+uses: ./schema.yaml
+---
+
+## Lines
+
+@hero{code="0010"}: :emphasis[Hello] there:pause{s=0.5}

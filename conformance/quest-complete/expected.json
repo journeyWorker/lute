@@ -38,14 +38,14 @@
       }
     },
     {
-      "addr": "001-0300",
       "kind": "set",
       "path": "run.done",
+      "position": "001-0300",
       "value": 1
     },
     {
-      "addr": "001-0400",
       "kind": "line",
+      "position": "001-0400",
       "speaker": "narrator",
       "text": "The goal is reached."
     }

@@ -6,7 +6,7 @@ expression: json
   "kind": "scene",
   "lute": "0.36.6",
   "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
   ],
@@ -67,6 +67,12 @@ expression: json
       ]
     },
     {
+      "name": "cameraMove",
+      "members": [
+        "shake"
+      ]
+    },
+    {
       "name": "emotion",
       "members": [
         "neutral",
@@ -76,6 +82,13 @@ expression: json
         "content",
         "angry",
         "sad"
+      ]
+    },
+    {
+      "name": "framing",
+      "members": [
+        "close",
+        "tight"
       ]
     },
     {
@@ -89,7 +102,7 @@ expression: json
       ]
     },
     {
-      "name": "musicAction",
+      "name": "musicPlayback",
       "members": [
         "start",
         "change",
@@ -124,7 +137,8 @@ expression: json
   "commands": [
     {
       "kind": "match",
-      "addr": "001-0100",
+      "family": "control",
+      "position": "001-0100",
       "subject": {
         "cel": "scene.affect.marina",
         "expr": {
@@ -172,7 +186,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "001-0200",
+      "family": "content",
+      "position": "001-0200",
       "role": "dialogue",
       "speaker": "marina",
       "text": "You remembered! You actually remembered.",
@@ -185,12 +200,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "001-0300",
+      "family": "control",
+      "position": "001-0300",
       "target": "001-0800"
     },
     {
       "kind": "line",
-      "addr": "001-0400",
+      "family": "content",
+      "position": "001-0400",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Not bad at all, Mr. Fixer.",
@@ -203,12 +220,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "001-0500",
+      "family": "control",
+      "position": "001-0500",
       "target": "001-0800"
     },
     {
       "kind": "line",
-      "addr": "001-0600",
+      "family": "content",
+      "position": "001-0600",
       "role": "dialogue",
       "speaker": "marina",
       "text": "...Shall we begin?",
@@ -221,12 +240,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "001-0700",
+      "family": "control",
+      "position": "001-0700",
       "target": "001-0800"
     },
     {
       "kind": "match",
-      "addr": "002-0100",
+      "family": "control",
+      "position": "002-0100",
       "subject": {
         "cel": "(scene.tier)",
         "expr": {
@@ -294,7 +315,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "002-0200",
+      "family": "content",
+      "position": "002-0200",
       "role": "dialogue",
       "speaker": "marina",
       "text": "You remembered! You actually remembered.",
@@ -307,12 +329,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "002-0300",
+      "family": "control",
+      "position": "002-0300",
       "target": "002-0800"
     },
     {
       "kind": "line",
-      "addr": "002-0400",
+      "family": "content",
+      "position": "002-0400",
       "role": "dialogue",
       "speaker": "marina",
       "text": "Not bad at all, Mr. Fixer.",
@@ -325,12 +349,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "002-0500",
+      "family": "control",
+      "position": "002-0500",
       "target": "002-0800"
     },
     {
       "kind": "line",
-      "addr": "002-0600",
+      "family": "content",
+      "position": "002-0600",
       "role": "dialogue",
       "speaker": "marina",
       "text": "...Shall we begin?",
@@ -343,17 +369,18 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "002-0700",
+      "family": "control",
+      "position": "002-0700",
       "target": "002-0800"
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "Literal Tier Dispatch"
     },
     {
-      "shot": 2,
+      "section": 2,
       "heading": "Dynamic Tier Dispatch"
     }
   ],

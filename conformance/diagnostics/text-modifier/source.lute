@@ -1,0 +1,15 @@
+---
+kind: scene
+luteVersion: "0.36.6"
+character: hero
+season: 1
+episode: 1
+title: Malformed modifiers
+uses: ./schema.yaml
+---
+
+## Modifiers
+
+@hero: :emphasis[never closed
+@hero: :speed[too slow]{rate=0} non-positive rate
+@hero: :emphasis[styled]{loud=true} attrs on a text style

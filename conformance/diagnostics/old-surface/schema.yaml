@@ -1,0 +1,7 @@
+enums:
+  musicPlayback: [start]
+  anchor:
+    members: [center]
+    default: center
+state:
+  run.mood: { type: int, default: 0 }

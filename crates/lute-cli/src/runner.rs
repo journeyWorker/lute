@@ -28,8 +28,10 @@
 //! transcript `{ kind, irVersion, exit, commands, state, facts, quests }`.
 //!
 //! Exit codes: `0` a complete walk, `2` an I/O / usage failure (unreadable
-//! execution IR/mock, malformed execution IR, an `irVersion` outside the
-//! pre-1.0 exact-minor or post-1.0 MAJOR line, or an unknown command `kind`),
+//! execution IR/mock, malformed execution IR — including one that carries a
+//! removed 0.36 field or a command without `position`, `E-IR-REMOVED-FIELD` —
+//! an `irVersion` outside the pre-1.0 exact-minor or post-1.0 MAJOR line, or
+//! an unknown command `kind`),
 //! `3` an incomplete walk (`choice`/`hub` reached with no mock decision —
 //! mirroring `lute trace`'s §4.5 incomplete convention).
 //!
@@ -134,6 +136,11 @@ pub fn run_artifact(
             );
             return ExitCode::from(2);
         }
+    }
+
+    if let Some(reason) = removed_ir_field(&art) {
+        eprintln!("lute run: {reason}");
+        return ExitCode::from(2);
     }
 
     if let Some(reason) = owned_write_refusal(&art) {
@@ -654,6 +661,77 @@ impl ExprIndex {
     }
 }
 
+
+/// Envelope keys 0.37 removed or renamed (dsl 0.37.0 §2.2), each with the
+/// spelling an engine reads instead.
+const REMOVED_ENVELOPE_FIELDS: [(&str, &str); 2] = [
+    ("capabilityVersion", "`capabilitySnapshot`"),
+    ("shots", "`sections`"),
+];
+
+/// Command keys 0.37 removed or renamed (dsl 0.37.0 §2.2, §5.2, §5.3). The
+/// flattened stamp members moved into the nested `timing` object; a
+/// `barrier`'s own `timeline`/`at` join fields are exempt.
+const REMOVED_COMMAND_FIELDS: [(&str, &str); 9] = [
+    ("addr", "`position`"),
+    ("recordKey", "`selectionKey`"),
+    ("timeoutSec", "`timeout`"),
+    ("vfxType", "`type`"),
+    ("wait", "`timing.wait`"),
+    ("duration", "`timing.duration`"),
+    ("delay", "`timing.delay`"),
+    ("at", "`timing.at`"),
+    ("timeline", "`timing.timeline`"),
+];
+
+/// `E-IR-REMOVED-FIELD` (dsl 0.37.0 §4): refuse an execution IR that still
+/// carries a field 0.37 removed or renamed, or a command with no `position`.
+/// Reading such an artifact would silently replay an empty position or drop
+/// its timing, so the runner refuses it before anything executes.
+fn removed_ir_field(art: &Json) -> Option<String> {
+    const CODE: &str = "E-IR-REMOVED-FIELD";
+    const RECOMPILE: &str = "recompile the source with the current toolchain";
+    for (field, replacement) in REMOVED_ENVELOPE_FIELDS {
+        if art.get(field).is_some() {
+            return Some(format!(
+                "{CODE}: the execution IR carries removed field `{field}`; 0.37 reads \
+                 {replacement} — {RECOMPILE}"
+            ));
+        }
+    }
+    let commands = art.get("commands").and_then(Json::as_array)?;
+    for (index, command) in commands.iter().enumerate() {
+        let kind = command.get("kind").and_then(Json::as_str).unwrap_or("");
+        for (field, replacement) in REMOVED_COMMAND_FIELDS {
+            if kind == "barrier" && matches!(field, "timeline" | "at") {
+                continue;
+            }
+            if command.get(field).is_some() {
+                return Some(format!(
+                    "{CODE}: command {index} (`{kind}`) carries removed field `{field}`; \
+                     0.37 reads {replacement} — {RECOMPILE}"
+                ));
+            }
+        }
+        if command
+            .get("provenance")
+            .and_then(|provenance| provenance.get("injected"))
+            .is_some()
+        {
+            return Some(format!(
+                "{CODE}: command {index} (`{kind}`) carries removed field \
+                 `provenance.injected`; 0.37 has no replacement (`provenance` itself marks \
+                 an injected record) — {RECOMPILE}"
+            ));
+        }
+        if !command.get("position").is_some_and(Json::is_string) {
+            return Some(format!(
+                "{CODE}: command {index} (`{kind}`) has no required `position` — {RECOMPILE}"
+            ));
+        }
+    }
+    None
+}
 
 /// Refuse hand-built or tampered execution IR that asks content to mutate
 /// state or facts owned by the engine. Compiled IR should already exclude

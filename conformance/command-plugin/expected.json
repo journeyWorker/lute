@@ -1,16 +1,16 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
       "external": true,
       "kind": "plugin",
       "note": "external bridge call — not invoked; bridgeResult effects unresolved",
+      "position": "001-0100",
       "tag": "demo",
       "unresolvedEffects": []
     },
     {
-      "addr": "001-0200",
       "kind": "line",
+      "position": "001-0200",
       "speaker": "narrator",
       "text": "The bridge is recorded."
     }

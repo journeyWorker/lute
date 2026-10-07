@@ -1,0 +1,30 @@
+{
+  "commands": [
+    {
+      "kind": "line",
+      "position": "001-0100",
+      "speaker": "hero",
+      "text": "Hello big world Mira!"
+    },
+    {
+      "kind": "line",
+      "position": "001-0200",
+      "speaker": "hero",
+      "text": "Plain : line with [brackets]."
+    },
+    {
+      "kind": "line",
+      "position": "001-0300",
+      "speaker": "hero",
+      "text": "ab c d"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.36",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.guest": "Mira"
+  }
+}

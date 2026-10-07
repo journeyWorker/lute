@@ -1,0 +1,12 @@
+---
+kind: quest
+luteVersion: "0.36.6"
+title: Duplicate reward id
+---
+
+<quest id="rescue" title="Rescue" start="true" tier="run">
+  <reward id="pay" kind="GOLD" amount="5"/>
+  <objective id="arrive" title="Arrive" done="true">
+    <reward id="pay" kind="GOLD" amount="1"/>
+  </objective>
+</quest>
