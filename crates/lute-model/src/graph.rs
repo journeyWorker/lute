@@ -147,7 +147,10 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
                 );
                 owners.push((o.span, ok.clone()));
                 for (i, r) in o.rewards.iter().enumerate() {
-                    let rk = NodeKey::new(NodeKind::Reward, format!("{}.{}#{}", q.id, o.id, i));
+                    let rk = NodeKey::new(
+                        NodeKind::Reward,
+                        format!("{}.{}#{}", q.id, o.id, r.key_segment(i)),
+                    );
                     g.node(rk.clone(), Some(d.path.clone()), Some(r.span));
                     g.edge(
                         ok.clone(),
@@ -172,7 +175,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
             Evidence::Proven,
         );
         for (i, r) in q.rewards.iter().enumerate() {
-            let rk = NodeKey::new(NodeKind::Reward, format!("{}#{}", q.id, i));
+            let rk = NodeKey::new(NodeKind::Reward, format!("{}#{}", q.id, r.key_segment(i)));
             g.node(rk.clone(), Some(d.path.clone()), Some(r.span));
             g.edge(
                 qk.clone(),
@@ -334,7 +337,10 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
         for n in &q.body {
             let Node::Objective(o) = n else { continue };
             for (i, reward) in o.rewards.iter().enumerate() {
-                let rk = NodeKey::new(NodeKind::Reward, format!("{}.{}#{}", q.id, o.id, i));
+                let rk = NodeKey::new(
+                    NodeKind::Reward,
+                    format!("{}.{}#{}", q.id, o.id, reward.key_segment(i)),
+                );
                 if let Some(when) = &reward.when {
                     add_slot_dependency_edges(g, &rk, &d.path, when);
                 }

@@ -176,6 +176,11 @@ const OBJECTIVE_KEY_DOCS: &[(&str, &str, &str)] = &[
 ];
 
 const REWARD_KEY_DOCS: &[(&str, &str, &str)] = &[
+    (
+        "id",
+        "<token>",
+        "the reward's stable identity, unique among its quest's rewards",
+    ),
     ("kind", "<rewardKind>", "what the engine pays"),
     ("target", "<id>", "what the reward is for, per its kind"),
     ("amount", "<integer> | <N>..<M>", "how much"),
@@ -332,7 +337,7 @@ pub(crate) fn extend_surface(
             json!({
                 "on": c.on,
                 "scenes": c.scenes,
-                "applied": c.applied && !c.retired,
+                "applied": c.applied,
                 "chained": lute_check::chapters::chained(&c.on, &input.snapshot.occasions),
             })
         })

@@ -11,6 +11,7 @@ profiles:
 identity:
   requireStable: true
 defaults:
+  pov: ilo
   luteVersion: "0.36.6"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
   components: [components/gauge.component.lute, components/keepsake.component.lute, components/bond-story.component.lute]

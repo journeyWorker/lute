@@ -199,17 +199,16 @@ fn free_shot_headings_parse_clean() {
     }
 }
 
-// -- Task 9e: E-TITLE-PLACEMENT for misplaced/duplicate `# ` title (§6.2/I1) --
+// -- dsl 0.37.0 §3.1: every body `# ` heading is E-INERT-TITLE --
 
 #[test]
-fn title_after_first_shot_is_placement_error() {
-    // §6.2: a `# ` title after the first shot is E-TITLE-PLACEMENT, not
-    // the generic E-UNCLASSIFIED.
+fn hash_heading_after_first_section_is_inert_title() {
     let (_doc, diags) = parse("## Shot 1.\n@narrator: hi.\n# Late Title\n");
-    assert!(
-        diags.iter().any(|d| d.code == E_TITLE_PLACEMENT),
-        "late title must be E-TITLE-PLACEMENT: {diags:?}"
-    );
+    let d = diags
+        .iter()
+        .find(|d| d.code == E_INERT_TITLE)
+        .unwrap_or_else(|| panic!("late title must be E-INERT-TITLE: {diags:?}"));
+    assert!(d.message.contains("title: Late Title"), "{}", d.message);
     assert!(
         !diags.iter().any(|d| d.code == E_UNCLASSIFIED),
         "late title must not fall through to E-UNCLASSIFIED: {diags:?}"
@@ -217,41 +216,22 @@ fn title_after_first_shot_is_placement_error() {
 }
 
 #[test]
-fn second_title_before_shot_is_placement_error() {
-    // §6.2: at most one `# ` title; the SECOND is E-TITLE-PLACEMENT.
-    let (doc, diags) = parse("# First\n# Second\n## Shot 1.\n@narrator: hi.\n");
-    assert_eq!(
-        doc.title.as_ref().map(|(t, _)| t.as_str()),
-        Some("First"),
-        "the first title is accepted"
-    );
-    let placement: Vec<_> = diags
-        .iter()
-        .filter(|d| d.code == E_TITLE_PLACEMENT)
-        .collect();
-    assert_eq!(
-        placement.len(),
-        1,
-        "exactly one E-TITLE-PLACEMENT: {diags:?}"
-    );
-    assert!(
-        !diags.iter().any(|d| d.code == E_UNCLASSIFIED),
-        "second title must not fall through to E-UNCLASSIFIED: {diags:?}"
-    );
+fn every_hash_heading_before_a_section_is_inert_title() {
+    let (_doc, diags) = parse("# First\n# Second\n## Shot 1.\n@narrator: hi.\n");
+    let inert: Vec<_> = diags.iter().filter(|d| d.code == E_INERT_TITLE).collect();
+    assert_eq!(inert.len(), 2, "{diags:?}");
+    assert!(inert[0].message.contains("frontmatter"), "{}", inert[0].message);
 }
 
 #[test]
-fn single_title_before_shot_is_clean() {
-    // Regression guard: the normal case (one `# ` title before the first
-    // shot) produces no diagnostic.
-    let (doc, diags) = parse("# The Title\n## Shot 1.\n@narrator: hi.\n");
+fn removed_scene_tag_names_sections() {
+    let (_doc, diags) = parse("## A\n<scene id=\"x\">\n@narrator: hi.\n</scene>\n");
+    let removed: Vec<_> = diags.iter().filter(|d| d.code == E_REMOVED_TAG).collect();
+    assert_eq!(removed.len(), 2, "open and close: {diags:?}");
+    assert!(removed[0].message.contains("`## `"), "{}", removed[0].message);
     assert!(
-        diags.is_empty(),
-        "well-placed title must be clean: {diags:?}"
-    );
-    assert_eq!(
-        doc.title.as_ref().map(|(t, _)| t.as_str()),
-        Some("The Title")
+        !diags.iter().any(|d| d.code == E_UNCLASSIFIED || d.code == "E-UNCLOSED-TAG"),
+        "{diags:?}"
     );
 }
 
@@ -1332,7 +1312,7 @@ fn foreign_lines_after_a_content_line_name_the_lute_form() {
     assert!(
         diags
             .iter()
-            .any(|d| d.code == "E-TITLE-PLACEMENT" && d.message.contains("`// …`")),
+            .any(|d| d.code == "E-INERT-TITLE" && d.message.contains("`// …`")),
         "{diags:?}"
     );
 }

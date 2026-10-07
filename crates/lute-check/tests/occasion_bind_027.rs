@@ -232,7 +232,9 @@ fn for_needs_an_untargeted_sequence_occasion_and_a_closed_kind() {
 #[test]
 fn a_scene_for_key_binds_each_member_like_the_attribute() {
     let scene = |keys: &str, body: &str| {
-        format!("---\nkind: scene\nid: bday\ntitle: Birthday\n{keys}\n{VOCAB}---\n\n# Birthday\n\n## Shot 1.\n\n{body}\n")
+        format!("---\nkind: scene\nid: bday\ntitle: Birthday\n{keys}\n{VOCAB}---
+
+## Shot 1.\n\n{body}\n")
     };
     let ok = errors(&scene(
         "on: dailyReset\nfor: \"kind:hero\"\nonce: false\nwhen: \"holds('birthday', [occasion.target])\"",

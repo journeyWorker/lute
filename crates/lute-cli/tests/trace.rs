@@ -947,7 +947,7 @@ fn trace_shows_a_line_delivery_as_authored() {
     let scene = dir.join("s.lute");
     std::fs::write(
         &scene,
-        "---\nkind: scene\nid: s\nenums:\n  emotion: [sad]\n---\n\n## S\n\n\
+        "---\nkind: scene\nid: s\npov: wren\nenums:\n  emotion: [sad]\n---\n\n## S\n\n\
          @wren{mono}: I think.\n@wren{vo emotion=\"sad\"}: Over.\n@wren: I speak.\n",
     )
     .unwrap();

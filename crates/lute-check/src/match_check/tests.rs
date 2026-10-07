@@ -839,7 +839,6 @@ fn doc_with(body: Vec<Node>) -> Document {
             raw_yaml: String::new(),
             span: span(),
         },
-        title: None,
         sections: vec![Section {
             heading: "Shot 1".into(),
             id: None,

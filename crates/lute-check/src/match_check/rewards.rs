@@ -45,8 +45,77 @@ pub fn check_quest_rewards(
             }
         }
     }
+    check_reward_ids(quest, &mut diags);
     check_reward_double_credit(quest, snapshot, &mut diags);
     diags
+}
+
+/// `E-REWARD-DUP` (dsl 0.37.0 §3.5, D10): two rewards of one quest — its
+/// own and its objectives' — carry the same `id=`.
+pub const E_REWARD_DUP: &str = "E-REWARD-DUP";
+
+/// Whether `id` is the bounded reward-id token `[A-Za-z][A-Za-z0-9_-]{0,63}`
+/// (dsl 0.37.0 §3.5).
+fn is_reward_id(id: &str) -> bool {
+    let b = id.as_bytes();
+    !b.is_empty()
+        && b.len() <= 64
+        && b[0].is_ascii_alphabetic()
+        && b[1..]
+            .iter()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
+}
+
+/// dsl 0.37.0 §3.5: every reward `id=` of `quest` is the bounded token
+/// (`E-REWARD-ATTR`) and unique among the quest's rewards, quest-level and
+/// objective-level alike (`E-REWARD-DUP`, at each repeat).
+fn check_reward_ids(quest: &Quest, diags: &mut Vec<Diagnostic>) {
+    let objective_rewards = quest.body.iter().flat_map(|n| match n {
+        Node::Objective(o) => o.rewards.as_slice(),
+        _ => &[],
+    });
+    let mut seen: BTreeMap<&str, Span> = BTreeMap::new();
+    for r in quest.rewards.iter().chain(objective_rewards) {
+        if let Some(a) = r.attrs.iter().find(|a| a.key == "id") {
+            diags.push(diag(
+                E_REWARD_ATTR,
+                Severity::Error,
+                "`<reward id=…>` takes a quoted token, e.g. `id=\"gold\"` (dsl 0.37.0 §3.5)"
+                    .to_string(),
+                a.value_span,
+            ));
+        }
+        let Some((id, span)) = &r.id else {
+            continue;
+        };
+        if !is_reward_id(id) {
+            diags.push(diag(
+                E_REWARD_ATTR,
+                Severity::Error,
+                format!(
+                    "`<reward id=\"{id}\">` is not a reward id: a letter, then up to 63 letters, \
+                     digits, `_` or `-` (dsl 0.37.0 §3.5)"
+                ),
+                *span,
+            ));
+            continue;
+        }
+        match seen.get(id.as_str()) {
+            Some(first) => diags.push(diag(
+                E_REWARD_DUP,
+                Severity::Error,
+                format!(
+                    "reward id `{id}` is already used in quest `{}` (line {}) — a reward id is \
+                     unique among its quest's rewards, objectives' included (dsl 0.37.0 §3.5)",
+                    quest.id, first.line
+                ),
+                *span,
+            )),
+            None => {
+                seen.insert(id, *span);
+            }
+        }
+    }
 }
 
 /// What a reward kind's `target:` contract resolves against.

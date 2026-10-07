@@ -28,7 +28,6 @@ Companion to the plugin system spec (../../proposals/plugin-system/0.0.1.md) and
 records + CEL strings; the `::minigame` bridge call is data, not an arbitrary tool call.
 */
 
-# S01EP05 — The Service Rhythm
 
 ## Watch the Rhythm
 

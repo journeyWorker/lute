@@ -10,11 +10,11 @@ const FELLED: &[E] = &[
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13
     E { g: "beats", k: "occasion:lastDive", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13)] },
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13; lute.project.yaml:21
-    E { g: "beats", k: "scene:last.crown", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 21)] },
+    E { g: "beats", k: "scene:last.crown", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 22)] },
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13; lute.project.yaml:21
-    E { g: "beats", k: "scene:last.rail", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 21)] },
+    E { g: "beats", k: "scene:last.rail", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 22)] },
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13; lute.project.yaml:21
-    E { g: "beats", k: "scene:last.throne", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 21)] },
+    E { g: "beats", k: "scene:last.throne", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 22)] },
     // source: lore/brann.lute:25; lore/brann.lute:31; lore/bonds.lute:8
     E { g: "disclosures", k: "beat:bonds.brann1", e: "proven", c: &[("queries", "lore/brann.lute", 25), ("writes", "lore/brann.lute", 31), ("reads", "lore/bonds.lute", 8)] },
     // source: lore/brann.lute:25; lore/brann.lute:31; lore/bonds.lute:13
@@ -96,17 +96,17 @@ const FELLED: &[E] = &[
     // source: lore/quill.lute:25; quests/crew.lute:34; quests/crew.lute:34; quests/crew.lute:44; lore/keepsakes.lute:17; lore/keepsakes.lute:18
     E { g: "lines", k: "line:keepShell.quill_0010", e: "proven", c: &[("queries", "lore/quill.lute", 25), ("discloses", "quests/crew.lute", 34), ("completes", "quests/crew.lute", 34), ("asserts", "quests/crew.lute", 44), ("queries", "lore/keepsakes.lute", 17), ("contains", "lore/keepsakes.lute", 18)] },
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13; lute.project.yaml:21; scenes/last/rail.lute:12
-    E { g: "lines", k: "line:last.rail.brann_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 21), ("contains", "scenes/last/rail.lute", 12)] },
+    E { g: "lines", k: "line:last.rail.brann_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 22), ("contains", "scenes/last/rail.lute", 12)] },
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13; lute.project.yaml:21; scenes/last/rail.lute:13
-    E { g: "lines", k: "line:last.rail.ilo_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 21), ("contains", "scenes/last/rail.lute", 13)] },
+    E { g: "lines", k: "line:last.rail.ilo_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 22), ("contains", "scenes/last/rail.lute", 13)] },
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13; lute.project.yaml:21; scenes/last/rail.lute:15
-    E { g: "lines", k: "line:last.rail.narrator_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 21), ("contains", "scenes/last/rail.lute", 15)] },
+    E { g: "lines", k: "line:last.rail.narrator_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 22), ("contains", "scenes/last/rail.lute", 15)] },
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13; lute.project.yaml:21; scenes/last/rail.lute:14
-    E { g: "lines", k: "line:last.rail.sefa_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 21), ("contains", "scenes/last/rail.lute", 14)] },
+    E { g: "lines", k: "line:last.rail.sefa_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 22), ("contains", "scenes/last/rail.lute", 14)] },
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13; lute.project.yaml:21; scenes/last/throne.lute:11
-    E { g: "lines", k: "line:last.throne.narrator_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 21), ("contains", "scenes/last/throne.lute", 11)] },
+    E { g: "lines", k: "line:last.throne.narrator_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 22), ("contains", "scenes/last/throne.lute", 11)] },
     // source: world.schema.yaml:77; plugins/game.occasions/occasions/game.yaml:13; lute.project.yaml:21; scenes/last/throne.lute:12
-    E { g: "lines", k: "line:last.throne.quill_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 21), ("contains", "scenes/last/throne.lute", 12)] },
+    E { g: "lines", k: "line:last.throne.quill_0010", e: "proven", c: &[("queries", "world.schema.yaml", 77), ("gates", "plugins/game.occasions/occasions/game.yaml", 13), ("raises", "lute.project.yaml", 22), ("contains", "scenes/last/throne.lute", 12)] },
     // source: quests/library.lute:9; quests/library.lute:14
     E { g: "lines", k: "line:libraryKey.quill_0010", e: "proven", c: &[("queries", "quests/library.lute", 9), ("contains", "quests/library.lute", 14)] },
     // source: quests/library.lute:9; quests/library.lute:17

@@ -5,6 +5,7 @@ id: detective.s01ep01
 title: The Study
 # No `after:`, so this scene is where the case starts.
 uses: ../world.schema.yaml
+pov: detective
 ---
 
 ## The Study

@@ -470,16 +470,6 @@ fn quest_doc_with_no_quests_is_not_admitted() {
     assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
 }
 
-#[test]
-fn quest_doc_with_document_title_is_not_admitted() {
-    // a leading `# ` line becomes `doc.title`, not a `doc.shots` entry — the
-    // quest kind forbids headings everywhere (§6.2/§6.7), including this one.
-    let cs = codes(
-        "---\nkind: quest\n---\n# Title\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n",
-    );
-    assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
-}
-
 // --- CheckFix F8: author-declared reserved `quest.<id>.*` path (§5.2/§9.3) -
 
 #[test]

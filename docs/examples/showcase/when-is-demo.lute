@@ -36,7 +36,6 @@ assigned, so full `is` coverage is exhaustive WITHOUT an <otherwise> (§11.2).
 Checks clean against `--project docs/examples/showcase`.
 */
 
-# S01EP03 — The Mood Reading
 
 ## Reading the Room
 

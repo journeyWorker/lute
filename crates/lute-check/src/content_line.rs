@@ -272,4 +272,166 @@ pub fn check_content_line_attrs(
             ));
         }
     }
+    check_inline_modifiers(&line.inline, domains, diags);
+}
+
+/// The project domain whose members name the inline text-style spans (dsl
+/// 0.37.0 §3.2, §3.6, D11).
+pub const TEXT_STYLE_DOMAIN: &str = "textStyle";
+
+/// `E-TEXT-MODIFIER`: an inline modifier that is malformed or illegal (dsl
+/// 0.37.0 §3.6, §4). The parser owns the unterminated forms; the checker
+/// owns names and attributes.
+pub const E_TEXT_MODIFIER: &str = "E-TEXT-MODIFIER";
+
+/// The core inline modifiers (dsl 0.37.0 §3.6): `pause` a leaf, `speed` a span.
+const CORE_MODIFIERS: [&str; 2] = ["pause", "speed"];
+
+/// Check every inline modifier of a content line's text, nested ones too
+/// (dsl 0.37.0 §3.6): core `:pause{s=<seconds>}` is a leaf whose required
+/// `s` is a non-negative number; core `:speed[text]{rate=<rate>}` is a span
+/// whose required `rate` is a positive number; any other name must be a
+/// member of the merged `textStyle` domain (`E-DOMAIN-UNKNOWN` when none is
+/// declared) and is a span with no attributes.
+pub fn check_inline_modifiers(
+    nodes: &[lute_syntax::ast::InlineNode],
+    domains: &BTreeMap<String, Domain>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for node in nodes {
+        let lute_syntax::ast::InlineNode::Modifier(m) = node else {
+            continue;
+        };
+        let is_span = m.content_span.is_some() || !m.children.is_empty();
+        let name = m.name.as_str();
+        match name {
+            "pause" => {
+                if is_span {
+                    diags.push(err(
+                        E_TEXT_MODIFIER,
+                        "`:pause` is a leaf and wraps no text: write `:pause{s=0.5}` (dsl 0.37.0 \
+                         §3.6)"
+                            .to_string(),
+                        m.span,
+                    ));
+                }
+                check_core_number(m, "s", "seconds", |v| v >= 0.0, "a non-negative number", diags);
+            }
+            "speed" => {
+                if !is_span {
+                    diags.push(err(
+                        E_TEXT_MODIFIER,
+                        "`:speed` is a span: write `:speed[text]{rate=1.25}` around the text it \
+                         paces (dsl 0.37.0 §3.6)"
+                            .to_string(),
+                        m.span,
+                    ));
+                }
+                check_core_number(m, "rate", "rate", |v| v > 0.0, "a positive number", diags);
+            }
+            _ => match domains.get(TEXT_STYLE_DOMAIN) {
+                None => diags.push(err(
+                    "E-DOMAIN-UNKNOWN",
+                    format!(
+                        "`:{name}` is not a core modifier (`pause`, `speed`), and no \
+                         `{TEXT_STYLE_DOMAIN}` domain is declared to name it — declare it in \
+                         `enums:` (`{TEXT_STYLE_DOMAIN}: [{name}]`) to make `:{name}[…]` a text \
+                         style (dsl 0.37.0 §3.6)"
+                    ),
+                    m.span,
+                )),
+                Some(domain) if !domain.open && !domain.members.iter().any(|s| s == name) => {
+                    let hint = lute_manifest::suggest::did_you_mean(
+                        name,
+                        domain
+                            .members
+                            .iter()
+                            .map(String::as_str)
+                            .chain(CORE_MODIFIERS),
+                    );
+                    diags.push(err(
+                        E_TEXT_MODIFIER,
+                        format!(
+                            "`:{name}` is neither a core modifier (`pause`, `speed`) nor a member \
+                             of `{TEXT_STYLE_DOMAIN}`{hint} (it has {}) (dsl 0.37.0 §3.6)",
+                            domain
+                                .members
+                                .iter()
+                                .map(|s| format!("`{s}`"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        m.span,
+                    ));
+                }
+                Some(_) => {
+                    if let Some(a) = m.attrs.first() {
+                        diags.push(err(
+                            E_TEXT_MODIFIER,
+                            format!(
+                                "text style `:{name}` takes no attributes, got `{}` — only the core \
+                                 `pause`/`speed` carry attributes (dsl 0.37.0 §3.6)",
+                                a.key
+                            ),
+                            a.span,
+                        ));
+                    }
+                    if !is_span {
+                        diags.push(err(
+                            E_TEXT_MODIFIER,
+                            format!(
+                                "text style `:{name}` is a span: write `:{name}[text]` (dsl 0.37.0 \
+                                 §3.6)"
+                            ),
+                            m.span,
+                        ));
+                    }
+                }
+            },
+        }
+        check_inline_modifiers(&m.children, domains, diags);
+    }
+}
+
+/// A core modifier's one required numeric attribute `key`: present, a
+/// finite number `ok` accepts, and the only attribute written.
+fn check_core_number(
+    m: &lute_syntax::ast::InlineModifier,
+    key: &str,
+    unit: &str,
+    ok: impl Fn(f64) -> bool,
+    expected: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let name = &m.name;
+    for a in m.attrs.iter().filter(|a| a.key != key) {
+        diags.push(err(
+            E_TEXT_MODIFIER,
+            format!(
+                "`:{name}` takes only `{key}=<{unit}>`, got `{}` — a value is written \
+                 `{key}=…`, never positionally (dsl 0.37.0 §3.6)",
+                a.key
+            ),
+            a.span,
+        ));
+    }
+    match m.attrs.iter().find(|a| a.key == key) {
+        None => diags.push(err(
+            E_TEXT_MODIFIER,
+            format!("`:{name}` requires `{key}=<{unit}>` (dsl 0.37.0 §3.6)"),
+            m.span,
+        )),
+        Some(a) => {
+            if !a.value.parse::<f64>().is_ok_and(|v| v.is_finite() && ok(v)) {
+                diags.push(err(
+                    E_TEXT_MODIFIER,
+                    format!(
+                        "`:{name}{{{key}=…}}` must be {expected}, got `{}` (dsl 0.37.0 §3.6)",
+                        a.value
+                    ),
+                    a.value_span,
+                ));
+            }
+        }
+    }
 }

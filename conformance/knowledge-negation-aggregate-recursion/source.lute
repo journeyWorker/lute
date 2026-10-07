@@ -6,6 +6,7 @@ season: 1
 episode: 1
 title: Datalog Rule
 uses: ./schema.yaml
+pov: detective
 ---
 
 ## Investigate

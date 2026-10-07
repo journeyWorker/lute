@@ -67,6 +67,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &[],
     },
     Code {
+        code: "E-AUTHOR-CASE",
+        summary: "An authoring attribute, tag attribute or frontmatter key is not lowerCamelCase (it contains `_`); the message names its lowerCamelCase spelling.",
+        spec: &["dsl 0.37.0 §2.1"],
+    },
+    Code {
         code: "E-BAD-ENUM",
         summary: "A value is not a member of the closed enum, domain, or entity kind it must belong to — for example a content line's `emotion=` outside the speaker's declared `emotions:`, or an entity id outside its kind.",
         spec: &["dsl 0.24.0 §4"],
@@ -582,6 +587,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.8.0 §9"],
     },
     Code {
+        code: "E-INERT-TITLE",
+        summary: "A body `# ` heading: it is no document title. Put the value in frontmatter `title:`, the only document title.",
+        spec: &["dsl 0.37.0 §3.1"],
+    },
+    Code {
         code: "E-INTERP-DEF",
         summary: "A `{{@def}}` interpolation cannot inline into one standalone expression — its body has an expansion cycle, reads `$`, or fails to parse.",
         spec: &[],
@@ -735,6 +745,16 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-MOCK-SUBJECT",
         summary: "A `--mock`/`mocks/*.yaml` entry declares no `file:`, names a `file:` path that does not exist or is not a `.lute` document, or disagrees with the document named on the command line.",
         spec: &["dsl 0.10.0 §8"],
+    },
+    Code {
+        code: "E-MONO-NO-POV",
+        summary: "A `{mono}` line's document resolves no point of view (no frontmatter `pov:` and no project `defaults.pov`) and its speaker is not in `monoSpeakers:`. A component line is judged at each `::use` site, in the caller's context.",
+        spec: &["dsl 0.37.0 §3.4"],
+    },
+    Code {
+        code: "E-MONO-POV",
+        summary: "A `{mono}` line's speaker is neither the document's effective point of view (`pov:`, else the project's `defaults.pov`) nor in its effective `monoSpeakers:` list. A component line is judged at each `::use` site, in the caller's context.",
+        spec: &["dsl 0.37.0 §3.4"],
     },
     Code {
         code: "E-NONEXHAUSTIVE",
@@ -1062,6 +1082,16 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.37.0 §3.3", "dsl 0.37.0 §4"],
     },
     Code {
+        code: "E-REMOVED-PROJECT-KEY",
+        summary: "`lute.project.yaml` still writes the removed `sequence:` key. It is never read and has no replacement key; every chain is declared in `chapters:`.",
+        spec: &["dsl 0.37.0 §2.2"],
+    },
+    Code {
+        code: "E-REMOVED-TAG",
+        summary: "A document uses the removed `<scene>` tag. A document's sections are `## ` headings, and its scene is the document itself.",
+        spec: &["dsl 0.37.0 §2.2"],
+    },
+    Code {
         code: "E-RENAME-LEDGER",
         summary: "A rename entry is malformed, has an unknown kind/key, duplicates a source or destination, or is not a canonical key mapping.",
         spec: &["dsl 0.36.0 §3"],
@@ -1107,6 +1137,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.16.0 §2", "dsl 0.16.0 §6"],
     },
     Code {
+        code: "E-REWARD-DUP",
+        summary: "Two `<reward>`s of one quest (its own and its objectives') carry the same `id=`; a reward id is unique within its quest.",
+        spec: &["dsl 0.37.0 §3.5"],
+    },
+    Code {
         code: "E-REWARD-KIND",
         summary: "A `<reward kind=…>` value names no reward kind declared in the resolved capability snapshot's `rewardKinds` vocabulary.",
         spec: &["dsl 0.16.0 §4", "dsl 0.16.0 §6"],
@@ -1140,6 +1175,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-SEASON-DECL",
         summary: r#"A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead."#,
         spec: &["dsl 0.27.0 §5"],
+    },
+    Code {
+        code: "E-SECTION-DUP",
+        summary: "Two sections of one document carry the same `{#id}`; a section id is unique within its document.",
+        spec: &["dsl 0.37.0 §3.1"],
     },
     Code {
         code: "E-SECTION-SUFFIX",
@@ -1305,11 +1345,6 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-TIMELINE-DURATION",
         summary: "A `<timeline duration>` is explicitly set below the maximum resolved end of its clips, which would truncate the timeline's own content.",
         spec: &["dsl §11.4"],
-    },
-    Code {
-        code: "E-TITLE-PLACEMENT",
-        summary: "A document's `# ` title appears more than once, or appears after the first section instead of before it.",
-        spec: &["dsl §6.2"],
     },
     Code {
         code: "E-TRACE-ACCEPT",

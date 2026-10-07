@@ -156,6 +156,9 @@ pub struct TypedMeta {
     /// peek.
     pub episode_id: Option<String>,
     pub pov: Option<String>,
+    /// dsl 0.37.0 §3.4: the frontmatter (or defaulted) `monoSpeakers:` —
+    /// speakers beside the effective POV who may speak `mono`.
+    pub mono_speakers: Vec<String>,
     /// The frontmatter `luteVersion:` stamp (dsl §6.1), lifted straight from
     /// the raw YAML mapping like `character`/`pov`. D13 stands: it is NEVER
     /// validated against capabilities — `check()` only compares it against

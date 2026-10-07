@@ -93,6 +93,7 @@ use crate::{
     check_quest_guard_defassign, check_quest_rewards, check_set, DomainInfo,
 };
 
+mod author_case;
 mod choice_record;
 mod component_body;
 mod fold;
@@ -100,11 +101,17 @@ mod guard;
 mod injections;
 mod interp;
 mod literal_text;
+mod mono;
 mod pipeline;
 mod postprocess;
+mod section_ids;
 mod use_site;
 mod version;
 mod walker;
+
+pub use mono::{E_MONO_NO_POV, E_MONO_POV};
+pub use author_case::{lower_camel, E_AUTHOR_CASE};
+pub use section_ids::E_SECTION_DUP;
 
 use choice_record::{check_choice_record, into_literal};
 pub(crate) use component_body::{bare_param_ref, directive_writes_state};

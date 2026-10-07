@@ -6,6 +6,7 @@ title: The Confrontation
 # Comes after the interview.
 after: 'visited("detective.s01ep02")'
 uses: ../world.schema.yaml
+pov: detective
 ---
 
 ## The Confrontation

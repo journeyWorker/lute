@@ -17,7 +17,6 @@ exactly `::set{run.<path> = <value>}` appended to that arm. `value` defaults to
 (or shot) reacts by reading the named fact, never the raw choice key.
 */
 
-# Choice persist — cross-episode carry
 
 ## Recording the Choice
 

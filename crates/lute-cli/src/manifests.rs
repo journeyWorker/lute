@@ -198,7 +198,7 @@ pub fn report_and_gate(verdicts: &[ManifestVerdict]) -> bool {
 }
 
 /// dsl 0.28.0 §4: for a command that builds the project (`compile --all`,
-/// `play`), a malformed `chapters:` (or the retired `sequence:`) is fatal —
+/// `play`), a malformed `chapters:` is fatal —
 /// a chain would silently not apply. Prints each, located, and returns
 /// `true` when there is one.
 pub fn gate_chapters(verdicts: &[ManifestVerdict]) -> bool {

@@ -169,23 +169,20 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
 /// (a) a scene doc with a non-empty `doc.quests` (a `<quest>` where scene
 ///     forbids it — top-level `<quest>` is parsed independently of `doc.shots`,
 ///     Plan A, so it needs an explicit check here);
-/// (b) a quest doc with a non-empty `doc.shots` (a `## `/`# ` heading — quest
-///     forbids headings everywhere, dsl 0.2.0 §6.2/§6.7);
-/// (c) a quest doc with a `doc.title` (a document-level `# ` heading — the
-///     parser stores a WELL-PLACED lone `# ` line separately from `doc.shots`,
-///     so it needs its own explicit check here, same as (a)'s `<quest>`/
-///     `doc.shots` split);
-/// (d) a quest doc with an EMPTY `doc.quests` (dsl 0.2.0 §6.2:
+/// (b) a quest doc with a non-empty `doc.shots` (a `## ` heading — quest
+///     forbids headings everywhere, dsl 0.2.0 §6.2/§6.7; a `# ` line is the
+///     parser's `E-INERT-TITLE` in every kind, dsl 0.37.0 §3.1);
+/// (c) a quest doc with an EMPTY `doc.quests` (dsl 0.2.0 §6.2:
 ///     `QuestDoc ::= Meta QuestDecl+` requires at least one `<quest>`; a quest
 ///     doc that declares none is not a well-formed `QuestDoc` at all);
-/// (e) any [`Node`] whose [`NodeKind`] is not admitted by its `(kind, context)`
+/// (d) any [`Node`] whose [`NodeKind`] is not admitted by its `(kind, context)`
 ///     position, walking `doc.shots` (scene), `doc.quests` (quest), or
 ///     `doc.entries` (lore) with the context transitions described in the
 ///     module docs;
-/// (f) a top-level `<entry>` in a scene or quest document (dsl 0.19.0 §2 —
+/// (e) a top-level `<entry>` in a scene or quest document (dsl 0.19.0 §2 —
 ///     `<entry>` belongs only in a lore document), and in a lore document a
-///     `# ` title, a `## ` shot, a `<quest>`, or an EMPTY `doc.entries` (the
-///     lore mirror of (b)–(d)).
+///     `## ` section, a `<quest>`, or an EMPTY `doc.entries` (the lore
+///     mirror of (b)–(c)).
 ///
 /// `snapshot` decides which plugin directives an entry body admits (dsl
 /// 0.27.0 §4: one whose only behaviour is its declared effects).
@@ -221,15 +218,6 @@ pub fn check_admission(
             }
         }
         DocKind::Quest => {
-            if let Some((_, title_span)) = &doc.title {
-                diags.push(diag(
-                    "a document `# ` title is not admitted in a quest document; the quest \
-                     kind forbids `# `/`## ` headings everywhere and admits only `<quest>` \
-                     at the document top level (dsl 0.2.0 §6.2, §6.7)"
-                        .to_string(),
-                    *title_span,
-                ));
-            }
             for shot in &doc.sections {
                 diags.push(diag(
                     format!(
@@ -262,15 +250,6 @@ pub fn check_admission(
             }
         }
         DocKind::Lore => {
-            if let Some((_, title_span)) = &doc.title {
-                diags.push(diag(
-                    "a document `# ` title is not admitted in a lore document; the lore kind \
-                     forbids `# `/`## ` headings and admits only `<entry>` and `<beat>` at the \
-                     document top level (dsl 0.19.0 §2, dsl 0.23.0 §4)"
-                        .to_string(),
-                    *title_span,
-                ));
-            }
             for shot in &doc.sections {
                 diags.push(diag(
                     format!(
@@ -386,13 +365,6 @@ fn reject_beats(doc: &Document, kind: &str, diags: &mut Vec<Diagnostic>) {
 /// * `meta` — PROCESSED: `component_import::parse_component` runs
 ///   `parse_meta_kind(.., MetaKind::Component)` over it and turns any parse or
 ///   frontmatter error into `E-COMPONENT-PARSE`.
-/// * `title` — EXEMPT, and the exemption is the point: a document `# ` title is
-///   inert across the whole toolchain. Its only reader anywhere is
-///   [`check_admission`]'s quest-kind rejection above, and lowering reads the
-///   frontmatter `title:` key (`lute-compile`'s `artifact_meta`), never this
-///   field — so the ROOT document discards it exactly as a component body does.
-///   Flagging it would INVENT the mirror-image divergence (clean standalone,
-///   error imported) rather than close one.
 /// * `shots` — WALKED: `validate_components` runs `walk_component_body` over
 ///   each `shot.body`, plus the whole-body `check_line_codes` (Task 7c) and
 ///   `check_reachability_in` (Task 7e) passes. A shot's `heading` is required
@@ -414,7 +386,6 @@ fn reject_beats(doc: &Document, kind: &str, diags: &mut Vec<Diagnostic>) {
 pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
     let Document {
         meta: _,
-        title: _,
         sections: _,
         quests,
         entries,

@@ -858,7 +858,7 @@ fn source_side_tables(
     for quest in &doc.quests {
         for (index, reward) in quest.rewards.iter().enumerate() {
             let owner = format!("quest:{}", quest.id);
-            map.rewards.insert(format!("{owner}#{index}"), RewardSource {
+            map.rewards.insert(format!("{owner}#{}", reward.key_segment(index)), RewardSource {
                 owner, declaration_index: index, span: reward.span,
             });
         }
@@ -868,7 +868,7 @@ fn source_side_tables(
         }) {
             for (index, reward) in objective.rewards.iter().enumerate() {
                 let owner = format!("{}.{}", quest.id, objective.id);
-                map.rewards.insert(format!("{owner}#{index}"), RewardSource {
+                map.rewards.insert(format!("{owner}#{}", reward.key_segment(index)), RewardSource {
                     owner, declaration_index: index, span: reward.span,
                 });
             }

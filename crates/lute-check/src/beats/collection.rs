@@ -286,7 +286,7 @@ pub(crate) fn lift_scene_beat(
                 .filter(|key| get(key).is_some())
                 .collect();
             keys.sort_by_key(|key| top_key_span(meta, key).byte_start);
-            // A scene an unapplied chain (or the retired `sequence:`) lists
+            // A scene an unapplied chain lists
             // has one cause for all its keys: said once, at the first.
             if let (Some(u), [first, ..]) = (crate::chapters::unapplied(meta), keys.as_slice()) {
                 let (written, belong) = match keys.as_slice() {

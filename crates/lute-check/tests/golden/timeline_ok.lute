@@ -8,8 +8,6 @@ state:
   scene.flags.saw_beam: { type: bool, default: false }
 ---
 
-# Golden — timeline
-
 ## Shot 1.
 
 @narrator: Her index finger came up.

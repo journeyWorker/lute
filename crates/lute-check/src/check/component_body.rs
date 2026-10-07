@@ -336,7 +336,7 @@ fn collect_use_names(nodes: &[Node], out: &mut Vec<(String, Span)>) {
 /// nearest ancestor directory holding a `lute.project.yaml` — the project
 /// root every other path in a report is read against — with `/` separators.
 /// A component outside any project keeps its full path.
-fn project_relative_display(src: &std::path::Path) -> String {
+pub(super) fn project_relative_display(src: &std::path::Path) -> String {
     src.ancestors()
         .skip(1)
         .find(|dir| dir.join("lute.project.yaml").is_file())

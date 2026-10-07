@@ -6,8 +6,6 @@ episode: 1
 title: Sound effect
 ---
 
-# Golden — sfx
-
 ## Shot 1.
 
 ::sfx{sound="drink_bar_hum" assetId="PLACEHOLDER_drink_bar_hum"}

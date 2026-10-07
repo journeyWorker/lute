@@ -9,9 +9,8 @@ plugins:
   arcia.minigame:
     resultScope: scene
     allowedKinds: [rhythm]
+title: Portrait asset demo
 ---
-
-# Portrait asset demo
 
 ## The Portrait
 

@@ -656,6 +656,7 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
         utf16_range: (0, 0),
     };
     let base = Reward {
+        id: None,
         kind: "SHARD".into(),
         kind_span: ZERO,
         target: None,

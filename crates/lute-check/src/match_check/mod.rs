@@ -136,7 +136,8 @@ pub use records::{
     E_BRANCH_ALL_GUARDED, E_HUB_NO_EXIT, E_OBJECTIVE_QUEST_DONE, E_QUEST_TREE_CYCLE,
 };
 pub use rewards::{
-    check_quest_rewards, E_REWARD_ATTR, E_REWARD_KIND, E_REWARD_TARGET, W_REWARD_DOUBLE_CREDIT,
+    check_quest_rewards, E_REWARD_ATTR, E_REWARD_DUP, E_REWARD_KIND, E_REWARD_TARGET,
+    W_REWARD_DOUBLE_CREDIT,
 };
 
 /// Build a `Layer::Logic` diagnostic (a §9/§11 logic check).

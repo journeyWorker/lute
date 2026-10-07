@@ -7,5 +7,6 @@ profiles:
 identity:
   requireStable: true
 defaults:
+  pov: inspector
   luteVersion: "0.36.6"
   uses: [world.schema.yaml, vocabulary.schema.yaml]

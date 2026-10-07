@@ -37,6 +37,7 @@ pub const SCENE_KEYS: &[&str] = &[
     "episode",
     "episodeId",
     "pov",
+    "monoSpeakers",
     "after",
     "on",
     "target",
@@ -51,14 +52,16 @@ pub const SCENE_KEYS: &[&str] = &[
 ];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Quest` document: the optional
-/// document id (dsl 0.19.0 §2.1, D-J).
-const QUEST_KEYS: &[&str] = &["id"];
+/// document id (dsl 0.19.0 §2.1, D-J), and (dsl 0.37.0 §3.4) the `pov:` and
+/// `monoSpeakers:` that judge the `mono` lines of its quest bodies.
+const QUEST_KEYS: &[&str] = &["id", "pov", "monoSpeakers"];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Lore` document: the optional
 /// document id and the document-level `series:` (dsl 0.19.0 §2.1, D-J/D-K),
 /// and (dsl 0.28.0, T3-66) `pov:` — a lore document's `<beat>` bundles are
-/// scene bodies, so it names their point of view as a scene's does.
-const LORE_KEYS: &[&str] = &["id", "series", "pov"];
+/// scene bodies, so it names their point of view as a scene's does — with
+/// its `monoSpeakers:` allow-list (dsl 0.37.0 §3.4).
+const LORE_KEYS: &[&str] = &["id", "series", "pov", "monoSpeakers"];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Schema` document: the
 /// declared cast (dsl 0.23.0 §7).
@@ -110,6 +113,9 @@ pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
     UNIVERSAL_KEYS.contains(&key)
         || (key == "kind" && kind.is_root())
         || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
+        // dsl 0.37.0 §3.4: the effective POV and its `mono` allow-list
+        // govern every root document's lines (quest and lore bodies too).
+        || (kind.is_root() && matches!(key, "pov" | "monoSpeakers"))
 }
 
 /// dsl 0.26.0 §2.4: `defaults.questTier` is the `tier=` of every `<quest>`

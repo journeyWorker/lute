@@ -6,8 +6,6 @@ episode: 1
 title: Video playback
 ---
 
-# Golden — video
-
 ## Shot 1.
 
 ::video{assetId="MOVIE.scenarios.marina.s01ep02.intro" display="show" wait="true"}

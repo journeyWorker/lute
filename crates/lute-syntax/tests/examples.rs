@@ -26,11 +26,8 @@ fn marina_block_assembly_is_correct() {
     let text = std::fs::read_to_string(MARINA).unwrap();
     let (doc, _diags) = lute_syntax::parse(&text);
 
-    // Document title (H1) survives the multi-byte em-dash.
-    assert_eq!(
-        doc.title.as_ref().map(|(t, _)| t.as_str()),
-        Some("S01EP02 — Behold the Performance of All-Purpose Marina"),
-    );
+    // dsl 0.37.0 §3.1: the title is frontmatter `title:`; no `# ` heading.
+    assert!(doc.meta.raw_yaml.contains("title: Behold the Performance of All-Purpose Marina"));
     // Five sections assembled in document order (0.6.0 §3.2: a section's number is
     // its 1-based position; the `Section.number` field is gone).
     assert_eq!(doc.sections.len(), 5);

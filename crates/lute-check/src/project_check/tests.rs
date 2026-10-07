@@ -49,7 +49,6 @@ mod tests {
                 raw_yaml: String::new(),
                 span: span(0),
             },
-            title: None,
             sections: Vec::new(),
             quests,
             entries: Vec::new(),

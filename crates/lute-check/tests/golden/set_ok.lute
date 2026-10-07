@@ -9,8 +9,6 @@ state:
   scene.flags.saw_beam: { type: bool, default: false }
 ---
 
-# Golden — set
-
 ## Shot 1.
 
 @fixer{code="0052"}: Marina — would you mind terribly if I had your number?

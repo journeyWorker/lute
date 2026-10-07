@@ -20,7 +20,6 @@
                 raw_yaml: raw_yaml.to_string(),
                 span: span(0),
             },
-            title: None,
             sections: Vec::new(),
             quests: Vec::new(),
             entries: Vec::new(),

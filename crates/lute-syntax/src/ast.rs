@@ -3,7 +3,6 @@ use lute_core_span::{Span, StableId};
 #[derive(Clone, Debug)]
 pub struct Document {
     pub meta: Meta,
-    pub title: Option<(String, Span)>,
     pub sections: Vec<Section>,
     pub quests: Vec<Quest>,
     /// Top-level `<entry>` declarations (dsl 0.19.0 §2), in document order.
@@ -86,6 +85,41 @@ impl Line {
     pub fn plain_text(&self) -> String {
         inline_plain_text(&self.inline)
     }
+
+    /// The line's inline modifier multiset (dsl 0.37.0 §3.6): every
+    /// modifier, nested ones included, as [`inline_modifier_multiset`]
+    /// counts them.
+    pub fn modifier_multiset(&self) -> std::collections::BTreeMap<String, usize> {
+        inline_modifier_multiset(&self.inline)
+    }
+}
+
+/// The modifier multiset of `nodes` (dsl 0.37.0 §3.6, D11): each modifier,
+/// nested ones included, keyed by its name and its attributes in key order
+/// (`speed{rate=1.25}`, `pause{s=0.5}`, `emphasis`), with its count. Two
+/// texts carry the same modifiers exactly when their multisets are equal —
+/// the localization check (`E-L10N-MODIFIERS`) compares a translation's with
+/// its source line's.
+pub fn inline_modifier_multiset(nodes: &[InlineNode]) -> std::collections::BTreeMap<String, usize> {
+    fn walk(nodes: &[InlineNode], out: &mut std::collections::BTreeMap<String, usize>) {
+        for node in nodes {
+            if let InlineNode::Modifier(m) = node {
+                let mut attrs: Vec<String> =
+                    m.attrs.iter().map(|a| format!("{}={}", a.key, a.value)).collect();
+                attrs.sort();
+                let key = if attrs.is_empty() {
+                    m.name.clone()
+                } else {
+                    format!("{}{{{}}}", m.name, attrs.join(" "))
+                };
+                *out.entry(key).or_default() += 1;
+                walk(&m.children, out);
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    walk(nodes, &mut out);
+    out
 }
 
 fn inline_plain_text(nodes: &[InlineNode]) -> String {
@@ -541,6 +575,10 @@ pub struct Objective {
 /// literal is lifted into [`RewardAmount`] and removed from `attrs`.
 #[derive(Clone, Debug)]
 pub struct Reward {
+    /// The optional `id=` (dsl 0.37.0 §3.5, D10) and its value span: the
+    /// reward's stable identity within its owning quest. Token shape and
+    /// uniqueness are the checker's (`E-REWARD-ATTR`, `E-REWARD-DUP`).
+    pub id: Option<(String, Span)>,
     /// Value of `kind=`; the empty string when the attribute was absent
     /// (checker: `E-REWARD-ATTR`).
     pub kind: String,
@@ -574,6 +612,18 @@ pub struct Reward {
     /// Parser recovery flag: `true` for the legal self-closing form; `false`
     /// when a body was written on this leaf (already reported by the parser).
     pub self_closing: bool,
+}
+
+impl Reward {
+    /// The reward's identity segment under its owner (dsl 0.37.0 §3.7): its
+    /// `id=` when authored, else its 0-based declaration `index` among the
+    /// owner's rewards. An id starts with a letter, so the two never collide.
+    pub fn key_segment(&self, index: usize) -> String {
+        match &self.id {
+            Some((id, _)) => id.clone(),
+            None => index.to_string(),
+        }
+    }
 }
 
 /// `amount=` payload (dsl 0.16.0 §2): a scalar integer or an inclusive

@@ -831,7 +831,9 @@ fn authoring_surface(
     let delivery_flags: Vec<Value> = [
         (
             "mono",
-            "interior monologue / thought (not spoken aloud in-scene)",
+            "interior monologue / thought (not spoken aloud in-scene); only the document's \
+             point of view (`pov:`, else the project's `defaults.pov`) or a speaker its \
+             `monoSpeakers:` lists may speak it (E-MONO-POV / E-MONO-NO-POV)",
         ),
         (
             "os",

@@ -6,8 +6,6 @@ episode: 1
 title: Camera transform
 ---
 
-# Golden — camera
-
 ## Shot 1.
 
 ::camera{focus="marina" framing="close" duration="0.5" wait="false"}

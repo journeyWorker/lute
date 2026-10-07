@@ -8,8 +8,6 @@ state:
   run.metHelpfully: { type: bool, default: false }
 ---
 
-# The gated line (dsl 0.4.0 §7.2)
-
 ## The Sugar Form
 /*
 The `when=` sugar (§7.2): a content-line `when="G"` attr emits the line

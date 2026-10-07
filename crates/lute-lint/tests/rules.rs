@@ -290,7 +290,6 @@ fn chapters(on: &str, scenes: &[&str]) -> lute_manifest::project::MetaDefaults {
             on: on.to_string(),
             scenes: scenes.iter().map(|s| s.to_string()).collect(),
             applied: true,
-            retired: false,
         },
     ])
 }

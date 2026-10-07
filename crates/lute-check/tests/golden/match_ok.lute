@@ -6,9 +6,8 @@ episode: 1
 title: State-driven callback
 state:
   scene.affect.marina: { type: int, default: 0 }
+pov: fixer
 ---
-
-# Golden — match
 
 ## Shot 1.
 

@@ -7,6 +7,7 @@ profiles:
 identity:
   requireStable: true
 defaults:
+  pov: inspector
   luteVersion: "0.36.6"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
 # 0.27: the Board's hearing is one chapter of three scenes, played in one raise

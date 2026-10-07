@@ -856,6 +856,11 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         &folded.typed.speaker_params,
     ));
     diags.extend(state_merge_diags);
+    // dsl 0.37.0 §3.4: who may speak `mono` — this document's lines, then
+    // every component line each `::use` site brings in.
+    diags.extend(super::mono::check_mono(&doc, &folded.typed, &input.components));
+    diags.extend(super::section_ids::check_section_ids(&doc));
+    diags.extend(super::author_case::check_author_case(&doc));
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(line_code_diags);
@@ -987,6 +992,19 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         });
     }
 
+    // dsl 0.37.0 §2.1: a `snake_case` key is `E-AUTHOR-CASE` (naming its
+    // lowerCamelCase spelling), the one report at its position.
+    let cased: std::collections::BTreeSet<usize> = diags
+        .iter()
+        .filter(|d| d.code == super::author_case::E_AUTHOR_CASE)
+        .map(|d| d.span.byte_start)
+        .collect();
+    if !cased.is_empty() {
+        diags.retain(|d| {
+            !(matches!(d.code.as_str(), "E-UNKNOWN-ATTR" | "E-META-UNKNOWN-KEY")
+                && cased.contains(&d.span.byte_start))
+        });
+    }
     // dsl 0.26.0 §4: one of each identical report inside a guarded `::use`
     // (its guard rides every write it splices into the host).
     let diags = dedup_guarded_use_reports(&doc, diags);

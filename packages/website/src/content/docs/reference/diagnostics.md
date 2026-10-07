@@ -90,6 +90,12 @@ Spec: [dsl §4.4](/spec/), [dsl §4.5](/spec/)
 
 An attribute's value does not match its declared type — for example a non-numeric `duration`/`zoom`/`shake`, a non-boolean flag, a bare identifier where a quoted string is required, or a value naming no member of its provider, domain, or entity kind.
 
+### E-AUTHOR-CASE
+
+An authoring attribute, tag attribute or frontmatter key is not lowerCamelCase (it contains `_`); the message names its lowerCamelCase spelling.
+
+Spec: [dsl 0.37.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-BAD-ENUM
 
 A value is not a member of the closed enum, domain, or entity kind it must belong to — for example a content line's `emotion=` outside the speaker's declared `emotions:`, or an entity id outside its kind.
@@ -684,6 +690,12 @@ A project's `identity.lineId`/`identity.voiceKey` template names an unknown `{to
 
 Spec: [dsl 0.8.0 §9](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
 
+### E-INERT-TITLE
+
+A body `# ` heading: it is no document title. Put the value in frontmatter `title:`, the only document title.
+
+Spec: [dsl 0.37.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-INTERP-DEF
 
 A `{{@def}}` interpolation cannot inline into one standalone expression — its body has an expansion cycle, reads `$`, or fails to parse.
@@ -847,6 +859,18 @@ A directive is missing an attribute its declared schema requires.
 A `--mock`/`mocks/*.yaml` entry declares no `file:`, names a `file:` path that does not exist or is not a `.lute` document, or disagrees with the document named on the command line.
 
 Spec: [dsl 0.10.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md)
+
+### E-MONO-NO-POV
+
+A `{mono}` line's document resolves no point of view (no frontmatter `pov:` and no project `defaults.pov`) and its speaker is not in `monoSpeakers:`. A component line is judged at each `::use` site, in the caller's context.
+
+Spec: [dsl 0.37.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-MONO-POV
+
+A `{mono}` line's speaker is neither the document's effective point of view (`pov:`, else the project's `defaults.pov`) nor in its effective `monoSpeakers:` list. A component line is judged at each `::use` site, in the caller's context.
+
+Spec: [dsl 0.37.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-NONEXHAUSTIVE
 
@@ -1198,6 +1222,18 @@ A directive uses a removed attribute with no lossless rewrite (`::music{track}`,
 
 Spec: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
+### E-REMOVED-PROJECT-KEY
+
+`lute.project.yaml` still writes the removed `sequence:` key. It is never read and has no replacement key; every chain is declared in `chapters:`.
+
+Spec: [dsl 0.37.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-REMOVED-TAG
+
+A document uses the removed `<scene>` tag. A document's sections are `## ` headings, and its scene is the document itself.
+
+Spec: [dsl 0.37.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-RENAME-LEDGER
 
 A rename entry is malformed, has an unknown kind/key, duplicates a source or destination, or is not a canonical key mapping.
@@ -1254,6 +1290,12 @@ A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is
 
 Spec: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md)
 
+### E-REWARD-DUP
+
+Two `<reward>`s of one quest (its own and its objectives') carry the same `id=`; a reward id is unique within its quest.
+
+Spec: [dsl 0.37.0 §3.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-REWARD-KIND
 
 A `<reward kind=…>` value names no reward kind declared in the resolved capability snapshot's `rewardKinds` vocabulary.
@@ -1293,6 +1335,12 @@ Spec: [dsl 0.32.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead.
 
 Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+
+### E-SECTION-DUP
+
+Two sections of one document carry the same `{#id}`; a section id is unique within its document.
+
+Spec: [dsl 0.37.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-SECTION-SUFFIX
 
@@ -1471,12 +1519,6 @@ Spec: [dsl §7.4](/spec/)
 A `<timeline duration>` is explicitly set below the maximum resolved end of its clips, which would truncate the timeline's own content.
 
 Spec: [dsl §11.4](/spec/)
-
-### E-TITLE-PLACEMENT
-
-A document's `# ` title appears more than once, or appears after the first section instead of before it.
-
-Spec: [dsl §6.2](/spec/)
 
 ### E-TRACE-ACCEPT
 

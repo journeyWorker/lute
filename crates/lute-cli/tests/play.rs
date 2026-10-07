@@ -908,7 +908,7 @@ fn stage_project(tag: &str) -> PathBuf {
     write(
         &dir,
         "scenes/parlor.lute",
-        "---\nkind: scene\nid: parlor\nuses: ../world.schema.yaml\non: visit\nonce: false\n\
+        "---\nkind: scene\nid: parlor\npov: wren\nuses: ../world.schema.yaml\non: visit\nonce: false\n\
          enums:\n  emotion: [calm, cross]\n  anchor: { members: [left, right], default: left }\n---\n\n\
          ## Parlor\n\n::bg{location=\"parlor\"}\n@wren{mono}: Quiet in here.\n\
          ::actor{character=\"maud\" anchor=\"left\"}\n\

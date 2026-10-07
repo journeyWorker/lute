@@ -89,6 +89,12 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 속성 값이 선언된 타입과 맞지 않습니다. 예를 들어 숫자가 아닌 `duration`/`delay`, 불리언이 아닌 플래그, 인용된 문자열이 필요한 자리의 맨 식별자, 또는 공급자·도메인·엔티티 종류의 구성원을 가리키지 않는 값입니다.
 
+### E-AUTHOR-CASE
+
+작성 속성, 태그 속성 또는 프런트매터 키가 lowerCamelCase가 아닙니다(`_`가 들어 있습니다). 메시지가 lowerCamelCase 표기를 알려 줍니다.
+
+명세: [dsl 0.37.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-BAD-ENUM
 
 값이 속해야 하는 닫힌 열거형, 도메인, 엔티티 종류의 구성원이 아닙니다. 예를 들어 콘텐츠 라인의 `emotion=`이 화자에게 선언된 `emotions:` 밖의 값이거나, 엔티티 id가 해당 종류 밖의 값입니다.
@@ -683,6 +689,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.8.0 §9](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
 
+### E-INERT-TITLE
+
+본문의 `# ` 제목은 문서 제목이 아닙니다. 값을 프런트매터 `title:`에 적으세요. 문서 제목은 그것 하나뿐입니다.
+
+명세: [dsl 0.37.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-INTERP-DEF
 
 `{{@def}}` 보간이 하나의 독립된 표현식으로 인라인될 수 없습니다 — 본문에 확장 순환이 있거나, `$`를 읽거나, 파싱에 실패합니다.
@@ -846,6 +858,18 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 `--mock`/`mocks/*.yaml` 항목이 `file:`을 선언하지 않았거나, 존재하지 않거나 `.lute` 문서가 아닌 `file:` 경로를 지정했거나, 명령줄에 지정된 문서와 일치하지 않습니다.
 
 명세: [dsl 0.10.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md)
+
+### E-MONO-NO-POV
+
+`{mono}` 줄이 있는 문서에서 시점이 정해지지 않았고(프런트매터 `pov:`도, 프로젝트 `defaults.pov`도 없습니다) 화자도 `monoSpeakers:`에 없습니다. 컴포넌트의 줄은 `::use` 지점마다 호출한 문서의 맥락으로 판정합니다.
+
+명세: [dsl 0.37.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-MONO-POV
+
+`{mono}` 줄의 화자가 문서의 실제 시점(`pov:`, 없으면 프로젝트의 `defaults.pov`)도 아니고 `monoSpeakers:` 목록에도 없습니다. 컴포넌트의 줄은 `::use` 지점마다 호출한 문서의 맥락으로 판정합니다.
+
+명세: [dsl 0.37.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-NONEXHAUSTIVE
 
@@ -1197,6 +1221,18 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 명세: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
+### E-REMOVED-PROJECT-KEY
+
+`lute.project.yaml`에 제거된 `sequence:` 키가 남아 있습니다. 이 키는 읽지 않으며 대체 키도 없습니다. 체인은 모두 `chapters:`에 선언합니다.
+
+명세: [dsl 0.37.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-REMOVED-TAG
+
+제거된 `<scene>` 태그를 썼습니다. 문서의 섹션은 `## ` 제목이고, 장면은 문서 그 자체입니다.
+
+명세: [dsl 0.37.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-RENAME-LEDGER
 
 이름 변경 항목이 잘못되었거나, 알 수 없는 종류/키를 사용하거나, 출발지 또는 목적지를 중복하거나, 정식 키 매핑이 아닙니다.
@@ -1253,6 +1289,12 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 명세: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md)
 
+### E-REWARD-DUP
+
+한 퀘스트의 `<reward>` 두 개(퀘스트 자신의 것과 목표의 것을 모두 포함)가 같은 `id=`를 씁니다. 보상 id는 퀘스트 안에서 고유해야 합니다.
+
+명세: [dsl 0.37.0 §3.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-REWARD-KIND
 
 `<reward kind=…>` 값이 해석된 capability 스냅샷의 `rewardKinds` 어휘에 선언되지 않은 reward kind를 가리킵니다.
@@ -1290,6 +1332,12 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 ### E-SEASON-DECL
 
 명세: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+
+### E-SECTION-DUP
+
+한 문서의 두 섹션이 같은 `{#id}`를 씁니다. 섹션 id는 문서 안에서 고유해야 합니다.
+
+명세: [dsl 0.37.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-SECTION-SUFFIX
 
@@ -1468,12 +1516,6 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 `<timeline duration>`이 클립들의 최대 해석된 끝 시점보다 낮게 명시적으로 설정되어, 타임라인 자체의 내용을 잘라내게 됩니다.
 
 명세: [dsl §11.4](/spec/)
-
-### E-TITLE-PLACEMENT
-
-문서의 `# ` 제목이 두 번 이상 나타나거나, 첫 섹션 이전이 아니라 이후에 나타났습니다.
-
-명세: [dsl §6.2](/spec/)
 
 ### E-TRACE-ACCEPT
 

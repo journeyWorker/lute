@@ -211,6 +211,10 @@ impl Parser<'_> {
     /// Report the `</tag>` at `cursor` as closing no open block, naming the
     /// block that is open there (if any).
     pub(super) fn report_stray_close(&mut self) {
+        if close_tag_name(&self.trimmed(self.cursor)).as_deref() == Some("scene") {
+            self.report_removed_scene_tag(self.cursor);
+            return;
+        }
         let close = match close_tag_name(&self.trimmed(self.cursor)) {
             Some(n) => format!("`</{n}>`"),
             None => "this closing tag".to_string(),
@@ -1139,6 +1143,7 @@ impl Parser<'_> {
             self.open_blocks.pop();
         }
         let mut attrs = open.attrs.clone();
+        let id = take_str_spanned(&mut attrs, "id");
         let (kind, kind_span) = take_str_spanned(&mut attrs, "kind")
             .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
         let (target, target_span) = match take_str_spanned(&mut attrs, "target") {
@@ -1168,6 +1173,7 @@ impl Parser<'_> {
             None => (None, None),
         };
         Reward {
+            id,
             kind,
             kind_span,
             target,

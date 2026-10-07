@@ -62,10 +62,12 @@ pub const E_PATH_IDENT: &str = "E-PATH-IDENT";
 /// Diagnostic code: a `{{` interpolation had no closing `}}` before end of line
 /// (§7.6).
 pub const E_INTERP_UNTERMINATED: &str = "E-INTERP-UNTERMINATED";
-/// Diagnostic code: a document `# ` title appeared after the first shot, or a
-/// second `# ` title appeared. At most one title MAY precede the first shot
-/// (§6.2 / I1).
-pub const E_TITLE_PLACEMENT: &str = "E-TITLE-PLACEMENT";
+/// Diagnostic code (dsl 0.37.0 §3.1): a body `# ` heading. It is no document
+/// title; the title is frontmatter `title:`.
+pub const E_INERT_TITLE: &str = "E-INERT-TITLE";
+/// Diagnostic code (dsl 0.37.0 §2.2): the removed `<scene>` tag. Document
+/// sections are `## ` headings.
+pub const E_REMOVED_TAG: &str = "E-REMOVED-TAG";
 /// Diagnostic code: an `::assert`/`::retract` payload does not parse per the
 /// Appendix C fact-pattern grammar (dsl 0.3.0 §5, Appendix C / D3).
 pub const E_DATALOG_PARSE: &str = "E-DATALOG-PARSE";
@@ -130,13 +132,12 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         &frame.raw_yaml,
         diags,
     );
-    let (title, sections, quests, entries, beats) = p.parse_document_inner();
+    let (sections, quests, entries, beats) = p.parse_document_inner();
     let doc = Document {
         meta: Meta {
             raw_yaml: frame.raw_yaml,
             span: frame.meta_span,
         },
-        title,
         sections,
         quests,
         entries,
@@ -480,14 +481,7 @@ impl Parser<'_> {
     #[allow(clippy::type_complexity)]
     fn parse_document_inner(
         &mut self,
-    ) -> (
-        Option<(String, Span)>,
-        Vec<Section>,
-        Vec<Quest>,
-        Vec<Entry>,
-        Vec<BundleBeat>,
-    ) {
-        let mut title = None;
+    ) -> (Vec<Section>, Vec<Quest>, Vec<Entry>, Vec<BundleBeat>) {
         let mut sections = Vec::new();
         let mut quests = Vec::new();
         let mut entries = Vec::new();
@@ -534,18 +528,12 @@ impl Parser<'_> {
             } else if trimmed.starts_with('<') && open_tag_name(&trimmed).as_deref() == Some("beat")
             {
                 beats.push(self.parse_bundle_beat());
-            } else if trimmed.starts_with("# ") && sections.is_empty() && title.is_none() {
-                title = Some(self.parse_title());
             } else if trimmed.starts_with("# ") {
-                // §6.2/I1: a `# ` title is well-placed only once, before the
-                // first shot. Reaching here means the slot is taken (a second
-                // title) or a shot already opened (a late title).
-                self.emit_line(
-                    E_TITLE_PLACEMENT,
-                    "document title must appear at most once, before the first shot (dsl §6.2)",
-                    self.cursor,
-                    Layer::Content,
-                );
+                self.report_inert_title(self.cursor, false);
+                self.cursor += 1;
+            } else if trimmed.starts_with('<') && open_tag_name(&trimmed).as_deref() == Some("scene")
+            {
+                self.report_removed_scene_tag(self.cursor);
                 self.cursor += 1;
             } else if trimmed.starts_with("</") {
                 // RC1 (dsl 0.5.0 §2.1): a top-level stray `</tag>` close is
@@ -593,7 +581,7 @@ impl Parser<'_> {
             }
         }
         self.close_outside_region(outside);
-        (title, sections, quests, entries, beats)
+        (sections, quests, entries, beats)
     }
 
     /// Widen a region's one `E-CONTENT-OUTSIDE-SECTION` over every line folded
@@ -614,15 +602,34 @@ impl Parser<'_> {
         d.span = span;
     }
 
-    /// `Title ::= "# " Text` (§6.2). Text is opaque to EOL.
-    fn parse_title(&mut self) -> (String, Span) {
-        let i = self.cursor;
-        let cstart = self.line_content_start(i);
-        let cend = self.line_content_end(i);
+    /// `E-INERT-TITLE` (dsl 0.37.0 §3.1) for the `# ` line `i`: the
+    /// frontmatter `title:` is the only document title. Inside a section the
+    /// message also says what `#` is not (round-6 T3-60: Ink writes a tag line
+    /// this way).
+    fn report_inert_title(&mut self, i: usize, in_section: bool) {
         let t = self.trimmed(i);
-        let text = t.strip_prefix("# ").unwrap_or(&t).to_string();
-        self.cursor += 1;
-        (text, self.span(cstart, cend))
+        let text = t.strip_prefix("# ").unwrap_or(&t).trim().to_string();
+        let mut msg = format!(
+            "`# {text}` is not a document title — write `title: {text}` in the frontmatter \
+             (dsl 0.37.0 §3.1)"
+        );
+        if in_section {
+            msg.push_str(
+                "; `#` starts neither a comment nor a tag (a comment is `// …` on its own line)",
+            );
+        }
+        self.emit_line(E_INERT_TITLE, &msg, i, Layer::Content);
+    }
+
+    /// `E-REMOVED-TAG` (dsl 0.37.0 §2.2) for the `<scene>` / `</scene>` line `i`.
+    pub(super) fn report_removed_scene_tag(&mut self, i: usize) {
+        self.emit_line(
+            E_REMOVED_TAG,
+            "the `<scene>` tag was removed (dsl 0.37.0 §2.2) — a document's sections are `## ` \
+             headings, and its scene is the document itself",
+            i,
+            Layer::Logic,
+        );
     }
 
     /// `ShotBlock ::= ShotHeading Node*`. Consumes the heading line then every
@@ -784,6 +791,11 @@ impl Parser<'_> {
                     self.parse_misplaced_child(tag);
                     return None;
                 }
+                Some("scene") => {
+                    self.report_removed_scene_tag(self.cursor);
+                    self.cursor += 1;
+                    return None;
+                }
                 other => {
                     let msg = match other {
                         Some(tag @ ("entry" | "beat" | "quest")) => format!(
@@ -808,17 +820,7 @@ impl Parser<'_> {
             }
         }
         if trimmed.starts_with("# ") {
-            // §6.2/I1: a `# ` H1 title inside a shot body is a misplaced title,
-            // not a generic unclassified line. (`## ` shot headings never reach
-            // here — parse_shot_body breaks on them.) Round-6 T3-60: Ink writes
-            // a tag line this way, so say what `#` is not.
-            self.emit_line(
-                E_TITLE_PLACEMENT,
-                "document title must appear at most once, before the first shot; inside a shot \
-                 `#` starts neither a comment nor a tag (a comment is `// …` on its own line)",
-                self.cursor,
-                Layer::Content,
-            );
+            self.report_inert_title(self.cursor, true);
             self.cursor += 1;
             return None;
         }

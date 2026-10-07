@@ -6,8 +6,6 @@ episode: 1
 title: Visual effect
 ---
 
-# Golden — vfx
-
 ## Shot 1.
 
 ::vfx{type="whiteOut" label="finger_beam" transition="flash"}

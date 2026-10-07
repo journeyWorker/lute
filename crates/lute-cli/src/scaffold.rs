@@ -1378,7 +1378,7 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
         dest.defaults
             .chapters()
             .iter()
-            .any(|c| !c.retired && c.on == *on)
+            .any(|c| c.on == *on)
     });
     let target_line = target.map_or_else(String::new, |t| format!("target: {t}\n"));
     let raised_for = target.map_or_else(String::new, |t| format!(" for `{t}`"));

@@ -636,7 +636,6 @@ mod tests {
                 raw_yaml: String::new(),
                 span: span(),
             },
-            title: None,
             sections: vec![Section {
                 heading: "Section 1.".to_string(),
                 id: None,

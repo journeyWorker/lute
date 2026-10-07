@@ -371,15 +371,7 @@ fn entry_body_admits_lines_match_and_effects() {
 }
 
 #[test]
-fn lore_top_level_rejects_title_shot_and_quest() {
-    let title = not_admitted(&lore("# Records\n<entry id=\"e\">\n@n: hi\n</entry>\n"));
-    assert_eq!(title.len(), 1, "{title:#?}");
-    assert!(
-        title[0].message.contains("lore document"),
-        "{}",
-        title[0].message
-    );
-
+fn lore_top_level_rejects_shot_and_quest() {
     let shot = not_admitted(&lore(
         "<entry id=\"e\">\n@n: hi\n</entry>\n## Shot 1.\n@n: x\n",
     ));

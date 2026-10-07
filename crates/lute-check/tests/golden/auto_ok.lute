@@ -6,8 +6,6 @@ episode: 1
 title: Auto stage
 ---
 
-# Golden — auto
-
 ## Shot 1.
 
 ::actor{character="marina" anchor="left" action="fadeInUp"}

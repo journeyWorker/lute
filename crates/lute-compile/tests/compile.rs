@@ -55,6 +55,7 @@ character: marina
 season: 1
 episode: 2
 title: Compile me
+pov: fixer
 state:
   scene.affect.marina: { type: int, default: 0 }
 defs:

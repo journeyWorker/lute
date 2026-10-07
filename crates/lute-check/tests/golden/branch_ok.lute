@@ -8,8 +8,6 @@ state:
   scene.affect.marina: { type: int, default: 0 }
 ---
 
-# Golden — branch
-
 ## Shot 1.
 
 ::actor{character="marina" anchor="left" action="fadeInUp"}

@@ -6,6 +6,7 @@ title: The Interview Room
 # Comes after the crime scene.
 after: 'visited("detective.s01ep01")'
 uses: ../world.schema.yaml
+pov: detective
 ---
 
 ## The Interview Room

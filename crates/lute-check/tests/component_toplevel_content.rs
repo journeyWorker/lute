@@ -233,24 +233,3 @@ fn ordinary_component_body_stays_clean() {
     );
 }
 
-/// The enumeration's one deliberate EXEMPTION, pinned on every path: a
-/// document `# ` title (`Document::title`) is inert across the whole toolchain
-/// — its only reader anywhere is `check_admission`'s quest-kind rejection, and
-/// lowering reads the frontmatter `title:` key, never this field — so the ROOT
-/// document drops it just as a component body does. Flagging it would INVENT
-/// the mirror-image divergence (standalone clean, imported error) rather than
-/// close one.
-#[test]
-fn component_title_stays_clean_on_every_path() {
-    let component = "---\ncomponent: c\n---\n# A Title\n## Scene 1.\n@marina: hello.\n";
-    for (label, diags) in [
-        ("standalone component", standalone_diags(component)),
-        ("component via ::use", component_diags(component)),
-    ] {
-        assert!(
-            diags.is_empty(),
-            "a component `# ` title must stay clean at {label}, got {:?}",
-            codes(&diags)
-        );
-    }
-}

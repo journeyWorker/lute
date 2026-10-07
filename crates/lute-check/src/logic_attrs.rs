@@ -65,9 +65,10 @@ pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
 /// dsl 0.16.0 §2: `<reward>` closes over the five wire-contract keys.
 /// Every OTHER attribute is `E-UNKNOWN-ATTR` at its own span; a malformed
 /// `amount=` survives here as a residual so [`check_reward_attrs`] can
-/// anchor `E-REWARD-ATTR` at the value span. `id=` is deliberately absent
-/// — a reward is a leaf, not an addressable construct.
-pub const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "outcome"];
+/// anchor `E-REWARD-ATTR` at the value span. `id=` (dsl 0.37.0 §3.5) is the
+/// reward's identity within its quest; an unquoted one survives as a
+/// residual for `E-REWARD-ATTR`.
+pub const REWARD_ATTRS: &[&str] = &["id", "kind", "target", "amount", "when", "outcome"];
 /// dsl 0.19.0 §3: `<entry>` closes over its declared keys — the seven 0.19.0
 /// keys plus the dsl 0.21.0 §3.2 beat keys `on` and `priority` and the dsl
 /// 0.22.0 §7 beat key `once` (and dsl 0.25.0 §2's `share`). The parser extracts each into a typed field,
