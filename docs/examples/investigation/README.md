@@ -20,7 +20,7 @@ builds these same files from an empty folder with only the `lute` command.
 | `lute.project.yaml` | project root — core-only profile (no plugins) |
 | `world.schema.yaml` | shared run/user scalar state **and** the relational world (entities `suspect`/`clue`, relations `foundClue`/`implicates`/`points`, seed `facts:`, and one Datalog `rules:` clause) |
 | `scenes/crime-scene.lute` | entry scene (no `after:`) — logs clues with `::assert{ foundClue(...) }`, which the derived relation `points` reads |
-| `scenes/interview.lute` | `after:` the crime scene — a `<hub>` interrogation pressing the logged clues, and a `<match on="run.suspectFocus">` over run state |
+| `scenes/interview.lute` | `after:` the crime scene — a `<hub>` interrogation pressing the logged clues, and a `<match subject="run.suspectFocus">` over run state |
 | `scenes/confrontation.lute` | `after:` the interview — a `<branch>` accusation; complementary `when=` verdict lines branch to the success/failure endings |
 | `quests/identify-killer.lute` | the goal machine — objectives whose `done=` predicates the scenes satisfy |
 | `mocks/accuse-correctly.yaml` | trace mock: accuse the right suspect → success ending |

@@ -726,6 +726,12 @@ A `<choice>`'s `into=` run-record sugar has a `value` attribute that is missing,
 
 Spec: [dsl 0.6.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md)
 
+### E-IR-REMOVED-FIELD
+
+`lute run` received an execution IR that still carries a field 0.37 removed or renamed (such as `addr`, `capabilityVersion`, `recordKey`, `shots`, a flattened `wait`/`duration`/`delay`/`at`/`timeline` stamp, or `provenance.injected`), or a command with no `position`. Recompile the source with the current toolchain.
+
+Spec: [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-JUMP-BACKWARD
 
 A `::jump{to}` names a label that is not forward of the `::jump` in document order — jumps must go forward only.

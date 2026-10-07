@@ -79,7 +79,7 @@ one piece of the lore surface against the same world schema the scenes use:
   `when="entry.purserLedger1.read"`, the reserved path the engine sets after a
   presentation.
 - **`ship-records.lute` — state-dependent text and a gated bark.** The shed
-  plaque selects its text with an ordinary `<match on="run.shedPressure">`
+  plaque selects its text with an ordinary `<match subject="run.shedPressure">`
   (range arms `2..` / `1` / `<otherwise>`). `vesnaManifestBark` is an NPC bark
   attached to `npc.vesna`, eligible only while
   `holds('knows', ['vesna', 'manifest'])` — the fact the ledger (and several scenes)
@@ -132,7 +132,7 @@ Two things in this tree are wrong on purpose. They are evidence for named
 findings, and a reader who "fixes" one deletes the evidence.
 
 1. **`components/purser-interject.component.lute` — a dead `<otherwise>` arm.**
-   The component's body is a param-scoped `<match on="@pressure">` with two arms,
+   The component's body is a param-scoped `<match subject="@pressure">` with two arms,
    and it is invoked from exactly one site (`cryobank.lute:14`, `pressure="rising"`).
    `Allocation is nominal.` therefore never plays in this work. Nothing says so:
    `check-project` is clean; the artifact prunes the arm at expansion (compile

@@ -725,6 +725,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.6.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md)
 
+### E-IR-REMOVED-FIELD
+
+`lute run`이 받은 실행 IR에 0.37에서 제거되거나 이름이 바뀐 필드(`addr`, `capabilityVersion`, `recordKey`, `shots`, 평탄화된 `wait`/`duration`/`delay`/`at`/`timeline` 스탬프, `provenance.injected` 등)가 남아 있거나, `position`이 없는 명령이 있습니다. 현재 툴체인으로 소스를 다시 컴파일하세요.
+
+명세: [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-JUMP-BACKWARD
 
 `::jump{to}`가 문서 순서상 자신보다 앞서거나 같은 위치의 레이블을 가리킵니다 — 점프는 항상 앞으로만 가능합니다.

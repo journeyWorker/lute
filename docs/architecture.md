@@ -58,7 +58,7 @@ target is the flat command-record format the engine consumes.
 > since 0.28.0). Since 0.28.0 every condition slot and YAML surface is checked the same way
 > (typed comparisons, unknown keys and reserved names refused where they are written), each
 > idea has one name (`follows=`, `outcome=`, `visibleWhen=`, `expect.options`, `expect.end`,
-> a *mark* for a `::next` target), `spentBy` latches, `occasion.target` can be written, and a
+> a *mark* for a `::next` target — since 0.37.0 a `::label` for a `::jump`), `spentBy` latches, `occasion.target` can be written, and a
 > hub may carry a `<return>` block. Since 0.29.0 every name an author writes follows one
 > identifier rule (a letter, then letters, digits or `_`), `lute check-project` prints causes
 > first, and a `terminal:` may say its ending persists across runs (`{ when, persists: true }`).
@@ -97,7 +97,7 @@ embedding a Turing-complete scripting language.*
 Two load-bearing constraints from the session:
 
 1. **Reuse the SoT, add on top.** The existing directives (`::bg`, `::music`, `::sfx`,
-   `::auto`, …) and the compiled `arcia_script_commands` format are the source of truth. New
+   `::actor`, …) and the compiled `arcia_script_commands` format are the source of truth. New
    capability is *layered on*, never an alias/rename. (Two false starts here came from
    designing in the abstract instead of reading the parser and the compiled output first.)
 2. **Total, not Turing-complete.** Conditions are [CEL](https://cel.dev) (terminating,
@@ -112,7 +112,7 @@ conflate them — most design mistakes come from reasoning about one in the term
 
 | Layer | Who acts | Job | When | SoT / tooling |
 |---|---|---|---|---|
-| **DSL** (authoring surface) | human / AI *writes* | `:speaker`/`::auto`/`<branch>`/`<timeline>`/CEL — expressiveness, readability, static validatability | author time | `.lute` text · parser → AST · LSP · tree-sitter |
+| **DSL** (authoring surface) | human / AI *writes* | `:speaker`/`::actor`/`<branch>`/`<timeline>`/CEL — expressiveness, readability, static validatability | author time | `.lute` text · parser → AST · LSP · tree-sitter |
 | **compiler** (`lute`) | the build *transforms* | AST → engine format: lowering, **auto-injection** (stage resolution), `@ref` expansion, asset binding, validation | **build time, once** | AST → `arcia_script_commands` · `generator` · `validator` |
 | **engine** (Flutter runtime) | the player *runs* | walk flat records, render, timing (`wait`/`delay`), evaluate CEL against runtime state (player choices) | **play time** | `arcia_script_commands` + save-state |
 
@@ -124,13 +124,13 @@ evaluated at **runtime** by the engine.
 ### Auto-injection is a deterministic compile-time GC, not runtime GC
 
 The compiler's implicit insertion (auto-show a speaker not on stage, reposition existing
-sprites, `posReset` a dirty pose, auto-hide on exit/scene-change) is **lifetime management of
+actors, `posReset` a dirty pose, auto-hide on exit/scene-change) is **lifetime management of
 stage entities** — GC-*like in spirit* (you don't write the cleanup; it's inferred from a
 stage-state model), but mechanically a **deterministic, inspectable, build-time insertion pass**,
 closer to RAII/lifetime-inference than a runtime collector. The stage is the heap; show = alloc,
 hide = free, "hide whoever's no longer speaking" = collecting an unreachable entity. GC's failure
 modes map to the checks this needs: *leak* (never auto-hidden) and *use-after-free* (auto-hidden
-then spoken) are caught by determinism + provenance (`{injected, by, explanation}`) + LSP-visible
+then spoken) are caught by determinism + provenance (`{by, explanation}`) + LSP-visible
 resolved view + conflict warnings. See **Compiler — stateful resolution** below.
 
 ### Implementation language (open)
@@ -153,8 +153,8 @@ Three authoring layers, distinguished by syntax so a reader can tell them apart 
 
 | Layer | Syntax | Examples |
 |---|---|---|
-| **Content** | `:name{attrs}: text` — speaker selects dialogue / narration (`narrator`) / player (monologue = player `delivery="thought"`) | dialogue, narration |
-| **Staging (leaf)** | `::name{attrs}` | `::bg`, `::music`, `::sfx`, `::auto`, `::camera`, `::set` |
+| **Content** | `:name{attrs}: text` — speaker selects dialogue / narration (`narrator`) / player (monologue = a `{mono}` delivery flag) | dialogue, narration |
+| **Staging (leaf)** | `::name{attrs}` | `::bg`, `::music`, `::sfx`, `::actor`, `::camera`, `::cg`, `::set` |
 | **Logic / timeline (nesting)** | `<tag>…</tag>` | `<branch>`, `<choice>`, `<match>`, `<when>`, `<otherwise>`, `<timeline>`, `<track>` |
 
 **Bracket rule — the single organizing axis is _nesting vs leaf_, not logic-vs-staging:**
@@ -172,34 +172,37 @@ never parsed. Every content line is prefixed `:speaker{attrs}:` (no bare prose),
 
 ## Existing directives — reuse verbatim (do NOT rename or reinvent)
 
-Canonical attrs per `parser.ts`. New timing attrs (below) may be *added*; existing attrs and
-names stay.
+Canonical attrs per `parser.ts`, as renamed by the 0.37.0 surface cleanup (before 0.37.0:
+`::auto`, `::cut`, and `action=` on music/cut/video). New timing attrs (below) may be *added*;
+existing attrs and names stay.
 
 | Directive | Attrs |
 |---|---|
 | `::bg` | `location`, `time`, `assetId` |
-| `::music` | `action` = `start\|change\|stop\|resume\|fadeOut`, `mood`, `volume` = `silent\|down\|normal\|up\|full`, `assetId`, `track` |
-| `::sfx` | `sound` (description), `assetId`, `name` |
-| `::auto` | `character`, `anchor` = `left\|center\|right`, `action` (named action-id, e.g. `fadeInUp` / `fadeOutDown` / `pose*`) — **character entrance/exit/pose lives here** |
+| `::music` | `playback` (domain `musicPlayback`, e.g. `start\|change\|stop\|resume\|fadeOut`), `mood`, `volume` (domain `volume`, e.g. `silent\|down\|normal\|up\|full`), `assetId` |
+| `::sfx` | `sound` (description), `assetId` |
+| `::actor` | `character`, `anchor` (domain `anchor`), `action` (domain `action`, e.g. `fadeInUp` / `fadeOutDown` / `pose*`), `emotion`, `costume` — **character entrance/exit/pose lives here** |
 | `::vfx` | `type` (e.g. `blackOut`), `label`, `transition` |
-| `::cut` | `assetId` (`CUT.*`), `action` = `show\|hide`, `full?` |
-| `::video` | `assetId` (`VID.*`), `action` = `show\|hide`, `wait?` |
+| `::cg` | `assetId` (`CUT.*`), `display` = `show\|hide`, `layout?` (domain `cgLayout`) |
+| `::video` | `assetId` (`VID.*`), `display` = `show\|hide`, `wait?` |
 | `:name` | `code`, `emotion`, `variant`, `action`, `dialogMotion` |
 
 > Mistakes this table corrects (recorded so they aren't repeated): there is no `::scene`
-> (it's `::bg`); music is not `play`/`to` (it's `action`/`mood`/`volume`-enum); sfx carries
-> `sound`+`assetId` separately (not a single `asset`); character staging is `::auto`+action-id
-> (not a `::sprite`/`::char` with `enter`/`pose`). A music fade-out is `action="fadeOut"`,
-> character exit is `::auto{action="fadeOutDown"}` — both already exist.
+> (it's `::bg`); music is not `play`/`to` (it's `playback`/`mood`/`volume`-enum); sfx carries
+> `sound`+`assetId` separately (not a single `asset`); character staging is `::actor`+action-id
+> (not a `::sprite`/`::char` with `enter`/`pose`). A music fade-out is `playback="fadeOut"`,
+> character exit is `::actor{action="fadeOutDown"}` — both already exist.
 
 ## New additions (this is the entire delta)
 
 ### 1. `::camera` — net new (no camera in current format)
 
-`::camera{focus, zoom, moveX, moveY, shake, reset, duration, easing, delay, wait}`.
+`::camera{focus, framing, move, transition, duration, delay, wait}` — `focus` names a cast
+member; `framing`, `move`, and `transition` are members of the project-declared `framing`,
+`cameraMove`, and `transition` domains; at least one of the four is required (`E-CAMERA-EMPTY`).
 A single `::camera` with multiple attrs = **one combined transform** applied together over
-`duration` (covers "push in while drifting", the common case). A sequential move (zoom *then*
-pan) = two consecutive `::camera` directives.
+`duration` (covers "reframe while moving", the common case). A sequential move (reframe *then*
+move) = two consecutive `::camera` directives.
 
 ### 2. Timing attrs + concurrency — reuse `wait`, **no `<parallel>`, no `detached`**
 
@@ -225,30 +228,32 @@ non-blocking so dialogue rides over it; a focus-then-speak beat sets `wait="true
 
 ```
 ::sfx{sound="문이 노크 없이 벌컥" assetId="PLACEHOLDER_door_slam"}
-::camera{shake="0.3" duration="0.2"}                          /* no wait → next runs concurrently */
-::auto{character="elena" anchor="center" action="fadeInUp"}
+::camera{move="shake" duration="0.2"}                          /* no wait → next runs concurrently */
+::actor{character="elena" anchor="center" action="fadeInUp"}
 @elena{code="0010" emotion="delighted" variant="1" action="sway"}: 매니저. 안녕…
 
-::camera{focus="elena" zoom="@closeUp" duration="0.5" wait="true"}  /* holds → the line waits for the pan */
+::camera{focus="elena" framing=@tight duration="0.5" wait="true"}  /* holds → the line waits for the pan */
 @elena{code="0020" emotion="neutral" action="lean"}: 그러니까, 매니저. 딱 한 뼘. 두 뼘.
 ```
 
-Every `emotion=`/`action=`/`anchor=` value above is a member of a **project-declared**
-vocabulary, not a built-in one: since dsl 0.9.0 the compiler declares the slot and ships no
-members, so this snippet checks only in a project whose schema declares `emotion`, `action`
-(with its `exits:`) and `anchor` (with its `default:`). See
+Every `emotion=`/`action=`/`anchor=`/`move=` value above (and the `framing` member `@tight`
+folds to) is a member of a **project-declared** vocabulary, not a built-in one: since dsl 0.9.0
+the compiler declares the slot and ships no members, so this snippet checks only in a project
+whose schema declares `emotion`, `action` (with its `exits:`), `anchor` (with its `default:`),
+`framing`, and `cameraMove`. See
 [`examples/base.schema.yaml`](examples/base.schema.yaml) for the declaration these values come
 from, and [`proposals/scenario-dsl/0.9.0.md`](proposals/scenario-dsl/0.9.0.md) §3 for the rules.
 
 ### 3. `<timeline>` — multi-track choreography block (After-Effects model)
 
 > Named `<timeline>` + `<track>` (Unity-Timeline model), not `<cutscene>`/`<lane>`: `cut` and
-> `scene`/`sceneId` are already taken (`::cut`, `## Scene N.`), so `cutscene` is out. `timeline`
-> is collision-free. `<track>` is effectively collision-free too: a `track=` attr exists only on
+> `scene`/`sceneId` were already taken when this was decided (`::cut` — `::cg` since 0.37.0 —
+> and `## Scene N.`), so `cutscene` is out. `timeline`
+> is collision-free. `<track>` is effectively collision-free too: a `track=` attr existed only on
 > the **legacy `::bgm` alias** (verified — used in just one un-migrated character's scenarios,
-> *eris*; canonical `::music` never uses `track=` across the whole catalog). `<track>` is a tag,
-> `track=` a legacy attr — different positions, and the attr is on its way out anyway. The
-> existing schema stays unchanged; we simply don't reuse the word for an attr going forward.
+> *eris*; canonical `::music` never used `track=` across the whole catalog). `<track>` is a tag,
+> `track=` a legacy attr — different positions; 0.37.0 removed `::music{track}` outright
+> (`assetId` names the file), so the word is free for the tag.
 
 A **bounded, non-interactive choreography unit** with its own local clock — distinct from the
 dropped `<parallel>` (whose only job, concurrency, the engine's `wait` already does). The value
@@ -260,13 +265,13 @@ whole block blocks following content until it completes.
 <timeline duration="2.4">
   <track subject="camera">
     ::camera{focus="door" duration="1.2"}      /* at 0.0 */
-    ::camera{zoom="1.3" duration="0.4"}        /* omitted at → after prev clip → 1.2 */
+    ::camera{framing="closeUp" duration="0.4"} /* omitted at → after prev clip → 1.2 */
   </track>
   <track subject="elena">
-    ::auto{character="elena" action="walkIn" at="0.4"}
-    ::auto{character="elena" action="poseTurn" at="1.6"}
+    ::actor{character="elena" action="walkIn" at="0.4"}
+    ::actor{character="elena" action="poseTurn" at="1.6"}
   </track>
-  <track channel="music"> ::music{action="change" mood="tense" at="0.8"} </track>
+  <track channel="music"> ::music{playback="change" mood="tense" at="0.8"} </track>
   <track channel="vfx">   ::vfx{type="whiteOut" transition="flash" at="1.6"} </track>
 </timeline>
 ```
@@ -280,7 +285,7 @@ Locked rules:
   a relative nudge — that ambiguity is locked out.
 - **One writer per track.** Each `subject`/`channel` key appears once; duplicate track keys are
   invalid. No two `subject="camera"` tracks (they'd silently fight) — explicit `property=` tracks
-  (`subject="camera" property="zoom"`) are a later addition, gated on a write-set checker.
+  (`subject="camera" property="framing"`) are a later addition, gated on a write-set checker.
 - **Staging-only, non-interactive.** Tracks hold `::` staging leaves (+ `::set` for state marks);
   **no `:speaker`/prose/`<choice>`/`<branch>`/`<match>` inside** — those would make it reader-paced,
   not clock-paced. No nested timelines initially.
@@ -295,7 +300,7 @@ Locked rules:
   0.0  camera  focus door   dur 1.2
   0.4  elena   walkIn
   0.8  music   change tense
-  1.2  camera  zoom 1.3      dur 0.4
+  1.2  camera  framing closeUp  dur 0.4
   1.6  elena   poseTurn  ·  vfx whiteOut
   2.4  barrier
   ```
@@ -307,17 +312,17 @@ Locked rules:
 
 ```
 <branch id="couch">                          # unique-in-episode; auto-records to scene.choices.couch
-  <choice id="help" label="같이 옮긴다">       # id = recorded key; label = shown text
+  <choice id="help" text="같이 옮긴다">        # id = recorded key; text = shown text
     @fixer{code="0020"}: ...알겠습니다.
-    ::set{scene.affect.elena += 2}           # scene.* spans shots within THIS episode
+    ::set{scene.affect.elena += 2}           # scene.* spans sections within THIS episode
   </choice>
-  <choice id="ignore" label="모른 척한다" when="@warm">   # when = availability gate (CEL)
+  <choice id="ignore" text="모른 척한다" when="@warm">   # when = availability gate (CEL)
     @fixer{code="0030"}: 제 업무 범위를 다시 확인하고 오겠습니다.
     ::set{scene.affect.elena -= 1}
   </choice>
 </branch>
 
-<match on="scene.affect.elena">              # state-driven branch (no player input); intra-episode
+<match subject="scene.affect.elena">         # state-driven branch (no player input); intra-episode
                                              # (to carry to the NEXT episode, write run.* — see 0.0.1.md §9.1)
   <when is="3.."> ... </when>                # literal pattern; 3.. = inclusive range (dsl 0.18.0)
   <when is="1 | 2"> ... </when>
@@ -338,7 +343,7 @@ Locked rules:
 
 ### 5. Definitions & conditions
 
-One typed `defs` table (predicates + numeric staging values + parameterized macros are the
+One typed `defs` table (predicates + constant staging values + parameterized macros are the
 same thing — named, typed CEL). Referenced as `@name` / `@fn(args)`; **`@` is a compile-time
 macro expansion to inline CEL.** validator validates each `@ref` against its use-context type
 (bool-as-number / number-as-guard = compile error). Params are typed.
@@ -346,18 +351,19 @@ macro expansion to inline CEL.** validator validates each `@ref` against its use
 ```yaml
 defs:
   warm:    { type: bool,   cel: "scene.affect.elena >= 2" }
-  closeUp: { type: double, cel: "scene.affect.elena >= 5 ? 1.35 : 1.15", min: 1.0, max: 1.6 }
+  tight:   { type: string, cel: "'closeUp'" }   # folds to a `framing` member
   chose:   { type: bool, params: { q: choiceRef, opt: choiceId }, cel: "scene.choices[q] == opt" }   # intra-episode; choices are episode-scoped (§11.1)
 ```
 
-Dynamic staging args are `@symbol` references only (`::camera{zoom="@closeUp"}`) — no inline
+Dynamic staging args are bare `@symbol` references only (`::camera{framing=@tight}`), and the def
+must fold to a constant (a state-reading def is `E-ATTR-DEF-DYNAMIC`) — no inline
 `{js}` expressions; all attribute values are strings (or a bare `@ref`), schema-coerced by
 type. This keeps staging non-Turing-complete.
 
 ### 6. State
 
 - **Explicit namespaces named by reset boundary (lifetime):** `scene.*` (episode end — one
-  `.lute` doc; survives across its shots) · `run.*` (new run — cross-episode carry within one
+  `.lute` doc; survives across its sections) · `run.*` (new run — cross-episode carry within one
   attempt) · `user.*` (profile wipe — survives runs) · `app.*` (uninstall — identity-independent,
   content-read-only). One axis;
   the engine owns each backend + fires each reset. The `run`/`user`/`app` schema is a single
@@ -398,12 +404,12 @@ sprite load). The clean structure:
    `auto-pose-reset` (dirty & !stateful & !exit → `posReset`), `auto-anchor-on-show` (show w/o
    anchor → compute anchors + reposition existing), `entry-emotion-lookahead` (show → next
    dialogue's emotion for the sprite), `stage-bookkeeping` (show/exit/anchor → update `onStage`).
-5. **Provenance on every injected command** — `{ injected: true, by: "auto-pose-reset",
-   reason: "…" }` (formalizing the `comment:` strings the current code already writes). Surfaced
+5. **Provenance on every injected command** — `{ by: "auto-pose-reset",
+   explanation: "…" }` (formalizing the `comment:` strings the current code already writes). Surfaced
    in the resolved view + LSP timeline → the injection is *visible*, not silent magic; conflicts
    (author-written vs would-be-injected) become warnings.
 6. **Manifest-driven, code-executed** — which directives touch stage state is declared by the
-   per-directive `reads`/`writes`/`semantics` flags (`::auto` → `writes.stagePose`,
+   per-directive `reads`/`writes`/`semantics` flags (`::actor` → `writes.stagePose`,
    `mayExitCharacter`, `usesAnchor`; `:speaker` → `reads.onStage`). The resolver is *driven by* those
    flags but its algorithm stays code (a closed-registry named hook). This is the data-vs-code
    boundary made concrete: manifest says *which* participates, code says *how* it injects.
@@ -423,14 +429,14 @@ schema work, not grammar/AST churn.
 # ── ParseAst (LSP-facing; generic, stable) ──
 Document
 ├─ Meta            { state: StateDecl[], defs: Def[] }
-└─ Shot[]          { heading, span, body: Node[] }
+└─ Section[]       { heading, id?, span, body: Node[] }   # `## Heading {#id}`
    Node =
-   │  Line         { speaker, attrs{code,emotion,variant,action,delivery,as,…}, text, span }
-   │                # speaker distinguishes dialogue / narration (narrator) / monologue (player + delivery=thought)
-   │  Directive    { tag, attrs: Attr[], span }          # leaf: bg/music/sfx/auto/vfx/cut/video/camera
+   │  Line         { speaker, attrs{code,emotion,variant,action,dialogMotion,as,…}, flags{mono,os,vo}, text, span }
+   │                # speaker distinguishes dialogue / narration (narrator) / monologue (player + {mono})
+   │  Directive    { tag, attrs: Attr[], span }          # leaf: bg/music/sfx/actor/vfx/cg/video/camera/sequence
    │  Set          { path, op, expr: CelSlot, span }     # distinct node — state mutation
    │  Branch       { id, choices: Choice[], span }
-   │  Choice       { id, label, when?: CelSlot, body: Node[], span }
+   │  Choice       { id, text, when?: CelSlot, body: Node[], span }
    │  Match         { subject: CelSlot, arms: Arm[], span }
    │  Timeline     { duration?: CelSlot|number, tracks: Track[], span }   # multi-track timeline
    Track   { key: {subject?|channel?|property?}, clips: Clip[], span }
@@ -444,7 +450,7 @@ CelSlot  { kind: condition|attr-value|set-expr|match-subject,
            raw: string, ast?: CelAst, span, id: StableNodeId }   # @name / @fn(args) live in ast
 
 # ── CheckedIr (compiler-facing; per-tag typed) ──
-CameraCommand | AutoCommand | SfxCommand | BgCommand | MusicCommand | SetCommand | …
+CameraCmd | ActorCmd | SfxCmd | BgCmd | MusicCmd | CgCmd | SetCmd | …
 ```
 
 **`CelSlot` is the single biggest LSP win.** Every CEL-bearing field is a ranged child node
@@ -507,14 +513,14 @@ generic refactors, over-rich CEL autocomplete, type-theory wording.
 
 | Capability | Source |
 |---|---|
-| **Diagnostics** | parse errors + validator lint: non-exhaustive `<match>`, overlapping arms, definite-assignment (`E-UNDECLARED`/`E-MAYBE-UNSET`), `::set` schema-binding + op/type matrix, unknown directive/attr, bad enum value, undeclared `@ref`/state-path/choice-id, type-mismatched `@ref` use, wait-omission suspicion (a timed `::camera`/`::auto` move immediately followed by dialogue with no `wait` — possible unintended race), unknown `assetId`/character |
+| **Diagnostics** | parse errors + validator lint: non-exhaustive `<match>`, overlapping arms, definite-assignment (`E-UNDECLARED`/`E-MAYBE-UNSET`), `::set` schema-binding + op/type matrix, unknown directive/attr, bad enum value, undeclared `@ref`/state-path/choice-id, type-mismatched `@ref` use, wait-omission suspicion (a timed `::camera`/`::actor` move immediately followed by dialogue with no `wait` — possible unintended race), unknown `assetId`/character |
 | **Hover** | directive/attr docs from schema; `@ref` → its CEL definition + type; state path → declared type/default; emotion/action/anchor enum docs; `assetId` → catalog entry |
-| **Completion** | directive names; attr keys per directive schema; attr enum values (music `action`/`volume`, `anchor`, `emotion`); character ids (registry); `assetId`/`CUT.*`/`VID.*` (catalog); `@ref` names (defs); state paths; choice ids inside `<match on=>` |
-| **Go-to-definition** | `@ref` → defs entry; state path → state decl; `scene.choices.<id>` → `<branch id>`; jump/`next` target → shot |
+| **Completion** | directive names; attr keys per directive schema; attr enum values (music `playback`/`volume`, `anchor`, `emotion`, camera `framing`/`move`/`transition`); character ids (registry); `assetId`/`CUT.*`/`VID.*` (catalog); `@ref` names (defs); state paths; choice ids inside `<match subject=>` |
+| **Go-to-definition** | `@ref` → defs entry; state path → state decl; `scene.choices.<id>` → `<branch id>`; `::jump{to}` target → its `::label{name}` |
 | **Find-references** | `@ref` uses; state-path reads/writes; choice id |
-| **Folding** | `<…>` blocks; shots; per `<track>`; + a rendered *resolved timeline table* view for `<timeline>` |
+| **Folding** | `<…>` blocks; sections; per `<track>`; + a rendered *resolved timeline table* view for `<timeline>` |
 | **Semantic tokens** | 3 layers colored distinctly (content / staging / logic); CEL sub-tokens; `@ref`s; state paths |
-| **Document symbols** | shots, branches, matches |
+| **Document symbols** | sections, branches, matches |
 
 **Architecture.** Two parsers, one grammar:
 
@@ -577,8 +583,8 @@ the runtime-facing feature.
 service. `ContinuationCompiler::new(CheckInput, IdentityTemplates)` resolves nothing mutable:
 the caller supplies a complete scene prefix and its already resolved capability, provider,
 schema, component, defaults, and identity inputs. Construction checks and compiles that prefix,
-requires at least one shot, freezes it, and establishes the initial ordinary artifact. All
-continuation text is admitted only as body source appended to the final existing shot.
+requires at least one section, freezes it, and establishes the initial ordinary artifact. All
+continuation text is admitted only as body source appended to the final existing section.
 
 `push(&str)` feeds the syntax framer. Every complete top-level unit is appended in source order
 and compiled through the **existing whole-document pipeline**. This is the central correctness
@@ -598,8 +604,8 @@ CompilationUpdate {
 ```
 
 Before publication, the service compares the candidate with its latest accepted artifact.
-Only typed address and typed control-target strings are canonicalized to unpadded numeric
-`(shot, index)` pairs. This permits uniform address padding to widen as the command count grows.
+Only typed `position` and typed control-target strings are canonicalized to unpadded numeric
+`(section, index)` pairs. This permits uniform position padding to widen as the command count grows.
 All previous commands must otherwise be semantically identical and existing state-table entries
 must be unchanged. Any retroactive line-identity, stage-injection, payload, control-flow, or
 state-default change is `E-STREAM-PREFIX-CHANGED`; emitted IR is never amended.
@@ -659,7 +665,7 @@ Write policy (`fact_write.rs`), checked in order: `derive: true` → `E-DERIVED-
 `rules:`-computed); `reserved: true` → `E-RELATION-RESERVED-WRITE`; `app`-tier → `E-FACT-TIER-WRITE`
 (mirrors `E-APP-READONLY` for scalar state); otherwise the pattern's arity/domain is validated by
 the same closure checker seed facts use. Lowered to `Command::Assert`/`Command::Retract`
-(`AssertCmd`/`RetractCmd`) — ground-literal patterns, addr-ordered alongside every other command.
+(`AssertCmd`/`RetractCmd`) — ground-literal patterns, position-ordered alongside every other command.
 
 ### The Datalog rule surface (spec §7)
 
@@ -698,7 +704,7 @@ above, never a rule-body dependency):
   scalars keep no history, so "was this true at T" is ill-defined without re-running the
   fixpoint (which Lute never does). `holds`/`count` stay fine on the same relation — they only
   read "now".
-- A `<match on="…">` subject may not itself be a relation query (`E-MATCH-RELATION-SUBJECT`) —
+- A `<match subject="…">` subject may not itself be a relation query (`E-MATCH-RELATION-SUBJECT`) —
   match subjects stay scalar, preserving the exhaustiveness/definite-assignment guarantees in
   *Existing directives* / *State* above.
 - **Fact envelopes (dsl 0.20.0, project-level).** `check-project` decides every `holds`/`count`
@@ -779,7 +785,7 @@ above, never a rule-body dependency):
   `W-ENTRY-WRITE-REREAD`. `beats.rs` resolves a `target="kind:<kind>"` beat to its members
   (`occasion.target`) and ranks it after a member-specific beat at equal priority, which the
   compiler carries as `targetKind`; a directive's `when=` lowers to a one-arm match in
-  `normalize` / `expand`, and the trace walk follows a taken `::next`.
+  `normalize` / `expand`, and the trace walk follows a taken `::jump`.
 - **One runtime, seasons, templates (dsl 0.27.0).** `templates.rs` desugars a `<beat use=…>`
   into an ordinary bundle beat from its component's `beat:` header and `chapters.rs` derives
   `on:` / `after:` / `priority:` from the manifest's `chapters:` (dsl 0.28.0), both before any check, so
@@ -848,7 +854,7 @@ minus the version bump (D15):
 - `seedFacts` — merged seed `facts:`, in vocabulary (import-then-inline) order.
 - `rules` — merged Datalog `rules:`, emitted **as data** for the engine's fixpoint.
 - `Command::Assert(AssertCmd)` / `Command::Retract(RetractCmd)` — per-write delta records,
-  addr-ordered alongside every other command.
+  position-ordered alongside every other command.
 
 ### THE static/dynamic boundary — read this before touching any of the above
 
@@ -907,7 +913,7 @@ reachability (below), param-scoped `<match>` (§6), the compile-time §6.4 fold,
 guards (§7.2), and `lute-trace`'s ground-operation evaluator (D3 — the ONE shared seam,
 `apply_op`). `decide(expr, ctx) -> Option<Decided>` is **total** (never panics) and
 implements **exactly** R1–R5 — the spec's Closure clause forbids anything stronger (no SAT,
-no interval/path-sensitive narrowing, no cross-shot state flow); a non-finite arithmetic
+no interval/path-sensitive narrowing, no cross-section state flow); a non-finite arithmetic
 result (overflow, `/0`) also stays undecided rather than deciding to `NaN`/`inf`:
 
 - **R1 (literals)** — a literal AST node decides to itself.
@@ -1056,9 +1062,9 @@ parsed by `parse_line`'s `take_cel`) as a `CelString` guard — same key/type/cl
   rewrite, running BEFORE expand/stage/address: `Line{when: Some(g), ..}` ⇒
   `Match{ subject: g, arms: [When{is: None, test: "$", body: [the line, when=None]},
   Otherwise{body: []}] }`. This is exactly the spec's canonical equivalence
-  (`@s{when="G"}: T` ≡ `<match on="G"><when test="$">@s: T</when><otherwise/></match>`) — a
+  (`@s{when="G"}: T` ≡ `<match subject="G"><when test="$">@s: T</when><otherwise/></match>`) — a
   dedicated identity test JSON-compares the sugared artifact's `MatchCmd` (incl. `arms[].expr`)
-  against the hand-expanded twin's, modulo `addr`/label churn.
+  against the hand-expanded twin's, modulo `position`/label churn.
 - **`$` is NOT in scope (D9)** — the guard is checked under a `Ctx{ in_match: false,
   match_subject: None }` clone even when the line sits inside a `<match>` arm
   (`check/walker.rs`, `Node::Line` walk), matching `<on when>`'s existing rule; a bare `$` in a
@@ -1279,9 +1285,9 @@ intersection.
 
 The resolved permissions live inside `CapabilitySnapshot`. Unrestricted layers
 normalize away, which leaves all policy-free snapshot serialization and
-`capabilityVersion` hashes byte-identical. A restrictive layer participates in
+`capabilitySnapshot` stamps byte-identical. A restrictive layer participates in
 the same deterministic hash so context caches cannot conflate two authoring
-surfaces. No artifact field is added: the existing `capabilityVersion` is
+surfaces. No artifact field is added: the existing `capabilitySnapshot` is
 restamped. The hash remains compatibility metadata, never an authorization
 token.
 
@@ -1371,5 +1377,6 @@ rule); `::set` compound-assignment operators over string values. Human review th
 `<parallel>` and `detached` — the engine's existing per-directive **`wait`** flag (`wait=true`
 holds, absent = non-blocking) already expresses both blocking and concurrency — and corrected
 the invented `::sfx`/`::music`/`::scene`/`::char` attrs back to the real
-`::bg`/`::music`/`::sfx`/`::auto` vocabulary. (The recurring failure mode: designing in the
-abstract instead of reading the parser, the compiled output, and the engine first.)
+`::bg`/`::music`/`::sfx`/`::auto` vocabulary (`::auto` became `::actor` in 0.37.0). (The
+recurring failure mode: designing in the abstract instead of reading the parser, the compiled
+output, and the engine first.)
